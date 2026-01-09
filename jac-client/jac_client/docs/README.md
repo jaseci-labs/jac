@@ -66,12 +66,33 @@ Use the `jac create --cl` command to scaffold a new client-side application. You
 jac create --cl todo-app
 ```
 
+You'll be prompted to select a starter type:
+
+```
+? Select starter type: (Use arrow keys)
+  ❯ Plain starter (basic React app)
+    Fullstack starter (with auth & router)
+```
+
+**Plain starter** (default):
+- Basic React app with `useState` and `useEffect` hooks
+- Example TypeScript component (`Button.tsx`)
+- Simple counter app demonstration
+- Perfect for learning the basics
+
+**Fullstack starter**:
+- Complete authentication system (login, signup, logout)
+- React Router integration for multi-page apps
+- Protected routes example
+- Dashboard with navigation
+- Ready-to-use auth helpers (`jacLogin`, `jacSignup`, etc.)
+
 This command will:
 
 - Create a new directory with your project name
 - Set up an organized project structure with `src/` folder
-- Create a starter `src/app.jac` file with a sample component
-- Include a sample TypeScript component
+- Create a starter `src/app.jac` file based on your selection
+- Include example components and code
 - **Automatically install npm packages** in the `.jac/client/` directory
 
 #### Skipping Package Installation
@@ -96,7 +117,7 @@ jac add --cl <package-name>
 
 Or you can manually run `npm install` in the `.jac/client/configs/` directory after the project is created.
 
-**What gets created:**
+**What gets created (Plain starter):**
 
 ```
 todo-app/
@@ -108,6 +129,19 @@ todo-app/
 ├── assets/               # Static assets
 └── build/                # Build output (generated)
 ```
+
+**What gets created (Fullstack starter):**
+
+```
+todo-app/
+├── jac.toml              # Project configuration
+├── src/                  # Source files
+│   └── app.jac           # Main application with auth & routing
+├── assets/               # Static assets
+└── build/                # Build output (generated)
+```
+
+The fullstack starter includes authentication pages (login, signup) and a protected dashboard, all in `src/app.jac`.
 
 ### Running Your App
 
@@ -722,13 +756,19 @@ Ready to dive deeper? Explore these advanced topics:
 
 ## Examples
 
-Check out the `examples/` directory for working applications:
+Check out the `examples/` directory for working applications and starter templates:
 
+**Starter Templates:**
+- **[plain-starter](../../examples/plain-starter/)**: Basic React app with TypeScript component example
+- **[basic-auth-with-router](../../examples/basic-auth-with-router/)**: Full authentication system with React Router
+
+**Additional Examples:**
 - **[basic](../../examples/basic/)**: Simple counter app using React hooks
 - **[with-router](../../examples/with-router/)**: Multi-page app with declarative routing
 - **[little-x](../../examples/little-x/)**: Social media app with third-party libraries
 - **[todo-app](../../examples/todo-app/)**: Full-featured todo app with authentication
 - **[basic-full-stack](../../examples/basic-full-stack/)**: Full-stack app with backend integration
+- **[full-stack-with-auth](../../examples/full-stack-with-auth/)**: Complete full-stack app with authentication
 
 ---
 

@@ -42,7 +42,9 @@ TypeScript is automatically supported by default. Simply create a new project:
 jac create --cl my-app
 ```
 
-TypeScript is ready to use immediately. A sample Button component is included in `src/components/Button.tsx`!
+You'll be prompted to select a starter type. **If you select "Plain starter"**, TypeScript is ready to use immediately and a sample Button component is included in `src/components/Button.tsx`!
+
+**Note:** The fullstack starter doesn't include the Button component, but you can still create TypeScript components in `src/components/` and import them in your Jac files.
 
 ---
 

@@ -17,6 +17,7 @@ keywords = [
 requires-python = ">=3.12"
 dependencies = [
     "jaclang==0.9.6",
+    "questionary>=1.10.0",
 ]
 
 [project.urls]

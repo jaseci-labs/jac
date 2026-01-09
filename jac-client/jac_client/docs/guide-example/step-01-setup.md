@@ -16,6 +16,16 @@ Open your terminal and run:
 jac create --cl todo-app
 ```
 
+You'll see an interactive prompt asking you to select a starter type:
+
+```
+? Select starter type: (Use arrow keys)
+  ❯ Plain starter (basic React app)
+    Fullstack starter (with auth & router)
+```
+
+**For this tutorial, select "Plain starter"** (the default). Use the arrow keys to navigate and press Enter to confirm.
+
 This creates a new directory called `todo-app` with an organized project structure.
 
 ### Step 1.2: Navigate to Your Project

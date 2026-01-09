@@ -1,7 +1,7 @@
 [project]
-name = "full-stack-with-auth"
+name = "plain-starter"
 version = "1.0.0"
-description = "Jac client application: full-stack-with-auth"
+description = "Jac client application: plain-starter"
 entry-point = "src/app.jac"
 
 [dependencies.npm]
@@ -17,5 +17,4 @@ base_route_app = "app"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
-
 

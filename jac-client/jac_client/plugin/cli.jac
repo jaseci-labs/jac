@@ -118,6 +118,132 @@ with entry {{
     print("  jac install         # Install all dependencies");
 }
 
+"""Prompt user to select project starter type."""
+def _prompt_starter_type() -> str {
+    """Show interactive prompt for starter type selection with arrow key navigation.
+    
+    Returns:
+        'plain' or 'fullstack' based on user selection
+    """;
+    try {
+        import questionary;
+        choice = questionary.select(
+            "Select starter type:",
+            choices=[
+                questionary.Choice("Plain starter (basic React app)", "plain"),
+                questionary.Choice("Fullstack starter (with auth & router)", "fullstack")
+            ],
+            default="plain"
+        ).ask();
+        return choice if choice else "plain";
+    } except KeyboardInterrupt {
+        print("\nCancelled.", file=sys.stderr);
+        <>exit(1);
+    } except Exception as e {
+        # If questionary fails for any reason, provide helpful error
+        print(
+            f"Error: Interactive prompt unavailable ({e}). Please install questionary: pip install questionary",
+            file=sys.stderr
+        );
+        <>exit(1);
+    }
+}
+
+"""Scaffold project from template in examples folder."""
+def _scaffold_from_template(
+    project_path: pathlib.Path,
+    project_name: str,
+    template_name: str
+) -> None {
+    """Copy template files from examples folder to project directory.
+    
+    Args:
+        project_path: Target project directory
+        project_name: Name of the project
+        template_name: Name of the template to use (e.g., 'plain-starter', 'basic-auth-with-router')
+    """;
+    # Get the template directory relative to jac_client package
+    # The examples directory is at jac_client/examples/
+    # This file is at jac_client/plugin/cli.jac
+    # So we go up one level from plugin to jac_client, then into examples
+    template_dir: pathlib.Path | None = None;
+    try {
+        # Try relative to this file's location
+        plugin_dir = pathlib.Path(__file__).parent;
+        template_dir = plugin_dir.parent / "examples" / template_name;
+        if not template_dir.exists() {
+            # Fallback: try to find jac_client in Python path
+            import sys;
+            for path_str in sys.path {
+                path = pathlib.Path(path_str);
+                candidate = path / "jac_client" / "examples" / template_name;
+                if candidate.exists() {
+                    template_dir = candidate;
+                    break;
+                }
+            }
+        }
+    } except Exception as e {
+        raise RuntimeError(f"Could not locate template directory: {e}") from e;
+    }
+    
+    if template_dir is None or not template_dir.exists() {
+        raise RuntimeError(f"Template '{template_name}' not found. Searched at: {template_dir if template_dir else 'unknown'}");
+    }
+    
+    # Copy template files
+    for item in template_dir.rglob("*") {
+        if item.is_dir() {
+            continue;
+        }
+        
+        # Skip .gitignore and other hidden/system files
+        if item.name.startswith('.') and item.name != '.gitignore' {
+            continue;
+        }
+        
+        # Calculate relative path from template directory
+        rel_path = item.relative_to(template_dir);
+        target_path = project_path / rel_path;
+        
+        # Create parent directories
+        target_path.parent.mkdir(parents=True, exist_ok=True);
+        
+        # Copy file
+        shutil.copy2(item, target_path);
+        
+        # Update project name in jac.toml and README.md
+        if item.name == "jac.toml" {
+            with open(target_path, 'r') as f {
+                content = f.read();
+            }
+            # Replace template name with project name
+            content = content.replace(f'name = "{template_name}"', f'name = "{project_name}"');
+            content = content.replace(
+                f'description = "Jac client application: {template_name}"',
+                f'description = "Jac client application: {project_name}"'
+            );
+            with open(target_path, 'w') as f {
+                f.write(content);
+            }
+        } elif item.name == "README.md" {
+            with open(target_path, 'r') as f {
+                content = f.read();
+            }
+            # Replace template name with project name in README
+            content = content.replace(template_name, project_name);
+            with open(target_path, 'w') as f {
+                f.write(content);
+            }
+        }
+        
+        print(f"Created {rel_path}");
+    }
+    
+    # Ensure .jac/client directory exists
+    (project_path / ".jac" / "client").mkdir(parents=True, exist_ok=True);
+}
+
 """Create a client-side Jac project with organized folder structure."""
 def _create_client_project(
     cwd: pathlib.Path,
@@ -164,184 +290,18 @@ def _create_client_project(
         project_path = cwd;
     }
 
+    # Prompt user for starter type
+    starter_type = _prompt_starter_type();
+    
     print(f"Creating Jac client application: {project_name}");
 
-    src_dir = project_path / "src";
-    src_dir.mkdir(parents=True, exist_ok=True);
-
-    components_dir = src_dir / "components";
-    components_dir.mkdir(parents=True, exist_ok=True);
-
-    assets_dir = project_path / "assets";
-    assets_dir.mkdir(parents=True, exist_ok=True);
-
-    (project_path / ".jac" / "client").mkdir(parents=True, exist_ok=True);
-
-    toml_path = project_path / "jac.toml";
-    toml_content = f'''[project]
-name = "{project_name}"
-version = "1.0.0"
-description = "Jac client application: {project_name}"
-entry-point = "src/app.jac"
-
-[dependencies.npm]
-"jac-client-node" = "1.0.3"
-
-[dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
-
-[serve]
-base_route_app = "app"
-
-[plugins.client]
-# Vite bundler configuration (optional overrides)
-# vite.plugins = []
-# vite.build = {{}}
-''';
-    with open(toml_path, 'w') as f {
-        f.write(toml_content);
+    if starter_type == "fullstack" {
+        # Scaffold from fullstack template
+        _scaffold_from_template(project_path, project_name, "basic-auth-with-router");
+    } else {
+        # Scaffold from plain starter template
+        _scaffold_from_template(project_path, project_name, "plain-starter");
     }
-    print(f"Created {toml_path}");
-
-    app_jac_content = '''"""Main entry point for the Jac client application."""
-
-# Client-side imports
-cl import from react { useState, useEffect }
-cl import from ".components/Button.tsx" { Button }
-
-# Client-side component
-cl {
-    def:pub app() -> any {
-        [count, setCount] = useState(0);
-
-        useEffect(lambda -> None {
-            console.log("Count updated:", count);
-        }, [count]);
-
-        return <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
-            <h1>Hello, World!</h1>
-            <p>Count: {count}</p>
-            <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
-                <Button
-                    label="Increment"
-                    onClick={lambda -> None { setCount(count + 1); }}
-                    variant="primary"
-                />
-                <Button
-                    label="Reset"
-                    onClick={lambda -> None { setCount(0); }}
-                    variant="secondary"
-                />
-            </div>
-        </div>;
-    }
-}
-''';
-    with open(src_dir / "app.jac", 'w') as f {
-        f.write(app_jac_content);
-    }
-    print("Created src/app.jac");
-
-    button_tsx_content = '''import React from 'react';
-
-interface ButtonProps {
-  label: string;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary';
-  disabled?: boolean;
-}
-
-export const Button: React.FC<ButtonProps> = ({
-  label,
-  onClick,
-  variant = 'primary',
-  disabled = false
-}) => {
-  const baseStyles: React.CSSProperties = {
-    padding: '0.75rem 1.5rem',
-    fontSize: '1rem',
-    fontWeight: '600',
-    borderRadius: '0.5rem',
-    border: 'none',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease',
-  };
-
-  const variantStyles: Record<string, React.CSSProperties> = {
-    primary: {
-      backgroundColor: disabled ? '#9ca3af' : '#3b82f6',
-      color: '#ffffff',
-    },
-    secondary: {
-      backgroundColor: disabled ? '#e5e7eb' : '#6b7280',
-      color: '#ffffff',
-    },
-  };
-
-  return (
-    <button
-      style={{ ...baseStyles, ...variantStyles[variant] }}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {label}
-    </button>
-  );
-};
-
-export default Button;
-''';
-    with open(components_dir / "Button.tsx", 'w') as f {
-        f.write(button_tsx_content);
-    }
-    print("Created src/components/Button.tsx");
-
-    readme_content = f'''  # {project_name}
-
-
-A Jac client-side application with React and TypeScript support.
-
-## Project Structure
-
-```
-{project_name}/
-├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application entry
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
-├── assets/               # Static assets (images, fonts, etc.)
-└── build/                # Build output (generated)
-```
-
-## Getting Started
-
-Start the development server:
-
-```bash
-jac serve src/app.jac
-```
-
-## TypeScript Support
-
-Create TypeScript components in `src/components/` and import them in your Jac files:
-
-```jac
-cl import from "./components/Button.tsx" {{ Button }}
-```
-
-## Adding Dependencies
-
-Add npm packages with the --cl flag:
-
-```bash
-jac add --cl react-router-dom
-```
-''';
-    with open(project_path / "README.md", 'w') as f {
-        f.write(readme_content);
-    }
-    print("Created README.md");
 
     _create_gitignore(project_path, client=True);
 

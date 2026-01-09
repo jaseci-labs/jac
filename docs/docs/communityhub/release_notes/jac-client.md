@@ -2,13 +2,22 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
+## jac-client 0.2.6 (Latest Release)
+
+- **Interactive Starter Type Selection**: Enhanced `jac create --cl` command with an interactive prompt that allows users to choose between two starter templates using arrow key navigation. The prompt uses the `questionary` library for a better user experience. Users can select:
+  - **Plain starter**: Basic React app with example TypeScript component (`Button.tsx`), perfect for learning the basics or building simple applications
+  - **Fullstack starter**: Complete authentication system with React Router integration, including login, signup, protected routes, and dashboard - ready for production use
+  The default selection is "Plain starter" for quick starts. [Documentation](https://docs.jaseci.org/jac-client/)
+
+- **Template-Based Project Scaffolding**: Refactored project creation to use template-based scaffolding from the `examples/` folder. Starter templates (`plain-starter` and `basic-auth-with-router`) are now maintained as separate example projects, making it easier to add new starter templates in the future. The scaffolding system automatically copies template files and replaces project names in `jac.toml` and `README.md`. This architecture makes the system more scalable and maintainable.
+
 ## jac-client 0.2.5 (Unreleased)
 
 - **Configurable Client Route Prefix**: Changed the default URL path for client-side apps from `/page/<app>` to `/cl/<app>`. The route prefix is now configurable via `cl_route_prefix` in the `[serve]` section of `jac.toml`. This allows customizing the URL structure for client apps (e.g., `/pages/MyApp` instead of `/cl/MyApp`). [Documentation](https://docs.jaseci.org/learn/tools/jac_serve/#routing-configuration)
 
 - **Base Route App Configuration**: Added `base_route_app` option in `jac.toml` `[serve]` section to serve a client app directly at the root `/` path. When configured, visiting `/` renders the specified client app instead of the API info page, making it easy to create single-page applications with clean URLs. Projects created with `jac create --cl` now default to `base_route_app = "app"`, so the app is served at `/` out of the box. [Documentation](https://docs.jaseci.org/learn/tools/project_config/#serve-section)
 
-## jac-client 0.2.4 (Latest Release)
+## jac-client 0.2.4
 
 - **`jac-client-node` and `@jac-client/dev-deps` npm packages**: Introduced the new npm libraries  to centralize and abstract default dependencies for Jac client applications. These two package includes React, Vite, Babel, TypeScript, and other essential dependencies.
 

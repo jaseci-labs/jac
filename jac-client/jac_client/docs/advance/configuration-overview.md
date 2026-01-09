@@ -278,8 +278,9 @@ export default {
 ### Command Workflow
 
 ```bash
-# 1. Create project
+# 1. Create project (interactive prompt for starter type)
 jac create --cl my-app
+# Select: Plain starter (basic React app) or Fullstack starter (with auth & router)
 cd my-app
 
 # 2. jac.toml is automatically created with organized folder structure
@@ -293,6 +294,11 @@ jac add --cl --dev sass
 # 5. Build/serve
 jac serve src/app.jac
 ```
+
+**Starter Types:**
+
+- **Plain starter**: Basic React app with example TypeScript component. Best for learning or simple apps.
+- **Fullstack starter**: Complete authentication system with React Router. Includes login, signup, protected routes, and dashboard. Best for apps requiring user authentication.
 
 ## File Organization
 
