@@ -96,16 +96,16 @@ jac serve main.jac -s prod_session
 
 ### jac create
 
-Initialize a new Jac project with configuration.
+Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
 
 ```bash
-jac create [-h] [-f] [-c] [-s] [-v] name
+jac create [-h] [-f] [-c] [-s] [-v] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `name` | Project name | `main` |
-| `-f, --force` | Overwrite existing jac.toml | `False` |
+| `name` | Project name (creates folder with this name) | `main` |
+| `-f, --force` | Overwrite existing project | `False` |
 | `-c, --cl` | Include client-side setup | `False` |
 | `-s, --skip` | Skip package installation | `False` |
 | `-v, --verbose` | Verbose output | `False` |
@@ -113,14 +113,15 @@ jac create [-h] [-f] [-c] [-s] [-v] name
 **Examples:**
 
 ```bash
-# Create basic project
+# Create basic project (creates myapp/ folder)
 jac create myapp
+cd myapp
 
 # Create full-stack project with frontend
 jac create --cl myapp
 
 # Force overwrite existing
-jac create --force
+jac create myapp --force
 ```
 
 ---
@@ -348,12 +349,12 @@ jac debug main.jac
 Manage Jac plugins.
 
 ```bash
-jac plugins [-h] [-v] action [names ...]
+jac plugins [-h] [-v] [action] [names ...]
 ```
 
 | Action | Description |
 |--------|-------------|
-| `list` | List installed plugins |
+| `list` | List installed plugins (default) |
 | `install` | Install plugins |
 | `uninstall` | Remove plugins |
 | `enable` | Enable plugins |
@@ -366,7 +367,10 @@ jac plugins [-h] [-v] action [names ...]
 **Examples:**
 
 ```bash
-# List plugins
+# List plugins (action defaults to 'list')
+jac plugins
+
+# Explicitly list plugins
 jac plugins list
 
 # Install a plugin

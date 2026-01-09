@@ -31,9 +31,9 @@ Visit `http://localhost:8000/cl/app` to see your app.
 ```
 myapp/
 ├── jac.toml              # Configuration
-├── src/
-│   ├── app.jac           # Backend logic (nodes, walkers)
-│   └── app.cl.jac        # Frontend components (optional)
+├── main.jac              # Main entry point (frontend + backend)
+├── components/           # Reusable components (TypeScript/JSX)
+│   └── Button.cl.jac        # Example component
 ├── assets/               # Static files (images, fonts)
 └── .jac/                 # Build artifacts (gitignored)
 ```
@@ -474,10 +474,10 @@ cl {
 
 ```bash
 # Development server
-jac serve src/app.jac
+jac serve main.jac
 
 # Production build
-jac build src/app.jac
+jac build main.jac
 
 # Using jac.toml entry-point
 jac serve  # Uses [project].entry-point

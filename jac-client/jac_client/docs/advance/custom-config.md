@@ -16,7 +16,7 @@ Vite configuration is placed under `[plugins.client.vite]` in your `jac.toml`:
 [project]
 name = "my-app"
 version = "1.0.0"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client.vite]
 plugins = []
@@ -310,7 +310,7 @@ lib_imports = ["import myPlugin from 'my-plugin'"]
 After modifying `jac.toml`, test your build:
 
 ```bash
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 ## Troubleshooting

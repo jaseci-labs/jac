@@ -466,7 +466,7 @@ def test_all_in_one_app_endpoints() -> None:
                         assert resp_create.status == 200
                         # Basic sanity check: created Todo text should appear in the response payload.
                         assert "Sample todo from all-in-one app" in create_body
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /walker/create_todo: {exc}")
                     pytest.fail("Failed to POST /walker/create_todo")
 
@@ -507,7 +507,7 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Token: {register_data['token'][:20]}...\n"
                             f"Root ID: {register_data['root_id']}"
                         )
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /user/register: {exc}")
                     pytest.fail("Failed to POST /user/register")
 
@@ -539,7 +539,7 @@ def test_all_in_one_app_endpoints() -> None:
                             f"[DEBUG] Successfully logged in user: {test_username}\n"
                             f"Token: {login_data['token'][:20]}..."
                         )
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /user/login: {exc}")
                     pytest.fail("Failed to POST /user/login")
 
@@ -584,7 +584,7 @@ def test_all_in_one_app_endpoints() -> None:
                         assert http_err.code in (400, 401, 403), (
                             f"Expected 400/401/403 for invalid login, got {http_err.code}"
                         )
-                except URLError as exc:
+                except (URLError, RemoteDisconnected) as exc:
                     print(
                         f"[DEBUG] Unexpected error while testing invalid login: {exc}"
                     )

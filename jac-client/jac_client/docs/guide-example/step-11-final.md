@@ -689,12 +689,12 @@ cl {
 
 ### Running the App
 
-1. **Save the code** to `app.jac`
+1. **Save the code** to `main.jac`
 
 2. **Start the server:**
 
    ```bash
-   jac serve src/app.jac
+   jac serve main.jac
    ```
 
 3. **Open in browser:**

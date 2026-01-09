@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.5 (Unreleased)
 
-- **Custom HTML Metadata Configuration**: Added support for configuring custom HTML metadata through the `[plugins.client.app_meta_data]` section in `jac.toml`. This allows developers to customize SEO tags, social media sharing metadata (Open Graph), favicon, viewport, theme color, and other HTML head elements.  Supported options include `title`, `description`, `icon`, `viewport`, `charset`, `robots`, `canonical`, `og_type`, `og_title`, `og_description`, `og_url`, `og_image`, and `theme_color`. The metadata is dynamically rendered in the HTML head content, improving SEO and social sharing capabilities.
+- **Simplified Project Structure**: Reorganized the default project structure created by `jac create --cl`. The entry point is now `main.jac` at the project root instead of `src/app.jac`, and the `components/` directory is now at the project root instead of `src/components/`. This flatter structure reduces nesting and aligns with modern frontend project conventions. Existing projects using the `src/` structure continue to work but new projects use the simplified layout.
 
 - **Configurable Client Route Prefix**: Changed the default URL path for client-side apps from `/page/<app>` to `/cl/<app>`. The route prefix is now configurable via `cl_route_prefix` in the `[serve]` section of `jac.toml`. This allows customizing the URL structure for client apps (e.g., `/pages/MyApp` instead of `/cl/MyApp`). [Documentation](https://docs.jaseci.org/learn/tools/jac_serve/#routing-configuration)
 
