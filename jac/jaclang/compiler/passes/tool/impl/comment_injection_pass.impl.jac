@@ -1148,21 +1148,10 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
     return CommentStore(_inline=inline, _standalone=standalone);
 }
 
-impl CommentStore.init(
-    _inline: dict[(int, list[CommentInfo])], _standalone: list[CommentInfo]
-) -> None {
-    self._inline = _inline;
-    self._standalone = _standalone;
+"""Post-initialization to prepare lookup structures."""
+impl CommentStore.postinit -> None {
     self._standalone_lines = [c.first_line for c in self._standalone];
     self._used = set();
-}
-
-impl CommentInfo.init(
-    index: int, token: uni.CommentToken, anchor_token_id: (int | None)
-) -> None {
-    self.index = index;
-    self.token = token;
-    self.anchor_token_id = anchor_token_id;
 }
 
 """Return the final line this comment occupies."""
