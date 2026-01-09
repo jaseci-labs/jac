@@ -248,24 +248,14 @@ def test_all_in_one_app_endpoints() -> None:
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             try:
-
-                def get_free_port():
-                    with socket.socket() as s:
-                        s.bind(("", 0))
-                        return s.getsockname()[1]
-
-                port = get_free_port()
-                print(
-                    f"[DEBUG] Starting server with 'jac serve src/app.jac' on port {port}"
-                )
+                print(f"[DEBUG] Starting server with 'jac serve src/app.jac'")
                 server = Popen(
-                    ["jac", "serve", "src/app.jac", "--port", str(port)],
+                    ["jac", "serve", "src/app.jac"],
                     cwd=project_path,
                 )
-
                 # Wait for localhost:8000 to become available
                 print("[DEBUG] Waiting for server to be available on 127.0.0.1:8000")
-                _wait_for_port("127.0.0.1", port, timeout=90.0)
+                _wait_for_port("127.0.0.1", 8000, timeout=90.0)
                 print("[DEBUG] Server is now accepting connections on 127.0.0.1:8000")
 
                 # "/" – server up

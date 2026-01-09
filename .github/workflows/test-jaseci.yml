@@ -58,7 +58,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-client -n auto
+      run: pytest -x jac-client
 
   test-packages-and-docs:
     runs-on: ubuntu-latest
