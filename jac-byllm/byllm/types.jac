@@ -141,7 +141,6 @@ obj Image(Media) {
     def to_dict -> list[dict];
 }
 
-# Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding
 """Video content in a message.
 
 Extracts frames at a specified FPS and encodes them as base64 images
@@ -156,3 +155,4 @@ obj Video(Media) {
     def load_frames -> None;
     def to_dict -> list[dict];
 }
+# Ref: https://cookbook.openai.com/examples/gpt_with_vision_for_video_understanding

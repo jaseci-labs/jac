@@ -51,26 +51,29 @@ class PluginConfigBase {
     def load(self: PluginConfigBase) -> dict[str, Any];
     def get_jac_config(self: PluginConfigBase) -> JacConfig;
     def get_section(
-        self: PluginConfigBase, section: str, defaults: dict[(str, Any)] | None = None
+        self: PluginConfigBase, section: str, defaults: dict[str, Any] | None = None
     ) -> dict[str, Any];
 
-    def invalidate(self: PluginConfigBase) -> None;
+    def invalidate(
+    # Singleton Pattern Usage:
+    # -----------------------
+    # Each plugin can implement singleton access like this:
+    #
+    #     glob _my_config_instance: MyPluginConfig | None = None;
+    #
+    #     def get_my_config(project_dir: Path | None = None) -> MyPluginConfig {
+    #         global _my_config_instance;
+    #         if _my_config_instance is None {
+    #             _my_config_instance = MyPluginConfig(project_dir);
+    #         }
+    #         return _my_config_instance;
+    #     }
+    #
+    #     def reset_my_config() -> None {
+    #         global _my_config_instance;
+    #         _my_config_instance = None;
+    #     }
+
+        self: PluginConfigBase
+    ) -> None;
 }
-# Singleton Pattern Usage:
-# -----------------------
-# Each plugin can implement singleton access like this:
-#
-#     glob _my_config_instance: MyPluginConfig | None = None;
-#
-#     def get_my_config(project_dir: Path | None = None) -> MyPluginConfig {
-#         global _my_config_instance;
-#         if _my_config_instance is None {
-#             _my_config_instance = MyPluginConfig(project_dir);
-#         }
-#         return _my_config_instance;
-#     }
-#
-#     def reset_my_config() -> None {
-#         global _my_config_instance;
-#         _my_config_instance = None;
-#     }

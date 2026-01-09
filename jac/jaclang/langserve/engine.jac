@@ -50,7 +50,23 @@ class JacLangServer(JacProgram, LanguageServer) {
         last_task: Task | None = None,
         _shutdown_called: bool = False;
 
-    def init(self: JacLangServer) -> None;
+    def init(
+    # This parameter will be passed recursively
+    # and dont need to pass when the function itself is called
+    # outside.
+
+    # NOTE: We may only need to wait for the current file's type check.
+
+    # For each trigger character we need to handle the completion differently
+
+    # FIXME: This is wrong but imma do it anyways like this for now.
+
+    # Name of atom trailer.
+
+    # Just a name field.
+
+        self: JacLangServer
+    ) -> None;
     def dispatcher(self: JacLangServer) -> None;
     @property
     def diagnostics(self: JacLangServer,) -> dict[str, list];
@@ -66,9 +82,6 @@ class JacLangServer(JacProgram, LanguageServer) {
         file_uri: str,
         cancel_token: Event | None = None,
         annex_view: Optional[str] = None,
-        # This parameter will be passed recursively
-        # and dont need to pass when the function itself is called
-        # outside.
     ) -> bool;
 
     def type_check(self: JacLangServer, file_uri: str) -> None;
@@ -91,7 +104,6 @@ class JacLangServer(JacProgram, LanguageServer) {
         position: lspt.Position,
         completion_trigger: Optional[str]
     ) -> lspt.CompletionList {
-        # NOTE: We may only need to wait for the current file's type check.
         await self.wait_till_idle();
 
         self.debug("Getting completion for " + file_uri + " at " + str(position));
@@ -105,7 +117,6 @@ class JacLangServer(JacProgram, LanguageServer) {
                 self.debug(
                     "found the node at pos " + str(position) + " " + str(node_at_pos)
                 );
-                # For each trigger character we need to handle the completion differently
                 if isinstance(node_at_pos, uni.Token) {
                     if node_at_pos.name == "DOT" {
                         member_access = node_at_pos.parent;
@@ -114,9 +125,7 @@ class JacLangServer(JacProgram, LanguageServer) {
                             self.debug("before returning the list");
                             return self.get_completion_of_node(member_access.target);
                         }
-                        # FIXME: This is wrong but imma do it anyways like this for now.
                     } elif node_at_pos.name == "NAME" {
-                        # Name of atom trailer.
                         if (
                             node_at_pos.parent
                             and isinstance(node_at_pos.parent, uni.AtomTrailer)
@@ -128,7 +137,6 @@ class JacLangServer(JacProgram, LanguageServer) {
                                 node_at_pos.parent.target
                             );
                         }
-                        # Just a name field.
                         if scope_node := node_at_pos.find_parent_of_type(
                             uni.UniScopeNode
                         ) {

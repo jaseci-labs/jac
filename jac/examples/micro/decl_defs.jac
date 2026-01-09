@@ -1,9 +1,12 @@
 """Separating Defs and Decls in a single File"""
 
 # Declaration
-def my_print(messag: str) -> str;
-
+def my_print(
 # Definition
+
+    message: str
+) -> str;
+
 impl my_print(message: str) -> str {
     output = f"from me: {message}";
     print("from me: {message}");

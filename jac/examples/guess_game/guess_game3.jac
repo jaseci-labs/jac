@@ -16,9 +16,9 @@ obj GuessTheNumberGame(Game) {
     def process_guess(guess: int);
 }
 
-# Run the game
 glob game = GuessTheNumberGame();
 
 with entry {
     game.play();
 }
+# Run the game

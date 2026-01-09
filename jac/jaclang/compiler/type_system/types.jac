@@ -145,7 +145,7 @@ Holds the shared details of class type.
     """
     class ClassDetailsShared {
         def init(
-            self: ClassDetailsShared,
+            self: ClassType.ClassDetailsShared,
             class_name: str,
             symbol_table: SymbolTable,
             *,
@@ -165,7 +165,8 @@ Holds the private details of class type.
     """
     class ClassDetailsPrivate {
         def init(
-            self: ClassDetailsPrivate, type_args: (list[TypeBase] | None) = None
+            self: ClassType.ClassDetailsPrivate,
+            type_args: (list[TypeBase] | None) = None
         ) -> None;
     }
 

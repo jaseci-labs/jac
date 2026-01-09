@@ -23,7 +23,6 @@ import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 
-# Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
      _sso_config = get_scale_config().get_sso_config(),
      JWT_SECRET = _jwt_config['secret'],
@@ -101,6 +100,9 @@ class JacAPIServer(JServer) {
     def serve_static_file(self: JacAPIServer, file_path: str) -> Response;
     def register_root_asset_endpoint(self: JacAPIServer) -> None;
     def serve_root_asset(self: JacAPIServer, file_path: str) -> Response;
-    def _configure_openapi_security(self: JacAPIServer) -> None;
+    def _configure_openapi_security(
+        self: JacAPIServer
+    # Load configuration from jac.toml with env var overrides
+    ) -> None;
     def start(self: JacAPIServer) -> None;
 }

@@ -8,18 +8,26 @@ enum Priority;
 obj Calculator {
     has total: float = 0.0;
 
-    def add(value: float);
+    def add(
+    # Implement function
+
+    # Implement object
+
+    # Implement enum
+
+    # Implement object methods
+
+        value: float
+    );
     def subtract(value: float);
     def multiply(value: float);
     def get_result -> float;
 }
 
-# Implement function
 impl compute(x: int, y: int) -> int {
     return x + y;
 }
 
-# Implement object
 impl Vehicle{
     has name: str = "Car",
         speed: int = 0;
@@ -28,14 +36,12 @@ impl Vehicle{
     }
 }
 
-# Implement enum
 impl Priority{
     LOW = 1,
     MEDIUM = 2,
     HIGH = 3
 }
 
-# Implement object methods
 impl Calculator.add(value: float) {
     self.total += value;
 }

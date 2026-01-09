@@ -43,9 +43,7 @@ obj MTRuntime {
         call_params: dict[(str, object)];
 
     static def factory(
-        caller: Callable,
-        args: dict[(int | str, object)],
-        call_params: dict[(str, object)]
+        caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
     ) -> MTRuntime;
 
     def dispatch_params -> dict[str, object];

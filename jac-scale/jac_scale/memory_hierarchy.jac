@@ -46,8 +46,16 @@ obj RedisBackend(CacheMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def has(
+    # PersistentMemory interface (Memory methods + persistence-specific)
+
+        id: UUID
+    ) -> bool;
     def query(
+    # PersistentMemory-specific
+
+    # Internal
+
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
@@ -81,7 +89,6 @@ obj MongoBackend(PersistentMemory) {
 
     def postinit -> None;
     def is_available -> bool;
-    # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
@@ -103,10 +110,8 @@ obj MongoBackend(PersistentMemory) {
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
-    # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
-    # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
 }
 

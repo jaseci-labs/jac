@@ -83,7 +83,13 @@ def dot(
 ) -> None;
 
 @cmd_registry.register(source='jaclang')
-def py2jac(filename: str) -> None;
+def py2jac(
+#===============================================================================
+# PROJECT MANAGEMENT COMMANDS
+#===============================================================================
+
+    filename: str
+) -> None;
 
 @cmd_registry.register(source='jaclang')
 def jac2py(filename: str) -> None;
@@ -100,13 +106,8 @@ def serve(
     faux: bool = False
 ) -> None;
 
-#===============================================================================
-# PROJECT MANAGEMENT COMMANDS
-#===============================================================================
-@cmd_registry.register(
-    source='jaclang'
-)
-def create(name: str = 'main', force: bool = False) -> None;
+@cmd_registry.register(source='jaclang')
+def create(name: str = '', force: bool = False) -> None;
 
 @cmd_registry.register(source='jaclang')
 def install(dev: bool = False, verbose: bool = False) -> None;

@@ -4,7 +4,6 @@ import docker;
 import from docker.errors { APIError, BuildError }
 import from jac_scale.config_loader { get_scale_config }
 
-# Load kubernetes configuration from jac.toml with env var overrides
 glob _k8s_config = get_scale_config().get_kubernetes_config();
 
 def build_docker_image(
@@ -13,7 +12,10 @@ def build_docker_image(
 
 def push_docker_image(image_name: str, username: str, password: str) -> None;
 
-def build_and_push_docker(code_folder: str) -> None;
+def build_and_push_docker(
+    code_folder: str
+# Load kubernetes configuration from jac.toml with env var overrides
+) -> None;
 
 with entry {
     if (__name__ == '__main__') {

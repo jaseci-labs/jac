@@ -7,7 +7,6 @@ with entry {
     }
 }
 
-# Define DocType for self-referential typing
 glob DocType = Union[
          ('Doc', 'Text', 'Line', 'Group', 'Indent', 'Concat', 'IfBreak', 'Align')
      ];
@@ -82,5 +81,8 @@ obj Align(Doc) {
         n: (int | None) = None;
 
     def __str__ -> str;
-    def treeprint(level: int = 0) -> str;
+    def treeprint(
+        level: int = 0
+    # Define DocType for self-referential typing
+    ) -> str;
 }
