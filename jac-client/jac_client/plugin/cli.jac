@@ -82,8 +82,27 @@ def _create_core_project(cwd: pathlib.Path, name: str, force: bool) -> None {
         <>exit(1);
     }
 
-    toml_content = JacConfig.create_default_toml(project_name);
-    with open(toml_path, "w") as f {
+    toml_content = f'''[project]
+name = "{project_name}"
+version = "1.0.0"
+description = "Jac client application: {project_name}"
+entry-point = "src/app.jac"
+
+[dependencies.npm]
+"jac-client-node" = "1.0.3"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {{}}
+''';
+    with open(toml_path, 'w') as f {
         f.write(toml_content);
     }
     print(f"Created {toml_path}");
@@ -94,14 +113,78 @@ def _create_core_project(cwd: pathlib.Path, name: str, force: bool) -> None {
             f.write(
                 f'''"""Main entry point for {project_name}."""
 
-with entry {{
-    print("Hello from {project_name}!");
+walker hello_world {{
+    can start with root entry {{
+        report "👋 Hello from the HelloWorld walker!";
+    }}
+}}
+
+walker counter {{
+    has count: int = 0;
+
+    can start with root entry {{
+        self.count += 1;
+        report f"🔢 Counter walker invoked {{self.count}} time(s)";
+    }}
 }}
 '''
             );
         }
         print(f"Created {main_jac}");
     }
+
+    client_jac = cwd / f"{name}.cl.jac";
+
+    client_content= '''"""Client-side entry point for app."""
+
+import from react { useState, useEffect }
+
+def:pub app() -> any {
+    [greet, setGreet] = useState("");
+    [count, setCount] = useState(0);
+
+    async def run_hello() -> None {
+        response = root spawn hello_world();
+        if response.reports and response.reports.length > 0 {
+            setGreet(response.reports);
+        }
+    }
+
+    async def run_counter() -> None {
+        response = await spawn counter();
+        if response.reports and response.reports.length > 0 {
+            setCount(response.reports);
+        }
+    }
+    return <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
+        <h1>Hello, World!</h1>
+        <button
+            onClick={lambda  e: any  -> None{run_hello();}}
+            style={{marginRight: "1rem", padding: "0.5rem 1rem"}}
+        >
+            Run Hello World
+        </button>
+        <button
+            onClick={lambda  e: any  -> None{run_counter();}}
+            style={{padding: "0.5rem 1rem"}}
+        >
+            Run Counter
+        </button>
+        <div style={{marginTop: "2rem"}}>
+            <p>{greet}</p>
+            <p>{count}</p>
+        </div>
+    </div>;
+}
+
+''';
+    if not client_jac.exists() {
+        with open(client_jac, 'w') as f {
+            f.write(client_content);
+        }
+    }
+    print(f"Created {client_jac}");
+
 
     packages_dir = cwd / "packages";
     if not packages_dir.exists() {
