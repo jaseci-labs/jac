@@ -695,13 +695,13 @@ def test_default_client_app_renders() -> None:
 
             # Verify expected files were created (new structure: main.jac at root)
             main_jac_path = os.path.join(project_path, "main.jac")
-            assert os.path.isfile(main_jac_path), "main.jac should exist at project root"
+            assert os.path.isfile(main_jac_path), (
+                "main.jac should exist at project root"
+            )
 
             # Components are now at root level (not src/components)
             button_tsx_path = os.path.join(project_path, "components", "Button.tsx")
-            assert os.path.isfile(button_tsx_path), (
-                "components/Button.tsx should exist"
-            )
+            assert os.path.isfile(button_tsx_path), "components/Button.tsx should exist"
 
             jac_toml_path = os.path.join(project_path, "jac.toml")
             assert os.path.isfile(jac_toml_path), "jac.toml should exist"
@@ -790,8 +790,7 @@ def test_default_client_app_renders() -> None:
                     # The page should include the bundled JavaScript
                     # that will render "Hello, World!" client-side
                     assert (
-                        "<script" in page_body.lower()
-                        or "src=" in page_body.lower()
+                        "<script" in page_body.lower() or "src=" in page_body.lower()
                     ), "Response should include script tags for React app"
 
                 except (URLError, HTTPError, TimeoutError) as exc:
