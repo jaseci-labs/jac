@@ -248,7 +248,7 @@ def test_all_in_one_app_endpoints() -> None:
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             try:
-                print(f"[DEBUG] Starting server with 'jac serve src/app.jac'")
+                print("[DEBUG] Starting server with 'jac serve src/app.jac'")
                 server = Popen(
                     ["jac", "serve", "src/app.jac"],
                     cwd=project_path,
