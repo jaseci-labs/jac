@@ -1673,16 +1673,8 @@ class JacByLLM:
         """by operator feature for expression composition.
 
         Currently not implemented - raises NotImplementedError.
-        The exact execution behavior is not yet defined.
+        Plugins like byllm can override this via the plugin hook system.
         """
-        from byllm.lib import MockLLM, Model
-
-        lhs_list = lhs if isinstance(lhs, list) else [lhs]
-        if all(
-            isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
-        ) and isinstance(rhs, (Model, MockLLM)):
-            return JacByLLM.filter_visitable_by(lhs_list, rhs)
-
         raise NotImplementedError(
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."
