@@ -11,15 +11,15 @@ abstract class DatabaseProvider {
     has target: DeploymentTarget;
     
     """Deploy the database."""
-    abstract def deploy(config: dict[str, Any]) -> dict[str, Any];
+    def deploy(config: dict[str, Any]) -> dict[str, Any] abs;
     
     """Get the connection string for the database."""
-    abstract def get_connection_string() -> str;
+    def get_connection_string() -> str abs;
     
     """Check if the database is available."""
-    abstract def is_available() -> bool;
+    def is_available() -> bool abs;
     
     """Cleanup/remove the database."""
-    abstract def cleanup() -> None;
+    def cleanup() -> None abs;
 }
 

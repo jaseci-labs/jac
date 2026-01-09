@@ -6,18 +6,18 @@ to be plugged in without changing deployment code.
 """Abstract base class for loggers."""
 abstract class Logger {
     """Log an info message."""
-    abstract def info(message: str, context: dict = {}) -> None;
+    def info(message: str, context: dict = {}) -> None abs;
     
     """Log an error message."""
-    abstract def error(message: str, context: dict = {}) -> None;
+    def error(message: str, context: dict = {}) -> None abs;
     
     """Log a warning message."""
-    abstract def warning(message: str, context: dict = {}) -> None;
+    def warning(message: str, context: dict = {}) -> None abs;
     
     """Log a debug message."""
-    abstract def debug(message: str, context: dict = {}) -> None;
+    def debug(message: str, context: dict = {}) -> None abs;
     
     """Create a new logger with additional context."""
-    abstract def with_context(context: dict) -> Logger;
+    def with_context(context: dict) -> Logger abs;
 }
 
