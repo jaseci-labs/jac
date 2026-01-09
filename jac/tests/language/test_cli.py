@@ -720,10 +720,13 @@ def test_cli_error_exit_codes(fixture_path: Callable[[str], str]) -> None:
 
 def test_positional_args_with_defaults() -> None:
     """Test that positional arguments with defaults are optional."""
+    # Get the path to jac binary in the same directory as the Python executable
+    jac_bin = os.path.join(os.path.dirname(sys.executable), "jac")
+
     # Test that 'jac plugins' works without providing the 'action' argument
     # The action parameter has a default of 'list', so it should be optional
     process = subprocess.Popen(
-        [sys.executable, "-m", "jaclang.cli.cli", "plugins"],
+        [jac_bin, "plugins"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -738,7 +741,7 @@ def test_positional_args_with_defaults() -> None:
 
     # Verify explicit 'list' action produces the same result
     process_explicit = subprocess.Popen(
-        [sys.executable, "-m", "jaclang.cli.cli", "plugins", "list"],
+        [jac_bin, "plugins", "list"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
