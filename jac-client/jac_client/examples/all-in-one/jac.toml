@@ -4,6 +4,9 @@ version = "1.0.0"
 description = "Jac client application: all-in-one"
 entry-point = "src/app.jac"
 
+[serve]
+base_route_app = "app"
+
 [plugins.client]
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
