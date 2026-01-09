@@ -145,6 +145,7 @@ def test_create_jac_app_existing_directory() -> None:
             os.makedirs(test_project_name)
 
             # Try to create app with same name
+            # Send Enter in case prompt appears (though it should fail before prompt)
             process = Popen(
                 ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
@@ -152,7 +153,7 @@ def test_create_jac_app_existing_directory() -> None:
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(input="\n")
             result_code = process.returncode
 
             # Should fail with non-zero exit code
@@ -449,6 +450,7 @@ def test_create_jac_app_with_skip_flag() -> None:
             os.chdir(temp_dir)
 
             # Run jac create --cl --skip command
+            # Send Enter to accept default "Plain starter" selection
             process = Popen(
                 ["jac", "create", "--cl", "--skip", test_project_name],
                 stdin=PIPE,
@@ -456,7 +458,7 @@ def test_create_jac_app_with_skip_flag() -> None:
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(input="\n")
             result_code = process.returncode
 
             # Check that command succeeded
@@ -493,6 +495,7 @@ def test_create_jac_app_installs_default_packages() -> None:
             os.chdir(temp_dir)
 
             # Run jac create --cl command
+            # Send Enter to accept default "Plain starter" selection
             process = Popen(
                 ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
@@ -500,7 +503,7 @@ def test_create_jac_app_installs_default_packages() -> None:
                 stderr=PIPE,
                 text=True,
             )
-            stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate(input="\n")
             result_code = process.returncode
 
             # Check that command succeeded
