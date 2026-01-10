@@ -129,6 +129,15 @@ def script(name: str = '', list_scripts: bool = False) -> None;
 @cmd_registry.register(source='jaclang')
 def plugins(action: str = 'list', names: list = [], verbose: bool = False) -> None;
 
+@cmd_registry.register(source='jaclang')
+def config(
+    action: str = 'show',
+    key: str = '',
+    value: str = '',
+    group: str = '',
+    output: str = 'table'
+) -> None;
+
 def start_cli -> None;
 
 with entry:__main__ {

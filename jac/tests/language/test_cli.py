@@ -829,3 +829,199 @@ def test_jac_create_and_run_no_root_files() -> None:
             f"jac run created unexpected files in project root: {new_files}. "
             "All runtime files should be in .jac/ directory."
         )
+
+
+class TestConfigCommand:
+    """Tests for the jac config CLI command."""
+
+    @pytest.fixture
+    def project_dir(self):
+        """Create a temporary project directory with jac.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml_content = """[project]
+name = "test-project"
+version = "1.0.0"
+description = "A test project"
+
+[run]
+cache = false
+
+[build]
+typecheck = true
+
+[test]
+verbose = true
+"""
+            toml_path = os.path.join(tmpdir, "jac.toml")
+            with open(toml_path, "w") as f:
+                f.write(toml_content)
+            yield tmpdir
+
+    def test_config_groups(self, project_dir: str) -> None:
+        """Test jac config groups lists available configuration groups."""
+        process = subprocess.Popen(
+            ["jac", "config", "groups"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        assert "project" in stdout
+        assert "run" in stdout
+        assert "build" in stdout
+        assert "test" in stdout
+        assert "serve" in stdout
+
+    def test_config_path(self, project_dir: str) -> None:
+        """Test jac config path shows path to config file."""
+        process = subprocess.Popen(
+            ["jac", "config", "path"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        assert "jac.toml" in stdout
+
+    def test_config_show(self, project_dir: str) -> None:
+        """Test jac config show displays only explicitly set values."""
+        process = subprocess.Popen(
+            ["jac", "config", "show"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        # Should show explicitly set values
+        assert "test-project" in stdout
+        assert "1.0.0" in stdout
+
+    def test_config_show_group(self, project_dir: str) -> None:
+        """Test jac config show with group filter."""
+        process = subprocess.Popen(
+            ["jac", "config", "show", "-g", "project"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        assert "test-project" in stdout
+
+    def test_config_list(self, project_dir: str) -> None:
+        """Test jac config list displays all settings including defaults."""
+        process = subprocess.Popen(
+            ["jac", "config", "list"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        # Should show all settings including defaults
+        assert "project" in stdout or "name" in stdout
+
+    def test_config_get(self, project_dir: str) -> None:
+        """Test jac config get retrieves a specific setting."""
+        process = subprocess.Popen(
+            ["jac", "config", "get", "-k", "project.name"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        assert "test-project" in stdout
+
+    def test_config_set_and_unset(self, project_dir: str) -> None:
+        """Test jac config set and unset modify settings."""
+        # Set a new value
+        process = subprocess.Popen(
+            ["jac", "config", "set", "-k", "project.description", "-v", "Updated desc"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+
+        # Verify the value was set
+        process = subprocess.Popen(
+            ["jac", "config", "get", "-k", "project.description"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert "Updated desc" in stdout
+
+        # Unset the value
+        process = subprocess.Popen(
+            ["jac", "config", "unset", "-k", "project.description"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+
+    def test_config_output_json(self, project_dir: str) -> None:
+        """Test jac config with JSON output format."""
+        process = subprocess.Popen(
+            ["jac", "config", "show", "-o", "json"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        # JSON output should be parseable
+        import json
+
+        data = json.loads(stdout)
+        assert isinstance(data, dict)
+
+    def test_config_output_toml(self, project_dir: str) -> None:
+        """Test jac config with TOML output format."""
+        process = subprocess.Popen(
+            ["jac", "config", "show", "-o", "toml"],
+            cwd=project_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0
+        # TOML output should contain section markers
+        assert "[" in stdout
+
+    def test_config_no_project(self) -> None:
+        """Test jac config behavior when no jac.toml exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            process = subprocess.Popen(
+                ["jac", "config", "path"],
+                cwd=tmpdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            # Should indicate no config found
+            assert (
+                "No jac.toml" in stdout
+                or "not found" in stdout.lower()
+                or process.returncode != 0
+            )

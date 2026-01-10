@@ -1842,3 +1842,887 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> N
         }
     }
 }
+
+#===============================================================================
+# CONFIGURATION MANAGEMENT COMMAND
+#===============================================================================
+
+# Configuration groups available in jac.toml
+glob CONFIG_GROUPS = [
+         "project",
+         "run",
+         "build",
+         "test",
+         "serve",
+         "format",
+         "check",
+         "dot",
+         "cache",
+         "plugins",
+         "environment"
+     ];
+
+"""View and modify jac.toml configuration settings.
+
+Provides a CLI interface for viewing and modifying project configuration.
+Settings can be viewed by group, and individual settings can be get/set.
+
+Args:
+    action: Action to perform - 'list' (all settings), 'show' (only set values),
+            'get' (specific setting), 'set' (modify setting), 'unset' (remove setting),
+            'path' (show config file path), 'groups' (list available groups)
+    key: Setting key in 'group.name' format (for get/set/unset actions)
+    value: Value to set (for 'set' action)
+    group: Filter to specific group (for list/show actions)
+    output: Output format - 'table' (default), 'json', or 'toml'
+
+Examples:
+    jac config                           # List all settings
+    jac config list                      # List all settings (explicit)
+    jac config show                      # Show only explicitly set values
+    jac config list --group run          # List settings in 'run' group
+    jac config show --group serve        # Show set values in 'serve' group
+    jac config get run.cache             # Get specific setting value
+    jac config set serve.port 9000       # Set a setting value
+    jac config set test.verbose true     # Set boolean setting
+    jac config unset serve.port          # Remove setting (revert to default)
+    jac config path                      # Show path to jac.toml
+    jac config groups                    # List available setting groups
+    jac config list --output json        # Output as JSON
+    jac config show --output toml        # Output as TOML
+"""
+impl config(
+    action: str = 'show',
+    key: str = '',
+    value: str = '',
+    group: str = '',
+    output: str = 'table'
+) -> None {
+    import json;
+    import from jaclang.project.config { get_config, JacConfig }
+    # Handle 'path' action first - doesn't need config
+    if action == 'path' {
+        _config_path();
+        return;
+    }
+    # Handle 'groups' action - list available groups
+    if action == 'groups' {
+        _config_groups();
+        return;
+    }
+    # Load configuration
+    config = get_config();
+    # Validate group if specified
+    if group and group not in CONFIG_GROUPS {
+        print(f"Error: Unknown group '{group}'.", file=sys.stderr);
+        print(f"Available groups: {', '.join(CONFIG_GROUPS)}");
+        <>exit(1);
+    }
+    # Route to appropriate handler
+    if action == 'list' {
+        _config_list(config, group, output, True);
+    } elif action == 'show' {
+        _config_list(config, group, output, False);
+    } elif action == 'get' {
+        _config_get(config, key);
+    } elif action == 'set' {
+        _config_set(config, key, value);
+    } elif action == 'unset' {
+        _config_unset(config, key);
+    } else {
+        print(f"Error: Unknown action '{action}'.", file=sys.stderr);
+        print("Available actions: list, show, get, set, unset, path, groups");
+        <>exit(1);
+    }
+}
+
+"""Show the path to the active jac.toml configuration file."""
+def _config_path -> None {
+    import from jaclang.project.config { get_config, find_project_root }
+
+    config = get_config();
+    if config and config.toml_path {
+        print(f"Config file: {config.toml_path}");
+        print(f"Project root: {config.project_root}");
+    } else {
+        result = find_project_root();
+        if result {
+            (proj_root, toml_path) = result;
+            print(f"Config file: {toml_path}");
+            print(f"Project root: {proj_root}");
+        } else {
+            print("No jac.toml found in current directory or parents.");
+            print("Run 'jac create' to initialize a project.");
+        }
+    }
+}
+
+"""List available configuration groups."""
+def _config_groups -> None {
+    print("Available configuration groups:\n");
+    group_descriptions = {
+        "project": "Project metadata (name, version, description, authors)",
+        "run": "Run command defaults (session, main, cache)",
+        "build": "Build command defaults (typecheck, dir)",
+        "test": "Test command defaults (directory, filter, verbose, fail_fast)",
+        "serve": "Serve command defaults (port, session, main, cl_route_prefix)",
+        "format": "Format command defaults (outfile, fix)",
+        "check": "Check command defaults (print_errs, warnonly)",
+        "dot": "Dot/graph visualization defaults (depth, traverse, format)",
+        "cache": "Cache settings (enabled, dir)",
+        "plugins": "Plugin settings (discovery, enabled, disabled)",
+        "environment": "Environment profile settings (default_profile)"
+    };
+    for grp in CONFIG_GROUPS {
+        desc = group_descriptions.get(grp, "");
+        print("  {:<12} {}".format(grp, desc));
+    }
+}
+
+"""Get the default values for a configuration group."""
+def _get_group_defaults(group_name: str) -> dict {
+    import from jaclang.project.config {
+        ProjectConfig,
+        RunConfig,
+        BuildConfig,
+        TestConfig,
+        ServeConfig,
+        FormatConfig,
+        CheckConfig,
+        DotConfig,
+        CacheConfig,
+        PluginsConfig,
+        EnvironmentConfig
+    }
+
+    defaults_map = {
+        "project": ProjectConfig(),
+        "run": RunConfig(),
+        "build": BuildConfig(),
+        "test": TestConfig(),
+        "serve": ServeConfig(),
+        "format": FormatConfig(),
+        "check": CheckConfig(),
+        "dot": DotConfig(),
+        "cache": CacheConfig(),
+        "plugins": PluginsConfig(),
+        "environment": EnvironmentConfig()
+    };
+
+    default_obj = defaults_map.get(group_name);
+    if default_obj is None {
+        return {};
+    }
+
+    # Convert object to dict
+    result: dict = {};
+    for attr in dir(default_obj) {
+        if not attr.startswith('_') {
+            val = getattr(default_obj, attr, None);
+            if not callable(val) {
+                result[attr] = val;
+            }
+        }
+    }
+    return result;
+}
+
+"""Get the JacConfig attribute name for a config group."""
+def _get_group_attr(group_name: str) -> str {
+    # Most groups have same name, except plugins -> plugins_config
+    return "plugins_config" if group_name == "plugins" else group_name;
+}
+
+"""Get the current values for a configuration group from config."""
+def _get_group_values(config: object, group_name: str) -> dict {
+    attr_name = _get_group_attr(group_name);
+    group_obj = getattr(config, attr_name, None);
+    if group_obj is None {
+        return {};
+    }
+
+    # Convert object to dict
+    result: dict = {};
+    for attr in dir(group_obj) {
+        if not attr.startswith('_') {
+            val = getattr(group_obj, attr, None);
+            if not callable(val) {
+                result[attr] = val;
+            }
+        }
+    }
+    return result;
+}
+
+"""Check if a setting was explicitly set in the TOML file."""
+def _is_explicitly_set(config: object, group_name: str, key: str) -> bool {
+    if not config?._raw_data or config._raw_data is None {
+        return False;
+    }
+
+    # Group names match TOML section names
+    raw_data = config._raw_data;
+    if group_name not in raw_data {
+        return False;
+    }
+
+    section_data = raw_data[group_name];
+    if not isinstance(section_data, dict) {
+        return False;
+    }
+
+    return key in section_data;
+}
+
+"""List configuration settings."""
+def _config_list(config: object, group: str, output: str, show_all: bool) -> None {
+    import json;
+
+    if config is None {
+        print("No jac.toml found. Run 'jac create' to initialize a project.");
+        return;
+    }
+
+    # Determine which groups to show
+    groups_to_show = [group] if group else CONFIG_GROUPS;
+
+    # Collect all settings data
+    all_settings: dict = {};
+
+    for grp in groups_to_show {
+        defaults = _get_group_defaults(grp);
+        current = _get_group_values(config, grp);
+
+        group_settings: dict = {};
+        for (key, default_val) in defaults.items() {
+            current_val = current.get(key, default_val);
+            is_set = _is_explicitly_set(config, grp, key);
+
+            # For 'show' action, only include explicitly set values
+            if not show_all and not is_set {
+                continue;
+            }
+
+            group_settings[key] = {
+                "value": current_val,
+                "default": default_val,
+                "is_set": is_set
+            };
+        }
+
+        if group_settings {
+            all_settings[grp] = group_settings;
+        }
+    }
+
+    # Output in requested format
+    if output == 'json' {
+        _output_json(all_settings);
+    } elif output == 'toml' {
+        _output_toml(all_settings, show_all);
+    } else {
+        _output_table(all_settings, show_all);
+    }
+}
+
+"""Output settings as a formatted table."""
+def _output_table(settings: dict, show_all: bool) -> None {
+    if not settings {
+        if show_all {
+            print("No configuration settings found.");
+        } else {
+            print("No settings have been explicitly set.");
+            print("Use 'jac config list' to see all settings with defaults.");
+        }
+        return;
+    }
+
+    # Calculate column widths
+    max_group = max(len(g) for g in settings.keys());
+    max_key = 0;
+    max_value = 0;
+    max_default = 0;
+
+    for (grp, grp_settings) in settings.items() {
+        for (key, data) in grp_settings.items() {
+            max_key = max(max_key, len(key));
+            max_value = max(max_value, len(str(data["value"])));
+            max_default = max(max_default, len(str(data["default"])));
+        }
+    }
+
+    # Ensure minimum widths
+    max_group = max(max_group, 5);
+    max_key = max(max_key, 3);
+    max_value = max(max_value, 5);
+    max_default = max(max_default, 7);
+
+    # Print header using format method
+    if show_all {
+        fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
+            max_value
+        ) + "}  {:<" + str(max_default) + "}  {}";
+        header = fmt_str.format("Group", "Key", "Value", "Default", "Set");
+        separator = "-" * len(header);
+    } else {
+        fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
+            max_value
+        ) + "}";
+        header = fmt_str.format("Group", "Key", "Value");
+        separator = "-" * len(header);
+    }
+
+    print(header);
+    print(separator);
+
+    # Print settings
+    for grp in sorted(settings.keys()) {
+        grp_settings = settings[grp];
+        for key in sorted(grp_settings.keys()) {
+            data = grp_settings[key];
+            value_str = _format_value(data["value"]);
+            default_str = _format_value(data["default"]);
+            is_set = data["is_set"];
+
+            if show_all {
+                set_marker = "*" if is_set else "";
+                fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
+                    max_value
+                ) + "}  {:<" + str(max_default) + "}  {}";
+                print(fmt_str.format(grp, key, value_str, default_str, set_marker));
+            } else {
+                fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
+                    max_value
+                ) + "}";
+                print(fmt_str.format(grp, key, value_str));
+            }
+        }
+    }
+
+    if show_all {
+        print();
+        print("* = explicitly set in jac.toml");
+    }
+}
+
+"""Output settings as JSON."""
+def _output_json(settings: dict) -> None {
+    import json;
+
+    # Convert to simpler structure for JSON output
+    output: dict = {};
+    for (grp, grp_settings) in settings.items() {
+        output[grp] = {};
+        for (key, data) in grp_settings.items() {
+            output[grp][key] = {
+                "value": data["value"],
+                "default": data["default"],
+                "is_set": data["is_set"]
+            };
+        }
+    }
+    print(json.dumps(output, indent=2, default=str));
+}
+
+"""Output settings as TOML (only explicitly set values)."""
+def _output_toml(settings: dict, show_all: bool) -> None {
+    lines: list[str] = [];
+
+    for grp in sorted(settings.keys()) {
+        grp_settings = settings[grp];
+        group_lines: list[str] = [];
+
+        for key in sorted(grp_settings.keys()) {
+            data = grp_settings[key];
+            # For TOML output, only show set values (or all if show_all)
+            if show_all or data["is_set"] {
+                value = data["value"];
+                toml_value = _to_toml_value(value);
+                group_lines.append(f"{key} = {toml_value}");
+            }
+        }
+
+        if group_lines {
+            lines.append(f"[{grp}]");
+            lines.extend(group_lines);
+            lines.append("");
+        }
+    }
+
+    if lines {
+        print("\n".join(lines));
+    } else {
+        print("# No settings explicitly set");
+    }
+}
+
+"""Format a value for table display."""
+def _format_value(value: object) -> str {
+    if value is None {
+        return "null";
+    } elif isinstance(value, bool) {
+        return "true" if value else "false";
+    } elif isinstance(value, str) {
+        if value == "" {
+            return '""';
+        }
+        return f'"{value}"' if len(value) < 20 else f'"{value[:17]}..."';
+    } elif isinstance(value, list) {
+        if not value {
+            return "[]";
+        }
+        return f"[{len(value)} items]";
+    } elif isinstance(value, dict) {
+        if not value {
+            return "{}";
+        }
+        return f"{{{len(value)} keys}}";
+    } else {
+        return str(value);
+    }
+}
+
+"""Convert a Python value to TOML representation."""
+def _to_toml_value(value: object) -> str {
+    if value is None {
+        return '""';  # TOML doesn't have null, use empty string
+
+    } elif isinstance(value, bool) {
+        return "true" if value else "false";
+    } elif isinstance(value, int) {
+        return str(value);
+    } elif isinstance(value, float) {
+        return str(value);
+    } elif isinstance(value, str) {
+        escaped = value.replace("\\", "\\\\").replace('"', '\\"');
+        return f'"{escaped}"';
+    } elif isinstance(value, list) {
+        items = [_to_toml_value(item) for item in value];
+        return f"[{', '.join(items)}]";
+    } elif isinstance(value, dict) {
+        # For inline tables
+        pairs = [f"{k} = {_to_toml_value(v)}" for (k, v) in value.items()];
+        return f"{{ {', '.join(pairs)} }}";
+    } else {
+        return f'"{value}"';
+    }
+}
+
+"""Get a specific configuration setting."""
+def _config_get(config: object, key: str) -> None {
+    if not key {
+        print("Error: Key required for 'get' action.", file=sys.stderr);
+        print("Usage: jac config get <group>.<key>");
+        print("Example: jac config get serve.port");
+        <>exit(1);
+    }
+
+    if config is None {
+        print("No jac.toml found. Run 'jac create' to initialize a project.");
+        <>exit(1);
+    }
+
+    # Parse the key
+    if '.' not in key {
+        print(f"Error: Key must be in 'group.name' format.", file=sys.stderr);
+        print(f"Example: jac config get serve.port");
+        <>exit(1);
+    }
+
+    parts = key.split('.', 1);
+    group_name = parts[0];
+    setting_name = parts[1];
+
+    if group_name not in CONFIG_GROUPS {
+        print(f"Error: Unknown group '{group_name}'.", file=sys.stderr);
+        print(f"Available groups: {', '.join(CONFIG_GROUPS)}");
+        <>exit(1);
+    }
+
+    # Get the value
+    current_values = _get_group_values(config, group_name);
+    default_values = _get_group_defaults(group_name);
+
+    if setting_name not in default_values {
+        print(
+            f"Error: Unknown setting '{setting_name}' in group '{group_name}'.",
+            file=sys.stderr
+        );
+        print(f"Available settings: {', '.join(sorted(default_values.keys()))}");
+        <>exit(1);
+    }
+
+    value = current_values.get(setting_name, default_values.get(setting_name));
+    is_set = _is_explicitly_set(config, group_name, setting_name);
+
+    # Output the value
+    print(_format_value(value).strip('"'));
+
+    if is_set {
+        print(f"  (explicitly set in jac.toml)");
+    } else {
+        print(f"  (default value)");
+    }
+}
+
+"""Set a specific configuration setting."""
+def _config_set(config: object, key: str, value: str) -> None {
+    import from jaclang.project.config { JacConfig, find_project_root }
+
+    if not key {
+        print("Error: Key required for 'set' action.", file=sys.stderr);
+        print("Usage: jac config set <group>.<key> <value>");
+        print("Example: jac config set serve.port 9000");
+        <>exit(1);
+    }
+
+    if not value {
+        print("Error: Value required for 'set' action.", file=sys.stderr);
+        print("Usage: jac config set <group>.<key> <value>");
+        <>exit(1);
+    }
+
+    # Parse the key
+    if '.' not in key {
+        print(f"Error: Key must be in 'group.name' format.", file=sys.stderr);
+        print(f"Example: jac config set serve.port 9000");
+        <>exit(1);
+    }
+
+    parts = key.split('.', 1);
+    group_name = parts[0];
+    setting_name = parts[1];
+
+    if group_name not in CONFIG_GROUPS {
+        print(f"Error: Unknown group '{group_name}'.", file=sys.stderr);
+        print(f"Available groups: {', '.join(CONFIG_GROUPS)}");
+        <>exit(1);
+    }
+
+    # Get or create config
+    if config is None {
+        result = find_project_root();
+        if result {
+            (proj_root, cfg_path) = result;
+            config = JacConfig.load(cfg_path);
+        } else {
+            print(
+                "No jac.toml found. Run 'jac create' to initialize a project.",
+                file=sys.stderr
+            );
+            <>exit(1);
+        }
+    }
+
+    # Validate setting exists
+    default_values = _get_group_defaults(group_name);
+    if setting_name not in default_values {
+        print(
+            f"Error: Unknown setting '{setting_name}' in group '{group_name}'.",
+            file=sys.stderr
+        );
+        print(f"Available settings: {', '.join(sorted(default_values.keys()))}");
+        <>exit(1);
+    }
+
+    # Convert value to appropriate type
+    default_val = default_values[setting_name];
+    typed_value = _parse_value(value, type(default_val));
+
+    # Get the group object and set the value
+    group_obj = getattr(config, _get_group_attr(group_name), None);
+    if group_obj is None {
+        print(f"Error: Could not access group '{group_name}'.", file=sys.stderr);
+        <>exit(1);
+    }
+
+    # Set the value
+    setattr(group_obj, setting_name, typed_value);
+
+    # Update raw_data for persistence
+    if not config?._raw_data or config._raw_data is None {
+        config._raw_data = {};
+    }
+
+    toml_section = group_name;  # Group names match TOML section names
+    if toml_section not in config._raw_data {
+        config._raw_data[toml_section] = {};
+    }
+    config._raw_data[toml_section][setting_name] = typed_value;
+
+    # Save the configuration
+    _save_config_with_setting(config, group_name, setting_name, typed_value);
+
+    print(f"Set {key} = {_format_value(typed_value)}");
+}
+
+"""Unset (remove) a specific configuration setting."""
+def _config_unset(config: object, key: str) -> None {
+    import from jaclang.project.config { find_project_root }
+
+    if not key {
+        print("Error: Key required for 'unset' action.", file=sys.stderr);
+        print("Usage: jac config unset <group>.<key>");
+        print("Example: jac config unset serve.port");
+        <>exit(1);
+    }
+
+    if config is None {
+        print("No jac.toml found. Nothing to unset.", file=sys.stderr);
+        <>exit(1);
+    }
+
+    # Parse the key
+    if '.' not in key {
+        print(f"Error: Key must be in 'group.name' format.", file=sys.stderr);
+        print(f"Example: jac config unset serve.port");
+        <>exit(1);
+    }
+
+    parts = key.split('.', 1);
+    group_name = parts[0];
+    setting_name = parts[1];
+
+    if group_name not in CONFIG_GROUPS {
+        print(f"Error: Unknown group '{group_name}'.", file=sys.stderr);
+        print(f"Available groups: {', '.join(CONFIG_GROUPS)}");
+        <>exit(1);
+    }
+
+    # Check if setting is currently set
+    if not _is_explicitly_set(config, group_name, setting_name) {
+        print(f"Setting '{key}' is not explicitly set (already using default).");
+        return;
+    }
+
+    # Remove from raw_data
+    toml_section = group_name;  # Group names match TOML section names
+    if config?._raw_data and config._raw_data and toml_section in config._raw_data {
+        if setting_name in config._raw_data[toml_section] {
+            del config._raw_data[toml_section][setting_name] ;
+            # Remove empty section
+            if not config._raw_data[toml_section] {
+                del config._raw_data[toml_section] ;
+            }
+        }
+    }
+
+    # Reset to default value in config object
+    default_values = _get_group_defaults(group_name);
+    default_val = default_values.get(setting_name);
+
+    group_obj = getattr(config, _get_group_attr(group_name), None);
+    if group_obj {
+        setattr(group_obj, setting_name, default_val);
+    }
+
+    # Save updated configuration
+    _save_config_without_setting(config, group_name, setting_name);
+
+    print(f"Unset {key} (reverted to default: {_format_value(default_val)})");
+}
+
+"""Parse a string value into the appropriate type."""
+def _parse_value(value: str, target_type: type) -> object {
+    # Handle boolean
+    if target_type == bool {
+        lower = value.lower();
+        if lower in ('true', '1', 'yes', 'on') {
+            return True;
+        } elif lower in ('false', '0', 'no', 'off') {
+            return False;
+        } else {
+            print(
+                f"Error: Invalid boolean value '{value}'. Use true/false.",
+                file=sys.stderr
+            );
+            <>exit(1);
+        }
+    }
+
+    # Handle integer
+    if target_type == int {
+        try {
+            return int(value);
+        } except ValueError {
+            print(f"Error: Invalid integer value '{value}'.", file=sys.stderr);
+            <>exit(1);
+        }
+    }
+
+    # Handle float
+    if target_type == float {
+        try {
+            return float(value);
+        } except ValueError {
+            print(f"Error: Invalid float value '{value}'.", file=sys.stderr);
+            <>exit(1);
+        }
+    }
+
+    # Handle list (simple comma-separated)
+    if target_type == list
+    or (target_type?.__origin__ and target_type.__origin__ == list) {
+        if value == '[]' or value == '' {
+            return [];
+        }
+        # Remove brackets if present
+        if value.startswith('[') and value.endswith(']') {
+            value = value[1:-1];
+        }
+        return [
+            item.strip().strip('"\'')
+            for item in value.split(',')
+            if item.strip()
+        ];
+    }
+
+    # Default to string
+    return value;
+}
+
+"""Save config with a new or updated setting."""
+def _save_config_with_setting(
+    config: object, group_name: str, setting_name: str, value: object
+) -> None {
+    import tomllib;
+
+    if config.toml_path is None {
+        print("Error: No toml_path set, cannot save configuration.", file=sys.stderr);
+        <>exit(1);
+    }
+
+    # Load existing file content
+    if config.toml_path.exists() {
+        with open(config.toml_path, "rb") as f {
+            doc = tomllib.load(f);
+        }
+    } else {
+        doc = {};
+    }
+
+    # Map group name to TOML section
+    toml_section = group_name;  # Group names match TOML section names
+
+    # Ensure section exists
+    if toml_section not in doc {
+        doc[toml_section] = {};
+    }
+
+    # Set the value
+    doc[toml_section][setting_name] = value;
+
+    # Write back
+    _write_toml(config.toml_path, doc);
+}
+
+"""Save config without a specific setting (remove it)."""
+def _save_config_without_setting(
+    config: object, group_name: str, setting_name: str
+) -> None {
+    import tomllib;
+
+    if config.toml_path is None {
+        print("Error: No toml_path set, cannot save configuration.", file=sys.stderr);
+        <>exit(1);
+    }
+
+    if not config.toml_path.exists() {
+        return;  # Nothing to remove
+
+    }
+
+    # Load existing file content
+    with open(config.toml_path, "rb") as f {
+        doc = tomllib.load(f);
+    }
+
+    # Map group name to TOML section
+    toml_section = group_name;  # Group names match TOML section names
+
+    # Remove the setting if it exists
+    if toml_section in doc and setting_name in doc[toml_section] {
+        del doc[toml_section][setting_name] ;
+        # Remove empty section
+        if not doc[toml_section] {
+            del doc[toml_section] ;
+        }
+    }
+
+    # Write back
+    _write_toml(config.toml_path, doc);
+}
+
+"""Write a dictionary to a TOML file."""
+def _write_toml(path: object, data: dict) -> None {
+    lines: list[str] = [];
+    tables: list[tuple[str, dict]] = [];
+
+    # First pass: write top-level key-value pairs
+    for (key, value) in data.items() {
+        if isinstance(value, dict) {
+            tables.append((key, value));
+        } else {
+            lines.append(f"{_quote_toml_key(key)} = {_to_toml_value(value)}");
+        }
+    }
+
+    # Add blank line before tables if we had values
+    if lines and tables {
+        lines.append("");
+    }
+
+    # Second pass: write tables
+    for (table_name, table_data) in tables {
+        if not table_data {
+            continue;  # Skip empty tables
+        }
+
+        # Check for nested tables
+        simple_values: list[tuple[str, object]] = [];
+        nested_tables: list[tuple[str, dict]] = [];
+
+        for (k, v) in table_data.items() {
+            if isinstance(v, dict) {
+                nested_tables.append((k, v));
+            } else {
+                simple_values.append((k, v));
+            }
+        }
+
+        # Write simple values under table header
+        if simple_values {
+            lines.append(f"[{table_name}]");
+            for (k, v) in simple_values {
+                lines.append(f"{_quote_toml_key(k)} = {_to_toml_value(v)}");
+            }
+            lines.append("");
+        }
+
+        # Write nested tables
+        for (nested_name, nested_data) in nested_tables {
+            lines.append(f"[{table_name}.{nested_name}]");
+            for (k, v) in nested_data.items() {
+                if not isinstance(v, dict) {
+                    lines.append(f"{_quote_toml_key(k)} = {_to_toml_value(v)}");
+                }
+            }
+            lines.append("");
+        }
+    }
+
+    with open(path, "w") as f {
+        f.write("\n".join(lines));
+    }
+}
+
+"""Quote a TOML key if necessary."""
+def _quote_toml_key(key: str) -> str {
+    import re;
+    # Bare keys can only contain A-Za-z0-9_-
+    if re.match(r'^[A-Za-z0-9_-]+$', key) {
+        return key;
+    }
+    escaped = key.replace("\\", "\\\\").replace('"', '\\"');
+    return f'"{escaped}"';
+}
