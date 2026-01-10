@@ -19,6 +19,9 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac plugins` | Manage plugins |
 | `jac scale` | Deploy to Kubernetes (jac-scale) |
 | `jac destroy` | Remove deployment |
+| `jac add` | Add packages to project |
+| `jac install` | Install project dependencies |
+| `jac remove` | Remove packages from project |
 | `jac get_object` | Retrieve object by ID |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
@@ -93,16 +96,16 @@ jac serve main.jac -s prod_session
 
 ### jac create
 
-Initialize a new Jac project with configuration.
+Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
 
 ```bash
-jac create [-h] [-f] [-c] [-s] [-v] name
+jac create [-h] [-f] [-c] [-s] [-v] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `name` | Project name | `main` |
-| `-f, --force` | Overwrite existing jac.toml | `False` |
+| `name` | Project name (creates folder with this name) | `main` |
+| `-f, --force` | Overwrite existing project | `False` |
 | `-c, --cl` | Include client-side setup | `False` |
 | `-s, --skip` | Skip package installation | `False` |
 | `-v, --verbose` | Verbose output | `False` |
@@ -110,14 +113,15 @@ jac create [-h] [-f] [-c] [-s] [-v] name
 **Examples:**
 
 ```bash
-# Create basic project
+# Create basic project (creates myapp/ folder)
 jac create myapp
+cd myapp
 
 # Create full-stack project with frontend
 jac create --cl myapp
 
 # Force overwrite existing
-jac create --force
+jac create myapp --force
 ```
 
 ---
@@ -345,12 +349,12 @@ jac debug main.jac
 Manage Jac plugins.
 
 ```bash
-jac plugins [-h] [-v] action [names ...]
+jac plugins [-h] [-v] [action] [names ...]
 ```
 
 | Action | Description |
 |--------|-------------|
-| `list` | List installed plugins |
+| `list` | List installed plugins (default) |
 | `install` | Install plugins |
 | `uninstall` | Remove plugins |
 | `enable` | Enable plugins |
@@ -363,7 +367,10 @@ jac plugins [-h] [-v] action [names ...]
 **Examples:**
 
 ```bash
-# List plugins
+# List plugins (action defaults to 'list')
+jac plugins
+
+# Explicitly list plugins
 jac plugins list
 
 # Install a plugin
@@ -418,6 +425,118 @@ jac destroy [-h] file_path
 
 ```bash
 jac destroy main.jac
+```
+
+---
+
+## Package Management
+
+### jac add
+
+Add packages to your project's dependencies.
+
+```bash
+jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `packages` | Package names to add | None |
+| `-d, --dev` | Add as dev dependency | `False` |
+| `-g, --git` | Git repository URL | None |
+| `-c, --cl` | Add as client (frontend) package | `False` |
+| `-v, --verbose` | Show detailed output | `False` |
+
+**Examples:**
+
+```bash
+# Add a package
+jac add requests
+
+# Add multiple packages
+jac add numpy pandas scipy
+
+# Add as dev dependency
+jac add pytest --dev
+
+# Add from git repository
+jac add --git https://github.com/user/package.git
+
+# Add client-side (npm) package
+jac add react --cl
+```
+
+---
+
+### jac install
+
+Install all dependencies defined in jac.toml.
+
+```bash
+jac install [-h] [-d] [-v]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --dev` | Include dev dependencies | `False` |
+| `-v, --verbose` | Show detailed output | `False` |
+
+**Examples:**
+
+```bash
+# Install all dependencies
+jac install
+
+# Install including dev dependencies
+jac install --dev
+
+# Install with verbose output
+jac install -v
+```
+
+---
+
+### jac remove
+
+Remove packages from your project's dependencies.
+
+```bash
+jac remove [-h] [packages ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `packages` | Package names to remove | None |
+
+**Examples:**
+
+```bash
+# Remove a package
+jac remove requests
+
+# Remove multiple packages
+jac remove numpy pandas
+```
+
+---
+
+### jac js
+
+Generate JavaScript output from Jac code (used for jac-client frontend compilation).
+
+```bash
+jac js [-h] filename
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Jac file to compile to JS | Required |
+
+**Examples:**
+
+```bash
+# Generate JS from Jac file
+jac js app.jac
 ```
 
 ---

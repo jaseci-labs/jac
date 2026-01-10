@@ -251,7 +251,7 @@ jac serve simple_chat.jac
 
 ## Message Management and Storage
 
-Instead of WebSockets, let's focus on RESTful message management that works with jac-cloud's current capabilities:
+Instead of WebSockets, let's focus on RESTful message management that works with jac-scale's current capabilities:
 
 ### Message Storage Implementation
 

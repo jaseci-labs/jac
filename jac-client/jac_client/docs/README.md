@@ -69,8 +69,8 @@ jac create --cl todo-app
 This command will:
 
 - Create a new directory with your project name
-- Set up an organized project structure with `src/` folder
-- Create a starter `src/app.jac` file with a sample component
+- Set up an organized project structure
+- Create a starter `main.jac` file with a sample component
 - Include a sample TypeScript component
 - **Automatically install npm packages** in the `.jac/client/` directory
 
@@ -101,10 +101,9 @@ Or you can manually run `npm install` in the `.jac/client/configs/` directory af
 ```
 todo-app/
 ├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application file
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
+├── main.jac              # Main application file
+├── components/           # Reusable components
+│   └── Button.tsx        # Example TypeScript component
 ├── assets/               # Static assets
 └── build/                # Build output (generated)
 ```
@@ -115,7 +114,7 @@ Navigate to your project directory and start the development server:
 
 ```bash
 cd todo-app
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 This starts both:
@@ -703,7 +702,7 @@ To run this example:
 
 ```bash
 # From the todo-app directory
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 Then visit `http://localhost:8000` in your browser.

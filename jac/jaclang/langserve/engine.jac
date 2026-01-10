@@ -61,7 +61,10 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def type_check_file(
         file_uri: str,
         cancel_token: Event | None = None,
-        annex_view: Optional[str] = None
+        annex_view: Optional[str] = None,
+        # This parameter will be passed recursively
+        # and dont need to pass when the function itself is called
+        # outside.
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
@@ -106,6 +109,3 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def log_py(message: str) -> None;
     def shutdown -> None;
 }
-# This parameter will be passed recursively
-# and dont need to pass when the function itself is called
-# outside.

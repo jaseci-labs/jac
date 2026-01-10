@@ -163,9 +163,9 @@ Jac is designed to make this process effortless. When you run your Jac program a
 
 ---
 
-## Setting Up a Jac Cloud Project
+## Setting Up a Jac Scale Project
 
-To demonstrate persistence, we need to create a proper jac-cloud project structure:
+To demonstrate persistence, we need to create a proper jac-scale project structure:
 
 !!! example "Project Structure"
     ```

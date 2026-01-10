@@ -337,7 +337,7 @@ def test_deep_imports_interp_mode(
         if "deep_import_interp" in mod_name:
             del sys.modules[mod_name]
     # Delete bytecode cache files to force recompilation
-    cache_dir = Path.cwd() / ".jaccache"
+    cache_dir = Path.cwd() / ".jac" / "cache"
     if cache_dir.exists():
         for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
             cache_file.unlink()

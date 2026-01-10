@@ -1,4 +1,4 @@
-# The `app.jac` Entry Point
+# The `main.jac` Entry Point
 
 > **️ Version Compatibility Warning**
 >
@@ -10,15 +10,15 @@
 >
 > - The `app()` function **must be exported** with `:pub` (e.g., `def:pub app()`)
 
-Every Jac client project **must** have an `app.jac` file. This file serves as the entry point for your application and is required for the build system to work correctly.
+Every Jac client project **must** have a `main.jac` file. This file serves as the entry point for your application and is required for the build system to work correctly.
 
-## Why `app.jac` is Required
+## Why `main.jac` is Required
 
 ### Entry Point for the Build System
 
-When you run `jac serve src/app.jac` (or `jac serve` which reads from `jac.toml`), the build system:
+When you run `jac serve main.jac` (or `jac serve` which reads from `jac.toml`), the build system:
 
-1. Compiles `src/app.jac` to JavaScript
+1. Compiles `main.jac` to JavaScript
 2. Generates an entry file (`compiled/main.js`) that imports your `app` function:
 
    ```javascript
@@ -27,11 +27,11 @@ When you run `jac serve src/app.jac` (or `jac serve` which reads from `jac.toml`
 
 3. Renders your app component in the browser
 
-**Without `app.jac`, the build system cannot find your application entry point.**
+**Without `main.jac`, the build system cannot find your application entry point.**
 
 ## The `app()` Function
 
-The `app.jac` file **must** export an `app()` function. This function is:
+The `main.jac` file **must** export an `app()` function. This function is:
 
 - The root component of your application
 - Automatically imported and rendered by the build system
@@ -39,7 +39,7 @@ The `app.jac` file **must** export an `app()` function. This function is:
 
 ### Required Structure
 
-Every `app.jac` file must contain:
+Every `main.jac` file must contain:
 
 ```jac
 cl {
@@ -65,10 +65,9 @@ cl {
 
 ## Key Requirements
 
-1. **File must be named `app.jac`**
+1. **File must be named `main.jac`**
    - The build system specifically looks for this filename
-   - Located in the `src/` directory of your project (standard structure)
-   - Can be at project root if using legacy structure
+   - Located at the project root directory
 
 2. **Must contain `app()` function**
    - Function name must be exactly `app`
@@ -130,12 +129,12 @@ Your project structure should look like this:
 
 ```
 my-app/
-├── jac.toml             # Project configuration (entry-point = "src/app.jac")
-├── src/                 # Source files directory
-│   ├── app.jac          # Required entry point
-│   └── components/      # Optional: Reusable components
-├── assets/              # Static assets (images, fonts, etc.)
-└── build/               # Build output (generated)
+├── jac.toml              # Project configuration (entry-point = "main.jac")
+├── main.jac              # Required entry point
+├── components/           # Reusable components
+│   └── Button.tsx        # Example TypeScript component
+├── assets/               # Static assets (images, fonts, etc.)
+└── build/                # Build output (generated)
 ```
 
 ## Running Your App
@@ -145,7 +144,7 @@ To start your application, you can use either:
 **Option 1: Specify the file path**
 
 ```bash
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 **Option 2: Use jac.toml entry-point (recommended)**
@@ -158,14 +157,14 @@ The `jac serve` command (without arguments) reads the `entry-point` from `jac.to
 
 ```toml
 [project]
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 ```
 
-Both commands compile `src/app.jac`, create the build entry point, and serve your app at `http://localhost:8000/cl/app`.
+Both commands compile `main.jac`, create the build entry point, and serve your app at `http://localhost:8000/cl/app`.
 
 ---
 
-**Remember**: `app.jac` with `app()` function (exported with `:pub`) is **required** for every Jac client project. Without it, your application cannot start!
+**Remember**: `main.jac` with `app()` function (exported with `:pub`) is **required** for every Jac client project. Without it, your application cannot start!
 
 ## Related Documentation
 

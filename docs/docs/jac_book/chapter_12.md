@@ -30,10 +30,10 @@ Jac Cloud is a cloud-native execution environment designed specifically for Jac 
 
 Let's start with a minimal weather API example and gradually enhance it throughout this chapter.
 
-First, ensure you have the Jac Cloud plugin installed:
+First, ensure you have the jac-scale plugin installed:
 
 ```bash
-pip install jac-cloud
+pip install jac-scale
 ```
 
 Next, crate a simple Jac program that contains a single walker that produces weather information based on a city name. This program creates a REST API endpoint that accepts a city name and returns the weather information. The walker has a property `city` which is automatically mapped to an expected request parameter in the request body.
@@ -116,10 +116,10 @@ The response will be a JSON object containing the weather information.
     ```
 
 !!! note "Authentication"
-    - Jac Cloud provides built-in support for authentication and authorization.
+    - jac-scale provides built-in support for authentication and authorization.
     - You can define authentication requirements using the `auth` property in the `__specs__` object.
     - By default, all walkers are private, but you can make them public by setting `auth: False`.
-    - To learn more about authentication, see the [Jac Cloud Section of the Documentation](../learn/jac-cloud/introduction.md).
+    - To learn more about authentication, see the [Production (jac-scale) documentation](../production/index.md).
 
 ---
 

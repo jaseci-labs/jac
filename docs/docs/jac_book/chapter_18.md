@@ -413,9 +413,17 @@ curl -X POST http://localhost:8080/walker/get_weather \
 
 ---
 
-## Jac Cloud Deployment
+## Kubernetes Deployment
 
-Jac Cloud provides a Kubernetes-based deployment template to easily deploy your service into your cluster.
+!!! warning "jac-cloud is Deprecated"
+    The jac-cloud deployment method described below is deprecated. For new deployments, use **jac-scale** which provides:
+
+    - Simplified deployment with `jac scale app.jac`
+    - Auto-provisioned MongoDB and Redis
+    - Built-in health checks and scaling
+    - See the [Production (jac-scale) documentation](../production/index.md) for current deployment instructions.
+
+The following section shows the legacy jac-cloud Kubernetes deployment approach for reference.
 
 ### Jac Cloud Setup
 

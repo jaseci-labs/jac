@@ -121,7 +121,7 @@ Users must create an account and authenticate to access the API.
 
 Args:
 filename: Path to the .jac file to serve
-session: Session identifier for persistent state (default: auto-generated)
+session: Session identifier for persistent state (default: .jac/data/{module}.session)
 port: Port to run the server on (default: 8000)
 main: Treat the module as __main__ (default: True)
 faux: Perform introspection and print endpoint docs without starting server (default: False)
@@ -150,7 +150,10 @@ impl serve(
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     }
-    session_path = session or os.path.join(base, f"{mod}.session");
+    # Use .jac/data/ directory for session files (runtime artifacts)
+    data_dir = os.path.join(base, ".jac", "data");
+    os.makedirs(data_dir, exist_ok=True);
+    session_path = session or os.path.join(data_dir, f"{mod}.session");
     # Now call proc_file_sess with the computed session_path
     (base, mod, mach) = proc_file_sess(filename, session_path);
     lng = filename.split('.')[-1];
@@ -999,18 +1002,32 @@ Examples:
 impl create(name: str = '', force: bool = False) -> None {
     import from jaclang.project.config { JacConfig, find_project_root }
     cwd = Path.cwd();
-    # Check if already in a project
-    existing = find_project_root(cwd);
-    if existing and not force {
-        (project_root, toml_path) = existing;
-        print(f"Already in a Jac project: {toml_path}", file=sys.stderr);
-        print("Use --force to reinitialize.", file=sys.stderr);
-        <>exit(1);
-    }
-    # Determine project name
+    # Determine project name and path
     project_name = name or cwd.name;
+    # Create project directory if name is provided
+    if name {
+        project_path = cwd / name;
+        if project_path.exists() and not force {
+            print(
+                f"Directory '{name}' already exists. Use --force to overwrite.",
+                file=sys.stderr
+            );
+            <>exit(1);
+        }
+        project_path.mkdir(parents=True, exist_ok=True);
+    } else {
+        project_path = cwd;
+        # Check if already in a project (only when not creating a new folder)
+        existing = find_project_root(cwd);
+        if existing and not force {
+            (project_root, toml_path) = existing;
+            print(f"Already in a Jac project: {toml_path}", file=sys.stderr);
+            print("Use --force to reinitialize.", file=sys.stderr);
+            <>exit(1);
+        }
+    }
     # Create jac.toml
-    toml_path = cwd / "jac.toml";
+    toml_path = project_path / "jac.toml";
     if toml_path.exists() and not force {
         print(f"jac.toml already exists. Use --force to overwrite.", file=sys.stderr);
         <>exit(1);
@@ -1021,7 +1038,7 @@ impl create(name: str = '', force: bool = False) -> None {
     }
     print(f"Created {toml_path}");
     # Create main.jac in project root if it doesn't exist
-    main_jac = cwd / f"{name}.jac";
+    main_jac = project_path / "main.jac";
     if not main_jac.exists() {
         with open(main_jac, "w") as f {
             f.write(
@@ -1036,7 +1053,7 @@ with entry {{
         print(f"Created {main_jac}");
     }
     # Create or update .gitignore
-    gitignore_path = cwd / ".gitignore";
+    gitignore_path = project_path / ".gitignore";
     gitignore_entries = [
         "# Jac build artifacts",
         ".jac/",
@@ -1076,8 +1093,26 @@ with entry {{
         }
         print(f"Created {gitignore_path}");
     }
+    # Pre-generate cache for the project's main.jac
+    import subprocess;
+    try {
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "build", str(project_path / "main.jac")],
+            capture_output=True,
+            text=True,
+            cwd=str(project_path)
+        );
+        if result.returncode == 0 {
+            print("Pre-generated compiler cache");
+        }
+    } except Exception {
+        pass;  # Silently ignore cache generation failures
+    }
     print(f"\nProject '{project_name}' initialized successfully!");
     print("\nNext steps:");
+    if name {
+        print(f"  cd {name}");
+    }
     print("  jac run main.jac    # Run the main entry point");
     print("  jac add <package>   # Add dependencies");
     print("  jac install         # Install all dependencies");
