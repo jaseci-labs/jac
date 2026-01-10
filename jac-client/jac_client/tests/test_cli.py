@@ -37,8 +37,8 @@ def test_create_jac_app() -> None:
             assert os.path.exists(project_path)
             assert os.path.isdir(project_path)
 
-            # Verify src/app.jac file was created
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
+            # Verify main.jac file was created at project root
+            app_jac_path = os.path.join(project_path, "main.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
@@ -54,7 +54,7 @@ def test_create_jac_app() -> None:
                 readme_content = f.read()
 
             assert f"# {test_project_name}" in readme_content
-            assert "jac serve src/app.jac" in readme_content
+            assert "jac serve main.jac" in readme_content
 
             # Verify jac.toml was created
             jac_toml_path = os.path.join(project_path, "jac.toml")
@@ -78,8 +78,8 @@ def test_create_jac_app() -> None:
 
             assert "node_modules" in gitignore_content
 
-            # Verify src/components directory exists
-            components_dir = os.path.join(project_path, "src", "components")
+            # Verify components directory exists at project root
+            components_dir = os.path.join(project_path, "components")
             assert os.path.exists(components_dir)
 
             # Verify default packages installation (package.json should be generated)
@@ -203,8 +203,8 @@ def test_create_jac_app_with_typescript() -> None:
             assert "serve" in config_data
             assert config_data["serve"]["base_route_app"] == "app"
 
-            # Verify src/components directory and Button.tsx were created
-            components_dir = os.path.join(project_path, "src", "components")
+            # Verify components directory and Button.tsx were created at project root
+            components_dir = os.path.join(project_path, "components")
             assert os.path.exists(components_dir)
             assert os.path.isdir(components_dir)
 
@@ -217,8 +217,8 @@ def test_create_jac_app_with_typescript() -> None:
             assert "interface ButtonProps" in button_content
             assert "export const Button" in button_content
 
-            # Verify src/app.jac includes TypeScript import
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
+            # Verify main.jac includes TypeScript import
+            app_jac_path = os.path.join(project_path, "main.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:

@@ -31,13 +31,13 @@ impl ViteCompiler.compile_and_bundle(
         collected_globals=collected_globals
     );
     self.copy_root_assets();
-    self.create_entry_file();
+    self.create_entry_file(module_path);
     self.babel_processor.compile();
     client_dir = self._get_client_dir();
     self.babel_processor.copy_assets_after_compile(
         self.compiled_dir, (client_dir / 'build'), self.asset_processor
     );
-    entry_file = client_dir / 'build' / 'main.js';
+    entry_file = client_dir / 'build' / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
     client_exports = sorted(collected_exports);
@@ -46,9 +46,12 @@ impl ViteCompiler.compile_and_bundle(
 }
 
 """Create the main entry file for Vite bundling."""
-impl ViteCompiler.create_entry_file(self: ViteCompiler) -> None {
-    entry_file = self.compiled_dir / 'main.js';
-    entry_content = 'import React from "react";\nimport { createRoot } from "react-dom/client";\nimport { app as App } from "./app.js";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(<App />);\n';
+impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
+    # Use _entry.js to avoid conflict with compiled modules that may be named main.js
+    entry_file = self.compiled_dir / '_entry.js';
+    # Derive the app module filename from the entry point (e.g., main.jac -> main.js, app.jac -> app.js)
+    app_module_name = module_path.stem;
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{app_module_name}.js";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(<App />);\n';
     entry_file.write_text(entry_content, encoding='utf-8');
 }
 

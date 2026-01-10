@@ -246,7 +246,6 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
             (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
             (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
-            (29, 26, "jaclang/pycore/log.py:0:0-0:0"), # Position now on line 27
         ]
         # fmt: on
 

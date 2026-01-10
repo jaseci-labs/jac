@@ -136,6 +136,7 @@ impl CommandRegistry._bind_command_to_argparse(name: str, cmd: Command) -> None 
                     f"{param_name}",
                     <>default=param.default,
                     <>type=annotation,
+                    nargs='?',
                     help=arg_msg
                 );
             }

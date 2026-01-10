@@ -152,7 +152,7 @@ cl {
 
 ## The `app()` Function
 
-The `app()` function in your main entry file (`app.jac`) **must** be exported:
+The `app()` function in your main entry file (`main.jac`) **must** be exported:
 
 ```jac
 cl {
@@ -375,4 +375,4 @@ cl {
 - [Import System](imports.md) - Learn how to import exported functions and variables
 - [File System Organization](file-system/intro.md) - Organize your exports across files
 - [Nested Folder Imports](file-system/nested-imports.md) - Import from nested directories
-- [The `app.jac` Entry Point](file-system/app.jac.md) - Understanding the main entry point
+- [The `main.jac` Entry Point](file-system/main.jac.md) - Understanding the main entry point

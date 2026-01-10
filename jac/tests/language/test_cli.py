@@ -718,6 +718,40 @@ def test_cli_error_exit_codes(fixture_path: Callable[[str], str]) -> None:
     assert "Hello World!" in stdout
 
 
+def test_positional_args_with_defaults() -> None:
+    """Test that positional arguments with defaults are optional."""
+    # Get the path to jac binary in the same directory as the Python executable
+    jac_bin = os.path.join(os.path.dirname(sys.executable), "jac")
+
+    # Test that 'jac plugins' works without providing the 'action' argument
+    # The action parameter has a default of 'list', so it should be optional
+    process = subprocess.Popen(
+        [jac_bin, "plugins"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate()
+    assert process.returncode == 0, (
+        f"'jac plugins' should work without action argument, got: {stderr}"
+    )
+    assert "Installed Jac plugins" in stdout, (
+        "Output should show installed plugins list"
+    )
+
+    # Verify explicit 'list' action produces the same result
+    process_explicit = subprocess.Popen(
+        [jac_bin, "plugins", "list"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_explicit, _ = process_explicit.communicate()
+    assert stdout == stdout_explicit, (
+        "'jac plugins' and 'jac plugins list' should produce identical output"
+    )
+
+
 def test_format_tracks_changed_files() -> None:
     """Test that format command correctly tracks and reports changed files."""
     with tempfile.TemporaryDirectory() as tmpdir:

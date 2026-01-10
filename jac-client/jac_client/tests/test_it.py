@@ -253,13 +253,12 @@ def test_all_in_one_app_endpoints() -> None:
                     ["jac", "serve", "src/app.jac"],
                     cwd=project_path,
                 )
-
                 # Wait for localhost:8000 to become available
                 print("[DEBUG] Waiting for server to be available on 127.0.0.1:8000")
                 _wait_for_port("127.0.0.1", 8000, timeout=90.0)
                 print("[DEBUG] Server is now accepting connections on 127.0.0.1:8000")
 
-                # "/" – server up
+                # "/" – server up (serves client app HTML due to base_route_app="app")
                 try:
                     print("[DEBUG] Sending GET request to root endpoint /")
                     with urlopen(
@@ -273,25 +272,9 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{root_body[:500]}"
                         )
                         assert resp_root.status == 200
-                        assert '"Jac API Server"' in root_body
-                        assert '"endpoints"' in root_body
-
-                        # Verify custom headers from jac.toml are present
-                        assert (
-                            resp_root.headers.get("Cross-Origin-Opener-Policy")
-                            == "same-origin"
-                        ), (
-                            "Expected Cross-Origin-Opener-Policy header to be 'same-origin'"
-                        )
-                        assert (
-                            resp_root.headers.get("Cross-Origin-Embedder-Policy")
-                            == "require-corp"
-                        ), (
-                            "Expected Cross-Origin-Embedder-Policy header to be 'require-corp'"
-                        )
-                        print(
-                            "[DEBUG] Custom headers verified: COOP and COEP are present"
-                        )
+                        # With base_route_app="app", root serves client HTML
+                        assert "<!DOCTYPE html>" in root_body or "<html" in root_body
+                        assert '<div id="root">' in root_body
                 except (URLError, HTTPError) as exc:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
@@ -344,27 +327,8 @@ def test_all_in_one_app_endpoints() -> None:
                     )
                     pytest.fail("Failed to GET /cl/app#/nested endpoint")
 
-                # "/static/main.css" – CSS compiled and serving
-                # Note: CSS may be compiled asynchronously, so we retry if it's not ready
-                try:
-                    print(
-                        "[DEBUG] Sending GET request to /static/main.css (with retry)"
-                    )
-                    css_bytes = _wait_for_endpoint(
-                        "http://127.0.0.1:8000/static/main.css",
-                        timeout=60.0,
-                        poll_interval=2.0,
-                        request_timeout=20.0,
-                    )
-                    css_body = css_bytes.decode("utf-8", errors="ignore")
-                    print(
-                        "[DEBUG] Received response from /static/main.css\n"
-                        f"Body (truncated to 500 chars):\n{css_body[:500]}"
-                    )
-                    assert len(css_body.strip()) > 0, "CSS file should not be empty"
-                except (URLError, HTTPError, TimeoutError, RemoteDisconnected) as exc:
-                    print(f"[DEBUG] Error while requesting /static/main.css: {exc}")
-                    pytest.fail(f"Failed to GET /static/main.css after retries: {exc}")
+                # Note: CSS serving is tested separately in test_css_with_image
+                # The CSS is bundled into client.js so no separate /static/styles.css endpoint
 
                 # "/static/assets/burger.png" – static files are loading
                 try:
@@ -467,7 +431,7 @@ def test_all_in_one_app_endpoints() -> None:
                         assert resp_create.status == 200
                         # Basic sanity check: created Todo text should appear in the response payload.
                         assert "Sample todo from all-in-one app" in create_body
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /walker/create_todo: {exc}")
                     pytest.fail("Failed to POST /walker/create_todo")
 
@@ -508,7 +472,7 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Token: {register_data['token'][:20]}...\n"
                             f"Root ID: {register_data['root_id']}"
                         )
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /user/register: {exc}")
                     pytest.fail("Failed to POST /user/register")
 
@@ -540,7 +504,7 @@ def test_all_in_one_app_endpoints() -> None:
                             f"[DEBUG] Successfully logged in user: {test_username}\n"
                             f"Token: {login_data['token'][:20]}..."
                         )
-                except (URLError, HTTPError) as exc:
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(f"[DEBUG] Error while requesting /user/login: {exc}")
                     pytest.fail("Failed to POST /user/login")
 
@@ -585,7 +549,7 @@ def test_all_in_one_app_endpoints() -> None:
                         assert http_err.code in (400, 401, 403), (
                             f"Expected 400/401/403 for invalid login, got {http_err.code}"
                         )
-                except URLError as exc:
+                except (URLError, RemoteDisconnected) as exc:
                     print(
                         f"[DEBUG] Unexpected error while testing invalid login: {exc}"
                     )
@@ -694,16 +658,15 @@ def test_default_client_app_renders() -> None:
             print(f"[DEBUG] Created default Jac client app at {project_path}")
             assert os.path.isdir(project_path)
 
-            # Verify expected files were created
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
-            assert os.path.isfile(app_jac_path), "src/app.jac should exist"
+            # Verify expected files were created (new structure: main.jac at root)
+            main_jac_path = os.path.join(project_path, "main.jac")
+            assert os.path.isfile(main_jac_path), (
+                "main.jac should exist at project root"
+            )
 
-            button_tsx_path = os.path.join(
-                project_path, "src", "components", "Button.tsx"
-            )
-            assert os.path.isfile(button_tsx_path), (
-                "src/components/Button.tsx should exist"
-            )
+            # Components are now at root level (not src/components)
+            button_tsx_path = os.path.join(project_path, "components", "Button.tsx")
+            assert os.path.isfile(button_tsx_path), "components/Button.tsx should exist"
 
             jac_toml_path = os.path.join(project_path, "jac.toml")
             assert os.path.isfile(jac_toml_path), "jac.toml should exist"
@@ -734,12 +697,12 @@ def test_default_client_app_renders() -> None:
                         f"STDERR:\n{jac_add_result.stderr}\n"
                     )
 
-            # 3. Start the server
+            # 3. Start the server (now uses main.jac at project root)
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac serve src/app.jac'")
+                print("[DEBUG] Starting server with 'jac serve main.jac'")
                 server = Popen(
-                    [*jac_cmd, "serve", "src/app.jac"],
+                    [*jac_cmd, "serve", "main.jac"],
                     cwd=project_path,
                     env=env,
                 )

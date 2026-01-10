@@ -68,7 +68,7 @@ npm dependencies are configured in your `jac.toml` file:
 name = "my-app"
 version = "1.0.0"
 description = "My Jac application"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [dependencies.npm]
 lodash = "^4.17.21"
@@ -91,7 +91,7 @@ sass = "^1.77.8"
 name = "my-app"
 version = "1.0.0"
 description = "My Jac application"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 # Vite configuration (optional)
 [plugins.client.vite]
@@ -259,7 +259,7 @@ Generated `package.json` is stored in `.jac/client/configs/`:
 ```
 project-root/
 ├── jac.toml                 # Your source of truth (committed)
-├── app.jac                  # Your Jac application
+├── main.jac                 # Your Jac application
 ├── .jac/                    # Build artifacts (gitignored)
 │   └── client/
 │       └── configs/
@@ -376,7 +376,7 @@ jac add --cl --dev @types/lodash
 jac add --cl --dev sass
 
 # Build/serve
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 ## Related Documentation

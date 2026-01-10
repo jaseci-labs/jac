@@ -31,19 +31,18 @@ Your project now has these files:
 ```
 todo-app/
 ├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Your main application file (we'll work here!)
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
+├── main.jac              # Your main application file (we'll work here!)
+├── components/           # Reusable components
+│   └── Button.tsx        # Example TypeScript component
 ├── assets/               # Static assets
 └── build/                # Build output (generated)
 ```
 
-**Important**: We'll write our main code in `src/app.jac`!
+**Important**: We'll write our main code in `main.jac`!
 
 ### Step 1.4: Create Your First App
 
-Open `src/app.jac` in your code editor and replace everything with this:
+Open `main.jac` in your code editor and replace everything with this:
 
 ```jac
 cl {
@@ -61,7 +60,7 @@ cl {
 In your terminal, run:
 
 ```bash
-jac serve src/app.jac
+jac serve main.jac
 ```
 
 You'll see output like:
@@ -174,7 +173,7 @@ return <div>
 
 ### How `jac serve` Works
 
-When you run `jac serve src/app.jac`:
+When you run `jac serve main.jac`:
 
 1. **Jac compiler** reads your `.jac` file
 2. **Frontend code** (inside `cl`) → Compiled to JavaScript
@@ -186,11 +185,11 @@ It's like running a Flask/FastAPI server, but it ALSO compiles and serves your R
 
 ### File Organization
 
-For now, everything goes in `app.jac`. As your app grows, you can split into multiple files:
+For now, everything goes in `main.jac`. As your app grows, you can split into multiple files:
 
 ```
 todo-app/
-├── app.jac           # Main app
+├── main.jac          # Main app
 ├── components.jac    # Reusable components
 └── walkers.jac       # Backend logic
 ```
@@ -225,7 +224,7 @@ pip install jac-client
 **Solution**: Use a different port:
 
 ```bash
-jac serve src/app.jac --port 8080
+jac serve main.jac --port 8080
 ```
 
 Then visit `http://localhost:8080/cl/app`
@@ -243,7 +242,7 @@ Then visit `http://localhost:8080/cl/app`
 **Solution**:
 
 - Stop the server (Ctrl+C)
-- Restart: `jac serve src/app.jac`
+- Restart: `jac serve main.jac`
 - Refresh browser
 
 ---
