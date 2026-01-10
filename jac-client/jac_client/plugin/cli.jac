@@ -152,7 +152,7 @@ walker counter {{
 
     client_jac = project_path / "main.cl.jac";
 
-    client_content= '''"""Client-side entry point for app."""
+    client_content = '''"""Client-side entry point for app."""
 import from react { useState, useEffect }
 
 def:pub app() -> any {
@@ -162,13 +162,13 @@ def:pub app() -> any {
     async def run_hello() -> None {
         response = root spawn hello_world();
         setGreet(response.reports);
-        
+
     }
 
     async def run_counter() -> None {
         response = root spawn counter(number=count);
         setCount(response.reports[0]["count"]);
-        
+
     }
     return <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
         <h1>Hello, World!</h1>
@@ -198,7 +198,6 @@ def:pub app() -> any {
         }
     }
     print(f"Created {client_jac}");
-
 
     packages_dir = project_path / "packages";
 
