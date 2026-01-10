@@ -4,6 +4,7 @@ Implementations for VolatileMemory, LocalCacheMemory, ShelfMemory, and TieredMem
 """
 
 import logging;
+import os;
 import shelve;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps }
@@ -157,6 +158,11 @@ impl ShelfMemory.init(path: str) -> None {
     self.path = path;
     self.__mem__ = {};
     self.__gc__ = set();
+    # Ensure parent directory exists for shelf files
+    parent_dir = os.path.dirname(path);
+    if parent_dir {
+        os.makedirs(parent_dir, exist_ok=True);
+    }
     self.__shelf__ = shelve.open(path);
 }
 

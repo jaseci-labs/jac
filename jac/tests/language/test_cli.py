@@ -778,3 +778,54 @@ def test_format_tracks_changed_files() -> None:
         assert process.returncode == 1
         assert "2/2" in stderr
         assert "(1 changed)" in stderr
+
+
+def test_jac_create_and_run_no_root_files() -> None:
+    """Test that jac create + jac run doesn't create files outside .jac/ directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        project_name = "test-no-root-files"
+        project_path = os.path.join(tmpdir, project_name)
+
+        # Run jac create to create the project
+        process = subprocess.Popen(
+            ["jac", "create", project_name],
+            cwd=tmpdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0, f"jac create failed: {stderr}"
+
+        # Record files after create (before run)
+        def get_root_files(path: str) -> set[str]:
+            """Get files/dirs in project root, excluding .jac directory."""
+            items = set()
+            for item in os.listdir(path):
+                if item != ".jac":
+                    items.add(item)
+            return items
+
+        files_before_run = get_root_files(project_path)
+
+        # Run jac run main.jac
+        process = subprocess.Popen(
+            ["jac", "run", "main.jac"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0, f"jac run failed: {stderr}"
+        assert f"Hello from {project_name}!" in stdout
+
+        # Record files after run
+        files_after_run = get_root_files(project_path)
+
+        # Check no new files were created in project root
+        new_files = files_after_run - files_before_run
+        assert not new_files, (
+            f"jac run created unexpected files in project root: {new_files}. "
+            "All runtime files should be in .jac/ directory."
+        )

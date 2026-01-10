@@ -121,7 +121,7 @@ Users must create an account and authenticate to access the API.
 
 Args:
 filename: Path to the .jac file to serve
-session: Session identifier for persistent state (default: auto-generated)
+session: Session identifier for persistent state (default: .jac/data/{module}.session)
 port: Port to run the server on (default: 8000)
 main: Treat the module as __main__ (default: True)
 faux: Perform introspection and print endpoint docs without starting server (default: False)
@@ -150,7 +150,10 @@ impl serve(
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     }
-    session_path = session or os.path.join(base, f"{mod}.session");
+    # Use .jac/data/ directory for session files (runtime artifacts)
+    data_dir = os.path.join(base, ".jac", "data");
+    os.makedirs(data_dir, exist_ok=True);
+    session_path = session or os.path.join(data_dir, f"{mod}.session");
     # Now call proc_file_sess with the computed session_path
     (base, mod, mach) = proc_file_sess(filename, session_path);
     lng = filename.split('.')[-1];

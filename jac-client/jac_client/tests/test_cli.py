@@ -750,3 +750,62 @@ def test_uninstall_without_config_toml() -> None:
 
         finally:
             os.chdir(original_cwd)
+
+
+def test_create_cl_and_run_no_root_files() -> None:
+    """Test that jac create --cl + jac run doesn't create files outside .jac/ directory."""
+    test_project_name = "test-cl-no-root-files"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run jac create --cl command
+            process = Popen(
+                ["jac", "create", "--cl", test_project_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0, f"jac create --cl failed: {stderr}"
+
+            project_path = os.path.join(temp_dir, test_project_name)
+
+            # Record files after create (before run), excluding .jac directory
+            def get_root_files(path: str) -> set[str]:
+                """Get files/dirs in project root, excluding .jac directory."""
+                items = set()
+                for item in os.listdir(path):
+                    if item != ".jac":
+                        items.add(item)
+                return items
+
+            files_before_run = get_root_files(project_path)
+
+            # Run jac run main.jac
+            process = Popen(
+                ["jac", "run", "main.jac"],
+                cwd=project_path,
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0, f"jac run failed: {stderr}"
+
+            # Record files after run
+            files_after_run = get_root_files(project_path)
+
+            # Check no new files were created in project root
+            new_files = files_after_run - files_before_run
+            assert not new_files, (
+                f"jac run created unexpected files in project root: {new_files}. "
+                "All runtime files should be in .jac/ directory."
+            )
+
+        finally:
+            os.chdir(original_cwd)
