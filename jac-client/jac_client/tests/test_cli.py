@@ -159,9 +159,9 @@ def test_create_jac_app_existing_directory() -> None:
             os.chdir(original_cwd)
 
 
-def test_create_jac_app_with_typescript() -> None:
-    """Test jac create --cl command with TypeScript support (enabled by default)."""
-    test_project_name = "test-jac-app-ts"
+def test_create_jac_app_with_button_component() -> None:
+    """Test jac create --cl command creates Button.cl.jac component."""
+    test_project_name = "test-jac-app-component"
 
     # Create a temporary directory for testing
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -170,7 +170,7 @@ def test_create_jac_app_with_typescript() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl command (TypeScript is enabled by default)
+            # Run jac create --cl command
             process = Popen(
                 ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
@@ -203,41 +203,39 @@ def test_create_jac_app_with_typescript() -> None:
             assert "serve" in config_data
             assert config_data["serve"]["base_route_app"] == "app"
 
-            # Verify components directory and Button.tsx were created at project root
+            # Verify components directory and Button.cl.jac were created at project root
             components_dir = os.path.join(project_path, "components")
             assert os.path.exists(components_dir)
             assert os.path.isdir(components_dir)
 
-            button_tsx_path = os.path.join(components_dir, "Button.tsx")
-            assert os.path.exists(button_tsx_path)
+            button_jac_path = os.path.join(components_dir, "Button.cl.jac")
+            assert os.path.exists(button_jac_path)
 
-            with open(button_tsx_path) as f:
+            with open(button_jac_path) as f:
                 button_content = f.read()
 
-            assert "interface ButtonProps" in button_content
-            assert "export const Button" in button_content
+            assert "def:pub Button" in button_content
+            assert "base_styles" in button_content
 
-            # Verify main.jac includes TypeScript import
+            # Verify main.jac includes Jac component import
             app_jac_path = os.path.join(project_path, "main.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
                 app_jac_content = f.read()
 
-            assert (
-                'cl import from ".components/Button.tsx" { Button }' in app_jac_content
-            )
+            assert "cl import from .components.Button { Button }" in app_jac_content
             assert "<Button" in app_jac_content
 
-            # Verify README.md includes TypeScript information
+            # Verify README.md includes component information
             readme_path = os.path.join(project_path, "README.md")
             assert os.path.exists(readme_path)
 
             with open(readme_path) as f:
                 readme_content = f.read()
 
-            assert "TypeScript Support" in readme_content
-            assert "components/Button.tsx" in readme_content
+            assert "Components" in readme_content
+            assert "Button.cl.jac" in readme_content
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(

@@ -238,7 +238,7 @@ base_route_app = "app"
 
 # Client-side imports
 cl import from react { useState, useEffect }
-cl import from ".components/Button.tsx" { Button }
+cl import from .components.Button { Button }
 
 # Client-side component
 cl {
@@ -273,64 +273,48 @@ cl {
     }
     print("Created main.jac");
 
-    button_tsx_content = '''import React from 'react';
+    button_cl_jac_content = '''"""Button component for the Jac client application."""
 
-interface ButtonProps {
-  label: string;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary';
-  disabled?: boolean;
-}
+def:pub Button(label: str, onClick: any, variant: str = "primary", disabled: bool = False) -> any {
+    base_styles = {
+        "padding": "0.75rem 1.5rem",
+        "fontSize": "1rem",
+        "fontWeight": "600",
+        "borderRadius": "0.5rem",
+        "border": "none",
+        "cursor": "not-allowed" if disabled else "pointer",
+        "transition": "all 0.2s ease"
+    };
 
-export const Button: React.FC<ButtonProps> = ({
-  label,
-  onClick,
-  variant = 'primary',
-  disabled = false
-}) => {
-  const baseStyles: React.CSSProperties = {
-    padding: '0.75rem 1.5rem',
-    fontSize: '1rem',
-    fontWeight: '600',
-    borderRadius: '0.5rem',
-    border: 'none',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease',
-  };
+    variant_styles = {
+        "primary": {
+            "backgroundColor": "#9ca3af" if disabled else "#3b82f6",
+            "color": "#ffffff"
+        },
+        "secondary": {
+            "backgroundColor": "#e5e7eb" if disabled else "#6b7280",
+            "color": "#ffffff"
+        }
+    };
 
-  const variantStyles: Record<string, React.CSSProperties> = {
-    primary: {
-      backgroundColor: disabled ? '#9ca3af' : '#3b82f6',
-      color: '#ffffff',
-    },
-    secondary: {
-      backgroundColor: disabled ? '#e5e7eb' : '#6b7280',
-      color: '#ffffff',
-    },
-  };
-
-  return (
-    <button
-      style={{ ...baseStyles, ...variantStyles[variant] }}
-      onClick={onClick}
-      disabled={disabled}
+    return <button
+        style={{**base_styles, **variant_styles[variant]}}
+        onClick={onClick}
+        disabled={disabled}
     >
-      {label}
-    </button>
-  );
-};
-
-export default Button;
+        {label}
+    </button>;
+}
 ''';
-    with open(components_dir / "Button.tsx", 'w') as f {
-        f.write(button_tsx_content);
+    with open(components_dir / "Button.cl.jac", 'w') as f {
+        f.write(button_cl_jac_content);
     }
-    print("Created components/Button.tsx");
+    print("Created components/Button.cl.jac");
 
     readme_content = f'''  # {project_name}
 
 
-A Jac client-side application with React and TypeScript support.
+A Jac client-side application with React support.
 
 ## Project Structure
 
@@ -339,7 +323,7 @@ A Jac client-side application with React and TypeScript support.
 ├── jac.toml              # Project configuration
 ├── main.jac              # Main application entry
 ├── components/           # Reusable components
-│   └── Button.tsx        # Example TypeScript component
+│   └── Button.cl.jac     # Example Jac component
 ├── assets/               # Static assets (images, fonts, etc.)
 └── build/                # Build output (generated)
 ```
@@ -352,12 +336,12 @@ Start the development server:
 jac serve main.jac
 ```
 
-## TypeScript Support
+## Components
 
-Create TypeScript components in `components/` and import them in your Jac files:
+Create Jac components in `components/` as `.cl.jac` files and import them:
 
 ```jac
-cl import from ".components/Button.tsx" {{ Button }}
+cl import from .components.Button {{ Button }}
 ```
 
 ## Adding Dependencies

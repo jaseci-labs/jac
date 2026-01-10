@@ -166,9 +166,29 @@ impl ViteCompiler.compile_dependencies_recursively(
     combined_js = self.jac_compiler.add_runtime_imports(module_js);
     try {
         relative_path = module_path.relative_to(source_root);
-        output_path = self.compiled_dir / relative_path.with_suffix('.js');
+        # Handle compound extensions like .cl.jac, .impl.jac -> .js
+        rel_str = str(relative_path);
+        for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
+            if rel_str.endswith(compound_ext) {
+                rel_str = rel_str[:-len(compound_ext)] + '.js';
+                break;
+            }
+        } else {
+            rel_str = str(relative_path.with_suffix('.js'));
+        }
+        output_path = self.compiled_dir / rel_str;
     } except ValueError {
-        output_path = self.compiled_dir / f"{module_path.stem}.js";
+        # Handle compound extensions in filename
+        name = module_path.name;
+        for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
+            if name.endswith(compound_ext) {
+                name = name[:-len(compound_ext)] + '.js';
+                break;
+            }
+        } else {
+            name = module_path.stem + '.js';
+        }
+        output_path = self.compiled_dir / name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
     output_path.write_text(combined_js, encoding='utf-8');

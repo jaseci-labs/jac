@@ -665,8 +665,10 @@ def test_default_client_app_renders() -> None:
             )
 
             # Components are now at root level (not src/components)
-            button_tsx_path = os.path.join(project_path, "components", "Button.tsx")
-            assert os.path.isfile(button_tsx_path), "components/Button.tsx should exist"
+            button_jac_path = os.path.join(project_path, "components", "Button.cl.jac")
+            assert os.path.isfile(button_jac_path), (
+                "components/Button.cl.jac should exist"
+            )
 
             jac_toml_path = os.path.join(project_path, "jac.toml")
             assert os.path.isfile(jac_toml_path), "jac.toml should exist"
