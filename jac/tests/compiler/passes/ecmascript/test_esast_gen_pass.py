@@ -270,9 +270,9 @@ def test_reactive_state_generates_use_state(
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useState is imported
-    assert 'import { useState } from "react"' in js_code, (
-        "React useState should be imported"
+    # Check that useState is imported from @jac-client/utils (auto-injected)
+    assert 'import { useState } from "@jac-client/utils"' in js_code, (
+        "useState should be auto-imported from @jac-client/utils"
     )
 
     # Check that has declarations generate useState destructuring

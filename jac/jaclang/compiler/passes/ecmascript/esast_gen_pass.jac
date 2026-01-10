@@ -198,6 +198,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_arch_has(<>node: uni.ArchHas) -> None;
     def exit_has_var(<>node: uni.HasVar) -> None;
     def _get_setter_name(var_name: str) -> str;
+    def _inject_usestate_import(<>node: uni.UniNode) -> None;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;

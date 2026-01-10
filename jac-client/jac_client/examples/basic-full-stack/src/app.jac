@@ -1,5 +1,5 @@
 # Todo App
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 
 node Todo {
     has text: str,

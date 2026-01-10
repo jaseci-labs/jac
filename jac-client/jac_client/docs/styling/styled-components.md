@@ -75,12 +75,14 @@ export const Button = styled.button`
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from .styled {
     Container,
     Card,
     Button
 }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {

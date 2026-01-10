@@ -69,7 +69,7 @@ cl {
 
 ### Reactive State with `has`
 
-Inside a `cl { }` block or `.cl.jac` file, `has` variables automatically become React state. The compiler generates `useState` calls and transforms assignments to setter calls.
+Inside a `cl { }` block or `.cl.jac` file, `has` variables automatically become React state. The compiler generates `useState` calls, auto-injects the `useState` import from `@jac-client/utils`, and transforms assignments to setter calls.
 
 ```jac
 cl {

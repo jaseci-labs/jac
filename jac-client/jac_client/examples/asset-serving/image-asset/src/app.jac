@@ -1,5 +1,5 @@
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 
 cl {
     def:pub app -> any {

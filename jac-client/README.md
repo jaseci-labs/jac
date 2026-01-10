@@ -10,7 +10,7 @@ Jac Client enables you to write React-like components, manage state, and build i
 
 - **Single Language**: Write frontend and backend in Jac
 - **No HTTP Client**: Use `jacSpawn()` instead of fetch/axios
-- **React Hooks**: Use standard React `useState` and `useEffect` hooks
+- **React Hooks**: Use standard React `useState` and `useEffect` hooks (useState is auto-injected when using `has` variables)
 - **Component-Based**: Build reusable UI components with JSX
 - **Graph Database**: Built-in graph data model eliminates need for SQL/NoSQL
 - **Type Safety**: Type checking across frontend and backend
@@ -59,10 +59,13 @@ For detailed guides and tutorials, see the **[docs folder](jac_client/docs/)**:
 ### Simple Counter with React Hooks
 
 ```jac
-cl import from react { useState, useEffect }
+# Note: useState is auto-injected when using has variables in cl blocks
+# Only useEffect needs explicit import
+cl import from react { useEffect }
 
 cl {
     def Counter() -> any {
+        # useState is automatically available - no import needed!
         [count, setCount] = useState(0);
 
         useEffect(lambda -> None {
@@ -85,10 +88,13 @@ cl {
 }
 ```
 
+> **Note:** When using `has` variables in `cl {}` blocks or `.cl.jac` files, the `useState` import is automatically injected. You only need to explicitly import other hooks like `useEffect`.
+
 ### Full-Stack Todo App
 
 ```jac
-cl import from react { useState, useEffect }
+# useState is auto-injected, only import useEffect
+cl import from react { useEffect }
 cl import from '@jac-client/utils' { jacSpawn }
 
 # Backend: Jac nodes and walkers
@@ -114,6 +120,7 @@ walker read_todos {
 # Frontend: React component
 cl {
     def app() -> any {
+        # useState is automatically available - no import needed!
         [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {

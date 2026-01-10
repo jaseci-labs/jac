@@ -176,12 +176,13 @@ cl {
 }
 ```
 
-> **Note:** Inside `cl {}` blocks and `.cl.jac` files, use `has` variables for reactive state instead of explicit `useState` calls. The compiler automatically generates `const [count, setCount] = useState(0);` and transforms assignments to setter calls.
+> **Note:** Inside `cl {}` blocks and `.cl.jac` files, use `has` variables for reactive state instead of explicit `useState` calls. The compiler automatically generates `const [count, setCount] = useState(0);`, auto-injects the `useState` import from `@jac-client/utils`, and transforms assignments to setter calls.
 
 ### Generated JavaScript Output
 
 ```javascript
-import { useState, useEffect, useRef } from "react";
+import { useState } from "@jac-client/utils";  // Auto-injected for `has` variables
+import { useEffect, useRef } from "react";
 import { map as mapArray, filter } from "lodash";
 import React from "react";
 import axios from "axios";
@@ -196,7 +197,7 @@ import { formatDate } from "../lib.helpers";
 import { API_URL } from "../../config.constants";
 
 function MyComponent() {
-  // Generated from `has count: int = 0;`
+  // Generated from `has count: int = 0;` (useState import auto-injected from @jac-client/utils)
   const [count, setCount] = useState(0);
   now = DateFns.format(new Date());
   axios.get(API_URL);

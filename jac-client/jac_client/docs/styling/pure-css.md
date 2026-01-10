@@ -53,13 +53,15 @@ In your Jac file, import the CSS file:
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import ".styles.css";
 
-cl {
-    def app() -> any {
-        [count, setCount] = useState(0);
+# Note: useState is auto-injected when using `has` variables
 
+cl {
+    has count: int = 0;  # Automatically creates React state
+
+    def app() -> any {
         return <div className="container">
             <div className="card">
                 <h1 className="title">Counter Application</h1>

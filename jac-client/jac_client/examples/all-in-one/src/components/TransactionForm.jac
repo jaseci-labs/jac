@@ -1,7 +1,6 @@
 # Transaction form component
 # Demonstrates: form handling, useState, events, select options
 
-cl import from react { useState }
 cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS }
 cl import from ..constants.clients { CLIENTS }

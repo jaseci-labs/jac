@@ -1,6 +1,7 @@
-"""Test fixture for reactive state (has variables in client context)."""
+"""Test fixture for reactive state (has variables in client context).
 
-cl import from react { useState }
+Note: useState import is auto-injected from @jac-client/utils when `has` variables are used.
+"""
 
 cl {
     def:pub counter_app() -> any {

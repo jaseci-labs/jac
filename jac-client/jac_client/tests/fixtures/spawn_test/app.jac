@@ -32,10 +32,7 @@ walker positional_walker {
 }
 
 # Client-side code testing both spawn orderings
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useEffect }
 
 cl {
     def app()  -> any {

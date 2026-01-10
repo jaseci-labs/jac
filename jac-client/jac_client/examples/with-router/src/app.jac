@@ -1,5 +1,5 @@
 # React Router HashRouter Example
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from "@jac-client/utils" {
     Router,
     Routes,

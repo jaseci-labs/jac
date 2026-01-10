@@ -1,8 +1,6 @@
 # Budget Planner Page
 # Main application page with budget tracking features
 
-cl import from react { useState }
-
 # Local JAC file imports
 cl import from ..context.BudgetContext { useBudgetContext }
 cl import from ..components.Header { Header }

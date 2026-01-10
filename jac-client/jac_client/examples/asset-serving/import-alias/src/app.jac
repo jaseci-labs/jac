@@ -1,5 +1,5 @@
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 # Import image using the @jac-client/assets alias
 cl import from "@jac-client/assets/burger.png" {
     default as burgerImage

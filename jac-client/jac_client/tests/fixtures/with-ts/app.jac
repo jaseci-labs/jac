@@ -1,6 +1,6 @@
 
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from ".components/Button.tsx" { Button }
 
 cl {

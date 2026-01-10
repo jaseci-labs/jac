@@ -236,8 +236,8 @@ base_route_app = "app"
 
     main_jac_content = '''"""Main entry point for the Jac client application."""
 
-# Client-side imports
-cl import from react { useState, useEffect }
+# Client-side imports (useState is auto-injected when using `has` variables)
+cl import from react { useEffect }
 cl import from .components.Button { Button }
 
 # Client-side component

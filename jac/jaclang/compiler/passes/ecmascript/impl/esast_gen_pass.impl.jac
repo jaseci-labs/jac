@@ -1634,6 +1634,27 @@ impl EsastGenPass._get_setter_name(var_name: str) -> str {
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
+"""Auto-inject useState import from @jac-client/utils when reactive has variables are used."""
+impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
+    # Create: import { useState } from "@jac-client/utils";
+    # This import goes through jac-client's client_runtime which re-exports useState from React
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name='useState'),
+            local=es.Identifier(name='useState')
+        ),
+        jac_node=<>node
+    );
+    source = self.sync_loc(
+        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
+        jac_node=<>node
+    );
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
+    );
+    self.imports.append(import_decl);
+}
+
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     # Check if this is client-side reactive state (inside a cl {} block)
@@ -1641,6 +1662,11 @@ impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     if not is_client {
         <>node.gen.es_ast = None;
         return;
+    }
+    # Auto-inject useState import if not already done
+    if not self.has_injected_usestate {
+        self._inject_usestate_import(<>node);
+        self.has_injected_usestate = True;
     }
     # Generate useState destructuring for each variable
     # has count: int = 0; -> const [count, setCount] = useState(0);
@@ -2694,4 +2720,6 @@ impl EsastGenPass.before_pass -> None {
     self.jsx_processor = EsJsxProcessor(self);
     # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
     self.reactive_vars: dict[str, str] = {};
+    # Track if useState import has been auto-injected to avoid duplicates
+    self.has_injected_usestate: bool = False;
 }
