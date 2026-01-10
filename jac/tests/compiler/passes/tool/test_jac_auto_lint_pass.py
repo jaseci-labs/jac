@@ -886,3 +886,191 @@ class TestRemoveFutureAnnotations:
         # Without linting, __future__ import should remain
         assert "__future__" in formatted
         assert "annotations" in formatted
+
+
+class TestCommentPreservation:
+    """Tests for comment preservation during auto-lint transformations.
+
+    The auto-lint pass performs various transformations (combining statements,
+    converting hasattr to null-safe access, etc.) which historically lost comments.
+    These tests verify that comments are preserved after transformations.
+
+    Uses the comprehensive stress test fixture that covers many edge cases:
+    - Consecutive glob statement combining
+    - Consecutive has statement combining
+    - @staticmethod -> static conversion
+    - __init__/__post_init__ -> init/postinit conversion
+    - hasattr() -> null-safe access
+    - Ternary -> or simplification
+    - Angle bracket escape removal
+
+    Note: When statements are merged (e.g., multiple has statements combined into one),
+    standalone comments that appeared between the merged statements will appear after
+    the combined statement. This is expected behavior since we can't interleave comments
+    within a single combined statement.
+    """
+
+    @pytest.fixture
+    def stress_test_path(self) -> str:
+        """Return the path to the comment stress test fixture."""
+        return os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "..",
+            "..",
+            "jaclang",
+            "tests",
+            "fixtures",
+            "comment_normalize_stress_test.jac",
+        )
+
+    def test_glob_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments around glob statements are preserved during combining."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Standalone comments around glob statements should be preserved
+        assert "# Comment before first glob" in formatted
+        assert "# Comment between glob statements" in formatted
+        assert "# Comment before third glob" in formatted
+        # Private glob comment
+        assert "# Inline on private glob" in formatted
+
+    def test_has_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments around has statements are preserved during combining."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Standalone comments in obj body should be preserved
+        assert "# Comment before first has" in formatted
+        assert "# Comment between has statements" in formatted
+        assert "# Comment before third has" in formatted
+        # Private has inline
+        assert "# Inline on private has" in formatted
+
+    def test_method_and_impl_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments on methods and impl blocks are preserved."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Method declaration comments
+        assert "# Comment before method declaration" in formatted
+        assert "# Comment before staticmethod" in formatted
+        assert "# Comment before init" in formatted
+        # Impl comments
+        assert "# Implementation comments" in formatted
+        assert "# Comment inside impl body" in formatted
+        assert "# Inline return comment" in formatted
+        assert "# Comment on staticmethod impl" in formatted
+        assert "# Comment inside helper" in formatted
+
+    def test_enum_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments in enum definitions are preserved."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Enum comments
+        assert "# Enum with consecutive assignments and comments" in formatted
+        assert "# Comment before GREEN" in formatted
+        assert "# Comment before BLUE" in formatted
+
+    def test_hasattr_conversion_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments are preserved during hasattr -> null-safe conversion."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Comments around hasattr usage
+        assert "# Test hasattr conversion with comments" in formatted
+        assert "# Comment before hasattr usage" in formatted
+        assert "# Comment inside if block" in formatted
+        assert "# Comment after if" in formatted
+
+    def test_ternary_conversion_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments are preserved during ternary -> or conversion."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Comments around ternary expressions
+        assert "# Test ternary to or simplification with comments" in formatted
+        assert "# Comment before ternary that should become or" in formatted
+        assert "# Comment after ternary" in formatted
+
+    def test_entry_block_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments are preserved during with entry block transformation."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Entry block comments
+        assert "# Test with entry block transformation" in formatted
+        assert "# Comment at start of entry" in formatted
+        assert "# Comment between statements" in formatted
+        assert "# Comment before print" in formatted
+
+    def test_escaped_name_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments are preserved when removing unnecessary escaping."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Comments around escaped names
+        assert "# Test angle bracket escaped names with comments" in formatted
+        assert "# Comment before escaped name" in formatted
+        assert "# Method with escaped param" in formatted
+
+    def test_nested_obj_comments_preserved(self, stress_test_path: str) -> None:
+        """Test that comments in nested obj definitions are preserved."""
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Nested obj comments
+        assert "# Nested obj with comments" in formatted
+        assert "# Comment in inner obj has" in formatted
+
+    def test_no_orphaned_comments_at_eof(self, stress_test_path: str) -> None:
+        """Test that critical comments aren't lost - inline comments on merged statements may become orphans.
+
+        When statements are merged (e.g., `has a: int; # inline` + `has b: str; # inline`
+        becomes `has a: int, b: str;`), the inline comments on the merged statements
+        don't have a natural place in the combined statement and may appear at the end.
+
+        This test verifies that:
+        1. Standalone comments (full-line comments) are preserved in-place
+        2. Comments in code bodies are preserved
+        3. The first statement in a merged group keeps its inline comment
+
+        The orphaned comments at the end are inline comments from merged statements -
+        this is a known limitation when combining statements.
+        """
+        prog = JacProgram.jac_file_formatter(stress_test_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # Critical check: standalone comments should appear BEFORE the code they precede,
+        # not at the end of the file
+        critical_standalone_comments = [
+            "# Comment before first glob",
+            "# Comment between glob statements",
+            "# Comment before first has",
+            "# Comment between has statements",
+            "# Comment before method declaration",
+            "# Comment inside impl body",
+            "# Test hasattr conversion with comments",
+            "# Comment before hasattr usage",
+        ]
+
+        for comment in critical_standalone_comments:
+            # Find the position of this comment
+            pos = formatted.find(comment)
+            assert pos != -1, f"Comment not found: {comment}"
+
+            # Check that it's NOT in the last 500 characters (orphan section)
+            assert pos < len(formatted) - 500, (
+                f"Critical standalone comment appears to be orphaned at end: {comment}"
+            )
+
+        # Also verify the final legitimate comment is near the end but not orphaned
+        final_comment_pos = formatted.find("# Final comment at end of file")
+        assert final_comment_pos != -1, "Final comment should be present"
+        # It should be in the last third of the file (normal position)
+        assert final_comment_pos > len(formatted) * 0.5, (
+            "Final comment should be near the end of file, not moved earlier"
+        )

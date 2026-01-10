@@ -177,39 +177,74 @@ impl JacAutoLintPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     self._remove_empty_parens_from_sig(<>node, spec, "spec");
 }
 
-"""Process Enum to combine consecutive has statements."""
+"""Process Enum to combine consecutive has statements.
+
+This implementation avoids calling normalize() to preserve comment associations.
+We update the kid list by removing merged statements and keeping the combined ones.
+"""
 impl JacAutoLintPass.enter_enum(node: uni.Enum) -> None {
     if not self.lint_enabled {
         return;
     }
     enum_node = node;
     if enum_node.body is not None and isinstance(enum_node.body, list) {
-        new_body = self.combine_consecutive_has(list(enum_node.body));
-        if len(new_body) != len(enum_node.body) {
+        old_body = list(enum_node.body);
+        new_body = self.combine_consecutive_has(old_body);
+        if len(new_body) != len(old_body) {
             enum_node.body = new_body;
             self.recalculate_parents(enum_node);
-            enum_node.normalize(deep=False);
+            # Update kid list: remove merged-away statements, keep everything else
+            # The merged statements are those in old_body but not in new_body
+            new_body_set = set(id(s) for s in new_body);
+            new_kid: list[uni.UniNode] = [];
+            for kid in enum_node.kid {
+                # Keep kid if it's not a body item, or if it's in the new body
+                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
+                    new_kid.append(kid);
+                }
+            }
+            enum_node.kid = new_kid;
         }
     }
 }
 
-"""Process Archetype to combine consecutive has statements."""
+"""Process Archetype to combine consecutive has statements.
+
+This implementation avoids calling normalize() to preserve comment associations.
+We update the kid list by removing merged statements and keeping the combined ones.
+"""
 impl JacAutoLintPass.enter_archetype(node: uni.Archetype) -> None {
     if not self.lint_enabled {
         return;
     }
     arch = node;
     if arch.body is not None and isinstance(arch.body, list) {
-        new_body = self.combine_consecutive_has(list(arch.body));
-        if len(new_body) != len(arch.body) {
+        old_body = list(arch.body);
+        new_body = self.combine_consecutive_has(old_body);
+        if len(new_body) != len(old_body) {
             arch.body = new_body;
             self.recalculate_parents(arch);
-            arch.normalize(deep=False);
+            # Update kid list: remove merged-away statements, keep everything else
+            # The merged statements are those in old_body but not in new_body
+            new_body_set = set(id(s) for s in new_body);
+            new_kid: list[uni.UniNode] = [];
+            for kid in arch.kid {
+                # Keep kid if it's not an ArchHas body item, or if it's in the new body
+                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
+                    new_kid.append(kid);
+                }
+            }
+            arch.kid = new_kid;
         }
     }
 }
 
-"""Combine consecutive glob statements in a body list."""
+"""Combine consecutive glob statements in a body list.
+
+This implementation avoids calling normalize() to preserve comment associations.
+Instead of creating a new node, we modify the first statement in place and
+manually build the kid list to include assignments from merged statements.
+"""
 impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
     if len(body) <= 1 {
         return body;
@@ -221,32 +256,57 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
 
         if isinstance(stmt, uni.GlobalVars) {
             # Start collecting consecutive compatible glob statements
-            combined_assignments: list = list(stmt.assignments);
-            combined_doc = stmt.doc;
             base_glob = stmt;
+            merged_globs: list[uni.GlobalVars] = [base_glob];
             j = i + 1;
             while j < len(body) {
                 next_stmt = body[j];
                 if isinstance(next_stmt, uni.GlobalVars)
                 and self.can_combine_glob(base_glob, next_stmt) {
-                    # Combine the assignments
-                    combined_assignments.extend(next_stmt.assignments);
+                    merged_globs.append(next_stmt);
                     j += 1;
                 } else {
                     break;
                 }
             }
-            # If we combined multiple glob statements, create new one
-            if j > i + 1 {
-                new_glob = uni.GlobalVars(
-                    access=base_glob.access,
-                    assignments=combined_assignments,
-                    is_frozen=base_glob.is_frozen,
-                    kid=combined_assignments,
-                    doc=combined_doc
-                );
-                new_glob.normalize(deep=True);
-                new_body.append(new_glob);
+            # If we combined multiple glob statements, merge them without normalize
+            if len(merged_globs) > 1 {
+                # Collect all assignments
+                combined_assignments: list[uni.Assignment] = [];
+                for glob in merged_globs {
+                    combined_assignments.extend(glob.assignments);
+                }
+                # Build new kid list preserving tokens from base_glob
+                # Structure: [doc?] [client?] glob [access?] assign1, assign2, ...
+                new_kid: list[uni.UniNode] = [];
+                # Copy prefix tokens from base_glob (everything before first assignment)
+                for kid in base_glob.kid {
+                    if kid in base_glob.assignments {
+                        break;
+                    }
+                    new_kid.append(kid);
+                }
+                # Add all assignments with commas between them
+                # Note: Assignments from entry blocks may have trailing semicolons in their
+                # kid lists - we need to strip those before combining
+                for (idx, assign) in enumerate(combined_assignments) {
+                    if idx > 0 {
+                        new_kid.append(base_glob.gen_token(Tok.COMMA));
+                    }
+                    # Strip trailing semicolon from assignment if present
+                    if assign.kid and isinstance(assign.kid[-1], uni.Semi) {
+                        # Create a copy of kids without the trailing semicolon
+                        assign_kids = list(assign.kid[:-1]);
+                        assign.set_kids(nodes=assign_kids);
+                    }
+                    new_kid.append(assign);
+                }
+                # Add semicolon at the end (required by grammar)
+                new_kid.append(base_glob.gen_token(Tok.SEMI));
+                # Update base_glob in place (no normalize call)
+                base_glob.assignments = combined_assignments;
+                base_glob.set_kids(nodes=new_kid);
+                new_body.append(base_glob);
             } else {
                 new_body.append(stmt);
             }
@@ -259,7 +319,12 @@ impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
     return new_body;
 }
 
-"""Combine consecutive has statements in a body list."""
+"""Combine consecutive has statements in a body list.
+
+This implementation avoids calling normalize() to preserve comment associations.
+Instead of creating a new node, we modify the first statement in place and
+manually build the kid list to include vars from merged statements.
+"""
 impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
     if len(body) <= 1 {
         return body;
@@ -271,33 +336,49 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
 
         if isinstance(stmt, uni.ArchHas) {
             # Start collecting consecutive compatible has statements
-            combined_vars: list = list(stmt.vars);
-            combined_doc = stmt.doc;
             base_has = stmt;
+            merged_has_list: list[uni.ArchHas] = [base_has];
             j = i + 1;
             while j < len(body) {
                 next_stmt = body[j];
                 if isinstance(next_stmt, uni.ArchHas)
                 and self.can_combine_has(base_has, next_stmt) {
-                    # Combine the vars
-                    combined_vars.extend(next_stmt.vars);
+                    merged_has_list.append(next_stmt);
                     j += 1;
                 } else {
                     break;
                 }
             }
-            # If we combined multiple has statements, create new one
-            if j > i + 1 {
-                new_has = uni.ArchHas(
-                    is_static=base_has.is_static,
-                    access=base_has.access,
-                    vars=combined_vars,
-                    is_frozen=base_has.is_frozen,
-                    kid=combined_vars,
-                    doc=combined_doc
-                );
-                new_has.normalize(deep=True);
-                new_body.append(new_has);
+            # If we combined multiple has statements, merge them without normalize
+            if len(merged_has_list) > 1 {
+                # Collect all vars
+                combined_vars: list[uni.HasVar] = [];
+                for has_stmt in merged_has_list {
+                    combined_vars.extend(has_stmt.vars);
+                }
+                # Build new kid list preserving tokens from base_has
+                # Structure: [doc?] [static?] has [access?] var1, var2, ... varN;
+                new_kid: list[uni.UniNode] = [];
+                # Copy prefix tokens from base_has (everything before first var)
+                for kid in base_has.kid {
+                    if kid in base_has.vars {
+                        break;
+                    }
+                    new_kid.append(kid);
+                }
+                # Add all vars with commas between them
+                for (idx, var) in enumerate(combined_vars) {
+                    if idx > 0 {
+                        new_kid.append(base_has.gen_token(Tok.COMMA));
+                    }
+                    new_kid.append(var);
+                }
+                # Add semicolon at the end
+                new_kid.append(base_has.gen_token(Tok.SEMI));
+                # Update base_has in place (no normalize call)
+                base_has.vars = combined_vars;
+                base_has.set_kids(nodes=new_kid);
+                new_body.append(base_has);
             } else {
                 new_body.append(stmt);
             }
@@ -346,15 +427,31 @@ impl JacAutoLintPass.can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bo
     return True;
 }
 
-"""Create a new ModuleCode (with entry) block from a list of statements."""
+"""Create a new ModuleCode (with entry) block from a list of statements.
+
+This implementation avoids calling normalize() to preserve comment associations.
+We manually build the kid list with required tokens.
+"""
 impl JacAutoLintPass.create_entry_block(stmts: list) -> uni.ModuleCode {
     entry_block = uni.ModuleCode(name=None, body=stmts, kid=stmts, doc=None);
-    # Normalize shallowly - generates with entry tokens but preserves child loc info
-    entry_block.normalize(deep=False);
+    # Build kid list manually: with entry { stmts... }
+    new_kid: list[uni.UniNode] = [];
+    new_kid.append(entry_block.gen_token(Tok.KW_WITH));
+    new_kid.append(entry_block.gen_token(Tok.KW_ENTRY));
+    new_kid.append(entry_block.gen_token(Tok.LBRACE));
+    for stmt in stmts {
+        new_kid.append(stmt);
+    }
+    new_kid.append(entry_block.gen_token(Tok.RBRACE));
+    entry_block.set_kids(nodes=new_kid);
     return entry_block;
 }
 
-"""Create a GlobalVars node from an assignment."""
+"""Create a GlobalVars node from an assignment.
+
+This implementation avoids calling normalize() to preserve comment associations.
+We manually build the kid list with required tokens.
+"""
 impl JacAutoLintPass.create_glob_from_assignment(
     assignment: uni.Assignment
 ) -> uni.GlobalVars {
@@ -365,8 +462,11 @@ impl JacAutoLintPass.create_glob_from_assignment(
         kid=[assignment],
         doc=None
     );
-    # Normalize shallowly - generates glob keyword but preserves child loc info
-    glob_node.normalize(deep=False);
+    # Build kid list manually: glob assignment
+    new_kid: list[uni.UniNode] = [];
+    new_kid.append(glob_node.gen_token(Tok.KW_GLOBAL));
+    new_kid.append(assignment);
+    glob_node.set_kids(nodes=new_kid);
     return glob_node;
 }
 
@@ -465,7 +565,14 @@ impl JacAutoLintPass.enter_module(node: uni.Module) -> None {
     new_body = self.combine_consecutive_glob(new_body);
     module.body = new_body;
     self.recalculate_parents(module);
-    module.normalize(deep=False);
+    # Build kid list manually to avoid normalize() and preserve comment associations
+    # Module structure: [doc?] body...
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(new_body);
+    module.set_kids(nodes=new_kid if len(new_kid) else [uni.EmptyToken()]);
 }
 
 """Remove unnecessary angle bracket escaping from names that are not actual keywords.
@@ -604,6 +711,8 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
         is_kwesc=False
     );
     # Create the null-safe AtomTrailer (obj null-safe attr)
+    # Build kid list manually to avoid normalize() and preserve comment associations
+    # Structure: target ? . right
     null_ok_access = uni.AtomTrailer(
         target=obj_expr,
         right=attr_name_node,
@@ -611,7 +720,11 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
         is_null_ok=True,
         kid=[obj_expr, attr_name_node]
     );
-    null_ok_access.normalize(deep=False);
+    new_kid: list[uni.UniNode] = [obj_expr];
+    new_kid.append(null_ok_access.gen_token(Tok.NULL_OK));
+    new_kid.append(null_ok_access.gen_token(Tok.DOT));
+    new_kid.append(attr_name_node);
+    null_ok_access.set_kids(nodes=new_kid);
     return null_ok_access;
 }
 
@@ -642,12 +755,26 @@ impl JacAutoLintPass._is_matching_attr_access(
 """Convert an AtomTrailer to use null-safe access.
 
 Takes an existing obj.attr AtomTrailer and converts it to use null-safe access
-by setting is_null_ok=True and re-normalizing.
+by setting is_null_ok=True. We surgically insert the NULL_OK token instead of
+calling normalize() to preserve comment associations.
 """
 impl JacAutoLintPass._make_null_ok(trailer: uni.AtomTrailer) -> None {
     if not trailer.is_null_ok {
         trailer.is_null_ok = True;
-        trailer.normalize(deep=False);
+        # Surgically insert NULL_OK token after the target
+        # Original structure: target [.] right
+        # New structure: target ? [.] right
+        new_kid: list[uni.UniNode] = [];
+        inserted_null_ok = False;
+        for kid in trailer.kid {
+            new_kid.append(kid);
+            # Insert NULL_OK token right after the target
+            if kid is trailer.target and not inserted_null_ok {
+                new_kid.append(trailer.gen_token(Tok.NULL_OK));
+                inserted_null_ok = True;
+            }
+        }
+        trailer.set_kids(nodes=new_kid);
     }
 }
 
@@ -679,6 +806,8 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     }
     replacement.parent = parent;
     # Find and replace in parent's children
+    # We avoid calling normalize() to preserve comment associations.
+    # Instead, we update the semantic field AND directly update the kid list.
     # Handle different parent types that might contain this FuncCall
     if isinstance(parent, uni.IfElseExpr) {
         if parent.condition is node {
@@ -696,14 +825,12 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
         } elif parent.else_value is node {
             parent.else_value = replacement;
         }
-        parent.normalize(deep=False);
     } elif isinstance(parent, uni.BinaryExpr) {
         if parent.left is node {
             parent.left = replacement;
         } elif parent.right is node {
             parent.right = replacement;
         }
-        parent.normalize(deep=False);
     } elif isinstance(parent, uni.BoolExpr) {
         # BoolExpr has a values list (for 'and'/'or' expressions)
         new_values: list[uni.Expr] = [];
@@ -715,34 +842,30 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
             }
         }
         parent.values = new_values;
-        parent.normalize(deep=False);
     } elif isinstance(parent, uni.UnaryExpr) {
         if parent.operand is node {
             parent.operand = replacement;
         }
-        parent.normalize(deep=False);
     } elif isinstance(parent, uni.IfStmt) {
         if parent.condition is node {
             parent.condition = replacement;
         }
-        parent.normalize(deep=False);
     } elif isinstance(parent, uni.WhileStmt) {
         if parent.condition is node {
             parent.condition = replacement;
         }
-        parent.normalize(deep=False);
-    } else {
-        # For other parent types, update kid list manually
-        new_kids: list[uni.UniNode] = [];
-        for kid in parent.kid {
-            if kid is node {
-                new_kids.append(replacement);
-            } else {
-                new_kids.append(kid);
-            }
-        }
-        parent.kid = new_kids;
     }
+    # For all parent types, update the kid list directly to reflect the replacement
+    # This preserves comment associations since we're reusing the original kid structure
+    new_kids: list[uni.UniNode] = [];
+    for kid in parent.kid {
+        if kid is node {
+            new_kids.append(replacement);
+        } else {
+            new_kids.append(kid);
+        }
+    }
+    parent.kid = new_kids;
 }
 
 """Recursively collect all AtomTrailer nodes from a subtree."""
@@ -863,29 +986,33 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
 
 Transforms: x?.attr if x?.attr else default -> x?.attr or default
 This only applies when the value and condition are identical expressions.
+
+This implementation avoids calling normalize() to preserve comment associations.
 """
 impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
     # Check if value and condition are identical
     if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
         return False;
     }
-    # Create a BoolExpr with 'or' operator: value or else_value
-    or_expr = uni.BoolExpr(
-        op=uni.Token(
-            orig_src=if_else_node.loc.orig_src,
-            name=Tok.KW_OR,
-            value="or",
-            line=if_else_node.loc.first_line,
-            end_line=if_else_node.loc.first_line,
-            col_start=0,
-            col_end=2,
-            pos_start=0,
-            pos_end=2
-        ),
-        values=[if_else_node.value, if_else_node.else_value],
-        kid=[if_else_node.value, if_else_node.else_value]
+    # Create the 'or' token
+    or_token = uni.Token(
+        orig_src=if_else_node.loc.orig_src,
+        name=Tok.KW_OR,
+        value="or",
+        line=if_else_node.loc.first_line,
+        end_line=if_else_node.loc.first_line,
+        col_start=0,
+        col_end=2,
+        pos_start=0,
+        pos_end=2
     );
-    or_expr.normalize(deep=False);
+    # Create a BoolExpr with 'or' operator: value or else_value
+    # Build kid list manually: value1 or value2
+    or_expr = uni.BoolExpr(
+        op=or_token,
+        values=[if_else_node.value, if_else_node.else_value],
+        kid=[if_else_node.value, or_token, if_else_node.else_value]
+    );
     # Replace in parent
     parent = if_else_node.parent;
     if parent is None {
@@ -967,18 +1094,15 @@ impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
         return;
     }
     # Convert matching non-null-safe accesses
-    changed = False;
+    # Note: _make_null_ok() already updates the kid list for each trailer,
+    # so we don't need to call normalize() on the parent node.
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
             key = self._get_trailer_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
-                changed = True;
             }
         }
-    }
-    if changed {
-        if_else_node.normalize(deep=True);
     }
 }
 
@@ -1011,18 +1135,15 @@ impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
         return;
     }
     # Convert matching non-null-safe accesses
-    changed = False;
+    # Note: _make_null_ok() already updates the kid list for each trailer,
+    # so we don't need to call normalize() on the parent node.
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
             key = self._get_trailer_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
-                changed = True;
             }
         }
-    }
-    if changed {
-        bool_node.normalize(deep=True);
     }
 }
 
