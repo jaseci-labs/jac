@@ -17,6 +17,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac plugins` | Manage plugins |
+| `jac config` | Manage project configuration |
 | `jac scale` | Deploy to Kubernetes (jac-scale) |
 | `jac destroy` | Remove deployment |
 | `jac add` | Add packages to project |
@@ -378,6 +379,83 @@ jac plugins install jac-scale
 
 # Uninstall
 jac plugins uninstall byllm
+```
+
+---
+
+## Configuration Management
+
+### jac config
+
+View and modify project configuration settings in `jac.toml`.
+
+```bash
+jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
+```
+
+| Action | Description |
+|--------|-------------|
+| `show` | Display explicitly set configuration values (default) |
+| `list` | Display all settings including defaults |
+| `get` | Get a specific setting value |
+| `set` | Set a configuration value |
+| `unset` | Remove a configuration value |
+| `path` | Show path to config file |
+| `groups` | List available configuration groups |
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-k, --key` | Configuration key (e.g., `project.name`) | None |
+| `-v, --value` | Value to set | None |
+| `-g, --group` | Filter by configuration group | None |
+| `-o, --output` | Output format (`table`, `json`, `toml`) | `table` |
+
+**Configuration Groups:**
+
+- `project` - Project metadata (name, version, description)
+- `run` - Runtime settings (cache, session)
+- `build` - Build settings (typecheck, output directory)
+- `test` - Test settings (verbose, filters)
+- `serve` - Server settings (port, host)
+- `format` - Formatting options
+- `check` - Type checking options
+- `dot` - Graph visualization settings
+- `cache` - Cache configuration
+- `plugins` - Plugin management
+- `environment` - Environment variables
+
+**Examples:**
+
+```bash
+# Show explicitly set configuration
+jac config show
+
+# Show all settings including defaults
+jac config list
+
+# Show settings for a specific group
+jac config show -g project
+
+# Get a specific value
+jac config get -k project.name
+
+# Set a value
+jac config set -k project.version -v "2.0.0"
+
+# Remove a value (revert to default)
+jac config unset -k run.cache
+
+# Show config file path
+jac config path
+
+# List available groups
+jac config groups
+
+# Output as JSON
+jac config show -o json
+
+# Output as TOML
+jac config list -o toml
 ```
 
 ---

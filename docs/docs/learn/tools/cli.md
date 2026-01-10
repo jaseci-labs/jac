@@ -283,6 +283,110 @@ JAC_DISABLED_PLUGINS=jac-scale:JacScaleRuntimeImpl,jac-client:serve jac run myap
 - `*` - Disable all external plugins
 - `package:*` - Disable all plugins from a specific package
 
+## `jac config`
+
+The `config` command allows you to view and modify project configuration settings in `jac.toml`.
+
+```bash
+jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
+```
+
+### Actions
+
+- `show` (default): Display only explicitly set configuration values
+- `list`: Display all settings including defaults
+- `get`: Get a specific setting value by key
+- `set`: Set a configuration value
+- `unset`: Remove a configuration value (revert to default)
+- `path`: Show the path to the config file
+- `groups`: List available configuration groups
+
+### Parameters
+
+- `action`: The action to perform (see above)
+- `-k, --key`: Configuration key in dot notation (e.g., `project.name`, `run.cache`)
+- `-v, --value`: Value to set (for `set` action)
+- `-g, --group`: Filter output by configuration group
+- `-o, --output`: Output format (`table`, `json`, or `toml`). Defaults to `table`
+
+### Configuration Groups
+
+The following configuration groups are available:
+
+- `project` - Project metadata (name, version, description, author)
+- `run` - Runtime settings (cache, session)
+- `build` - Build settings (typecheck, output directory)
+- `test` - Test settings (verbose, filters, maxfail)
+- `serve` - Server settings (port, host)
+- `format` - Formatting options
+- `check` - Type checking options
+- `dot` - Graph visualization settings
+- `cache` - Cache configuration
+- `plugins` - Plugin management (disabled plugins list)
+- `environment` - Environment variables
+
+### Examples
+
+```bash
+# Show explicitly set configuration values
+jac config show
+
+# Show all settings including defaults
+jac config list
+
+# Filter by configuration group
+jac config show -g project
+
+# Get a specific setting
+jac config get -k project.name
+
+# Set a configuration value
+jac config set -k project.version -v "2.0.0"
+
+# Set a boolean value
+jac config set -k run.cache -v false
+
+# Remove a value (revert to default)
+jac config unset -k run.cache
+
+# Show config file path
+jac config path
+
+# List available configuration groups
+jac config groups
+
+# Output as JSON (useful for scripting)
+jac config show -o json
+
+# Output as TOML
+jac config list -o toml
+```
+
+### Use Cases
+
+**Checking current project settings:**
+
+```bash
+jac config show
+```
+
+**Scripting with JSON output:**
+
+```bash
+# Get project name in a script
+PROJECT_NAME=$(jac config get -k project.name -o json | jq -r '.value')
+```
+
+**Quickly modifying settings:**
+
+```bash
+# Enable type checking for builds
+jac config set -k build.typecheck -v true
+
+# Disable caching for debugging
+jac config set -k run.cache -v false
+```
+
 ## `jac dot`
 
 The `dot` command generates a DOT graph visualization of your Jac graph data. This is useful for visualizing node relationships and debugging graph structures.
