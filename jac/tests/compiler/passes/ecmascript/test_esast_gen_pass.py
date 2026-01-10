@@ -261,3 +261,33 @@ def test_export_semantics_for_pub_declarations(
     assert "export const PrivateStatus" not in js_code, (
         "Private enum should NOT have export keyword"
     )
+
+
+def test_reactive_state_generates_use_state(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that has variables in client context generate useState calls."""
+    es_ast = compile_to_esast(fixture_path("reactive_state.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useState is imported
+    assert 'import { useState } from "react"' in js_code, (
+        "React useState should be imported"
+    )
+
+    # Check that has declarations generate useState destructuring
+    # has count: int = 0; -> const [count, setCount] = useState(0);
+    assert "const [count, setCount] = useState(0)" in js_code, (
+        "has count should generate useState destructuring"
+    )
+    assert 'const [name, setName] = useState("test")' in js_code, (
+        "has name should generate useState destructuring"
+    )
+
+    # Check that assignments to reactive vars generate setter calls
+    # count = count + 1; -> setCount(count + 1);
+    assert "setCount(count + 1)" in js_code, (
+        "Assignment to reactive var should use setter"
+    )
+    assert "setCount(42)" in js_code, "Direct assignment should use setter"
+    assert "setName(" in js_code, "Assignment to name should use setName"

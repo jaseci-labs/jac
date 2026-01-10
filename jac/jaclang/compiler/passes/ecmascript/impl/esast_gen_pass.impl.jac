@@ -849,6 +849,56 @@ impl EsastGenPass.exit_assignment(<>node: uni.Assignment) -> None {
     value_expr = <>node.value.gen.es_ast
     if (<>node.value and <>node.value.gen.es_ast)
     else None;
+    # Check for reactive variable assignment (transforms count = X to setCount(X))
+    if len(<>node.target) == 1 and isinstance(<>node.target[0], uni.Name) {
+        target_name = <>node.target[0].sym_name;
+        if target_name in self.reactive_vars {
+            setter_name = self.reactive_vars[target_name];
+            # Get the value to pass to setter
+            setter_arg: es.Expression;
+            if <>node.aug_op {
+                # For augmented assignment: count += 1 -> setCount(count + 1)
+                aug_tok = Tok(<>node.aug_op.name)
+                if (<>node.aug_op.name in Tok.__members__)
+                else None;
+                # Map augmented op to binary op
+                aug_to_binary: dict[Tok, str] = {
+                    Tok.ADD_EQ: '+',
+                    Tok.SUB_EQ: '-',
+                    Tok.MUL_EQ: '*',
+                    Tok.DIV_EQ: '/',
+                    Tok.MOD_EQ: '%'
+                };
+                binary_op = aug_to_binary.get(aug_tok, '+') if aug_tok else '+';
+                right_expr = cast(es.Expression, value_expr or es.Literal(value=0));
+                setter_arg = self.sync_loc(
+                    es.BinaryExpression(
+                        operator=binary_op,
+                        left=es.Identifier(name=target_name),
+                        right=right_expr
+                    ),
+                    jac_node=<>node
+                );
+            } else {
+                # Regular assignment: count = X -> setCount(X)
+                setter_arg = cast(
+                    es.Expression, value_expr or es.Identifier(name='undefined')
+                );
+            }
+            # Generate: setCount(value)
+            setter_call = self.sync_loc(
+                es.CallExpression(
+                    callee=es.Identifier(name=setter_name), arguments=[setter_arg]
+                ),
+                jac_node=<>node
+            );
+            expr_stmt = self.sync_loc(
+                es.ExpressionStatement(expression=setter_call), jac_node=<>node
+            );
+            <>node.gen.es_ast = expr_stmt;
+            return;
+        }
+    }
     if <>node.aug_op {
         (left, _, _) = self._convert_assignment_target(<>node.target[0]);
         aug_tok = Tok(<>node.aug_op.name)
@@ -1576,9 +1626,82 @@ impl EsastGenPass.exit_has_var(<>node: uni.HasVar) -> None {
     <>node.gen.es_ast = None;
 }
 
-"""Process class field declarations."""
+"""Generate setter name for reactive variable (count -> setCount)."""
+impl EsastGenPass._get_setter_name(var_name: str) -> str {
+    if not var_name {
+        return "";
+    }
+    return f"set{var_name[0].upper()}{var_name[1:]}";
+}
+
+"""Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
-    <>node.gen.es_ast = None;
+    # Check if this is client-side reactive state (inside a cl {} block)
+    is_client = <>node.find_parent_of_type(uni.ClientBlock) is not None;
+    if not is_client {
+        <>node.gen.es_ast = None;
+        return;
+    }
+    # Generate useState destructuring for each variable
+    # has count: int = 0; -> const [count, setCount] = useState(0);
+    statements: list[es.Statement] = [];
+    for has_var in <>node.vars {
+        var_name = has_var.name.sym_name;
+        setter_name = self._get_setter_name(var_name);
+
+        # Track this as a reactive variable for assignment transformation
+        self.reactive_vars[var_name] = setter_name;
+
+        # Get the initial value expression
+        init_value: es.Expression;
+        if has_var.value and has_var.value.gen.es_ast {
+            init_value = cast(es.Expression, has_var.value.gen.es_ast);
+        } else {
+            init_value = es.Identifier(name='undefined');
+        }
+
+        # Build: const [count, setCount] = useState(initialValue);
+        array_pattern = self.sync_loc(
+            es.ArrayPattern(
+                elements=[
+                    es.Identifier(name=var_name),
+                    es.Identifier(name=setter_name)
+                ]
+            ),
+            jac_node=has_var.name
+        );
+
+        use_state_call = self.sync_loc(
+            es.CallExpression(
+                callee=es.Identifier(name='useState'), arguments=[init_value]
+            ),
+            jac_node=has_var
+        );
+
+        declarator = self.sync_loc(
+            es.VariableDeclarator(id=array_pattern, <>init=use_state_call),
+            jac_node=has_var
+        );
+
+        decl_stmt = self.sync_loc(
+            es.VariableDeclaration(declarations=[declarator], kind='const'),
+            jac_node=has_var
+        );
+
+        statements.append(decl_stmt);
+
+        # Register both the variable and setter as declared
+        self._register_declaration(var_name);
+        self._register_declaration(setter_name);
+    }
+    if len(statements) == 1 {
+        <>node.gen.es_ast = statements[0];
+    } elif len(statements) > 1 {
+        # Return as a list for multiple declarations
+        <>node.gen.es_ast = statements;
+    } else {
+        <>node.gen.es_ast = None;
+    }
 }
 
 """Process parameter variable."""
@@ -2569,4 +2692,6 @@ impl EsastGenPass.before_pass -> None {
     self.client_manifest = ClientManifest();
     self.client_scope_stack: list[bool] = [];
     self.jsx_processor = EsJsxProcessor(self);
+    # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
+    self.reactive_vars: dict[str, str] = {};
 }
