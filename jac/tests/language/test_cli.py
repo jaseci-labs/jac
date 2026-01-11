@@ -14,7 +14,7 @@ from contextlib import AbstractContextManager
 
 import pytest
 
-from jaclang.cli.commands import (
+from jaclang.cli.commands import (  # type: ignore[attr-defined]
     analysis,  # type: ignore[attr-defined]
     execution,  # type: ignore[attr-defined]
     tools,  # type: ignore[attr-defined]
