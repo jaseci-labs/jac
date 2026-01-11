@@ -610,7 +610,6 @@ REFERENCE_JAC_FILES: list[str] = [
 JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/__init__.py",
     "jaclang/__main__.py",
-    "jaclang/cli/__init__.py",
     "jaclang/compiler/__init__.py",
     "jaclang/compiler/passes/__init__.py",
     "jaclang/compiler/passes/ecmascript/__init__.py",

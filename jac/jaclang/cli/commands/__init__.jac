@@ -27,6 +27,5 @@ import from jaclang.cli.commands { config }
 Call this function during CLI startup to ensure all commands are registered.
 """
 def register_all_commands -> None {
-    # Imports above handle registration via decorators
-    pass;
+# Imports above handle registration via decorators
 }
