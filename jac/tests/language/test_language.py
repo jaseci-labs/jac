@@ -13,10 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from jaclang import JacRuntime as Jac
-from jaclang.cli.commands import (
-    execution,  # type: ignore[attr-defined]
-    transform,  # type: ignore[attr-defined]
-)
+from jaclang.cli.commands import execution, transform  # type: ignore[attr-defined]
 from jaclang.pycore.program import JacProgram
 from jaclang.runtimelib.utils import read_file_with_encoding
 
