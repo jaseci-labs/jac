@@ -225,7 +225,7 @@ nav:
 
 
   - Jac Playground:
-    - Playground: "/playground/"
+    - Playground: "https://playground.jaseci.org/page/app"
 
   - Jac GPT: "https://jac-gpt.jaseci.org"
 
