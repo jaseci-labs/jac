@@ -14,18 +14,6 @@ import from jaclang.cli {
 }
 
 #===============================================================================
-# SHARED UTILITIES (exported for use by plugins and tests)
-#===============================================================================
-"""Create JacRuntime and return the base path, module name, and runtime state."""
-def proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple;
-
-"""Get an object by ID from a Jac program (utility for debugging/testing)."""
-def get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict;
-
-# Internal helper
-def _ensure_jac_runtime -> None;
-
-#===============================================================================
 # ENTRY POINT
 #===============================================================================
 def start_cli -> None;

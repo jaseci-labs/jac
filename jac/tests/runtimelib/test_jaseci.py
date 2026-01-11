@@ -8,8 +8,8 @@ from typing import TypedDict
 
 import pytest
 
-from jaclang.cli import cli
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
+from tests.conftest import get_object
 from tests.runtimelib.conftest import fixture_abs_path
 
 
@@ -96,7 +96,7 @@ def test_entrypoint_root(
         entrypoint="create",
         args=[],
     )
-    obj = cli.get_object(
+    obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id="root",
         session=session,
@@ -125,17 +125,17 @@ def test_entrypoint_non_root(
         entrypoint="create",
         args=[],
     )
-    obj = cli.get_object(
+    obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id="root",
         session=session,
     )
-    edge_obj = cli.get_object(
+    edge_obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id=obj["edges"][0].id.hex,
         session=session,
     )
-    a_obj = cli.get_object(
+    a_obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id=edge_obj["target"].id.hex,
         session=session,
@@ -160,14 +160,14 @@ def test_get_edge():
         filename=fixture_abs_path("simple_node_connection.jac"),
         session=session,
     )
-    obj = cli.get_object(
+    obj = get_object(
         filename=fixture_abs_path("simple_node_connection.jac"),
         session=session,
         id="root",
     )
     assert len(obj["edges"]) == 2
     edge_objs = [
-        cli.get_object(
+        get_object(
             filename=fixture_abs_path("simple_node_connection.jac"),
             session=session,
             id=e.id.hex,
@@ -176,7 +176,7 @@ def test_get_edge():
     ]
     node_ids = [obj["target"].id.hex for obj in edge_objs]
     node_objs = [
-        cli.get_object(
+        get_object(
             filename=fixture_abs_path("simple_node_connection.jac"),
             session=session,
             id=str(n_id),

@@ -5,12 +5,9 @@ help formatting, and execution with plugin hook support.
 """
 
 import os;
-import pickle;
 import sys;
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
-
-glob _runtime_initialized = False;
 
 impl start_cli -> None {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -134,78 +131,4 @@ def _apply_env_profile(args_dict: dict) -> None {
         # Silently ignore profile loading errors
         pass;
     }
-}
-
-"""Initialize Jac runtime once on first use."""
-impl _ensure_jac_runtime -> None {
-    global _runtime_initialized;
-    if not _runtime_initialized {
-        import from jaclang.pycore.runtime { JacRuntime as Jac }
-        Jac.setup();
-        _runtime_initialized = True;
-    }
-}
-
-"""Create JacRuntime and return the base path, module name, and runtime state."""
-impl proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
-    import from jaclang.pycore.runtime { JacUtils }
-    (base, mod) = os.path.split(filename);
-    base = base or './';
-    if (filename.endswith('.jac') or filename.endswith('.jir')) {
-        mod = mod[:-4];
-    } elif filename.endswith('.py') {
-        mod = mod[:-3];
-    } else {
-        print(
-            'Not a valid file!\nOnly supports `.jac`, `.jir`, and `.py`',
-            file=sys.stderr
-        );
-        <>exit(1);
-    }
-    mach = Jac.create_j_context(session=session, <>root=<>root);
-    Jac.set_context(mach);
-    return (base, mod, mach);
-}
-
-"""Get an object by ID from a Jac program (utility for debugging/testing).
-
-Args:
-    filename: Path to the .jac or .jir file
-    id: Object ID to retrieve
-    session: Optional session identifier
-    main: Treat the module as __main__ (default: True)
-
-Returns:
-    Dictionary containing the object's state
-"""
-impl get_object(filename: str, id: str, session: str = '', main: bool = True) -> dict {
-    _ensure_jac_runtime();
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
-    (base, mod, mach) = proc_file_sess(filename, session);
-    if filename.endswith('.jac') {
-        Jac.jac_import(
-            target=mod, base_path=base, override_name='__main__' if main else None
-        );
-    } elif filename.endswith('.jir') {
-        with open(filename, 'rb') as f {
-            Jac.attach_program(pickle.load(f));
-            Jac.jac_import(
-                target=mod, base_path=base, override_name='__main__' if main else None
-            );
-        }
-    } else {
-        mach.close();
-        raise ValueError('Not a valid file!\nOnly supports `.jac` and `.jir`') ;
-    }
-    <>obj = Jac.get_object(id);
-    if <>obj {
-        data = <>obj.__jac__.__getstate__();
-    } else {
-        print(f"Object with id {id} not found.", file=sys.stderr);
-        mach.close();
-        <>exit(1);
-    }
-    mach.close();
-    return data;
 }
