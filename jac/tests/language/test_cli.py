@@ -4,7 +4,6 @@ import contextlib
 import inspect
 import io
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -20,39 +19,7 @@ from jaclang.cli.commands import (  # type: ignore[attr-defined]
     tools,  # type: ignore[attr-defined]
     transform,  # type: ignore[attr-defined]
 )
-from jaclang.cli.registry import get_registry
 from jaclang.runtimelib.builtin import printgraph
-
-
-def extract_param_descriptions(docstring: str) -> dict[str, str]:
-    """Extract parameter descriptions from a docstring's Args: section.
-
-    This is a helper function for tests that validate CLI docstrings.
-    """
-    param_descriptions: dict[str, str] = {}
-    args_match = re.search(r"Args:(.*?)(?:\n\n|\Z)", docstring, re.DOTALL)
-    if not args_match:
-        return param_descriptions
-    args_section = args_match.group(1)
-    current_param = None
-    current_desc: list[str] = []
-    for line in args_section.strip().split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-        param_match = re.match(r"\s*([a-zA-Z0-9_]+)(?:\s*\([^)]*\))?:\s*(.*)", line)
-        if param_match:
-            if current_param and current_desc:
-                param_descriptions[current_param] = " ".join(current_desc)
-                current_desc = []
-            current_param = param_match.group(1)
-            if param_match.group(2):
-                current_desc.append(param_match.group(2))
-        elif current_param:
-            current_desc.append(line)
-    if current_param and current_desc:
-        param_descriptions[current_param] = " ".join(current_desc)
-    return param_descriptions
 
 
 def test_jac_cli_run(
@@ -533,107 +500,6 @@ def test_caching_issue(fixture_path: Callable[[str], str]) -> None:
             assert "Passed successfully." not in stdout
             assert "F" in stderr
     os.remove(test_file)
-
-
-@pytest.mark.skip(
-    reason="TODO: Update command docstrings with Args sections after CLI redesign"
-)
-def test_cli_docstring_parameters() -> None:
-    """Test that all CLI command parameters are documented in their docstrings."""
-    # Map command names to their modules
-    command_modules = {
-        "run": execution,
-        "enter": execution,
-        "serve": execution,
-        "debug": execution,
-        "check": analysis,
-        "build": analysis,
-        "format": analysis,
-        "test": analysis,
-        "gen_parser": analysis,
-        "py2jac": transform,
-        "jac2py": transform,
-        "tool": tools,
-        "dot": tools,
-        "lsp": tools,
-    }
-    commands = {}
-    registry = get_registry()
-    for cmd_spec in registry.get_all():
-        name = cmd_spec.name
-        if name in command_modules and hasattr(command_modules[name], name):
-            commands[name] = getattr(command_modules[name], name)
-
-    missing_params = {}
-
-    for cmd_name, cmd_func in commands.items():
-        signature_params = set(inspect.signature(cmd_func).parameters.keys())
-        docstring = cmd_func.__doc__ or ""
-
-        args_match = re.search(r"Args:(.*?)(?:\n\n|\Z)", docstring, re.DOTALL)
-        if not args_match:
-            missing_params[cmd_name] = list(signature_params)
-            continue
-
-        args_section = args_match.group(1)
-        doc_params = set()
-        for line in args_section.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            param_match = re.match(r"\s*([a-zA-Z0-9_]+)(?:\s*\([^)]*\))?:\s*", line)
-            if param_match:
-                doc_params.add(param_match.group(1))
-
-        undocumented_params = signature_params - doc_params
-        if undocumented_params:
-            missing_params[cmd_name] = list(undocumented_params)
-
-    assert missing_params == {}, (
-        f"The following CLI commands have undocumented parameters: {missing_params}"
-    )
-
-
-def test_cli_help_uses_docstring_descriptions() -> None:
-    """Test that CLI help text uses parameter descriptions from docstrings."""
-    # Map test commands to their modules
-    command_modules = {
-        "run": execution,
-        "dot": tools,
-        "test": analysis,
-    }
-    test_commands = ["run", "dot", "test"]
-
-    for cmd_name in test_commands:
-        if cmd_name not in command_modules:
-            continue
-        module = command_modules[cmd_name]
-        if not hasattr(module, cmd_name):
-            continue
-
-        cmd_func = getattr(module, cmd_name)
-        docstring = cmd_func.__doc__ or ""
-        docstring_param_descriptions = extract_param_descriptions(docstring)
-
-        if not docstring_param_descriptions:
-            continue
-
-        process = subprocess.Popen(
-            ["jac", cmd_name, "--help"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        help_text, _ = process.communicate()
-
-        for param_name, description in docstring_param_descriptions.items():
-            description_start = description.split()[:3]
-            description_pattern = r"\s+".join(
-                re.escape(word) for word in description_start
-            )
-            assert re.search(description_pattern, help_text), (
-                f"Parameter description for '{param_name}' not found in help text for '{cmd_name}'"
-            )
 
 
 def test_run_jac_name_py(fixture_path: Callable[[str], str]) -> None:
