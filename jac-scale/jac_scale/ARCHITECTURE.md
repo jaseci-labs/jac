@@ -62,7 +62,9 @@ Jac-Scale is a multi-target deployment system for Jaseci applications. It provid
 The abstractions layer defines the contracts that all implementations must follow.
 
 #### `abstractions/deployment_target.jac`
+
 Base class for all deployment targets. Defines the interface for:
+
 - `deploy(app_config: AppConfig) -> DeploymentResult`
 - `destroy(app_name: str) -> None`
 - `get_status(app_name: str) -> ResourceStatusInfo`
@@ -70,20 +72,26 @@ Base class for all deployment targets. Defines the interface for:
 - `get_service_url(app_name: str) -> str | None`
 
 #### `abstractions/database_provider.jac`
+
 Base class for database providers. Defines:
+
 - `deploy(config: dict) -> dict`
 - `get_connection_string() -> str`
 - `is_available() -> bool`
 - `cleanup() -> None`
 
 #### `abstractions/image_registry.jac`
+
 Base class for image registries. Defines:
+
 - `build_image(code_folder: str, image_name: str | None) -> str`
 - `push_image(image_name: str) -> None`
 - `get_image_url(image_name: str) -> str`
 
 #### `abstractions/logger.jac`
+
 Base class for loggers. Defines:
+
 - `info(message: str, context: dict) -> None`
 - `error(message: str, context: dict) -> None`
 - `warn(message: str, context: dict) -> None`
@@ -92,12 +100,16 @@ Base class for loggers. Defines:
 ### 2. Configuration Models
 
 #### `abstractions/config/base_config.jac`
+
 Base configuration class with common fields:
+
 - `app_name: str`
 - `namespace: str`
 
 #### `abstractions/config/app_config.jac`
+
 Application-specific configuration:
+
 - `code_folder: str`
 - `file_name: str`
 - `build: bool`
@@ -105,7 +117,9 @@ Application-specific configuration:
 - `testing: bool`
 
 #### `targets/kubernetes/kubernetes_config.jac`
+
 Kubernetes-specific configuration extending `BaseConfig`:
+
 - `docker_image_name: str`
 - `container_port: int`
 - `node_port: int`
@@ -116,14 +130,18 @@ Kubernetes-specific configuration extending `BaseConfig`:
 ### 3. Data Models
 
 #### `abstractions/models/deployment_result.jac`
+
 Result of a deployment operation:
+
 - `success: bool`
 - `service_url: str | None`
 - `message: str | None`
 - `details: dict`
 
 #### `abstractions/models/resource_status.jac`
+
 Status information for deployed resources:
+
 - `status: ResourceStatus` (RUNNING, PENDING, FAILED, etc.)
 - `replicas: int`
 - `ready_replicas: int`
@@ -134,7 +152,9 @@ Status information for deployed resources:
 Factories provide a centralized way to create instances of abstractions.
 
 #### `factories/deployment_factory.jac`
+
 Creates deployment target instances:
+
 ```jac
 DeploymentTargetFactory.create(
     target_type: str,  // 'kubernetes', 'aws', 'gcp'
@@ -144,7 +164,9 @@ DeploymentTargetFactory.create(
 ```
 
 #### `factories/database_factory.jac`
+
 Creates database provider instances:
+
 ```jac
 DatabaseProviderFactory.create(
     provider_type: str,  // 'kubernetes_mongo', 'kubernetes_redis'
@@ -154,7 +176,9 @@ DatabaseProviderFactory.create(
 ```
 
 #### `factories/registry_factory.jac`
+
 Creates image registry instances:
+
 ```jac
 ImageRegistryFactory.create(
     registry_type: str,  // 'dockerhub', 'ecr', 'gcr'
@@ -163,7 +187,9 @@ ImageRegistryFactory.create(
 ```
 
 #### `factories/utility_factory.jac`
+
 Creates utility instances:
+
 ```jac
 UtilityFactory.create_logger(
     logger_type: str = 'standard',  // 'standard', 'cloudwatch', 'elasticsearch'
@@ -176,6 +202,7 @@ UtilityFactory.create_logger(
 ### Deployment Targets
 
 #### Kubernetes (`targets/kubernetes/kubernetes_target.jac`)
+
 - Full Kubernetes deployment support
 - Manages Deployments, Services, StatefulSets, PVCs
 - Health checks (readiness and liveness probes)
@@ -186,11 +213,13 @@ UtilityFactory.create_logger(
 ### Database Providers
 
 #### Kubernetes MongoDB (`providers/database/kubernetes_mongo.jac`)
+
 - Deploys MongoDB StatefulSet in Kubernetes
 - Returns connection string
 - Integrates with KubernetesTarget
 
 #### Kubernetes Redis (`providers/database/kubernetes_redis.jac`)
+
 - Deploys Redis Deployment in Kubernetes
 - Returns connection string
 - Integrates with KubernetesTarget
@@ -198,6 +227,7 @@ UtilityFactory.create_logger(
 ### Image Registries
 
 #### DockerHub (`providers/registry/dockerhub.jac`)
+
 - Builds Docker images
 - Pushes to DockerHub
 - Supports authentication
@@ -205,6 +235,7 @@ UtilityFactory.create_logger(
 ### Utilities
 
 #### Standard Logger (`utilities/loggers/standard_logger.jac`)
+
 - Python logging integration
 - Configurable log levels
 - Context support
@@ -228,8 +259,8 @@ logger = UtilityFactory.create_logger('standard');
 
 // Create deployment target
 deployment_target = DeploymentTargetFactory.create(
-    'kubernetes', 
-    target_config, 
+    'kubernetes',
+    target_config,
     logger
 );
 
@@ -284,10 +315,11 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
 ### Adding a New Deployment Target
 
 1. **Create the target class**:
+
    ```jac
    // targets/aws/aws_target.jac
    import from jac_scale.abstractions.deployment_target { DeploymentTarget }
-   
+
    class AWSTarget(DeploymentTarget) {
        // Implement all abstract methods
        def deploy(self: AWSTarget, app_config: AppConfig) -> DeploymentResult {
@@ -298,10 +330,11 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
    ```
 
 2. **Create the config class**:
+
    ```jac
    // targets/aws/aws_config.jac
    import from jac_scale.abstractions.config.base_config { BaseConfig }
-   
+
    class AWSConfig(BaseConfig) {
        has region: str;
        has ecs_cluster: str;
@@ -310,6 +343,7 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
    ```
 
 3. **Update the factory**:
+
    ```jac
    // factories/deployment_factory.jac
    if target_type == 'aws' {
@@ -323,10 +357,11 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
 ### Adding a New Database Provider
 
 1. **Create the provider class**:
+
    ```jac
    // providers/database/aws_documentdb.jac
    import from jac_scale.abstractions.database_provider { DatabaseProvider }
-   
+
    class AWSDocumentDBProvider(DatabaseProvider) {
        def deploy(self: AWSDocumentDBProvider, config: dict) -> dict {
            // AWS DocumentDB deployment logic
@@ -336,6 +371,7 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
    ```
 
 2. **Update the factory**:
+
    ```jac
    // factories/database_factory.jac
    if provider_type == 'aws_documentdb' {
@@ -347,10 +383,11 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
 ### Adding a New Logger
 
 1. **Create the logger class**:
+
    ```jac
    // utilities/loggers/cloudwatch_logger.jac
    import from jac_scale.abstractions.logger { Logger }
-   
+
    class CloudWatchLogger(Logger) {
        def info(self: CloudWatchLogger, message: str, context: dict) -> None {
            // CloudWatch logging logic
@@ -360,6 +397,7 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
    ```
 
 2. **Update the factory**:
+
    ```jac
    // factories/utility_factory.jac
    if logger_type == 'cloudwatch' {
@@ -438,29 +476,36 @@ jac_scale/
 ## Key Design Patterns
 
 ### Factory Pattern
+
 Centralized creation of instances based on type strings. Allows easy extension without modifying existing code.
 
 ### Strategy Pattern
+
 Different deployment targets, database providers, and registries can be swapped at runtime.
 
 ### Template Method Pattern
+
 Base classes define the interface, implementations provide specific behavior.
 
 ### Dependency Injection
+
 Components receive dependencies (logger, config) through constructors.
 
 ### Planned Targets
+
 - AWS ECS/EKS
 - GCP Cloud Run/GKE
 - Azure Container Instances/AKS
 
 ### Planned Providers
+
 - AWS DocumentDB
 - AWS ElastiCache
 - GCP Cloud SQL
 - Managed Redis services
 
 ### Planned Utilities
+
 - CloudWatch Logger
 - Elasticsearch Logger
 - Prometheus Monitoring
