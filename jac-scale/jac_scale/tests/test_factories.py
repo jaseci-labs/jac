@@ -1,6 +1,5 @@
 """Tests for the new factory-based architecture."""
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -133,7 +132,7 @@ def test_app_config_creation():
 
 
 @patch("jac_scale.factories.deployment_factory.KubernetesTarget")
-def test_deployment_target_with_logger(mock_kubernetes_target: Any):
+def test_deployment_target_with_logger(mock_kubernetes_target: MagicMock):
     """Test that deployment target is created with logger."""
     mock_target = MagicMock()
     mock_kubernetes_target.return_value = mock_target
