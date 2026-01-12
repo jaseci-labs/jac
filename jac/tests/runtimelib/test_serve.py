@@ -932,8 +932,8 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
 
     try:
         with redirect_stdout(captured_output):
-            # Call serve with faux=True
-            execution.serve(
+            # Call start with faux=True
+            execution.start(
                 filename=fixture_abs_path("serve_api.jac"),
                 session=server_fixture.session_file,
                 port=server_fixture.port,
@@ -941,7 +941,7 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
                 faux=True,
             )
     except SystemExit:
-        pass  # serve() may call exit() in some error cases
+        pass  # start() may call exit() in some error cases
 
     output = captured_output.getvalue()
 
@@ -996,8 +996,8 @@ def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
 
     try:
         with redirect_stdout(captured_output):
-            # Call serve with faux=True on littleX example
-            execution.serve(
+            # Call start with faux=True on littleX example
+            execution.start(
                 filename=littlex_path,
                 session=server_fixture.session_file,
                 port=server_fixture.port,
@@ -1005,7 +1005,7 @@ def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
                 faux=True,
             )
     except SystemExit:
-        pass  # serve() may call exit() in some error cases
+        pass  # start() may call exit() in some error cases
 
     output = captured_output.getvalue()
 
