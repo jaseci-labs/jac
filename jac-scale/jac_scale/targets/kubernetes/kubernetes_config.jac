@@ -22,6 +22,50 @@ class KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         health_check_path: str = '/docs';
 
+    def init(
+        self: KubernetesConfig,
+        app_name: str = 'jaseci',
+        namespace: str = 'default',
+        docker_image_name: str = '',
+        docker_username: str = '',
+        docker_password: str = '',
+        container_port: int = 8000,
+        node_port: int = 30001,
+        mongodb_enabled: bool = True,
+        redis_enabled: bool = True,
+        cpu_request: (str | None) = None,
+        cpu_limit: (str | None) = None,
+        memory_request: (str | None) = None,
+        memory_limit: (str | None) = None,
+        readiness_initial_delay: int = 10,
+        readiness_period: int = 20,
+        liveness_initial_delay: int = 10,
+        liveness_period: int = 20,
+        liveness_failure_threshold: int = 80,
+        health_check_path: str = '/docs'
+    ) -> None {
+        # Initialize base class fields
+        super().init(app_name=app_name, namespace=namespace);
+        # Initialize derived class fields
+        self.docker_image_name = docker_image_name;
+        self.docker_username = docker_username;
+        self.docker_password = docker_password;
+        self.container_port = container_port;
+        self.node_port = node_port;
+        self.mongodb_enabled = mongodb_enabled;
+        self.redis_enabled = redis_enabled;
+        self.cpu_request = cpu_request;
+        self.cpu_limit = cpu_limit;
+        self.memory_request = memory_request;
+        self.memory_limit = memory_limit;
+        self.readiness_initial_delay = readiness_initial_delay;
+        self.readiness_period = readiness_period;
+        self.liveness_initial_delay = liveness_initial_delay;
+        self.liveness_period = liveness_period;
+        self.liveness_failure_threshold = liveness_failure_threshold;
+        self.health_check_path = health_check_path;
+    }
+
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
         base = super().to_dict();
         base.update(
