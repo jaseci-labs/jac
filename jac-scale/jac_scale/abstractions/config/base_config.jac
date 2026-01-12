@@ -6,7 +6,9 @@ class BaseConfig {
     has app_name: str,
         namespace: str = 'default';
 
-    def init(self: BaseConfig, app_name: str = 'jaseci', namespace: str = 'default') -> None {
+    def init(
+        self: BaseConfig, app_name: str = 'jaseci', namespace: str = 'default'
+    ) -> None {
         self.app_name = app_name;
         self.namespace = namespace;
     }
