@@ -1,7 +1,7 @@
 """Command line interface tool for the Jac Client.
 
 This module extends the core `create` command to add client-side (frontend)
-project setup via the --cl flag.
+project setup via the --cl flag using the extend_command API.
 """
 
 import os;
@@ -10,112 +10,82 @@ import sys;
 import pathlib;
 import subprocess;
 import shutil;
-import from jaclang.cli.cmdreg { cmd_registry, CommandPriority }
+import from jaclang.cli.registry { get_registry }
+import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.pycore.runtime { hookimpl }
-import from jaclang.project.config { JacConfig, find_project_root }
+import from jaclang.project.config { find_project_root }
 
 """Jac CLI extensions for client-side development."""
 class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
     static def create_cmd -> None {
-        """Override core create command to add --cl flag for client-side setup.""";
+        """Extend core create command to add --cl flag for client-side setup.""";
+        registry = get_registry();
 
-        def create(
-            name: str = 'main',
-            force: bool = False,
-            cl: bool = False,
-            skip: bool = False,
-            verbose: bool = False
-        ) -> None {
-            """Initialize a new Jac project.
+        # Extend the core 'create' command with client-specific arguments
+        registry.extend_command(
+            command_name="create",
+            args=[
+                Arg.create(
+                    "cl",
+                    typ=bool,
+                    default=False,
+                    help="Include client-side (frontend) setup",
+                    short="c"
+                ),
+                Arg.create(
+                    "skip",
+                    typ=bool,
+                    default=False,
+                    help="Skip installing default packages (only for --cl)",
+                    short="s"
+                ),
+                Arg.create(
+                    "verbose",
+                    typ=bool,
+                    default=False,
+                    help="Show detailed output during installation",
+                    short="v"
+                ),
 
-            Creates a jac.toml configuration file and basic project structure.
-            Use --cl to include client-side (frontend) setup with Vite bundling.
-
-            Args:
-                name: Project name (default: 'main')
-                force: Overwrite existing jac.toml if present
-                cl: Include client-side (frontend) setup
-                skip: Skip installing default packages (only for --cl projects)
-                verbose: Show detailed output during package installation
-
-            Examples:
-                jac create
-                jac create myapp
-                jac create --cl myapp
-                jac create --cl --skip myapp
-                jac create --cl --verbose myapp
-                jac create --force
-            """;
-            cwd = pathlib.Path(os.getcwd());
-
-            if cl {
-                _create_client_project(cwd, name, force, skip, verbose);
-            } else {
-                _create_core_project(cwd, name, force);
-            }
-        }
-
-        # Register with PLUGIN priority to override core's create command
-        cmd_registry.register(
-            create, priority=CommandPriority.PLUGIN, source="jac-client"
+            ],
+            pre_hook=_handle_client_create,
+            source="jac-client"
         );
     }
 }
 
-"""Create a standard Jac project (core behavior)."""
-def _create_core_project(cwd: pathlib.Path, name: str, force: bool) -> None {
-    existing = find_project_root(cwd);
-    if existing and not force {
-        (project_root, toml_path) = existing;
-        print(f"Already in a Jac project: {toml_path}", file=sys.stderr);
-        print("Use --force to reinitialize.", file=sys.stderr);
-        <>exit(1);
+"""Pre-hook to handle --cl flag for client-side project creation."""
+def _handle_client_create(ctx: HookContext) -> None {
+    # Check if --cl flag is set
+    cl_flag = ctx.get_arg("cl", False);
+    if not cl_flag {
+        # Let core create command run normally
+        return;
     }
 
-    project_name = name or cwd.name;
+    # Handle client-side project creation
+    cwd = pathlib.Path(os.getcwd());
+    name = ctx.get_arg("name", "main");
+    force = ctx.get_arg("force", False);
+    skip_install = ctx.get_arg("skip", False);
+    verbose = ctx.get_arg("verbose", False);
 
-    toml_path = cwd / "jac.toml";
-    if toml_path.exists() and not force {
-        print("jac.toml already exists. Use --force to overwrite.", file=sys.stderr);
-        <>exit(1);
+    try {
+        _create_client_project(cwd, name, force, skip_install, verbose);
+        # Cancel core handler with success code
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0);
+    } except SystemExit as e {
+        # Preserve exit code from sys.exit() calls
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", e.code if e.code is not None else 1);
+    } except Exception as e {
+        print(f"Error creating client project: {e}", file=sys.stderr);
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
     }
-
-    toml_content = JacConfig.create_default_toml(project_name);
-    with open(toml_path, "w") as f {
-        f.write(toml_content);
-    }
-    print(f"Created {toml_path}");
-
-    main_jac = cwd / f"{name}.jac";
-    if not main_jac.exists() {
-        with open(main_jac, "w") as f {
-            f.write(
-                f'''"""Main entry point for {project_name}."""
-
-with entry {{
-    print("Hello from {project_name}!");
-}}
-'''
-            );
-        }
-        print(f"Created {main_jac}");
-    }
-
-    packages_dir = cwd / "packages";
-    if not packages_dir.exists() {
-        packages_dir.mkdir(parents=True, exist_ok=True);
-        print(f"Created {packages_dir}/");
-    }
-
-    _create_gitignore(cwd, client=False);
-
-    print(f"\nProject '{project_name}' initialized successfully!");
-    print("\nNext steps:");
-    print("  jac run main.jac    # Run the main entry point");
-    print("  jac add <package>   # Add dependencies");
-    print("  jac install         # Install all dependencies");
 }
 
 """Create a client-side Jac project with organized folder structure."""
@@ -166,10 +136,7 @@ def _create_client_project(
 
     print(f"Creating Jac client application: {project_name}");
 
-    src_dir = project_path / "src";
-    src_dir.mkdir(parents=True, exist_ok=True);
-
-    components_dir = src_dir / "components";
+    components_dir = project_path / "components";
     components_dir.mkdir(parents=True, exist_ok=True);
 
     assets_dir = project_path / "assets";
@@ -182,7 +149,7 @@ def _create_client_project(
 name = "{project_name}"
 version = "1.0.0"
 description = "Jac client application: {project_name}"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [dependencies.npm]
 "jac-client-node" = "1.0.3"
@@ -203,16 +170,16 @@ base_route_app = "app"
     }
     print(f"Created {toml_path}");
 
-    app_jac_content = '''"""Main entry point for the Jac client application."""
+    main_jac_content = '''"""Main entry point for the Jac client application."""
 
-# Client-side imports
-cl import from react { useState, useEffect }
-cl import from ".components/Button.tsx" { Button }
+# Client-side imports (useState is auto-injected when using `has` variables)
+cl import from react { useEffect }
+cl import from .components.Button { Button }
 
 # Client-side component
 cl {
     def:pub app() -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
 
         useEffect(lambda -> None {
             console.log("Count updated:", count);
@@ -224,12 +191,12 @@ cl {
             <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
                 <Button
                     label="Increment"
-                    onClick={lambda -> None { setCount(count + 1); }}
+                    onClick={lambda -> None { count = count + 1; }}
                     variant="primary"
                 />
                 <Button
                     label="Reset"
-                    onClick={lambda -> None { setCount(0); }}
+                    onClick={lambda -> None { count = 0; }}
                     variant="secondary"
                 />
             </div>
@@ -237,79 +204,62 @@ cl {
     }
 }
 ''';
-    with open(src_dir / "app.jac", 'w') as f {
-        f.write(app_jac_content);
+    with open(project_path / "main.jac", 'w') as f {
+        f.write(main_jac_content);
     }
-    print("Created src/app.jac");
+    print("Created main.jac");
 
-    button_tsx_content = '''import React from 'react';
+    button_cl_jac_content = '''"""Button component for the Jac client application."""
 
-interface ButtonProps {
-  label: string;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary';
-  disabled?: boolean;
-}
+def:pub Button(label: str, onClick: any, variant: str = "primary", disabled: bool = False) -> any {
+    base_styles = {
+        "padding": "0.75rem 1.5rem",
+        "fontSize": "1rem",
+        "fontWeight": "600",
+        "borderRadius": "0.5rem",
+        "border": "none",
+        "cursor": "not-allowed" if disabled else "pointer",
+        "transition": "all 0.2s ease"
+    };
 
-export const Button: React.FC<ButtonProps> = ({
-  label,
-  onClick,
-  variant = 'primary',
-  disabled = false
-}) => {
-  const baseStyles: React.CSSProperties = {
-    padding: '0.75rem 1.5rem',
-    fontSize: '1rem',
-    fontWeight: '600',
-    borderRadius: '0.5rem',
-    border: 'none',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transition: 'all 0.2s ease',
-  };
+    variant_styles = {
+        "primary": {
+            "backgroundColor": "#9ca3af" if disabled else "#3b82f6",
+            "color": "#ffffff"
+        },
+        "secondary": {
+            "backgroundColor": "#e5e7eb" if disabled else "#6b7280",
+            "color": "#ffffff"
+        }
+    };
 
-  const variantStyles: Record<string, React.CSSProperties> = {
-    primary: {
-      backgroundColor: disabled ? '#9ca3af' : '#3b82f6',
-      color: '#ffffff',
-    },
-    secondary: {
-      backgroundColor: disabled ? '#e5e7eb' : '#6b7280',
-      color: '#ffffff',
-    },
-  };
-
-  return (
-    <button
-      style={{ ...baseStyles, ...variantStyles[variant] }}
-      onClick={onClick}
-      disabled={disabled}
+    return <button
+        style={{**base_styles, **variant_styles[variant]}}
+        onClick={onClick}
+        disabled={disabled}
     >
-      {label}
-    </button>
-  );
-};
-
-export default Button;
+        {label}
+    </button>;
+}
 ''';
-    with open(components_dir / "Button.tsx", 'w') as f {
-        f.write(button_tsx_content);
+    with open(components_dir / "Button.cl.jac", 'w') as f {
+        f.write(button_cl_jac_content);
     }
-    print("Created src/components/Button.tsx");
+    print("Created components/Button.cl.jac");
 
     readme_content = f'''  # {project_name}
 
 
-A Jac client-side application with React and TypeScript support.
+A Jac client-side application with React support.
 
 ## Project Structure
 
 ```
 {project_name}/
 ├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application entry
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
+├── main.jac              # Main application entry
+├── components/           # Reusable components
+│   └── Button.cl.jac     # Example Jac component
 ├── assets/               # Static assets (images, fonts, etc.)
 └── build/                # Build output (generated)
 ```
@@ -319,15 +269,15 @@ A Jac client-side application with React and TypeScript support.
 Start the development server:
 
 ```bash
-jac serve src/app.jac
+jac start main.jac
 ```
 
-## TypeScript Support
+## Components
 
-Create TypeScript components in `src/components/` and import them in your Jac files:
+Create Jac components in `components/` as `.cl.jac` files and import them:
 
 ```jac
-cl import from "./components/Button.tsx" {{ Button }}
+cl import from .components.Button {{ Button }}
 ```
 
 ## Adding Dependencies
@@ -343,7 +293,7 @@ jac add --cl react-router-dom
     }
     print("Created README.md");
 
-    _create_gitignore(project_path, client=True);
+    _create_gitignore(project_path);
 
     # Install default packages unless --skip is specified
     if not skip {
@@ -355,15 +305,15 @@ jac add --cl react-router-dom
     if name and name != cwd.name {
         print("\nNext steps:");
         print(f"  cd {name}");
-        print("  jac serve src/app.jac");
+        print("  jac start main.jac");
     } else {
         print("\nNext steps:");
-        print("  jac serve src/app.jac");
+        print("  jac start main.jac");
     }
 }
 
-"""Create .gitignore file with appropriate entries."""
-def _create_gitignore(project_path: pathlib.Path, client: bool = False) -> None {
+"""Create .gitignore file with client-specific entries."""
+def _create_gitignore(project_path: pathlib.Path) -> None {
     gitignore_entries = [
         "# Jac project",
         "packages/",
@@ -381,23 +331,16 @@ def _create_gitignore(project_path: pathlib.Path, client: bool = False) -> None 
         "# IDE",
         ".idea/",
         ".vscode/",
-        "*.swp"
+        "*.swp",
+        "",
+        "# Node.js",
+        "node_modules/",
+        "",
+        "# Jac build artifacts",
+        ".jac/",
+        "*.session",
+        "*.session.*"
     ];
-
-    if client {
-        gitignore_entries.extend(
-            [
-                "",
-                "# Node.js",
-                "node_modules/",
-                "",
-                "# Jac build artifacts",
-                ".jac/",
-                "*.session",
-                "*.session.*"
-            ]
-        );
-    }
 
     gitignore_path = project_path / ".gitignore";
     if gitignore_path.exists() {

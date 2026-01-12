@@ -1,5 +1,25 @@
 impl JacAPIServer.start(self: JacAPIServer) -> None {
     self.introspector.load();
+    # Eagerly build client bundle if there are client exports
+    client_exports = self.introspector._client_manifest.get('exports', []);
+    if client_exports {
+        import time;
+        import sys;
+        print("Building client bundle...", flush=True);
+        start_time = time.time();
+        try {
+            self.introspector.ensure_bundle();
+            elapsed = time.time() - start_time;
+            print(f"Client bundle ready ({elapsed:.1f}s).");
+        } except Exception as e {
+            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+            print(f"{e}", file=sys.stderr);
+            print(
+                f"\nClient pages will not be available until this is fixed.\n",
+                file=sys.stderr
+            );
+        }
+    }
     self.register_create_user_endpoint();
     self.register_login_endpoint();
     self.register_page_endpoint();
@@ -732,6 +752,34 @@ impl JacAPIServer.init(
         allow_methods=['*'],
         allow_headers=['*']
     );
+    # Add custom response headers from jac.toml [environments.response.headers]
+    import from jaclang.project.config { JacConfig }
+    import from starlette.middleware.base { BaseHTTPMiddleware }
+    import from pathlib { Path }
+    # Use base_path to find the correct jac.toml for this project
+    start_path = Path(base_path) if base_path else None;
+    config = JacConfig.discover(start_path);
+    custom_headers: dict = {};
+    if config
+    and config.environments
+    and "response" in config.environments
+    and "headers" in config.environments["response"] {
+        custom_headers = config.environments["response"]["headers"];
+    }
+    if custom_headers {
+        class CustomHeadersMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: CustomHeadersMiddleware, request: Any, call_next: Any
+            ) -> Any {
+                response = await call_next(request);
+                for (header_name, header_value) in custom_headers.items() {
+                    response.headers[header_name] = header_value;
+                }
+                return response;
+            }
+        }
+        self.server_impl.app.add_middleware(CustomHeadersMiddleware);
+    }
     self.SUPPORTED_PLATFORMS: dict = {};
     # Load SSO config fresh (not from cached global) to support env var overrides at runtime
     sso_config = get_scale_config().get_sso_config();

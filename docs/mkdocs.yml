@@ -122,6 +122,7 @@ nav:
         - Custom Configuration: "jac-client/advance/custom-config.md"
         - Package Management: "jac-client/advance/package-management.md"
         - Custom Assets Handling: "jac-client/advance/custom-assets-handling.md"
+        - App Metadata: "jac-client/advance/app-metadata.md"
     - Jac Scale:
       - Getting Started: "jac-scale/README.md"
       - Quickstart: "jac-scale/quickstart.md"
@@ -224,7 +225,7 @@ nav:
 
 
   - Jac Playground:
-    - Playground: "/playground/"
+    - Playground: "https://playground.jaseci.org/page/app"
 
   - Jac GPT: "https://jac-gpt.jaseci.org"
 
@@ -342,7 +343,7 @@ plugins:
       video_controls: False
   - redirects:
       redirect_maps:
-        index.md: learn/installation.md
+        index.md: getting-started/index.md
         # jac-cloud redirects to production docs
         learn/jac-cloud/introduction.md: production/index.md
         learn/jac-cloud/quickstart.md: production/index.md

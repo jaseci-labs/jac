@@ -1,6 +1,6 @@
-# Jac scale configueration
+# Jac scale configuration
 
-`jac scale` not only simplifies application deployment but also supports advanced configurations.
+`jac start --scale` not only simplifies application deployment but also supports advanced configurations.
 
 ### JWT environment variables
 

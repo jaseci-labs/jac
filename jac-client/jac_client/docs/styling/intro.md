@@ -151,7 +151,7 @@ cd jac_client/examples/css-styling/<example-name>
 npm install
 
 # Run the application
-jac serve src/app.jac
+jac start main.jac
 ```
 
 ## Best Practices

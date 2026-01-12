@@ -1,0 +1,9 @@
+[project]
+name = "test-api"
+version = "1.0.0"
+description = "Test fixture for jac-scale serve tests"
+
+[environments.response.headers]
+X-Custom-Test-Header = "test-value"
+Cross-Origin-Opener-Policy = "same-origin"
+Cross-Origin-Embedder-Policy = "require-corp"

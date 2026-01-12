@@ -75,10 +75,10 @@ Next, crate a simple Jac program that contains a single walker that produces wea
 
 ### Deploying to Cloud
 
-To deploy your Jac program as a cloud service, use the `jac serve` command:
+To deploy your Jac program as a cloud service, use the `jac start` command:
 
 ```bash
-jac serve weather_service.jac
+jac start weather_service.jac
 ```
 
 !!! success "Instant Deployment"
@@ -227,7 +227,7 @@ First lets develop a walker that allows users to create and retrieve notes in a 
 Deploy your notebook API:
 
 ```bash
-jac serve simple_notebook.jac
+jac start simple_notebook.jac
 ```
 
 We can now test the API using `curl` or any HTTP client via the POST method. The `create_note` walker will accept a JSON request body with `title`, `content`, and `author` fields, and return a response indicating the note was created.

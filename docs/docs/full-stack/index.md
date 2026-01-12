@@ -19,7 +19,7 @@ Build complete web applications using Jac for both frontend and backend. Jac Cli
 # Create a new full-stack project
 jac create --cl myapp
 cd myapp
-jac serve
+jac start
 ```
 
 Visit `http://localhost:8000/cl/app` to see your app.
@@ -31,9 +31,9 @@ Visit `http://localhost:8000/cl/app` to see your app.
 ```
 myapp/
 ├── jac.toml              # Configuration
-├── src/
-│   ├── app.jac           # Backend logic (nodes, walkers)
-│   └── app.cl.jac        # Frontend components (optional)
+├── main.jac              # Main entry point (frontend + backend)
+├── components/           # Reusable components (TypeScript/JSX)
+│   └── Button.cl.jac        # Example component
 ├── assets/               # Static files (images, fonts)
 └── .jac/                 # Build artifacts (gitignored)
 ```
@@ -44,14 +44,12 @@ myapp/
 
 ```jac
 cl {
-    import from react { useState }
-
     def:pub app() -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
 
         return <div>
             <h1>Count: {count}</h1>
-            <button onClick={lambda -> None { setCount(count + 1); }}>
+            <button onClick={lambda -> None { count = count + 1; }}>
                 Increment
             </button>
         </div>;
@@ -63,48 +61,56 @@ cl {
 
 - `cl { }` block marks frontend code
 - `def:pub app()` is the required entry point
-- React hooks work naturally in Jac
+- `has` variables in client functions are automatically reactive (generates React useState)
 
 ---
 
 ## State Management
 
-### useState
+### Reactive State with `has`
+
+Inside a `cl { }` block or `.cl.jac` file, `has` variables automatically become React state. The compiler generates `useState` calls, auto-injects the `useState` import from `@jac-client/utils`, and transforms assignments to setter calls.
 
 ```jac
 cl {
-    import from react { useState }
-
     def:pub Counter() -> any {
-        [count, setCount] = useState(0);
-        [name, setName] = useState("World");
+        has count: int = 0;
+        has name: str = "World";
 
         return <div>
             <h1>Hello, {name}! Count: {count}</h1>
             <input
                 value={name}
-                onChange={lambda e: any -> None { setName(e.target.value); }}
+                onChange={lambda e: any -> None { name = e.target.value; }}
             />
-            <button onClick={lambda -> None { setCount(count + 1); }}>+1</button>
+            <button onClick={lambda -> None { count = count + 1; }}>+1</button>
         </div>;
     }
 }
+```
+
+**Generated JavaScript:**
+
+```javascript
+const [count, setCount] = useState(0);
+const [name, setName] = useState("World");
+// Assignments like `count = count + 1` become `setCount(count + 1)`
 ```
 
 ### useEffect
 
 ```jac
 cl {
-    import from react { useState, useEffect }
+    import from react { useEffect }
 
     def:pub DataLoader() -> any {
-        [data, setData] = useState([]);
+        has data: list = [];
 
         # Run once on mount
         useEffect(lambda -> None {
             async def load() -> None {
                 result = root spawn get_items();
-                setData(result.reports);
+                data = result.reports;
             }
             load();
         }, []);
@@ -122,14 +128,14 @@ cl {
 
 ```jac
 cl {
-    import from react { createContext, useContext, useState }
+    import from react { createContext, useContext }
 
     AppContext = createContext(None);
 
     def:pub AppProvider(props: dict) -> any {
-        [user, setUser] = useState(None);
+        has user: any = None;
 
-        return <AppContext.Provider value={{ "user": user, "setUser": setUser }}>
+        return <AppContext.Provider value={{ "user": user, "setUser": lambda v: any -> None { user = v; } }}>
             {props.children}
         </AppContext.Provider>;
     }
@@ -176,17 +182,17 @@ walker get_todos {
 
 ```jac
 cl {
-    import from react { useState, useEffect }
+    import from react { useEffect }
 
     def:pub TodoApp() -> any {
-        [todos, setTodos] = useState([]);
-        [text, setText] = useState("");
+        has todos: list = [];
+        has text: str = "";
 
         # Load todos on mount
         useEffect(lambda -> None {
             async def load() -> None {
                 result = root spawn get_todos();
-                setTodos(result.reports);
+                todos = result.reports;
             }
             load();
         }, []);
@@ -195,14 +201,14 @@ cl {
         def add_todo() -> None {
             async def create() -> None {
                 result = root spawn create_todo(text=text);
-                setTodos([...todos, result.reports[0]]);
-                setText("");
+                todos = [...todos, result.reports[0]];
+                text = "";
             }
             create();
         }
 
         return <div>
-            <input value={text} onChange={lambda e: any -> None { setText(e.target.value); }} />
+            <input value={text} onChange={lambda e: any -> None { text = e.target.value; }} />
             <button onClick={lambda -> None { add_todo(); }}>Add</button>
             <ul>
                 {todos.map(lambda t: any -> any {
@@ -266,12 +272,11 @@ cl {
     import from "@jac-client/utils" {
         jacLogin, jacSignup, jacLogout, jacIsLoggedIn
     }
-    import from react { useState }
 
     def:pub LoginForm() -> any {
-        [username, setUsername] = useState("");
-        [password, setPassword] = useState("");
-        [error, setError] = useState("");
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
 
         def handle_login() -> None {
             async def login() -> None {
@@ -280,7 +285,7 @@ cl {
                     # Redirect or update state
                     print("Logged in!");
                 } else {
-                    setError("Login failed");
+                    error = "Login failed";
                 }
             }
             login();
@@ -298,9 +303,9 @@ cl {
 
         return <div>
             <input placeholder="Username" value={username}
-                   onChange={lambda e: any -> None { setUsername(e.target.value); }} />
+                   onChange={lambda e: any -> None { username = e.target.value; }} />
             <input type="password" placeholder="Password" value={password}
-                   onChange={lambda e: any -> None { setPassword(e.target.value); }} />
+                   onChange={lambda e: any -> None { password = e.target.value; }} />
             <button onClick={lambda -> None { handle_login(); }}>Login</button>
             <button onClick={lambda -> None { handle_signup(); }}>Sign Up</button>
             {error and <p style={{"color": "red"}}>{error}</p>}
@@ -474,13 +479,13 @@ cl {
 
 ```bash
 # Development server
-jac serve src/app.jac
+jac start main.jac
 
 # Production build
-jac build src/app.jac
+jac build main.jac
 
 # Using jac.toml entry-point
-jac serve  # Uses [project].entry-point
+jac start  # Uses [project].entry-point
 ```
 
 ---

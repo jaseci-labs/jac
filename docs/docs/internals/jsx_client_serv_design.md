@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes how Jac's `cl` (client) keyword produces browser-ready web experiences. Client-marked declarations compile to JavaScript and ship through `jac serve` as static bundles that execute entirely in the browser. The current implementation is **CSR-only** (Client-Side Rendering): the server returns an empty HTML shell with bootstrapping metadata and a JavaScript bundle that handles all rendering in the browser.
+This document describes how Jac's `cl` (client) keyword produces browser-ready web experiences. Client-marked declarations compile to JavaScript and ship through `jac start` as static bundles that execute entirely in the browser. The current implementation is **CSR-only** (Client-Side Rendering): the server returns an empty HTML shell with bootstrapping metadata and a JavaScript bundle that handles all rendering in the browser.
 
 **Key Features:**
 
@@ -727,7 +727,7 @@ walker LoadUsers {
 jac myapp.jac
 
 # Start the server
-jac serve myapp.jac
+jac start myapp.jac
 
 # Access the page
 # Browser: http://localhost:8000/cl/homepage

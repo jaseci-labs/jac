@@ -1,15 +1,13 @@
-"""Initialize the type checker pass."""
-impl TypeCheckPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
-    super.init(ir_in, prog, cancel_token);
-}
-
 """Handle the special variable reference node."""
-impl TypeCheckPass.exit_special_var_ref(<>node: uni.SpecialVarRef) -> None {
+
+impl TypeCheckPass.exit_special_var_ref(
+    self: TypeCheckPass, <>node: uni.SpecialVarRef
+) -> None {
     self.evaluator.get_type_of_expression(<>node);
 }
 
 """Handle name nodes to ensure symbol resolution for all variable references."""
-impl TypeCheckPass.exit_name(<>node: uni.Name) -> None {
+impl TypeCheckPass.exit_name(self: TypeCheckPass, <>node: uni.Name) -> None {
     # Skip if already resolved or if part of a construct that handles its own resolution
     if <>node.sym is None {
         self.evaluator.get_type_of_expression(<>node);
@@ -17,7 +15,9 @@ impl TypeCheckPass.exit_name(<>node: uni.Name) -> None {
 }
 
 """Handle the edge reference trailer node."""
-impl TypeCheckPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
+impl TypeCheckPass.exit_edge_ref_trailer(
+    self: TypeCheckPass, <>node: uni.EdgeRefTrailer
+) -> None {
     for chain in <>node.chain {
         if isinstance(chain, uni.FilterCompr) {
             self.evaluator.get_type_of_expression(chain);
@@ -26,12 +26,16 @@ impl TypeCheckPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
 }
 
 """Handle the formatted value node."""
-impl TypeCheckPass.exit_formatted_value(<>node: uni.FormattedValue) -> None {
+impl TypeCheckPass.exit_formatted_value(
+    self: TypeCheckPass, <>node: uni.FormattedValue
+) -> None {
     self.evaluator.get_type_of_expression(<>node.format_part);
 }
 
 """Handle the return statement node."""
-impl TypeCheckPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
+impl TypeCheckPass.exit_return_stmt(
+    self: TypeCheckPass, <>node: uni.ReturnStmt
+) -> None {
     returning_type = self.evaluator._convert_to_instance(
         self.evaluator.get_none_type()
     );
@@ -51,27 +55,33 @@ impl TypeCheckPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
 }
 
 """Handle the edge operation reference node."""
-impl TypeCheckPass.exit_filter_compr(<>node: uni.FilterCompr) -> None {
+impl TypeCheckPass.exit_filter_compr(
+    self: TypeCheckPass, <>node: uni.FilterCompr
+) -> None {
     self.evaluator.get_type_of_expression(<>node);
 }
 
 """Handle the function call node."""
-impl TypeCheckPass.exit_func_call(<>node: uni.FuncCall) -> None {
+impl TypeCheckPass.exit_func_call(self: TypeCheckPass, <>node: uni.FuncCall) -> None {
     self.evaluator.get_type_of_expression(<>node);
 }
 
 """Handle the binary expression node."""
-impl TypeCheckPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
+impl TypeCheckPass.exit_binary_expr(
+    self: TypeCheckPass, <>node: uni.BinaryExpr
+) -> None {
     self.evaluator.get_type_of_expression(<>node);
 }
 
 """Handle the atom trailer node."""
-impl TypeCheckPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
+impl TypeCheckPass.exit_atom_trailer(
+    self: TypeCheckPass, <>node: uni.AtomTrailer
+) -> None {
     self.evaluator.get_type_of_expression(<>node);
 }
 
 """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
-impl TypeCheckPass.exit_assignment(<>node: uni.Assignment) -> None {
+impl TypeCheckPass.exit_assignment(self: TypeCheckPass, <>node: uni.Assignment) -> None {
     if ((len(<>node.target) == 1) and (<>node.value is not None)) {
         left_type = self.evaluator.get_type_of_expression(<>node.target[0]);
         right_type = self.evaluator.get_type_of_expression(<>node.value);
@@ -84,7 +94,7 @@ impl TypeCheckPass.exit_assignment(<>node: uni.Assignment) -> None {
 }
 
 """Exit an import node."""
-impl TypeCheckPass.exit_import(<>node: uni.Import) -> None {
+impl TypeCheckPass.exit_import(self: TypeCheckPass, <>node: uni.Import) -> None {
     if <>node.from_loc {
         self.evaluator.get_type_of_module(<>node.from_loc);
         for item in <>node.items {
@@ -102,7 +112,7 @@ impl TypeCheckPass.exit_import(<>node: uni.Import) -> None {
 }
 
 """Enter an ability node."""
-impl TypeCheckPass.enter_ability(<>node: uni.Ability) -> None {
+impl TypeCheckPass.enter_ability(self: TypeCheckPass, <>node: uni.Ability) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
     for decor in (<>node.decorators or []) {
         ty = self.evaluator.get_type_of_expression(decor);
@@ -114,7 +124,7 @@ impl TypeCheckPass.enter_ability(<>node: uni.Ability) -> None {
 }
 
 """Exit an ability node - ensure parameter type annotations are evaluated."""
-impl TypeCheckPass.exit_ability(<>node: uni.Ability) -> None {
+impl TypeCheckPass.exit_ability(self: TypeCheckPass, <>node: uni.Ability) -> None {
     # For abilities with ImplDef body (stubs linked to impl files), the original declaration's
     # type annotation Name nodes are orphaned (not in the traversal tree). We need to explicitly
     # process them to enable hover/go-to-definition on the declaration file.
@@ -142,7 +152,9 @@ impl TypeCheckPass.exit_ability(<>node: uni.Ability) -> None {
 }
 
 """Traverse an ImplDef body and evaluate types for all expression nodes."""
-impl TypeCheckPass._traverse_impl_body(impl_def: uni.ImplDef) -> None {
+impl TypeCheckPass._traverse_impl_body(
+    self: TypeCheckPass, impl_def: uni.ImplDef
+) -> None {
     # Recursively traverse all nodes in the ImplDef body and call type evaluation
     def traverse_node(node: uni.UniNode) -> None {
         if node is None {
@@ -194,7 +206,7 @@ impl TypeCheckPass._traverse_impl_body(impl_def: uni.ImplDef) -> None {
 }
 
 """Exit an impl def node - ensure parameter type annotations are evaluated."""
-impl TypeCheckPass.exit_impl_def(<>node: uni.ImplDef) -> None {
+impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, <>node: uni.ImplDef) -> None {
     # For impl blocks, process type annotation Name nodes to enable hover/go-to-definition.
     # Directly traverse the FuncSignature's params to find type annotations.
     if isinstance(<>node.spec, uni.FuncSignature) {
@@ -242,7 +254,7 @@ impl TypeCheckPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     }
 }
 
-impl TypeCheckPass._insert_builtin_symbols -> None {
+impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
     if (self.ir_in == self.evaluator.builtins_module) {
         return;
     }
@@ -255,7 +267,7 @@ impl TypeCheckPass._insert_builtin_symbols -> None {
 
 """Add a diagnostic message to the pass."""
 impl TypeCheckPass._add_diagnostic(
-    <>node: uni.UniNode, message: str, warning: bool
+    self: TypeCheckPass, <>node: uni.UniNode, message: str, warning: bool
 ) -> None {
     if warning {
         self.log_warning(message, <>node);
@@ -265,7 +277,7 @@ impl TypeCheckPass._add_diagnostic(
 }
 
 """Initialize the checker pass."""
-impl TypeCheckPass.before_pass -> None {
+impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();

@@ -1504,6 +1504,17 @@ class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""
 
     @staticmethod
+    def get_api_server_class() -> type:
+        """Get the JacAPIServer class to use for serve command.
+
+        Plugins can override this hook to provide their own server class.
+        The returned class should be compatible with the JacAPIServer interface.
+        """
+        from jaclang.runtimelib.server import JacAPIServer
+
+        return JacAPIServer
+
+    @staticmethod
     def get_module_introspector(
         module_name: str,
         base_path: str | None = None,

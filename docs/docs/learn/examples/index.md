@@ -21,7 +21,7 @@ Build your first complete applications with these step-by-step tutorials.
 
 | Example | Description | Key Features |
 |---------|-------------|--------------|
-| [LittleX](littleX/tutorial.md) | Build a Twitter-like app in 200 lines | Nodes, walkers, `jac serve`, graph traversal |
+| [LittleX](littleX/tutorial.md) | Build a Twitter-like app in 200 lines | Nodes, walkers, `jac start`, graph traversal |
 | [EmailBuddy](EmailBuddy/tutorial.md) | AI-powered email assistant | `by llm`, structured outputs, email integration |
 
 ---
@@ -90,7 +90,7 @@ rm -rf .jac/data/
 
 ```bash
 # Start API server
-jac serve example.jac
+jac start example.jac
 
 # API docs at http://localhost:8000/docs
 ```

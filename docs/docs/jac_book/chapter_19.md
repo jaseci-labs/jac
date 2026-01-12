@@ -715,7 +715,7 @@ When deploying to Jac Cloud, consider performance implications of distributed ex
 
 ```bash
 # Deploy the optimized version
-jac serve distributed_friends.jac
+jac start distributed_friends.jac
 
 # Generate test data
 curl -X POST http://localhost:8000/walker/generate_test_network \

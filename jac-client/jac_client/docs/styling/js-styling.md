@@ -81,8 +81,10 @@ export default {
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from .styles { default as styles }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {

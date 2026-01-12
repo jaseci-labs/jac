@@ -32,7 +32,7 @@ npm install
 1. Run the Jac server:
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 1. Open your browser and navigate to:

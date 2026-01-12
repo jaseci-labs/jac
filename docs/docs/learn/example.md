@@ -140,7 +140,7 @@ walker create_post {
 
 ??? info "How To Run"
     1. Install the Jac Cloud by `pip install jac-cloud`
-    2. Copy this code into `example.jac` file and run with `jac serve example.jac`
+    2. Copy this code into `example.jac` file and run with `jac start example.jac`
 
 ??? example "Output"
     ` INFO:     Started server process [26286]

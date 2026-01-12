@@ -32,7 +32,7 @@ npm install
 1. Run the application:
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 ## How It Works

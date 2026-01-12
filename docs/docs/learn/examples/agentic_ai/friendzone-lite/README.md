@@ -57,7 +57,7 @@ obj Response {
 1. Start the Jac Cloud server:
 
    ```bash
-   jac serve friendzone_lite.jac
+   jac start friendzone_lite.jac
    ```
 
 2. Run the frontend:
@@ -168,7 +168,7 @@ friendzone-lite/
 
    ```bash
 
-   jac serve friendzone_lite.jac
+   jac start friendzone_lite.jac
    jac streamlit frontend.jac
    ```
 

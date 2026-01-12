@@ -7,7 +7,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | Command | Description |
 |---------|-------------|
 | `jac run` | Execute a Jac file |
-| `jac serve` | Serve as HTTP API server |
+| `jac start` | Start REST API server (use `--scale` for K8s deployment) |
 | `jac create` | Create new project |
 | `jac build` | Compile to bytecode |
 | `jac check` | Type check code |
@@ -17,8 +17,8 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac plugins` | Manage plugins |
-| `jac scale` | Deploy to Kubernetes (jac-scale) |
-| `jac destroy` | Remove deployment |
+| `jac config` | Manage project configuration |
+| `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
@@ -63,12 +63,12 @@ jac run main.jac --no-cache
 
 ---
 
-### jac serve
+### jac start
 
-Serve a Jac application as an HTTP API server.
+Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes.
 
 ```bash
-jac serve [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] filename
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [--scale] [--build] filename
 ```
 
 | Option | Description | Default |
@@ -78,34 +78,42 @@ jac serve [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] filename
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
 | `-f, --faux` | Faux mode (mock) | `False` |
+| `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
+| `--build, -b` | Build Docker image before deploy (with `--scale`) | `False` |
 
 **Examples:**
 
 ```bash
-# Serve on default port
-jac serve main.jac
+# Start on default port
+jac start main.jac
 
-# Serve on custom port
-jac serve main.jac -p 3000
+# Start on custom port
+jac start main.jac -p 3000
 
-# Serve with session
-jac serve main.jac -s prod_session
+# Start with session
+jac start main.jac -s prod_session
+
+# Deploy to Kubernetes (requires jac-scale plugin)
+jac start main.jac --scale
+
+# Build and deploy to Kubernetes
+jac start main.jac --scale --build
 ```
 
 ---
 
 ### jac create
 
-Initialize a new Jac project with configuration.
+Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
 
 ```bash
-jac create [-h] [-f] [-c] [-s] [-v] name
+jac create [-h] [-f] [-c] [-s] [-v] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `name` | Project name | `main` |
-| `-f, --force` | Overwrite existing jac.toml | `False` |
+| `name` | Project name (creates folder with this name) | `main` |
+| `-f, --force` | Overwrite existing project | `False` |
 | `-c, --cl` | Include client-side setup | `False` |
 | `-s, --skip` | Skip package installation | `False` |
 | `-v, --verbose` | Verbose output | `False` |
@@ -113,14 +121,15 @@ jac create [-h] [-f] [-c] [-s] [-v] name
 **Examples:**
 
 ```bash
-# Create basic project
+# Create basic project (creates myapp/ folder)
 jac create myapp
+cd myapp
 
 # Create full-stack project with frontend
 jac create --cl myapp
 
 # Force overwrite existing
-jac create --force
+jac create myapp --force
 ```
 
 ---
@@ -348,12 +357,12 @@ jac debug main.jac
 Manage Jac plugins.
 
 ```bash
-jac plugins [-h] [-v] action [names ...]
+jac plugins [-h] [-v] [action] [names ...]
 ```
 
 | Action | Description |
 |--------|-------------|
-| `list` | List installed plugins |
+| `list` | List installed plugins (default) |
 | `install` | Install plugins |
 | `uninstall` | Remove plugins |
 | `enable` | Enable plugins |
@@ -366,7 +375,10 @@ jac plugins [-h] [-v] action [names ...]
 **Examples:**
 
 ```bash
-# List plugins
+# List plugins (action defaults to 'list')
+jac plugins
+
+# Explicitly list plugins
 jac plugins list
 
 # Install a plugin
@@ -378,29 +390,92 @@ jac plugins uninstall byllm
 
 ---
 
-## Deployment (jac-scale)
+## Configuration Management
 
-### jac scale
+### jac config
 
-Deploy to Kubernetes (requires jac-scale plugin).
+View and modify project configuration settings in `jac.toml`.
 
 ```bash
-jac scale [-h] [-b] file_path
+jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
 ```
+
+| Action | Description |
+|--------|-------------|
+| `show` | Display explicitly set configuration values (default) |
+| `list` | Display all settings including defaults |
+| `get` | Get a specific setting value |
+| `set` | Set a configuration value |
+| `unset` | Remove a configuration value |
+| `path` | Show path to config file |
+| `groups` | List available configuration groups |
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `file_path` | Jac file to deploy | Required |
-| `-b, --build` | Build before deploy | `False` |
+| `-k, --key` | Configuration key (e.g., `project.name`) | None |
+| `-v, --value` | Value to set | None |
+| `-g, --group` | Filter by configuration group | None |
+| `-o, --output` | Output format (`table`, `json`, `toml`) | `table` |
+
+**Configuration Groups:**
+
+- `project` - Project metadata (name, version, description)
+- `run` - Runtime settings (cache, session)
+- `build` - Build settings (typecheck, output directory)
+- `test` - Test settings (verbose, filters)
+- `serve` - Server settings (port, host)
+- `format` - Formatting options
+- `check` - Type checking options
+- `dot` - Graph visualization settings
+- `cache` - Cache configuration
+- `plugins` - Plugin management
+- `environment` - Environment variables
 
 **Examples:**
 
 ```bash
-# Deploy
-jac scale main.jac
+# Show explicitly set configuration
+jac config show
 
-# Build and deploy
-jac scale main.jac -b
+# Show all settings including defaults
+jac config list
+
+# Show settings for a specific group
+jac config show -g project
+
+# Get a specific value
+jac config get -k project.name
+
+# Set a value
+jac config set -k project.version -v "2.0.0"
+
+# Remove a value (revert to default)
+jac config unset -k run.cache
+
+# Show config file path
+jac config path
+
+# List available groups
+jac config groups
+
+# Output as JSON
+jac config show -o json
+
+# Output as TOML
+jac config list -o toml
+```
+
+---
+
+## Deployment (jac-scale)
+
+### jac start --scale
+
+Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
+
+```bash
+jac start main.jac --scale           # Deploy without building
+jac start main.jac --scale --build   # Build and deploy
 ```
 
 ---
@@ -651,11 +726,11 @@ jac format . --fix
 ### Production
 
 ```bash
-# Serve locally
-jac serve main.jac -p 8000
+# Start locally
+jac start main.jac -p 8000
 
 # Deploy to Kubernetes
-jac scale main.jac
+jac start main.jac --scale
 
 # Remove deployment
 jac destroy main.jac

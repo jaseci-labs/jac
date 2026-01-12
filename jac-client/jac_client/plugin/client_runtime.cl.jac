@@ -1,6 +1,7 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
 import from 'react' { * as React }
+import from 'react' { useState as reactUseState }
 import from 'react-dom/client' { * as ReactDOM }
 import from 'react-router-dom' {
     HashRouter as ReactRouterHashRouter,
@@ -15,7 +16,9 @@ import from 'react-router-dom' {
 
 def : pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
 
-glob : pub Router = ReactRouterHashRouter,
+# React hooks re-exported for auto-injection by `has` variables
+glob : pub useState = reactUseState,
+     Router = ReactRouterHashRouter,
      Routes = ReactRouterRoutes,
      Route = ReactRouterRoute,
      Link = ReactRouterLink,
@@ -36,3 +39,4 @@ def : pub jacIsLoggedIn -> bool;
 def : pub __getLocalStorage(key: str) -> str;
 def : pub __setLocalStorage(key: str, value: str) -> None;
 def : pub __removeLocalStorage(key: str) -> None;
+# React Router components

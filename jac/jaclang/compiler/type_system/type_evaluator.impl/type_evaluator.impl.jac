@@ -85,7 +85,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 }
                             }
                             if len(overloaded_fns) > 1 {
-                                overloaded_ty = types.OverloadedType(overloaded_fns);
+                                overloaded_ty = types.OverloadedType(
+                                    overloads=overloaded_fns
+                                );
                             }
                         }
                         # NOTE: If this atom trailer is called `<atom_trailer>()` we can resolve
@@ -309,7 +311,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                             }
                         }
                         if len(overloaded_fns) > 1 {
-                            overloaded_ty = types.OverloadedType(overloaded_fns);
+                            overloaded_ty = types.OverloadedType(
+                                overloads=overloaded_fns
+                            );
                         }
                         return overloaded_ty or symbol_type;
                     }

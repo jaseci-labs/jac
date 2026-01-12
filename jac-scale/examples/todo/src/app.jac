@@ -24,8 +24,8 @@ cl import from react {
 
 cl {
     def app -> any {
-        [todos, setTodos] = useState([]);
-        [input, setInput] = useState("");
+        has todos: list = [];
+        has input: str = "";
 
         # Event Handler
         async def addTodo -> None {
@@ -34,8 +34,8 @@ cl {
             }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
-            setInput("");
+            todos = todos.concat([new_todo]);
+            input = "";
         }
 
         return <div>
@@ -44,7 +44,7 @@ cl {
             </h2>
             <input
                 value={input}
-                onChange={lambda  e: any  -> None{ setInput(e.target.value);} }
+                onChange={lambda  e: any  -> None{ input = e.target.value;} }
                 onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
                     addTodo();
                 }} }

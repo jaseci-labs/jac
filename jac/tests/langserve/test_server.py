@@ -239,14 +239,13 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:67:6-67:14"),  # TypeBase now on line 18
+            (18, 5, "compiler/type_system/types.jac:67:4-67:12"),  # TypeBase now on line 18
             (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
             (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23
             (24, 52, "jaclang/vendor/pygls/server.py:351:0-615:13"),      # LanguageServer on line 24
             (26, 31, "jaclang/vendor/lsprotocol/types.py:0:0-0:0"),       # lspt now on line 26
-            (29, 26, "jaclang/pycore/log.py:0:0-0:0"), # Position now on line 27
         ]
         # fmt: on
 

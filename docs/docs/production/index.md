@@ -17,11 +17,11 @@ Deploy your Jac applications to production with jac-scale. Transform your local 
 ## Quick Start
 
 ```bash
-# Serve locally (development)
-jac serve main.jac
+# Start locally (development)
+jac start main.jac
 
 # Deploy to Kubernetes (production)
-jac scale main.jac
+jac start main.jac --scale
 
 # Teardown deployment
 jac destroy main.jac
@@ -31,10 +31,10 @@ jac destroy main.jac
 
 ## CLI Commands
 
-### `jac serve` - Local API Server
+### `jac start` - Local API Server (and Kubernetes Deployment)
 
 ```bash
-jac serve <filename.jac> [options]
+jac start <filename.jac> [options]
 ```
 
 | Option | Default | Description |
@@ -43,6 +43,8 @@ jac serve <filename.jac> [options]
 | `--session` | "" | Session name for persistence |
 | `--main` | true | Run as main module |
 | `--faux` | false | Print endpoints without starting |
+| `--scale` | false | Deploy to Kubernetes (requires jac-scale) |
+| `--build` | false | Build Docker image before deploying (with --scale) |
 
 **Access Points:**
 
@@ -50,28 +52,20 @@ jac serve <filename.jac> [options]
 - Docs: `http://localhost:8000/docs` (Swagger UI)
 - Client: `http://localhost:8000/cl/app` (if using jac-client)
 
-### `jac scale` - Kubernetes Deployment
-
-```bash
-jac scale <filename.jac> [options]
-```
-
-| Option | Description |
-|--------|-------------|
-| `-b, --build` | Build Docker image before deploying |
+### Kubernetes Deployment
 
 **Two Deployment Modes:**
 
 1. **Fast Mode (Default)**: Uses Python base image, syncs code via PVC
 
    ```bash
-   jac scale main.jac
+   jac start main.jac --scale
    ```
 
 2. **Production Mode**: Builds Docker image, pushes to registry
 
    ```bash
-   jac scale main.jac -b
+   jac start main.jac --scale --build
    ```
 
 ### `jac destroy` - Teardown
@@ -244,7 +238,7 @@ docker_password = "${DOCKER_PASSWORD}"
 
 ## Auto-Provisioned Resources
 
-When you run `jac scale`, these resources are created automatically:
+When you run `jac start --scale`, these resources are created automatically:
 
 ### MongoDB StatefulSet (if enabled)
 
@@ -352,11 +346,11 @@ host = "0.0.0.0"
 jac run main.jac
 
 # 2. Local API: Test as server
-jac serve main.jac
+jac start main.jac
 # → http://localhost:8000/docs
 
 # 3. Production: Deploy to K8s
-jac scale main.jac
+jac start main.jac --scale
 # → http://localhost:30001/docs (NodePort)
 # → or LoadBalancer URL (AWS)
 
@@ -372,7 +366,7 @@ export DOCKER_USERNAME="your-username"
 export DOCKER_PASSWORD="your-token"
 
 # Build, push, and deploy
-jac scale main.jac -b
+jac start main.jac --scale --build
 ```
 
 ---

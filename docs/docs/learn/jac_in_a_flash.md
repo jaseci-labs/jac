@@ -103,7 +103,7 @@ This example shows how conventional logic can become graph traversal.
 
 ## Step&nbsp;5 – Scale Agnostic Approach
 
-The fifth version demonstrates Jac's scale-agnostic design. The same code that runs locally can seamlessly scale to cloud deployment without modification. By running the command `jac serve filename.jac`, the walkers become API endpoints that can be called via HTTP requests. This shows how Jac applications are inherently cloud-ready.
+The fifth version demonstrates Jac's scale-agnostic design. The same code that runs locally can seamlessly scale to cloud deployment without modification. By running the command `jac start filename.jac`, the walkers become API endpoints that can be called via HTTP requests. This shows how Jac applications are inherently cloud-ready.
 
 === "guess_game5.jac"
     ```jac linenums="1"

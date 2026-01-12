@@ -437,14 +437,18 @@ impl ModuleIntrospector.ensure_bundle -> str {
     if self._bundle {
         return self._bundle.hash;
     }
+    # Don't retry if we already have a cached error
+    if self._bundle_error {
+        raise ClientBundleError(self._bundle_error) ;
+    }
     try {
         self._bundle = self._bundle_builder.build(self._module);
         self._bundle_error = None;
         return self._bundle.hash;
-    } except ClientBundleError as exc {
+    } except Exception as exc {
         self._bundle = None;
         self._bundle_error = str(exc);
-        raise exc from RuntimeError(self._bundle_error) ;
+        raise ClientBundleError(self._bundle_error) ;
     }
 }
 
@@ -1139,6 +1143,26 @@ impl JacAPIServer.print_endpoint_docs -> None {
 """Start the HTTP server."""
 impl JacAPIServer.start -> None {
     self.introspector.load();
+    # Eagerly build client bundle if there are client exports
+    client_exports = self.introspector._client_manifest.get('exports', []);
+    if client_exports {
+        import time;
+        print("Building client bundle...", flush=True);
+        start_time = time.time();
+        try {
+            self.introspector.ensure_bundle();
+            elapsed = time.time() - start_time;
+            print(f"Client bundle ready ({elapsed:.1f}s).");
+        } except Exception as e {
+            import sys;
+            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+            print(f"{e}", file=sys.stderr);
+            print(
+                f"\nClient pages will not be available until this is fixed.\n",
+                file=sys.stderr
+            );
+        }
+    }
     handler_class = self.create_handler();
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
