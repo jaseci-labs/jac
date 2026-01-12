@@ -23,24 +23,19 @@ def _scale_pre_hook(context: HookContext) -> None {
         build = context.get_arg("build", False);
         target = context.get_arg("target", "kubernetes");
         registry = context.get_arg("registry", "dockerhub");
-        
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'") ;
         }
-        
         code_folder = os.path.dirname(filename) or '.';
         dotenv_path = os.path.join(code_folder, '.env');
         load_dotenv(dotenv_path);
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
         base_file_path = os.path.basename(filename);
-        
         # Get configuration
         scale_config = get_scale_config();
-        
         # Create logger
         logger = UtilityFactory.create_logger('standard');
-        
         # Get target-specific config
         if target == 'kubernetes' {
             target_config = scale_config.get_kubernetes_config();
@@ -48,35 +43,28 @@ def _scale_pre_hook(context: HookContext) -> None {
             # For future targets, get from config
             target_config = scale_config.get_kubernetes_config();  # Default for now
         }
-        
         # Create deployment target
-        deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
-        
+        deployment_target = DeploymentTargetFactory.create(
+            target, target_config, logger
+        );
         # Handle image registry if build is requested
         if build {
             # Use target config for registry (it contains docker credentials)
             image_registry = ImageRegistryFactory.create(registry, target_config);
             deployment_target.image_registry = image_registry;
         }
-        
         # Create app config
         app_config = AppConfig(
-            code_folder=code_folder,
-            file_name=base_file_path,
-            build=build
+            code_folder=code_folder, file_name=base_file_path, build=build
         );
-        
         # Deploy
         result = deployment_target.deploy(app_config);
-        
         if not result.success {
-            raise RuntimeError(result.message or "Deployment failed");
+            raise RuntimeError(result.message or "Deployment failed") ;
         }
-        
         if result.service_url {
             print(f"Deployment complete! Service available at: {result.service_url}");
         }
-        
         # Cancel normal start execution since we handled it
         context.set_data("cancel_execution", True);
         context.set_data("cancel_return_code", 0);
@@ -121,6 +109,7 @@ class JacCmd {
                     default="dockerhub",
                     help="Image registry (dockerhub, ecr, gcr, etc.)",
                 ),
+
             ],
             pre_hook=_scale_pre_hook,
             source="jac-scale"
@@ -139,6 +128,7 @@ class JacCmd {
                     default="kubernetes",
                     help="Deployment target (kubernetes, aws, gcp, etc.)",
                 ),
+
             ],
             examples=[("jac destroy app.jac", "Remove deployment for app"), ],
             group="deployment",
@@ -152,13 +142,13 @@ class JacCmd {
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
-            
+
             # Get configuration
             scale_config = get_scale_config();
-            
+
             # Create logger
             logger = UtilityFactory.create_logger('standard');
-            
+
             # Get target-specific config
             if target == 'kubernetes' {
                 target_config = scale_config.get_kubernetes_config();
@@ -166,12 +156,14 @@ class JacCmd {
                 # For future targets, get from config
                 target_config = scale_config.get_kubernetes_config();  # Default for now
             }
-            
+
             # Create deployment target and destroy
-            deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
+            deployment_target = DeploymentTargetFactory.create(
+                target, target_config, logger
+            );
             app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
             deployment_target.destroy(app_name);
-            
+
             print(f"Successfully destroyed deployment '{app_name}' from {target}");
             return 0;
         }

@@ -3,14 +3,11 @@ import from typing { Any }
 
 """Base configuration class that all target-specific configs should inherit from."""
 class BaseConfig {
-    has app_name: str;
-    has namespace: str = 'default';
+    has app_name: str,
+        namespace: str = 'default';
 
     def to_dict(self: BaseConfig) -> dict[str, Any] {
-        return {
-            'app_name': self.app_name,
-            'namespace': self.namespace
-        };
+        return {'app_name': self.app_name, 'namespace': self.namespace};
     }
 
     static def from_dict(cls: type, config: dict[str, Any]) -> BaseConfig {
@@ -20,4 +17,3 @@ class BaseConfig {
         );
     }
 }
-

@@ -4,45 +4,47 @@ import from jac_scale.abstractions.config.base_config { BaseConfig }
 
 """Configuration for Kubernetes deployments."""
 class KubernetesConfig(BaseConfig) {
-    has docker_image_name: str = '';
-    has docker_username: str = '';
-    has docker_password: str = '';
-    has container_port: int = 8000;
-    has node_port: int = 30001;
-    has mongodb_enabled: bool = True;
-    has redis_enabled: bool = True;
-    has cpu_request: (str | None) = None;
-    has cpu_limit: (str | None) = None;
-    has memory_request: (str | None) = None;
-    has memory_limit: (str | None) = None;
-    has readiness_initial_delay: int = 10;
-    has readiness_period: int = 20;
-    has liveness_initial_delay: int = 10;
-    has liveness_period: int = 20;
-    has liveness_failure_threshold: int = 80;
-    has health_check_path: str = '/docs';
+    has docker_image_name: str = '',
+        docker_username: str = '',
+        docker_password: str = '',
+        container_port: int = 8000,
+        node_port: int = 30001,
+        mongodb_enabled: bool = True,
+        redis_enabled: bool = True,
+        cpu_request: (str | None) = None,
+        cpu_limit: (str | None) = None,
+        memory_request: (str | None) = None,
+        memory_limit: (str | None) = None,
+        readiness_initial_delay: int = 10,
+        readiness_period: int = 20,
+        liveness_initial_delay: int = 10,
+        liveness_period: int = 20,
+        liveness_failure_threshold: int = 80,
+        health_check_path: str = '/docs';
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
         base = super().to_dict();
-        base.update({
-            'docker_image_name': self.docker_image_name,
-            'docker_username': self.docker_username,
-            'docker_password': self.docker_password,
-            'container_port': self.container_port,
-            'node_port': self.node_port,
-            'mongodb_enabled': self.mongodb_enabled,
-            'redis_enabled': self.redis_enabled,
-            'cpu_request': self.cpu_request,
-            'cpu_limit': self.cpu_limit,
-            'memory_request': self.memory_request,
-            'memory_limit': self.memory_limit,
-            'readiness_initial_delay': self.readiness_initial_delay,
-            'readiness_period': self.readiness_period,
-            'liveness_initial_delay': self.liveness_initial_delay,
-            'liveness_period': self.liveness_period,
-            'liveness_failure_threshold': self.liveness_failure_threshold,
-            'health_check_path': self.health_check_path
-        });
+        base.update(
+            {
+                'docker_image_name': self.docker_image_name,
+                'docker_username': self.docker_username,
+                'docker_password': self.docker_password,
+                'container_port': self.container_port,
+                'node_port': self.node_port,
+                'mongodb_enabled': self.mongodb_enabled,
+                'redis_enabled': self.redis_enabled,
+                'cpu_request': self.cpu_request,
+                'cpu_limit': self.cpu_limit,
+                'memory_request': self.memory_request,
+                'memory_limit': self.memory_limit,
+                'readiness_initial_delay': self.readiness_initial_delay,
+                'readiness_period': self.readiness_period,
+                'liveness_initial_delay': self.liveness_initial_delay,
+                'liveness_period': self.liveness_period,
+                'liveness_failure_threshold': self.liveness_failure_threshold,
+                'health_check_path': self.health_check_path
+            }
+        );
         return base;
     }
 
@@ -70,4 +72,3 @@ class KubernetesConfig(BaseConfig) {
         );
     }
 }
-

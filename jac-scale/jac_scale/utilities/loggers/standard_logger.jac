@@ -54,4 +54,3 @@ class StandardLogger(Logger) {
         }
     }
 }
-
