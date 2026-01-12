@@ -25,7 +25,7 @@ import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvi
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
-import time
+import time;
 import from kubernetes { client, config as k8s_config }
 
 """Kubernetes deployment target implementation."""

@@ -28,7 +28,7 @@ class DeploymentTargetFactory {
         if target_type == 'kubernetes' {
             import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
             import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-            k8s_config = KubernetesConfig.from_dict(config);
+            k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'aws' {
             raise NotImplementedError("AWS target not yet implemented");
