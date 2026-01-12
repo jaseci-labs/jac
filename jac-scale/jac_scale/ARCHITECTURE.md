@@ -449,22 +449,6 @@ Base classes define the interface, implementations provide specific behavior.
 ### Dependency Injection
 Components receive dependencies (logger, config) through constructors.
 
-## Testing
-
-### Unit Tests
-- Test abstractions with mock implementations
-- Test factories with mocked dependencies
-- Test configuration models
-
-### Integration Tests
-- Test full deployment flow with real Kubernetes cluster
-- Test database provider integration
-- Test image registry operations
-
-See `tests/` directory for examples.
-
-## Future Enhancements
-
 ### Planned Targets
 - AWS ECS/EKS
 - GCP Cloud Run/GKE
@@ -481,11 +465,3 @@ See `tests/` directory for examples.
 - Elasticsearch Logger
 - Prometheus Monitoring
 - Datadog Monitoring
-
-## Notes
-
-- All classes with `has` fields that accept constructor arguments must have `init` methods
-- `super()` usage: Use `super.init()` in `init` methods, `super().method()` in instance methods
-- Static methods cannot use `super()`
-- See `AUDIT-2.md` for common pitfalls and fixes
-
