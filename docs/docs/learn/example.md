@@ -57,8 +57,7 @@ OSP can be used where needed and maps nicely to many categories of problems, esp
 
 By modeling relationships directly as graph edges and expressing computation through walkers, OSP removes much of the boilerplate needed to manage graphs,  traversals, search and state. This makes complex logic simpler, clearer, and more scalable.
 
-In the Examples section, you’ll see cases where OSP cuts code size dramatically. For instance, we built an X-like social network (littleX) in just a few hundred lines, something that would typically take thousands using traditional OOP patterns.
-<!--  TODO: Say benefits of byllm + OSP in agentic AI and how it saves lines of code -->
+In the Examples section, you'll see cases where OSP cuts code size dramatically. For instance, we built an X-like social network (littleX) in just a few hundred lines, something that would typically take thousands using traditional OOP patterns. When combined with `by llm`, you can build sophisticated agentic workflows with minimal code - see our [Agentic AI examples](examples/index.md#agentic-ai) for real-world applications.
 
 In this simple example, we aim to just illustrate the basic concepts. Here we have `Person` nodes, while walkers (`Greeter`) traverse the graph of `Person` objects and process them. For more OSP concepts, check out [Quick Start](https://docs.jaseci.org/learn/quickstart/#object-spatial-model), or [Syntax Quick Reference](https://docs.jaseci.org/learn/quick_reference/).
 
@@ -141,7 +140,7 @@ walker create_post {
 
 ??? info "How To Run"
     1. Install the Jac Cloud by `pip install jac-cloud`
-    2. Copy this code into `example.jac` file and run with `jac serve example.jac`
+    2. Copy this code into `example.jac` file and run with `jac start example.jac`
 
 ??? example "Output"
     ` INFO:     Started server process [26286]

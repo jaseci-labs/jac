@@ -37,8 +37,8 @@ def test_create_jac_app() -> None:
             assert os.path.exists(project_path)
             assert os.path.isdir(project_path)
 
-            # Verify src/app.jac file was created
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
+            # Verify main.jac file was created at project root
+            app_jac_path = os.path.join(project_path, "main.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
@@ -54,7 +54,7 @@ def test_create_jac_app() -> None:
                 readme_content = f.read()
 
             assert f"# {test_project_name}" in readme_content
-            assert "jac serve src/app.jac" in readme_content
+            assert "jac start main.jac" in readme_content
 
             # Verify jac.toml was created
             jac_toml_path = os.path.join(project_path, "jac.toml")
@@ -65,6 +65,10 @@ def test_create_jac_app() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
+
             # Verify .gitignore was created with correct content
             gitignore_path = os.path.join(project_path, ".gitignore")
             assert os.path.exists(gitignore_path)
@@ -74,13 +78,13 @@ def test_create_jac_app() -> None:
 
             assert "node_modules" in gitignore_content
 
-            # Verify src/components directory exists
-            components_dir = os.path.join(project_path, "src", "components")
+            # Verify components directory exists at project root
+            components_dir = os.path.join(project_path, "components")
             assert os.path.exists(components_dir)
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # Note: packages may or may not be installed depending on npm availability
             # but package.json should be generated with default packages
@@ -91,9 +95,8 @@ def test_create_jac_app() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory
@@ -156,9 +159,9 @@ def test_create_jac_app_existing_directory() -> None:
             os.chdir(original_cwd)
 
 
-def test_create_jac_app_with_typescript() -> None:
-    """Test jac create --cl command with TypeScript support (enabled by default)."""
-    test_project_name = "test-jac-app-ts"
+def test_create_jac_app_with_button_component() -> None:
+    """Test jac create --cl command creates Button.cl.jac component."""
+    test_project_name = "test-jac-app-component"
 
     # Create a temporary directory for testing
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -167,7 +170,7 @@ def test_create_jac_app_with_typescript() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl command (TypeScript is enabled by default)
+            # Run jac create --cl command
             process = Popen(
                 ["jac", "create", "--cl", test_project_name],
                 stdin=PIPE,
@@ -196,45 +199,47 @@ def test_create_jac_app_with_typescript() -> None:
 
             assert config_data["project"]["name"] == test_project_name
 
-            # Verify src/components directory and Button.tsx were created
-            components_dir = os.path.join(project_path, "src", "components")
+            # Verify serve config includes base_route_app for CL apps
+            assert "serve" in config_data
+            assert config_data["serve"]["base_route_app"] == "app"
+
+            # Verify components directory and Button.cl.jac were created at project root
+            components_dir = os.path.join(project_path, "components")
             assert os.path.exists(components_dir)
             assert os.path.isdir(components_dir)
 
-            button_tsx_path = os.path.join(components_dir, "Button.tsx")
-            assert os.path.exists(button_tsx_path)
+            button_jac_path = os.path.join(components_dir, "Button.cl.jac")
+            assert os.path.exists(button_jac_path)
 
-            with open(button_tsx_path) as f:
+            with open(button_jac_path) as f:
                 button_content = f.read()
 
-            assert "interface ButtonProps" in button_content
-            assert "export const Button" in button_content
+            assert "def:pub Button" in button_content
+            assert "base_styles" in button_content
 
-            # Verify src/app.jac includes TypeScript import
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
+            # Verify main.jac includes Jac component import
+            app_jac_path = os.path.join(project_path, "main.jac")
             assert os.path.exists(app_jac_path)
 
             with open(app_jac_path) as f:
                 app_jac_content = f.read()
 
-            assert (
-                'cl import from ".components/Button.tsx" { Button }' in app_jac_content
-            )
+            assert "cl import from .components.Button { Button }" in app_jac_content
             assert "<Button" in app_jac_content
 
-            # Verify README.md includes TypeScript information
+            # Verify README.md includes component information
             readme_path = os.path.join(project_path, "README.md")
             assert os.path.exists(readme_path)
 
             with open(readme_path) as f:
                 readme_content = f.read()
 
-            assert "TypeScript Support" in readme_content
-            assert "components/Button.tsx" in readme_content
+            assert "Components" in readme_content
+            assert "Button.cl.jac" in readme_content
 
             # Verify default packages installation (package.json should be generated)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # Note: packages may or may not be installed depending on npm availability
             # but package.json should be generated with default packages
@@ -245,10 +250,8 @@ def test_create_jac_app_with_typescript() -> None:
                     package_data = json.load(f)
 
                 # Verify default dependencies are in package.json
-                assert "react" in package_data.get("dependencies", {})
-                assert "react-dom" in package_data.get("dependencies", {})
-                assert "vite" in package_data.get("devDependencies", {})
-                assert "typescript" in package_data.get("devDependencies", {})
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory
@@ -334,7 +337,7 @@ def test_create_jac_app_installs_default_packages() -> None:
 
             # Verify package.json was generated (even if npm install failed)
             package_json_path = os.path.join(
-                project_path, ".client-build", ".jac-client.configs", "package.json"
+                project_path, ".jac", "client", "configs", "package.json"
             )
             # package.json should be generated with default packages
             if os.path.exists(package_json_path):
@@ -343,17 +346,9 @@ def test_create_jac_app_installs_default_packages() -> None:
                 with open(package_json_path) as f:
                     package_data = json.load(f)
 
-                # Verify default dependencies are in package.json
-                deps = package_data.get("dependencies", {})
-                dev_deps = package_data.get("devDependencies", {})
-
-                assert "react" in deps
-                assert "react-dom" in deps
-                assert "react-router-dom" in deps
-                assert "vite" in dev_deps
-                assert "@babel/core" in dev_deps
-                assert "typescript" in dev_deps
-                assert "@types/react" in dev_deps
+                # Verify default dependencies are in package.
+                assert "jac-client-node" in package_data.get("dependencies", {})
+                assert "@jac-client/dev-deps" in package_data.get("devDependencies", {})
 
         finally:
             # Return to original directory
@@ -750,6 +745,65 @@ def test_uninstall_without_config_toml() -> None:
             # Should fail with non-zero exit code
             assert result.returncode != 0
             assert "No jac.toml found" in result.stderr
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_create_cl_and_run_no_root_files() -> None:
+    """Test that jac create --cl + jac run doesn't create files outside .jac/ directory."""
+    test_project_name = "test-cl-no-root-files"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Run jac create --cl command
+            process = Popen(
+                ["jac", "create", "--cl", test_project_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0, f"jac create --cl failed: {stderr}"
+
+            project_path = os.path.join(temp_dir, test_project_name)
+
+            # Record files after create (before run), excluding .jac directory
+            def get_root_files(path: str) -> set[str]:
+                """Get files/dirs in project root, excluding .jac directory."""
+                items = set()
+                for item in os.listdir(path):
+                    if item != ".jac":
+                        items.add(item)
+                return items
+
+            files_before_run = get_root_files(project_path)
+
+            # Run jac run main.jac
+            process = Popen(
+                ["jac", "run", "main.jac"],
+                cwd=project_path,
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0, f"jac run failed: {stderr}"
+
+            # Record files after run
+            files_after_run = get_root_files(project_path)
+
+            # Check no new files were created in project root
+            new_files = files_after_run - files_before_run
+            assert not new_files, (
+                f"jac run created unexpected files in project root: {new_files}. "
+                "All runtime files should be in .jac/ directory."
+            )
 
         finally:
             os.chdir(original_cwd)

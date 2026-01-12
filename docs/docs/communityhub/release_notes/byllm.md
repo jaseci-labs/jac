@@ -23,7 +23,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.4.5
 
 - **byLLM Lazy Loading**: Refactored byLLM to support lazy loading by moving all exports to `byllm.lib` module. Users should now import from `byllm.lib` in Python (e.g., `from byllm.lib import Model, by`) and use `import from byllm.lib { Model }` in Jac code. This improves startup performance and reduces unnecessary module loading.
-- **NonGPT Fallback for byLLM**: Implemented automatic fallback when byLLM is not installed. When code attempts to import `byllm`, the system will provide mock implementations that return random using the `NonGPT.random_value_for_type()` utility.
+- **NonGPT Fallback for byLLM**: Implemented automatic fallback when byLLM is not installed. When code attempts to import `byllm`, the system will provide mock implementations that return random values using the `NonGPT.random_value_for_type()` utility.
 
 ## byllm 0.4.4
 

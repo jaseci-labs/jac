@@ -1,7 +1,8 @@
 import os
 
-from jaclang.cli.cmdreg import cmd_registry
-from jaclang.runtimelib.default import hookimpl
+from jaclang.cli.registry import get_registry
+from jaclang.cli.command import Arg, ArgKind, CommandPriority
+from jaclang.pycore.runtime import hookimpl
 
 import pygments
 from pygments.formatters import TerminalFormatter
@@ -18,15 +19,29 @@ class JacCmd:
     @hookimpl
     def create_cmd() -> None:
         """Creating Jac CLI cmds."""
+        registry = get_registry()
 
-        @cmd_registry.register
-        def show(filename: str) -> None:
-            """Display the content of a file.
+        @registry.command(
+            name="show",
+            help="Display file contents with syntax highlighting",
+            args=[
+                Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to file to display"),
+            ],
+            examples=[
+                ("jac show myfile.jac", "Display Jac file with highlighting"),
+                ("jac show script.py", "Display Python file with highlighting"),
+            ],
+            group="tools",
+            priority=CommandPriority.PLUGIN,
+            source="cmd-show"
+        )
+        def show(filename: str) -> int:
+            """Display the content of a file with syntax highlighting.
             :param filename: The path to the file that wants to be shown.
             """
             if not os.path.exists(filename):
                 print(f"File '{filename}' not found.")
-                return
+                return 1
 
             # ext = os.path.splitext(filename)[1]
             # if ext == ".jac":
@@ -38,6 +53,7 @@ class JacCmd:
                 lexer = TextLexer()
             except Exception as e:
                 print(f"An error occurred: {e}")
+                return 1
 
             with open(filename) as file:
                 content = file.read()
@@ -46,3 +62,4 @@ class JacCmd:
 
             highlighted_content = pygments.highlight(content, lexer, formatter)
             print(highlighted_content)
+            return 0

@@ -10,7 +10,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import fields, is_dataclass
 from functools import lru_cache
 from traceback import TracebackException
-from typing import get_args, get_origin
+from typing import TYPE_CHECKING, get_args, get_origin
+
+if TYPE_CHECKING:
+    import pluggy
 
 
 @lru_cache(maxsize=256)
@@ -485,3 +488,179 @@ def _describe_node(obj: object) -> str:
 def _describe_nodes_list(objects: Sequence[object]) -> str:
     """One object per line, index-friendly for returning list[int]."""
     return "\n".join(f"{i}) {_describe_node(obj)}" for i, obj in enumerate(objects))
+
+
+# =============================================================================
+# Plugin Loading Helpers
+# =============================================================================
+
+
+class DistFacade:
+    """Minimal distribution facade for tracking plugin origins.
+
+    Used when manually loading entry points to maintain compatibility
+    with pluggy's list_plugin_distinfo() interface.
+    """
+
+    def __init__(self, dist: "object | None") -> None:
+        self._dist = dist
+
+    @property
+    def project_name(self) -> str:
+        """Get the distribution/package name."""
+        return (
+            self._dist.name if self._dist and hasattr(self._dist, "name") else "unknown"
+        )
+
+    @property
+    def version(self) -> str:
+        """Get the distribution version."""
+        return (
+            self._dist.version
+            if self._dist and hasattr(self._dist, "version")
+            else "0.0.0"
+        )
+
+
+def get_disabled_plugins() -> list[str]:
+    """Get list of disabled plugins from JAC_DISABLED_PLUGINS env var or jac.toml.
+
+    Priority: JAC_DISABLED_PLUGINS env var > jac.toml
+    Supports qualified names (package:plugin), short names, and "*" wildcard.
+
+    Returns:
+        List of disabled plugin identifiers.
+    """
+    from pathlib import Path
+
+    # First check environment variable (takes precedence)
+    env_disabled = os.environ.get("JAC_DISABLED_PLUGINS", "").strip()
+    if env_disabled:
+        # Support comma-separated list or single value
+        return [d.strip() for d in env_disabled.split(",") if d.strip()]
+
+    # Fall back to jac.toml
+    try:
+        import tomllib
+    except ImportError:
+        # Python < 3.11 fallback
+        try:
+            import tomli as tomllib  # type: ignore
+        except ImportError:
+            return []
+
+    # Search for jac.toml starting from current directory
+    current = Path.cwd().resolve()
+    while current != current.parent:
+        toml_path = current / "jac.toml"
+        if toml_path.exists():
+            try:
+                with open(toml_path, "rb") as f:
+                    data = tomllib.load(f)
+                return data.get("plugins", {}).get("disabled", [])
+            except Exception:
+                return []
+        current = current.parent
+    # Check root
+    toml_path = current / "jac.toml"
+    if toml_path.exists():
+        try:
+            with open(toml_path, "rb") as f:
+                data = tomllib.load(f)
+            return data.get("plugins", {}).get("disabled", [])
+        except Exception:
+            pass
+    return []
+
+
+def load_plugins_with_disabling(
+    plugin_manager: "pluggy.PluginManager", disabled_list: list[str]
+) -> None:
+    """Load setuptools entry points while respecting disabled plugin list.
+
+    Supports:
+    - "*" wildcard to disable all external plugins
+    - Qualified names (package:plugin) for specific plugin disabling
+    - Package wildcards (package:*) to disable all plugins from a package
+    - Short names for backwards compatibility (affects all packages with that name)
+
+    This manually loads entry points to allow fine-grained control over which
+    plugins are loaded when multiple packages have plugins with the same name.
+
+    Args:
+        plugin_manager: The pluggy PluginManager instance.
+        disabled_list: List of plugin identifiers to disable.
+    """
+    from importlib.metadata import entry_points
+
+    # Check for wildcard - disable all external plugins
+    disable_all = "*" in disabled_list
+
+    # Parse disabled list into qualified and short name sets
+    disabled_qualified: set[str] = set()  # package:plugin format
+    disabled_packages: set[str] = set()  # package:* format (all plugins from package)
+    disabled_short: set[str] = set()  # legacy short names
+
+    for name in disabled_list:
+        if name == "*":
+            continue  # Already handled above
+        elif name.endswith(":*"):
+            # Package wildcard: disable all plugins from this package
+            disabled_packages.add(name[:-2])  # Remove ":*"
+        elif ":" in name:
+            disabled_qualified.add(name)
+        else:
+            disabled_short.add(name)
+
+    # If disable_all, don't load any external plugins
+    if disable_all:
+        return
+
+    # Get entry points for the "jac" group
+    try:
+        # Python 3.10+
+        eps = entry_points(group="jac")
+    except TypeError:
+        # Python 3.9 fallback - entry_points() returns dict-like SelectableGroups
+        all_eps = entry_points()
+        eps = all_eps.get("jac", [])  # type: ignore[attr-defined]
+
+    # Manually load each entry point, skipping disabled ones
+    for ep in eps:
+        # Get the distribution (package) this entry point comes from
+        try:
+            dist = ep.dist
+            dist_name = dist.name if dist else "unknown"
+        except Exception:
+            dist = None
+            dist_name = "unknown"
+
+        qualified_name = f"{dist_name}:{ep.name}"
+
+        # Check if this specific plugin should be disabled
+        should_disable = False
+        if dist_name in disabled_packages:
+            # Package wildcard match
+            should_disable = True
+        elif qualified_name in disabled_qualified:
+            should_disable = True
+        elif ep.name in disabled_short:
+            # Legacy: short name matches (affects all packages with this name)
+            should_disable = True
+
+        if should_disable:
+            # Skip this plugin entirely
+            continue
+
+        # Load and register the plugin
+        try:
+            plugin = ep.load()
+            # Check if already registered (another package with same name)
+            if plugin_manager.is_registered(plugin):
+                continue
+            plugin_manager.register(plugin, name=ep.name)
+            # Track distribution info for list_plugin_distinfo() to work
+            plugin_manager._plugin_distinfo.append((plugin, DistFacade(dist)))
+        except Exception:
+            # Skip plugins that fail to load
+            pass

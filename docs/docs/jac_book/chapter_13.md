@@ -1,10 +1,13 @@
 # Chapter 13: Persistence and the Root Node
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter uses `jac start` which works with both the deprecated Jac Cloud and the newer **jac-scale**. For production deployments, use [jac-scale](../production/index.md). See the [Advanced Topics - Persistence](../advanced/index.md#persistence-deep-dive) for detailed memory architecture documentation.
+
 In this chapter, you will learn about one of Jac's most powerful features: automatic persistence. We will build a simple counter application to show you how Jac can automatically save your program's state when running as a service, eliminating the need for a traditional database setup.
 
 !!! info "What You'll Learn"
     -   What "persistence" means and why it's a common challenge.
-    - How Jac automatically saves your data when using the jac serve command.
+    - How Jac automatically saves your data when using the jac start command.
     - The role of the root node as the anchor for all saved data.
     - How to build stateful applications that remember information between API calls.
 
@@ -25,10 +28,10 @@ This is a lot of extra work just to make your application remember things.
 
 ## What is Automatic Persistence?
 
-Jac is designed to make this process effortless. When you run your Jac program as a service (using the jac serve command, persistence becomes an automatic feature of the language.
+Jac is designed to make this process effortless. When you run your Jac program as a service (using the jac start command, persistence becomes an automatic feature of the language.
 
 !!! warning "Persistence Requirements"
-    - **Database Backend**: Persistence requires `jac serve` with a configured database
+    - **Database Backend**: Persistence requires `jac start` with a configured database
     - **Service Mode**: `jac run` executions are stateless and don't persist data
     - **Root Connection**: Nodes must be connected to root to persist
     - **API Context**: Persistence works within the context of API endpoints
@@ -160,9 +163,9 @@ Jac is designed to make this process effortless. When you run your Jac program a
 
 ---
 
-## Setting Up a Jac Cloud Project
+## Setting Up a Jac Scale Project
 
-To demonstrate persistence, we need to create a proper jac-cloud project structure:
+To demonstrate persistence, we need to create a proper jac-scale project structure:
 
 !!! example "Project Structure"
     ```
@@ -255,12 +258,12 @@ Let's create our counter application:
 
 ## The Root Node Concept
 
-The root node is Jac's fundamental concept for persistent data organization. When running with `jac serve`, every request has access to a special `root` node that serves as the entry point for all persistent graph structures.
+The root node is Jac's fundamental concept for persistent data organization. When running with `jac start`, every request has access to a special `root` node that serves as the entry point for all persistent graph structures.
 
 ### Understanding Root Node
 
 !!! info "Root Node Properties"
-    - **Request Context**: Available in every API request when using jac serve
+    - **Request Context**: Available in every API request when using jac start
     - **Persistence Gateway**: Starting point for all persistent data
     - **Graph Anchor**: All persistent nodes must be reachable from root
     - **Automatic Creation**: Exists automatically with database backend
@@ -276,7 +279,7 @@ cd counter-app
 pip install -r requirements.txt
 
 # Start the service with database persistence
-jac serve main.jac
+jac start main.jac
 
 # Service starts on http://localhost:8000
 # API documentation available at http://localhost:8000/docs
@@ -309,7 +312,7 @@ curl -X POST http://localhost:8000/walker/get_counter \
   -d '{}'
 # Response: {"returns": [{"value": 2, "status": "existing"}]}
 
-# Restart the service (Ctrl+C, then jac serve main.jac again)
+# Restart the service (Ctrl+C, then jac start main.jac again)
 
 # Counter value persists after restart
 curl -X POST http://localhost:8000/walker/get_counter \
@@ -319,7 +322,7 @@ curl -X POST http://localhost:8000/walker/get_counter \
 ```
 
 !!! tip "Persistence in Action"
-    Notice how the counter value persists between requests and even service restarts when using `jac serve` with a database!
+    Notice how the counter value persists between requests and even service restarts when using `jac start` with a database!
 
 ---
 
@@ -426,7 +429,7 @@ Let's enhance our counter to track increment history:
 
 ```bash
 # Start fresh service
-jac serve main.jac
+jac start main.jac
 
 # Multiple increments to build history
 curl -X POST http://localhost:8000/walker/increment_with_history \
@@ -448,7 +451,7 @@ curl -X POST http://localhost:8000/walker/get_counter_with_history \
 # Response includes value and complete history array
 
 # Restart service - history persists
-# jac serve main.jac (after restart)
+# jac start main.jac (after restart)
 curl -X POST http://localhost:8000/walker/get_counter_with_history \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -609,7 +612,7 @@ curl -X POST http://localhost:8000/walker/get_all_counters \
 ## Best Practices
 
 !!! summary "Persistence Guidelines"
-    - **Service mode only**: Use `jac serve` for persistent applications, not `jac run`
+    - **Service mode only**: Use `jac start` for persistent applications, not `jac run`
     - **Connect to root**: All persistent data must be reachable from root
     - **Initialize gracefully**: Check for existing data before creating new instances
     - **Use proper IDs**: Generate unique identifiers for nodes that need them
@@ -621,7 +624,7 @@ curl -X POST http://localhost:8000/walker/get_all_counters \
 !!! summary "What We've Learned"
     **Persistence Fundamentals:**
 
-    - **Service requirement**: Persistence only works with `jac serve` and database backends
+    - **Service requirement**: Persistence only works with `jac start` and database backends
     - **Root connection**: All persistent nodes must be connected to the root node
     - **Automatic behavior**: Data persists without explicit save/load operations
     - **Request isolation**: Each API request has access to the same persistent graph
@@ -654,7 +657,7 @@ curl -X POST http://localhost:8000/walker/get_all_counters \
     - An inventory management system
     - A user profile system with preferences
 
-    Remember: Only nodes connected to root (directly or indirectly) will persist when using `jac serve`!
+    Remember: Only nodes connected to root (directly or indirectly) will persist when using `jac start`!
 
 ---
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast as py_ast
 import marshal
-import os
 import types
 from threading import Event
 from typing import TYPE_CHECKING
@@ -99,9 +98,11 @@ def get_format_sched(
     from jaclang.compiler.passes.tool.doc_ir_gen_pass import DocIRGenPass
     from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
     from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
+    from jaclang.pycore.passes.annex_pass import JacAnnexPass
 
     if auto_lint:
         return [
+            JacAnnexPass,  # Load impl modules before auto-linting
             JacAutoLintPass,
             DocIRGenPass,
             CommentInjectionPass,
@@ -267,17 +268,7 @@ class JacProgram:
                      This avoids circular imports for bootstrap-critical modules.
             cancel_token: Optional event to cancel compilation.
         """
-        if use_str:
-            keep_str = use_str
-        elif not os.path.exists(file_path):
-            if file_path.endswith(".jac") and os.path.exists(
-                file_path[:-4] + ".cl.jac"
-            ):
-                keep_str = ""
-            else:
-                raise OSError(f"File {file_path} does not exist.")
-        else:
-            keep_str = read_file_with_encoding(file_path)
+        keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(keep_str, file_path, cancel_token=cancel_token)
         if symtab_ir_only:
             # only build symbol table and match decl/impl (skip semantic analysis and CFG)
@@ -312,7 +303,10 @@ class JacProgram:
         self, file_path: str, use_str: str | None = None, type_check: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
+        from jaclang.compiler.passes.main import JacImportDepsPass
+
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
+        JacImportDepsPass(ir_in=mod_targ, prog=self)
         SemanticAnalysisPass(ir_in=mod_targ, prog=self)
         return mod_targ
 

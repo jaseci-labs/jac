@@ -41,7 +41,7 @@ This book is organized into four progressive parts that build your expertise sys
 - Setting up VS Code with Jac extension
 - Basic syntax differences from Python
 - Project structure and best practices
-- Development workflow with `jac run` and `jac serve`
+- Development workflow with `jac run` and `jac start`
 
 !!! example "Code Focus"
     Development environment setup and basic project structure
@@ -175,7 +175,7 @@ This book is organized into four progressive parts that build your expertise sys
 
 #### Chapter 13: Persistence and the Root Node
 
-- Automatic persistence with `jac serve`
+- Automatic persistence with `jac start`
 - Root node as persistence gateway
 - State consistency across requests and restarts
 - Database-backed applications without setup

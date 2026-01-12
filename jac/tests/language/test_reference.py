@@ -62,6 +62,8 @@ def test_reference_file(filename: str) -> None:
         pytest.skip("Skipping test file")
     if "by_expressions.jac" in filename:
         pytest.skip("Skipping by_expressions - by operator not yet implemented")
+    if "semstrings.jac" in filename:
+        pytest.skip("Skipping semstrings - byllm not installed")
 
     try:
         jacast = JacProgram().compile(filename)

@@ -57,12 +57,13 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
         # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
-    # package.json should only exist in .client-build/.jac-client.configs/
-    generated_package_json = base_path / '.client-build' / '.jac-client.configs' / 'package.json';
+    # Use ViteBundler to get the client directory
+    bundler = ViteBundler(base_path);
+    client_dir = bundler._get_client_dir();
+    # package.json should only exist in .jac/client/configs/
+    generated_package_json = client_dir / 'configs' / 'package.json';
     # Generate package.json if it doesn't exist
     if not generated_package_json.exists() {
-        # Use ViteBundler to generate package.json from config.json
-        bundler = ViteBundler(base_path);
         generated_path = bundler.create_package_json();
         # Verify the file was created and resolve to absolute path
         if not generated_path.exists() {
@@ -80,7 +81,7 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
             f'package.json not found at {package_json_path}. Expected at {generated_package_json}'
         ) ;
     }
-    output_dir = base_path / '.client-build' / 'dist';
+    output_dir = client_dir / 'dist';
     runtime_path = Path(__file__).with_name('client_runtime.cl.jac');
     return ViteClientBundleBuilder(
         runtime_path=runtime_path,
@@ -106,7 +107,7 @@ impl JacClientModuleIntrospector.render_page(
         raise ValueError(f"Client function '{function_name}' not found") ;
     }
     bundle_hash = self.ensure_bundle();
-    import from jaclang.project.config { find_project_root }
+    import from jaclang.project.config { find_project_root, get_config }
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
     base_path_dir = Path(Jac.base_path_dir);
     project_root_result = find_project_root(base_path_dir);
@@ -116,16 +117,77 @@ impl JacClientModuleIntrospector.render_page(
         # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
-    dist_dir = base_path / '.client-build' / 'dist';
+    # Get client directory from config or use default
+    config = get_config();
+    if config is not None {
+        dist_dir = config.get_client_dir() / 'dist';
+    } else {
+        dist_dir = base_path / '.jac' / 'client' / 'dist';
+    }
     css_link = '';
-    css_file = dist_dir / 'main.css';
+    css_file = dist_dir / 'styles.css';
     if css_file.exists() {
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-        css_link = f'<link rel="stylesheet" href="/static/main.css?hash={css_hash}"/>';
+        css_link = f'<link rel="stylesheet" href="/static/styles.css?hash={css_hash}"/>';
     }
-    head_content = f'<meta charset="utf-8"/>\n            <title>{html.escape(
-        function_name
-    )}</title>';
+    # Get meta data from config
+    client_cfg = config.get_plugin_config("client") if config else None;
+    meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
+    charset = meta_data.get("charset", "UTF-8");
+    title = meta_data.get("title", function_name);
+    viewport = meta_data.get("viewport", "width=device-width, initial-scale=1");
+    description = meta_data.get("description", None);
+    robots = meta_data.get("robots", "index, follow");
+    canonical = meta_data.get("canonical", None);
+    og_type = meta_data.get("og_type", "website");
+    og_title = meta_data.get("og_title", title);
+    og_description = meta_data.get("og_description", None);
+    og_url = meta_data.get("og_url", None);
+    og_image = meta_data.get("og_image", None);
+    theme_color = meta_data.get("theme_color", "#ffffff");
+    icon = meta_data.get("icon", None);
+    # Build head content from TOML metadata
+    head_content = f'<meta charset="{html.escape(charset)}"/>\n            <meta name="viewport" content="{html.escape(
+        viewport
+    )}"/>\n            <title>{html.escape(title)}</title>';
+    head_content += f'\n            <meta name="robots" content="{html.escape(robots)}"/>';
+    head_content += f'\n            <meta name="theme-color" content="{html.escape(
+        theme_color
+    )}"/>';
+    head_content += f'\n            <meta property="og:type" content="{html.escape(
+        og_type
+    )}"/>';
+    head_content += f'\n            <meta property="og:title" content="{html.escape(
+        og_title
+    )}"/>';
+    if description {
+        head_content += f'\n            <meta name="description" content="{html.escape(
+            description
+        )}"/>';
+    }
+    if canonical {
+        head_content += f'\n            <link rel="canonical" href="{html.escape(
+            canonical
+        )}"/>';
+    }
+    if icon {
+        head_content += f'\n            <link rel="icon" href="{html.escape(icon)}"/>';
+    }
+    if og_url {
+        head_content += f'\n            <meta property="og:url" content="{html.escape(
+            og_url
+        )}"/>';
+    }
+    if og_image {
+        head_content += f'\n            <meta property="og:image" content="{html.escape(
+            og_image
+        )}"/>';
+    }
+    if og_description {
+        head_content += f'\n            <meta property="og:description" content="{html.escape(
+            og_description
+        )}"/>';
+    }
     if css_link {
         head_content += f"\n            {css_link}";
     }

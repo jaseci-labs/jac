@@ -16,7 +16,7 @@ Custom asset extensions are configured under `[plugins.client.assets]` in your `
 [project]
 name = "my-app"
 version = "1.0.0"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client.assets]
 custom_extensions = [".js", ".py"]
@@ -34,8 +34,7 @@ custom_extensions = [".js", ".py"]
 ```
 my-jac-project/
 ├── jac.toml
-├── src/
-│   └── app.jac
+├── main.jac
 └── assets/
     └── workers/
         ├── worker.js      # JavaScript Web Worker
@@ -82,7 +81,7 @@ Custom extensions are **additive**, they don't replace default types.
 6. Assets accessible via /path/to/asset.ext
 ```
 
-Custom assets are copied to `.client-build/build/assets/` and served from their relative paths.
+Custom assets are copied to `.jac/client/build/assets/` and served from their relative paths.
 
 ## Use Cases
 

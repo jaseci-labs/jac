@@ -7,65 +7,65 @@ cl import from '@jac-client/utils' { jacSignup, jacLogin, jacLogout, jacIsLogged
 
 cl {
     def:pub app -> any {
-        [isLoggedIn, setIsLoggedIn] = useState(False);
-        [isSignup, setIsSignup] = useState(False);
-        [username, setUsername] = useState("");
-        [password, setPassword] = useState("");
-        [error, setError] = useState("");
-        [loading, setLoading] = useState(False);
+        has isLoggedIn: bool = False;
+        has isSignup: bool = False;
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
+        has loading: bool = False;
 
         # Check login status on mount
-        useEffect(lambda   -> None{ setIsLoggedIn(jacIsLoggedIn());} , []);
+        useEffect(lambda   -> None{ isLoggedIn = jacIsLoggedIn();} , []);
 
         # Handle login
         async def handleLogin -> None {
-            setError("");
+            error = "";
             if not username.trim() or not password {
-                setError("Please fill in all fields");
+                error = "Please fill in all fields";
                 return;
             }
-            setLoading(True);
+            loading = True;
             success = await jacLogin(username, password);
-            setLoading(False);
+            loading = False;
             if success {
-                setIsLoggedIn(True);
-                setUsername("");
-                setPassword("");
+                isLoggedIn = True;
+                username = "";
+                password = "";
             } else {
-                setError("Invalid username or password");
+                error = "Invalid username or password";
             }
         }
 
         # Handle signup
         async def handleSignup -> None {
-            setError("");
+            error = "";
             if not username.trim() or not password {
-                setError("Please fill in all fields");
+                error = "Please fill in all fields";
                 return;
             }
             if password.length < 6 {
-                setError("Password must be at least 6 characters");
+                error = "Password must be at least 6 characters";
                 return;
             }
-            setLoading(True);
+            loading = True;
             result = await jacSignup(username, password);
-            setLoading(False);
+            loading = False;
             if result["success"] {
-                setIsLoggedIn(True);
-                setUsername("");
-                setPassword("");
+                isLoggedIn = True;
+                username = "";
+                password = "";
             } else {
-                setError(result["error"] if result["error"] else "Signup failed");
+                error = result["error"] if result["error"] else "Signup failed";
             }
         }
 
         # Handle logout
         def handleLogout -> None {
             jacLogout();
-            setIsLoggedIn(False);
-            setUsername("");
-            setPassword("");
-            setError("");
+            isLoggedIn = False;
+            username = "";
+            password = "";
+            error = "";
         }
 
         # Handle form submit
@@ -237,9 +237,7 @@ cl {
                         <input
                             type="text"
                             value={username}
-                            onChange={lambda  e: any  -> None{ setUsername(
-                                e.target.value
-                            );} }
+                            onChange={lambda  e: any  -> None{ username = e.target.value;} }
                             placeholder="Enter your username"
                             style={{
                                 "width": "100%",
@@ -270,9 +268,7 @@ cl {
                         <input
                             type="password"
                             value={password}
-                            onChange={lambda  e: any  -> None{ setPassword(
-                                e.target.value
-                            );} }
+                            onChange={lambda  e: any  -> None{ password = e.target.value;} }
                             placeholder="Enter your password"
                             style={{
                                 "width": "100%",
@@ -355,9 +351,7 @@ cl {
                         )}
                     </p>
                     <button
-                        onClick={lambda   -> None{ setIsSignup(not isSignup);setError(
-                            ""
-                        );setUsername("");setPassword("");} }
+                        onClick={lambda   -> None{ isSignup = not isSignup; error = ""; username = ""; password = "";} }
                         style={{
                             "background": "none",
                             "border": "none",

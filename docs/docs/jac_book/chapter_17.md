@@ -1,4 +1,7 @@
-# Chapter 18: Testing and Debugging
+# Chapter 17: Testing and Debugging
+
+!!! tip "Quick Reference"
+    For a condensed testing and debugging guide, see the [Testing & Debugging Reference](../testing-debugging/index.md) which covers all `jac test`, `jac debug`, and `jac dot` options.
 
 In this chapter, we'll explore Jac's built-in testing framework and debugging strategies for spatial applications. We'll build a comprehensive test suite for a social media system that demonstrates testing nodes, edges, walkers, and complex graph operations.
 

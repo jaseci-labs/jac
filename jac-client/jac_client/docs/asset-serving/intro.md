@@ -162,7 +162,7 @@ Run any example:
 ```bash
 cd jac-client/jac_client/examples/asset-serving/<example-name>
 npm install
-jac serve src/app.jac
+jac start main.jac
 ```
 
 ## Quick Reference

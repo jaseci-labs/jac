@@ -21,11 +21,11 @@ impl deep_merge(base: dict[str, Any], override_dict: dict[str, Any]) -> dict[str
 }
 
 """Initialize config loader with project directory."""
-impl PluginConfigBase.init(self: PluginConfigBase, project_dir: Path | None = None) {
-    if project_dir is None {
+impl PluginConfigBase.postinit{
+    if self.project_dir is None {
         self.project_dir = Path.cwd();
     } else {
-        self.project_dir = project_dir;
+        self.project_dir = self.project_dir;
     }
     self.config_file = self.project_dir / 'jac.toml';
     self._config = None;
@@ -33,7 +33,7 @@ impl PluginConfigBase.init(self: PluginConfigBase, project_dir: Path | None = No
 }
 
 """Load configuration from jac.toml, merging with defaults."""
-impl PluginConfigBase.load(self: PluginConfigBase) -> dict[str, Any] {
+impl PluginConfigBase.load -> dict[str, Any] {
     if self._config is not None {
         return self._config;
     }
@@ -48,7 +48,7 @@ impl PluginConfigBase.load(self: PluginConfigBase) -> dict[str, Any] {
 }
 
 """Get or load the core JacConfig instance."""
-impl PluginConfigBase.get_jac_config(self: PluginConfigBase) -> JacConfig {
+impl PluginConfigBase.get_jac_config -> JacConfig {
     if self._jac_config is None {
         if self.config_file.exists() {
             self._jac_config = JacConfig.load(self.config_file);
@@ -64,7 +64,7 @@ impl PluginConfigBase.get_jac_config(self: PluginConfigBase) -> JacConfig {
 
 """Get a configuration section with optional defaults."""
 impl PluginConfigBase.get_section(
-    self: PluginConfigBase, section: str, defaults: dict[str, Any] | None = None
+    section: str, defaults: dict[str, Any] | None = None
 ) -> dict[str, Any] {
     config = self.load();
     section_config = config.get(section, {});
@@ -76,6 +76,6 @@ impl PluginConfigBase.get_section(
 }
 
 """Invalidate the cached configuration."""
-impl PluginConfigBase.invalidate(self: PluginConfigBase) -> None {
+impl PluginConfigBase.invalidate -> None {
     self._config = None;
 }

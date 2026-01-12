@@ -17,5 +17,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["components/**/*"],
-  "exclude": [".client-build"]
+  "exclude": [".jac"]
 }

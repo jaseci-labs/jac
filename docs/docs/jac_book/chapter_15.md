@@ -1,5 +1,8 @@
 # Chapter 15: Advanced Jac Cloud Features
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter references **Jac Cloud**, which has been superseded by **jac-scale**. The core concepts remain the same, but for new projects, please use [jac-scale](../production/index.md) instead. See the [Configuration Guide](../configuration/index.md) for jac.toml configuration options.
+
 In this chapter, we'll explore advanced Jac Cloud capabilities that enable configuration management, monitoring, and external integrations. We'll build a comprehensive chat room system that demonstrates environment configuration, logging, and webhook integration through practical examples.
 
 !!! info "What You'll Learn"
@@ -238,17 +241,17 @@ Deploy with environment variables:
 
 ```bash
 # Local with environment variables
-MAX_ROOMS=20 jac serve simple_chat.jac
+MAX_ROOMS=20 jac start simple_chat.jac
 
 # Or using .env file (if supported by your environment)
-jac serve simple_chat.jac
+jac start simple_chat.jac
 ```
 
 ---
 
 ## Message Management and Storage
 
-Instead of WebSockets, let's focus on RESTful message management that works with jac-cloud's current capabilities:
+Instead of WebSockets, let's focus on RESTful message management that works with jac-scale's current capabilities:
 
 ### Message Storage Implementation
 
@@ -409,7 +412,7 @@ Instead of WebSockets, let's focus on RESTful message management that works with
 Deploy the message-enabled chat:
 
 ```bash
-jac serve message_chat.jac
+jac start message_chat.jac
 ```
 
 Test with curl (all walker endpoints are POST):

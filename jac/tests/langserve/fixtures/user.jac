@@ -4,7 +4,7 @@ import greet;
 
 def still_there -> greet.Greet {
     print("im still here");
-    return "yes";
+    return greet.Greet();
 }
 
 with entry {

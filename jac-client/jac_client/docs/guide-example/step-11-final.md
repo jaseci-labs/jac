@@ -689,18 +689,18 @@ cl {
 
 ### Running the App
 
-1. **Save the code** to `app.jac`
+1. **Save the code** to `main.jac`
 
 2. **Start the server:**
 
    ```bash
-   jac serve src/app.jac
+   jac start main.jac
    ```
 
 3. **Open in browser:**
 
    ```
-   http://localhost:8000/page/app
+   http://localhost:8000/cl/app
    ```
 
 4. **Test it out:**

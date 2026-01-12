@@ -31,9 +31,10 @@ obj RunConfig {
         cache: bool = True;
 }
 
-"""Build command defaults from [build] section."""
+"""Build command defaults and artifact directories from [build] section."""
 obj BuildConfig {
-    has typecheck: bool = False;
+    has typecheck: bool = False,
+        dir: str = ".jac";  # Base directory for all build artifacts
 }
 
 """Test command defaults from [test] section."""
@@ -49,7 +50,9 @@ obj TestConfig {
 obj ServeConfig {
     has port: int = 8000,
         session: str = "",
-        main: bool = True;
+        main: bool = True,
+        cl_route_prefix: str = "cl",
+        base_route_app: str = "";
 }
 
 """Format command defaults from [format] section."""
@@ -84,7 +87,7 @@ obj CacheConfig {
 obj PluginsConfig {
     has discovery: str = "auto",
         enabled: list[str] = [],
-        disabled: list[str] = [];
+        disabled: list[str] = [];  # Plugins temporarily bypassed by user
 }
 
 """Environment configuration from [environment] section."""
@@ -143,11 +146,15 @@ obj JacConfig {
     static def load(toml_path: Path) -> JacConfig;
     static def from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig;
     def apply_env_interpolation -> None;
-    def apply_cli_overrides(args: dict[str, Any]) -> None;
+    def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, Any];
     def get_plugin_config(plugin_name: str) -> dict[str, Any];
+    def get_build_dir -> Path;
+    def get_cache_dir -> Path;
     def get_packages_dir -> Path;
+    def get_data_dir -> Path;
+    def get_client_dir -> Path;
     def is_valid -> bool;
     static def create_default_toml(project_name: str) -> str;
     def save -> None;

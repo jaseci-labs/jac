@@ -95,7 +95,7 @@ $ jac filename.jac
 $ jac --help
 
 # Serve as web application (advanced)
-$ jac serve filename.jac
+$ jac start filename.jac
 ```
 
 <br />

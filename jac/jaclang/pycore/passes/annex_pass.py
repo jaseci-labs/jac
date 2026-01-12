@@ -30,7 +30,10 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """Load and attach annex modules to the given module."""
         mod_path = ir_in.loc.mod_path
-        if ir_in.stub_only or not mod_path.endswith(".jac") or ir_in.annexable_by:
+        # Allow both .jac and .cl.jac files to have annexes loaded.
+        # .cl.jac files can exist standalone without a base .jac file.
+        is_jac_file = mod_path.endswith(".jac") or mod_path.endswith(".cl.jac")
+        if ir_in.stub_only or not is_jac_file or ir_in.annexable_by:
             return ir_in
 
         self._load_annexes(self.prog, ir_in, mod_path)
