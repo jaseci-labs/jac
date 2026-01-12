@@ -48,7 +48,9 @@ class MTIRGenPass(UniPass):
         if not isinstance(decl.name_of, uni.Archetype):
             return None
         arch_node = decl.name_of
+        # Extract class name
         class_name = arch_node.name.value
+        # Extract base classes
         base_classes: list[str] = []
         if arch_node.base_classes:
             for base in arch_node.base_classes:
@@ -56,6 +58,7 @@ class MTIRGenPass(UniPass):
                     base_classes.append(base.value)
                 elif isinstance(base, uni.AtomTrailer):
                     base_classes.append(base.unparse())
+        # Extract fields
         fields: list[FieldInfo] = []
         if arch_node.body and isinstance(arch_node.body, Sequence):
             for stmt in arch_node.body:
@@ -64,7 +67,7 @@ class MTIRGenPass(UniPass):
                         type_annotation = var.type_tag.tag if var.type_tag else None
                         is_primitive = self._is_primitive_type(type_annotation)
                         type_symbol_obj = self._extract_type_symbol(type_annotation, arch_node) if not is_primitive else None
-                        # For FieldInfo: name, symbol, semstr, type_symbol
+                        # For FieldInfo: name, semstr, type_symbol
                         type_symbol_value: ClassInfo | str | None = None
                         if type_symbol_obj:
                             nested_class = self._extract_class_info(type_symbol_obj)
@@ -73,19 +76,19 @@ class MTIRGenPass(UniPass):
                             type_symbol_value = type_annotation.value if isinstance(type_annotation, uni.Name) else str(type_annotation)
                         field_info = FieldInfo(
                             name=var.name.value,
-                            symbol=type_symbol_obj if type_symbol_obj else symbol,
                             semstr=type_symbol_obj.semstr if type_symbol_obj else symbol.semstr,
                             type_symbol=type_symbol_value
                         )
                         fields.append(field_info)
+        # Extract methods
         methods: list[str] = []
         if arch_node.body and isinstance(arch_node.body, Sequence):
             for stmt in arch_node.body:
                 if isinstance(stmt, uni.Ability):
                     methods.append(stmt.py_resolve_name())
+        # Return ClassInfo
         return ClassInfo(
             name=class_name,
-            symbol=symbol,
             semstr=symbol.semstr,
             fields=fields,
             base_classes=base_classes,
@@ -95,7 +98,9 @@ class MTIRGenPass(UniPass):
 
     def _extract_function_info(self, node: uni.Ability) -> FunctionInfo:
         """Extract comprehensive information from an Ability node."""
+        # Extract function name
         function_name = node.py_resolve_name()
+        # Extract parameters
         parameters: list[ParamInfo] = []
         if node.signature and isinstance(node.signature, uni.FuncSignature):
             all_params = node.signature.get_parameters()
@@ -103,7 +108,7 @@ class MTIRGenPass(UniPass):
                 type_annotation = param.type_tag.tag if param.type_tag else None
                 is_primitive = self._is_primitive_type(type_annotation)
                 type_symbol_obj = self._extract_type_symbol(type_annotation, node) if not is_primitive else None
-                # For ParamInfo: name, symbol, semstr, type_symbol
+                # For ParamInfo: name, semstr, type_symbol
                 type_symbol_value: ClassInfo | str | None = None
                 if type_symbol_obj:
                     nested_class = self._extract_class_info(type_symbol_obj)
@@ -112,11 +117,11 @@ class MTIRGenPass(UniPass):
                     type_symbol_value = type_annotation.value if isinstance(type_annotation, uni.Name) else str(type_annotation)
                 param_info = ParamInfo(
                     name=param.name.value,
-                    symbol=type_symbol_obj if type_symbol_obj else (param.name.sym if hasattr(param.name, 'sym') else None),
                     semstr=type_symbol_obj.semstr if type_symbol_obj else (param.name.sym.semstr if hasattr(param.name, 'sym') and param.name.sym else None),
                     type_symbol=type_symbol_value
                 )
                 parameters.append(param_info)
+        # Extract return type
         return_type: str | ClassInfo | None = None
         if node.signature and isinstance(node.signature, uni.FuncSignature):
             return_type_annotation = node.signature.return_type
@@ -128,14 +133,27 @@ class MTIRGenPass(UniPass):
                 if return_type_symbol:
                     return_class = self._extract_class_info(return_type_symbol)
                     return_type = return_class if return_class else (return_type_annotation.value if isinstance(return_type_annotation, uni.Name) else None)
+        # Extract tools for genai abilities
+        tools: list[Info] = []
         if node.is_genai_ability:
-            print(node)
+            if node.kid[-1].params:
+                for param in node.kid[-1].params:
+                    if isinstance(param, uni.KWPair):
+                        if param.key.value == "tools":
+                            for tool in param.value.values:
+                                tool_ability = node.lookup(tool.value, deep=True).symbol_table
+                                if tool_ability.is_method:
+                                    tool_info = self._extract_method_info(tool_ability)
+                                else:
+                                    tool_info = self._extract_function_info(tool_ability)
+                                tools.append(tool_info)
+        # Return FunctionInfo
         return FunctionInfo(
             name=function_name,
-            symbol=node.sym if hasattr(node, 'sym') else None,
             semstr=node.sym.semstr if hasattr(node, 'sym') and node.sym else None,
             params=parameters,
-            return_type=return_type
+            return_type=return_type,
+            tools=tools if tools else None
         )
     
     def _extract_method_info(self, node: uni.Ability) -> MethodInfo:
@@ -150,7 +168,6 @@ class MTIRGenPass(UniPass):
         
         return MethodInfo(
             name=func_info.name,
-            symbol=func_info.symbol,
             semstr=func_info.semstr,
             params=func_info.params,
             return_type=func_info.return_type,
@@ -160,47 +177,15 @@ class MTIRGenPass(UniPass):
 
     def enter_ability(self, node: uni.Ability) -> None:
         """Handle entering an ability node for MTIR generation."""
+        # Only process genai abilities
         if not node.is_genai_ability:
             return
+        # Extract function or method info based on type
         if node.is_method:
             func_info = self._extract_method_info(node)
         else:
             func_info = self._extract_function_info(node)
+        # Add to MTIR map
         Jac.add_mtir_to_map(node, func_info)
-        # print(f"""{'=' * 60}""")
-        # print(f'Function: {func_info.name}')
-        # print(f"Parameters: {len(func_info.params)}")
-        # for param in func_info.params:
-        #     is_primitive = isinstance(param.type_symbol, str) and param.type_symbol in PRIMITIVE_TYPES
-        #     print(f"  - {param.name}: primitive={is_primitive}, type={param.type_symbol}")
-            
-        #     # If parameter has a custom type (ClassInfo), show its structure
-        #     if isinstance(param.type_symbol, ClassInfo):
-        #         class_info = param.type_symbol
-        #         print(f"    Class: {class_info.name}")
-        #         print(f"    Fields: {len(class_info.fields)}")
-        #         for field in class_info.fields:
-        #             field_type_str = field.type_symbol if isinstance(field.type_symbol, str) else (field.type_symbol.name if isinstance(field.type_symbol, ClassInfo) else 'complex')
-        #             print(f"      - {field.name}: {field_type_str}")
-                    
-        #             # Recursively show nested class info
-        #             if isinstance(field.type_symbol, ClassInfo):
-        #                 nested_class = field.type_symbol
-        #                 print(f"        Nested class: {nested_class.name} with {len(nested_class.fields)} fields")
         
-        # if node.is_method and func_info.parent_class:
-        #     print(f"Parent Class: {func_info.parent_class.name}")
-
-        # return_is_primitive = isinstance(func_info.return_type, str)
-        # print(f"Return: primitive={return_is_primitive}, type={func_info.return_type}")
-        
-        # # Show return type class structure if it's a custom type
-        # if isinstance(func_info.return_type, ClassInfo):
-        #     class_info = func_info.return_type
-        #     print(f"  Return Class: {class_info.name}")
-        #     print(f"  Fields: {len(class_info.fields)}")
-        #     for field in class_info.fields:
-        #         field_type_str = field.type_symbol if isinstance(field.type_symbol, str) else (field.type_symbol.name if isinstance(field.type_symbol, ClassInfo) else 'complex')
-        #         print(f"    - {field.name}: {field_type_str}")
-        # print(f"{'='*60}\n")
  

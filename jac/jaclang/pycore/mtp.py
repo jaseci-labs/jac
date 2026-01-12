@@ -32,21 +32,15 @@ class MTIR:
     caller: Callable[..., object]
     args: dict[int | str, object]
     call_params: dict[str, object]
-    # info: Info
+    ir_info: Info = None
 
     @property
     def runtime(self) -> MTRuntime:
         """Convert to runtime context."""
         return MTRuntime.factory(self.caller, self.args, self.call_params)
 
-PRIMITIVE_TYPES = {'int', 'float', 'str', 'bool', 'None', 'bytes', 'list', 'dict', 'set', 'tuple'}
-
-@dataclass
-class Info :
     name: str
-    symbol: uni.Symbol
     semstr: str | None
-
 
 @dataclass
 class VarInfo(Info) :
@@ -71,6 +65,7 @@ class ClassInfo(Info) :
         if self.fields is None:
             self.fields = []
         if self.base_classes is None:
+            
             self.base_classes = []
         if self.methods is None:
             self.methods = []
