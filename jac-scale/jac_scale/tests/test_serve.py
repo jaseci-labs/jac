@@ -83,10 +83,15 @@ class TestJacScaleServe:
     @classmethod
     def _start_server(cls) -> None:
         """Start the jac-scale server in a subprocess."""
+        import sys
+
+        # Get the jac executable from the same directory as the current Python interpreter
+        jac_executable = Path(sys.executable).parent / "jac"
+
         # Build the command to start the server
         cmd = [
-            "jac",
-            "serve",
+            str(jac_executable),
+            "start",
             str(cls.test_file),
             "--session",
             str(cls.session_file),

@@ -112,7 +112,7 @@ class TestMemoryHierarchy:
         jac_executable = Path(sys.executable).parent / "jac"
         cmd = [
             str(jac_executable),
-            "serve",
+            "start",
             str(cls.jac_file.name),
             "--port",
             str(cls.port),
@@ -139,7 +139,7 @@ class TestMemoryHierarchy:
 
         stdout, stderr = cls.server.communicate(timeout=2)
         raise RuntimeError(
-            f"jac serve failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+            f"jac start failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
         )
 
     def _register(self, username: str, password: str = "password123") -> str:

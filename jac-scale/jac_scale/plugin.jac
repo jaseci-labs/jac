@@ -54,7 +54,8 @@ class JacCmd {
                     "scale",
                     typ=bool,
                     default=False,
-                    help="Deploy to Kubernetes instead of running locally"
+                    help="Deploy to Kubernetes instead of running locally",
+                    short=""  # Disable auto-generated -s (conflicts with --session)
                 ),
                 Arg.create(
                     "build",
