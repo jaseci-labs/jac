@@ -47,7 +47,6 @@ class KubernetesConfig(BaseConfig) {
     }
 
     static def from_dict(cls: type, config: dict[str, Any]) -> KubernetesConfig {
-        base = super().from_dict(config);
         return cls(
             app_name=config.get('app_name', 'jaseci'),
             namespace=config.get('namespace', 'default'),

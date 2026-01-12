@@ -27,6 +27,7 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import time;
 import from kubernetes { client, config as k8s_config }
+import from kubernetes.client.exceptions { ApiException }
 
 """Kubernetes deployment target implementation."""
 class KubernetesTarget(DeploymentTarget) {
