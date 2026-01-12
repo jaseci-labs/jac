@@ -9,6 +9,7 @@ from jaclang.pycore.passes import UniPass
 from jaclang import JacRuntime as Jac
 from jaclang.pycore.mtp import Info, VarInfo, FunctionInfo, MethodInfo, ClassInfo, FieldInfo, ParamInfo
 import uuid
+from typing import Optional
 
 PRIMITIVE_TYPES: list[str] = ['int', 'float', 'str', 'bool', 'None', 'bytes', 'list', 'dict', 'set', 'tuple']
 
@@ -50,14 +51,25 @@ class MTIRGenPass(UniPass):
         arch_node = decl.name_of
         # Extract class name
         class_name = arch_node.name.value
-        # Extract base classes
-        base_classes: list[str] = []
+        # Extract base classes (as ClassInfo objects)
+        base_classes: list[ClassInfo] = []
         if arch_node.base_classes:
             for base in arch_node.base_classes:
+                # try to resolve base to a symbol and extract its ClassInfo
+                try_sym = self._extract_type_symbol(base, arch_node)
+                if try_sym:
+                    nested = self._extract_class_info(try_sym)
+                    if nested:
+                        base_classes.append(nested)
+                        continue
+                # fallback: create a minimal ClassInfo using the name
                 if isinstance(base, uni.Name):
-                    base_classes.append(base.value)
+                    base_name = base.value
                 elif isinstance(base, uni.AtomTrailer):
-                    base_classes.append(base.unparse())
+                    base_name = base.unparse()
+                else:
+                    base_name = str(base)
+                base_classes.append(ClassInfo(name=base_name, semstr=None))
         # Extract fields
         fields: list[FieldInfo] = []
         if arch_node.body and isinstance(arch_node.body, Sequence):
@@ -77,23 +89,23 @@ class MTIRGenPass(UniPass):
                         field_info = FieldInfo(
                             name=var.name.value,
                             semstr=type_symbol_obj.semstr if type_symbol_obj else symbol.semstr,
-                            type_symbol=type_symbol_value
+                            type_info=type_symbol_value
                         )
                         fields.append(field_info)
-        # Extract methods
-        methods: list[str] = []
+        # Extract methods (as MethodInfo objects)
+        methods: list[MethodInfo] = []
         if arch_node.body and isinstance(arch_node.body, Sequence):
             for stmt in arch_node.body:
-                if isinstance(stmt, uni.Ability):
-                    methods.append(stmt.py_resolve_name())
-        # Return ClassInfo
+                if isinstance(stmt, uni.Ability) and stmt.is_method:
+                    methods.append(self._extract_method_info(stmt))
+
+        # Return ClassInfo (note: `archetype_node` removed from updated dataclass)
         return ClassInfo(
             name=class_name,
-            semstr=symbol.semstr,
+            semstr=symbol.semstr if symbol.semstr else (arch_node.doc.lit_value if arch_node.doc else None),
             fields=fields,
             base_classes=base_classes,
             methods=methods,
-            archetype_node=arch_node
         )
 
     def _extract_function_info(self, node: uni.Ability) -> FunctionInfo:
@@ -108,19 +120,20 @@ class MTIRGenPass(UniPass):
                 type_annotation = param.type_tag.tag if param.type_tag else None
                 is_primitive = self._is_primitive_type(type_annotation)
                 type_symbol_obj = self._extract_type_symbol(type_annotation, node) if not is_primitive else None
-                # For ParamInfo: name, semstr, type_symbol
-                type_symbol_value: ClassInfo | str | None = None
+                # For ParamInfo: name, symbol, semstr, type_symbol
+                type_value: ClassInfo | str | None = None
                 if type_symbol_obj:
                     nested_class = self._extract_class_info(type_symbol_obj)
-                    type_symbol_value = nested_class if nested_class else type_annotation.value if isinstance(type_annotation, uni.Name) else None
+                    type_value = nested_class if nested_class else type_annotation.value if isinstance(type_annotation, uni.Name) else None
                 elif is_primitive and type_annotation:
-                    type_symbol_value = type_annotation.value if isinstance(type_annotation, uni.Name) else str(type_annotation)
+                    type_value = type_annotation.value if isinstance(type_annotation, uni.Name) else str(type_annotation)
                 param_info = ParamInfo(
                     name=param.name.value,
                     semstr=type_symbol_obj.semstr if type_symbol_obj else (param.name.sym.semstr if hasattr(param.name, 'sym') and param.name.sym else None),
-                    type_symbol=type_symbol_value
+                    type_info=type_value
                 )
                 parameters.append(param_info)
+                
         # Extract return type
         return_type: str | ClassInfo | None = None
         if node.signature and isinstance(node.signature, uni.FuncSignature):
@@ -131,10 +144,14 @@ class MTIRGenPass(UniPass):
             elif not return_is_primitive:
                 return_type_symbol = self._extract_type_symbol(return_type_annotation, node)
                 if return_type_symbol:
-                    return_class = self._extract_class_info(return_type_symbol)
+                    return_class = None
+                    if node.is_method:
+                        self_type_symbol = node.method_owner.sym
+                        if self_type_symbol != return_type_symbol:
+                            return_class = self._extract_class_info(return_type_symbol)
                     return_type = return_class if return_class else (return_type_annotation.value if isinstance(return_type_annotation, uni.Name) else None)
         # Extract tools for genai abilities
-        tools: list[Info] = []
+        tools: list[FunctionInfo] = []
         if node.is_genai_ability:
             if node.kid[-1].params:
                 for param in node.kid[-1].params:
@@ -143,6 +160,7 @@ class MTIRGenPass(UniPass):
                             for tool in param.value.values:
                                 tool_ability = node.lookup(tool.value, deep=True).symbol_table
                                 if tool_ability.is_method:
+                                    
                                     tool_info = self._extract_method_info(tool_ability)
                                 else:
                                     tool_info = self._extract_function_info(tool_ability)
@@ -156,14 +174,15 @@ class MTIRGenPass(UniPass):
             tools=tools if tools else None
         )
     
-    def _extract_method_info(self, node: uni.Ability) -> MethodInfo:
+    def _extract_method_info(self, node: uni.Ability, by_call:bool=False) -> MethodInfo:
         """Extract method information from an Ability node."""
-        func_info = self._extract_function_info(node)
+        func_info = self._extract_function_info(node=node)
+        
         
         # Find parent archetype and extract its ClassInfo
         parent_arch = node.find_parent_of_type(uni.Archetype)
         parent_class_info = None
-        if parent_arch and hasattr(parent_arch.name, 'sym') and parent_arch.name.sym:
+        if parent_arch and hasattr(parent_arch.name, 'sym') and parent_arch.name.sym and by_call:
             parent_class_info = self._extract_class_info(parent_arch.name.sym)
         
         return MethodInfo(
@@ -171,7 +190,7 @@ class MTIRGenPass(UniPass):
             semstr=func_info.semstr,
             params=func_info.params,
             return_type=func_info.return_type,
-            parent_class=parent_class_info
+            parent_class=parent_class_info,
         )
         
 
@@ -182,9 +201,9 @@ class MTIRGenPass(UniPass):
             return
         # Extract function or method info based on type
         if node.is_method:
-            func_info = self._extract_method_info(node)
+            func_info = self._extract_method_info(node=node, by_call=True)
         else:
-            func_info = self._extract_function_info(node)
+            func_info = self._extract_function_info(node=node)
         # Add to MTIR map
         Jac.add_mtir_to_map(node, func_info)
         

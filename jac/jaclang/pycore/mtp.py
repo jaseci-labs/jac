@@ -39,12 +39,16 @@ class MTIR:
         """Convert to runtime context."""
         return MTRuntime.factory(self.caller, self.args, self.call_params)
 
+# PRIMITIVE_TYPES = {'int', 'float', 'str', 'bool', 'None', 'bytes', 'list', 'dict', 'set', 'tuple'}
+
+@dataclass
+class Info :
     name: str
     semstr: str | None
 
 @dataclass
 class VarInfo(Info) :
-    type_symbol: ClassInfo | str | None = None
+    type_info: ClassInfo | str | None = None
 
 @dataclass
 class ParamInfo(VarInfo):
@@ -56,16 +60,16 @@ class FieldInfo(VarInfo):
 
 @dataclass
 class ClassInfo(Info) :
-    fields: list[FieldInfo] = None
-    base_classes: list[str] = None
-    methods: list[str] = None  # Method names
-    archetype_node: uni.Archetype = None
+    fields: list[FieldInfo]
+    base_classes: list[ClassInfo]
+    methods: list[MethodInfo]
+    # archetype_node: uni.Archetype = None
 
-    def __post_init__(self):
+    def post_init__(self):
+        # Ensure fields and methods are initialized to empty lists if None
         if self.fields is None:
             self.fields = []
         if self.base_classes is None:
-            
             self.base_classes = []
         if self.methods is None:
             self.methods = []
@@ -75,10 +79,15 @@ class FunctionInfo(Info) :
     params: list[ParamInfo] = None
     return_type: str | ClassInfo | None = None
     tools: list[MethodInfo] = None
+    by_call: bool = False
 
-    def __post_init__(self):
+    def post_init__(self):
+        # Ensure params and tools are initialized to empty lists if None
         if self.params is None:
             self.params = []
+        if self.tools is None:
+            self.tools = []
+
 
 @dataclass
 class MethodInfo(FunctionInfo) :
