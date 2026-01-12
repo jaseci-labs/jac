@@ -455,7 +455,6 @@ impl ensure_namespace_exists(namespace: str) -> None {
     }
 }
 
-
 """Deploy example."""
 impl delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str

@@ -34,7 +34,6 @@ def delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None;
 
-
 def ensure_namespace_exists(namespace: str) -> None;
 
 def create_tarball(source_dir: str, tar_path: str) -> None;
@@ -85,4 +84,3 @@ def sync_code_to_pvc(
     app_name: str,
     sync_image: str
 ) -> None;
-

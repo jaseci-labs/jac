@@ -27,7 +27,7 @@ class KubernetesMongoProvider(DatabaseProvider) {
         mongodb_port = 27017;
         mongodb_service_name = f"{mongodb_name}-service";
         mongodb_volume_name = f"{self.app_name}-mongo-data";
-        
+
         mongodb_statefulset = {
             'apiVersion': 'apps/v1',
             'kind': 'StatefulSet',
@@ -55,7 +55,10 @@ class KubernetesMongoProvider(DatabaseProvider) {
                                     }
                                 ],
                                 'volumeMounts': [
-                                    {'name': mongodb_volume_name, 'mountPath': '/data/db'}
+                                    {
+                                        'name': mongodb_volume_name,
+                                        'mountPath': '/data/db'
+                                    }
                                 ]
                             }
                         ]
@@ -72,7 +75,7 @@ class KubernetesMongoProvider(DatabaseProvider) {
                 ]
             }
         };
-        
+
         mongodb_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -81,13 +84,17 @@ class KubernetesMongoProvider(DatabaseProvider) {
                 'clusterIP': 'None',
                 'selector': {'app': mongodb_name},
                 'ports': [
-                    {'protocol': 'TCP', 'port': mongodb_port, 'targetPort': mongodb_port}
+                    {
+                        'protocol': 'TCP',
+                        'port': mongodb_port,
+                        'targetPort': mongodb_port
+                    }
                 ]
             }
         };
-        
+
         self.connection_string = f"mongodb://admin:password@{mongodb_service_name}:{mongodb_port}";
-        
+
         return {
             'deployment': mongodb_statefulset,
             'service': mongodb_service,

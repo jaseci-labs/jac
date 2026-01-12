@@ -27,20 +27,17 @@ class DockerHubRegistry(ImageRegistry) {
             image_name = self.config.get('docker_image_name') or f"{app_name}:latest";
         }
         repository_name = f"{self.docker_username}/{image_name}";
-        
+
         # Build Docker image using Docker client
         docker_client = docker.from_env();
         try {
             docker_client.images.build(
-                path=code_folder,
-                tag=repository_name,
-                dockerfile='Dockerfile',
-                rm=True
+                path=code_folder, tag=repository_name, dockerfile='Dockerfile', rm=True
             );
         } except BuildError as e {
-            raise RuntimeError(f"Failed to build Docker image: {e}") from e;
+            raise RuntimeError(f"Failed to build Docker image: {e}") from e ;
         }
-        
+
         return repository_name;
     }
 
@@ -49,12 +46,11 @@ class DockerHubRegistry(ImageRegistry) {
         docker_client = docker.from_env();
         try {
             docker_client.login(
-                username=self.docker_username,
-                password=self.docker_password
+                username=self.docker_username, password=self.docker_password
             );
             docker_client.images.push(image_name);
         } except APIError as e {
-            raise RuntimeError(f"Failed to push Docker image: {e}") from e;
+            raise RuntimeError(f"Failed to push Docker image: {e}") from e ;
         }
     }
 

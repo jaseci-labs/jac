@@ -26,7 +26,7 @@ class KubernetesRedisProvider(DatabaseProvider) {
         redis_name = f"{self.app_name}-redis";
         redis_port = 6379;
         redis_service_name = f"{redis_name}-service";
-        
+
         redis_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
@@ -53,7 +53,7 @@ class KubernetesRedisProvider(DatabaseProvider) {
                 }
             }
         };
-        
+
         redis_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -65,9 +65,9 @@ class KubernetesRedisProvider(DatabaseProvider) {
                 ]
             }
         };
-        
+
         self.connection_string = f"redis://{redis_service_name}:{redis_port}/0";
-        
+
         return {
             'deployment': redis_deployment,
             'service': redis_service,
