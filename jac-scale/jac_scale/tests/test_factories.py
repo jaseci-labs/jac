@@ -1,5 +1,5 @@
 """Tests for the new factory-based architecture."""
-import os
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,9 +25,9 @@ def test_deployment_target_factory_creates_kubernetes_target():
         "container_port": 8000,
         "node_port": 30001,
     }
-    
+
     target = DeploymentTargetFactory.create("kubernetes", config)
-    
+
     assert target is not None
     assert hasattr(target, "deploy")
     assert hasattr(target, "destroy")
@@ -39,7 +39,7 @@ def test_deployment_target_factory_creates_kubernetes_target():
 def test_deployment_target_factory_raises_for_unsupported_target():
     """Test that factory raises ValueError for unsupported target."""
     config = {"app_name": "test-app"}
-    
+
     with pytest.raises(ValueError, match="Unsupported deployment target"):
         DeploymentTargetFactory.create("unsupported", config)
 
@@ -47,7 +47,7 @@ def test_deployment_target_factory_raises_for_unsupported_target():
 def test_deployment_target_factory_raises_for_not_implemented_target():
     """Test that factory raises NotImplementedError for future targets."""
     config = {"app_name": "test-app"}
-    
+
     with pytest.raises(NotImplementedError, match="not yet implemented"):
         DeploymentTargetFactory.create("aws", config)
 
@@ -59,9 +59,9 @@ def test_image_registry_factory_creates_dockerhub():
         "docker_username": "testuser",
         "docker_password": "testpass",
     }
-    
+
     registry = ImageRegistryFactory.create("dockerhub", config)
-    
+
     assert registry is not None
     assert hasattr(registry, "build_image")
     assert hasattr(registry, "push_image")
@@ -72,7 +72,7 @@ def test_image_registry_factory_creates_dockerhub():
 def test_image_registry_factory_raises_for_unsupported_registry():
     """Test that factory raises ValueError for unsupported registry."""
     config = {"app_name": "test-app"}
-    
+
     with pytest.raises(ValueError, match="Unsupported image registry"):
         ImageRegistryFactory.create("unsupported", config)
 
@@ -80,7 +80,7 @@ def test_image_registry_factory_raises_for_unsupported_registry():
 def test_utility_factory_creates_standard_logger():
     """Test that factory creates StandardLogger for 'standard' type."""
     logger = UtilityFactory.create_logger("standard")
-    
+
     assert logger is not None
     assert hasattr(logger, "info")
     assert hasattr(logger, "error")
@@ -91,7 +91,7 @@ def test_utility_factory_creates_standard_logger():
 def test_utility_factory_defaults_to_standard_logger():
     """Test that factory defaults to standard logger when no type specified."""
     logger = UtilityFactory.create_logger()
-    
+
     assert logger is not None
     assert hasattr(logger, "info")
 
@@ -106,9 +106,9 @@ def test_kubernetes_config_from_dict():
         "mongodb_enabled": False,
         "redis_enabled": False,
     }
-    
+
     config = KubernetesConfig.from_dict(config_dict)
-    
+
     assert config.app_name == "my-app"
     assert config.namespace == "test-ns"
     assert config.container_port == 9000
@@ -124,7 +124,7 @@ def test_app_config_creation():
         file_name="app.jac",
         build=True,
     )
-    
+
     assert app_config.code_folder == "/path/to/code"
     assert app_config.file_name == "app.jac"
     assert app_config.build is True
@@ -136,15 +136,14 @@ def test_deployment_target_with_logger(mock_kubernetes_target):
     """Test that deployment target is created with logger."""
     mock_target = MagicMock()
     mock_kubernetes_target.return_value = mock_target
-    
+
     config = {"app_name": "test-app", "namespace": "default"}
     logger = UtilityFactory.create_logger("standard")
-    
+
     target = DeploymentTargetFactory.create("kubernetes", config, logger)
-    
+
     # Verify logger was passed to target
     mock_kubernetes_target.assert_called_once()
     call_kwargs = mock_kubernetes_target.call_args[1]
     assert "logger" in call_kwargs
     assert call_kwargs["logger"] == logger
-

@@ -1,17 +1,17 @@
 """Tests for Kubernetes deployment using new factory-based architecture."""
+
 import os
 import time
 from typing import Any
 
-import pytest
 import requests
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
 
+from ..abstractions.config.app_config import AppConfig
 from ..config_loader import get_scale_config
 from ..factories.deployment_factory import DeploymentTargetFactory
 from ..factories.utility_factory import UtilityFactory
-from ..abstractions.config.app_config import AppConfig
 
 
 def _request_with_retry(
@@ -90,7 +90,9 @@ def test_deploy_todo_app():
     logger = UtilityFactory.create_logger("standard")
 
     # Create deployment target using factory
-    deployment_target = DeploymentTargetFactory.create("kubernetes", target_config, logger)
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes", target_config, logger
+    )
 
     # Create app config
     app_config = AppConfig(
@@ -109,9 +111,7 @@ def test_deploy_todo_app():
     time.sleep(5)
 
     # Validate the main deployment exists
-    deployment = apps_v1.read_namespaced_deployment(
-        name=app_name, namespace=namespace
-    )
+    deployment = apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace)
     assert deployment.metadata.name == app_name
     assert deployment.spec.replicas == 1
 
@@ -150,7 +150,9 @@ def test_deploy_todo_app():
     status = deployment_target.get_status(app_name)
     assert status is not None
     assert status.replicas >= 0
-    print(f"✓ Deployment status: {status.status.value}, replicas: {status.replicas}/{status.ready_replicas}")
+    print(
+        f"✓ Deployment status: {status.status.value}, replicas: {status.replicas}/{status.ready_replicas}"
+    )
 
     # Send POST request to create a todo (with retry for 503)
     try:
@@ -196,7 +198,9 @@ def test_deploy_todo_app():
         assert e.status == 404, f"Expected 404, got {e.status}"
 
     try:
-        core_v1.read_namespaced_service(f"{app_name}-mongodb-service", namespace=namespace)
+        core_v1.read_namespaced_service(
+            f"{app_name}-mongodb-service", namespace=namespace
+        )
         raise AssertionError("MongoDB Service should have been deleted")
     except ApiException as e:
         assert e.status == 404, f"Expected 404, got {e.status}"
@@ -208,7 +212,9 @@ def test_deploy_todo_app():
         assert e.status == 404, f"Expected 404, got {e.status}"
 
     try:
-        core_v1.read_namespaced_service(f"{app_name}-redis-service", namespace=namespace)
+        core_v1.read_namespaced_service(
+            f"{app_name}-redis-service", namespace=namespace
+        )
         raise AssertionError("Redis Service should have been deleted")
     except ApiException as e:
         assert e.status == 404, f"Expected 404, got {e.status}"
@@ -243,7 +249,9 @@ def test_deployment_target_methods():
 
     # Create deployment target
     logger = UtilityFactory.create_logger("standard")
-    deployment_target = DeploymentTargetFactory.create("kubernetes", target_config, logger)
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes", target_config, logger
+    )
 
     # Test get_service_url (before deployment, should return None or handle gracefully)
     service_url = deployment_target.get_service_url(app_name)

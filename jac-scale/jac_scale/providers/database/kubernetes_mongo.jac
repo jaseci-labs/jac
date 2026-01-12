@@ -6,10 +6,10 @@ import from jac_scale.kubernetes.database.mongo { mongo_db }
 
 """MongoDB provider for Kubernetes deployments."""
 class KubernetesMongoProvider(DatabaseProvider) {
-    has target: (DeploymentTarget | None) = None;
-    has config: dict[str, Any] = {};
-    has app_name: str = '';
-    has connection_string: str = '';
+    has target: (DeploymentTarget | None) = None,
+        config: dict[str, Any] = {},
+        app_name: str = '',
+        connection_string: str = '';
 
     def init(
         self: KubernetesMongoProvider,
@@ -21,7 +21,9 @@ class KubernetesMongoProvider(DatabaseProvider) {
         self.app_name = config.get('app_name', 'jaseci');
     }
 
-    def deploy(self: KubernetesMongoProvider, config: dict[str, Any] = {}) -> dict[str, Any] {
+    def deploy(
+        self: KubernetesMongoProvider, config: dict[str, Any] = {}
+    ) -> dict[str, Any] {
         env_vars: list = [];
         (deployment, service) = mongo_db(self.app_name, env_vars);
         # Extract connection string from env_vars
@@ -58,4 +60,3 @@ class KubernetesMongoProvider(DatabaseProvider) {
         pass;
     }
 }
-

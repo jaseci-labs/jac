@@ -2,21 +2,20 @@
 import os;
 import from typing { Any }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
-import from jac_scale.kubernetes.docker_impl {
-    build_docker_image,
-    push_docker_image
-}
+import from jac_scale.kubernetes.docker_impl { build_docker_image, push_docker_image }
 
 """DockerHub image registry implementation."""
 class DockerHubRegistry(ImageRegistry) {
-    has config: dict[str, Any] = {};
-    has docker_username: str = '';
-    has docker_password: str = '';
+    has config: dict[str, Any] = {},
+        docker_username: str = '',
+        docker_password: str = '';
 
     def init(self: DockerHubRegistry, config: dict[str, Any] = {}) -> None {
         self.config = config;
-        self.docker_username = config.get('docker_username', '') or os.getenv('DOCKER_USERNAME', 'juzailmlwork');
-        self.docker_password = config.get('docker_password', '') or os.getenv('DOCKER_PASSWORD', '');
+        self.docker_username = config.get('docker_username', '')
+        or os.getenv('DOCKER_USERNAME', 'juzailmlwork');
+        self.docker_password = config.get('docker_password', '')
+        or os.getenv('DOCKER_PASSWORD', '');
     }
 
     def build_image(
@@ -47,4 +46,3 @@ class DockerHubRegistry(ImageRegistry) {
         return image_name;
     }
 }
-

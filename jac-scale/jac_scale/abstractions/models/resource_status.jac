@@ -3,22 +3,23 @@ import from enum { Enum }
 
 """Status of a deployed resource."""
 class ResourceStatus(Enum) {
-    has UNKNOWN: str = 'unknown';
-    has PENDING: str = 'pending';
-    has RUNNING: str = 'running';
-    has FAILED: str = 'failed';
-    has STOPPED: str = 'stopped';
+    has UNKNOWN: str = 'unknown',
+        PENDING: str = 'pending',
+        RUNNING: str = 'running',
+        FAILED: str = 'failed',
+        STOPPED: str = 'stopped';
 }
 
 """Detailed resource status information."""
 class ResourceStatusInfo {
-    has status: ResourceStatus;
-    has replicas: int = 0;
-    has ready_replicas: int = 0;
-    has message: (str | None) = None;
+    has status: ResourceStatus,
+        replicas: int = 0,
+        ready_replicas: int = 0,
+        message: (str | None) = None;
 
     def is_ready(self: ResourceStatusInfo) -> bool {
-        return self.status == ResourceStatus.RUNNING and self.replicas > 0 and self.ready_replicas == self.replicas;
+        return self.status == ResourceStatus.RUNNING
+        and self.replicas > 0
+        and self.ready_replicas == self.replicas;
     }
 }
-

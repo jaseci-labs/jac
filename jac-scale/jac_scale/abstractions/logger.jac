@@ -18,4 +18,3 @@ class Logger {
     """Log a debug message."""
     def debug(self: Logger, message: str, context: dict[str, Any] = {}) -> None;
 }
-

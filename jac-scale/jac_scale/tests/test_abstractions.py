@@ -1,4 +1,5 @@
 """Tests for abstraction base classes."""
+
 import pytest
 
 # Note: These imports will work once the Jac files are compiled to Python
@@ -21,7 +22,7 @@ def test_deployment_result_success():
         service_url="http://localhost:8000",
         message="Deployment successful",
     )
-    
+
     assert result.success is True
     assert result.is_successful() is True
     assert result.service_url == "http://localhost:8000"
@@ -35,7 +36,7 @@ def test_deployment_result_failure():
         message="Deployment failed",
         details={"error": "Connection timeout"},
     )
-    
+
     assert result.success is False
     assert result.is_successful() is False
     assert result.message == "Deployment failed"
@@ -49,7 +50,7 @@ def test_resource_status_info_ready():
         replicas=3,
         ready_replicas=3,
     )
-    
+
     assert status.is_ready() is True
     assert status.replicas == 3
     assert status.ready_replicas == 3
@@ -62,7 +63,7 @@ def test_resource_status_info_not_ready():
         replicas=3,
         ready_replicas=1,
     )
-    
+
     assert status.is_ready() is False
     assert status.replicas == 3
     assert status.ready_replicas == 1
@@ -80,9 +81,8 @@ def test_resource_status_enum():
 def test_app_config_get_code_path():
     """Test AppConfig.get_code_path() method."""
     app_config = AppConfig(code_folder="/path/to/code")
-    
+
     path = app_config.get_code_path()
-    
+
     assert str(path) == "/path/to/code"
     assert hasattr(path, "exists")  # Should be a Path object
-
