@@ -86,6 +86,7 @@ impl CommandExecutor.run_post_hooks(
 
 """Execute the command handler."""
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, Any]) -> int {
+    import inspect;
     import from jaclang.cli.command { CommandSpec }
     if spec.handler is None {
         print(
@@ -93,9 +94,24 @@ impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, Any]) -> int
         );
         return 1;
     }
-    # Call handler with arguments
-    # Handler should accept **kwargs for plugin arguments
-    result = spec.handler(**args);
+    # Filter args to only include those the handler accepts
+    # This allows plugin-extended args without requiring **kwargs in handlers
+    sig = inspect.signature(spec.handler);
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    );
+    if has_var_keyword {
+        # Handler accepts **kwargs, pass all args
+        filtered_args = args;
+    } else {
+        # Only pass args that match handler parameters
+        filtered_args = {
+            k: v
+            for (k, v) in args.items()
+            if k in sig.parameters
+        };
+    }
+    result = spec.handler(**filtered_args);
     # Handle return value
     if result is None {
         return 0;

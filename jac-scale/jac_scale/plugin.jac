@@ -3,7 +3,7 @@ import os;
 import pathlib;
 import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
-import from jaclang.cli.command { Arg, ArgKind, CommandPriority }
+import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.pycore.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from .context { JScaleExecutionContext }
@@ -11,6 +11,32 @@ import from .kubernetes.docker_impl { build_and_push_docker }
 import from .kubernetes.K8s { deploy_K8s }
 import from .kubernetes.utils { cleanup_K8s_resources }
 import from .serve { JacAPIServer }
+
+"""Pre-hook for jac start command to handle --scale flag."""
+def _scale_pre_hook(context: HookContext) -> None {
+    scale = context.get_arg("scale", False);
+    if scale {
+        # Handle K8s deployment instead of local server
+        filename = context.get_arg("filename");
+        build = context.get_arg("build", False);
+        if not os.path.exists(filename) {
+            raise FileNotFoundError(f"File not found: '{filename}'") ;
+        }
+        code_folder = os.path.dirname(filename) or '.';
+        dotenv_path = os.path.join(code_folder, '.env');
+        load_dotenv(dotenv_path);
+        code_folder = os.path.relpath(code_folder);
+        code_folder = pathlib.Path(code_folder).as_posix();
+        base_file_path = os.path.basename(filename);
+        if build {
+            build_and_push_docker(code_folder);
+        }
+        deploy_K8s(code_folder, base_file_path, build);
+        # Cancel normal start execution since we handled it
+        context.set_data("cancel_execution", True);
+        context.set_data("cancel_return_code", 0);
+    }
+}
 
 """Jac CLI."""
 class JacCmd {
@@ -20,47 +46,28 @@ class JacCmd {
         """Jac Scale functionality.""";
         registry = get_registry();
 
-        @registry.command(
-            name="scale",
-            help="Deploy Jac application to Kubernetes",
+        # Extend jac start with --scale and --build flags
+        registry.extend_command(
+            "start",
             args=[
                 Arg.create(
-                    "file_path", kind=ArgKind.POSITIONAL, help="Path to .jac file"
+                    "scale",
+                    typ=bool,
+                    default=False,
+                    help="Deploy to Kubernetes instead of running locally"
                 ),
                 Arg.create(
                     "build",
                     typ=bool,
                     default=False,
-                    help="Build and push Docker image",
+                    help="Build and push Docker image (with --scale)",
                     short="b"
                 ),
 
             ],
-            examples=[
-                ("jac scale app.jac", "Deploy without rebuilding"),
-                ("jac scale app.jac --build", "Build and deploy"),
-
-            ],
-            group="deployment",
-            priority=CommandPriority.PLUGIN,
+            pre_hook=_scale_pre_hook,
             source="jac-scale"
-        )
-        def scale(file_path: str, build: bool = False) -> int {
-            if not os.path.exists(file_path) {
-                raise FileNotFoundError(f"File not found: '{file_path}'") ;
-            }
-            code_folder = os.path.dirname(file_path) or '.';
-            dotenv_path = os.path.join(code_folder, '.env');
-            load_dotenv(dotenv_path);
-            code_folder = os.path.relpath(code_folder);
-            code_folder = pathlib.Path(code_folder).as_posix();
-            base_file_path = os.path.basename(file_path);
-            if build {
-                build_and_push_docker(code_folder);
-            }
-            deploy_K8s(code_folder, base_file_path, build);
-            return 0;
-        }
+        );
 
         @registry.command(
             name="destroy",

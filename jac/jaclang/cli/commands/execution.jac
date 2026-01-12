@@ -74,7 +74,7 @@ def enter(
 
 """Start REST API server."""
 @registry.command(
-    name="serve",
+    name="start",
     help="Start REST API server for a Jac program",
     args=[
         Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
@@ -91,14 +91,14 @@ def enter(
 
     ],
     examples=[
-        ("jac serve app.jac", "Start server on default port"),
-        ("jac serve app.jac --port 3000", "Start server on port 3000"),
-        ("jac serve app.jac --faux", "Generate API docs without starting"),
+        ("jac start app.jac", "Start server on default port"),
+        ("jac start app.jac --port 3000", "Start server on port 3000"),
+        ("jac start app.jac --faux", "Generate API docs without starting"),
 
     ],
     group="execution"
 )
-def serve(
+def start(
     filename: str,
     session: str = "",
     port: int = 8000,

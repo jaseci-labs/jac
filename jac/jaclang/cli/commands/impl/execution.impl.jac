@@ -132,7 +132,7 @@ impl enter(
 }
 
 """Start REST API server for the specified .jac file."""
-impl serve(
+impl start(
     filename: str,
     session: str = '',
     port: int = 8000,
