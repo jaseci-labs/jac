@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jac-client 0.2.5 (Unreleased)
+## jac-client 0.2.8 (Unreleased)
+
+## jac-client 0.2.7 (Latest Release)
 
 - **Reactive State Variables**: The `jac create --cl` template now uses the new `has` keyword for React state management. Instead of `[count, setCount] = useState(0);`, you can write `has count: int = 0;` and use direct assignment `count = count + 1;`. The compiler automatically generates the `useState` destructuring and transforms assignments to setter calls, providing cleaner and more intuitive state management syntax.
 - **Simplified Project Structure**: Reorganized the default project structure created by `jac create --cl`. The entry point is now `main.jac` at the project root instead of `src/app.jac`, and the `components/` directory is now at the project root instead of `src/components/`. This flatter structure reduces nesting and aligns with modern frontend project conventions. Existing projects using the `src/` structure continue to work but new projects use the simplified layout.
@@ -11,7 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Base Route App Configuration**: Added `base_route_app` option in `jac.toml` `[serve]` section to serve a client app directly at the root `/` path. When configured, visiting `/` renders the specified client app instead of the API info page, making it easy to create single-page applications with clean URLs. Projects created with `jac create --cl` now default to `base_route_app = "app"`, so the app is served at `/` out of the box. [Documentation](https://docs.jaseci.org/learn/tools/project_config/#serve-section)
 
-## jac-client 0.2.4 (Latest Release)
+## jac-client 0.2.4
 
 - **`jac-client-node` and `@jac-client/dev-deps` npm packages**: Introduced the new npm libraries  to centralize and abstract default dependencies for Jac client applications. These two package includes React, Vite, Babel, TypeScript, and other essential dependencies.
 
