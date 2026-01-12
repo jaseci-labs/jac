@@ -1,23 +1,25 @@
-impl JacAPIServer.start(self: JacAPIServer) -> None {
+impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports
-    client_exports = self.introspector._client_manifest.get('exports', []);
-    if client_exports {
-        import time;
-        import sys;
-        print("Building client bundle...", flush=True);
-        start_time = time.time();
-        try {
-            self.introspector.ensure_bundle();
-            elapsed = time.time() - start_time;
-            print(f"Client bundle ready ({elapsed:.1f}s).");
-        } except Exception as e {
-            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-            print(f"{e}", file=sys.stderr);
-            print(
-                f"\nClient pages will not be available until this is fixed.\n",
-                file=sys.stderr
-            );
+    # Eagerly build client bundle if there are client exports (skip in watch mode)
+    if not watch {
+        client_exports = self.introspector._client_manifest.get('exports', []);
+        if client_exports {
+            import time;
+            import sys;
+            print("Building client bundle...", flush=True);
+            start_time = time.time();
+            try {
+                self.introspector.ensure_bundle();
+                elapsed = time.time() - start_time;
+                print(f"Client bundle ready ({elapsed:.1f}s).");
+            } except Exception as e {
+                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+                print(f"{e}", file=sys.stderr);
+                print(
+                    f"\nClient pages will not be available until this is fixed.\n",
+                    file=sys.stderr
+                );
+            }
         }
     }
     self.register_create_user_endpoint();
@@ -27,8 +29,15 @@ impl JacAPIServer.start(self: JacAPIServer) -> None {
     self.register_sso_endpoints();
     self.register_client_js_endpoint();
     self.register_static_file_endpoint();
-    self.register_walkers_endpoints();
-    self.register_functions_endpoints();
+    # Use dynamic routing for HMR support, static routing for production
+    if watch {
+        self.register_dynamic_walker_endpoint();
+        self.register_dynamic_function_endpoint();
+        self.register_dynamic_introspection_endpoints();
+    } else {
+        self.register_walkers_endpoints();
+        self.register_functions_endpoints();
+    }
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
@@ -1045,6 +1054,351 @@ impl JacAPIServer.register_sso_endpoints(self: JacAPIServer) -> None {
             tags=['SSO APIs'],
             summary='SSO callback endpoint',
             description='Handles the callback from SSO provider after authentication'
+        )
+    );
+}
+
+# ============================================================================
+# HMR (Hot Module Replacement) Dynamic Routing Support
+# ============================================================================
+"""Enable HMR mode - file changes trigger reload on next request."""
+impl JacAPIServer.enable_hmr(self: JacAPIServer, hot_reloader: Any) -> None {
+    self._hot_reloader = hot_reloader;
+    # Callback when file changes - sets pending flag
+    def on_change(event: Any) -> None {
+        self._hmr_pending = True;
+        print(f"[HMR] Change detected: {event.path}", flush=True);
+    }
+    # Register callback with the watcher
+    hot_reloader.watcher.add_callback(on_change);
+    print("[HMR] Dynamic routing enabled for jac-scale", flush=True);
+}
+
+"""Register a single dynamic endpoint for all walkers.
+
+Instead of pre-registering /walker/WalkerA, /walker/WalkerB, etc.,
+we register catch-all routes that look up walkers at request time.
+This enables HMR since introspector.load() is called per-request.
+"""
+impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
+    import from fastapi.responses { JSONResponse }
+    # Dynamic handler that looks up walker at request time
+    def dynamic_walker_handler(
+        walker_name: str, node: str | None = None, **kwargs: JsonValue
+    ) -> dict[str, JsonValue] {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        walkers = self.get_walkers();
+
+        if walker_name not in walkers {
+            return {
+                'error': f"Walker '{walker_name}' not found. Available: {list(
+                    walkers.keys()
+                )}",
+                'status': 404
+            };
+        }
+
+        # Handle authentication if required
+        username: str | None = None;
+        if self.introspector.is_auth_required_for_walker(walker_name) {
+            authorization = kwargs.pop('Authorization', None);
+            token: str | None = None;
+            if (
+                authorization
+                and isinstance(authorization, str)
+                and authorization.startswith('Bearer ')
+            ) {
+                token = authorization[7:];
+            }
+            username = self.validate_jwt_token(token) if token else None;
+            if not username {
+                return {'error': 'Unauthorized', 'status': 401};
+            }
+        }
+
+        # Add node to kwargs if provided
+        if node {
+            kwargs['_jac_spawn_node'] = node;
+        }
+
+        return self.execution_manager.spawn_walker(
+            walkers[walker_name], kwargs, (username or '__guest__')
+        );
+    }
+    # Register catch-all route for walkers with node parameter
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/walker/{walker_name}/{node}',
+            callback=dynamic_walker_handler,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the walker to execute',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='node',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Node ID to spawn walker on',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Walkers (Dynamic)'],
+            summary='Execute walker on node (dynamic HMR)',
+            description='Dynamically routes to any registered walker. Supports HMR - walker changes are reflected immediately.'
+        )
+    );
+    # Register catch-all route for walkers without node parameter (root)
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/walker/{walker_name}',
+            callback=dynamic_walker_handler,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the walker to execute',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Walkers (Dynamic)'],
+            summary='Execute walker on root (dynamic HMR)',
+            description='Dynamically routes to any registered walker. Supports HMR - walker changes are reflected immediately.'
+        )
+    );
+}
+
+"""Register a single dynamic endpoint for all functions.
+
+Similar to dynamic walker routing, this enables HMR for functions.
+"""
+impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None {
+    import from fastapi.responses { JSONResponse }
+    def dynamic_function_handler(
+        function_name: str, **kwargs: JsonValue
+    ) -> dict[str, JsonValue] {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        functions = self.get_functions();
+
+        if function_name not in functions {
+            return {
+                'error': f"Function '{function_name}' not found. Available: {list(
+                    functions.keys()
+                )}",
+                'status': 404
+            };
+        }
+
+        # Handle authentication if required
+        username: str | None = None;
+        if self.introspector.is_auth_required_for_function(function_name) {
+            authorization = kwargs.pop('Authorization', None);
+            token: str | None = None;
+            if (
+                authorization
+                and isinstance(authorization, str)
+                and authorization.startswith('Bearer ')
+            ) {
+                token = authorization[7:];
+            }
+            username = self.validate_jwt_token(token) if token else None;
+            if not username {
+                return {'error': 'Unauthorized', 'status': 401};
+            }
+        }
+
+        return self.execution_manager.execute_function(
+            functions[function_name], kwargs, (username or '__guest__')
+        );
+    }
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/function/{function_name}',
+            callback=dynamic_function_handler,
+            parameters=[
+                APIParameter(
+                    name='function_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the function to call',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Functions (Dynamic)'],
+            summary='Call function (dynamic HMR)',
+            description='Dynamically routes to any registered function. Supports HMR - function changes are reflected immediately.'
+        )
+    );
+}
+
+"""Register endpoints for runtime introspection of available walkers/functions.
+
+These endpoints allow clients to discover what walkers and functions are available,
+which is especially useful in HMR mode where the list can change dynamically.
+"""
+impl JacAPIServer.register_dynamic_introspection_endpoints(self: JacAPIServer) -> None {
+    import from fastapi.responses { JSONResponse }
+    def list_walkers -> dict[str, Any] {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        walkers = self.get_walkers();
+        walker_info = {};
+        for walker_name in walkers {
+            try {
+                info = self.introspector.introspect_walker(walkers[walker_name]);
+                walker_info[walker_name] = {
+                    'fields': info.get('fields', {}),
+                    'requires_auth': self.introspector.is_auth_required_for_walker(
+                        walker_name
+                    )
+                };
+            } except Exception as e {
+                walker_info[walker_name] = {'error': str(e)};
+            }
+        }
+        return {'walkers': walker_info};
+    }
+    def list_functions -> dict[str, Any] {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        functions = self.get_functions();
+        function_info = {};
+        for func_name in functions {
+            try {
+                info = self.introspector.introspect_callable(functions[func_name]);
+                function_info[func_name] = {
+                    'parameters': info.get('parameters', {}),
+                    'requires_auth': self.introspector.is_auth_required_for_function(
+                        func_name
+                    )
+                };
+            } except Exception as e {
+                function_info[func_name] = {'error': str(e)};
+            }
+        }
+        return {'functions': function_info};
+    }
+    def get_walker_info(walker_name: str) -> dict[str, Any] {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        walkers = self.get_walkers();
+        if walker_name not in walkers {
+            return {'error': f"Walker '{walker_name}' not found", 'status': 404};
+        }
+
+        info = self.introspector.introspect_walker(walkers[walker_name]);
+        return {
+            'name': walker_name,
+            'fields': info.get('fields', {}),
+            'requires_auth': self.introspector.is_auth_required_for_walker(walker_name)
+        };
+    }
+    # List all walkers
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/introspect/walkers',
+            callback=list_walkers,
+            parameters=[],
+            response_model=None,
+            tags=['Introspection'],
+            summary='List available walkers',
+            description='Returns a list of all available walkers with their field definitions. Supports HMR.'
+        )
+    );
+    # List all functions
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/introspect/functions',
+            callback=list_functions,
+            parameters=[],
+            response_model=None,
+            tags=['Introspection'],
+            summary='List available functions',
+            description='Returns a list of all available functions with their parameter definitions. Supports HMR.'
+        )
+    );
+    # Get specific walker info
+    self.server_impl.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/introspect/walker/{walker_name}',
+            callback=get_walker_info,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the walker to inspect',
+                    type=ParameterType.PATH
+                )
+            ],
+            response_model=None,
+            tags=['Introspection'],
+            summary='Get walker information',
+            description='Returns detailed information about a specific walker. Supports HMR.'
         )
     );
 }
