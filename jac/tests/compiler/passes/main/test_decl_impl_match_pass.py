@@ -8,7 +8,7 @@ import pytest
 
 import jaclang.pycore.unitree as uni
 from jaclang import JacRuntime as Jac
-from jaclang.cli import cli
+from jaclang.cli.commands import execution  # type: ignore[attr-defined]
 from jaclang.pycore.program import JacProgram
 
 
@@ -97,7 +97,7 @@ def test_run_base2(
 ) -> None:
     """Test that the walker and node can be created dynamically."""
     with capture_stdout() as captured_output:
-        cli.run(fixture_path("base2.jac"))
+        execution.run(fixture_path("base2.jac"))
     output = captured_output.getvalue().strip()
     assert "56" in output
 

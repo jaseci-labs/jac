@@ -11,7 +11,7 @@ npm install
 To run your Jac code, use the Jac CLI:
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 ## TypeScript Support

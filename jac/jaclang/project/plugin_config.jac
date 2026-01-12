@@ -39,22 +39,22 @@ Features:
 - Integration with core JacConfig system
 - Generic section getter with type conversion
 """
-class PluginConfigBase {
-    has project_dir: Path,
-        config_file: Path,
+obj PluginConfigBase {
+    has project_dir: Path | None = None,
+        config_file: Path | None = None,
         _config: dict[str, Any] | None = None,
         _jac_config: JacConfig | None = None;
 
-    def init(self: PluginConfigBase, project_dir: Path | None = None);
-    def get_plugin_name(self: PluginConfigBase) -> str abs;
-    def get_default_config(self: PluginConfigBase) -> dict[str, Any] abs;
-    def load(self: PluginConfigBase) -> dict[str, Any];
-    def get_jac_config(self: PluginConfigBase) -> JacConfig;
+    def postinit -> None;
+    def get_plugin_name -> str abs;
+    def get_default_config -> dict[str, Any] abs;
+    def load -> dict[str, Any];
+    def get_jac_config -> JacConfig;
     def get_section(
-        self: PluginConfigBase, section: str, defaults: dict[(str, Any)] | None = None
+        section: str, defaults: dict[(str, Any)] | None = None
     ) -> dict[str, Any];
 
-    def invalidate(self: PluginConfigBase) -> None;
+    def invalidate -> None;
 }
 # Singleton Pattern Usage:
 # -----------------------

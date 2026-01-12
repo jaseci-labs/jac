@@ -58,12 +58,12 @@ Then lets copy the todo fully implemented jac code available inside jac-scale/ex
 cp ../jac-scale/examples/todo/app.jac app.jac
 ```
 
-### 8. Run the Application with JAC Scale
+### 8. Run the Application Locally
 
 To run your application run the following command
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 **Access your application:**
@@ -79,7 +79,7 @@ you can add new todo tasks
 
 ### 9. Set Up Kubernetes (For JAC Scale)
 
-To use `jac scale`, you need Kubernetes installed on your machine.
+To use `jac start --scale`, you need Kubernetes installed on your machine.
 
 **Option A: MicroK8 (Windows/Linux/Mac)**
 
@@ -100,7 +100,7 @@ Once Kubernetes is running, you have two deployment methods:
 Deploy your application to Kubernetes without building a Docker image:
 
 ```bash
-jac scale app.jac
+jac start app.jac --scale
 ```
 
 **Access your application:**
@@ -120,7 +120,7 @@ jac scale app.jac
 To Build your application as a Docker image and deploy it kubernetes you can run
 
 ```bash
-jac scale app.jac -b
+jac start app.jac --scale --build
 ```
 
 **Requirements for Build Mode:**

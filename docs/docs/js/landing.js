@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 }
 
-<span class="jac-comment"># Deploy with: jac serve taskapp.jac</span>
+<span class="jac-comment"># Deploy with: jac start taskapp.jac</span>
 <span class="jac-comment"># Instantly get: REST API, auth, auto-scaling</span>
 
 <span class="jac-keyword">with</span> <span class="jac-keyword">entry</span> {

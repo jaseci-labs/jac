@@ -44,7 +44,7 @@ We'll create six main files:
 Here's what you'll build - a full AI-powered multimodal MCP chatbot:
 
 === "Frontend Preview"
-    ![Chatbot Workflow](images/image.png)
+    ![Chatbot Workflow](images/chatbot.jpg)
 
 === "client.jac"
     ```jac linenums="1"
@@ -85,7 +85,7 @@ The full source code for this project is also available at: [https://github.com/
 First, install the required packages. We recommend Python 3.12 or newer:
 
 ```bash
-pip install jaclang jac-cloud jac-streamlit byllm langchain langchain-community langchain-openai langchain-chroma chromadb openai pypdf tiktoken requests mcp[cli] anyio
+pip install jaclang jac-scale jac-streamlit byllm langchain langchain-community langchain-openai langchain-chroma chromadb openai pypdf tiktoken requests mcp[cli] anyio
 ```
 
 Next, get your API keys. You'll need an OpenAI API key for the AI features. For web search, get a free API key from [Serper](https://serper.dev/).
@@ -132,7 +132,7 @@ jac run mcp_server.jac
 **Terminal 2 - Start the main application:**
 
 ```bash
-jac serve server.jac
+jac start server.jac
 ```
 
 **Terminal 3 - Launch the web interface:**

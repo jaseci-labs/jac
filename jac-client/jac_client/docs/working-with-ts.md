@@ -109,12 +109,15 @@ Import and use your TypeScript components in your Jac files:
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from ".components/Button.tsx" { Button }
 
+# Note: useState is auto-injected when using `has` variables
+
 cl {
+    has count: int = 0;  # Automatically creates React state
+
     def app() -> any {
-        [count, setCount] = useState(0);
         useEffect(lambda -> None {
             console.log("Count: ", count);
         }, [count]);

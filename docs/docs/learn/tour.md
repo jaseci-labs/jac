@@ -14,8 +14,6 @@ Although relatively new, Jac is already used in production environments across a
 
 Jac introduces a new programming model that lets developers articulate **relationships between objects** in a **graph-like structure** and express computation as **walkers** that traverse this graph. This model is particularly effective for applications involving **connected data**, such as social networks, knowledge graphs, or file systems, and can greatly reduce code complexity. OSP also provides the foundation for **agentic workflows** and enables **Jaseci’s scale-native execution**, reducing backend development and deployment overhead. [Learn more about OSP](https://docs.jaseci.org/learn/quickstart/).
 
-<!--  TODO: Insert illustrative graph diagram here -->
-
 <figure id="fig-features" style="text-align: center;">
     <img src="../assets/Features.svg" alt="Features illustration" style="width:65%; height:auto;">
     <figcaption><strong>Figure 1:</strong> Overview of Jac's key features and capabilities.</figcaption>
@@ -37,7 +35,7 @@ As shown in shown in <a href="#fig-features">Figure 1</a>, ***together, OSP and 
 
 ### 3. Scale-Native Execution
 
-Jac allows developers to **write code once and run it anywhere**: from local environments to distributed cloud deployments, without code modification.  Jac also automates the process of **generating APIs** and **managing data persistence**, simplifying FE/BE integration, deployment and scaling of your applications. [Read more about Scale-Native](https://docs.jaseci.org/learn/jac-cloud/introduction/).
+Jac allows developers to **write code once and run it anywhere**: from local environments to distributed cloud deployments, without code modification.  Jac also automates the process of **generating APIs** and **managing data persistence**, simplifying FE/BE integration, deployment and scaling of your applications. [Read more about Scale-Native](https://docs.jaseci.org/jac-scale/README/).
 
 ---
 

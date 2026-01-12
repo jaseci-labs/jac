@@ -65,73 +65,75 @@ Maps to pyright's TypeBase<T> in the types.ts file.
     information about the type's category and any additional metadata and
     utilities to analyze type information and provide type checking.
 """
-class TypeBase(ABC) {
+obj TypeBase(ABC) {
+    has flags: TypeFlags = TypeFlags.Null;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory];
     }
 
-    def init(self: TypeBase, flags: TypeFlags = TypeFlags.Null) -> None;
     @property
-    def category(self: TypeBase) -> TypeCategory;
+    def category -> TypeCategory;
 
     static def unknown -> UnknownType;
-    def is_instantiable(self: TypeBase) -> bool;
-    def is_instance(self: TypeBase) -> bool;
-    def is_instantiable_class(self: TypeBase) -> bool;
-    def is_class_instance(self: TypeBase) -> bool;
-    def is_any_type(self: TypeBase) -> bool;
+    def is_instantiable -> bool;
+    def is_instance -> bool;
+    def is_instantiable_class -> bool;
+    def is_class_instance -> bool;
+    def is_any_type -> bool;
 }
 
 """Represents a type that is not bound to a specific value or context."""
-class UnboundType(TypeBase) {
+obj UnboundType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unbound;
     }
 }
 
 """Represents a type that is not known or cannot be determined."""
-class UnknownType(TypeBase) {
+obj UnknownType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
 }
 
 """Represents a type that can never occur."""
-class NeverType(TypeBase) {
+obj NeverType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Never;
     }
 }
 
 """Represents a type that can be anything."""
-class AnyType(TypeBase) {
+obj AnyType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
 }
 
 """Represents a module type."""
-class ModuleType(TypeBase) {
+obj ModuleType(TypeBase) {
+    has mod_name: str = "",
+        file_uri: Path = Path(""),
+        symbol_table: SymbolTable = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
     }
-
-    def init(
-        self: ModuleType, mod_name: str, file_uri: Path, symbol_table: SymbolTable
-    ) -> None;
 }
 
 """Represents a type variable."""
-class TypeVarType(TypeBase) {
+obj TypeVarType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }
-
-    def init(self: TypeVarType) -> None;
 }
 
 """Represents a class type."""
-class ClassType(TypeBase) {
+obj ClassType(TypeBase) {
+    has shared: (ClassType.ClassDetailsShared | None) = None,
+        private: (ClassType.ClassDetailsPrivate | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
@@ -143,19 +145,18 @@ Holds the shared details of class type.
         of the same class. This is needed when we do `==` between two classes, if they have the
         same shared object, that means they both are the same class (with different context).
     """
-    class ClassDetailsShared {
-        def init(
-            self: ClassDetailsShared,
-            class_name: str,
+    obj ClassDetailsShared {
+        has class_name: str,
             symbol_table: SymbolTable,
-            *,
+            mro: list[ClassType],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
-            is_enum_class: bool = False
-        ) -> None;
+            is_enum_class: bool = False;
+
+        def postinit -> None;
     }
 
     """
@@ -163,33 +164,27 @@ Holds the private details of class type.
 
         The private details of classes will be unique to each class instance.
     """
-    class ClassDetailsPrivate {
-        def init(
-            self: ClassDetailsPrivate, type_args: (list[TypeBase] | None) = None
-        ) -> None;
+    obj ClassDetailsPrivate {
+        has type_args: (list[TypeBase] | None) = None;
+
+        def postinit -> None;
     }
 
-    def init(
-        self: ClassType,
-        shared: ClassType.ClassDetailsShared,
-        private: (ClassType.ClassDetailsPrivate | None) = None,
-        flags: TypeFlags = TypeFlags.Null
-    ) -> None;
-
-    def __str__(self: ClassType) -> str;
-    def clone_as_instance(self: ClassType) -> ClassType;
-    def clone_as_class(self: ClassType) -> ClassType;
-    def specialize_generics(self: ClassType, type_args: list[TypeBase]) -> ClassType;
-    def get_class_symbol(self: ClassType) -> Symbol;
+    def postinit -> None;
+    def __str__ -> str;
+    def clone_as_instance -> ClassType;
+    def clone_as_class -> ClassType;
+    def specialize_generics(type_args: list[TypeBase]) -> ClassType;
+    def get_class_symbol -> Symbol;
     def lookup_member_symbol(
-        self: ClassType, member: str, r_overloaded: list | None = None
+        member: str, r_overloaded: list | None = None
     ) -> (Symbol | None);
 
-    def is_builtin(self: ClassType, class_name: (str | None) = None) -> bool;
-    def is_data_class(self: ClassType) -> bool;
-    def is_enum_class(self: ClassType) -> bool;
-    def is_edge_type(self: ClassType) -> bool;
-    def is_node_type(self: ClassType) -> bool;
+    def is_builtin(class_name: (str | None) = None) -> bool;
+    def is_data_class -> bool;
+    def is_enum_class -> bool;
+    def is_edge_type -> bool;
+    def is_node_type -> bool;
 }
 
 """Enumeration of parameter kinds."""
@@ -204,53 +199,49 @@ class ParamKind(IntEnum) {
 }
 
 """Represents a function parameter."""
-class Parameter {
-    def init(
-        self: Parameter,
-        name: str,
+obj Parameter {
+    has name: str,
         category: ParameterCategory,
         param_type: (TypeBase | None),
         default_value: (Expr | None) = None,
         is_self: bool = False,
         is_cls: bool = False,
-        param_kind: ParamKind = ParamKind.NORMAL
-    ) -> None;
+        param_kind: ParamKind = ParamKind.NORMAL;
 }
 
 """Represents a function type."""
-class FunctionType(TypeBase) {
+obj FunctionType(TypeBase) {
+    has func_name: str = "",
+        return_type: (TypeBase | None) = None,
+        parameters: (list[Parameter] | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
     }
 
-    def init(
-        self: FunctionType,
-        func_name: str,
-        return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) = None,
-        flags: TypeFlags = TypeFlags.Null
-    ) -> None;
-
-    def specialize(self: FunctionType, class_type: ClassType) -> FunctionType;
-    def _index_of_type_param(
-        self: FunctionType, class_type: ClassType, type_var: TypeVarType
-    ) -> int;
+    def postinit -> None;
+    def specialize(class_type: ClassType) -> FunctionType;
+    def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
 }
 
 """Represents an overloaded type."""
-class OverloadedType(TypeBase) {
+obj OverloadedType(TypeBase) {
+    has overloads: (list[FunctionType] | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Overload;
     }
 
-    def init(self: OverloadedType, overloads: list[FunctionType]) -> None;
+    def postinit -> None;
 }
 
 """Represents a union type."""
-class UnionType(TypeBase) {
+obj UnionType(TypeBase) {
+    has types: (list[TypeBase] | None) = None;
+
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;
     }
 
-    def init(self: UnionType, types: list[TypeBase]) -> None;
+    def postinit -> None;
 }

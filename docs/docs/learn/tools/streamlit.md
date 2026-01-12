@@ -341,5 +341,5 @@ with entry {
 
 ## Next Steps
 
-- Check out the [Jac Cloud documentation](../jac-cloud/introduction.md) for backend integration
-- Try building a complete application using Jac + Streamlit + Jac Cloud
+- Check out the [jac-scale documentation](../../production/index.md) for backend integration
+- Try building a complete application using Jac + Streamlit + jac-scale

@@ -72,7 +72,7 @@ def get_type_of_binary_operation(
         if expr.op.name == Tok.BW_OR {
             # TODO: Handle None instance used
             if is_annotation_type(left_type) and is_annotation_type(right_type) {
-                return jtypes.UnionType([left_type, right_type]);
+                return jtypes.UnionType(types=[left_type, right_type]);
             }
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];

@@ -181,8 +181,8 @@ def run_plugin_tests(runner: IntegrationTestRunner) -> None:
     # Test: jac --help shows plugin commands
     runner.run(
         ["jac", "--help"],
-        check_contains=["scale", "create"],
-        description="jac --help shows plugin commands (scale, create)",
+        check_contains=["destroy", "create"],
+        description="jac --help shows plugin commands (destroy, create)",
     )
 
     # Test: Verbose mode works

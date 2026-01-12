@@ -160,9 +160,7 @@ MICRO_JAC_FILES: list[str] = [
     "examples/shopping_cart/main.impl.jac",
     "examples/shopping_cart/main.jac",
     "jaclang/cli/cli.jac",
-    "jaclang/cli/cmdreg.jac",
     "jaclang/cli/impl/cli.impl.jac",
-    "jaclang/cli/impl/cmdreg.impl.jac",
     "jaclang/compiler/passes/ecmascript/es_unparse.jac",
     "jaclang/compiler/passes/ecmascript/esast_gen_pass.jac",
     "jaclang/compiler/passes/ecmascript/estree.jac",
@@ -612,7 +610,6 @@ REFERENCE_JAC_FILES: list[str] = [
 JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/__init__.py",
     "jaclang/__main__.py",
-    "jaclang/cli/__init__.py",
     "jaclang/compiler/__init__.py",
     "jaclang/compiler/passes/__init__.py",
     "jaclang/compiler/passes/ecmascript/__init__.py",

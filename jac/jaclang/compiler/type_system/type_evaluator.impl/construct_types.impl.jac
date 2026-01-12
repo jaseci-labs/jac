@@ -180,7 +180,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     is_data_class = node_.sym_category != SymbolType.TYPE;
     is_enum_class = node_.sym_category == SymbolType.ENUM_ARCH;
     cls_type = types.ClassType(
-        types.ClassType.ClassDetailsShared(
+        shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=type_params,

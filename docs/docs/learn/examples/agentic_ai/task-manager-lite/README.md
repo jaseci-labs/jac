@@ -45,7 +45,7 @@ A lightweight AI-powered task management system that intelligently routes user r
 1. Start the Jac Cloud server:
 
    ```bash
-   jac serve task_manager.jac
+   jac start task_manager.jac
    ```
 
 2. Run the frontend:
@@ -135,7 +135,7 @@ task-manager-lite/
 3. **Run the Application**:
 
    ```bash
-   jac serve task_manager.jac
+   jac start task_manager.jac
    jac streamlit frontend.jac
    ```
 

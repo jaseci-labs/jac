@@ -1,5 +1,5 @@
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from .styled {
     Container,
     Card,
@@ -15,15 +15,15 @@ cl import from .styled {
 
 cl {
     def:pub app -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);
 
-        handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
+        handleIncrement = lambda  e: any  -> None{ count = count + 1;} ;
 
-        handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
+        handleDecrement = lambda  e: any  -> None{ count = count - 1;} ;
 
-        handleReset = lambda  e: any  -> None{ setCount(0);} ;
+        handleReset = lambda  e: any  -> None{ count = 0;} ;
 
         return <Container>
             <Card>

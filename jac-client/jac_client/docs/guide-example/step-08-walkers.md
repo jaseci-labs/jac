@@ -21,7 +21,8 @@ node Todo {
 
 # Backend - We'll add walkers here soon
 
-cl import from react {useState, useEffect}
+# Note: useState is auto-injected, only useEffect needs explicit import
+cl import from react {useEffect}
 
 cl {
     # ... your frontend code
@@ -122,7 +123,8 @@ walker toggle_todo {
 }
 
 # Frontend (keep all your existing code)
-cl import from react {useState, useEffect}
+# Note: useState is auto-injected, only useEffect needs explicit import
+cl import from react {useEffect}
 
 cl {
     # ... all your frontend components

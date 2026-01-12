@@ -1,6 +1,6 @@
 # Jac scale roadmap
 
-`jac scale` not only simplifies application deployment but also supports advanced configurations.
+`jac start --scale` not only simplifies application deployment but also supports advanced configurations.
 
 ### Upcoming features
 

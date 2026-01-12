@@ -1,4 +1,4 @@
-"""Test for jac serve command and REST API server."""
+"""Test for jac start command and REST API server."""
 
 import contextlib
 import json
@@ -14,8 +14,9 @@ from urllib.request import Request, urlopen
 import pytest
 
 from jaclang import JacRuntime as Jac
-from jaclang.cli import cli
+from jaclang.cli.commands import execution  # type: ignore[attr-defined]
 from jaclang.runtimelib.server import JacAPIServer, UserManager
+from tests.conftest import proc_file_sess
 from tests.runtimelib.conftest import fixture_abs_path
 
 
@@ -61,9 +62,7 @@ class ServerFixture:
         from http.server import HTTPServer
 
         # Load the module with the same session_file for persistence
-        base, mod, mach = cli.proc_file_sess(
-            fixture_abs_path(api_file), self.session_file
-        )
+        base, mod, mach = proc_file_sess(fixture_abs_path(api_file), self.session_file)
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,
@@ -586,7 +585,7 @@ def test_server_root_endpoint(server_fixture: ServerFixture) -> None:
 def test_module_loading_and_introspection(server_fixture: ServerFixture) -> None:
     """Test that module loads correctly and introspection works."""
     # Load module
-    base, mod, mach = cli.proc_file_sess(fixture_abs_path("serve_api.jac"), "")
+    base, mod, mach = proc_file_sess(fixture_abs_path("serve_api.jac"), "")
     Jac.set_base_path(base)
     Jac.jac_import(
         target=mod,
@@ -664,7 +663,7 @@ def test_csr_mode_empty_root(server_fixture: ServerFixture) -> None:
 def test_csr_mode_with_server_default(server_fixture: ServerFixture) -> None:
     """render_client_page returns an empty shell when called directly."""
     # Load module
-    base, mod, mach = cli.proc_file_sess(fixture_abs_path("serve_api.jac"), "")
+    base, mod, mach = proc_file_sess(fixture_abs_path("serve_api.jac"), "")
     Jac.set_base_path(base)
     Jac.jac_import(
         target=mod,
@@ -933,8 +932,8 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
 
     try:
         with redirect_stdout(captured_output):
-            # Call serve with faux=True
-            cli.serve(
+            # Call start with faux=True
+            execution.start(
                 filename=fixture_abs_path("serve_api.jac"),
                 session=server_fixture.session_file,
                 port=server_fixture.port,
@@ -942,7 +941,7 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
                 faux=True,
             )
     except SystemExit:
-        pass  # serve() may call exit() in some error cases
+        pass  # start() may call exit() in some error cases
 
     output = captured_output.getvalue()
 
@@ -997,8 +996,8 @@ def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
 
     try:
         with redirect_stdout(captured_output):
-            # Call serve with faux=True on littleX example
-            cli.serve(
+            # Call start with faux=True on littleX example
+            execution.start(
                 filename=littlex_path,
                 session=server_fixture.session_file,
                 port=server_fixture.port,
@@ -1006,7 +1005,7 @@ def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
                 faux=True,
             )
     except SystemExit:
-        pass  # serve() may call exit() in some error cases
+        pass  # start() may call exit() in some error cases
 
     output = captured_output.getvalue()
 
@@ -1342,7 +1341,7 @@ class ConfiguredServerFixture:
             get_config(force_discover=True)
 
             # Load the module
-            base, mod, mach = cli.proc_file_sess(self.jac_file, self.session_file)
+            base, mod, mach = proc_file_sess(self.jac_file, self.session_file)
             Jac.set_base_path(base)
             Jac.jac_import(
                 target=mod,
