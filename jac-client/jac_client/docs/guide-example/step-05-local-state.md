@@ -39,14 +39,13 @@ This works for displaying data, but **what if we want to change it?** Normal var
 
 ### Step 5.2: Introducing `useState`
 
-To make data interactive, we need `useState`. First, import it:
+To make data interactive, we need `useState`. When you use `has` variables in `cl {}` blocks or `.cl.jac` files, the `useState` import is **automatically injected** - you don't need to import it manually!
 
 ```jac
-cl import from react {useState}
-
 cl {
     def:pub app() -> any {
         # Create state with useState
+        # Note: No import needed - useState is auto-injected when using has variables
         [todos, setTodos] = useState([]);
 
         return <div style={{"padding": "20px"}}>
@@ -56,6 +55,8 @@ cl {
     }
 }
 ```
+
+> **Note:** The `useState` import from React is automatically injected when you use `has` variables in `cl {}` blocks or `.cl.jac` files. You no longer need to explicitly import it!
 
 **What's happening:**
 
@@ -69,7 +70,7 @@ cl {
 Let's make the input field work:
 
 ```jac
-cl import from react {useState}
+# No useState import needed - it's auto-injected!
 
 cl {
     def TodoInput(props: any) -> any {
@@ -126,7 +127,7 @@ cl {
 Now let's track our todos list with state:
 
 ```jac
-cl import from react {useState}
+# No useState import needed - it's auto-injected!
 
 cl {
     def TodoItem(props: any) -> any {
@@ -198,7 +199,7 @@ cl {
 Let's add filter state:
 
 ```jac
-cl import from react {useState}
+# No useState import needed - it's auto-injected!
 
 cl {
     # ... (keep all previous components)
@@ -489,11 +490,7 @@ setTodos(todos.concat([newTodo]));
 
 ### Issue: useState is not defined
 
-**Check:** Did you import it?
-
-```jac
-cl import from react {useState}
-```
+**Check:** Are you using `useState` inside a `cl {}` block or `.cl.jac` file? The `useState` import is automatically injected when using `has` variables in these contexts. If you're still seeing this error, make sure your code is within the `cl {}` block.
 
 ---
 

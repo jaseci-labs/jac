@@ -85,17 +85,17 @@ class JacScalePluginConfig {
                     "nested": {
                         "mongodb_uri": {
                             "type": "string",
-                            "default": "mongodb://root:rootpassword123@localhost:27017/",
+                            "default": None,
                             "description": "MongoDB connection URI"
                         },
                         "redis_url": {
                             "type": "string",
-                            "default": "redis://:mypassword123@localhost:6379/0",
+                            "default": None,
                             "description": "Redis connection URL"
                         },
                         "shelf_db_path": {
                             "type": "string",
-                            "default": "anchor_store.db",
+                            "default": ".jac/data/anchor_store.db",
                             "description": "File-based storage path for ShelfDB fallback"
                         }
                     }

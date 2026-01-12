@@ -209,7 +209,7 @@ jac run littleX.jac
 jac test littleX.jac
 
 # Start API server
-jac serve littleX.jac
+jac start littleX.jac
 ```
 
 ### 1. Nodes: Store Your Data
@@ -354,7 +354,7 @@ Let's see your social media platform in action:
 ### Start the Backend
 
 ```bash
-jac serve littleX_BE/littleX.jac
+jac start littleX_BE/littleX.jac
 ```
 
 You should see:

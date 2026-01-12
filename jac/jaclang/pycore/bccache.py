@@ -2,7 +2,8 @@
 
 This module provides disk-based caching for compiled Jac bytecode,
 similar to Python's __pycache__ mechanism. Cache files are stored
-in a single .jaccache/ directory in the current working directory.
+in the .jac/cache/ directory within the project, configurable via
+jac.toml [build] section.
 """
 
 from __future__ import annotations
@@ -14,7 +15,10 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from jaclang.project.config import JacConfig
 
 
 def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[str]:
@@ -112,21 +116,51 @@ class BytecodeCache:
 
 
 class DiskBytecodeCache(BytecodeCache):
-    """Disk-based bytecode cache using a single .jaccache/ directory.
+    """Disk-based bytecode cache using the .jac/cache/ directory.
 
-    Cache files are stored in .jaccache/ in the current working directory,
-    with filenames that include a path hash, Python version, and
-    compilation mode to avoid conflicts.
+    Cache files are stored in the project's .jac/cache/ directory
+    (configurable via jac.toml [build].dir), with filenames that include
+    a path hash, Python version, and compilation mode to avoid conflicts.
 
     Example:
         source:  /project/src/main.jac
-        cache:   .jaccache/main.a1b2c3d4.cpython-312.jbc
-                 .jaccache/main.a1b2c3d4.cpython-312.minimal.jbc
+        cache:   .jac/cache/main.a1b2c3d4.cpython-312.jbc
+                 .jac/cache/main.a1b2c3d4.cpython-312.minimal.jbc
     """
 
-    CACHE_DIR: Final[str] = ".jaccache"
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
+    FALLBACK_CACHE_DIR: Final[str] = ".jac/cache"
+
+    def __init__(self, config: JacConfig | None = None) -> None:
+        """Initialize the cache with optional config."""
+        self._config = config
+        self._cache_dir: Path | None = None
+
+    def _get_cache_dir(self) -> Path:
+        """Get the cache directory, using config if available."""
+        if self._cache_dir is not None:
+            return self._cache_dir
+
+        # Try to get from provided config
+        if self._config is not None:
+            self._cache_dir = self._config.get_cache_dir()
+            return self._cache_dir
+
+        # Try to discover project config
+        try:
+            from jaclang.project.config import get_config
+
+            config = get_config()
+            if config is not None:
+                self._cache_dir = config.get_cache_dir()
+                return self._cache_dir
+        except ImportError:
+            pass
+
+        # Fallback to default
+        self._cache_dir = Path.cwd() / self.FALLBACK_CACHE_DIR
+        return self._cache_dir
 
     def _get_cache_path(self, key: CacheKey) -> Path:
         """Generate the cache file path for a given key.
@@ -135,7 +169,7 @@ class DiskBytecodeCache(BytecodeCache):
         files with the same name exist in different directories.
         """
         source = Path(key.source_path).resolve()
-        cache_dir = Path.cwd() / self.CACHE_DIR
+        cache_dir = self._get_cache_dir()
 
         # Create a short hash of the full path for uniqueness
         path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]

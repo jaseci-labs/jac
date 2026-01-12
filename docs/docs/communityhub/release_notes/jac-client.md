@@ -4,7 +4,16 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.5 (Unreleased)
 
+- **Reactive State Variables**: The `jac create --cl` template now uses the new `has` keyword for React state management. Instead of `[count, setCount] = useState(0);`, you can write `has count: int = 0;` and use direct assignment `count = count + 1;`. The compiler automatically generates the `useState` destructuring and transforms assignments to setter calls, providing cleaner and more intuitive state management syntax.
+- **Simplified Project Structure**: Reorganized the default project structure created by `jac create --cl`. The entry point is now `main.jac` at the project root instead of `src/app.jac`, and the `components/` directory is now at the project root instead of `src/components/`. This flatter structure reduces nesting and aligns with modern frontend project conventions. Existing projects using the `src/` structure continue to work but new projects use the simplified layout.
+
+- **Configurable Client Route Prefix**: Changed the default URL path for client-side apps from `/page/<app>` to `/cl/<app>`. The route prefix is now configurable via `cl_route_prefix` in the `[serve]` section of `jac.toml`. This allows customizing the URL structure for client apps (e.g., `/pages/MyApp` instead of `/cl/MyApp`). [Documentation](https://docs.jaseci.org/learn/tools/jac_serve/#routing-configuration)
+
+- **Base Route App Configuration**: Added `base_route_app` option in `jac.toml` `[serve]` section to serve a client app directly at the root `/` path. When configured, visiting `/` renders the specified client app instead of the API info page, making it easy to create single-page applications with clean URLs. Projects created with `jac create --cl` now default to `base_route_app = "app"`, so the app is served at `/` out of the box. [Documentation](https://docs.jaseci.org/learn/tools/project_config/#serve-section)
+
 ## jac-client 0.2.4 (Latest Release)
+
+- **`jac-client-node` and `@jac-client/dev-deps` npm packages**: Introduced the new npm libraries  to centralize and abstract default dependencies for Jac client applications. These two package includes React, Vite, Babel, TypeScript, and other essential dependencies.
 
 - **Explicit Export Requirement**: Functions and variables must now be explicitly exported using the `:pub` modifier to be available for import. In previous versions (< 0.2.4), all `def` functions were automatically exported and variables (globals) could not be exported. Starting with 0.2.4, functions and variables are private by default and must be marked with `:pub` to be importable. This provides better control over module APIs and prevents accidental exports. The `app()` function in your entry file must be exported as `def:pub app()`. [Breaking Change - See Migration Guide]
 

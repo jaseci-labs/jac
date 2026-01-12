@@ -46,7 +46,7 @@ def test_open_valid_file_no_diagnostics():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
     finally:
         ls.shutdown()
@@ -86,7 +86,7 @@ def test_did_open_and_simple_syntax_error():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Introduce syntax error
@@ -115,7 +115,7 @@ def test_did_save():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Save with syntax error
@@ -146,7 +146,7 @@ def test_did_change():
         # helper.assert_no_diagnostics()
         helper.assert_has_diagnostics(
             count=1,
-            message_contains="Cannot assign <class str> to parameter 'radius' of type <class float>",
+            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Change with syntax error

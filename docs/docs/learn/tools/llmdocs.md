@@ -62,6 +62,6 @@ Everything in Mini plus detailed examples and verbose explanations.
 
 ## Next Steps
 
-- Explore [AI Integration with byLLM](byllm.md) for building AI-powered applications
-- Learn about [Jac Cloud](../jac-cloud/introduction.md) deployment
-- Read the [Jac Book](../jac_book/index.md) for comprehensive tutorials
+- Explore [AI Integration with byLLM](../jac-byllm/quickstart.md) for building AI-powered applications
+- Learn about [Production deployment with jac-scale](../../production/index.md)
+- Read the [Jac Book](../../jac_book/index.md) for comprehensive tutorials

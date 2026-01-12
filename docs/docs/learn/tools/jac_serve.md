@@ -1,10 +1,10 @@
-# Jac Serve Command
+# Jac Start Command
 
-The `jac serve` command turns your Jac programs into authenticated REST APIs automatically.
+The `jac start` command turns your Jac programs into authenticated REST APIs automatically.
 
 ## Overview
 
-When you run `jac serve`, it:
+When you run `jac start`, it:
 
 1. Executes your target Jac module
 2. Converts all functions into REST API endpoints with introspected signatures
@@ -18,13 +18,16 @@ When you run `jac serve`, it:
 
 ```bash
 # Basic usage
-jac serve myprogram.jac
+jac start myprogram.jac
 
 # Specify a custom port
-jac serve myprogram.jac --port 8080
+jac start myprogram.jac --port 8080
 
 # Use a specific session file for persistence
-jac serve myprogram.jac --session myapp.session
+jac start myprogram.jac --session myapp.session
+
+# Deploy to Kubernetes (requires jac-scale plugin)
+jac start myprogram.jac --scale
 ```
 
 ## API Endpoints
@@ -295,7 +298,7 @@ Here's a complete example using the `example_api.jac` file:
 ### 1. Start the server
 
 ```bash
-jac serve example_api.jac
+jac start example_api.jac
 ```
 
 ### 2. Create a user
@@ -374,6 +377,57 @@ curl -X POST http://localhost:8000/walker/CompleteTask \
 4. **Session Persistence**: User data persists across server restarts via session files
 5. **Standard Library Only**: Uses only Python standard libraries (http.server, json, hashlib, etc.)
 6. **CORS Support**: Includes CORS headers for web application integration
+
+## Client-Side Application Routing
+
+When using `jac-client` for client-side applications, `jac start` provides additional endpoints for rendering client-side components.
+
+### Client Page Endpoints
+
+#### GET /cl/<name>
+
+Renders an HTML page for a client-side function defined with `cl def`.
+
+**Example:**
+
+```bash
+curl http://localhost:8000/cl/MyApp
+```
+
+This returns a fully rendered HTML page with the client-side application.
+
+### Routing Configuration
+
+You can customize client-side routing via `jac.toml`:
+
+```toml
+[serve]
+cl_route_prefix = "cl"      # URL prefix for client apps (default: "cl")
+base_route_app = "app"      # Client app to serve at root "/" (default: none)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cl_route_prefix` | string | `"cl"` | The URL path prefix for client-side apps. Apps are served at `/<prefix>/<app_name>`. |
+| `base_route_app` | string | `""` | Name of a client app to serve at the root `/` path. When set, visiting `/` renders this app instead of the API info page. |
+
+**Example: Custom route prefix**
+
+```toml
+[serve]
+cl_route_prefix = "pages"
+```
+
+With this config, client apps are accessed at `/pages/MyApp` instead of `/cl/MyApp`.
+
+**Example: Serve app at root**
+
+```toml
+[serve]
+base_route_app = "app"
+```
+
+With this config, visiting `/` renders the `app` client function directly, making it the default landing page for your application.
 
 ## Notes
 

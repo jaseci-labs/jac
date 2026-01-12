@@ -58,6 +58,8 @@ The `jacSpawn` function lets you call backend walkers from the frontend:
 cl import from react { useState, useEffect }
 cl import from '@jac-client/utils' { jacSpawn }
 
+# Note: When using `has` variables, useState is auto-injected
+
 cl {
     def TodoApp() -> any {
         [todos, setTodos] = useState([]);
@@ -286,6 +288,8 @@ cl import from '@jac-client/utils' {
     initRouter
 }
 
+# Note: When using `has` variables, useState is auto-injected
+
 cl {
     def LoginPage() -> any {
         [error, setError] = useState("");
@@ -371,6 +375,8 @@ cl {
 cl import from react { useState, useEffect }
 cl import from '@jac-client/utils' { jacIsLoggedIn, jacSpawn, navigate }
 
+# Note: When using `has` variables, useState is auto-injected
+
 cl {
     def ProtectedDashboard() -> any {
         [user, setUser] = useState(None);
@@ -404,6 +410,8 @@ cl {
 ```jac
 cl import from react { useState }
 cl import from '@jac-client/utils' { jacSpawn }
+
+# Note: When using `has` variables, useState is auto-injected
 
 cl {
     def CreateTodoForm() -> any {
@@ -624,12 +632,14 @@ npm install react
 ```jac
 """Using React hooks in Jac."""
 
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
-    def Counter() -> any {
-        [count, setCount] = useState(0);
+    has count: int = 0;  # Automatically creates React state
 
+    def Counter() -> any {
         useEffect(lambda -> None {
             console.log("Count: ", count);
         }, [count]);

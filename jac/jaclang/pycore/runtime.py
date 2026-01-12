@@ -14,12 +14,11 @@ from collections.abc import Callable, Coroutine, Iterator, Mapping, Sequence
 # Direct imports from runtimelib (no longer lazy - these are now pure Python)
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, suppress
-from dataclasses import MISSING, dataclass, field
+from dataclasses import dataclass, field
 from functools import wraps
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
-from shelve import Shelf
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -39,7 +38,6 @@ from jaclang.pycore.archetype import (
     ObjectSpatialPath,
     Root,
 )
-from jaclang.pycore.constant import Constants as Con
 from jaclang.pycore.constant import EdgeDir, colors
 from jaclang.pycore.constructs import (
     AccessLevel,
@@ -52,7 +50,6 @@ from jaclang.pycore.constructs import (
     WalkerAnchor,
     WalkerArchetype,
 )
-from jaclang.pycore.memory import Memory, ShelfStorage
 from jaclang.pycore.modresolver import infer_language
 from jaclang.pycore.mtp import MTIR, MTRuntime
 from jaclang.vendor import pluggy
@@ -62,6 +59,7 @@ if TYPE_CHECKING:
 
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
+    from jaclang.runtimelib.context import ExecutionContext
     from jaclang.runtimelib.server import ModuleIntrospector
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -75,50 +73,6 @@ JsonValue: TypeAlias = (
     None | str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"]
 )
 StatusCode: TypeAlias = Literal[200, 201, 400, 401, 404, 500, 503]
-
-
-class ExecutionContext:
-    """Execution Context."""
-
-    def __init__(
-        self,
-        session: str | None = None,
-        root: str | None = None,
-    ) -> None:
-        """Initialize JacRuntime."""
-        self.mem: Memory = ShelfStorage(session)
-        self.reports: list[Any] = []
-        self.custom: Any = MISSING
-        system_root = self.mem.find_by_id(UUID(Con.SUPER_ROOT_UUID))
-        if not isinstance(system_root, NodeAnchor):
-            system_root = cast(NodeAnchor, Root().__jac__)
-            system_root.id = UUID(Con.SUPER_ROOT_UUID)
-            self.mem.set(system_root)
-        self.system_root: NodeAnchor = system_root
-        self.entry_node = self.root_state = (
-            self._get_anchor(root) if root else self.system_root
-        )
-
-    def _get_anchor(self, anchor_id: str) -> NodeAnchor:
-        """Get anchor by ID or raise error."""
-        anchor = self.mem.find_by_id(UUID(anchor_id))
-        if not isinstance(anchor, NodeAnchor):
-            raise ValueError(f"Invalid anchor id {anchor_id} !")
-        return anchor
-
-    def set_entry_node(self, entry_node: str | None) -> None:
-        """Override entry node."""
-        self.entry_node = (
-            self._get_anchor(entry_node) if entry_node else self.root_state
-        )
-
-    def close(self) -> None:
-        """Close current ExecutionContext."""
-        self.mem.close()
-
-    def get_root(self) -> Root:
-        """Get current root."""
-        return cast(Root, self.root_state.archetype)
 
 
 class JacAccessValidation:
@@ -140,11 +94,24 @@ class JacAccessValidation:
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
-        access = archetype.__jac__.access.roots
 
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            # Use the memory anchor's access, but update it
+            anchor = mem_anchor
+
+        access = anchor.access.roots
         _root_id = str(root_id)
         if level != access.anchors.get(_root_id, AccessLevel.NO_ACCESS):
             access.anchors[_root_id] = level
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def disallow_root(
@@ -156,36 +123,69 @@ class JacAccessValidation:
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
-        access = archetype.__jac__.access.roots
 
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
+        access = anchor.access.roots
         access.anchors.pop(str(root_id), None)
+        # Ensure the modified anchor is in memory so it gets synced
+        jctx.mem.put(anchor)
 
     @staticmethod
     def perm_grant(
         archetype: Archetype, level: AccessLevel | int | str | None = None
     ) -> None:
         """Allow everyone to access current Archetype."""
-        anchor = archetype.__jac__
         if level is None:
             level = AccessLevel.READ
         level = AccessLevel.cast(level)
+
+        # Get the anchor and ensure we're modifying the one in memory
+        anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
         if level != anchor.access.all:
             anchor.access.all = level
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def perm_revoke(archetype: Archetype) -> None:
         """Disallow others to access current Archetype."""
+        # Get the anchor and ensure we're modifying the one in memory
         anchor = archetype.__jac__
+        jctx = JacRuntimeInterface.get_context()
+
+        # If there's already an anchor in memory for this ID, use that one
+        # This ensures we don't have stale anchor objects with different access
+        mem_anchor = jctx.mem.get(anchor.id)
+        if mem_anchor and mem_anchor is not anchor:
+            anchor = mem_anchor
+
         if anchor.access.all > AccessLevel.NO_ACCESS:
             anchor.access.all = AccessLevel.NO_ACCESS
+            # Ensure the modified anchor is in memory so it gets synced
+            jctx.mem.put(anchor)
 
     @staticmethod
     def check_read_access(to: Anchor) -> bool:
         """Read Access Validation."""
-        if not (
-            access_level := JacRuntimeInterface.check_access_level(to)
-            > AccessLevel.NO_ACCESS
-        ):
+        raw_level = JacRuntimeInterface.check_access_level(to)
+        access_level = raw_level > AccessLevel.NO_ACCESS
+        if not access_level:
             logger.info(
                 "Current root doesn't have read access to "
                 f"{to.__class__.__name__} {to.archetype.__class__.__name__}[{to.id}]"
@@ -248,7 +248,8 @@ class JacAccessValidation:
 
         # if target anchor's root have set allowed roots
         # if current root is allowed to the whole graph of target anchor's root
-        if to.root and isinstance(to_root := jctx.mem.find_one(to.root), Anchor):
+        # Use get() instead of find_one() to check persistence for root lookup
+        if to.root and isinstance(to_root := jctx.mem.get(to.root), Anchor):
             if to_root.access.all > access_level:
                 access_level = to_root.access.all
 
@@ -443,7 +444,7 @@ class JacWalker:
         walker.path = []
         current_loc = node.archetype
 
-        # walker ability on any entry
+        # walker ability on any entry (runs once at spawn)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
                 i.func(warch, current_loc)
@@ -833,28 +834,42 @@ class JacBasics:
         if isinstance(anchor, Archetype):
             anchor = anchor.__jac__
 
-        mem = JacRuntimeInterface.get_context().mem
-        mem.commit(anchor)
+        ctx = JacRuntimeInterface.get_context()
+        # Orchestrator handles commit to all storage backends
+        ctx.mem.commit(anchor)
 
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
+        from shelve import Shelf
+
         ctx = JacRuntimeInterface.get_context()
-        mem = cast(ShelfStorage, ctx.mem)
+        mem = ctx.mem
         ranchor = root.__jac__ if root else ctx.root_state
 
         deleted_count = 0
-        for anchor in (
-            anchors.values()
-            if isinstance(anchors := mem.__shelf__, Shelf)
-            else mem.__mem__.values()
-        ):
+        deleted_ids: set[UUID] = set()
+        # Get anchors from persistence if available, otherwise from memory
+        # Convert to list to avoid modifying during iteration
+        persistence = mem.l3
+        if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
+            anchors = list(persistence.__shelf__.values())
+        else:
+            anchors = list(mem.get_mem().values())
+
+        # Direct bulk deletion - skip destroy/detach logic since we're purging everything
+        for anchor in anchors:
             if anchor == ranchor or anchor.root != ranchor.id:
                 continue
+            deleted_ids.add(anchor.id)
+            mem.delete(anchor.id)
+            deleted_count += 1
 
-            if loaded_anchor := mem.find_by_id(anchor.id):
-                deleted_count += 1
-                JacRuntimeInterface.destroy([loaded_anchor])
+        # Clean up root anchor's edges that reference deleted edge anchors
+        ranchor.edges = [e for e in ranchor.edges if e.id not in deleted_ids]
+
+        # Persist root anchor changes so next session sees cleaned up edges
+        mem.commit(ranchor)
 
         return deleted_count
 
@@ -863,7 +878,7 @@ class JacBasics:
         """Get object given id."""
         if id == "root":
             return JacRuntimeInterface.get_context().root_state.archetype
-        elif obj := JacRuntimeInterface.get_context().mem.find_by_id(UUID(id)):
+        elif obj := JacRuntimeInterface.get_context().mem.get(UUID(id)):
             return obj.archetype
 
         return None
@@ -1368,7 +1383,7 @@ class JacBasics:
     def get_all_root() -> list[Root]:
         """Get all the roots."""
         jmem = JacRuntimeInterface.get_context().mem
-        return list(jmem.all_root())
+        return list(jmem.get_roots())
 
     @staticmethod
     def build_edge(
@@ -1416,7 +1431,7 @@ class JacBasics:
             anchor.persistent = True
             anchor.root = jctx.root_state.id
 
-        jctx.mem.set(anchor)
+        jctx.mem.put(anchor)
 
         match anchor:
             case NodeAnchor():
@@ -1450,7 +1465,7 @@ class JacBasics:
                     case _:
                         pass
 
-                JacRuntimeInterface.get_context().mem.remove(anchor.id)
+                JacRuntimeInterface.get_context().mem.delete(anchor.id)
 
     @staticmethod
     def on_entry(func: Callable) -> Callable:
@@ -1487,6 +1502,17 @@ class JacClientBundle:
 
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""
+
+    @staticmethod
+    def get_api_server_class() -> type:
+        """Get the JacAPIServer class to use for serve command.
+
+        Plugins can override this hook to provide their own server class.
+        The returned class should be compatible with the JacAPIServer interface.
+        """
+        from jaclang.runtimelib.server import JacAPIServer
+
+        return JacAPIServer
 
     @staticmethod
     def get_module_introspector(
@@ -1568,7 +1594,11 @@ class JacByLLM:
 
     @staticmethod
     def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
-        """Call the LLM model."""
+        """Call the LLM model.
+
+        This is the fallback implementation when no LLM plugin (like byllm) is installed.
+        It uses NonGPT to generate random values matching the return type.
+        """
         from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
         try:
@@ -1654,16 +1684,8 @@ class JacByLLM:
         """by operator feature for expression composition.
 
         Currently not implemented - raises NotImplementedError.
-        The exact execution behavior is not yet defined.
+        Plugins like byllm can override this via the plugin hook system.
         """
-        from byllm.lib import MockLLM, Model
-
-        lhs_list = lhs if isinstance(lhs, list) else [lhs]
-        if all(
-            isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
-        ) and isinstance(rhs, (Model, MockLLM)):
-            return JacByLLM.filter_visitable_by(lhs_list, rhs)
-
         raise NotImplementedError(
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."
@@ -1678,6 +1700,8 @@ class JacUtils:
         session: str | None = None, root: str | None = None
     ) -> ExecutionContext:
         """Hook for initialization or custom greeting logic."""
+        from jaclang.runtimelib.context import ExecutionContext
+
         return ExecutionContext(session=session, root=root)
 
     @staticmethod
@@ -2145,8 +2169,9 @@ class JacRuntime(JacRuntimeInterface):
             "builtins",
             "jaclang.pycore.archetype",
             "jaclang.pycore.constructs",
-            "jaclang.pycore.memory",
             "jaclang.pycore.mtp",
+            "jaclang.runtimelib.memory",
+            "jaclang.runtimelib.context",
             "jaclang.runtimelib.test",
             "jaclang.compiler.passes.tool.doc_ir",
             # Keep language server + type-system modules stable across resets.

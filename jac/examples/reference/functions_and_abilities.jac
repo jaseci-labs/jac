@@ -50,9 +50,9 @@ obj AbstractCalculator {
     # Forward declaration with params
     def process(value: float) -> float;
     # Forward declaration with variadic args
-    def aggregate( *numbers: tuple)  -> float;
+    def aggregate( *numbers: int)  -> float;
     # Forward declaration with kwargs
-    def configure( **options: dict)  -> dict;
+    def configure( **options: int)  -> dict;
 }
 
 obj ConcreteCalculator(AbstractCalculator) {
@@ -70,11 +70,11 @@ impl AbstractCalculator.process(
     return value * 1.5;
 }
 
-impl AbstractCalculator.aggregate( *numbers: tuple)  -> float {
+impl AbstractCalculator.aggregate( *numbers: int)  -> float {
     return sum(numbers) / len(numbers) if numbers else 0.0;
 }
 
-impl AbstractCalculator.configure( **options: dict)  -> dict {
+impl AbstractCalculator.configure( **options: int)  -> dict {
     options["configured"] = True;
     return options;
 }
@@ -82,17 +82,17 @@ impl AbstractCalculator.configure( **options: dict)  -> dict {
 # ===== Part 5: Variadic Parameters =====
 obj Variadic {
     # Positional variadic (*args)
-    def sum_all( *values: tuple)  -> int {
+    def sum_all( *values: int)  -> int {
         return sum(values);
     }
 
     # Keyword variadic (**kwargs)
-    def collect_options( **opts: dict)  -> dict {
+    def collect_options( **opts: int)  -> tuple {
         return opts;
     }
 
     # Mixed: regular, *args, **kwargs
-    def combined(base: int, *extras: tuple, **options: dict) -> dict {
+    def combined(base: int, *extras: int, **options: int) -> dict {
         return {"base": base, "extras": extras, "options": options};
     }
 }
@@ -109,12 +109,12 @@ async def process_batch(items: list) -> list {
 }
 
 # ===== Part 7: Decorators =====
-def logger(func: object) {
+def logger(func: object) -> object {
     print(f"Decorator applied to {func.__name__}");
     return func;
 }
 
-def tracer(func: object) {
+def tracer(func: object) -> object {
     print(f"Tracer applied");
     return func;
 }

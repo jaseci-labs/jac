@@ -132,7 +132,7 @@ nested-advance/
 │       ├── Card.jac          # Card component (imports from root and level2)
 │       └── level2/
 │           └── ButtonThirdL.jac  # Third level button
-└── jac.toml                  # entry-point = "src/app.jac"
+└── jac.toml                  # entry-point = "main.jac"
 ```
 
 **app.jac:**
@@ -369,7 +369,7 @@ Run any example:
 ```bash
 cd jac-client/jac_client/examples/nested-folders/<example-name>
 npm install
-jac serve src/app.jac
+jac start main.jac
 ```
 
 ## Related Documentation

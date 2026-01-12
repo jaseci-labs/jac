@@ -1,5 +1,8 @@
 # Chapter 7: Enhanced OOP - Objects and Classes
 
+!!! tip "Quick Reference"
+    For a condensed OOP reference, see the [Enhanced OOP Guide](../language/oop/index.md) which summarizes objects, access control, and implementation files.
+
 ---
 
 Jac fully supports the principles of Object-Oriented Programming (OOP) but enhances them to be more intuitive and efficient. This chapter will guide you through using Jac's obj archetype to create well-structured, maintainable, and powerful objects.

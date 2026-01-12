@@ -1,7 +1,10 @@
-"""Recursively print a Doc node or a list of Doc nodes."""
+"""Initialize the JacFormatPass."""
+impl JacFormatPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+    super.init(ir_in, prog, cancel_token);
+}
 
+"""Recursively print a Doc node or a list of Doc nodes."""
 impl JacFormatPass.format_doc_ir(
-    self: JacFormatPass,
     doc_node: (doc.DocType | None) = None,
     indent_level: int = 0,
     width_remaining: (int | None) = None,
@@ -65,7 +68,8 @@ impl JacFormatPass.format_doc_ir(
             }
             result.append(part_str);
             if ('\n' in part_str) {
-                last_line = part_str.splitlines()[-1];
+                lines = part_str.splitlines();
+                last_line = lines[-1] if lines else '';
                 full_budget = max(0, (self.MAX_LINE_LENGTH - total_indent));
                 indent_str = ' ' * total_indent;
                 if last_line.startswith(indent_str) {
@@ -101,13 +105,21 @@ impl JacFormatPass.format_doc_ir(
 }
 
 """After pass."""
-impl JacFormatPass.transform(self: JacFormatPass, ir_in: uni.Module) -> uni.Module {
+impl JacFormatPass.transform(ir_in: uni.Module) -> uni.Module {
     formatted = self.format_doc_ir();
     lines = [line.rstrip() for line in formatted.split('\n')];
     while (lines and (lines[-1] == '')) {
         lines.pop();
     }
     ir_in.gen.jac = ('\n'.join(lines) + '\n') if lines else '';
+    # Process impl modules (includes .impl.jac and .cl.jac files)
+    # Only do this for the main module (not annex modules themselves)
+    if ir_in.annexable_by is None {
+        for impl_mod in ir_in.impl_mod {
+            # Create a new formatter instance for each impl module
+            JacFormatPass(ir_in=impl_mod, prog=self.prog);
+        }
+    }
     return ir_in;
 }
 
@@ -118,7 +130,6 @@ Returns True if `node` could be printed *flat* on the current line within
 Stops early on overflow or hard/literal lines.
 """
 impl JacFormatPass._probe_fits(
-    self: JacFormatPass,
     <>node: doc.DocType,
     indent_level: int,
     width_remaining: int,
@@ -173,7 +184,7 @@ impl JacFormatPass._probe_fits(
 }
 
 """Initialize pass."""
-impl JacFormatPass.pre_transform(self: JacFormatPass) -> None {
+impl JacFormatPass.pre_transform -> None {
     self.indent_size = 4;
     self.MAX_LINE_LENGTH = 88;
 }

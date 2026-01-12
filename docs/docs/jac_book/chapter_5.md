@@ -1,5 +1,8 @@
 # Chapter 5: Advanced AI Operations
 
+!!! tip "Quick Reference"
+    For a condensed AI integration reference, see the [AI Integration with byLLM Guide](../ai-integration/index.md) which covers MTP, providers, tools, and streaming.
+
 ---
 In this chapter, you will learn to integrate advanced AI capabilities directly into your Jac applications using the byLLM (Meaning-Typed LLM) framework. We will build a multi-modal image analysis tool to demonstrate how Jac simplifies complex AI operations, including model configuration, context enhancement, and multi-modal data handling.
 

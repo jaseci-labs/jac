@@ -36,8 +36,10 @@ In your Jac file:
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from "@mui/material/Button" { default as Button }
+
+# Note: useState is auto-injected when using `has` variables
 cl import from "@mui/material/Card" { default as Card }
 cl import from "@mui/material/CardContent" { default as CardContent }
 cl import from "@mui/material/Box" { default as Box }
@@ -331,8 +333,8 @@ export const theme = createTheme({
 ## Next Steps
 
 - Explore [Material-UI Documentation](https://mui.com/)
-- Check out [Chakra UI](./chakra-ui.md) for alternative component library (coming soon)
-- Learn about [Ant Design](./ant-design.md) for enterprise components (coming soon)
+- Check out Chakra UI for alternative component library (coming soon)
+- Learn about Ant Design for enterprise components (coming soon)
 - See [Styled Components](./styled-components.md) for CSS-in-JS approach
 
 ## Resources

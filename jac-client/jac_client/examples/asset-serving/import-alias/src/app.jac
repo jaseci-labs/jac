@@ -1,5 +1,5 @@
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 # Import image using the @jac-client/assets alias
 cl import from "@jac-client/assets/burger.png" {
     default as burgerImage
@@ -7,7 +7,7 @@ cl import from "@jac-client/assets/burger.png" {
 
 cl {
     def:pub app -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
         useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
         return <div
             style={{
@@ -49,7 +49,7 @@ cl {
                 times!
             </p>
             <button
-                onClick={lambda  e: any  -> None{ setCount(count + 1);} }
+                onClick={lambda  e: any  -> None{ count = count + 1;} }
                 style={{
                     padding: "10px 20px",
                     fontSize: "16px",

@@ -29,6 +29,8 @@ Jac uses React hooks for all state management. The most common hooks are:
 
 ### Basic useState Example
 
+> **Note:** When using `has` variables in Jac, `useState` is automatically injected. You only need to explicitly import `useState` when using the React hooks pattern directly (e.g., `[value, setValue] = useState(initial)`).
+
 ```jac
 cl import from react { useState, useEffect }
 

@@ -50,7 +50,7 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
     if os.path.isfile(candidate + ".jac"):
         return candidate + ".jac", "jac"
     if os.path.isfile(candidate + ".cl.jac"):
-        return candidate + ".jac", "jac"
+        return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):
         return candidate + ".py", "py"
     if os.path.isfile(candidate + ".js"):
@@ -112,9 +112,10 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
 
     # If not found in any typeshed directory, but typeshed is configured,
     # return a stub .pyi path for type checking.
-    stub_pyi_path = os.path.join(typeshed_paths[0], *actual_parts) + ".pyi"
-    if os.path.isfile(stub_pyi_path):
-        return stub_pyi_path, "pyi"
+    if typeshed_paths:
+        stub_pyi_path = os.path.join(typeshed_paths[0], *actual_parts) + ".pyi"
+        if os.path.isfile(stub_pyi_path):
+            return stub_pyi_path, "pyi"
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
     for _ in range(max(level - 1, 0)):
         base_dir = os.path.dirname(base_dir)
@@ -135,7 +136,7 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
             if target_jac in files:
                 return os.path.join(root, target_jac), "jac"
             if target_cl_jac in files:
-                return os.path.join(root, target_jac), "jac"
+                return os.path.join(root, target_cl_jac), "jac"
             if target_py in files:
                 return os.path.join(root, target_py), "py"
             if target_js in files:

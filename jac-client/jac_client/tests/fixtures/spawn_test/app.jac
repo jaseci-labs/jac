@@ -32,51 +32,48 @@ walker positional_walker {
 }
 
 # Client-side code testing both spawn orderings
-cl import from react {
-    useState,
-    useEffect
-}
+cl import from react { useEffect }
 
 cl {
     def app()  -> any {
-        [standardResult, setStandardResult] = useState(None);
-        [standardComputed, setStandardComputed] = useState(None);
-        [reverseResult, setReverseResult] = useState(None);
-        [uuidResult, setUuidResult] = useState(None);
-        [reverseUuidResult, setReverseUuidResult] = useState(None);
-        [positionalResult, setPositionalResult] = useState(None);
-        [spreadResult, setSpreadResult] = useState(None);
+        has standardResult: any = None;
+        has standardComputed: any = None;
+        has reverseResult: any = None;
+        has uuidResult: any = None;
+        has reverseUuidResult: any = None;
+        has positionalResult: any = None;
+        has spreadResult: any = None;
 
         async def loadData()  -> None {
             # Test standard spawn order: node spawn walker()
             data1 = root spawn test_walker();
-            setStandardResult(data1);
+            standardResult = data1;
 
             data2 = root spawn parameterized_walker(value=42);
-            setStandardComputed(data2);
+            standardComputed = data2;
 
             # Test reverse spawn order: walker() spawn node
             data3 = test_walker(message="Reverse spawn!") spawn root;
-            setReverseResult(data3);
+            reverseResult = data3;
 
             # Test spawn with UUID string: uuid_string spawn walker()
             node_id = "550e8400-e29b-41d4-a716-446655440000";
             data4 = node_id spawn test_walker();
-            setUuidResult(data4);
+            uuidResult = data4;
 
             # Test reverse spawn with UUID string: walker() spawn uuid_string
             another_node_id = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
             data5 = parameterized_walker(value=100) spawn another_node_id;
-            setReverseUuidResult(data5);
+            reverseUuidResult = data5;
 
             # Test positional walker arguments inferred from has fields
             data6 = node_id spawn positional_walker("Node positional", 2);
-            setPositionalResult(data6);
+            positionalResult = data6;
 
             # Test **kwargs via spread when walker is on left-hand side
             extra_fields = {"metadata": {"source": "client-side"}};
             data7 = positional_walker("Spread order", 5, **extra_fields) spawn root;
-            setSpreadResult(data7);
+            spreadResult = data7;
         }
 
         useEffect(lambda   -> None{ loadData();} , []);

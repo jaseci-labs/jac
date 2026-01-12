@@ -132,7 +132,7 @@ def test_deploy_todo_app():
 
     # Send GET request to retrieve the clientpage of todo app (with retry for 503)
     try:
-        url = f"http://localhost:{node_port}/page/app"
+        url = f"http://localhost:{node_port}/cl/app"
         response = _request_with_retry("GET", url, timeout=10)
         assert response.status_code == 200
         print(f"✓ Successfully reached app page at {url}")

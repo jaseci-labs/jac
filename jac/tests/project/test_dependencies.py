@@ -28,7 +28,7 @@ class TestDependencyInstaller:
         installer = DependencyInstaller(config=config)
 
         assert installer.config == config
-        assert installer.packages_dir == temp_project / "packages"
+        assert installer.packages_dir == temp_project / ".jac" / "packages"
 
     def test_init_without_config_fails(self) -> None:
         """Test that init without discoverable config fails."""
@@ -41,7 +41,7 @@ class TestDependencyInstaller:
         installer = DependencyInstaller(config=config)
 
         # Remove packages dir if it exists
-        packages_dir = temp_project / "packages"
+        packages_dir = temp_project / ".jac" / "packages"
         if packages_dir.exists():
             packages_dir.rmdir()
 
@@ -54,7 +54,7 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        packages_str = str(temp_project / "packages")
+        packages_str = str(temp_project / ".jac" / "packages")
 
         # Remove from path if present
         if packages_str in sys.path:
@@ -162,8 +162,8 @@ class TestDependencyInstaller:
         installer = DependencyInstaller(config=config)
 
         # Create fake installed package structure
-        packages_dir = temp_project / "packages"
-        packages_dir.mkdir(exist_ok=True)
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
         fake_pkg = packages_dir / "requests"
         fake_pkg.mkdir()
         fake_dist_info = packages_dir / "requests-2.28.0.dist-info"
@@ -178,8 +178,8 @@ class TestDependencyInstaller:
         installer = DependencyInstaller(config=config)
 
         # Create fake dist-info directories
-        packages_dir = temp_project / "packages"
-        packages_dir.mkdir(exist_ok=True)
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
         (packages_dir / "requests-2.28.0.dist-info").mkdir()
         (packages_dir / "numpy-1.24.0.dist-info").mkdir()
 
@@ -296,8 +296,8 @@ class TestPathManagement:
     def test_add_packages_to_path(self, temp_project: Path) -> None:
         """Test adding packages directory to sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / "packages"
-        packages_dir.mkdir(exist_ok=True)
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
 
         packages_str = str(packages_dir)
         if packages_str in sys.path:
@@ -313,8 +313,8 @@ class TestPathManagement:
     def test_remove_packages_from_path(self, temp_project: Path) -> None:
         """Test removing packages directory from sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / "packages"
-        packages_dir.mkdir(exist_ok=True)
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
 
         packages_str = str(packages_dir)
         if packages_str not in sys.path:
@@ -327,8 +327,8 @@ class TestPathManagement:
     def test_is_packages_in_path(self, temp_project: Path) -> None:
         """Test checking if packages directory is in sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / "packages"
-        packages_dir.mkdir(exist_ok=True)
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
 
         packages_str = str(packages_dir)
 
@@ -355,7 +355,7 @@ class TestPathManagement:
         config = JacConfig.load(temp_project / "jac.toml")
 
         # Remove packages directory
-        packages_dir = temp_project / "packages"
+        packages_dir = temp_project / ".jac" / "packages"
         if packages_dir.exists():
             packages_dir.rmdir()
 

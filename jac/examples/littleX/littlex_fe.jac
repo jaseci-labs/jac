@@ -379,7 +379,7 @@ cl {
     }
 
     # Helper to build navigation bar
-    def build_nav_bar(route: str) -> any {
+    def build_nav_bar(route: str) -> Any {
         if not jacIsLoggedIn() or route == "/login" or route == "/signup" {
             return None;
         }

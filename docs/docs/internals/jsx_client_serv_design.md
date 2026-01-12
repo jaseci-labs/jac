@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes how Jac's `cl` (client) keyword produces browser-ready web experiences. Client-marked declarations compile to JavaScript and ship through `jac serve` as static bundles that execute entirely in the browser. The current implementation is **CSR-only** (Client-Side Rendering): the server returns an empty HTML shell with bootstrapping metadata and a JavaScript bundle that handles all rendering in the browser.
+This document describes how Jac's `cl` (client) keyword produces browser-ready web experiences. Client-marked declarations compile to JavaScript and ship through `jac start` as static bundles that execute entirely in the browser. The current implementation is **CSR-only** (Client-Side Rendering): the server returns an empty HTML shell with bootstrapping metadata and a JavaScript bundle that handles all rendering in the browser.
 
 **Key Features:**
 
@@ -27,7 +27,7 @@ graph TD
     subgraph "Runtime - Serving"
         E --> H[JacAPIServer]
         F --> I[ClientBundleBuilder]
-        H --> J[GET /page/fn]
+        H --> J[GET /cl/fn]
         I --> K["/static/client.js"]
         J --> L[HTML shell + init payload]
         K --> M[Runtime + Module JS]
@@ -47,12 +47,12 @@ graph TD
    - Client metadata is collected in `ClientManifest` (exports, globals, params)
 
 2. **Bundle Generation**: `ClientBundleBuilder` creates the browser bundle:
-   - Compiles [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac) to provide JSX and walker runtime
+   - Compiles [client_runtime.cl.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac) to provide JSX and walker runtime
    - Compiles the application module's client-marked code
    - Generates registration code that exposes functions globally
    - Includes polyfills (e.g., `Object.prototype.get()` for dict-like access)
 
-3. **Page Request**: When `GET /page/<function_name>` is requested:
+3. **Page Request**: When `GET /cl/<function_name>` is requested:
    - Server returns minimal HTML with empty `<div id="__jac_root"></div>`
    - Embeds `<script id="__jac_init__">` with JSON payload containing:
      - Module name and function name to execute
@@ -81,8 +81,8 @@ The `cl` keyword marks Jac declarations for **client-side compilation**. This en
 When `cl` is present:
 
 - Node is marked with `is_client_decl = True`
-- Python codegen is skipped for the declaration (via `_should_skip_client()` in [pyast_gen_pass.py:310-312](../jaclang/compiler/passes/main/pyast_gen_pass.py#L310-L312))
-- JavaScript codegen generates ECMAScript AST (in [esast_gen_pass.py](../jaclang/compiler/passes/ecmascript/esast_gen_pass.py))
+- Python codegen is skipped for the declaration (via `_should_skip_client()` in [pyast_gen_pass.py:310-312](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/pyast_gen_pass.py#L310-L312))
+- JavaScript codegen generates ECMAScript AST (in [esast_gen_pass.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/esast_gen_pass.py))
 - The declaration is tracked in the module's `ClientManifest` (exports, globals, params, globals_values, imports)
 
 #### Supported Constructs
@@ -108,7 +108,7 @@ cl API_BASE_URL: str = "https://api.example.com";
 
 #### Grammar Definition
 
-From [jac.lark:9-10, 591](../jaclang/compiler/jac.lark#L9-L10):
+From [jac.lark:9-10, 591](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/jac.lark#L9-L10):
 
 ```lark
 toplevel_stmt: KW_CLIENT? onelang_stmt
@@ -138,7 +138,7 @@ cl import from jac:client_runtime {
 
 #### Available Exports from `jac:client_runtime`
 
-The client runtime ([client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac)) exports these public functions for use in client code:
+The client runtime ([client_runtime.cl.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac)) exports these public functions for use in client code:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -164,7 +164,7 @@ The client runtime ([client_runtime.cl.jac](../jaclang/runtimelib/client_runtime
 
 #### How Client Imports Work
 
-When processing client imports ([esast_gen_pass.py:317-325](../jaclang/compiler/passes/ecmascript/esast_gen_pass.py#L317-L325)):
+When processing client imports ([esast_gen_pass.py:317-325](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/esast_gen_pass.py#L317-L325)):
 
 1. **Parser detects** `cl import from jac:client_runtime` syntax
    - The `jac:` prefix indicates a special runtime import
@@ -216,7 +216,7 @@ cl def LoginForm() {
 
 ### 3. JSX Syntax
 
-JSX is fully supported in Jac with grammar defined in [jac.lark:448-473](../jaclang/compiler/jac.lark#L448-L473). JSX elements are transpiled to `__jacJsx(tag, props, children)` calls by [jsx_processor.py:30-129](../jaclang/compiler/passes/ast_gen/jsx_processor.py#L30-L129) via the `EsJsxProcessor` class.
+JSX is fully supported in Jac with grammar defined in [jac.lark:448-473](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/jac.lark#L448-L473). JSX elements are transpiled to `__jacJsx(tag, props, children)` calls by [jsx_processor.py:30-129](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ast_gen/jsx_processor.py#L30-L129) via the `EsJsxProcessor` class.
 
 #### JSX Features
 
@@ -267,7 +267,7 @@ Jac includes a built-in reactive state management system inspired by modern fram
 
 The reactive system is based on **signals** - reactive containers for values that automatically track their dependencies and notify subscribers when values change.
 
-**Global Reactive Context** ([client_runtime.cl.jac:79-87](../jaclang/runtimelib/client_runtime.cl.jac#L79-L87)):
+**Global Reactive Context** ([client_runtime.cl.jac:79-87](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L79-L87)):
 
 ```javascript
 __jacReactiveContext = {
@@ -285,7 +285,7 @@ __jacReactiveContext = {
 
 Creates a reactive signal for primitive values. Returns a `[getter, setter]` tuple.
 
-**Syntax** ([client_runtime.cl.jac:92-110](../jaclang/runtimelib/client_runtime.cl.jac#L92-L110)):
+**Syntax** ([client_runtime.cl.jac:92-110](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L92-L110)):
 
 ```jac
 cl import from jac:client_runtime { createSignal }
@@ -316,7 +316,7 @@ cl def Counter() {
 
 Creates a reactive state object with shallow merge semantics. Ideal for managing component state with multiple properties.
 
-**Syntax** ([client_runtime.cl.jac:114-139](../jaclang/runtimelib/client_runtime.cl.jac#L114-L139)):
+**Syntax** ([client_runtime.cl.jac:114-139](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L114-L139)):
 
 ```jac
 cl import from jac:client_runtime { createState }
@@ -351,7 +351,7 @@ cl def TodoList() {
 
 Runs a function whenever its reactive dependencies change. Automatically re-executes when any accessed signal/state updates.
 
-**Syntax** ([client_runtime.cl.jac:143-174](../jaclang/runtimelib/client_runtime.cl.jac#L143-L174)):
+**Syntax** ([client_runtime.cl.jac:143-174](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L143-L174)):
 
 ```jac
 cl import from jac:client_runtime { createSignal, createEffect }
@@ -400,7 +400,7 @@ Jac includes a declarative routing system built on reactive signals. Routes are 
 
 Creates a router instance with reactive path tracking using URL hash.
 
-**Syntax** ([client_runtime.cl.jac:283-345](../jaclang/runtimelib/client_runtime.cl.jac#L283-L345)):
+**Syntax** ([client_runtime.cl.jac:283-345](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L283-L345)):
 
 ```jac
 cl import from jac:client_runtime { createRouter, Route }
@@ -433,7 +433,7 @@ cl def App() {
 
 #### Route Configuration
 
-The `Route` function creates route configuration objects ([client_runtime.cl.jac:348-350](../jaclang/runtimelib/client_runtime.cl.jac#L348-L350)):
+The `Route` function creates route configuration objects ([client_runtime.cl.jac:348-350](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L348-L350)):
 
 ```jac
 Route(path, component, guard=None)
@@ -445,7 +445,7 @@ Route(path, component, guard=None)
 
 #### Link Component
 
-Renders navigation links that update the router without full page reload ([client_runtime.cl.jac:353-365](../jaclang/runtimelib/client_runtime.cl.jac#L353-L365)):
+Renders navigation links that update the router without full page reload ([client_runtime.cl.jac:353-365](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L353-L365)):
 
 ```jac
 <Link href="/about">About Page</Link>
@@ -463,7 +463,7 @@ Renders navigation links that update the router without full page reload ([clien
 
 #### Programmatic Navigation
 
-Use `navigate()` to change routes from code ([client_runtime.cl.jac:368-378](../jaclang/runtimelib/client_runtime.cl.jac#L368-L378)):
+Use `navigate()` to change routes from code ([client_runtime.cl.jac:368-378](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L368-L378)):
 
 ```jac
 cl import from jac:client_runtime { navigate }
@@ -514,21 +514,21 @@ If guard returns `False`, the route renders `AccessDenied` component instead.
 | Component | Implementation | Key Responsibilities |
 |-----------|----------------|---------------------|
 | **Compiler Passes** | | |
-| [pyast_gen_pass.py](../jaclang/compiler/passes/main/pyast_gen_pass.py) | Python AST generation | Skips Python codegen for `cl`-marked nodes |
-| [esast_gen_pass.py](../jaclang/compiler/passes/ecmascript/esast_gen_pass.py) | ECMAScript AST generation | Generates JavaScript for `cl`-marked nodes, JSX transpilation |
-| [es_unparse.py](../jaclang/compiler/passes/ecmascript/es_unparse.py) | JavaScript code generation | Converts ESTree AST to JavaScript source |
+| [pyast_gen_pass.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/pyast_gen_pass.py) | Python AST generation | Skips Python codegen for `cl`-marked nodes |
+| [esast_gen_pass.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/esast_gen_pass.py) | ECMAScript AST generation | Generates JavaScript for `cl`-marked nodes, JSX transpilation |
+| [es_unparse.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/es_unparse.py) | JavaScript code generation | Converts ESTree AST to JavaScript source |
 | **Runtime Components** | | |
-| [client_bundle.py](../jaclang/runtimelib/client_bundle.py) | Bundle builder | Compiles runtime + module, generates registration code |
-| [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac) | Client runtime | JSX rendering (`__jacJsx`, `renderJsxTree`), walker spawning (`__jacSpawn`), auth helpers |
-| [server.py](../jaclang/runtimelib/server.py) | HTTP server | Serves pages (`/page/<fn>`), bundles (`/static/client.js`), walkers |
+| [client_bundle.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_bundle.py) | Bundle builder | Compiles runtime + module, generates registration code |
+| [client_runtime.cl.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac) | Client runtime | JSX rendering (`__jacJsx`, `renderJsxTree`), walker spawning (`__jacSpawn`), auth helpers |
+| [server.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/server.py) | HTTP server | Serves pages (`/cl/<fn>`), bundles (`/static/client.js`), walkers |
 | **Data Structures** | | |
-| [ClientManifest](../jaclang/compiler/codeinfo.py#L15-L25) | Metadata container (in codeinfo.py) | Stores `exports` (function names), `globals` (var names), `params` (arg order), `globals_values` (literal values), `has_client` (bool), `imports` (module mappings) |
+| [ClientManifest](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/codeinfo.py#L15-L25) | Metadata container (in codeinfo.py) | Stores `exports` (function names), `globals` (var names), `params` (arg order), `globals_values` (literal values), `has_client` (bool), `imports` (module mappings) |
 
 ### Client Bundle Structure
 
 The bundle generated by `ClientBundleBuilder` contains (in order):
 
-1. **Polyfills** - Browser compatibility shims (from [client_runtime.cl.jac:227-253](../jaclang/runtimelib/client_runtime.cl.jac#L227-L253)):
+1. **Polyfills** - Browser compatibility shims (from [client_runtime.cl.jac:227-253](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L227-L253)):
    The `__jacEnsureObjectGetPolyfill()` function adds a Python-style `.get()` method to `Object.prototype`:
 
    ```javascript
@@ -542,7 +542,7 @@ The bundle generated by `ClientBundleBuilder` contains (in order):
 
    This polyfill is called automatically during module registration and hydration.
 
-2. **Client Runtime** - Compiled from [client_runtime.cl.jac](../jaclang/runtimelib/client_runtime.cl.jac):
+2. **Client Runtime** - Compiled from [client_runtime.cl.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac):
    - **JSX Rendering**: `__jacJsx(tag, props, children)`, `renderJsxTree(node, container)`, `__buildDom(node)`, `__applyProp(element, key, value)`
    - **Reactive System**: `createSignal(initialValue)`, `createState(initialState)`, `createEffect(effectFn)`, `__jacTrackDependency()`, `__jacNotifySubscribers()`
    - **Router System**: `createRouter(routes, defaultRoute)`, `Route(path, component, guard)`, `Link(props)`, `navigate(path)`, `useRouter()`
@@ -552,7 +552,7 @@ The bundle generated by `ClientBundleBuilder` contains (in order):
 
 3. **Application Module** - Transpiled user code with `cl` declarations
 
-4. **Registration Code** - Generated by [client_bundle.py:245-251](../jaclang/runtimelib/client_bundle.py#L245-L251):
+4. **Registration Code** - Generated by [client_bundle.py:245-251](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_bundle.py#L245-L251):
 
    ```javascript
    __jacRegisterClientModule("module_name", ["homepage", "other_func"], {"API_URL": "value"});
@@ -567,11 +567,11 @@ The bundle generated by `ClientBundleBuilder` contains (in order):
 
 ### Server Endpoints
 
-From [server.py](../jaclang/runtimelib/server.py):
+From [server.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/server.py):
 
 | Endpoint | Method | Description | Implementation |
 |----------|--------|-------------|----------------|
-| `/page/<fn>` | GET | Render HTML page for client function | Lines 806-830 |
+| `/cl/<fn>` | GET | Render HTML page for client function | Lines 806-830 |
 | `/static/client.js` | GET | Serve compiled JavaScript bundle | Lines 772-781 |
 | `/walker/<name>` | POST | Spawn walker on node | Handled by ExecutionHandler |
 | `/function/<name>` | POST | Call server-side function | Handled by ExecutionHandler |
@@ -584,7 +584,7 @@ From [server.py](../jaclang/runtimelib/server.py):
 
 #### Page Rendering Flow
 
-When `GET /page/homepage?arg1=value1` is requested:
+When `GET /cl/homepage?arg1=value1` is requested:
 
 1. **Parse request** - Extract function name and query params
 2. **Authenticate** - Check auth token, or create guest user
@@ -593,7 +593,7 @@ When `GET /page/homepage?arg1=value1` is requested:
 5. **Build payload** - Serialize args, globals, arg order
 6. **Render HTML** - Return shell with embedded payload and script tag
 
-HTML template (from [server.py:491-504](../jaclang/runtimelib/server.py#L491-L504)):
+HTML template (from [server.py:491-504](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/server.py#L491-L504)):
 
 ```html
 <!DOCTYPE html>
@@ -616,7 +616,7 @@ HTML template (from [server.py:491-504](../jaclang/runtimelib/server.py#L491-L50
 
 ### Client-Side Execution
 
-On page load in the browser ([client_runtime.cl.jac:726-821](../jaclang/runtimelib/client_runtime.cl.jac#L726-L821)):
+On page load in the browser ([client_runtime.cl.jac:726-821](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L726-L821)):
 
 1. **Wait for DOM** - `__jacEnsureHydration()` waits for `DOMContentLoaded`
 2. **Parse payload** - `__jacHydrateFromDom()` extracts `__jac_init__` JSON from script tag
@@ -656,7 +656,7 @@ if value and __isObject(value) and __isFunction(value.then) {
 
 ### JSX Rendering
 
-The `renderJsxTree` function ([client_runtime.cl.jac:8-10](../jaclang/runtimelib/client_runtime.cl.jac#L8-L10)) calls `__buildDom` ([client_runtime.cl.jac:13-54](../jaclang/runtimelib/client_runtime.cl.jac#L13-L54)) to recursively build DOM:
+The `renderJsxTree` function ([client_runtime.cl.jac:8-10](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L8-L10)) calls `__buildDom` ([client_runtime.cl.jac:13-54](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L13-L54)) to recursively build DOM:
 
 1. **Null/undefined** → Empty text node (`document.createTextNode("")`)
 2. **Primitive values** → Text node with `String(value)`
@@ -667,7 +667,7 @@ The `renderJsxTree` function ([client_runtime.cl.jac:8-10](../jaclang/runtimelib
    - Recursively build and append children
 5. **Return DOM node** → Attach to container via `container.replaceChildren(domNode)`
 
-Event handlers are bound in `__applyProp` ([client_runtime.cl.jac:57-72](../jaclang/runtimelib/client_runtime.cl.jac#L57-L72)):
+Event handlers are bound in `__applyProp` ([client_runtime.cl.jac:57-72](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client_runtime.cl.jac#L57-L72)):
 
 - Props starting with `on` (e.g., `onclick`, `onsubmit`) become `addEventListener(eventName, handler)`
   - Event name is extracted by removing `on` prefix and converting to lowercase
@@ -727,10 +727,10 @@ walker LoadUsers {
 jac myapp.jac
 
 # Start the server
-jac serve myapp.jac
+jac start myapp.jac
 
 # Access the page
-# Browser: http://localhost:8000/page/homepage
+# Browser: http://localhost:8000/cl/homepage
 ```
 
 ### Client-Server Interaction
@@ -828,20 +828,20 @@ cl def littlex_app() {
 
 | Test Suite | Location | Coverage |
 |------------|----------|----------|
-| **Client codegen tests** | [test_client_codegen.py](../jaclang/compiler/tests/test_client_codegen.py) | `cl` keyword detection, manifest generation |
-| **ESTree generation tests** | [test_esast_gen_pass.py](../jaclang/compiler/passes/ecmascript/tests/test_esast_gen_pass.py) | JavaScript AST generation |
-| **JavaScript generation tests** | [test_js_generation.py](../jaclang/compiler/passes/ecmascript/tests/test_js_generation.py) | JS code output from ESTree |
-| **Client bundle tests** | [test_client_bundle.py](../jaclang/runtimelib/tests/test_client_bundle.py) | Bundle building, caching, import resolution |
-| **Server endpoint tests** | [test_serve.py](../jaclang/runtimelib/tests/test_serve.py) | HTTP endpoints, page rendering |
-| **JSX rendering tests** | [test_jsx_render.py](../jaclang/runtimelib/tests/test_jsx_render.py) | JSX parsing and rendering |
-| **Reactive signals tests** | [test_reactive_signals.py](../jaclang/runtimelib/tests/test_reactive_signals.py) | Signal creation, effects, dependency tracking |
-| **Router tests** | [test_router.py](../jaclang/runtimelib/tests/test_router.py) | Routing, navigation, route guards |
-| **Closures tests** | [test_closures.py](../jaclang/runtimelib/tests/test_closures.py) | Nested functions, closure semantics in JavaScript |
+| **Client codegen tests** | [test_client_codegen.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/tests/test_client_codegen.py) | `cl` keyword detection, manifest generation |
+| **ESTree generation tests** | [test_esast_gen_pass.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/tests/test_esast_gen_pass.py) | JavaScript AST generation |
+| **JavaScript generation tests** | [test_js_generation.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/tests/test_js_generation.py) | JS code output from ESTree |
+| **Client bundle tests** | [test_client_bundle.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_client_bundle.py) | Bundle building, caching, import resolution |
+| **Server endpoint tests** | [test_serve.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_serve.py) | HTTP endpoints, page rendering |
+| **JSX rendering tests** | [test_jsx_render.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_jsx_render.py) | JSX parsing and rendering |
+| **Reactive signals tests** | [test_reactive_signals.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_reactive_signals.py) | Signal creation, effects, dependency tracking |
+| **Router tests** | [test_router.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_router.py) | Routing, navigation, route guards |
+| **Closures tests** | [test_closures.py](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/test_closures.py) | Nested functions, closure semantics in JavaScript |
 
 ### Example Test Fixtures
 
-- [client_jsx.jac](../jaclang/compiler/passes/ecmascript/tests/fixtures/client_jsx.jac) - Comprehensive client syntax examples
-- [jsx_elements.jac](../examples/reference/jsx_elements.jac) - JSX feature demonstrations
-- [test_reactive_signals.jac](../jaclang/runtimelib/tests/fixtures/test_reactive_signals.jac) - Reactive signals and effects examples
-- [test_router.jac](../jaclang/runtimelib/tests/fixtures/test_router.jac) - Routing and navigation examples
-- [littleX_single_nodeps.jac](../examples/littleX/littleX_single_nodeps.jac) - Full SPA with reactive state and routing
+- [client_jsx.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/ecmascript/tests/fixtures/client_jsx.jac) - Comprehensive client syntax examples
+- [jsx_elements.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/examples/reference/jsx_elements.jac) - JSX feature demonstrations
+- [test_reactive_signals.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/fixtures/test_reactive_signals.jac) - Reactive signals and effects examples
+- [test_router.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/tests/fixtures/test_router.jac) - Routing and navigation examples
+- [littleX_single_nodeps.jac](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/examples/littleX/littleX_single_nodeps.jac) - Full SPA with reactive state and routing

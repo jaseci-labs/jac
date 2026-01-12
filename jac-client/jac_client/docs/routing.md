@@ -84,8 +84,10 @@ cl import from "@jac-client/utils" {
 ### Simple Three-Page App
 
 ```jac
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     # Page Components
@@ -473,8 +475,10 @@ cl {
 ### Example 1: Simple Multi-Page App
 
 ```jac
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from "@jac-client/utils" { Router, Routes, Route, Link, useLocation }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def Navigation() -> any {

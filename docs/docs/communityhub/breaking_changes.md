@@ -6,6 +6,126 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Version 0.9.5
+
+#### 1. `jac serve` Renamed to `jac start`, `jac scale` Now Uses `--scale` Flag
+
+The `jac serve` command has been renamed to `jac start` for better clarity. Additionally, the `jac scale` command (from jac-scale plugin) is now accessed via `jac start --scale` instead of a separate command.
+
+**Before (v0.9.4 and earlier):**
+
+```bash
+# Start local server
+jac serve main.jac
+
+# Deploy to Kubernetes (jac-scale plugin)
+jac scale main.jac
+jac scale main.jac -b  # with build
+```
+
+**After (v0.9.5+):**
+
+```bash
+# Start local server
+jac start main.jac
+
+# Deploy to Kubernetes (jac-scale plugin)
+jac start main.jac --scale
+jac start main.jac --scale --build  # with build
+```
+
+**Migration Steps:**
+
+1. Replace all `jac serve` commands with `jac start`
+2. Replace `jac scale` commands with `jac start --scale`
+3. Replace `jac scale -b` with `jac start --scale --build`
+4. Update any CI/CD scripts or documentation that reference these commands
+
+**Key Changes:**
+
+- `jac serve` → `jac start`
+- `jac scale` → `jac start --scale`
+- `jac scale -b` → `jac start --scale --build` (or `jac start --scale -b`)
+- The `jac destroy` command remains unchanged for removing Kubernetes deployments
+
+#### 2. Build Artifacts Consolidated to `.jac/` Directory
+
+All Jac project build artifacts are now organized under a single `.jac/` directory instead of being scattered across the project root. This is a breaking change for existing projects.
+
+**Before (v0.9.4 and earlier):**
+
+```
+my-project/
+├── jac.toml
+├── main.jac
+├── .jaccache/                    # Bytecode cache
+├── packages/                     # Python packages
+├── .client-build/                # Client build artifacts (jac-client)
+├── .jac-client.configs/          # Client config files (jac-client)
+└── anchor_store.db.*             # ShelfDB files (jac-scale)
+```
+
+**After (v0.9.5+):**
+
+```
+my-project/
+├── jac.toml
+├── main.jac
+└── .jac/                         # All build artifacts
+    ├── cache/                    # Bytecode cache
+    ├── packages/                 # Python packages
+    ├── client/                   # Client build artifacts
+    │   ├── configs/              # Generated config files
+    │   ├── build/                # Build output
+    │   └── dist/                 # Distribution files
+    └── data/                     # Runtime data (ShelfDB)
+```
+
+**Migration Steps:**
+
+1. Delete old artifact directories from your project root:
+
+   ```bash
+   rm -rf .jaccache packages .client-build .jac-client.configs anchor_store.db.*
+   ```
+
+2. Update `.gitignore` (simplified):
+
+   ```gitignore
+   # Before
+   .jaccache/
+   packages/
+   .client-build/
+   .jac-client.configs/
+   *.db
+
+   # After
+   .jac/
+   ```
+
+3. If using custom `shelf_db_path` in jac-scale config, update the path:
+
+   ```toml
+   [plugins.scale.database]
+   shelf_db_path = ".jac/data/anchor_store.db"
+   ```
+
+4. Optionally configure a custom base directory in `jac.toml`:
+
+   ```toml
+   [build]
+   dir = ".custom-build"  # Defaults to ".jac"
+   ```
+
+**Key Changes:**
+
+- Bytecode cache moved from `.jaccache/` to `.jac/cache/`
+- Python packages moved from `packages/` to `.jac/packages/`
+- Client build artifacts moved from `.client-build/` to `.jac/client/`
+- Client configs moved from `.jac-client.configs/` to `.jac/client/configs/`
+- ShelfDB files moved to `.jac/data/`
+- New `[build].dir` config option allows customizing the base directory
+
 ### Version 0.9.4
 
 #### 1. `let` Keyword Removed - Use Direct Assignment
@@ -18,7 +138,6 @@ The `let` keyword has been removed from Jaclang. Variable declarations now use d
 with entry {
     let x = 10;
     let name = "Alice";
-    let [count, setCount] = useState(0);
 }
 ```
 
@@ -28,7 +147,6 @@ with entry {
 with entry {
     x = 10;
     name = "Alice";
-    [count, setCount] = useState(0);
 }
 ```
 
@@ -37,6 +155,8 @@ with entry {
 - Remove the `let` keyword from all variable declarations
 - Use direct assignment (`x = value`) instead of `let x = value`
 - This applies to all contexts including destructuring assignments
+
+> **Note for client-side code:** In `cl {}` blocks and `.cl.jac` files, prefer using `has` for reactive state (see v0.9.5 reactive state feature) instead of explicit `useState` destructuring.
 
 ### Version 0.8.10
 

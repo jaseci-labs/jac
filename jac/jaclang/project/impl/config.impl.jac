@@ -105,7 +105,7 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-impl JacConfig.apply_cli_overrides(args: dict[str, Any]) -> None {
+impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
     if args.get("session") {
         self.run.session = args["session"];
     }
@@ -196,12 +196,31 @@ impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, Any] {
     return self.plugins.get(plugin_name, {});
 }
 
-impl JacConfig.get_packages_dir -> Path {
+"""Get the base build directory for all artifacts."""
+impl JacConfig.get_build_dir -> Path {
     import from pathlib { Path }
-    if self.project_root {
-        return self.project_root / "packages";
-    }
-    return Path.cwd() / "packages";
+    base = self.project_root or Path.cwd();
+    return base / self.build.dir;
+}
+
+"""Get the bytecode cache directory (.jac/cache)."""
+impl JacConfig.get_cache_dir -> Path {
+    return self.get_build_dir() / "cache";
+}
+
+"""Get the Python packages directory (.jac/packages)."""
+impl JacConfig.get_packages_dir -> Path {
+    return self.get_build_dir() / "packages";
+}
+
+"""Get the data directory for runtime artifacts (.jac/data)."""
+impl JacConfig.get_data_dir -> Path {
+    return self.get_build_dir() / "data";
+}
+
+"""Get the client build directory (.jac/client)."""
+impl JacConfig.get_client_dir -> Path {
+    return self.get_build_dir() / "client";
 }
 
 impl JacConfig.is_valid -> bool {
@@ -268,12 +287,21 @@ impl JacConfig.save -> None {
         }
     }
     # Update plugins configuration
-    if self.plugins {
+    # Always update plugins section if it exists in doc or we have data to write
+    has_existing_plugins = "plugins" in doc;
+    needs_update = self.plugins or self.plugins_config.disabled is not None;
+    if has_existing_plugins or needs_update {
         if "plugins" not in doc {
             doc["plugins"] = {};
         }
         for (plugin_name, plugin_config) in self.plugins.items() {
             doc["plugins"][plugin_name] = plugin_config;
+        }
+        # Persist disabled plugins list - handle both setting and clearing
+        if self.plugins_config.disabled {
+            doc["plugins"]["disabled"] = self.plugins_config.disabled;
+        } elif "disabled" in doc.get("plugins", {}) {
+            del doc["plugins"]["disabled"] ;  # Remove if empty
         }
     }
     # Write using simple TOML serializer
@@ -511,7 +539,10 @@ impl _parse_toml_data(
     }
     if "build" in data {
         build_data = data["build"];
-        config.build = BuildConfig(typecheck=build_data.get("typecheck", False));
+        config.build = BuildConfig(
+            typecheck=build_data.get("typecheck", False),
+            dir=build_data.get("dir", ".jac")
+        );
     }
     if "test" in data {
         test_data = data["test"];
@@ -528,7 +559,9 @@ impl _parse_toml_data(
         config.serve = ServeConfig(
             port=serve_data.get("port", 8000),
             session=serve_data.get("session", ""),
-            main=serve_data.get("main", True)
+            main=serve_data.get("main", True),
+            cl_route_prefix=serve_data.get("cl_route_prefix", "cl"),
+            base_route_app=serve_data.get("base_route_app", "")
         );
     }
     if "format" in data {

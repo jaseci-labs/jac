@@ -8,6 +8,7 @@ Inherits from PluginConfigBase to eliminate boilerplate code.
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.project.plugin_config { PluginConfigBase }
+import os;
 
 """Scale-specific configuration loader.
 

@@ -253,7 +253,7 @@ To see the automatic persistence for yourself, you can run the counter code on a
 First, save the counter code into a file named "counter.jac". Then, run the following command in your terminal:
 
 ```jac
-jac serve counter.jac
+jac start counter.jac
 ```
 
 ### **Multi-User Isolation**

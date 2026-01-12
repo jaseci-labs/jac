@@ -37,7 +37,7 @@ impl GradeBook.get_average(student: str) -> float {
     return sum(grades) / len(grades);
 }
 
-impl GradeBook.get_all_averages()  -> dict[str, float] {
+impl GradeBook.get_all_averages -> dict[str, float] {
     averages: dict[str, float] = {};
     for (student, grades) in self.students.items() {
         if len(grades) > 0 {

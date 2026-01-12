@@ -1,6 +1,10 @@
-impl PyJacAstLinkPass.exit_atom_trailer(
-    self: PyJacAstLinkPass, <>node: uni.AtomTrailer
+impl PyJacAstLinkPass.init(
+    ir_in: uni.Module, prog: Any, cancel_token: Any = None
 ) -> None {
+    super.init(ir_in, prog, cancel_token);
+}
+
+impl PyJacAstLinkPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
     if (<>node.is_attr and isinstance(<>node.right, uni.AstSymbolNode)) {
         self.link_jac_py_nodes(
             jac_node=<>node.right.name_spec, py_nodes=<>node.gen.py_ast
@@ -8,15 +12,13 @@ impl PyJacAstLinkPass.exit_atom_trailer(
     }
 }
 
-impl PyJacAstLinkPass.exit_k_w_pair(self: PyJacAstLinkPass, <>node: uni.KWPair) -> None {
+impl PyJacAstLinkPass.exit_k_w_pair(<>node: uni.KWPair) -> None {
     if <>node.key {
         self.link_jac_py_nodes(jac_node=<>node.key, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_non_local_stmt(
-    self: PyJacAstLinkPass, <>node: uni.NonLocalStmt
-) -> None {
+impl PyJacAstLinkPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
     if (not <>node.gen.py_ast or (len(<>node.gen.py_ast) < len(<>node.target))) {
         return;
     }
@@ -25,9 +27,7 @@ impl PyJacAstLinkPass.exit_non_local_stmt(
     }
 }
 
-impl PyJacAstLinkPass.exit_global_stmt(
-    self: PyJacAstLinkPass, <>node: uni.GlobalStmt
-) -> None {
+impl PyJacAstLinkPass.exit_global_stmt(<>node: uni.GlobalStmt) -> None {
     if (not <>node.gen.py_ast or (len(<>node.gen.py_ast) < len(<>node.target))) {
         return;
     }
@@ -36,30 +36,24 @@ impl PyJacAstLinkPass.exit_global_stmt(
     }
 }
 
-impl PyJacAstLinkPass.exit_expr_as_item(
-    self: PyJacAstLinkPass, <>node: uni.ExprAsItem
-) -> None {
+impl PyJacAstLinkPass.exit_expr_as_item(<>node: uni.ExprAsItem) -> None {
     self.link_jac_py_nodes(jac_node=<>node.expr, py_nodes=<>node.gen.py_ast);
     if <>node.alias {
         self.link_jac_py_nodes(jac_node=<>node.alias, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_except(self: PyJacAstLinkPass, <>node: uni.Except) -> None {
+impl PyJacAstLinkPass.exit_except(<>node: uni.Except) -> None {
     if <>node.name {
         self.link_jac_py_nodes(jac_node=<>node.name, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_param_var(
-    self: PyJacAstLinkPass, <>node: uni.ParamVar
-) -> None {
+impl PyJacAstLinkPass.exit_param_var(<>node: uni.ParamVar) -> None {
     self.link_jac_py_nodes(jac_node=<>node.name, py_nodes=<>node.gen.py_ast);
 }
 
-impl PyJacAstLinkPass.exit_impl_def(
-    self: PyJacAstLinkPass, <>node: uni.ImplDef
-) -> None {
+impl PyJacAstLinkPass.exit_impl_def(<>node: uni.ImplDef) -> None {
     for i in <>node.target {
         if i.name_spec.name_of.sym {
             self.link_jac_py_nodes(
@@ -115,31 +109,27 @@ impl PyJacAstLinkPass.exit_impl_def(
     }
 }
 
-impl PyJacAstLinkPass.exit_ability(self: PyJacAstLinkPass, <>node: uni.Ability) -> None {
+impl PyJacAstLinkPass.exit_ability(<>node: uni.Ability) -> None {
     self.link_jac_py_nodes(jac_node=<>node.name_ref, py_nodes=<>node.gen.py_ast);
     if isinstance(<>node.body, uni.ImplDef) {
         self.link_jac_py_nodes(jac_node=<>node.body, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_enum(self: PyJacAstLinkPass, <>node: uni.Enum) -> None {
+impl PyJacAstLinkPass.exit_enum(<>node: uni.Enum) -> None {
     if isinstance(<>node.body, uni.ImplDef) {
         self.link_jac_py_nodes(jac_node=<>node.body, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_archetype(
-    self: PyJacAstLinkPass, <>node: uni.Archetype
-) -> None {
+impl PyJacAstLinkPass.exit_archetype(<>node: uni.Archetype) -> None {
     self.link_jac_py_nodes(jac_node=<>node.name, py_nodes=<>node.gen.py_ast);
     if isinstance(<>node.body, uni.ImplDef) {
         self.link_jac_py_nodes(jac_node=<>node.body, py_nodes=<>node.gen.py_ast);
     }
 }
 
-impl PyJacAstLinkPass.exit_module_path(
-    self: PyJacAstLinkPass, <>node: uni.ModulePath
-) -> None {
+impl PyJacAstLinkPass.exit_module_path(<>node: uni.ModulePath) -> None {
     if <>node.alias {
         self.link_jac_py_nodes(jac_node=<>node.alias, py_nodes=<>node.gen.py_ast);
     }
@@ -147,7 +137,7 @@ impl PyJacAstLinkPass.exit_module_path(
 
 """Link jac name ast to py ast nodes."""
 impl PyJacAstLinkPass.link_jac_py_nodes(
-    self: PyJacAstLinkPass, jac_node: uni.UniNode, py_nodes: list[ast3.AST]
+    jac_node: uni.UniNode, py_nodes: list[ast3.AST]
 ) -> None {
     if (isinstance(jac_node, uni.ClientFacingNode) and jac_node.is_client_decl) {
         return;

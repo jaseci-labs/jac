@@ -148,9 +148,9 @@ impl deploy_K8s(
         ];
         init_containers.append(build_container);
         if ('requirements.txt' in os.listdir(code_folder)) {
-            install_part = f"pip install -r /app/requirements.txt && jac serve src/{file_name}";
+            install_part = f"pip install -r /app/requirements.txt && jac start src/{file_name}";
         } else {
-            install_part = f"jac serve src/{file_name} ";
+            install_part = f"jac start src/{file_name} ";
         }
         command = [
             'bash',
