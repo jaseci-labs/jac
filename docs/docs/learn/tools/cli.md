@@ -445,7 +445,7 @@ Scripts are defined in your `jac.toml` file:
 [scripts]
 test = "jac test ."
 build = "jac build app.jac"
-deploy = "jac scale app.jac"
+deploy = "jac start --scale app.jac"
 ```
 
 Examples:
@@ -488,7 +488,7 @@ jac get_object app.jac -i "some_object_id"
 
 ## `jac destroy`
 
-The `destroy` command removes a Kubernetes deployment created by `jac scale`. This is part of the jac-scale plugin.
+The `destroy` command removes a Kubernetes deployment created by `jac start --scale`. This is part of the jac-scale plugin.
 
 ```bash
 jac destroy <file_path>
