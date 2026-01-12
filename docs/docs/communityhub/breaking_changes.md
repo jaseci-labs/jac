@@ -8,7 +8,47 @@ MTLLM library is now deprecated and replaced by the byLLM package. In all place 
 
 ### Version 0.9.5
 
-#### 1. Build Artifacts Consolidated to `.jac/` Directory
+#### 1. `jac serve` Renamed to `jac start`, `jac scale` Now Uses `--scale` Flag
+
+The `jac serve` command has been renamed to `jac start` for better clarity. Additionally, the `jac scale` command (from jac-scale plugin) is now accessed via `jac start --scale` instead of a separate command.
+
+**Before (v0.9.4 and earlier):**
+
+```bash
+# Start local server
+jac serve main.jac
+
+# Deploy to Kubernetes (jac-scale plugin)
+jac scale main.jac
+jac scale main.jac -b  # with build
+```
+
+**After (v0.9.5+):**
+
+```bash
+# Start local server
+jac start main.jac
+
+# Deploy to Kubernetes (jac-scale plugin)
+jac start main.jac --scale
+jac start main.jac --scale --build  # with build
+```
+
+**Migration Steps:**
+
+1. Replace all `jac serve` commands with `jac start`
+2. Replace `jac scale` commands with `jac start --scale`
+3. Replace `jac scale -b` with `jac start --scale --build`
+4. Update any CI/CD scripts or documentation that reference these commands
+
+**Key Changes:**
+
+- `jac serve` → `jac start`
+- `jac scale` → `jac start --scale`
+- `jac scale -b` → `jac start --scale --build` (or `jac start --scale -b`)
+- The `jac destroy` command remains unchanged for removing Kubernetes deployments
+
+#### 2. Build Artifacts Consolidated to `.jac/` Directory
 
 All Jac project build artifacts are now organized under a single `.jac/` directory instead of being scattered across the project root. This is a breaking change for existing projects.
 

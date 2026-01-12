@@ -241,10 +241,10 @@ Deploy with environment variables:
 
 ```bash
 # Local with environment variables
-MAX_ROOMS=20 jac serve simple_chat.jac
+MAX_ROOMS=20 jac start simple_chat.jac
 
 # Or using .env file (if supported by your environment)
-jac serve simple_chat.jac
+jac start simple_chat.jac
 ```
 
 ---
@@ -412,7 +412,7 @@ Instead of WebSockets, let's focus on RESTful message management that works with
 Deploy the message-enabled chat:
 
 ```bash
-jac serve message_chat.jac
+jac start message_chat.jac
 ```
 
 Test with curl (all walker endpoints are POST):

@@ -82,7 +82,7 @@ Here's what you'll build - an AI memory capture system in just **two files**:
 2. Start the backend server:
 
    ```bash
-   jac serve friendzone_lite.jac
+   jac start friendzone_lite.jac
    ```
 
 3. Run the frontend:

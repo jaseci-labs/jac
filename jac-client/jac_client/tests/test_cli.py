@@ -54,7 +54,7 @@ def test_create_jac_app() -> None:
                 readme_content = f.read()
 
             assert f"# {test_project_name}" in readme_content
-            assert "jac serve main.jac" in readme_content
+            assert "jac start main.jac" in readme_content
 
             # Verify jac.toml was created
             jac_toml_path = os.path.join(project_path, "jac.toml")

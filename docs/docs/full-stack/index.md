@@ -19,7 +19,7 @@ Build complete web applications using Jac for both frontend and backend. Jac Cli
 # Create a new full-stack project
 jac create --cl myapp
 cd myapp
-jac serve
+jac start
 ```
 
 Visit `http://localhost:8000/cl/app` to see your app.
@@ -479,13 +479,13 @@ cl {
 
 ```bash
 # Development server
-jac serve main.jac
+jac start main.jac
 
 # Production build
 jac build main.jac
 
 # Using jac.toml entry-point
-jac serve  # Uses [project].entry-point
+jac start  # Uses [project].entry-point
 ```
 
 ---

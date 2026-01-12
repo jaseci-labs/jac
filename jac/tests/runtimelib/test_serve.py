@@ -1,4 +1,4 @@
-"""Test for jac serve command and REST API server."""
+"""Test for jac start command and REST API server."""
 
 import contextlib
 import json

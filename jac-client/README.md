@@ -31,7 +31,7 @@ pip install jac-client
 ```bash
 jac create --cl my-app
 cd my-app
-jac serve src/app.jac
+jac start src/app.jac
 ```
 
 Visit `http://localhost:8000` to see your app! (The `app` component is served at the root by default.)

@@ -132,7 +132,7 @@ jac run mcp_server.jac
 **Terminal 2 - Start the main application:**
 
 ```bash
-jac serve server.jac
+jac start server.jac
 ```
 
 **Terminal 3 - Launch the web interface:**

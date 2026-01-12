@@ -1,4 +1,4 @@
-"""End-to-end tests for `jac serve` HTTP endpoints."""
+"""End-to-end tests for `jac start` HTTP endpoints."""
 
 from __future__ import annotations
 
@@ -243,14 +243,14 @@ def test_all_in_one_app_endpoints() -> None:
             app_jac_path = os.path.join(project_path, "src", "app.jac")
             assert os.path.isfile(app_jac_path), "all-in-one src/app.jac file missing"
 
-            # 4. Start the server: `jac serve src/app.jac`
+            # 4. Start the server: `jac start src/app.jac`
             # NOTE: We don't use text mode here, so `Popen` defaults to bytes.
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac serve src/app.jac'")
+                print("[DEBUG] Starting server with 'jac start src/app.jac'")
                 server = Popen(
-                    ["jac", "serve", "src/app.jac"],
+                    ["jac", "start", "src/app.jac"],
                     cwd=project_path,
                 )
                 # Wait for localhost:8000 to become available
@@ -259,23 +259,25 @@ def test_all_in_one_app_endpoints() -> None:
                 print("[DEBUG] Server is now accepting connections on 127.0.0.1:8000")
 
                 # "/" – server up (serves client app HTML due to base_route_app="app")
+                # Note: The root endpoint may return 503 while the client bundle is building.
+                # We use _wait_for_endpoint to retry on 503 until it's ready.
                 try:
-                    print("[DEBUG] Sending GET request to root endpoint /")
-                    with urlopen(
+                    print("[DEBUG] Sending GET request to root endpoint / (with retry)")
+                    root_bytes = _wait_for_endpoint(
                         "http://127.0.0.1:8000",
-                        timeout=10,
-                    ) as resp_root:
-                        root_body = resp_root.read().decode("utf-8", errors="ignore")
-                        print(
-                            "[DEBUG] Received response from root endpoint /\n"
-                            f"Status: {resp_root.status}\n"
-                            f"Body (truncated to 500 chars):\n{root_body[:500]}"
-                        )
-                        assert resp_root.status == 200
-                        # With base_route_app="app", root serves client HTML
-                        assert "<!DOCTYPE html>" in root_body or "<html" in root_body
-                        assert '<div id="root">' in root_body
-                except (URLError, HTTPError) as exc:
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8", errors="ignore")
+                    print(
+                        "[DEBUG] Received response from root endpoint /\n"
+                        f"Body (truncated to 500 chars):\n{root_body[:500]}"
+                    )
+                    # With base_route_app="app", root serves client HTML
+                    assert "<!DOCTYPE html>" in root_body or "<html" in root_body
+                    assert '<div id="root">' in root_body
+                except (URLError, HTTPError, TimeoutError) as exc:
                     print(f"[DEBUG] Error while requesting root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
 
@@ -702,9 +704,9 @@ def test_default_client_app_renders() -> None:
             # 3. Start the server (now uses main.jac at project root)
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac serve main.jac'")
+                print("[DEBUG] Starting server with 'jac start main.jac'")
                 server = Popen(
-                    [*jac_cmd, "serve", "main.jac"],
+                    [*jac_cmd, "start", "main.jac"],
                     cwd=project_path,
                     env=env,
                 )
@@ -715,23 +717,28 @@ def test_default_client_app_renders() -> None:
                 print("[DEBUG] Server is accepting connections")
 
                 # 4. Test root endpoint - for client-only apps, root serves the HTML app
+                # Note: The root endpoint may return 503 while the client bundle is building.
+                # We use _wait_for_endpoint to retry on 503 until it's ready.
                 try:
-                    print("[DEBUG] Testing root endpoint /")
-                    with urlopen("http://127.0.0.1:8000", timeout=10) as resp:
-                        root_body = resp.read().decode("utf-8", errors="ignore")
-                        print(
-                            f"[DEBUG] Root response status: {resp.status}\n"
-                            f"Body (truncated):\n{root_body[:500]}"
-                        )
-                        assert resp.status == 200
-                        # For client-only apps, root returns HTML with the React app
-                        assert "<html" in root_body.lower(), (
-                            "Root should return HTML for client-only app"
-                        )
-                        assert "<script" in root_body.lower(), (
-                            "Root should include script tag for client bundle"
-                        )
-                except (URLError, HTTPError) as exc:
+                    print("[DEBUG] Testing root endpoint / (with retry)")
+                    root_bytes = _wait_for_endpoint(
+                        "http://127.0.0.1:8000",
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8", errors="ignore")
+                    print(
+                        f"[DEBUG] Root response:\nBody (truncated):\n{root_body[:500]}"
+                    )
+                    # For client-only apps, root returns HTML with the React app
+                    assert "<html" in root_body.lower(), (
+                        "Root should return HTML for client-only app"
+                    )
+                    assert "<script" in root_body.lower(), (
+                        "Root should include script tag for client bundle"
+                    )
+                except (URLError, HTTPError, TimeoutError) as exc:
                     print(f"[DEBUG] Error at root endpoint: {exc}")
                     pytest.fail(f"Failed to GET root endpoint: {exc}")
 

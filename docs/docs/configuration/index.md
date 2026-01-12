@@ -89,7 +89,7 @@ cache = true        # Use bytecode cache
 
 ### [serve]
 
-Defaults for `jac serve`:
+Defaults for `jac start`:
 
 ```toml
 [serve]
@@ -289,7 +289,7 @@ jac run main.jac --no-cache --session my_session
 jac test --verbose --fail-fast
 
 # Override serve settings
-jac serve --port 3000
+jac start --port 3000
 ```
 
 ---

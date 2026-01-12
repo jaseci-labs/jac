@@ -114,7 +114,7 @@ Navigate to your project directory and start the development server:
 
 ```bash
 cd todo-app
-jac serve main.jac
+jac start main.jac
 ```
 
 This starts both:
@@ -717,7 +717,7 @@ To run this example:
 
 ```bash
 # From the todo-app directory
-jac serve main.jac
+jac start main.jac
 ```
 
 Then visit `http://localhost:8000` in your browser.

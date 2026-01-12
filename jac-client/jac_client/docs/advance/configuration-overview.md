@@ -112,7 +112,7 @@ sass = "^1.77.8"
 
 ### Server Configuration (`[serve]`)
 
-The `[serve]` section configures how `jac serve` handles routing for client-side applications:
+The `[serve]` section configures how `jac start` handles routing for client-side applications:
 
 ```toml
 [serve]
@@ -291,7 +291,7 @@ jac add --cl --dev sass
 # 4. Customize build (edit jac.toml)
 
 # 5. Build/serve
-jac serve main.jac
+jac start main.jac
 ```
 
 ## File Organization

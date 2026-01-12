@@ -274,7 +274,7 @@ For multi-user applications, you need to implement user identification patterns.
 Deploy your user-aware application:
 
 ```bash
-jac serve user_notebook.jac
+jac start user_notebook.jac
 ```
 
 ### Testing User Authentication

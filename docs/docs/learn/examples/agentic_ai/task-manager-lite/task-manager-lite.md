@@ -5,7 +5,7 @@
 1. **Start the backend server:**
 
    ```bash
-   jac serve task_manager.jac
+   jac start task_manager.jac
    ```
 
    The API server will be available at `http://localhost:8000`
@@ -90,7 +90,7 @@ Here's what you'll build - an intelligent task routing system in just **two file
 1. Start the backend server:
 
    ```bash
-   jac serve task_manager.jac
+   jac start task_manager.jac
    ```
 
 1. Run the frontend:
@@ -147,7 +147,7 @@ glob llm = Model(model_name="gpt-4o");
 1. **Start the backend server:**
 
    ```bash
-   jac serve task_manager.jac
+   jac start task_manager.jac
    ```
 
    The API server will be available at `http://localhost:8000`

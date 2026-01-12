@@ -249,7 +249,7 @@ The build system automatically regenerates `package.json` from `jac.toml`:
 1. **During `jac add --cl <package>`**: Regenerates and installs the specific package
 2. **During `jac add --cl`** (no package): Regenerates and installs all packages
 3. **During `jac remove --cl`**: Regenerates after removal
-4. **During `jac serve`**: Regenerates if jac.toml changed
+4. **During `jac start`**: Regenerates if jac.toml changed
 5. **During `jac build`**: Regenerates before building
 
 ### Package.json Location
@@ -376,7 +376,7 @@ jac add --cl --dev @types/lodash
 jac add --cl --dev sass
 
 # Build/serve
-jac serve main.jac
+jac start main.jac
 ```
 
 ## Related Documentation

@@ -60,7 +60,7 @@ cl {
 In your terminal, run:
 
 ```bash
-jac serve main.jac
+jac start main.jac
 ```
 
 You'll see output like:
@@ -171,9 +171,9 @@ return <div>
    return <h1>Hello, {name}!</h1>;  # Shows: Hello, Alice!
    ```
 
-### How `jac serve` Works
+### How `jac start` Works
 
-When you run `jac serve main.jac`:
+When you run `jac start main.jac`:
 
 1. **Jac compiler** reads your `.jac` file
 2. **Frontend code** (inside `cl`) → Compiled to JavaScript
@@ -205,7 +205,7 @@ But for this tutorial, we'll keep everything in one file for simplicity.
 - What `cl { }` means (client-side code)
 - The `def app()` entry point
 - JSX basics (HTML in code)
-- Running your app with `jac serve`
+- Running your app with `jac start`
 
 ---
 
@@ -224,7 +224,7 @@ pip install jac-client
 **Solution**: Use a different port:
 
 ```bash
-jac serve main.jac --port 8080
+jac start main.jac --port 8080
 ```
 
 Then visit `http://localhost:8080/cl/app`
@@ -242,7 +242,7 @@ Then visit `http://localhost:8080/cl/app`
 **Solution**:
 
 - Stop the server (Ctrl+C)
-- Restart: `jac serve main.jac`
+- Restart: `jac start main.jac`
 - Refresh browser
 
 ---

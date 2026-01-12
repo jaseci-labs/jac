@@ -269,7 +269,7 @@ A Jac client-side application with React support.
 Start the development server:
 
 ```bash
-jac serve main.jac
+jac start main.jac
 ```
 
 ## Components
@@ -305,10 +305,10 @@ jac add --cl react-router-dom
     if name and name != cwd.name {
         print("\nNext steps:");
         print(f"  cd {name}");
-        print("  jac serve main.jac");
+        print("  jac start main.jac");
     } else {
         print("\nNext steps:");
-        print("  jac serve main.jac");
+        print("  jac start main.jac");
     }
 }
 

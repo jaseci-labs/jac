@@ -16,7 +16,7 @@ Every Jac client project **must** have a `main.jac` file. This file serves as th
 
 ### Entry Point for the Build System
 
-When you run `jac serve main.jac` (or `jac serve` which reads from `jac.toml`), the build system:
+When you run `jac start main.jac` (or `jac start` which reads from `jac.toml`), the build system:
 
 1. Compiles `main.jac` to JavaScript
 2. Generates an entry file (`compiled/main.js`) that imports your `app` function:
@@ -144,16 +144,16 @@ To start your application, you can use either:
 **Option 1: Specify the file path**
 
 ```bash
-jac serve main.jac
+jac start main.jac
 ```
 
 **Option 2: Use jac.toml entry-point (recommended)**
 
 ```bash
-jac serve
+jac start
 ```
 
-The `jac serve` command (without arguments) reads the `entry-point` from `jac.toml`:
+The `jac start` command (without arguments) reads the `entry-point` from `jac.toml`:
 
 ```toml
 [project]

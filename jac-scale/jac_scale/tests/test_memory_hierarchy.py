@@ -163,7 +163,7 @@ class TestMemoryHierarchy:
         assert res.status_code == 200
         return res.json()
 
-    # TODO: delete method in jac serve is not working as expected. will be fixed in a separate PR and a test case will be added
+    # TODO: delete method in jac start is not working as expected. will be fixed in a separate PR and a test case will be added
 
     def test_read_and_write(self) -> None:
         db = self.mongo_client["jac_db"]

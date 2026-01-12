@@ -310,7 +310,7 @@ lib_imports = ["import myPlugin from 'my-plugin'"]
 After modifying `jac.toml`, test your build:
 
 ```bash
-jac serve main.jac
+jac start main.jac
 ```
 
 ## Troubleshooting

@@ -7,7 +7,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | Command | Description |
 |---------|-------------|
 | `jac run` | Execute a Jac file |
-| `jac serve` | Serve as HTTP API server |
+| `jac start` | Start REST API server (use `--scale` for K8s deployment) |
 | `jac create` | Create new project |
 | `jac build` | Compile to bytecode |
 | `jac check` | Type check code |
@@ -18,8 +18,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac debug` | Interactive debugger |
 | `jac plugins` | Manage plugins |
 | `jac config` | Manage project configuration |
-| `jac scale` | Deploy to Kubernetes (jac-scale) |
-| `jac destroy` | Remove deployment |
+| `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
@@ -64,12 +63,12 @@ jac run main.jac --no-cache
 
 ---
 
-### jac serve
+### jac start
 
-Serve a Jac application as an HTTP API server.
+Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes.
 
 ```bash
-jac serve [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] filename
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [--scale] [--build] filename
 ```
 
 | Option | Description | Default |
@@ -79,18 +78,26 @@ jac serve [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] filename
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
 | `-f, --faux` | Faux mode (mock) | `False` |
+| `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
+| `--build, -b` | Build Docker image before deploy (with `--scale`) | `False` |
 
 **Examples:**
 
 ```bash
-# Serve on default port
-jac serve main.jac
+# Start on default port
+jac start main.jac
 
-# Serve on custom port
-jac serve main.jac -p 3000
+# Start on custom port
+jac start main.jac -p 3000
 
-# Serve with session
-jac serve main.jac -s prod_session
+# Start with session
+jac start main.jac -s prod_session
+
+# Deploy to Kubernetes (requires jac-scale plugin)
+jac start main.jac --scale
+
+# Build and deploy to Kubernetes
+jac start main.jac --scale --build
 ```
 
 ---
@@ -462,27 +469,13 @@ jac config list -o toml
 
 ## Deployment (jac-scale)
 
-### jac scale
+### jac start --scale
 
-Deploy to Kubernetes (requires jac-scale plugin).
-
-```bash
-jac scale [-h] [-b] file_path
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `file_path` | Jac file to deploy | Required |
-| `-b, --build` | Build before deploy | `False` |
-
-**Examples:**
+Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
-# Deploy
-jac scale main.jac
-
-# Build and deploy
-jac scale main.jac -b
+jac start main.jac --scale           # Deploy without building
+jac start main.jac --scale --build   # Build and deploy
 ```
 
 ---
@@ -733,11 +726,11 @@ jac format . --fix
 ### Production
 
 ```bash
-# Serve locally
-jac serve main.jac -p 8000
+# Start locally
+jac start main.jac -p 8000
 
 # Deploy to Kubernetes
-jac scale main.jac
+jac start main.jac --scale
 
 # Remove deployment
 jac destroy main.jac

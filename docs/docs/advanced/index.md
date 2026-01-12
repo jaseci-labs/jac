@@ -205,7 +205,7 @@ with entry {
 
 ### Access in Multi-User Apps
 
-When using `jac serve`, each authenticated user automatically gets:
+When using `jac start`, each authenticated user automatically gets:
 
 - Their own root node
 - Isolated graph space
