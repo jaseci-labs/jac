@@ -2,7 +2,6 @@
 import from typing { Any }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
-import from jac_scale.kubernetes.database.redis { redis_db }
 
 """Redis provider for Kubernetes deployments."""
 class KubernetesRedisProvider(DatabaseProvider) {
@@ -24,20 +23,56 @@ class KubernetesRedisProvider(DatabaseProvider) {
     def deploy(
         self: KubernetesRedisProvider, config: dict[str, Any] = {}
     ) -> dict[str, Any] {
-        env_vars: list = [];
-        (deployment, service) = redis_db(self.app_name, env_vars);
-        # Extract connection string from env_vars
-        for env_var in env_vars {
-            if env_var.get('name') == 'REDIS_URL' {
-                self.connection_string = env_var.get('value', '');
-                break;
+        redis_name = f"{self.app_name}-redis";
+        redis_port = 6379;
+        redis_service_name = f"{redis_name}-service";
+        
+        redis_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {'name': redis_name},
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': redis_name}},
+                'template': {
+                    'metadata': {'labels': {'app': redis_name}},
+                    'spec': {
+                        'containers': [
+                            {
+                                'name': 'redis',
+                                'image': 'redis:7.2',
+                                'ports': [{'containerPort': redis_port}],
+                                'args': ['--save', '', '--appendonly', 'no'],
+                                'resources': {
+                                    'requests': {'cpu': '100m', 'memory': '128Mi'},
+                                    'limits': {'cpu': '500m', 'memory': '256Mi'}
+                                }
+                            }
+                        ]
+                    }
+                }
             }
-        }
+        };
+        
+        redis_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {'name': redis_service_name},
+            'spec': {
+                'selector': {'app': redis_name},
+                'ports': [
+                    {'protocol': 'TCP', 'port': redis_port, 'targetPort': redis_port}
+                ]
+            }
+        };
+        
+        self.connection_string = f"redis://{redis_service_name}:{redis_port}/0";
+        
         return {
-            'deployment': deployment,
-            'service': service,
+            'deployment': redis_deployment,
+            'service': redis_service,
             'connection_string': self.connection_string,
-            'service_name': f"{self.app_name}-redis-service"
+            'service_name': redis_service_name
         };
     }
 

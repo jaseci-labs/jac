@@ -10,7 +10,7 @@ import from jac_scale.abstractions.models.resource_status {
 }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.kubernetes.utils {
+import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     check_deployment_status,
     cluster_type,
     delete_if_exists,
@@ -21,8 +21,6 @@ import from jac_scale.kubernetes.utils {
     validate_resource_limits,
     sync_code_to_pvc
 }
-import from jac_scale.kubernetes.database.mongo { mongo_db }
-import from jac_scale.kubernetes.database.redis { redis_db }
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }

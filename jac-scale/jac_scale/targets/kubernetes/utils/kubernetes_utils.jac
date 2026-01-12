@@ -1,3 +1,4 @@
+"""Kubernetes utility functions for deployment operations."""
 import base64;
 import os;
 import tarfile;
@@ -11,6 +12,7 @@ import from kubernetes { client, config }
 import from kubernetes.client.rest { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
+
 def debug_print(statement: str, debug_only: bool = False) -> None;
 
 def parse_cpu_quantity(quantity: str) -> float;
@@ -32,7 +34,6 @@ def delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None;
 
-def cleanup_K8s_resources -> None;
 
 def ensure_namespace_exists(namespace: str) -> None;
 
@@ -84,3 +85,4 @@ def sync_code_to_pvc(
     app_name: str,
     sync_image: str
 ) -> None;
+

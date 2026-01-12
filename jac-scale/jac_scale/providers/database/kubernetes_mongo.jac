@@ -2,7 +2,6 @@
 import from typing { Any }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
-import from jac_scale.kubernetes.database.mongo { mongo_db }
 
 """MongoDB provider for Kubernetes deployments."""
 class KubernetesMongoProvider(DatabaseProvider) {
@@ -24,20 +23,76 @@ class KubernetesMongoProvider(DatabaseProvider) {
     def deploy(
         self: KubernetesMongoProvider, config: dict[str, Any] = {}
     ) -> dict[str, Any] {
-        env_vars: list = [];
-        (deployment, service) = mongo_db(self.app_name, env_vars);
-        # Extract connection string from env_vars
-        for env_var in env_vars {
-            if env_var.get('name') == 'MONGODB_URI' {
-                self.connection_string = env_var.get('value', '');
-                break;
+        mongodb_name = f"{self.app_name}-mongodb";
+        mongodb_port = 27017;
+        mongodb_service_name = f"{mongodb_name}-service";
+        mongodb_volume_name = f"{self.app_name}-mongo-data";
+        
+        mongodb_statefulset = {
+            'apiVersion': 'apps/v1',
+            'kind': 'StatefulSet',
+            'metadata': {'name': mongodb_name},
+            'spec': {
+                'serviceName': mongodb_service_name,
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': mongodb_name}},
+                'template': {
+                    'metadata': {'labels': {'app': mongodb_name}},
+                    'spec': {
+                        'containers': [
+                            {
+                                'name': 'mongodb',
+                                'image': 'mongo:6.0',
+                                'ports': [{'containerPort': mongodb_port}],
+                                'env': [
+                                    {
+                                        'name': 'MONGO_INITDB_ROOT_USERNAME',
+                                        'value': 'admin'
+                                    },
+                                    {
+                                        'name': 'MONGO_INITDB_ROOT_PASSWORD',
+                                        'value': 'password'
+                                    }
+                                ],
+                                'volumeMounts': [
+                                    {'name': mongodb_volume_name, 'mountPath': '/data/db'}
+                                ]
+                            }
+                        ]
+                    }
+                },
+                'volumeClaimTemplates': [
+                    {
+                        'metadata': {'name': mongodb_volume_name},
+                        'spec': {
+                            'accessModes': ['ReadWriteOnce'],
+                            'resources': {'requests': {'storage': '1Gi'}}
+                        }
+                    }
+                ]
             }
-        }
+        };
+        
+        mongodb_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {'name': mongodb_service_name},
+            'spec': {
+                'clusterIP': 'None',
+                'selector': {'app': mongodb_name},
+                'ports': [
+                    {'protocol': 'TCP', 'port': mongodb_port, 'targetPort': mongodb_port}
+                ]
+            }
+        };
+        
+        self.connection_string = f"mongodb://admin:password@{mongodb_service_name}:{mongodb_port}";
+        
         return {
-            'deployment': deployment,
-            'service': service,
+            'deployment': mongodb_statefulset,
+            'service': mongodb_service,
             'connection_string': self.connection_string,
-            'service_name': f"{self.app_name}-mongodb-service"
+            'service_name': mongodb_service_name
         };
     }
 

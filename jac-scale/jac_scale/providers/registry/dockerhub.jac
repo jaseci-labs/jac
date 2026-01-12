@@ -1,8 +1,9 @@
 """DockerHub registry implementation."""
 import os;
+import docker;
 import from typing { Any }
+import from docker.errors { APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
-import from jac_scale.kubernetes.docker_impl { build_docker_image, push_docker_image }
 
 """DockerHub image registry implementation."""
 class DockerHubRegistry(ImageRegistry) {
@@ -26,16 +27,35 @@ class DockerHubRegistry(ImageRegistry) {
             image_name = self.config.get('docker_image_name') or f"{app_name}:latest";
         }
         repository_name = f"{self.docker_username}/{image_name}";
-        build_docker_image(image_name=repository_name, code_folder=code_folder);
+        
+        # Build Docker image using Docker client
+        docker_client = docker.from_env();
+        try {
+            docker_client.images.build(
+                path=code_folder,
+                tag=repository_name,
+                dockerfile='Dockerfile',
+                rm=True
+            );
+        } except BuildError as e {
+            raise RuntimeError(f"Failed to build Docker image: {e}") from e;
+        }
+        
         return repository_name;
     }
 
     def push_image(self: DockerHubRegistry, image_name: str) -> None {
-        push_docker_image(
-            image_name=image_name,
-            username=self.docker_username,
-            password=self.docker_password
-        );
+        # Push Docker image to DockerHub
+        docker_client = docker.from_env();
+        try {
+            docker_client.login(
+                username=self.docker_username,
+                password=self.docker_password
+            );
+            docker_client.images.push(image_name);
+        } except APIError as e {
+            raise RuntimeError(f"Failed to push Docker image: {e}") from e;
+        }
     }
 
     def get_image_url(self: DockerHubRegistry, image_name: str) -> str {
