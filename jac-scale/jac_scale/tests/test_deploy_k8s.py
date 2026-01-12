@@ -233,7 +233,6 @@ def test_deployment_target_methods():
     """Test individual methods of KubernetesTarget."""
     # Load kubeconfig
     config.load_kube_config()
-    apps_v1 = client.AppsV1Api()
 
     namespace = "test-methods"
     app_name = "test-methods-app"
