@@ -44,8 +44,8 @@ class KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         health_check_path: str = '/docs'
     ) -> None {
-        # Initialize base class fields
-        super().init(app_name=app_name, namespace=namespace);
+        self.app_name = app_name;
+        self.namespace = namespace;
         # Initialize derived class fields
         self.docker_image_name = docker_image_name;
         self.docker_username = docker_username;
