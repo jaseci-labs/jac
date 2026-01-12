@@ -2,7 +2,7 @@
 
 ## Overview
 
-`jac scale` is a comprehensive deployment and scaling solution for JAC applications that provides three powerful capabilities:
+`jac start --scale` is a comprehensive deployment and scaling solution for JAC applications that provides three powerful capabilities:
 
 ### 1. Multi-Layer Memory Architecture
 
@@ -23,7 +23,7 @@
 - **Database Auto-Provisioning**: Automatically spawns and configures Redis and MongoDB instances
 - **Production-Ready**: Built-in health checks, persistent storage, and service discovery
 
-Whether you're developing locally with `jac serve` or deploying to production with `jac scale`, you get the same powerful features with the flexibility to choose your deployment strategy.
+Whether you're developing locally with `jac start` or deploying to production with `jac start --scale`, you get the same powerful features with the flexibility to choose your deployment strategy.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Whether you're developing locally with `jac serve` or deploying to production wi
   - [Minikube Kubernetes](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download/) (for Windows/Linux)
   - [Docker Desktop with Kubernetes](https://www.docker.com/resources/kubernetes-and-docker/) (alternative for Windows - easier setup)
 
-**Note:** Kubernetes is only needed if you are planning to use the `jac scale` command. If you only want to use `jac serve`, Kubernetes is not required.
+**Note:** Kubernetes is only needed if you are planning to use `jac start --scale`. If you only want to use `jac start`, Kubernetes is not required.
 
 ## Quick Start: Running the Travel Planner Demo Application
 
@@ -156,12 +156,12 @@ OPENAI_API_KEY=your-openai-api-key-here
 pip install byllm python-dotenv
 ```
 
-### 8. Run the Application with JAC Serve
+### 8. Run the Application with JAC Start
 
 To run your application using FastAPI with ShelfStorage (no Kubernetes required):
 
 ```bash
-jac serve main.jac
+jac start main.jac
 ```
 
 **What this does:**
@@ -178,7 +178,7 @@ jac serve main.jac
 
 ### 9. Set Up Kubernetes (For JAC Scale)
 
-To use `jac scale`, you need Kubernetes installed on your machine.
+To use `jac start --scale`, you need Kubernetes installed on your machine.
 
 **Option A: MicroK8s (Windows/Linux/Mac)**
 
@@ -199,7 +199,7 @@ Once Kubernetes is running, you have two deployment methods:
 Deploy your application to Kubernetes without building a Docker image:
 
 ```bash
-jac scale main.jac
+jac start main.jac --scale
 ```
 
 **What this does:**
@@ -238,7 +238,7 @@ DOCKER_PASSWORD=your-dockerhub-password-or-token
 **Deploy with build:**
 
 ```bash
-jac scale main.jac -b
+jac start main.jac --scale --build
 ```
 
 **What this does:**
@@ -333,12 +333,12 @@ cp jac-scale/examples/todo/app.jac todo/app.jac
 cd todo
 ```
 
-### 8. Run the Application with JAC Scale
+### 8. Run the Application Locally
 
 To run your application run the following command
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 **Access your application:**
@@ -352,7 +352,7 @@ you can add new todo tasks
 
 ### 9. Set Up Kubernetes (For JAC Scale)
 
-To use `jac scale`, you need Kubernetes installed on your machine.
+To use `jac start --scale`, you need Kubernetes installed on your machine.
 
 **Option A: MicroK8 (Windows/Linux/Mac)**
 
@@ -373,7 +373,7 @@ Once Kubernetes is running, you have two deployment methods:
 Deploy your application to Kubernetes without building a Docker image:
 
 ```bash
-jac scale app.jac
+jac start app.jac --scale
 ```
 
 **Access your application:**
@@ -393,7 +393,7 @@ jac scale app.jac
 To Build your application as a Docker container and deploy it you can run
 
 ```bash
-jac scale app.jac -b
+jac start app.jac --scale --build
 ```
 
 **Access your application:**
@@ -461,7 +461,7 @@ jac destroy app.jac
 Deploys your JAC application to Kubernetes without building a Docker image.
 
 ```bash
-jac scale main.jac
+jac start main.jac --scale
 ```
 
 **Use this when:**
@@ -475,7 +475,7 @@ jac scale main.jac
 Builds a new Docker image, pushes it to DockerHub, then deploys to Kubernetes.
 
 ```bash
-jac scale main.jac -b
+jac start main.jac --scale --build
 ```
 
 **Requirements for Build Mode:**
@@ -495,14 +495,14 @@ jac scale main.jac -b
 
 ### Implementation
 
-- The entire `jac scale` plugin is implemented using **Python and Kubernetes Python client libraries**
+- The jac-scale plugin is implemented using **Python and Kubernetes Python client libraries**
 - **No custom Kubernetes controllers** are used → easier to deploy and maintain
 
 ### Database Provisioning
 
 - Databases are created as **StatefulSets** with persistent storage
 - Databases are **only created on the first run**
-- Subsequent `jac scale` calls only update application deployments
+- Subsequent `jac start --scale` calls only update application deployments
 - This ensures persistent storage and avoids recreating databases unnecessarily
 
 ### Performance
@@ -514,7 +514,7 @@ jac scale main.jac -b
 
 ## Deployment Process
 
-When you run `jac scale`, the following steps are executed:
+When you run `jac start --scale`, the following steps are executed:
 
 ### 1. Create JAC Application Docker Image
 
@@ -609,14 +609,14 @@ You can find more working examples in the examples directory:
 - [asset-serving/import-alias](../jac-client/jac_client/examples/asset-serving/import-alias/) - Import alias example
 <!-- - [little-x](../jac-client/jac_client/examples/little-x/) - Little X application example -->
 
-Each example includes complete source code and can be run `jac serve`.
+Each example includes complete source code and can be run with `jac start`.
 
 ## Next Steps
 
 After successfully running the demo:
 
-- **For JAC Serve**: Access your application at http://localhost:8000 and explore the Swagger documentation at http://localhost:8000/docs
-- **For JAC Scale**: Access your application at http://localhost:30001 and explore the Swagger documentation at http://localhost:30001/docs
+- **For local development (`jac start`)**: Access your application at http://localhost:8000 and explore the Swagger documentation at http://localhost:8000/docs
+- **For Kubernetes (`jac start --scale`)**: Access your application at http://localhost:30001 and explore the Swagger documentation at http://localhost:30001/docs
 - Modify the JAC application and redeploy
 - Experiment with different configuration options
 - Try deploying to a production Kubernetes cluster

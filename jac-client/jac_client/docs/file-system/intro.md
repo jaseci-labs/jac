@@ -49,7 +49,7 @@ cl import from .level1.Button { Button }
 
 ## Guides
 
-- **[The `app.jac` Entry Point](app.jac.md)** - Required entry point file and `app()` function
+- **[The `main.jac` Entry Point](main.jac.md)** - Required entry point file and `app()` function
 - **[Backend/Frontend Separation](backend-frontend.md)** - Complete guide to organizing server and client code
 - **[Nested Folder Imports](nested-imports.md)** - Guide to managing imports across directory levels
 
@@ -65,7 +65,7 @@ Run any example:
 ```bash
 cd jac-client/jac_client/examples/nested-folders/<example-name>
 npm install
-jac serve src/app.jac
+jac start main.jac
 ```
 
 ## Related Documentation

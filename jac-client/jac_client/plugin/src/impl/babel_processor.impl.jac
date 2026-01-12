@@ -55,9 +55,14 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
             shutil.copy2(configs_package_json, build_package_json);
         }
         command = ['npm', 'run', 'compile'];
-        subprocess.run(
-            command, cwd=client_dir, check=True, capture_output=True, text=True
+        result = subprocess.run(
+            command, cwd=client_dir, capture_output=True, text=True
         );
+        if result.returncode != 0 {
+            # Show the actual error from npm/babel
+            error_output = result.stderr or result.stdout or "Unknown error";
+            raise RuntimeError(f"Client bundle compilation failed:\n{error_output}") ;
+        }
     } finally {
         # Clean up temporary package.json in .jac/client/
         build_package_json = client_dir / 'package.json';

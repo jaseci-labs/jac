@@ -75,12 +75,14 @@ export const Button = styled.button`
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from .styled {
     Container,
     Card,
     Button
 }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {
@@ -385,10 +387,10 @@ cl import from "styled-components" { default as styled }
 
 ## Next Steps
 
-- Explore [Emotion](./emotion.md) for similar CSS-in-JS (coming soon)
-- Check out [Vanilla Extract](./vanilla-extract.md) for zero-runtime CSS-in-JS (coming soon)
+- Explore Emotion for similar CSS-in-JS (coming soon)
+- Check out Vanilla Extract for zero-runtime CSS-in-JS (coming soon)
 - Learn about [JavaScript Styling](./js-styling.md) for inline styles
-- See [CSS Modules](./css-modules.md) for scoped CSS (coming soon)
+- See CSS Modules for scoped CSS (coming soon)
 
 ## Resources
 

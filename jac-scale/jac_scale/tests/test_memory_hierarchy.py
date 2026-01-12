@@ -3,6 +3,7 @@ import gc
 import os
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -39,6 +40,13 @@ class TestMemoryHierarchy:
 
         if not cls.jac_file.exists():
             raise FileNotFoundError(f"Missing Jac file: {cls.jac_file}")
+
+        # Clean up session file from previous runs to ensure test isolation
+        session_file = (
+            cls.fixtures_dir / ".jac" / "data" / "todo_app.session.users.json"
+        )
+        if session_file.exists():
+            os.remove(session_file)
 
         # start redis container
         cls.redis_container = RedisContainer("redis:latest", port=6379)
@@ -91,13 +99,20 @@ class TestMemoryHierarchy:
 
         time.sleep(0.5)
         gc.collect()
-        os.remove(f"{cls.fixtures_dir}/todo_app.session.users.json")
+        # Clean up session file from .jac/data directory
+        session_file = (
+            cls.fixtures_dir / ".jac" / "data" / "todo_app.session.users.json"
+        )
+        if session_file.exists():
+            os.remove(session_file)
 
     @classmethod
     def _start_server(cls) -> None:
+        # Get the jac executable from the same directory as the current Python interpreter
+        jac_executable = Path(sys.executable).parent / "jac"
         cmd = [
-            "jac",
-            "serve",
+            str(jac_executable),
+            "start",
             str(cls.jac_file.name),
             "--port",
             str(cls.port),
@@ -124,7 +139,7 @@ class TestMemoryHierarchy:
 
         stdout, stderr = cls.server.communicate(timeout=2)
         raise RuntimeError(
-            f"jac serve failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+            f"jac start failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
         )
 
     def _register(self, username: str, password: str = "password123") -> str:
@@ -133,7 +148,9 @@ class TestMemoryHierarchy:
             json={"username": username, "password": password},
             timeout=5,
         )
-        assert res.status_code == 201
+        assert res.status_code == 201, (
+            f"Registration failed: {res.status_code} - {res.text}"
+        )
         return res.json()["token"]
 
     def _post(self, path: str, payload: dict, token: str) -> dict:
@@ -146,7 +163,7 @@ class TestMemoryHierarchy:
         assert res.status_code == 200
         return res.json()
 
-    # TODO: delete method in jac serve is not working as expected. will be fixed in a separate PR and a test case will be added
+    # TODO: delete method in jac start is not working as expected. will be fixed in a separate PR and a test case will be added
 
     def test_read_and_write(self) -> None:
         db = self.mongo_client["jac_db"]

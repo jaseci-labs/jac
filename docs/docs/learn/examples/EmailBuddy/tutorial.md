@@ -95,7 +95,7 @@ For each email uploaded, EmailBuddy:
 We must connect ALL nodes (Email and Person) to the root node so we can access them later.
 
 ??? tip "What is a root node?"
-    The root node in Jac acts as a fundamental global pointer on the graph. It is a special node that is always accessible in every request context, especially when running Jac in server mode (jac serve). Think of the root node as the front door or lobby of your email graph. When a 'walker' (our search agent) arrives, it always starts at the root. By connecting every new Person and Email to this root, we ensure the walker can find them, like adding a new room's key to the lobby's key rack.
+    The root node in Jac acts as a fundamental global pointer on the graph. It is a special node that is always accessible in every request context, especially when running Jac in server mode (jac start). Think of the root node as the front door or lobby of your email graph. When a 'walker' (our search agent) arrives, it always starts at the root. By connecting every new Person and Email to this root, we ensure the walker can find them, like adding a new room's key to the lobby's key rack.
 
     This design ensures that no nodes get "lost" since all nodes are directly or indirectly connected to the root node, making them accessible to the program. This persistent organization facilitates data traversal and manipulation across the graph.
 
@@ -352,8 +352,8 @@ This diagram shows how all the pieces work together:
 Here is a breakdown of the flow shown in the diagram:
 
 - **Front End Webpage**: This is what the user sees (e.g., the chat interface). It is a separate application (like a JavaScript webpage) that communicates with your Jac program.
-- **Scale-Native API (The Green Diamonds)**: When you run jac serve, Jac automatically creates API endpoints for your walkers. The Upload Walker becomes an endpoint that accepts a list of emails, and the Query Walker (our ask_email agent) becomes an endpoint that accepts a question.
-- **Immediate Visibility (The root node)**: When the webpage sends a request to one of these endpoints, the jac serve process "spawns" the correct walker on the graph's root node.
+- **Scale-Native API (The Green Diamonds)**: When you run jac start, Jac automatically creates API endpoints for your walkers. The Upload Walker becomes an endpoint that accepts a list of emails, and the Query Walker (our ask_email agent) becomes an endpoint that accepts a question.
+- **Immediate Visibility (The root node)**: When the webpage sends a request to one of these endpoints, the jac start process "spawns" the correct walker on the graph's root node.
 - **Discovery (The Graph)**: From the root node, the walker can then traverse the graph to discover all the connected nodes to find the answer.
 
 This architecture is what allows your JavaScript code to activate a Jac walker.
@@ -362,16 +362,16 @@ This architecture is what allows your JavaScript code to activate a Jac walker.
 
 Scaling happens in two natural steps:
 
-1. **Run locally with jac serve**: This turns your Jac program into a live HTTP API at localhost:8000.
+1. **Run locally with jac start**: This turns your Jac program into a live HTTP API at localhost:8000.
 
 2. **Deploy to the cloud using the same code**: Because the app is already an API server, deploying it simply moves it from local mode to a scalable cloud environment, allowing load balancing and autoscaling to support thousands or millions of users.
 
 #### Calling EmailBuddy Walkers via API
 
-Once `jac serve` is running:
+Once `jac start` is running:
 
 ```bash
-jac serve server.jac
+jac start server.jac
 ```
 
 Now you have multiple local endpoints you can interact with, which are ready to be deployed for global scale.

@@ -91,9 +91,15 @@ class JacScaleTestRunner:
 
             print("Example directory setup complete")
 
+        # Get the jac executable from the same directory as the current Python interpreter
+        import sys
+        from pathlib import Path
+
+        jac_executable = Path(sys.executable).parent / "jac"
+
         cmd = [
-            "jac",
-            "serve",
+            str(jac_executable),
+            "start",
             str(self.example_file),
             # "--session",
             # str(self.session_file),

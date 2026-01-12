@@ -44,7 +44,7 @@ Here's what you'll build - a simple AI coding assistant in just **two files**:
 **Install dependencies:**
 
    ```bash
-   pip install jac-streamlit requests jaclang jac-cloud byllm
+   pip install jac-streamlit requests jaclang jac-scale byllm
    ```
 
 1. **Open your browser** to `http://localhost:8501`
@@ -54,7 +54,7 @@ Here's what you'll build - a simple AI coding assistant in just **two files**:
 1. **Start the backend server:**
 
    ```bash
-   jac serve genius_lite.jac
+   jac start genius_lite.jac
    ```
 
    The backend API will be available at `http://localhost:8000`

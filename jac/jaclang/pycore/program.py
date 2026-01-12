@@ -99,12 +99,10 @@ def get_format_sched(
     from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
     from jaclang.compiler.passes.tool.jac_formatter_pass import JacFormatPass
     from jaclang.pycore.passes.annex_pass import JacAnnexPass
-    from jaclang.pycore.passes.sym_tab_build_pass import SymTabBuildPass
 
     if auto_lint:
         return [
-            JacAnnexPass,
-            SymTabBuildPass,
+            JacAnnexPass,  # Load impl modules before auto-linting
             JacAutoLintPass,
             DocIRGenPass,
             CommentInjectionPass,
@@ -305,7 +303,10 @@ class JacProgram:
         self, file_path: str, use_str: str | None = None, type_check: bool = False
     ) -> uni.Module:
         """Convert a Jac file to an AST."""
+        from jaclang.compiler.passes.main import JacImportDepsPass
+
         mod_targ = self.compile(file_path, use_str, type_check=type_check)
+        JacImportDepsPass(ir_in=mod_targ, prog=self)
         SemanticAnalysisPass(ir_in=mod_targ, prog=self)
         return mod_targ
 

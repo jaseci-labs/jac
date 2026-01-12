@@ -1,7 +1,7 @@
 # Jac Quickstart
 
 This document will give you a quick start on Object-Spatial Programming(OSP), the core feature of Jac.
-For a short overview of the language syntax, refer to the [Syntax Quick Reference](./quick_reference.md).
+For a short overview of the language syntax, refer to the [Syntax Quick Reference](./syntax_quick_reference.md).
 If using byLLM in Python, refer to its [documentation](./jac-byllm/python_integration.md).
 
 ## Python Superset
@@ -487,10 +487,10 @@ This walker traverses the entire task graph, identifies completed dependencies, 
 
 Jac contains many more features!
 
-**Want to start building?** We have a [Syntax Quick Reference](./quick_reference.md) to make it easier to write jac.
+**Want to start building?** We have a [Syntax Quick Reference](./syntax_quick_reference.md) to make it easier to write jac.
 
 **Working on Agentic AI?** [byLLM](./jac-byllm/with_llm.md) provides an interface to greatly simplify prompt engineering workflows.
 
-**Scaling up to a production application?** [jac-serve](./jac-cloud/introduction.md) provides Scale-Native tooling to seamlessly deploy OSP to the cloud.
+**Scaling up to a production application?** [jac-scale](../jac-scale/README.md) provides Scale-Native tooling to seamlessly deploy OSP to the cloud.
 
 <!-- eventually, the onelang -->

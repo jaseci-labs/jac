@@ -1,8 +1,8 @@
 # Pages
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl {
     def:pub app -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
         useEffect(lambda   -> None{ console.log("Count: ", count);} , [count]);
         return <div>
             <h1>
@@ -12,7 +12,7 @@ cl {
                 Count: {count}
             </p>
             <button
-                onClick={lambda  e: any  -> None{ setCount(count + 1);} }
+                onClick={lambda  e: any  -> None{ count = count + 1;} }
             >
                 Increment
             </button>

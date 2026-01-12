@@ -9,7 +9,7 @@ import pytest
 
 from jaclang import JacRuntime as Jac
 from jaclang import JacRuntimeInterface
-from jaclang.cli import cli
+from jaclang.cli.commands import execution  # type: ignore[attr-defined]
 from jaclang.pycore.program import JacProgram
 
 
@@ -77,7 +77,7 @@ def test_jac_py_import() -> None:
     )
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_file)
+    execution.run(fixture_file)
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Hello World!" in stdout_value
@@ -96,7 +96,7 @@ def test_jac_py_import_auto() -> None:
     )
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_file)
+    execution.run(fixture_file)
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Hello World!" in stdout_value
@@ -137,7 +137,7 @@ def test_import_with_jacpath(fixture_abs_path: Callable[[str], str]) -> None:
             JacProgram(),
         )
         Jac.jac_import(module_name, base_path=__file__)
-        cli.run(jac_file_path)
+        execution.run(jac_file_path)
 
         # Reset stdout and get the output
         sys.stdout = sys.__stdout__
@@ -156,7 +156,7 @@ def test_importer_with_submodule_jac(fixture_abs_path: Callable[[str], str]) -> 
     """Test basic self loading."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_abs_path("pkg_import_main.jac"))
+    execution.run(fixture_abs_path("pkg_import_main.jac"))
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Helper function called" in stdout_value
@@ -166,7 +166,7 @@ def test_importer_with_submodule_jac(fixture_abs_path: Callable[[str], str]) -> 
 def test_importer_with_submodule_py(fixture_abs_path: Callable[[str], str]) -> None:
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    cli.run(fixture_abs_path("pkg_import_main_py.jac"))
+    execution.run(fixture_abs_path("pkg_import_main_py.jac"))
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Helper function called" in stdout_value

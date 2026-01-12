@@ -47,4 +47,23 @@ class JacRuntime {
         }
         return _decorator;
     }
+
+    """by operator for LLM-guided routing."""
+    @hookimpl
+    static def by_operator(lhs: object, rhs: object) -> object {
+        import from byllm.lib { MockLLM, Model }
+        import from jaclang.pycore.archetype { NodeArchetype, EdgeArchetype }
+        import from jaclang.pycore.runtime { JacByLLM }
+
+        lhs_list = lhs if isinstance(lhs, list) else [lhs];
+        if all(
+            isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
+        )
+        and isinstance(rhs, (Model, MockLLM)) {
+            return JacByLLM.filter_visitable_by(lhs_list, rhs);
+        }
+        raise NotImplementedError(
+            "The 'by' operator requires visitable nodes on the left and an LLM model on the right."
+        ) ;
+    }
 }

@@ -1,10 +1,10 @@
-# Jac Serve Command
+# Jac Start Command
 
-The `jac serve` command turns your Jac programs into authenticated REST APIs automatically.
+The `jac start` command turns your Jac programs into authenticated REST APIs automatically.
 
 ## Overview
 
-When you run `jac serve`, it:
+When you run `jac start`, it:
 
 1. Executes your target Jac module
 2. Converts all functions into REST API endpoints with introspected signatures
@@ -18,13 +18,16 @@ When you run `jac serve`, it:
 
 ```bash
 # Basic usage
-jac serve myprogram.jac
+jac start myprogram.jac
 
 # Specify a custom port
-jac serve myprogram.jac --port 8080
+jac start myprogram.jac --port 8080
 
 # Use a specific session file for persistence
-jac serve myprogram.jac --session myapp.session
+jac start myprogram.jac --session myapp.session
+
+# Deploy to Kubernetes (requires jac-scale plugin)
+jac start myprogram.jac --scale
 ```
 
 ## API Endpoints
@@ -295,7 +298,7 @@ Here's a complete example using the `example_api.jac` file:
 ### 1. Start the server
 
 ```bash
-jac serve example_api.jac
+jac start example_api.jac
 ```
 
 ### 2. Create a user
@@ -377,7 +380,7 @@ curl -X POST http://localhost:8000/walker/CompleteTask \
 
 ## Client-Side Application Routing
 
-When using `jac-client` for client-side applications, `jac serve` provides additional endpoints for rendering client-side components.
+When using `jac-client` for client-side applications, `jac start` provides additional endpoints for rendering client-side components.
 
 ### Client Page Endpoints
 

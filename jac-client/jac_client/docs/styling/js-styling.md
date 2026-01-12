@@ -81,8 +81,10 @@ export default {
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import from .styles { default as styles }
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {
@@ -358,8 +360,8 @@ return <button style={combinedStyle}>Click Me</button>;
 ## Next Steps
 
 - Explore [Styled Components](./styled-components.md) for CSS-in-JS with more features
-- Check out [Emotion](./emotion.md) for similar CSS-in-JS approach (coming soon)
-- Learn about [CSS Modules](./css-modules.md) for scoped CSS (coming soon)
+- Check out Emotion for similar CSS-in-JS approach (coming soon)
+- Learn about CSS Modules for scoped CSS (coming soon)
 - See [Pure CSS](./pure-css.md) for traditional CSS approach
 
 ## Resources

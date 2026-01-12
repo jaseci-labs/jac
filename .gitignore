@@ -8,9 +8,10 @@ media
 migrations
 venv
 __jac_gen__/
-.jaccache/
+.jac/
 *.jir
 *.jbc
+_planning/
 
 # Distribution / packaging
 .Python
@@ -60,6 +61,7 @@ demo.jac
 # Jaclang session files
 *.session
 mydatabase/
+demo/
 
 # session files
 *.bak

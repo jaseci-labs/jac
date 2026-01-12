@@ -322,7 +322,7 @@ export default defineConfig({{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
       output: {{
         entryFileNames: "client.[hash].js", // name of the final js file
-        assetFileNames: "[name].[ext]",
+        assetFileNames: (assetInfo) => assetInfo.name?.endsWith('.css') ? 'styles.css' : '[name].[ext]',
       }},
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
@@ -363,14 +363,8 @@ impl ViteBundler.read_bundle(self: ViteBundler) -> tuple[str, str] {
 
 """Find the generated Vite CSS file."""
 impl ViteBundler.find_css(self: ViteBundler) -> Optional[Path] {
-    css_file = self.output_dir / 'main.css';
-    if css_file.exists() {
-        return css_file;
-    }
-    for file in self.output_dir.glob('*.css') {
-        return file;
-    }
-    return None;
+    css_file = self.output_dir / 'styles.css';
+    return css_file if css_file.exists() else None;
 }
 
 """Find the generated Vite bundle file."""
