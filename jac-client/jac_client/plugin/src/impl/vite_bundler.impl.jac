@@ -7,9 +7,7 @@ impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
         if config is not None {
             return config.get_client_dir();
         }
-    } except ImportError {
-        pass;
-    }
+    } except ImportError { }
     # Fallback to default
     return self.project_dir / '.jac' / 'client';
 }

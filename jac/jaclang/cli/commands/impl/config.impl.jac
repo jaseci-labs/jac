@@ -371,9 +371,7 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                                         }
                                     }
                                 }
-                            } except Exception {
-                                pass;
-                            }
+                            } except Exception { }
                         }
                     }
                 }
