@@ -457,13 +457,16 @@ impl ensure_namespace_exists(namespace: str) -> None {
 
 """Delete all K8s resources (deployment, service, etc.) created for the app."""
 impl cleanup_K8s_resources -> None {
-    app_name = os.getenv('APP_NAME', 'jaseci');
-    namespace = os.getenv('K8s_NAMESPACE', 'default');
-    config.load_kube_config();
-    apps_v1 = client.AppsV1Api();
-    core_v1 = client.CoreV1Api();
-    deployment_name = app_name;
-    service_name = f"{app_name}-service";
+    # Use new architecture internally while maintaining backward compatibility
+    import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+    import from jac_scale.factories.utility_factory { UtilityFactory }
+    import from jac_scale.config_loader { get_scale_config }
+    k8s_config_dict = get_scale_config().get_kubernetes_config();
+    logger = UtilityFactory.create_logger('standard');
+    target = DeploymentTargetFactory.create('kubernetes', k8s_config_dict, logger);
+    app_name = os.getenv('APP_NAME', k8s_config_dict.get('app_name', 'jaseci'));
+    target.destroy(app_name);
+}
     delete_if_exists(
         apps_v1.delete_namespaced_deployment, deployment_name, namespace, 'Deployment'
     );
