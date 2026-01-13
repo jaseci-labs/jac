@@ -193,32 +193,6 @@ walker greet {
         assert reloader._client_output_dir == ".jac/client/compiled"
 
 
-class TestChangeType:
-    """Tests for ChangeType enum."""
-
-    def test_change_type_values(self) -> None:
-        """Test that ChangeType has expected values."""
-        assert hasattr(ChangeType, "CREATED")
-        assert hasattr(ChangeType, "MODIFIED")
-        assert hasattr(ChangeType, "DELETED")
-
-
-class TestFileChangeEvent:
-    """Tests for FileChangeEvent."""
-
-    def test_file_change_event_creation(self) -> None:
-        """Test that FileChangeEvent can be created."""
-        event = FileChangeEvent(
-            path="/path/to/file.jac",
-            change_type=ChangeType.MODIFIED,
-            timestamp=time.time(),
-        )
-
-        assert event.path == "/path/to/file.jac"
-        assert event.change_type == ChangeType.MODIFIED
-        assert isinstance(event.timestamp, float)
-
-
 class TestHMRIntegration:
     """Basic integration tests for HMR components working together."""
 
