@@ -3,7 +3,7 @@
 Handles primitive types, Union types, lists, tuples, sets, dicts,
 dataclasses, enums, and functions.
 """
-impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
+impl _type_to_schema(ty: type, title: str = "", desc: str = "", info:Info = None) -> dict {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
@@ -11,7 +11,6 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     semstr: str = ty?._jac_semstr or "";
     semstr = semstr or ty?.__doc__ or "";  # type: ignore
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
-    print(semstr);
     # Raise on unsupported types
     if ty in (list, dict, set, tuple) {
         raise ValueError(
@@ -137,7 +136,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
 }
 
 """Get a string name for a type, handling Union types specially."""
-impl _name_of_type(ty: type) -> str {
+impl _name_of_type(ty: type, info: Info=None) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
@@ -216,9 +215,9 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
 }
 
 """Return the JSON schema for a response type, formatted for LLM APIs."""
-impl type_to_schema(resp_type: type) -> dict[str, object] {
-    type_name = _name_of_type(resp_type);
-    schema = _type_to_schema(resp_type, type_name);
+impl type_to_schema(resp_type: type, info:Info=None) -> dict[str, object] {
+    type_name = _name_of_type(resp_type, info=info);
+    schema = _type_to_schema(resp_type, type_name, info=info);
     schema = _wrap_to_object(schema);
     return {
         "type": "json_schema",

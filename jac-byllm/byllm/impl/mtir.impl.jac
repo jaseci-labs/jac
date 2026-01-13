@@ -24,7 +24,7 @@ impl MTRuntime.factory(
     ir_info = mtir.ir_info;
     tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
     # Construct the input information from the arguments.
-    param_names = [param.name for param in ir_info.params];
+    params = [param for param in ir_info.params];
     # if not param_names {
     #     param_names = list(inspect.signature(caller).parameters.keys());
     # }
@@ -40,8 +40,8 @@ impl MTRuntime.factory(
             inputs_detail.append(f"{key} = {value}");
         } else {
             # TODO: Handle *args, **kwargs properly.
-            if key < len(param_names) {
-                inputs_detail.append(f"{param_names[key]} = {value}");
+            if key < len(params) {
+                inputs_detail.append(f"{params[key].name} = {value}");
             } else {
                 inputs_detail.append(f"arg = {value}");
             }
@@ -105,8 +105,8 @@ impl MTRuntime.factory(
 impl MTRuntime.dispatch_params -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
-        "tools": self.get_tool_list() or None,
-        "response_format": self.get_output_schema(),
+        "tools": self.get_tool_list(info=self.ir_info) or None,
+        "response_format": self.get_output_schema(info=self.ir_info.return_type),
         "temperature": self.call_params.get("temperature", 0.7),
         # "max_tokens": self.call_params.get("max_tokens", 100),
         # "top_k": self.call_params.get("top_k", 50),
@@ -154,19 +154,19 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
 }
 
 """Return the tools as JSON schemas for the LLM API."""
-impl MTRuntime.get_tool_list -> list[dict] {
+impl MTRuntime.get_tool_list(info: Info=None) -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
 """Return the JSON schema for the response type, if applicable."""
-impl MTRuntime.get_output_schema -> dict | None {
+impl MTRuntime.get_output_schema(info: Info=None) -> dict | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {
             return None;  # Strings are default and not using a schema.
 
         }
-        return type_to_schema(self.resp_type);
+        return type_to_schema(resp_type=self.resp_type, info=info);
     }
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.

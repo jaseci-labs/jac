@@ -51,6 +51,6 @@ obj MTRuntime {
     def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];
     def parse_response(response: str) -> object;
     def get_tool(tool_name: str) -> Tool | None;
-    def get_tool_list -> list[dict];
-    def get_output_schema -> dict | None;
+    def get_tool_list(info: Info = None) -> list[dict];
+    def get_output_schema(info: Info = None) -> dict | None;
 }
