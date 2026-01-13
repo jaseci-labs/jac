@@ -1051,9 +1051,10 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
 
     # Verify summary is present
     assert "TOTAL:" in output
-    assert "2 functions" in output
+    # Note: With imported functions now exposed as endpoints, we have more than the 2 defined functions
+    assert "10 functions" in output
     assert "4 walkers" in output
-    assert "18 endpoints" in output
+    assert "34 endpoints" in output
 
     # Verify parameter details are included
     assert "required" in output
