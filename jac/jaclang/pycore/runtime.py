@@ -57,6 +57,7 @@ from jaclang.vendor import pluggy
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
 
+    from jaclang.pycore.compiler import JacCompiler
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
@@ -1088,10 +1089,16 @@ class JacBasics:
             elif reload_module and module_name in sys.modules:
                 # Handle reload case
                 module = importlib.reload(sys.modules[module_name])
+                # Update loaded_modules with the new module object
+                JacRuntimeInterface.load_module(module_name, module, force=True)
             else:
                 # Use Python's standard import machinery
                 # This will invoke JacMetaImporter.find_spec() and exec_module()
                 module = importlib.import_module(module_name)
+                # If reload was requested but module wasn't in sys.modules (e.g., HMR cleared it),
+                # still force update loaded_modules with the newly imported module
+                if reload_module:
+                    JacRuntimeInterface.load_module(module_name, module, force=True)
 
             # Handle selective item imports
             if items:
@@ -1710,6 +1717,11 @@ class JacUtils:
         JacRuntime.program = jac_program
 
     @staticmethod
+    def attach_compiler(jac_compiler: JacCompiler) -> None:
+        """Attach a JacCompiler to the machine."""
+        JacRuntime.compiler = jac_compiler
+
+    @staticmethod
     def load_module(
         module_name: str, module: types.ModuleType, force: bool = False
     ) -> None:
@@ -2130,10 +2142,24 @@ class JacRuntime(JacRuntimeInterface):
     """Jac Machine State."""
 
     base_path_dir: str = os.getcwd()
+    compiler: JacCompiler | None = None
     program: JacProgram | None = None
     pool: ThreadPoolExecutor = ThreadPoolExecutor()
     exec_ctx: ExecutionContext | None = None
     loaded_modules: dict[str, types.ModuleType] = {}
+
+    @classmethod
+    def get_compiler(cls) -> JacCompiler:
+        """Get or create the JacCompiler singleton.
+
+        The compiler is separate from the program and handles all compilation
+        operations. It persists across program resets and can be reused.
+        """
+        if cls.compiler is None:
+            from jaclang.pycore.compiler import JacCompiler
+
+            cls.compiler = JacCompiler()
+        return cls.compiler
 
     @classmethod
     def get_program(cls) -> JacProgram:
@@ -2158,7 +2184,12 @@ class JacRuntime(JacRuntimeInterface):
 
     @staticmethod
     def reset_machine() -> None:
-        """Reset the machine."""
+        """Reset the machine.
+
+        Note: The compiler singleton is preserved across resets since it's
+        stateless with respect to any particular program. Only the program
+        state (modules, errors, context) is reset.
+        """
         # Remove Jac modules from sys.modules, but skip special module names
         # that Python relies on (like __main__, __mp_main__, etc.)
         # Also skip runtime library modules (archetype, constructs, memory, mtp)
@@ -2193,6 +2224,7 @@ class JacRuntime(JacRuntimeInterface):
         JacRuntime.base_path_dir = os.getcwd()
         from jaclang.pycore.program import JacProgram
 
+        # Reset only the program, keep the compiler singleton
         JacRuntime.program = JacProgram()
         JacRuntime.pool = ThreadPoolExecutor()
         if JacRuntime.exec_ctx is not None:

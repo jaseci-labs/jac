@@ -268,3 +268,56 @@ def test_python_dash_m_jac_package(fixture_abs_path: Callable[[str], str]) -> No
         # Check that it executed successfully
         assert result.returncode == 0, f"Failed with stderr: {result.stderr}"
         assert "package main works" in result.stdout
+
+
+def test_compiler_separates_internal_from_user_modules() -> None:
+    """Test that jaclang.* modules go to compiler's hub, not user's program hub.
+
+    This integration test runs a jac file and verifies that:
+    1. User modules end up in the user program's module hub
+    2. Internal jaclang modules end up in the compiler's internal hub
+    """
+    import tempfile
+
+    # Create a user jac file that uses jaclang runtime features
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp_file:
+        tmp_file.write('with entry { "hello" :> print; }\n')
+        user_file = tmp_file.name
+
+    try:
+        # Capture output and run the file
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        execution.run(user_file)
+        sys.stdout = sys.__stdout__
+
+        # Verify output worked
+        assert "hello" in captured_output.getvalue()
+
+        # Now verify the module hub separation
+        compiler = Jac.get_compiler()
+        user_program = Jac.get_program()
+        jaclang_root = compiler._get_jaclang_root()
+
+        # Get the hub paths
+        internal_hub_paths = list(compiler.internal_program.mod.hub.keys())
+        user_hub_paths = list(user_program.mod.hub.keys())
+
+        # User hub must be non-empty (the test file was compiled)
+        assert len(user_hub_paths) > 0, "User program hub should not be empty"
+        # Note: internal hub may be empty if jaclang modules came from disk cache
+
+        # All paths in compiler's internal hub must be jaclang paths
+        for path in internal_hub_paths:
+            assert path.startswith(jaclang_root), (
+                f"Non-jaclang path {path} found in compiler's internal hub"
+            )
+
+        # No jaclang paths should be in user's program hub
+        for path in user_hub_paths:
+            assert not path.startswith(jaclang_root), (
+                f"Jaclang internal path {path} found in user's program hub"
+            )
+
+    finally:
+        os.unlink(user_file)

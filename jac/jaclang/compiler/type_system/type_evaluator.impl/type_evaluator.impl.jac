@@ -170,6 +170,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return base_type.specialize_generics(type_args);
                 }
+                # Case: <expr>[<expr>:<expr>] slice of the expression.
+                if isinstance(expr.right, uni.IndexSlice) and expr.right.is_range {
+                    # TODO: Validate the slice type arguments.
+                    return self.get_type_of_expression(expr.target);
+                }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
                 return self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [expr.right], expr

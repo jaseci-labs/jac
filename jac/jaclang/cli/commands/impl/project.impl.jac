@@ -52,45 +52,14 @@ impl create(name: str = '', force: bool = False) -> int {
         }
         print(f"Created {main_jac}");
     }
-    gitignore_path = project_path / ".gitignore";
-    gitignore_entries = [
-        "# Jac build artifacts",
-        ".jac/",
-        "",
-        "# Python",
-        "__pycache__/",
-        "*.py[cod]",
-        ".venv/",
-        "venv/",
-        "",
-        "# IDE",
-        ".idea/",
-        ".vscode/",
-        "*.swp",
-        ""
-    ];
-    if gitignore_path.exists() {
-        with open(gitignore_path, "r") as f {
-            existing_content = f.read();
-        }
-        new_entries = [];
-        for entry in gitignore_entries {
-            if entry and entry not in existing_content {
-                new_entries.append(entry);
-            }
-        }
-        if new_entries {
-            with open(gitignore_path, "a") as f {
-                f.write("\n" + "\n".join(new_entries));
-            }
-            print(f"Updated {gitignore_path}");
-        }
-    } else {
-        with open(gitignore_path, "w") as f {
-            f.write("\n".join(gitignore_entries));
-        }
-        print(f"Created {gitignore_path}");
+    # Create .jac directory with its own .gitignore to exclude build artifacts
+    jac_dir = project_path / ".jac";
+    jac_dir.mkdir(parents=True, exist_ok=True);
+    jac_gitignore = jac_dir / ".gitignore";
+    with open(jac_gitignore, "w") as f {
+        f.write("# Ignore all build artifacts in .jac directory\n*\n");
     }
+    print(f"Created {jac_gitignore}");
     try {
         result = subprocess.run(
             [sys.executable, "-m", "jaclang", "build", str(project_path / "main.jac")],

@@ -6,7 +6,7 @@ import os;
 import sys;
 import time;
 import threading;
-import from concurrent.futures { ThreadPoolExecutor }
+import from concurrent.futures { Future }
 import from queue { Queue, Empty }
 import from typing { Callable, Optional }
 
@@ -46,7 +46,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
         module_manager: ModuleManager | None = None,
         queue: Queue = Queue(),
-        worker_thread: threading.Thread | None = None,
+        worker_future: Future | None = None,
         last_task: Task | None = None,
         _shutdown_called: bool = False;
 
