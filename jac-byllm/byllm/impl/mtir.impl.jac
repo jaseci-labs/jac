@@ -31,19 +31,20 @@ impl MTRuntime.factory(
     inputs_detail: list[str] = [];
     media_inputs: list[Media] = [];
     for (key, value) in args.items() {
+        idx = list(args.keys()).index(key);
         if isinstance(value, Media) {
-            media_inputs.append(value);
+            media_inputs.append((value,params[idx].semstr or ""));
             continue;
         }
 
         if isinstance(key, str) {
-            inputs_detail.append(f"{key} = {value}");
+            inputs_detail.append(f"{key} = {(value,params[idx].semstr or "")}");
         } else {
             # TODO: Handle *args, **kwargs properly.
             if key < len(params) {
-                inputs_detail.append(f"{params[key].name} = {value}");
+                inputs_detail.append(f"{params[key].name} = {(value,params[idx].semstr or "")}");
             } else {
-                inputs_detail.append(f"arg = {value}");
+                inputs_detail.append(f"arg = {(value,params[idx].semstr or "")}");
             }
         }
     }
@@ -51,14 +52,14 @@ impl MTRuntime.factory(
     if incl_info and isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
             if isinstance(value, Media) {
-                media_inputs.append(value);
+                media_inputs.append((value,""));
             } else {
-                inputs_detail.append(f"{key} = {value}");
+                inputs_detail.append(f"{key} = {(value,"")}");
             }
         }
     }
     if isinstance(caller, MethodType) {
-        inputs_detail.insert(0, f"self = {caller.__self__}");
+        inputs_detail.insert(0, f"self = {(caller.__self__, ir_info.parent_class.semstr if ir_info.parent_class else '')}");
     }
     # Prepare the messages for the LLM call.
     messages: list[MessageType] = [
