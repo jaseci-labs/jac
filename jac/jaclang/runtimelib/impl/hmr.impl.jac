@@ -60,8 +60,6 @@ impl HotReloader._process_change(file_path: str) -> None {
 """Reload server-side module in sys.modules."""
 impl HotReloader._reload_server_module(file_path: str) -> None {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    # Invalidate bytecode cache
-    self._invalidate_cache(file_path);
     # Get module name from file path
     module_name = self._path_to_module(file_path);
     # Remove from sys.modules to force reimport
@@ -138,6 +136,13 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         if not js_code {
             print(f"[HMR] No client JS generated for {file_path}", flush=True);
             return;
+        }
+
+        # Ensure __jacJsx import is present (required for client-side rendering)
+        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";';
+        if '__jacJsx' in js_code and jac_runtime_import not in js_code {
+            # Add import at the beginning of the file
+            js_code = jac_runtime_import + '\n' + js_code;
         }
 
         # Ensure output directory exists
@@ -217,29 +222,6 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
         has_server = True;
     }
     return (has_client, has_server);
-}
-
-"""Invalidate bytecode cache for a file."""
-impl HotReloader._invalidate_cache(file_path: str) -> None {
-    import from jaclang.pycore.bccache { CacheKey, get_bytecode_cache }
-    try {
-        cache = get_bytecode_cache();
-        # Get cache path and delete if exists
-        key = CacheKey.for_source(file_path, minimal=False);
-        cache_path = cache._get_cache_path(key);
-        if cache_path.exists() {
-            cache_path.unlink();
-        }
-
-        # Also invalidate minimal cache
-        key_minimal = CacheKey.for_source(file_path, minimal=True);
-        cache_path_minimal = cache._get_cache_path(key_minimal);
-        if cache_path_minimal.exists() {
-            cache_path_minimal.unlink();
-        }
-    } except Exception as e {
-        print(f"[HMR] Warning: Could not invalidate cache: {e}", flush=True);
-    }
 }
 
 """Convert file path to module name."""

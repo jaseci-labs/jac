@@ -17,6 +17,9 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from jaclang.runtimelib.hmr import HotReloader
+from jaclang.runtimelib.watcher import JacFileWatcher
+
 
 def _get_jac_command() -> list[str]:
     """Get the jac command to use for testing."""
@@ -91,7 +94,6 @@ def _run_jac_server(
     try:
         yield process
     finally:
-        # Terminate the process
         process.terminate()
         try:
             process.wait(timeout=5)
@@ -99,7 +101,6 @@ def _run_jac_server(
             process.kill()
             process.wait(timeout=2)
 
-        # Close all pipes
         if process.stdout:
             process.stdout.close()
         if process.stderr:
@@ -123,9 +124,7 @@ class TestHMRServerStartup:
         port = _get_free_port()
 
         with _run_jac_server(app_file, port) as process:
-            # Give it a moment to start
             time.sleep(2)
-            # Check that process is still running (didn't crash on startup)
             assert process.poll() is None, "Server crashed on startup with --watch flag"
 
     def test_watch_flag_starts_server(self, temp_dir: Path) -> None:
@@ -141,12 +140,11 @@ with entry {{
         )
 
         with _run_jac_server(app_file, port) as process:
-            # Wait for server to start
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            if not started:
                 output = process.stdout.read().decode() if process.stdout else ""
                 pytest.fail(f"Server did not start. Output: {output}")
 
-            # Server is running
             assert process.poll() is None, "Server should still be running"
 
     def test_api_only_mode(self, temp_dir: Path) -> None:
@@ -156,9 +154,8 @@ with entry {{
         app_file.write_text('with entry { print("API only mode"); }')
 
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
-                pytest.fail("Server did not start in API-only mode")
-
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            assert started, "Server did not start in API-only mode"
             assert process.poll() is None
 
 
@@ -190,11 +187,11 @@ with entry {
         )
 
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            if not started:
                 output = process.stdout.read().decode() if process.stdout else ""
                 pytest.fail(f"Server did not start. Output: {output}")
 
-            # Give server time to fully initialize
             time.sleep(2)
 
             # Modify the file
@@ -212,10 +209,7 @@ with entry {
 """
             )
 
-            # Wait for HMR to detect the change
             time.sleep(3)
-
-            # Server should still be running
             assert process.poll() is None, "Server crashed after file change"
 
     def test_syntax_error_does_not_crash_server(self, temp_dir: Path) -> None:
@@ -225,24 +219,21 @@ with entry {
         app_file.write_text('with entry { print("Hello"); }')
 
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
-                pytest.fail("Server did not start")
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            assert started, "Server did not start"
 
             time.sleep(2)
 
             # Introduce syntax error
             app_file.write_text('with entry { print("unclosed }')
-
             time.sleep(3)
 
-            # Server should still be running (not crashed)
             assert process.poll() is None, "Server should not crash on syntax error"
 
             # Fix the error
             app_file.write_text('with entry { print("fixed"); }')
             time.sleep(3)
 
-            # Server should still be running
             assert process.poll() is None, "Server should recover after fix"
 
     def test_multiple_rapid_changes(self, temp_dir: Path) -> None:
@@ -252,20 +243,17 @@ with entry {
         app_file.write_text('with entry { print("Initial"); }')
 
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
-                pytest.fail("Server did not start")
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            assert started, "Server did not start"
 
             time.sleep(2)
 
             # Make rapid changes
             for i in range(5):
                 app_file.write_text(f'with entry {{ print("Version {i}"); }}')
-                time.sleep(0.1)  # Very rapid changes
+                time.sleep(0.1)
 
-            # Wait for debounce to process
             time.sleep(2)
-
-            # Server should still be running
             assert process.poll() is None, "Server crashed during rapid changes"
 
 
@@ -283,7 +271,6 @@ class TestHMRWalkerReload:
         port = _get_free_port()
         app_file = temp_dir / "app.jac"
 
-        # Initial version returns 1
         app_file.write_text(
             """
 walker get_value {
@@ -299,22 +286,20 @@ with entry {
         )
 
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            if not started:
                 output = process.stdout.read().decode() if process.stdout else ""
                 pytest.fail(f"Server did not start. Output: {output}")
 
-            time.sleep(3)  # Let server fully initialize
+            time.sleep(3)
 
             # Call walker - should return 1
-            try:
-                response = _http_request(
-                    f"http://127.0.0.1:{port}/walker/get_value",
-                    method="POST",
-                    data={},
-                )
-                initial_reports = response.get("reports", [])
-            except Exception as e:
-                pytest.skip(f"Walker endpoint not available: {e}")
+            response = _http_request(
+                f"http://127.0.0.1:{port}/walker/get_value",
+                method="POST",
+                data={},
+            )
+            initial_reports = response.get("reports", [])
 
             # Update walker to return 2
             app_file.write_text(
@@ -331,26 +316,17 @@ with entry {
 """
             )
 
-            # Wait for HMR to process
             time.sleep(4)
 
             # Call walker again - should return 2
-            try:
-                response = _http_request(
-                    f"http://127.0.0.1:{port}/walker/get_value",
-                    method="POST",
-                    data={},
-                )
-                updated_reports = response.get("reports", [])
+            response = _http_request(
+                f"http://127.0.0.1:{port}/walker/get_value",
+                method="POST",
+                data={},
+            )
+            updated_reports = response.get("reports", [])
 
-                # Verify the value changed
-                if initial_reports and updated_reports:
-                    assert initial_reports != updated_reports, (
-                        "Walker code was not reloaded"
-                    )
-            except Exception as e:
-                # If endpoint fails after reload, that's also worth noting
-                pytest.skip(f"Walker endpoint failed after reload: {e}")
+            assert initial_reports != updated_reports, "Walker code was not reloaded"
 
 
 class TestHMRShutdown:
@@ -368,15 +344,170 @@ class TestHMRShutdown:
         app_file = temp_dir / "app.jac"
         app_file.write_text('with entry { print("Hello"); }')
 
-        # Use context manager - it will test shutdown during cleanup
         with _run_jac_server(app_file, port) as process:
-            if not _wait_for_port("127.0.0.1", port, timeout=30):
-                pytest.fail("Server did not start")
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            assert started, "Server did not start"
 
             time.sleep(2)
-
-            # Verify server is running
             assert process.poll() is None
 
-        # After context exit, process should be terminated
-        # The context manager handles graceful shutdown
+
+class TestHMRClientCodeRecompilation:
+    """E2E tests for client-side code HMR recompilation."""
+
+    @pytest.fixture
+    def temp_project(self) -> Generator[Path, None, None]:
+        """Create a temporary project directory with client structure."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            compiled_dir = project / ".jac" / "client" / "compiled"
+            compiled_dir.mkdir(parents=True, exist_ok=True)
+            yield project
+
+    def test_client_js_file_updated_on_change(self, temp_project: Path) -> None:
+        """Test that client JS file is actually updated when .jac file changes."""
+        app_file = temp_project / "app.jac"
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello Version 1</div>;
+    }
+}
+"""
+        )
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._recompile_client_code(str(app_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "app.js"
+        assert output_file.exists(), "JS file was not created"
+
+        content_v1 = output_file.read_text()
+
+        # Modify the jac file
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello Version 2</div>;
+    }
+}
+"""
+        )
+
+        reloader._recompile_client_code(str(app_file))
+        content_v2 = output_file.read_text()
+
+        assert content_v1 != content_v2, "JS file was not updated after change"
+        assert "Version 2" in content_v2, "New content not in recompiled JS"
+
+    def test_jacjsx_import_added_in_real_compilation(self, temp_project: Path) -> None:
+        """Test that __jacJsx import is actually added during HMR recompilation."""
+        app_file = temp_project / "app.jac"
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello</div>;
+    }
+}
+"""
+        )
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._recompile_client_code(str(app_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "app.js"
+        assert output_file.exists(), "JS file was not created"
+
+        content = output_file.read_text()
+        if "__jacJsx" in content:
+            assert "import {__jacJsx" in content, (
+                "__jacJsx is used but import is missing"
+            )
+
+
+class TestHMREndToEndFlow:
+    """Full end-to-end HMR flow tests."""
+
+    @pytest.fixture
+    def temp_dir(self) -> Generator[Path, None, None]:
+        """Create a temporary directory for tests."""
+        with tempfile.TemporaryDirectory() as tmp:
+            yield Path(tmp)
+
+    def test_full_hmr_cycle_server_code(self, temp_dir: Path) -> None:
+        """Test complete HMR cycle: start server, modify file, verify reload."""
+        port = _get_free_port()
+        app_file = temp_dir / "app.jac"
+
+        app_file.write_text(
+            """
+glob VERSION = 1;
+
+walker get_version {
+    can enter with `root entry {
+        report {"version": VERSION};
+    }
+}
+
+with entry {
+    print("Started with version", VERSION);
+}
+"""
+        )
+
+        with _run_jac_server(app_file, port) as process:
+            started = _wait_for_port("127.0.0.1", port, timeout=30)
+            if not started:
+                output = process.stdout.read().decode() if process.stdout else ""
+                pytest.fail(f"Server did not start. Output: {output}")
+
+            time.sleep(3)
+
+            # Get initial version
+            resp1 = _http_request(
+                f"http://127.0.0.1:{port}/walker/get_version",
+                method="POST",
+                data={},
+            )
+            v1 = resp1.get("reports", [{}])[0].get("version")
+
+            # Update the version
+            app_file.write_text(
+                """
+glob VERSION = 2;
+
+walker get_version {
+    can enter with `root entry {
+        report {"version": VERSION};
+    }
+}
+
+with entry {
+    print("Updated to version", VERSION);
+}
+"""
+            )
+
+            time.sleep(4)
+
+            # Get updated version
+            resp2 = _http_request(
+                f"http://127.0.0.1:{port}/walker/get_version",
+                method="POST",
+                data={},
+            )
+            v2 = resp2.get("reports", [{}])[0].get("version")
+
+            assert v2 == 2, f"Expected version 2 after HMR, got {v2}"
+            assert v1 != v2, "Version did not change after HMR"

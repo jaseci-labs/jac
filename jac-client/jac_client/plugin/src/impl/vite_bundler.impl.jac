@@ -524,6 +524,10 @@ export default defineConfig({{
   root: buildDir,
   publicDir: false,
   server: {{
+    watch: {{
+      usePolling: true,
+      interval: 100,
+    }},
     proxy: {{
       "/walker": {{
         target: "http://localhost:{api_port}",
@@ -560,6 +564,22 @@ export default defineConfig({{
 impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     build_dir = self._get_client_dir();
     node_modules = build_dir / 'node_modules';
+    # Create/update index.html for dev server (load from compiled/ for HMR)
+    index_html = build_dir / 'index.html';
+    index_content = '''<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jac App (Dev)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/compiled/_entry.js"></script>
+  </body>
+</html>
+''';
+    index_html.write_text(index_content, encoding='utf-8');
     # Ensure dependencies are installed
     if not node_modules.exists() {
         generated_package_json = build_dir / 'configs' / 'package.json';
@@ -599,12 +619,10 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     }
     config_rel = dev_config.relative_to(build_dir);
     print(f"[Vite] Starting dev server on port {port}...");
-    # Start Vite in dev mode
+    # Start Vite in dev mode (let output go to terminal for HMR visibility)
     process = subprocess.Popen(
         ['npx', 'vite', '--config', str(config_rel), '--port', str(port)],
-        cwd=build_dir,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT
+        cwd=build_dir
     );
     return process;
 }

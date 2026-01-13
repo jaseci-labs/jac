@@ -184,8 +184,9 @@ impl start(
     }
     # Determine actual port (for watch mode with client, Vite takes --port, API takes --api-port)
     if watch and not no_client {
-        actual_api_port = api_port if api_port > 0 else 8000;
+        # Vite dev server gets the main port, API server gets api_port or port+1
         vite_port = port;
+        actual_api_port = api_port if api_port > 0 else port + 1;
     } else {
         actual_api_port = port;
         vite_port = 0;
@@ -305,8 +306,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
         import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
         project_dir = Path(base_path);
-        bundler = ViteBundler();
-        bundler.init(project_dir);
+        bundler = ViteBundler(project_dir);
 
         # Create dev config with API proxy
         client_dir = bundler._get_client_dir();

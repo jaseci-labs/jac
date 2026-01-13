@@ -22,7 +22,7 @@ obj HotReloader {
     has base_path: str,
         module_name: str,
         watcher: Any,  # JacFileWatcher - using Any to avoid circular import
-        _client_output_dir: str = ".jac/client/src",
+        _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False;
 
     """Start the hot reloader and begin watching for changes."""
@@ -46,9 +46,6 @@ obj HotReloader {
 
     """Get client and server declarations from a file."""
     def _classify_declarations(file_path: str) -> tuple[bool, bool];
-
-    """Invalidate bytecode cache for a file."""
-    def _invalidate_cache(file_path: str) -> None;
 
     """Convert file path to module name."""
     def _path_to_module(file_path: str) -> str;
