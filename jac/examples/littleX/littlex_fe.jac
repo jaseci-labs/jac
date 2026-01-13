@@ -348,22 +348,22 @@ cl {
         # Create routes array manually (workaround for JS compiler bug with named args)
         login_route = {
             "path": "/login",
-            "component": lambda   -> any{ return LoginForm(); } ,
+            "component": lambda -> any { return LoginForm(); },
             "guard": None
         };
         signup_route = {
             "path": "/signup",
-            "component": lambda   -> any{ return SignupForm(); } ,
+            "component": lambda -> any { return SignupForm(); },
             "guard": None
         };
         home_route = {
             "path": "/home",
-            "component": lambda   -> any{ return HomeView(); } ,
+            "component": lambda -> any { return HomeView(); },
             "guard": jacIsLoggedIn
         };
         profile_route = {
             "path": "/profile",
-            "component": lambda   -> any{ return ProfileView(); } ,
+            "component": lambda -> any { return ProfileView(); },
             "guard": jacIsLoggedIn
         };
 

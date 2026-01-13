@@ -44,10 +44,10 @@ cl {
             </h2>
             <input
                 value={input}
-                onChange={lambda  e: any  -> None{ input = e.target.value;} }
-                onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
+                onChange={lambda e: any  -> None { input = e.target.value;}}
+                onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
                     addTodo();
-                }} }
+                }}}
             />
             <button
                 onClick={addTodo}
@@ -56,7 +56,7 @@ cl {
             </button>
             <div>
                 {todos.map(
-                    lambda  todo: any  -> any{ return <div
+                    lambda todo: any  -> any { return <div
                         key={todo._jac_id}
                     >
                         <span>

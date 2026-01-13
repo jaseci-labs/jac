@@ -397,7 +397,7 @@ impl JacAPIServer.render_base_route_callback(
     self: JacAPIServer, app_name: str
 ) -> Callable[..., HTMLResponse] {
     """Render the base route app.""";
-    def callback( **kwargs: JsonValue)  -> HTMLResponse {
+    def callback(**kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
                 app_name, kwargs, '__guest__'
@@ -470,7 +470,7 @@ impl JacAPIServer.create_function_callback(
     self: JacAPIServer, func_name: str
 ) -> Callable[..., dict[(str, JsonValue)]] {
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
-    def callback( **kwargs: JsonValue)  -> dict[str, JsonValue] {
+    def callback(**kwargs: JsonValue) -> dict[str, JsonValue] {
         username: (str | None) = None;
         if requires_auth {
             authorization = kwargs.pop('Authorization', None);

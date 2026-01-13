@@ -274,7 +274,7 @@ impl AstTool.init(self: AstTool) -> None {
         )
     ];
     self.ast_classes = sorted(
-        uni_node_classes, key=lambda  cls: Any: source_code.find(f"class {cls.name}")
+        uni_node_classes, key=lambda cls: Any : source_code.find(f"class {cls.name}")
     );
 }
 

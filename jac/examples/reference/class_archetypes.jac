@@ -54,7 +54,7 @@ node Pet(Animal, Domesticated, Mammal) {
 }
 
 # Edge with public access modifier and method
-edge : pub Relationship {
+edge:pub Relationship {
     has strength: int = 5,
         since: int = 2020;
 
@@ -126,15 +126,15 @@ async walker AsyncInspector {
 }
 
 # Access modifiers: private, public, protected
-obj : priv PrivateConfig {
+obj:priv PrivateConfig {
     has secret_key: str = "hidden";
 }
 
-obj : pub PublicAPI {
+obj:pub PublicAPI {
     has version: str = "1.0";
 }
 
-obj : protect ProtectedResource {
+obj:protect ProtectedResource {
     has resource_id: int = 0;
 }
 

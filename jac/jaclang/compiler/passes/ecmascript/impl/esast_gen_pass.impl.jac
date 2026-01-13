@@ -912,7 +912,7 @@ impl EsastGenPass.exit_assignment(<>node: uni.Assignment) -> None {
                 value_expr
                 or self._get_ast_or_default(
                     <>node.value,
-                    default_factory=lambda  _src: Any: es.Identifier(name='undefined')
+                    default_factory=lambda _src: Any : es.Identifier(name='undefined')
                 )
             )
         );
@@ -957,7 +957,7 @@ impl EsastGenPass.exit_assignment(<>node: uni.Assignment) -> None {
             value_expr
             or self._get_ast_or_default(
                 <>node.value,
-                default_factory=lambda  _src: Any: es.Identifier(name='undefined')
+                default_factory=lambda _src: Any : es.Identifier(name='undefined')
             )
         )
     );
@@ -1128,7 +1128,7 @@ impl EsastGenPass.exit_unary_expr(<>node: uni.UnaryExpr) -> None {
     operand = cast(
         es.Expression,
         self._get_ast_or_default(
-            <>node.operand, default_factory=lambda  _src: Any: es.Literal(value=0)
+            <>node.operand, default_factory=lambda _src: Any : es.Literal(value=0)
         )
     );
     op_tok = Tok(<>node.op.name) if (<>node.op.name in Tok.__members__) else None;
@@ -1152,7 +1152,7 @@ impl EsastGenPass.exit_compare_expr(<>node: uni.CompareExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             <>node.left,
-            default_factory=lambda  src: Any:
+            default_factory=lambda src: Any :
                 es.Identifier(name=src.sym_name)
                 if isinstance(src, uni.Name)
                 else es.Identifier(name='left')
@@ -1163,7 +1163,7 @@ impl EsastGenPass.exit_compare_expr(<>node: uni.CompareExpr) -> None {
             es.Expression,
             self._get_ast_or_default(
                 right_node,
-                default_factory=lambda  src: Any:
+                default_factory=lambda src: Any :
                     es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Identifier(name='right')
@@ -1217,14 +1217,14 @@ impl EsastGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
     result: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
-            <>node.values[0], default_factory=lambda  _src: Any: es.Literal(value=None)
+            <>node.values[0], default_factory=lambda _src: Any : es.Literal(value=None)
         )
     );
     for val in <>node.values[1:] {
         right = cast(
             es.Expression,
             self._get_ast_or_default(
-                val, default_factory=lambda  _src: Any: es.Literal(value=None)
+                val, default_factory=lambda _src: Any : es.Literal(value=None)
             )
         );
         result = self.sync_loc(
@@ -1241,7 +1241,7 @@ impl EsastGenPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             <>node.left,
-            default_factory=lambda  src: Any:
+            default_factory=lambda src: Any :
                 es.Identifier(name=src.sym_name)
                 if isinstance(src, uni.Name)
                 else es.Literal(value=0)
@@ -1251,7 +1251,7 @@ impl EsastGenPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             <>node.right,
-            default_factory=lambda  src: Any:
+            default_factory=lambda src: Any :
                 es.Identifier(name=src.sym_name)
                 if isinstance(src, uni.Name)
                 else es.Literal(value=0)
@@ -1299,7 +1299,7 @@ impl EsastGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
     if (<>node.pattern and isinstance(<>node.pattern, uni.MatchValue)) {
         case_test = self._get_ast_or_default(
             <>node.pattern.value,
-            default_factory=lambda  _src: Any: es.Literal(value=None)
+            default_factory=lambda _src: Any : es.Literal(value=None)
         );
     }
     body_stmts = self._collect_stmt_body(<>node.body);
@@ -1311,7 +1311,7 @@ impl EsastGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
 """Process switch statement."""
 impl EsastGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
     <>test = self._get_ast_or_default(
-        <>node.target, default_factory=lambda  _src: Any: es.Literal(value=None)
+        <>node.target, default_factory=lambda _src: Any : es.Literal(value=None)
     );
     cases: list[es.SwitchCase] = [];
     for stmt in <>node.cases {
@@ -1330,7 +1330,7 @@ impl EsastGenPass.exit_expr_stmt(<>node: uni.ExprStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
-            <>node.expr, default_factory=lambda  _src: Any: es.Literal(value=None)
+            <>node.expr, default_factory=lambda _src: Any : es.Literal(value=None)
         )
     );
     expr_stmt = self.sync_loc(es.ExpressionStatement(expression=expr), jac_node=<>node);
@@ -1540,7 +1540,7 @@ impl EsastGenPass.exit_iter_for_stmt(<>node: uni.IterForStmt) -> None {
 """Process while statement."""
 impl EsastGenPass.exit_while_stmt(<>node: uni.WhileStmt) -> None {
     <>test = self._get_ast_or_default(
-        <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
+        <>node.condition, default_factory=lambda _src: Any : es.Literal(value=True)
     );
     body = self._build_block_statement(<>node, <>node.body);
     while_stmt = self.sync_loc(
@@ -1560,7 +1560,7 @@ impl EsastGenPass.exit_else_stmt(<>node: uni.ElseStmt) -> None {
 """Process else-if clause."""
 impl EsastGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
     <>test = self._get_ast_or_default(
-        <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
+        <>node.condition, default_factory=lambda _src: Any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(<>node, <>node.body);
     alternate: (es.Statement | None) = None;
@@ -1577,7 +1577,7 @@ impl EsastGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
 """Process if statement."""
 impl EsastGenPass.exit_if_stmt(<>node: uni.IfStmt) -> None {
     <>test = self._get_ast_or_default(
-        <>node.condition, default_factory=lambda  _src: Any: es.Literal(value=True)
+        <>node.condition, default_factory=lambda _src: Any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(<>node, <>node.body);
     alternate: (es.Statement | None) = None;
@@ -2497,7 +2497,7 @@ impl EsastGenPass._expr_from_node(
     <>node: (uni.UniNode | None), <>default: LiteralValue = None
 ) -> es.Expression {
     generated = self._get_ast_or_default(
-        <>node, default_factory=lambda  src: Any: es.Literal(value=<>default)
+        <>node, default_factory=lambda src: Any : es.Literal(value=<>default)
     );
     if isinstance(generated, es.Expression) {
         return generated;

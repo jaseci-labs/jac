@@ -1,7 +1,7 @@
 # Lambda Expressions
 
 # Lambda with parameters and return hint
-glob add = lambda  a: int , b: int  -> int:
+glob add = lambda a: int , b: int  -> int :
          a + b;
 
 with entry {
@@ -16,21 +16,21 @@ with entry {
 }
 
 # Lambda without return hint
-glob multiply = lambda  x: int , y: int: x * y;
+glob multiply = lambda x: int , y: int : x * y;
 
 with entry {
     print(multiply(4, 5));
 }
 
 # Lambda with only return hint
-glob get_default = lambda   -> int: 100 ;
+glob get_default = lambda -> int : 100 ;
 
 with entry {
     print(get_default());
 }
 
 # Lambda with default parameters
-glob power = lambda  x: int = 2 , y: int = 3:
+glob power = lambda x: int = 2 , y: int = 3 :
          x ** y;
 
 with entry {
@@ -41,21 +41,21 @@ with entry {
 
 # Lambda as argument to function
 glob numbers = [1, 2, 3, 4, 5],
-     squared = list(map(lambda  x: int: x ** 2, numbers));
+     squared = list(map(lambda x: int : x ** 2, numbers));
 
 with entry {
     print(squared);
 }
 
 # Lambda in filter
-glob evens = list(filter(lambda  x: int: x % 2 == 0, numbers));
+glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
 
 with entry {
     print(evens);
 }
 
 # Lambda with conditional expression
-glob max_val = lambda  a: int , b: int:
+glob max_val = lambda a: int , b: int :
          a if a > b else b;
 
 with entry {
@@ -64,7 +64,7 @@ with entry {
 }
 
 # Lambda returning lambda
-glob make_adder = lambda  x: int: (lambda  y: int: x + y),
+glob make_adder = lambda x: int : (lambda y: int : x + y),
      add_five = make_adder(5);
 
 with entry {
@@ -73,7 +73,7 @@ with entry {
 
 # Lambda in sort key
 glob words = ["apple", "pie", "a", "cherry"],
-     sorted_words = sorted(words, key=lambda  s: str: len(s));
+     sorted_words = sorted(words, key=lambda s: str : len(s));
 
 with entry {
     print(sorted_words);

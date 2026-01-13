@@ -815,7 +815,7 @@ impl CommentInjectionPass._inject_into_parts(
         tokens = self._get_tokens(processed);
         if (tokens and self._comments) {
             last_token = max(
-                tokens, key=lambda  t: Any: (t.loc.last_line, t.loc.col_end)
+                tokens, key=lambda t: Any : (t.loc.last_line, t.loc.col_end)
             );
             token_id: int = id(last_token);
             for info in self._comments.take_inline(token_id) {
@@ -1037,7 +1037,7 @@ impl CommentStore.drain_unattached -> list[CommentInfo] {
             leftovers.append(info);
         }
     }
-    leftovers.sort(key=lambda  c: Any: (c.first_line, c.index));
+    leftovers.sort(key=lambda c: Any : (c.first_line, c.index));
     return leftovers;
 }
 
@@ -1108,7 +1108,7 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         items.append(('comment', idx, comment));
     }
     items.sort(
-        key=lambda  <>entry: Any: (<>entry[2].loc.first_line, <>entry[2].loc.col_start)
+        key=lambda <>entry: Any : (<>entry[2].loc.first_line, <>entry[2].loc.col_start)
     );
     inline: dict[(int, list[CommentInfo])] = {};
     standalone: list[CommentInfo] = [];
@@ -1142,9 +1142,9 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         }
     }
     for collection in inline.values() {
-        collection.sort(key=lambda  c: Any: (c.first_line, c.index));
+        collection.sort(key=lambda c: Any : (c.first_line, c.index));
     }
-    standalone.sort(key=lambda  c: Any: (c.first_line, c.index));
+    standalone.sort(key=lambda c: Any : (c.first_line, c.index));
     return CommentStore(_inline=inline, _standalone=standalone);
 }
 

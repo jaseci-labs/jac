@@ -455,59 +455,6 @@ impl ensure_namespace_exists(namespace: str) -> None {
     }
 }
 
-"""Delete all K8s resources (deployment, service, etc.) created for the app."""
-impl cleanup_K8s_resources -> None {
-    app_name = os.getenv('APP_NAME', 'jaseci');
-    namespace = os.getenv('K8s_NAMESPACE', 'default');
-    config.load_kube_config();
-    apps_v1 = client.AppsV1Api();
-    core_v1 = client.CoreV1Api();
-    deployment_name = app_name;
-    service_name = f"{app_name}-service";
-    delete_if_exists(
-        apps_v1.delete_namespaced_deployment, deployment_name, namespace, 'Deployment'
-    );
-    delete_if_exists(
-        core_v1.delete_namespaced_service, service_name, namespace, 'Service'
-    );
-    mongodb_name = f"{app_name}-mongodb";
-    redis_name = f"{app_name}-redis";
-    delete_if_exists(
-        apps_v1.delete_namespaced_stateful_set, mongodb_name, namespace, 'StatefulSet'
-    );
-    delete_if_exists(
-        core_v1.delete_namespaced_service,
-        f"{mongodb_name}-service",
-        namespace,
-        'Service'
-    );
-    delete_if_exists(
-        apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
-    );
-    delete_if_exists(
-        core_v1.delete_namespaced_service,
-        f"{redis_name}-service",
-        namespace,
-        'Service'
-    );
-    delete_if_exists(
-        core_v1.delete_namespaced_pod, f"{app_name}-code-sync", namespace, 'Pod'
-    );
-    pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
-    for pvc in pvcs.items {
-        if pvc.metadata.name.startswith(app_name) {
-            try {
-                core_v1.delete_namespaced_persistent_volume_claim(
-                    pvc.metadata.name, namespace
-                );
-            } except client.exceptions.ApiException as e {
-                print(f"Error deleting PVC '{pvc.metadata.name}': {e}");
-            }
-        }
-    }
-    print(f"All Kubernetes resources for '{app_name}' cleaned up successfully.");
-}
-
 """Deploy example."""
 impl delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str

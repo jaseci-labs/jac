@@ -166,6 +166,7 @@ jobs:
           RUN apt-get update && apt-get install -y \
               curl \
               git \
+              graphviz \
               && rm -rf /var/lib/apt/lists/*
 
           # Set working directory
