@@ -304,11 +304,7 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     functions: dict[(str, Callable[(..., Any)])] = {};
     export_names = <>set(self._client_manifest.get('exports', []));
     for (name, <>obj) in inspect.getmembers(self._module) {
-        if (
-            inspect.isfunction(<>obj)
-            and not name.startswith('_')
-            and (<>obj.__module__ == self._module.__name__)
-        ) {
+        if (inspect.isfunction(<>obj) and not name.startswith('_')) {
             functions[name] = <>obj;
             if (name in export_names) {
                 self._client_functions[name] = <>obj;
@@ -338,7 +334,6 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
             isinstance(<>obj, <>type)
             and issubclass(<>obj, WalkerArchetype)
             and (<>obj is not WalkerArchetype)
-            and (<>obj.__module__ == self._module.__name__)
         ) {
             walkers[name] = <>obj;
         }
