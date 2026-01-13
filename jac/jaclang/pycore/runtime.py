@@ -1088,10 +1088,16 @@ class JacBasics:
             elif reload_module and module_name in sys.modules:
                 # Handle reload case
                 module = importlib.reload(sys.modules[module_name])
+                # Update loaded_modules with the new module object
+                JacRuntimeInterface.load_module(module_name, module, force=True)
             else:
                 # Use Python's standard import machinery
                 # This will invoke JacMetaImporter.find_spec() and exec_module()
                 module = importlib.import_module(module_name)
+                # If reload was requested but module wasn't in sys.modules (e.g., HMR cleared it),
+                # still force update loaded_modules with the newly imported module
+                if reload_module:
+                    JacRuntimeInterface.load_module(module_name, module, force=True)
 
             # Handle selective item imports
             if items:

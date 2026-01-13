@@ -214,6 +214,21 @@ impl start(
     hot_reloader = None;
     vite_process = None;
     if watch {
+        # Check if watchdog is available in the project environment
+        if not _check_watchdog_available() {
+            print(
+                "\n  Error: --watch requires 'watchdog' package to be installed.\n",
+                file=sys.stderr
+            );
+            print(
+                "  The 'watchdog' package is listed in [dev-dependencies] of jac.toml.",
+                file=sys.stderr
+            );
+            print("  Install it by running:\n", file=sys.stderr);
+            print("    jac install --dev\n", file=sys.stderr);
+            mach.close();
+            return 1;
+        }
         try {
             import from jaclang.runtimelib.hmr { HotReloader }
             import from jaclang.runtimelib.watcher { JacFileWatcher }
@@ -224,14 +239,14 @@ impl start(
             );
             hot_reloader.start();
         } except ImportError as e {
+            print(f"Error: Could not initialize HMR: {e}", file=sys.stderr, flush=True);
             print(
-                f"Warning: Could not initialize HMR: {e}", file=sys.stderr, flush=True
-            );
-            print(
-                "Make sure 'watchdog' is installed: pip install watchdog",
+                "\nMake sure 'watchdog' is installed by running: jac install --dev",
                 file=sys.stderr,
                 flush=True
             );
+            mach.close();
+            return 1;
         } except Exception as e {
             print(
                 f"Warning: HMR initialization failed: {e}", file=sys.stderr, flush=True
@@ -268,6 +283,46 @@ impl start(
         }
         mach.close();
         return 1;
+    }
+}
+
+"""Check if watchdog is available in the project's .jac environment."""
+def _check_watchdog_available -> bool {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+
+    config = get_config();
+    if config is None {
+        # No project, check global availability
+        try {
+            import watchdog;
+            return True;
+        } except ImportError {
+            return False;
+        }
+    }
+    # Check if watchdog is installed in the project's packages directory
+    packages_dir = config.get_packages_dir();
+    if packages_dir.exists() {
+        # Add packages dir to path temporarily to check
+        import sys;
+        original_path = sys.path.copy();
+        sys.path.insert(0, str(packages_dir));
+        try {
+            import watchdog;
+            return True;
+        } except ImportError {
+            pass;
+        } finally {
+            sys.path = original_path;
+        }
+    }
+    # Fallback: check if globally available
+    try {
+        import watchdog;
+        return True;
+    } except ImportError {
+        return False;
     }
 }
 
