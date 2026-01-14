@@ -1,6 +1,6 @@
 [project]
 name = "jaseci"
-version = "2.2.5"
+version = "2.2.6"
 description = "Jaseci - A complete AI-native programming ecosystem with Jac language, LLM integration, full-stack web apps, and Streamlit visualization"
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -21,9 +21,9 @@ keywords = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "jaclang>=0.9.7",
-    "byllm>=0.4.12",
-    "jac-client>=0.2.7",
+    "jaclang>=0.9.8",
+    "byllm>=0.4.13",
+    "jac-client>=0.2.8",
     "jac-streamlit>=0.0.6",
 ]
 

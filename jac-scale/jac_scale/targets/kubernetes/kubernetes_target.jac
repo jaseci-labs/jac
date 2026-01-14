@@ -706,9 +706,7 @@ class KubernetesTarget(DeploymentTarget) {
                         core_v1.delete_namespaced_persistent_volume_claim(
                             name=pvc.metadata.name, namespace=namespace
                         );
-                    } except Exception {
-                        pass;
-                    }
+                    } except Exception { }
                 }
             }
 

@@ -70,9 +70,7 @@ impl create(name: str = '', force: bool = False) -> int {
         if result.returncode == 0 {
             print("Pre-generated compiler cache");
         }
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
     print(f"\nProject '{project_name}' initialized successfully!");
     print("\nNext steps:");
     if name {
@@ -121,10 +119,16 @@ impl add(
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     config = get_config();
     if config is None {
-        print(
-            "No jac.toml found. Run 'jac init' to create a project.", file=sys.stderr
-        );
-        return 1;
+        # If --cl flag is used, we need jac.toml to exist
+        if cl {
+            print(
+                "No jac.toml found. Run 'jac init' to create a project.",
+                file=sys.stderr
+            );
+            return 1;
+        }
+        # Skip silently if jac.toml doesn't exist (for regular Python deps)
+        return 0;
     }
     if cl {
         import from jaclang.project.dep_registry { get_dependency_registry }
@@ -176,9 +180,18 @@ impl add(
         }
         return 0;
     }
+    # If no packages specified and not git, install all Python dependencies
     if not packages and not git {
-        print("No packages specified.", file=sys.stderr);
-        return 1;
+        installer = DependencyInstaller(config=config, verbose=verbose);
+        print("Installing all Python dependencies from jac.toml...");
+        success = installer.install_all(include_dev=dev);
+        if success {
+            print("\nAll dependencies installed successfully!");
+            return 0;
+        } else {
+            print("\nSome dependencies failed to install.", file=sys.stderr);
+            return 1;
+        }
     }
     installer = DependencyInstaller(config=config, verbose=verbose);
     resolver = DependencyResolver(config=config);
@@ -329,4 +342,93 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
         print(f"Error running script: {e}", file=sys.stderr);
         return 1;
     }
+}
+
+"""Clean project build artifacts."""
+impl clean(
+    all: bool = False,
+    data: bool = False,
+    cache: bool = False,
+    packages: bool = False,
+    force: bool = False
+) -> int {
+    import shutil;
+    import from jaclang.project.config { get_config }
+    config = get_config();
+    if config is None {
+        print(
+            "No jac.toml found. Run 'jac init' to create a project.", file=sys.stderr
+        );
+        return 1;
+    }
+    # Determine which directories to clean
+    dirs_to_clean: list[tuple[str, Path]] = [];
+    # If --all is specified, clean everything
+    if all {
+        dirs_to_clean.append(("data", config.get_data_dir()));
+        dirs_to_clean.append(("cache", config.get_cache_dir()));
+        dirs_to_clean.append(("packages", config.get_packages_dir()));
+        dirs_to_clean.append(("client", config.get_client_dir()));
+    } else {
+        # If specific flags are set, use them
+        if data {
+            dirs_to_clean.append(("data", config.get_data_dir()));
+        }
+        if cache {
+            dirs_to_clean.append(("cache", config.get_cache_dir()));
+        }
+        if packages {
+            dirs_to_clean.append(("packages", config.get_packages_dir()));
+        }
+        # If no specific flags, default to cleaning data directory
+        if not dirs_to_clean {
+            dirs_to_clean.append(("data", config.get_data_dir()));
+        }
+    }
+    # Filter to only existing directories
+    existing_dirs = [
+        (name, path)
+        for (name, path) in dirs_to_clean
+        if path.exists()
+    ];
+    if not existing_dirs {
+        print("Nothing to clean - no build artifact directories exist.");
+        return 0;
+    }
+    # Show what will be cleaned
+    print("The following directories will be removed:");
+    for (name, path) in existing_dirs {
+        print(f"  {name}: {path}");
+    }
+    print();
+    # Confirm unless --force is used
+    if not force {
+        try {
+            response = input("Continue? [y/N] ").strip().lower();
+            if response not in ["y", "yes"] {
+                print("Aborted.");
+                return 0;
+            }
+        } except (EOFError, KeyboardInterrupt) {
+            print("\nAborted.");
+            return 0;
+        }
+    }
+    # Remove the directories
+    errors = 0;
+    for (name, path) in existing_dirs {
+        try {
+            shutil.rmtree(path);
+            print(f"Removed {name}: {path}");
+        } except Exception as e {
+            print(f"Error removing {name} ({path}): {e}", file=sys.stderr);
+            errors += 1;
+        }
+    }
+    if errors > 0 {
+        print(f"\nCompleted with {errors} error(s).", file=sys.stderr);
+        return 1;
+    }
+    print("\nClean completed successfully.");
+    return 0;
 }

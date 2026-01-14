@@ -462,7 +462,9 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{register_body[:500]}"
                         )
                         assert resp_register.status == 201
-                        register_data = json.loads(register_body)
+                        register_response = json.loads(register_body)
+                        # Handle new TransportResponse envelope format
+                        register_data = register_response.get("data", register_response)
                         assert "username" in register_data
                         assert "token" in register_data
                         assert "root_id" in register_data
@@ -499,7 +501,9 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{login_body[:500]}"
                         )
                         assert resp_login.status == 200
-                        login_data = json.loads(login_body)
+                        login_response = json.loads(login_body)
+                        # Handle new TransportResponse envelope format
+                        login_data = login_response.get("data", login_response)
                         assert "token" in login_data
                         assert len(login_data["token"]) > 0
                         print(

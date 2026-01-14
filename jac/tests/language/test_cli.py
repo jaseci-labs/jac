@@ -4,6 +4,7 @@ import contextlib
 import inspect
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -958,3 +959,197 @@ verbose = true
                 or "not found" in stdout.lower()
                 or process.returncode != 0
             )
+
+
+def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int:
+    """Run jac check and return file count."""
+    cmd = ["jac", "check", test_dir]
+    if ignore_pattern:
+        cmd.extend(["--ignore", ignore_pattern])
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    stdout, stderr = process.communicate()
+    match = re.search(r"Checked (\d+)", stdout + stderr)
+    return int(match.group(1)) if match else 0
+
+
+def test_jac_cli_check_ignore_patterns(fixture_path: Callable[[str], str]) -> None:
+    """Test --ignore flag with exact pattern matching (combined patterns)."""
+    test_dir = fixture_path("deep")
+    result_count = _run_jac_check(test_dir, "deeper,one_lev_dup.jac,one_lev.jac,mycode")
+    # Only mycode.jac is checked; all other files are ignored
+    assert result_count == 1
+
+
+class TestCleanCommand:
+    """Tests for the jac clean CLI command."""
+
+    @staticmethod
+    def _create_project(tmpdir: str) -> str:
+        """Create a jac project using jac create and return the project path."""
+        process = subprocess.Popen(
+            ["jac", "create", "testproj"],
+            cwd=tmpdir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0, f"jac create failed: {stderr}"
+        return os.path.join(tmpdir, "testproj")
+
+    def test_clean_no_project(self) -> None:
+        """Test jac clean fails when no jac.toml exists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            process = subprocess.Popen(
+                ["jac", "clean", "--force"],
+                cwd=tmpdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 1
+            assert "No jac.toml found" in stderr
+
+    def test_clean_nothing_to_clean(self) -> None:
+        """Test jac clean when no build artifacts exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+
+            # Remove the .jac/data directory if it exists (keep only cache from build)
+            data_dir = os.path.join(project_path, ".jac", "data")
+            if os.path.exists(data_dir):
+                import shutil
+
+                shutil.rmtree(data_dir)
+
+            process = subprocess.Popen(
+                ["jac", "clean", "--force"],
+                cwd=project_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            assert "Nothing to clean" in stdout
+
+    def test_clean_data_directory(self) -> None:
+        """Test jac clean removes the data directory by default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+
+            # Create .jac/data directory with some files
+            data_dir = os.path.join(project_path, ".jac", "data")
+            os.makedirs(data_dir, exist_ok=True)
+            test_file = os.path.join(data_dir, "test.db")
+            with open(test_file, "w") as f:
+                f.write("test data")
+
+            assert os.path.exists(data_dir)
+
+            process = subprocess.Popen(
+                ["jac", "clean", "--force"],
+                cwd=project_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            assert "Removed data:" in stdout
+            assert not os.path.exists(data_dir)
+
+    def test_clean_cache_directory(self) -> None:
+        """Test jac clean --cache removes the cache directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+
+            # jac create already creates .jac/cache, but let's ensure it has content
+            cache_dir = os.path.join(project_path, ".jac", "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            test_file = os.path.join(cache_dir, "cached.pyc")
+            with open(test_file, "w") as f:
+                f.write("cached bytecode")
+
+            assert os.path.exists(cache_dir)
+
+            process = subprocess.Popen(
+                ["jac", "clean", "--cache", "--force"],
+                cwd=project_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            assert "Removed cache:" in stdout
+            assert not os.path.exists(cache_dir)
+
+    def test_clean_all_directories(self) -> None:
+        """Test jac clean --all removes all build artifact directories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+
+            # Create all .jac subdirectories with content
+            jac_dir = os.path.join(project_path, ".jac")
+            dirs_to_create = ["data", "cache", "packages", "client"]
+            for dir_name in dirs_to_create:
+                dir_path = os.path.join(jac_dir, dir_name)
+                os.makedirs(dir_path, exist_ok=True)
+                # Add a file to each directory
+                with open(os.path.join(dir_path, "test.txt"), "w") as f:
+                    f.write("test")
+
+            for dir_name in dirs_to_create:
+                assert os.path.exists(os.path.join(jac_dir, dir_name))
+
+            process = subprocess.Popen(
+                ["jac", "clean", "--all", "--force"],
+                cwd=project_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            assert "Clean completed successfully" in stdout
+
+            # Verify all directories are removed
+            for dir_name in dirs_to_create:
+                assert not os.path.exists(os.path.join(jac_dir, dir_name))
+
+    def test_clean_multiple_specific_directories(self) -> None:
+        """Test jac clean with multiple specific flags."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+
+            # Create .jac subdirectories with content
+            jac_dir = os.path.join(project_path, ".jac")
+            data_dir = os.path.join(jac_dir, "data")
+            cache_dir = os.path.join(jac_dir, "cache")
+            packages_dir = os.path.join(jac_dir, "packages")
+
+            for dir_path in [data_dir, cache_dir, packages_dir]:
+                os.makedirs(dir_path, exist_ok=True)
+                with open(os.path.join(dir_path, "test.txt"), "w") as f:
+                    f.write("test")
+
+            process = subprocess.Popen(
+                ["jac", "clean", "--data", "--cache", "--force"],
+                cwd=project_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            assert "Removed data:" in stdout
+            assert "Removed cache:" in stdout
+            # Packages should NOT be removed
+            assert os.path.exists(packages_dir)
+            assert not os.path.exists(data_dir)
+            assert not os.path.exists(cache_dir)

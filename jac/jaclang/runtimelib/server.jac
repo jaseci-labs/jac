@@ -12,7 +12,15 @@ import from pathlib { Path }
 import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.runtimelib.transport {
+    BaseTransport,
+    TransportRequest,
+    TransportResponse,
+    HTTPTransport,
+    Meta
+}
 import from jaclang { JacRuntime as Jac }
+import from jaclang.project.config { get_config }
 
 with entry {
     if TYPE_CHECKING {
@@ -25,7 +33,7 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
-"""Base response container."""
+"""Base response container (HTTP-specific, kept for backward compatibility)."""
 obj Response {
     has status: StatusCode,
         body: JsonValue,
@@ -145,8 +153,8 @@ obj AuthHandler {
         execution_manager: ExecutionManager,
         user_manager: UserManager;
 
-    def create_user(username: str, password: str) -> Response;
-    def login(username: str, password: str) -> Response;
+    def create_user(username: str, password: str) -> TransportResponse;
+    def login(username: str, password: str) -> TransportResponse;
 }
 
 """Handle introspection routes."""
@@ -155,10 +163,10 @@ obj IntrospectionHandler {
         execution_manager: ExecutionManager,
         user_manager: UserManager;
 
-    def list_functions -> Response;
-    def list_walkers -> Response;
-    def get_function_info(name: str) -> Response;
-    def get_walker_info(name: str) -> Response;
+    def list_functions -> TransportResponse;
+    def list_walkers -> TransportResponse;
+    def get_function_info(name: str) -> TransportResponse;
+    def get_walker_info(name: str) -> TransportResponse;
 }
 
 """Handle execution routes."""
@@ -167,8 +175,13 @@ obj ExecutionHandler {
         execution_manager: ExecutionManager,
         user_manager: UserManager;
 
-    def call_function(name: str, args: dict[(str, Any)], username: str) -> Response;
-    def spawn_walker(name: str, fields: dict[(str, Any)], username: str) -> Response;
+    def call_function(
+        name: str, args: dict[(str, Any)], username: str
+    ) -> TransportResponse;
+
+    def spawn_walker(
+        name: str, fields: dict[(str, Any)], username: str
+    ) -> TransportResponse;
 }
 
 """REST API Server for Jac programs."""

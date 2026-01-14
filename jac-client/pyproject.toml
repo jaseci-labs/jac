@@ -1,6 +1,6 @@
 [project]
 name = "jac-client"
-version = "0.2.7"
+version = "0.2.8"
 description = "Build full-stack web applications with Jac - one language for frontend and backend."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -16,7 +16,7 @@ keywords = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang==0.9.7",
+    "jaclang==0.9.8",
 ]
 
 [project.urls]
