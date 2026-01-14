@@ -29,9 +29,18 @@ impl Model.invoke(mtir: MTRuntime) -> object {
 """Make a direct model call without streaming.
 
 Uses OpenAI client if proxy mode is enabled, otherwise uses LiteLLM.
+If _http_client is provided in config, uses direct HTTP requests.
 """
 impl Model.model_call_no_stream(params: dict) -> dict {
-    if self.proxy {
+    http_client = self.config.get("enable_http");
+    if http_client {
+        response = self.model_call_http(
+            url=self.api_base,
+            token=self.api_key,
+            payload=params,
+            ca_bundle=self.config.get("_ca_bundle", None),
+        );
+    } elif self.proxy {
         client = OpenAI(base_url=self.api_base);
         response = client.chat.completions.create(**params);
     } else {
@@ -53,4 +62,26 @@ impl Model.model_call_with_stream(params: dict) {
         response = litellm.completion(stream=True, **params);
     }
     return response;
+}
+
+"""Make a direct HTTP request to LLM endpoint.
+
+Useful for custom endpoints with specific SSL/mTLS requirements.
+"""
+impl Model.model_call_http(url: str, token: str, payload: dict, ca_bundle: str) -> object {
+    import requests;
+    import from litellm.types.utils { Message as LiteLLMMessage }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    };
+    response = requests.post(
+        url=url,
+        headers=headers,
+        json=payload,
+        timeout=60,
+        verify=ca_bundle if ca_bundle else True,
+    );
+    return response.json();
 }
