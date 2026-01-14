@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import redis
 import requests
@@ -142,6 +143,39 @@ class TestMemoryHierarchy:
             f"jac start failed to start\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
         )
 
+    @staticmethod
+    def _extract_transport_response_data(
+        json_response: dict[str, Any] | list[Any],
+    ) -> dict[str, Any] | list[Any]:
+        """Extract data from TransportResponse envelope format."""
+        # Handle jac-scale's tuple response format [status, body]
+        if isinstance(json_response, list) and len(json_response) == 2:
+            body: dict[str, Any] = json_response[1]
+            json_response = body
+
+        # Handle TransportResponse envelope format
+        if (
+            isinstance(json_response, dict)
+            and "ok" in json_response
+            and "data" in json_response
+        ):
+            if json_response.get("ok") and json_response.get("data") is not None:
+                # Success case: return the data field
+                return json_response["data"]
+            elif not json_response.get("ok") and json_response.get("error"):
+                # Error case: return error info
+                error_info = json_response["error"]
+                result: dict[str, Any] = {
+                    "error": error_info.get("message", "Unknown error")
+                }
+                if "code" in error_info:
+                    result["error_code"] = error_info["code"]
+                if "details" in error_info:
+                    result["error_details"] = error_info["details"]
+                return result
+        # FastAPI validation errors (422) have "detail" field - return as-is
+        return json_response
+
     def _register(self, username: str, password: str = "password123") -> str:
         res = requests.post(
             f"{self.base_url}/user/register",
@@ -151,9 +185,10 @@ class TestMemoryHierarchy:
         assert res.status_code == 201, (
             f"Registration failed: {res.status_code} - {res.text}"
         )
-        return res.json()["token"]
+        data = cast(dict[str, Any], self._extract_transport_response_data(res.json()))
+        return data["token"]
 
-    def _post(self, path: str, payload: dict, token: str) -> dict:
+    def _post(self, path: str, payload: dict, token: str) -> dict[str, Any]:
         res = requests.post(
             f"{self.base_url}{path}",
             json=payload,
@@ -161,7 +196,7 @@ class TestMemoryHierarchy:
             timeout=5,
         )
         assert res.status_code == 200
-        return res.json()
+        return cast(dict[str, Any], self._extract_transport_response_data(res.json()))
 
     # TODO: delete method in jac start is not working as expected. will be fixed in a separate PR and a test case will be added
 

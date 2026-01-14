@@ -284,8 +284,30 @@ class JacScaleTestRunner:
 
         # Handle jac-scale's tuple response format [status, body]
         if isinstance(json_response, list) and len(json_response) == 2:
-            return json_response[1]  # type: ignore[return-value]
+            json_response = json_response[1]
 
+        # Handle TransportResponse envelope format
+        if (
+            isinstance(json_response, dict)
+            and "ok" in json_response
+            and "data" in json_response
+        ):
+            if json_response.get("ok") and json_response.get("data") is not None:
+                # Success case: return the data field
+                return json_response["data"]
+            elif not json_response.get("ok") and json_response.get("error"):
+                # Error case: return error info
+                error_info = json_response["error"]
+                result: dict[str, Any] = {
+                    "error": error_info.get("message", "Unknown error")
+                }
+                if "code" in error_info:
+                    result["error_code"] = error_info["code"]
+                if "details" in error_info:
+                    result["error_details"] = error_info["details"]
+                return result
+
+        # FastAPI validation errors (422) have "detail" field - return as-is
         return json_response  # type: ignore[return-value]
 
     def request_raw(
