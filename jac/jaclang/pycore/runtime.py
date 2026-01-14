@@ -31,7 +31,6 @@ from typing import (
 )
 from uuid import UUID
 
-from jaclang.pycore import unitree as uni
 from jaclang.pycore.archetype import (
     GenericEdge,
     ObjectSpatialDestination,
@@ -1699,7 +1698,7 @@ class JacByLLM:
     def add_mtir_to_map(scope: str, mtir: MTIR) -> None:
         """Add MTIR to the node's MTIR map."""
         JacRuntime.program.mtir_map[scope] = mtir
-    
+
     @staticmethod
     def get_mtir_from_map(scope: str) -> MTIR | None:
         """Get MTIR from the node's MTIR map."""

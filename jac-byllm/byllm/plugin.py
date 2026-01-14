@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING
 import inspect
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from jaclang.pycore.runtime import hookimpl, JacRuntime as Jac
+from typing import TYPE_CHECKING
+
 from jaclang.pycore.mtp import Info
+from jaclang.pycore.runtime import JacRuntime as Jac
+from jaclang.pycore.runtime import hookimpl
+
 if TYPE_CHECKING:
     from byllm.llm import Model
     from byllm.mtir import MTRuntime
@@ -35,7 +38,6 @@ def fetch_mtir(func: Callable) -> Info:
 
     module = resolve_module(func)
     qualname = func.__qualname__
-    from jaclang.pycore.runtime import JacRuntime as Jac
 
     ir = Jac.program.mod
     if module == "__main__" and ir.main:

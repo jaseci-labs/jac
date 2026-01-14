@@ -20,12 +20,12 @@ from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.passes import (
     DeclImplMatchPass,
     JacAnnexPass,
+    MTIRGenPass,
     PyastGenPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
     SymTabBuildPass,
     Transform,
-    MTIRGenPass,
 )
 from jaclang.pycore.tsparser import TypeScriptParser
 

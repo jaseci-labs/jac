@@ -294,7 +294,7 @@ class MTIRGenPass(UniPass):
             return_type=func_info.return_type,
             parent_class=parent_class_info,
         )
-    
+
     def _get_scope_str(self, node: uni.UniScopeNode) -> str:
         """Get a unique scope string for a given scope node."""
         self_name = node.scope_name
@@ -302,7 +302,6 @@ class MTIRGenPass(UniPass):
             parent_scope_str = self._get_scope_str(node.parent_scope)
             return f"{parent_scope_str}.{self_name}"
         return self_name
-        
 
     def enter_ability(self, node: uni.Ability) -> None:
         """Handle entering an ability node for MTIR generation."""
@@ -329,5 +328,3 @@ class MTIRGenPass(UniPass):
         # Add to MTIR map
         scope = self._get_scope_str(node)
         Jac.add_mtir_to_map(scope, func_info)
-        
- 
