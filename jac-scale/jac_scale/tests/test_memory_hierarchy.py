@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import redis
 import requests
@@ -179,10 +179,10 @@ class TestMemoryHierarchy:
         assert res.status_code == 201, (
             f"Registration failed: {res.status_code} - {res.text}"
         )
-        data = self._extract_transport_response_data(res.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(res.json()))
         return data["token"]
 
-    def _post(self, path: str, payload: dict, token: str) -> dict:
+    def _post(self, path: str, payload: dict, token: str) -> dict[str, Any]:
         res = requests.post(
             f"{self.base_url}{path}",
             json=payload,
@@ -190,7 +190,7 @@ class TestMemoryHierarchy:
             timeout=5,
         )
         assert res.status_code == 200
-        return self._extract_transport_response_data(res.json())
+        return cast(dict[str, Any], self._extract_transport_response_data(res.json()))
 
     # TODO: delete method in jac start is not working as expected. will be fixed in a separate PR and a test case will be added
 

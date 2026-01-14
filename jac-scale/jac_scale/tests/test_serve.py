@@ -9,7 +9,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import jwt as pyjwt
 import pytest
@@ -750,7 +750,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 201
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert "token" in data
         assert "username" in data
         assert data["username"] == "status201"
@@ -772,7 +772,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert "error" in data
 
     def test_status_code_user_login_200_success(self) -> None:
@@ -804,7 +804,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code in [400, 422]  # 422 from FastAPI validation
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         # Either custom error or FastAPI validation error
         assert "error" in data or "detail" in data
 
@@ -831,7 +831,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert data["error"] == "Username and password required"
 
     def test_status_code_user_login_401_invalid_credentials(self) -> None:
@@ -851,7 +851,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 401
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert data["error"] == "Invalid credentials"
 
         # Non-existent user
@@ -870,7 +870,7 @@ class TestJacScaleServe:
             json={"username": "status200refresh", "password": "password123"},
             timeout=5,
         )
-        create_data = self._extract_transport_response_data(create_response.json())
+        create_data = cast(dict[str, Any], self._extract_transport_response_data(create_response.json()))
         token = create_data["token"]
 
         # Refresh token
@@ -880,7 +880,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert "token" in data
         assert data["message"] == "Token refreshed successfully"
 
@@ -893,7 +893,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert data["error"] == "Token is required"
 
         # Null token - FastAPI validation may return 422
@@ -913,7 +913,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 401
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert data["error"] == "Invalid or expired token"
 
         # Malformed JWT
@@ -932,7 +932,7 @@ class TestJacScaleServe:
             json={"username": "status200walker", "password": "password123"},
             timeout=5,
         )
-        create_data = self._extract_transport_response_data(create_response.json())
+        create_data = cast(dict[str, Any], self._extract_transport_response_data(create_response.json()))
         token = create_data["token"]
 
         # Execute walker
@@ -952,7 +952,7 @@ class TestJacScaleServe:
             json={"username": "status200func", "password": "password123"},
             timeout=5,
         )
-        create_data = self._extract_transport_response_data(create_response.json())
+        create_data = cast(dict[str, Any], self._extract_transport_response_data(create_response.json()))
         token = create_data["token"]
 
         # Execute function
@@ -963,7 +963,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = self._extract_transport_response_data(response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         assert "result" in data
 
     def test_status_code_page_404_not_found(self) -> None:
@@ -1048,7 +1048,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert register_response.status_code == 201
-        data = self._extract_transport_response_data(register_response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(register_response.json()))
         token1 = data["token"]
 
         # Login - 200
@@ -1058,7 +1058,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert login_response.status_code == 200
-        data = self._extract_transport_response_data(login_response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(login_response.json()))
         token2 = data["token"]
 
         # Refresh token - 200
@@ -1068,7 +1068,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert refresh_response.status_code == 200
-        data = self._extract_transport_response_data(refresh_response.json())
+        data = cast(dict[str, Any], self._extract_transport_response_data(refresh_response.json()))
         token3 = data["token"]
 
         # Failed login - 401
@@ -1112,7 +1112,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        response_data = self._extract_transport_response_data(response.json())
+        response_data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "Private task created"
@@ -1126,7 +1126,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        response_data = self._extract_transport_response_data(response.json())
+        response_data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
@@ -1151,7 +1151,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        response_data = self._extract_transport_response_data(response.json())
+        response_data = cast(dict[str, Any], self._extract_transport_response_data(response.json()))
         data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
