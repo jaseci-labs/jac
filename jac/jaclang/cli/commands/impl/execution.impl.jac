@@ -202,13 +202,18 @@ impl start(
     if faux {
         try {
             server.print_endpoint_docs();
-            mach.close();
-            return 0;
         } except Exception as e {
             print(f"Error generating endpoint documentation: {e}", file=sys.stderr);
             mach.close();
             return 1;
+        } finally {
+            # Properly close the HTTP server socket (always executed)
+            if server?.server and server.server {
+                server.server.server_close();
+            }
         }
+        mach.close();
+        return 0;
     }
     # Initialize HMR if watch mode enabled
     hot_reloader = None;
@@ -311,9 +316,7 @@ def _check_watchdog_available -> bool {
         try {
             import watchdog;
             return True;
-        } except ImportError {
-            pass;
-        } finally {
+        } except ImportError { } finally {
             sys.path = original_path;
         }
     }

@@ -41,20 +41,20 @@ impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
-    self.server_impl.run_server(port=self.port);
+    self.server.run_server(port=self.port);
 }
 
 """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
 impl JacAPIServer._configure_openapi_security(self: JacAPIServer) -> None {
     import from fastapi.openapi.utils { get_openapi }
     def custom_openapi -> dict[str, Any] {
-        if self.server_impl.app.openapi_schema {
-            return self.server_impl.app.openapi_schema;
+        if self.server.app.openapi_schema {
+            return self.server.app.openapi_schema;
         }
         openapi_schema = get_openapi(
-            title=self.server_impl.app.title,
-            version=self.server_impl.app.version,
-            routes=self.server_impl.app.routes
+            title=self.server.app.title,
+            version=self.server.app.version,
+            routes=self.server.app.routes
         );
         openapi_schema['components'] = openapi_schema.get('components', {});
         openapi_schema['components']['securitySchemes'] = {
@@ -98,10 +98,10 @@ impl JacAPIServer._configure_openapi_security(self: JacAPIServer) -> None {
                 }
             }
         }
-        self.server_impl.app.openapi_schema = openapi_schema;
+        self.server.app.openapi_schema = openapi_schema;
         return openapi_schema;
     }
-    self.server_impl.app.openapi = custom_openapi;
+    self.server.app.openapi = custom_openapi;
 }
 
 """Serve root-level assets like /img.png, /icons/logo.svg, etc."""
@@ -163,7 +163,7 @@ impl JacAPIServer.serve_root_asset(self: JacAPIServer, file_path: str) -> Respon
 
 """Register root-level asset serving endpoint for files like /img.png, /logo.svg"""
 impl JacAPIServer.register_root_asset_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/{file_path:path}',
@@ -266,7 +266,7 @@ impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Respo
 
 """Register the static file serving endpoint using JEndPoint."""
 impl JacAPIServer.register_static_file_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/static/{file_path:path}',
@@ -291,7 +291,7 @@ impl JacAPIServer.register_static_file_endpoint(self: JacAPIServer) -> None {
 
 """Register the client.js serving endpoint using JEndPoint."""
 impl JacAPIServer.register_client_js_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/static/client.js',
@@ -331,7 +331,7 @@ impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
     # Register the configurable cl route (e.g., /cl/{page_name})
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path=f'/{cl_route_prefix}/{{page_name}}',
@@ -354,7 +354,7 @@ impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
     );
     # If base_route_app is configured, register it at /
     if base_route_app {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.GET,
                 path='/',
@@ -417,7 +417,7 @@ impl JacAPIServer.render_base_route_callback(
 
 impl JacAPIServer.register_functions_endpoints(self: JacAPIServer) -> None {
     for func_name in self.get_functions() {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/function/{func_name}",
@@ -497,7 +497,7 @@ impl JacAPIServer.create_function_callback(
 
 impl JacAPIServer.register_walkers_endpoints(self: JacAPIServer) -> None {
     for walker_name in self.get_walkers() {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/walker/{walker_name}/{{node}}",
@@ -511,7 +511,7 @@ impl JacAPIServer.register_walkers_endpoints(self: JacAPIServer) -> None {
                 description='API Entry'
             )
         );
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/walker/{walker_name}",
@@ -601,7 +601,7 @@ impl JacAPIServer.create_walker_callback(
 }
 
 impl JacAPIServer.register_refresh_token_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/refresh-token',
@@ -625,7 +625,7 @@ impl JacAPIServer.register_refresh_token_endpoint(self: JacAPIServer) -> None {
 }
 
 impl JacAPIServer.register_create_user_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/register',
@@ -698,7 +698,7 @@ impl JacAPIServer.create_user(
 }
 
 impl JacAPIServer.register_login_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/login',
@@ -753,8 +753,7 @@ impl JacAPIServer.init(
     base_path: (str | None) = None
 ) -> None {
     super.init(module_name, session_path, port, base_path);
-    self.server_impl = JFastApiServer([]);
-    self.server_impl.app.add_middleware(
+    self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
         allow_credentials=True,
@@ -787,7 +786,7 @@ impl JacAPIServer.init(
                 return response;
             }
         }
-        self.server_impl.app.add_middleware(CustomHeadersMiddleware);
+        self.server.app.add_middleware(CustomHeadersMiddleware);
     }
     self.SUPPORTED_PLATFORMS: dict = {};
     # Load SSO config fresh (not from cached global) to support env var overrides at runtime
@@ -998,7 +997,7 @@ impl JacAPIServer.sso_callback(
 }
 
 impl JacAPIServer.register_sso_endpoints(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/sso/{platform}/{operation}',
@@ -1027,7 +1026,7 @@ impl JacAPIServer.register_sso_endpoints(self: JacAPIServer) -> None {
             description='Redirects to the SSO provider for authentication. Supported platforms: Google. Configure each platform by setting SSO_{PLATFORM}_CLIENT_ID and SSO_{PLATFORM}_CLIENT_SECRET environment variables.'
         )
     );
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/sso/{platform}/{operation}/callback',

@@ -355,9 +355,12 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     );
     if not response.ok {
         error_text = await response.json();
-        raise Exception(f"Walker {walker} failed: {error_text}") ;
+        walker_name = f"{left}/{right}" if right else left;
+        raise Exception(f"Walker {walker_name} failed: {error_text}") ;
     }
-    return await response.json();
+    payload = await response.json();
+    # Handle TransportResponse envelope format
+    return payload["data"] if payload["data"] else payload;
 }
 
 impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
@@ -377,8 +380,16 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
         error_text = await response.text();
         raise Exception(f"Function {function_name} failed: {error_text}") ;
     }
-    data = JSON.parse(await response.text());
-    return data.get("result");
+    payload = JSON.parse(await response.text());
+    # Handle TransportResponse envelope format
+    response_data = payload["data"] if payload["data"] else payload;
+    result = None;
+    try {
+        if response_data["result"] {
+            result = response_data["result"];
+        }
+    } except Exception { }
+    return result;
 }
 
 impl jacSignup(username: str, password: str) -> dict {
@@ -391,8 +402,15 @@ impl jacSignup(username: str, password: str) -> dict {
         }
     );
     if response.ok {
-        data = JSON.parse(await response.text());
-        token = data.get("token");
+        payload = JSON.parse(await response.text());
+        # Handle TransportResponse envelope format
+        response_data = payload["data"] if payload["data"] else payload;
+        token = None;
+        try {
+            if response_data["token"] {
+                token = response_data["token"];
+            }
+        } except Exception { }
         if token {
             __setLocalStorage("jac_token", token);
             return {"success": True, "token": token, "username": username};
@@ -401,11 +419,18 @@ impl jacSignup(username: str, password: str) -> dict {
     } else {
         error_text = await response.text();
         try {
-            error_data = JSON.parse(error_text);
-            return {
-                "success": False,
-                "error": error_data.get("error", "Signup failed")
-            };
+            error_payload = JSON.parse(error_text);
+            # Handle TransportResponse envelope format
+            error_data = error_payload["data"]
+            if error_payload["data"]
+            else error_payload;
+            error_msg = None;
+            try {
+                if error_data["error"] {
+                    error_msg = error_data["error"];
+                }
+            } except Exception { }
+            return {"success": False, "error": error_msg or "Signup failed"};
         } except Exception {
             return {"success": False, "error": error_text};
         }
@@ -422,8 +447,15 @@ impl jacLogin(username: str, password: str) -> bool {
         }
     );
     if response.ok {
-        data = JSON.parse(await response.text());
-        token = data.get("token");
+        payload = JSON.parse(await response.text());
+        # Handle TransportResponse envelope format
+        response_data = payload["data"] if payload["data"] else payload;
+        token = None;
+        try {
+            if response_data["token"] {
+                token = response_data["token"];
+            }
+        } except Exception { }
         if token {
             __setLocalStorage("jac_token", token);
             return True;

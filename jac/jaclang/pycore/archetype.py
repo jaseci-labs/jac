@@ -344,7 +344,7 @@ class WalkerAnchor(Anchor):
     """Walker Anchor."""
 
     archetype: WalkerArchetype  # type: ignore[assignment]
-    path: list[NodeAnchor] = field(default_factory=list)
+    path: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)
     next: list[NodeAnchor | EdgeAnchor] = field(default_factory=list)
     ignores: list[NodeAnchor] = field(default_factory=list)
     disengaged: bool = False

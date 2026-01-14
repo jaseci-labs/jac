@@ -118,8 +118,7 @@ class KubernetesMongoProvider(DatabaseProvider) {
     }
 
     def cleanup(self: KubernetesMongoProvider) -> None {
-        # Cleanup is handled by the deployment target
-        pass;
+    # Cleanup is handled by the deployment target
     }
 
     override def get_init_container(
