@@ -1,0 +1,28 @@
+[project]
+name = "form-handling-template"
+version = "1.0.0"
+description = "Jac client application: form-handling-template"
+entry-point = "main.jac"
+
+[dependencies]
+
+[dependencies.npm]
+"jac-client-node" = "1.0.3"
+ "@hookform/resolvers" = "^5.2.2"
+"react-hook-form" = "^7.66.1"
+"zod" = "^4.1.12"
+"zustand" = "^5.0.8"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}
