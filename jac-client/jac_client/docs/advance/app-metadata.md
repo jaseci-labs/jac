@@ -57,47 +57,6 @@ my-jac-project/
 | `theme_color` | Browser theme color (affects mobile browser UI) | `"#ffffff"` |
 | `icon` | Path to favicon file (relative to assets directory) | `None` |
 
-## How It Works
-
-### Metadata Rendering Workflow
-
-```
-1. Developer configures metadata in jac.toml
-   ↓
-2. render_page() method reads config via get_plugin_config()
-   ↓
-3.  Metadata values are extracted from [plugins.client.app_meta_data]
-   ↓
-4. HTML head content is dynamically generated
-   ↓
-5. Meta tags are injected into <head> section
-   ↓
-6. Page renders with complete SEO and social sharing support
-```
-
-The `render_page` method in `client.impl.jac` processes all metadata configuration and generates standard meta tags, Open Graph tags, and favicon links automatically.
-
-### Generated HTML Structure
-
-The following HTML structure is generated based on your configuration:
-
-```html
-<head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Your App Title</title>
-    <meta name="robots" content="index, follow"/>
-    <meta name="theme-color" content="#ffffff"/>
-    <meta property="og:type" content="website"/>
-    <meta property="og:title" content="Your App Title"/>
-    <meta name="description" content="Your description"/>
-    <link rel="icon" href="/favicon. ico"/>
-    <meta property="og:url" content="https://yourapp.com"/>
-    <meta property="og: image" content="https://yourapp.com/preview.png"/>
-    <meta property="og:description" content="Your description"/>
-</head>
-```
-
 ## Use Cases
 
 ### 1. **Complete SEO Setup**

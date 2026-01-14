@@ -133,64 +133,60 @@ impl JacClientModuleIntrospector.render_page(
     # Get meta data from config
     client_cfg = config.get_plugin_config("client") if config else None;
     meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
-    charset = meta_data.get("charset", "UTF-8");
-    title = meta_data.get("title", function_name);
-    viewport = meta_data.get("viewport", "width=device-width, initial-scale=1");
-    description = meta_data.get("description", None);
-    robots = meta_data.get("robots", "index, follow");
-    canonical = meta_data.get("canonical", None);
-    og_type = meta_data.get("og_type", "website");
-    og_title = meta_data.get("og_title", title);
-    og_description = meta_data.get("og_description", None);
-    og_url = meta_data.get("og_url", None);
-    og_image = meta_data.get("og_image", None);
-    theme_color = meta_data.get("theme_color", "#ffffff");
-    icon = meta_data.get("icon", None);
-    # Build head content from TOML metadata
-    head_content = f'<meta charset="{html.escape(charset)}"/>\n            <meta name="viewport" content="{html.escape(
-        viewport
-    )}"/>\n            <title>{html.escape(title)}</title>';
-    head_content += f'\n            <meta name="robots" content="{html.escape(robots)}"/>';
-    head_content += f'\n            <meta name="theme-color" content="{html.escape(
-        theme_color
-    )}"/>';
-    head_content += f'\n            <meta property="og:type" content="{html.escape(
-        og_type
-    )}"/>';
-    head_content += f'\n            <meta property="og:title" content="{html.escape(
-        og_title
-    )}"/>';
-    if description {
-        head_content += f'\n            <meta name="description" content="{html.escape(
-            description
-        )}"/>';
-    }
-    if canonical {
-        head_content += f'\n            <link rel="canonical" href="{html.escape(
-            canonical
-        )}"/>';
-    }
-    if icon {
-        head_content += f'\n            <link rel="icon" href="{html.escape(icon)}"/>';
-    }
-    if og_url {
-        head_content += f'\n            <meta property="og:url" content="{html.escape(
-            og_url
-        )}"/>';
-    }
-    if og_image {
-        head_content += f'\n            <meta property="og:image" content="{html.escape(
-            og_image
-        )}"/>';
-    }
-    if og_description {
-        head_content += f'\n            <meta property="og:description" content="{html.escape(
-            og_description
-        )}"/>';
-    }
+    head_builder = HeaderBuilder(meta_data, function_name);
+    head_content = head_builder.build_head();
     if css_link {
         head_content += f"\n            {css_link}";
     }
     page = f'<!DOCTYPE html><html lang="en"><head>{head_content}</head><body><div id="root"></div><script src="/static/client.js?hash={bundle_hash}" defer></script></body></html>';
     return {'html': page, 'bundle_hash': bundle_hash, 'bundle_code': self._bundle.code};
+}
+
+"""Header Builder for HTML pages."""
+impl HeaderBuilder.build_head(self: HeaderBuilder) -> str {
+    lines: list = [];
+    # Meta tags
+    for (key, cfg) in self.HEAD_SCHEMA.get("meta", {}).items() {
+        val = self.meta_data.get(key, cfg["dflt"]);
+        if not val {
+            continue;
+        }
+        if "charset" in key {
+            lines.append(f'<meta charset="{html.escape(val)}"/>');
+        } else {
+            lines.append(f'<meta name="{cfg["name"]}" content="{html.escape(val)}"/>');
+        }
+    }
+    # Title
+    if self.HEAD_SCHEMA.get("title")
+    and self.meta_data.get("title", self.function_name) {
+        lines.append(
+            f'<title>{html.escape(self.meta_data.get("title", self.function_name))}</title>'
+        );
+    }
+    # OpenGraph tags
+    for (key, og_name) in self.HEAD_SCHEMA.get("og", {}).items() {
+        val = self.meta_data.get(key, cfg["dflt"]);
+        if not val {
+            continue;
+        }
+        lines.append(
+            f'<meta property="og:{cfg["name"]}" content="{html.escape(val)}"/>'
+        );
+    }
+    # Link tags
+    for (key, cfg) in self.HEAD_SCHEMA.get("link", {}).items() {
+        val = self.meta_data.get(key, cfg["dflt"]);
+        if not val {
+            continue;
+        }
+        lines.append(f'<link rel="{cfg["rel"]}" {cfg["attr"]}="{html.escape(val)}"/>');
+    }
+    return ("\n            ".join(lines));
+}
+
+"""Initialize Header Builder."""
+impl HeaderBuilder.init(self: HeaderBuilder, meta_data: dict, function_name: str) {
+    self.meta_data = meta_data;
+    self.function_name = function_name;
 }
