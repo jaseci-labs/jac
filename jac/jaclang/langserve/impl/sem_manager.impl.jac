@@ -596,7 +596,7 @@ impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
         }
     }
     # Sort by (line, col) and convert to delta format
-    tokens.sort(key=lambda  x: Any: (x[0], x[1]));
+    tokens.sort(key=lambda x: Any : (x[0], x[1]));
     result = [];
     (prev_line, prev_col) = (0, 0);
     for (line, col_start, length, tok_type, tok_mod) in tokens {

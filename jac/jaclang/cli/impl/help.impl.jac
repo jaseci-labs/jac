@@ -96,7 +96,7 @@ impl HelpFormatter.format_main_help(
         lines.append(f"{display_name}:");
 
         # Sort commands alphabetically within group
-        cmds.sort(key=lambda  c: str: c.name);
+        cmds.sort(key=lambda c: str : c.name);
         for cmd in cmds {
             # Format: "  name        description"
             padding = " " * (12 - len(cmd.name));

@@ -16,7 +16,7 @@ def add_ten(x: int) -> int {
 glob result1 = 5 |> square,
      result2 = 3 |> add_ten |> double |> square,
      total = [1, 2, 3, 4, 5] |> sum,
-     result3 = 10 |> (lambda  n: int: n * 3);
+     result3 = 10 |> (lambda n: int : n * 3);
 
 with entry {
     print(result1, result2, total, result3);

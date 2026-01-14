@@ -4,7 +4,7 @@ def compute(x: int, y: int, z: int = 10) -> tuple {
     return (x * y, y * z);
 }
 
-def variadic( *args: int , **kwargs: int)  -> int {
+def variadic(*args: int, **kwargs: int) -> int {
     return sum(args) + sum(kwargs.values());
 }
 

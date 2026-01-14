@@ -7,18 +7,22 @@ import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.pycore.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from .context { JScaleExecutionContext }
-import from .kubernetes.docker_impl { build_and_push_docker }
-import from .kubernetes.K8s { deploy_K8s }
-import from .kubernetes.utils { cleanup_K8s_resources }
 import from .serve { JacAPIServer }
+import from .config_loader { get_scale_config }
+import from .factories.deployment_factory { DeploymentTargetFactory }
+import from .factories.registry_factory { ImageRegistryFactory }
+import from .factories.utility_factory { UtilityFactory }
+import from .abstractions.config.app_config { AppConfig }
 
 """Pre-hook for jac start command to handle --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
     scale = context.get_arg("scale", False);
     if scale {
-        # Handle K8s deployment instead of local server
+        # Handle deployment instead of local server
         filename = context.get_arg("filename");
         build = context.get_arg("build", False);
+        target = context.get_arg("target", "kubernetes");
+        registry = context.get_arg("registry", "dockerhub");
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'") ;
         }
@@ -28,10 +32,39 @@ def _scale_pre_hook(context: HookContext) -> None {
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
         base_file_path = os.path.basename(filename);
-        if build {
-            build_and_push_docker(code_folder);
+        # Get configuration
+        scale_config = get_scale_config();
+        # Create logger
+        logger = UtilityFactory.create_logger('standard');
+        # Get target-specific config
+        if target == 'kubernetes' {
+            target_config = scale_config.get_kubernetes_config();
+        } else {
+            # For future targets, get from config
+            target_config = scale_config.get_kubernetes_config();  # Default for now
         }
-        deploy_K8s(code_folder, base_file_path, build);
+        # Create deployment target
+        deployment_target = DeploymentTargetFactory.create(
+            target, target_config, logger
+        );
+        # Handle image registry if build is requested
+        if build {
+            # Use target config for registry (it contains docker credentials)
+            image_registry = ImageRegistryFactory.create(registry, target_config);
+            deployment_target.image_registry = image_registry;
+        }
+        # Create app config
+        app_config = AppConfig(
+            code_folder=code_folder, file_name=base_file_path, build=build
+        );
+        # Deploy
+        result = deployment_target.deploy(app_config);
+        if not result.success {
+            raise RuntimeError(result.message or "Deployment failed") ;
+        }
+        if result.service_url {
+            print(f"Deployment complete! Service available at: {result.service_url}");
+        }
         # Cancel normal start execution since we handled it
         context.set_data("cancel_execution", True);
         context.set_data("cancel_return_code", 0);
@@ -46,7 +79,7 @@ class JacCmd {
         """Jac Scale functionality.""";
         registry = get_registry();
 
-        # Extend jac start with --scale and --build flags
+        # Extend jac start with --scale and related flags
         registry.extend_command(
             "start",
             args=[
@@ -54,7 +87,7 @@ class JacCmd {
                     "scale",
                     typ=bool,
                     default=False,
-                    help="Deploy to Kubernetes instead of running locally",
+                    help="Deploy to a target platform instead of running locally",
                     short=""  # Disable auto-generated -s (conflicts with --session)
                 ),
                 Arg.create(
@@ -64,6 +97,18 @@ class JacCmd {
                     help="Build and push Docker image (with --scale)",
                     short="b"
                 ),
+                Arg.create(
+                    "target",
+                    typ=str,
+                    default="kubernetes",
+                    help="Deployment target (kubernetes, aws, gcp, etc.)",
+                ),
+                Arg.create(
+                    "registry",
+                    typ=str,
+                    default="dockerhub",
+                    help="Image registry (dockerhub, ecr, gcr, etc.)",
+                ),
 
             ],
             pre_hook=_scale_pre_hook,
@@ -72,10 +117,16 @@ class JacCmd {
 
         @registry.command(
             name="destroy",
-            help="Remove Kubernetes deployment",
+            help="Remove deployment from target platform",
             args=[
                 Arg.create(
                     "file_path", kind=ArgKind.POSITIONAL, help="Path to .jac file"
+                ),
+                Arg.create(
+                    "target",
+                    typ=str,
+                    default="kubernetes",
+                    help="Deployment target (kubernetes, aws, gcp, etc.)",
                 ),
 
             ],
@@ -84,14 +135,36 @@ class JacCmd {
             priority=CommandPriority.PLUGIN,
             source="jac-scale"
         )
-        def destroy(file_path: str) -> int {
+        def destroy(file_path: str, target: str = "kubernetes") -> int {
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'") ;
             }
             code_folder = os.path.dirname(file_path) or '.';
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
-            cleanup_K8s_resources();
+
+            # Get configuration
+            scale_config = get_scale_config();
+
+            # Create logger
+            logger = UtilityFactory.create_logger('standard');
+
+            # Get target-specific config
+            if target == 'kubernetes' {
+                target_config = scale_config.get_kubernetes_config();
+            } else {
+                # For future targets, get from config
+                target_config = scale_config.get_kubernetes_config();  # Default for now
+            }
+
+            # Create deployment target and destroy
+            deployment_target = DeploymentTargetFactory.create(
+                target, target_config, logger
+            );
+            app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
+            deployment_target.destroy(app_name);
+
+            print(f"Successfully destroyed deployment '{app_name}' from {target}");
             return 0;
         }
     }

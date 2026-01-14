@@ -539,6 +539,95 @@ def test_server_invalid_walker(server_fixture: ServerFixture) -> None:
     assert "error" in result
 
 
+def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) -> None:
+    """Test that imported functions and walkers are available as API endpoints.
+
+    This test verifies that when a Jac file imports functions and walkers from
+    another module, those imported items are also converted to API endpoints
+    alongside the locally defined ones.
+    """
+    server_fixture.start_server("serve_api_with_imports.jac")
+
+    # Create user and get token
+    create_result = server_fixture.request(
+        "POST", "/user/register", {"username": "importuser", "password": "pass"}
+    )
+    token = create_result["token"]
+
+    # Test listing functions - should include both local and imported
+    functions_result = server_fixture.request("GET", "/functions", token=token)
+    assert "functions" in functions_result
+    functions = functions_result["functions"]
+
+    # Local functions should be available
+    assert "local_add" in functions, "Local function 'local_add' not found"
+    assert "local_greet" in functions, "Local function 'local_greet' not found"
+
+    # Imported functions should also be available
+    assert "multiply_numbers" in functions, (
+        "Imported function 'multiply_numbers' not found"
+    )
+    assert "format_message" in functions, "Imported function 'format_message' not found"
+
+    # Test listing walkers - should include both local and imported
+    walkers_result = server_fixture.request("GET", "/walkers", token=token)
+    assert "walkers" in walkers_result
+    walkers = walkers_result["walkers"]
+
+    # Local walker should be available
+    assert "LocalCreateTask" in walkers, "Local walker 'LocalCreateTask' not found"
+
+    # Imported walkers should also be available
+    assert "ImportedWalker" in walkers, "Imported walker 'ImportedWalker' not found"
+    assert "ImportedCounter" in walkers, "Imported walker 'ImportedCounter' not found"
+
+    # Test calling local function
+    local_add_result = server_fixture.request(
+        "POST", "/function/local_add", {"args": {"x": 5, "y": 3}}, token=token
+    )
+    assert "result" in local_add_result
+    assert local_add_result["result"] == 8
+
+    # Test calling imported function
+    multiply_result = server_fixture.request(
+        "POST", "/function/multiply_numbers", {"args": {"a": 4, "b": 7}}, token=token
+    )
+    assert "result" in multiply_result
+    assert multiply_result["result"] == 28
+
+    # Test calling another imported function
+    format_result = server_fixture.request(
+        "POST",
+        "/function/format_message",
+        {"args": {"prefix": "INFO", "message": "test"}},
+        token=token,
+    )
+    assert "result" in format_result
+    assert format_result["result"] == "INFO: test"
+
+    # Test spawning local walker
+    local_walker_result = server_fixture.request(
+        "POST",
+        "/walker/LocalCreateTask",
+        {"task_title": "My Local Task"},
+        token=token,
+    )
+    assert "result" in local_walker_result
+    assert "reports" in local_walker_result
+    assert len(local_walker_result["reports"]) > 0
+
+    # Test spawning imported walker
+    imported_walker_result = server_fixture.request(
+        "POST",
+        "/walker/ImportedWalker",
+        {"item_name": "Imported Item 1"},
+        token=token,
+    )
+    assert "result" in imported_walker_result
+    assert "reports" in imported_walker_result
+    assert len(imported_walker_result["reports"]) > 0
+
+
 @pytest.mark.xfail(reason="Flaky: timing-dependent client bundle building")
 def test_client_page_and_bundle_endpoints(server_fixture: ServerFixture) -> None:
     """Render a client page and fetch the bundled JavaScript."""
@@ -962,9 +1051,10 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
 
     # Verify summary is present
     assert "TOTAL:" in output
-    assert "2 functions" in output
+    # Note: With imported functions now exposed as endpoints, we have more than the 2 defined functions
+    assert "10 functions" in output
     assert "4 walkers" in output
-    assert "18 endpoints" in output
+    assert "34 endpoints" in output
 
     # Verify parameter details are included
     assert "required" in output

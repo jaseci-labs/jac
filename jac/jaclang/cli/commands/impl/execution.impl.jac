@@ -8,6 +8,7 @@ import os;
 import pickle;
 import sys;
 import types;
+import from typing { Any }
 
 glob _runtime_initialized = False;
 
@@ -137,7 +138,10 @@ impl start(
     session: str = '',
     port: int = 8000,
     main: bool = True,
-    faux: bool = False
+    faux: bool = False,
+    watch: bool = False,
+    api_port: int = 0,
+    no_client: bool = False
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -178,10 +182,22 @@ impl start(
         mach.close();
         return 1;
     }
+    # Determine actual port (for watch mode with client, Vite takes --port, API takes --api-port)
+    if watch and not no_client {
+        # Vite dev server gets the main port, API server gets api_port or port+1
+        vite_port = port;
+        actual_api_port = api_port if api_port > 0 else port + 1;
+    } else {
+        actual_api_port = port;
+        vite_port = 0;
+    }
     # Get server class from plugin hook (allows jac-scale to provide enhanced server)
     ServerClass = Jac.get_api_server_class();
     server = ServerClass(
-        module_name=mod, session_path=session_path, port=port, base_path=base
+        module_name=mod,
+        session_path=session_path,
+        port=actual_api_port,
+        base_path=base
     );
     if faux {
         try {
@@ -194,17 +210,182 @@ impl start(
             return 1;
         }
     }
+    # Initialize HMR if watch mode enabled
+    hot_reloader = None;
+    vite_process = None;
+    if watch {
+        # Check if watchdog is available in the project environment
+        if not _check_watchdog_available() {
+            print(
+                "\n  Error: --watch requires 'watchdog' package to be installed.\n",
+                file=sys.stderr
+            );
+            print(
+                "  The 'watchdog' package is listed in [dev-dependencies] of jac.toml.",
+                file=sys.stderr
+            );
+            print("  Install it by running:\n", file=sys.stderr);
+            print("    jac install --dev\n", file=sys.stderr);
+            mach.close();
+            return 1;
+        }
+        try {
+            import from jaclang.runtimelib.hmr { HotReloader }
+            import from jaclang.runtimelib.watcher { JacFileWatcher }
+
+            watcher = JacFileWatcher(watch_paths=[base]);
+            hot_reloader = HotReloader(
+                base_path=base, module_name=mod, watcher=watcher
+            );
+            hot_reloader.start();
+        } except ImportError as e {
+            print(f"Error: Could not initialize HMR: {e}", file=sys.stderr, flush=True);
+            print(
+                "\nMake sure 'watchdog' is installed by running: jac install --dev",
+                file=sys.stderr,
+                flush=True
+            );
+            mach.close();
+            return 1;
+        } except Exception as e {
+            print(
+                f"Warning: HMR initialization failed: {e}", file=sys.stderr, flush=True
+            );
+        }
+        # Start Vite dev server if client mode enabled
+        if not no_client {
+            vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
+        }
+    }
+    # Print startup message
+    _print_startup_message(watch, no_client, port, actual_api_port);
     try {
         server.start();
         return 0;
     } except KeyboardInterrupt {
-        print('\nServer stopped.');
+        print('\nShutting down...');
+        if hot_reloader {
+            hot_reloader.stop();
+        }
+        if vite_process {
+            vite_process.terminate();
+            vite_process.wait(timeout=5);
+        }
         mach.close();
         return 0;
     } except Exception as e {
         print(f"Server error: {e}", file=sys.stderr);
+        if hot_reloader {
+            hot_reloader.stop();
+        }
+        if vite_process {
+            vite_process.terminate();
+        }
         mach.close();
         return 1;
+    }
+}
+
+"""Check if watchdog is available in the project's .jac environment."""
+def _check_watchdog_available -> bool {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+
+    config = get_config();
+    if config is None {
+        # No project, check global availability
+        try {
+            import watchdog;
+            return True;
+        } except ImportError {
+            return False;
+        }
+    }
+    # Check if watchdog is installed in the project's packages directory
+    packages_dir = config.get_packages_dir();
+    if packages_dir.exists() {
+        # Add packages dir to path temporarily to check
+        import sys;
+        original_path = sys.path.copy();
+        sys.path.insert(0, str(packages_dir));
+        try {
+            import watchdog;
+            return True;
+        } except ImportError {
+            pass;
+        } finally {
+            sys.path = original_path;
+        }
+    }
+    # Fallback: check if globally available
+    try {
+        import watchdog;
+        return True;
+    } except ImportError {
+        return False;
+    }
+}
+
+"""Print startup message based on mode."""
+def _print_startup_message(
+    watch: bool, no_client: bool, port: int, api_port: int
+) -> None {
+    import sys;
+    if watch and not no_client {
+        print(
+            f"\n[Vite] Dev server: http://localhost:{port}  <- Open this", flush=True
+        );
+        print(
+            f"[API]  REST server: http://localhost:{api_port} (proxied via Vite)",
+            flush=True
+        );
+        print(f"[HMR]  Watching *.jac for changes...\n", flush=True);
+    } elif watch and no_client {
+        print(f"\n[API]  REST server: http://localhost:{api_port}", flush=True);
+        print(f"[HMR]  Watching *.jac for changes (API only)...\n", flush=True);
+    } elif no_client {
+        print(
+            f"\n[API]  REST server: http://localhost:{api_port} (no client)\n",
+            flush=True
+        );
+    } else {
+        print(f"\n[Server] Running on http://localhost:{api_port}\n", flush=True);
+    }
+}
+
+"""Start Vite dev server for HMR mode."""
+def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any {
+    import from pathlib { Path }
+
+    try {
+        import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+        project_dir = Path(base_path);
+        bundler = ViteBundler(project_dir);
+
+        # Create dev config with API proxy
+        client_dir = bundler._get_client_dir();
+        entry_file = client_dir / 'build' / 'main.js';
+
+        # Create the config even if entry doesn't exist yet
+        bundler.create_dev_vite_config(entry_file, api_port);
+
+        # Ensure package.json exists
+        if not (client_dir / 'configs' / 'package.json').exists() {
+            bundler.create_package_json();
+        }
+
+        # Start the dev server
+        return bundler.start_dev_server(vite_port);
+    } except ImportError as e {
+        print(
+            f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}",
+            file=sys.stderr
+        );
+        return None;
+    } except Exception as e {
+        print(f"[Vite] Warning: Could not start Vite dev server: {e}", file=sys.stderr);
+        return None;
     }
 }
 

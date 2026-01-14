@@ -25,9 +25,9 @@ class DelimiterInfo(NamedTuple) {
 
 """Rich metadata about a source comment."""
 obj CommentInfo {
-    def init(
-        index: int, token: uni.CommentToken, anchor_token_id: (int | None)
-    ) -> None;
+    has index: int,
+        token: uni.CommentToken,
+        anchor_token_id: (int | None);
 
     @property
     def is_inline -> bool;
@@ -41,10 +41,10 @@ obj CommentInfo {
 
 """Efficient bookkeeping for inline and standalone comments."""
 obj CommentStore {
-    def init(
-        _inline: dict[(int, list[CommentInfo])], _standalone: list[CommentInfo]
-    ) -> None;
+    has _inline: dict[(int, list[CommentInfo])],
+        _standalone: list[CommentInfo];
 
+    def postinit -> None;
     static def from_module(module: uni.Module) -> CommentStore;
     def _mark_used(info: CommentInfo) -> bool;
     def take_inline(token_id: int) -> list[CommentInfo];

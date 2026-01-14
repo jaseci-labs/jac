@@ -35,7 +35,7 @@ with entry {
 }
 
 # ===== Enum with Access Modifier =====
-enum : protect Permission {
+enum:protect Permission {
     READ = 'read',
     WRITE = 'write',
     EXECUTE = 'execute'

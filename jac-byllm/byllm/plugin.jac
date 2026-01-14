@@ -29,7 +29,7 @@ class JacRuntime {
     @hookimpl
     static def by(model: Model) -> Callable {
         def _decorator(caller: Callable) -> Callable {
-            def _wrapped_caller( *args: object , **kwargs: object)  -> object {
+            def _wrapped_caller(*args: object, **kwargs: object) -> object {
                 import from byllm.mtir { MTIR, MTRuntime }
                 invoke_args: dict[(int | str, object)] = {};
                 for (i, arg) in enumerate(args) {

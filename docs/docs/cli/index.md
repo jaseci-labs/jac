@@ -65,10 +65,10 @@ jac run main.jac --no-cache
 
 ### jac start
 
-Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes.
+Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--watch` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [--scale] [--build] filename
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] filename
 ```
 
 | Option | Description | Default |
@@ -78,6 +78,9 @@ jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [--scale] [--build] 
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
 | `-f, --faux` | Faux mode (mock) | `False` |
+| `-w, --watch` | Enable HMR (Hot Module Replacement) mode | `False` |
+| `--api-port` | Separate API port for HMR mode (0=same as port) | `0` |
+| `--no-client` | Skip client bundling/serving (API only) | `False` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `--build, -b` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -92,6 +95,12 @@ jac start main.jac -p 3000
 
 # Start with session
 jac start main.jac -s prod_session
+
+# Start with Hot Module Replacement (development)
+jac start main.jac --watch
+
+# HMR mode without client bundling (API only)
+jac start main.jac --watch --no-client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start main.jac --scale

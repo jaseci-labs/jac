@@ -120,9 +120,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Use minimal compilation for compiler passes to avoid circular imports
         use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
 
-        # Get and execute bytecode
-        codeobj = Jac.get_program().get_bytecode(
-            full_target=file_path, minimal=use_minimal
+        # Get and execute bytecode using the compiler singleton
+        codeobj = Jac.get_compiler().get_bytecode(
+            full_target=file_path,
+            target_program=Jac.get_program(),
+            minimal=use_minimal,
         )
         if not codeobj:
             if is_pkg:
@@ -146,30 +148,41 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Use minimal compilation for compiler passes to avoid circular imports
         use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
 
+        compiler = Jac.get_compiler()
+        program = Jac.get_program()
+
         for search_path in paths_to_search:
             candidate_path = os.path.join(search_path, *module_path_parts)
             # Check for directory package
             if os.path.isdir(candidate_path):
                 init_file = os.path.join(candidate_path, "__init__.jac")
                 if os.path.isfile(init_file):
-                    return Jac.get_program().get_bytecode(
-                        full_target=init_file, minimal=use_minimal
+                    return compiler.get_bytecode(
+                        full_target=init_file,
+                        target_program=program,
+                        minimal=use_minimal,
                     )
                 init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
                 if os.path.isfile(init_cl_file):
-                    return Jac.get_program().get_bytecode(
-                        full_target=init_cl_file, minimal=use_minimal
+                    return compiler.get_bytecode(
+                        full_target=init_cl_file,
+                        target_program=program,
+                        minimal=use_minimal,
                     )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):
-                return Jac.get_program().get_bytecode(
-                    full_target=jac_file, minimal=use_minimal
+                return compiler.get_bytecode(
+                    full_target=jac_file,
+                    target_program=program,
+                    minimal=use_minimal,
                 )
             cl_jac_file = candidate_path + ".cl.jac"
             if os.path.isfile(cl_jac_file):
-                return Jac.get_program().get_bytecode(
-                    full_target=cl_jac_file, minimal=use_minimal
+                return compiler.get_bytecode(
+                    full_target=cl_jac_file,
+                    target_program=program,
+                    minimal=use_minimal,
                 )
 
         return None

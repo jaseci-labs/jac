@@ -2,7 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.5 (Unreleased)
+## jaclang 0.9.8 (Unreleased)
+
+- **Imported Functions and Walkers as API Endpoints**: The `jac start` command now automatically convert imported functions and walkers to API endpoints, in addition to locally defined ones. Previously, only functions and walkers defined directly in the target file were exposed as endpoints. Now, any function or walker explicitly imported into the file will also be available as an API endpoint.
+- **Hot Module Replacement (HMR)**: Added `--watch` flag to `jac start` for live development with automatic reload on `.jac` file changes. When enabled, the file watcher detects changes and automatically recompiles backend code while Vite handles frontend hot-reloading. New options include `-w/--watch` to enable HMR mode, `--api-port` to set a separate API port, and `--no-client` for API-only mode without frontend bundling. Example usage: `jac start main.jac --watch`.
+- **Default Watchdog Dependency**: The `jac create` command now includes `watchdog` in `[dev-dependencies]` by default, enabling HMR support out of the box. Install with `jac install --dev`.
+- **Simplified `.jac` Directory Gitignore**: The `jac create` command now creates a `.gitignore` file inside the `.jac/` directory containing `*` to ignore all build artifacts, instead of modifying the project root `.gitignore`. This keeps project roots cleaner and makes the `.jac` directory self-contained.
+-
+
+## jaclang 0.9.7 (Latest Release)
 
 - **Unified `jac start` Command**: The `jac serve` command has been renamed to `jac start`. The `jac scale` command (from jac-scale plugin) now uses `jac start --scale` instead of a separate command. This provides a unified interface for running Jac applications locally or deploying to Kubernetes.
 - **Eager Client Bundle Loading**: The `jac start` command now builds the client bundle at server startup instead of lazily on first request.
@@ -14,7 +22,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Enhanced Plugin Management CLI**: The `jac plugins` command now provides comprehensive plugin management with `list`, `disable`, `enable`, and `disabled` subcommands. Plugins are displayed organized by PyPI package with fully qualified names (`package:plugin`) for unambiguous identification. Plugin settings persist in `jac.toml` under `[plugins].disabled`, and the `JAC_DISABLED_PLUGINS` environment variable provides runtime override support. Use `*` to disable all external plugins, or `package:*` to disable all plugins from a specific package.
 - **Simplified NonGPT Implementation**: NonGPT is now a native default that activates automatically when no LLM plugin is installed. The implementation no longer fakes the `byllm` import, providing cleaner behavior out of the box.
 
-## jaclang 0.9.4 (Latest Release)
+## jaclang 0.9.4
 
 - **`let` Keyword Removed**: The `let` keyword has been removed from Jaclang. Variable declarations now use direct assignment syntax (e.g., `x = 10` instead of `let x = 10`), aligning with Python's approach to variable binding.
 - **Py2Jac Robustness Improvements**: Improved reliability of Python-to-Jac conversion with better handling of f-strings (smart quote switching, no keyword escaping in interpolations), match pattern class names, attribute access formatting (no extra spaces around dots), and nested docstrings in classes and functions.

@@ -237,6 +237,7 @@ entry-point = "{project_name}.jac"
 [dependencies]
 
 [dev-dependencies]
+watchdog = ">=3.0.0"
 ''';
 }
 
