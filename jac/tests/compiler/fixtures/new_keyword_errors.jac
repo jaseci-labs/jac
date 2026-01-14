@@ -1,8 +1,6 @@
 obj car{
-    def __init__(model: str, year: int) -> str{
-        self.model = model;
-        self.year = year;
-    }
+    has model: string;
+    has year: int;
 }
 
 def foo() -> int{
@@ -10,7 +8,6 @@ def foo() -> int{
 }
 
 with entry{
-
     mycar = new car("honda civic", 2018);
     f = new foo();
 }

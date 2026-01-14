@@ -217,6 +217,26 @@ class UniNode:
         else:
             raise ValueError(f"Parent of type {typ} not found from {type(self)}.")
 
+    def in_client_context(self) -> bool:
+        """Check if this node is in a client-side context.
+
+        This covers both:
+        - Nodes inside an explicit cl {} block in a .jac file
+        - Nodes inside a function marked with is_client_decl in a .cl.jac file
+
+        Uses single traversal for efficiency since this is called frequently.
+        """
+        node: UniNode | None = self.parent
+        while node is not None:
+            # Check for ClientBlock (cl {} syntax)
+            if isinstance(node, ClientBlock):
+                return True
+            # Check for client-marked Ability (.cl.jac files) - stop at first Ability
+            if isinstance(node, Ability):
+                return getattr(node, "is_client_decl", False)
+            node = node.parent
+        return False
+
     def to_dict(self) -> dict[str, str]:
         """Return dict representation of node."""
         ret = {
@@ -662,11 +682,6 @@ class ClientFacingNode(UniNode):
 
     def __init__(self, is_client_decl: bool = False) -> None:
         self.is_client_decl = is_client_decl
-
-    @property
-    def in_client_block(self) -> bool:
-        """Return True when this node is nested inside a client block."""
-        return self.find_parent_of_type(ClientBlock) is not None
 
     def _source_client_token(self) -> Token | None:
         """Return the original client token if present on this node."""
@@ -1121,7 +1136,9 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         if self.doc:
             new_kid.append(self.doc)
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_GLOBAL))
         if self.access:
@@ -1193,7 +1210,9 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         if self.doc:
             new_kid.append(self.doc)
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_TEST))
         new_kid.append(self.name)
@@ -1234,7 +1253,9 @@ class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
         if self.doc:
             new_kid.append(self.doc)
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_WITH))
         new_kid.append(self.gen_token(Tok.KW_ENTRY))
@@ -1399,7 +1420,9 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
         if self.doc:
             new_kid.append(self.doc)
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.is_absorb:
             new_kid.append(self.gen_token(Tok.KW_INCLUDE))
@@ -1674,7 +1697,9 @@ class Archetype(
             if not isinstance(self.parent, (Module, Archetype, Enum)):
                 new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
@@ -1938,7 +1963,9 @@ class Enum(
         if self.doc:
             new_kid.append(self.doc)
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         new_kid.append(self.gen_token(Tok.KW_ENUM))
         if self.access:
@@ -2148,7 +2175,9 @@ class Ability(
             if not isinstance(self.parent, (Module, Archetype, Enum)):
                 new_kid.append(self.gen_token(Tok.SEMI))
         client_tok = self._source_client_token()
-        if self.is_client_decl and (client_tok is not None or not self.in_client_block):
+        if self.is_client_decl and (
+            client_tok is not None or not self.in_client_context()
+        ):
             new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
         if self.decorators:
             new_kid.append(self.gen_token(Tok.DECOR_OP))
