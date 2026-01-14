@@ -13,7 +13,7 @@ impl Tool.postinit -> None {
 }
 
 """Call the tool function with the provided arguments."""
-impl Tool.__call__( *args: list , **kwargs: dict)  -> object {
+impl Tool.__call__(*args: list, **kwargs: dict) -> object {
     # If there is an error with the finish tool, we throw the exception.
     # Since it's the user's responsibility to handle it.
     if self.is_finish_tool() {

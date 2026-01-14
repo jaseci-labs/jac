@@ -10,7 +10,7 @@ impl returns_fake(func: Any) -> Any {
     }
     ret_t = type_hints.get('return', Any);
     @wraps(func)
-    def wrapper( *args: Any , **kwargs: Any)  -> Any {
+    def wrapper(*args: Any, **kwargs: Any) -> Any {
         return random_value_for_type(ret_t);
     }
     return wrapper;
@@ -223,7 +223,7 @@ impl random_value_for_type(tp: Any, *, _depth: int = 0, _max_depth: int = 10) ->
         if args and len(args) == 2 {
             ret_t = args[1];
         }
-        def _fn_stub( *_a: Any , **_k: Any)  -> Any {
+        def _fn_stub(*_a: Any, **_k: Any) -> Any {
             return random_value_for_type(
                 ret_t, _depth=_depth + 1, _max_depth=_max_depth
             );

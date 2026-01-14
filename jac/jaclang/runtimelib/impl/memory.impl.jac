@@ -154,16 +154,15 @@ impl LocalCacheMemory.invalidate(id: UUID) -> None {
 # ShelfMemory Implementation (L3 Persistent)
 # =============================================================================
 """Initialize ShelfMemory with a file path."""
-impl ShelfMemory.init(path: str) -> None {
-    self.path = path;
+impl ShelfMemory.postinit -> None {
     self.__mem__ = {};
     self.__gc__ = set();
     # Ensure parent directory exists for shelf files
-    parent_dir = os.path.dirname(path);
+    parent_dir = os.path.dirname(self.path);
     if parent_dir {
         os.makedirs(parent_dir, exist_ok=True);
     }
-    self.__shelf__ = shelve.open(path);
+    self.__shelf__ = shelve.open(self.path);
 }
 
 """Check if shelf is available."""
@@ -364,20 +363,20 @@ impl ShelfMemory.commit(anchor: (Anchor | None) = None) -> None {
 # Only overrides methods that need tiering logic.
 # =============================================================================
 """Initialize TieredMemory with optional cache and persistence."""
-impl TieredMemory.init(session: (str | None) = None, use_cache: bool = False) -> None {
+impl TieredMemory.postinit -> None {
     import from jaclang.runtimelib.memory { LocalCacheMemory, ShelfMemory }
     # Initialize L1 (inherited from VolatileMemory)
     self.__mem__ = {};
     self.__gc__ = set();
     # Initialize L2 cache if requested
-    if use_cache {
+    if self.use_cache {
         self.l2 = LocalCacheMemory();
     } else {
         self.l2 = None;
     }
     # Initialize L3 persistence if session provided
-    if session {
-        self.l3 = ShelfMemory(path=session);
+    if self.session {
+        self.l3 = ShelfMemory(path=self.session);
     } else {
         self.l3 = None;
     }

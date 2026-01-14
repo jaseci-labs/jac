@@ -1164,3 +1164,20 @@ def test_varargs_type_checking(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
+
+
+def test_slice_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test type checking for slice expressions."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_slice.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 1 error: z: int = x[0:2] (slice returns list[int], not int)
+    assert len(program.errors_had) == 1
+
+    _assert_error_pretty_found(
+        """
+        z: int = x[0:2];  # <-- Error
+        ^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )

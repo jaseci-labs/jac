@@ -33,12 +33,11 @@ glob T = TypeVar('T', bound=uni.UniNode);
 
 """Jac Parser."""
 obj PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
-    def init(
-        ir_in: uni.PythonModuleAst,
+    has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
-        cancel_token: (Event | None) = None
-    ) -> None;
+        cancel_token: Event | None = None;
 
+    def postinit -> None;
     def nu(<>node: T) -> T;
     def convert(<>node: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;

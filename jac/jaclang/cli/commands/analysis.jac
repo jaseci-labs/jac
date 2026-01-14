@@ -30,6 +30,12 @@ glob registry = get_registry();
             help="Treat errors as warnings",
             short="w"
         ),
+        Arg.create(
+            "ignore",
+            typ=str,
+            default="",
+            help="Comma-separated list of files/folders to ignore"
+        ),
 
     ],
     examples=[
@@ -37,11 +43,14 @@ glob registry = get_registry();
         ("jac check file1.jac file2.jac", "Check multiple files"),
         ("jac check myproject/", "Check all files in directory"),
         ("jac check myprogram.jac --warnonly", "Report but don't fail on errors"),
+        ("jac check myproject/ --ignore fixtures", "Check excluding folders,files"),
 
     ],
     group="analysis"
 )
-def check(paths: list, print_errs: bool = True, warnonly: bool = False) -> int;
+def check(
+    paths: list, print_errs: bool = True, warnonly: bool = False, ignore: str = ""
+) -> int;
 
 """Build the specified .jac file."""
 @registry.command(

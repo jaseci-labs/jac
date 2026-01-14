@@ -226,7 +226,7 @@ class TestCombineConsecutiveHas:
         assert "email: str;" in formatted
 
         # Public has statements should be combined separately
-        assert "has : pub address: str," in formatted
+        assert "has:pub address: str," in formatted
         assert "phone: str;" in formatted
 
         # Static has statements should be combined
@@ -239,9 +239,10 @@ class TestCombineConsecutiveHas:
         assert "has city: str = " in formatted
 
         # Verify statements were actually combined (count semicolons in has statements)
-        # Before: 6 separate has statements, After: 4 combined has statements
+        # Before: 6 separate has statements, After: 3 combined has statements
         person_section = formatted.split("obj Person")[1].split("obj Config")[0]
-        has_count = person_section.count("has ")
+        # Count both "has " and "has:" patterns (access modifiers use has:pub format)
+        has_count = person_section.count("has ") + person_section.count("has:")
         assert has_count == 3, f"Expected 3 has statements in Person, got {has_count}"
 
 
@@ -263,16 +264,16 @@ class TestCombineConsecutiveGlob:
         assert "glob x = 1,\n     y = 2,\n     z = 3;" in formatted
 
         # Public glob statements should be combined separately
-        assert "glob : pub a = 10,\n     b = 20;" in formatted
+        assert "glob:pub a = 10,\n     b = 20;" in formatted
 
         # Protected glob statements should be combined separately
-        assert "glob : protect c = 100,\n     d = 200,\n     e = 300;" in formatted
+        assert "glob:protect c = 100,\n     d = 200,\n     e = 300;" in formatted
 
         # Mixed modifiers should NOT be combined together
         # Each should be its own statement
         assert "glob m1 = 1;" in formatted
-        assert "glob : pub m2 = 2;" in formatted
-        assert "glob : protect m3 = 3;" in formatted
+        assert "glob:pub m2 = 2;" in formatted
+        assert "glob:protect m3 = 3;" in formatted
 
         # Non-consecutive globs should NOT be combined
         assert "glob before = 0;" in formatted

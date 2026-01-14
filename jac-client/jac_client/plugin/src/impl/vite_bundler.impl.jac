@@ -475,3 +475,154 @@ impl ViteBundler.init(
     # Set output_dir after config_loader is initialized so _get_client_dir works
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
+
+"""Create a dev-mode vite config with API proxy for HMR."""
+impl ViteBundler.create_dev_vite_config(
+    self: ViteBundler, entry_file: Path, api_port: int = 8000
+) -> Path {
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(exist_ok=True);
+    config_path = configs_dir / 'vite.dev.config.js';
+    # Get entry file relative path
+    try {
+        entry_relative = entry_file.relative_to(build_dir).as_posix();
+    } except ValueError {
+        entry_relative = entry_file.as_posix();
+    }
+    # Calculate paths for aliases
+    if entry_relative.endswith('/build/main.js') {
+        compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
+        compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
+    } elif entry_relative.endswith('build/main.js') {
+        compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_assets_relative = 'compiled/assets';
+    } else {
+        compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_assets_relative = 'compiled/assets';
+    }
+    # Extensions for TypeScript
+    extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
+    extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
+    # Generate dev config with proxy for API routes
+    config_content = f'''import {{ defineConfig }} from "vite";
+import path from "path";
+import {{ fileURLToPath }} from "url";
+import react from "@vitejs/plugin-react";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const buildDir = path.resolve(__dirname, "..");
+const projectRoot = path.resolve(__dirname, "../../..");
+
+/**
+ * Vite DEV configuration for HMR mode
+ * Proxies API routes to Python server at localhost:{api_port}
+ */
+export default defineConfig({{
+  plugins: [react()],
+  root: buildDir,
+  publicDir: false,
+  server: {{
+    watch: {{
+      usePolling: true,
+      interval: 100,
+    }},
+    proxy: {{
+      "/walker": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/function": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/user": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/introspect": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+    }},
+  }},
+  resolve: {{
+    alias: {{
+      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+    }},
+    extensions: [{extensions_str}],
+  }},
+}});
+''';
+    config_path.write_text(config_content, encoding='utf-8');
+    return config_path;
+}
+
+"""Start Vite dev server as a subprocess."""
+impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
+    build_dir = self._get_client_dir();
+    node_modules = build_dir / 'node_modules';
+    # Create/update index.html for dev server (load from compiled/ for HMR)
+    index_html = build_dir / 'index.html';
+    index_content = '''<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jac App (Dev)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/compiled/_entry.js"></script>
+  </body>
+</html>
+''';
+    index_html.write_text(index_content, encoding='utf-8');
+    # Ensure dependencies are installed
+    if not node_modules.exists() {
+        generated_package_json = build_dir / 'configs' / 'package.json';
+        if not generated_package_json.exists() {
+            self.create_package_json();
+        }
+        # Temporarily copy package.json for npm install
+        build_package_json = build_dir / 'package.json';
+        if not build_package_json.exists() {
+            shutil.copy2(generated_package_json, build_package_json);
+        }
+        try {
+            print("[Vite] Installing dependencies...");
+            subprocess.run(
+                ['npm', 'install'],
+                cwd=build_dir,
+                check=True,
+                capture_output=True,
+                text=True
+            );
+        } except subprocess.CalledProcessError as e {
+            print(f"[Vite] Error installing dependencies: {e.stderr}");
+            raise ;
+        } finally {
+            # Clean up temp package.json
+            if build_package_json.exists() {
+                build_package_json.unlink();
+            }
+        }
+    }
+    # Find the dev config
+    dev_config = build_dir / 'configs' / 'vite.dev.config.js';
+    if not dev_config.exists() {
+        raise ClientBundleError(
+            "Dev config not found. Call create_dev_vite_config first."
+        ) ;
+    }
+    config_rel = dev_config.relative_to(build_dir);
+    print(f"[Vite] Starting dev server on port {port}...");
+    # Start Vite in dev mode (let output go to terminal for HMR visibility)
+    process = subprocess.Popen(
+        ['npx', 'vite', '--config', str(config_rel), '--port', str(port)],
+        cwd=build_dir
+    );
+    return process;
+}

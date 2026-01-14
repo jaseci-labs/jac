@@ -18,5 +18,6 @@ Modules:
 - modresolver: Module resolution utilities
 - treeprinter: AST tree printing utilities
 - settings: Configuration settings
-- program: JacProgram class
+- compiler: JacCompiler class (compilation singleton)
+- program: JacProgram class (program state)
 """

@@ -1,9 +1,25 @@
-node_modules
-app.session.bak
-app.session.dat
-app.session.dir
-app.session-shm
-app.session-wal
-app.session.users.json
-compiled/
+# Jac project
+packages/
+.jac_cache/
+*.jbc
+*.jir
+__jaccache__/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Node.js
+node_modules/
+
+# Jac build artifacts
 .jac/
+*.session
+*.session.*

@@ -2927,13 +2927,13 @@ impl PyastBuildPass.nu(<>node: T) -> T {
 }
 
 """Initialize parser."""
-impl PyastBuildPass.init(
-    ir_in: uni.PythonModuleAst, prog: JacProgram, cancel_token: (Event | None) = None
-) -> None {
-    self.mod_path = ir_in.loc.mod_path;
-    self.orig_src = ir_in.loc.orig_src;
+impl PyastBuildPass.postinit -> None {
+    self.mod_path = self.ir_in.loc.mod_path;
+    self.orig_src = self.ir_in.loc.orig_src;
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
-    Transform.init(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token);
+    Transform.init(
+        self, ir_in=self.ir_in, prog=self.prog, cancel_token=self.cancel_token
+    );
 }

@@ -375,14 +375,31 @@ impl DocIRGenPass.exit_sub_tag(<>node: uni.SubTag) -> None {
         }
     }
     if seen_colon {
-        flat = self.concat([*before_colon, colon_tok, self.space(), *after_colon]);
-        broke = self.concat(
-            [
-                *before_colon,
-                colon_tok,
-                self.indent(self.concat([self.line(), *after_colon]))
-            ]
+        # Access modifiers (pub/priv/protect keywords) don't get space after colon
+        # Type annotations and other uses get a space after the colon
+        is_access_modifier = (
+            isinstance(<>node.tag, uni.Token)
+            and (<>node.tag.name in [Tok.KW_PUB, Tok.KW_PRIV, Tok.KW_PROT])
         );
+        if is_access_modifier {
+            flat = self.concat([*before_colon, colon_tok, *after_colon]);
+            broke = self.concat(
+                [
+                    *before_colon,
+                    colon_tok,
+                    self.indent(self.concat([self.line(), *after_colon]))
+                ]
+            );
+        } else {
+            flat = self.concat([*before_colon, colon_tok, self.space(), *after_colon]);
+            broke = self.concat(
+                [
+                    *before_colon,
+                    colon_tok,
+                    self.indent(self.concat([self.line(), *after_colon]))
+                ]
+            );
+        }
         <>node.gen.doc_ir = self.group(self.if_break(broke, flat));
     } else {
         <>node.gen.doc_ir = self.concat((before_colon + after_colon));
@@ -423,6 +440,10 @@ impl DocIRGenPass.exit_enum(<>node: uni.Enum) -> None {
             if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
                 body_parts.append(self.line());
             }
+        } elif isinstance(i, uni.SubTag) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -919,6 +940,10 @@ impl DocIRGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
         } elif isinstance(i, uni.Assignment) {
             assignment_parts.append(i.gen.doc_ir);
             assignment_parts.append(self.space());
+        } elif isinstance(i, uni.SubTag) {
+            prefix_parts.pop();
+            prefix_parts.append(i.gen.doc_ir);
+            prefix_parts.append(self.space());
         } else {
             prefix_parts.append(i.gen.doc_ir);
             prefix_parts.append(self.space());
@@ -1082,21 +1107,32 @@ impl DocIRGenPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
 impl DocIRGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
-        if isinstance(i, uni.Token) {
+        if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
+            # Don't add trailing space after closing brace of code block lambda
+            parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif isinstance(i, uni.Expr) {
+            # Add space before body expression (e.g., before { in lambda -> None { ... })
             parts.append(
                 self.if_break(
                     self.indent(self.concat([self.line(), i.gen.doc_ir])), i.gen.doc_ir
                 )
             );
         } elif isinstance(i, uni.FuncSignature) {
+            # For empty params like (), don't add space before
+            # For signatures without params (just -> Type), pop the trailing space from lambda keyword
             if (isinstance(i.gen.doc_ir, doc.Text) and (i.gen.doc_ir.text == '()')) {
                 parts.append(i.gen.doc_ir);
-            } else {
-                parts.append(self.space());
+            } elif not <>node.signature.params {
+                # Lambda without params: "lambda -> Type" - don't add extra space
+                parts.pop();
                 parts.append(i.gen.doc_ir);
+                parts.append(self.space());
+            } else {
+                parts.append(i.gen.doc_ir);
+                parts.append(self.space());
             }
         } else {
             parts.append(i.gen.doc_ir);
@@ -1380,6 +1416,10 @@ impl DocIRGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
                 parts.append(i.gen.doc_ir);
                 parts.append(self.space());
             }
+        } elif isinstance(i, uni.SubTag) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1785,11 +1825,19 @@ impl DocIRGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
     indent_parts: list[doc.DocType] = [];
     in_params = False;
     has_parens = False;
+    # Check for any kind of parameters (regular, varargs, kwargs, etc.)
+    has_any_params = (
+        <>node.params
+        or <>node.varargs
+        or <>node.kwargs
+        or <>node.kwonlyargs
+        or <>node.posonly_params
+    );
     for i in <>node.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and <>node.params) {
+        if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and has_any_params) {
             in_params = True;
             parts.append(i.gen.doc_ir);
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and <>node.params) {
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and has_any_params) {
             in_params = False;
             has_parens = True;
             if isinstance(indent_parts[-1], doc.Line) {
@@ -1806,6 +1854,7 @@ impl DocIRGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN)) {
+            has_parens = True;
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1868,6 +1917,10 @@ impl DocIRGenPass.exit_ability(<>node: uni.Ability) -> None {
         } elif (not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif isinstance(i, uni.SubTag) {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1937,6 +1990,10 @@ impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
             parts.append(self.space());
         } elif (not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
             parts.append(i.gen.doc_ir);
+        } elif isinstance(i, uni.SubTag) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } else {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());

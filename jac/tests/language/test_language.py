@@ -599,12 +599,12 @@ def test_pyfunc_1(fixture_path: Callable[[str], str]) -> None:
             ),
             prog=JacProgram(),
         ).ir_out.unparse()
-    assert "def greet2( **kwargs: Any)  -> None {" in output
+    assert "def greet2(**kwargs: Any) -> None {" in output
     assert output.count("with entry {") == 14
     assert "assert (x == 5) , 'x should be equal to 5';" in output
     assert "if not (x == y) {" in output
     assert "squares_dict = {x: (x ** 2) for x in numbers};" in output
-    assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello()  -> object {' in output
+    assert '\n"""Say hello"""\n@my_decorator\n\n def say_hello() -> object {' in output
 
 
 def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
@@ -694,7 +694,7 @@ def test_py2jac_params(fixture_path: Callable[[str], str]) -> None:
             prog=JacProgram(),
         ).ir_out.unparse()
     assert (
-        "def isinstance( <>obj: object , class_or_tuple: _ClassInfo , /)  -> bool {"
+        "def isinstance(<>obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
         in output
     )
     assert (

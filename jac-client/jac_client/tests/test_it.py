@@ -240,7 +240,7 @@ def test_all_in_one_app_endpoints() -> None:
                     f"STDERR:\n{jac_add_result.stderr}\n"
                 )
 
-            app_jac_path = os.path.join(project_path, "src", "app.jac")
+            app_jac_path = os.path.join(project_path, "app.jac")
             assert os.path.isfile(app_jac_path), "all-in-one src/app.jac file missing"
 
             # 4. Start the server: `jac start src/app.jac`

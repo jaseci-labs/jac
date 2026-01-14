@@ -124,6 +124,28 @@ This starts both:
 
 You can access your app at `http://localhost:8000`
 
+### Hot Module Replacement (HMR)
+
+For faster development with live reloading, use `--watch` mode:
+
+```bash
+jac start main.jac --watch
+```
+
+This enables Hot Module Replacement, which automatically reloads your code when you make changes:
+
+- **Vite dev server** runs on port 8000 (open this in your browser)
+- **API server** runs on port 8001 (proxied via Vite)
+- **File watcher** monitors `*.jac` files for changes
+
+When you edit a `.jac` file, the backend recompiles automatically and the frontend hot-reloads without a full page refresh.
+
+**Note:** HMR requires the `watchdog` package, which is included in `[dev-dependencies]` by default. Install it with:
+
+```bash
+jac install --dev
+```
+
 ---
 
 ## 2. Entry Point of the App

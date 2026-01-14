@@ -10,8 +10,8 @@ with entry {
 
 # Atomic pipe with lambdas for function composition
 glob result = 5 :> (
-         lambda  x: int: x * 2
-     ) :> (lambda  x: int: x + 10);
+         lambda x: int : x * 2
+     ) :> (lambda x: int : x + 10);
 
 with entry {
     print(result);

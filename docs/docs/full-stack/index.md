@@ -490,6 +490,79 @@ jac start  # Uses [project].entry-point
 
 ---
 
+## Hot Module Replacement (HMR)
+
+For faster development, use `--watch` mode to enable Hot Module Replacement. Changes to `.jac` files are automatically detected and reloaded without restarting the server.
+
+### Setup
+
+HMR requires the `watchdog` package. New projects include it in `[dev-dependencies]` by default:
+
+```toml
+[dev-dependencies]
+watchdog = ">=3.0.0"
+```
+
+Install dev dependencies:
+
+```bash
+jac install --dev
+```
+
+### Development Workflow
+
+```bash
+# Start with HMR enabled
+jac start main.jac --watch
+```
+
+This starts:
+
+- **Vite dev server** on port 8000 (open this in browser)
+- **API server** on port 8001 (proxied via Vite)
+- **File watcher** monitoring `*.jac` files for changes
+
+When you edit a `.jac` file:
+
+1. File watcher detects the change
+2. Backend code is recompiled automatically
+3. Frontend hot-reloads via Vite
+4. Browser updates without full page refresh
+
+### HMR Options
+
+| Option | Description |
+|--------|-------------|
+| `--watch, -w` | Enable HMR mode |
+| `--api-port PORT` | Custom API port (default: main port + 1) |
+| `--no-client` | API-only mode (skip Vite/frontend) |
+
+**Examples:**
+
+```bash
+# Full-stack HMR (frontend + backend)
+jac start main.jac --watch
+
+# API-only HMR (no frontend bundling)
+jac start main.jac --watch --no-client
+
+# Custom ports
+jac start main.jac --watch -p 3000 --api-port 3001
+```
+
+### Troubleshooting
+
+If you see an error about watchdog not being installed:
+
+```
+Error: --watch requires 'watchdog' package to be installed.
+
+Install it by running:
+    jac install --dev
+```
+
+---
+
 ## Learn More
 
 | Topic | Resource |

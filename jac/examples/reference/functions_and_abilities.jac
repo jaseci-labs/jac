@@ -28,17 +28,17 @@ obj Calculator {
     }
 
     # Static with private access
-    static def : priv internal_helper(x: int) -> int {
+    static def:priv internal_helper(x: int) -> int {
         return x + 100;
     }
 
     # Public instance method
-    def : pub public_method(x: int) -> int {
+    def:pub public_method(x: int) -> int {
         return x * 2;
     }
 
     # Protected method
-    def : protect protected_method -> str {
+    def:protect protected_method -> str {
         return "protected";
     }
 }
@@ -50,9 +50,9 @@ obj AbstractCalculator {
     # Forward declaration with params
     def process(value: float) -> float;
     # Forward declaration with variadic args
-    def aggregate( *numbers: int)  -> float;
+    def aggregate(*numbers: int) -> float;
     # Forward declaration with kwargs
-    def configure( **options: int)  -> dict;
+    def configure(**options: int) -> dict;
 }
 
 obj ConcreteCalculator(AbstractCalculator) {
@@ -70,11 +70,11 @@ impl AbstractCalculator.process(
     return value * 1.5;
 }
 
-impl AbstractCalculator.aggregate( *numbers: int)  -> float {
+impl AbstractCalculator.aggregate(*numbers: int) -> float {
     return sum(numbers) / len(numbers) if numbers else 0.0;
 }
 
-impl AbstractCalculator.configure( **options: int)  -> dict {
+impl AbstractCalculator.configure(**options: int) -> dict {
     options["configured"] = True;
     return options;
 }
@@ -82,12 +82,12 @@ impl AbstractCalculator.configure( **options: int)  -> dict {
 # ===== Part 5: Variadic Parameters =====
 obj Variadic {
     # Positional variadic (*args)
-    def sum_all( *values: int)  -> int {
+    def sum_all(*values: int) -> int {
         return sum(values);
     }
 
     # Keyword variadic (**kwargs)
-    def collect_options( **opts: int)  -> tuple {
+    def collect_options(**opts: int) -> tuple {
         return opts;
     }
 

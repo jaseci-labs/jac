@@ -1,40 +1,34 @@
 """Core constructs for Jac Language."""
 import unittest;
 import from collections.abc { Callable }
-import from dataclasses { dataclass }
+import from typing { ClassVar }
 """Jac test result class."""
-class JacTestResult(unittest.TextTestResult) {
-    def init(
-        self: JacTestResult,
-        stream: Any,
+obj JacTestResult(unittest.TextTestResult) {
+    has stream: Any,
         descriptions: Any,
         verbosity: int,
-        max_failures: (int | None) = None
-    ) -> None;
+        max_failures: (int | None) = None;
 
-    def addFailure(self: JacTestResult, <>test: Any, err: Any) -> None;
-    def stop(self: JacTestResult) -> None;
+    def postinit -> None;
+    def addFailure(<>test: Any, err: Any) -> None;
+    def stop -> None;
 }
 
 """Jac test runner class."""
-class JacTextTestRunner(unittest.TextTestRunner) {
-    def init(
-        self: JacTextTestRunner, max_failures: (int | None) = None, **kwargs: Any
-    ) -> None;
-
-    def _makeResult(self: JacTextTestRunner) -> JacTestResult;
+obj JacTextTestRunner(unittest.TextTestRunner) {
+    def init(max_failures: (int | None) = None, **kwargs: Any) -> None;
+    def _makeResult -> JacTestResult;
 }
 
 """Jac Testing and Checking."""
-class JacTestCheck {
+obj JacTestCheck {
     with entry {
         test_case = unittest.TestCase();
         test_suite = unittest.TestSuite();
     }
 
     """Test Suite."""
-    @dataclass
-    class TestSuite {
+    obj TestSuite {
         with entry {
             test_case: unittest.FunctionTestCase;
             func_name: str;
@@ -42,7 +36,7 @@ class JacTestCheck {
     }
 
     with entry {
-        test_suite_path: <>dict[(str, <>list[TestSuite])] = {};
+        test_suite_path: ClassVar[dict[(str, list[TestSuite])]] = {};
         breaker = False;
         failcount = 0;
     }
@@ -57,5 +51,5 @@ class JacTestCheck {
     ) -> None;
 
     static def add_test(filepath: str, func_name: str, test_func: Callable) -> None;
-    def __getattr__(self: JacTestCheck, name: str) -> object;
+    def __getattr__(name: str) -> object;
 }

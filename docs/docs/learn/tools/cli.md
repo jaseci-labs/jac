@@ -141,15 +141,40 @@ jac format file1.jac file2.jac --fix
 
 ## `jac check`
 
-The `check` command is utilized to run type checker for a specified .jac file.
+The `check` command is utilized to run type checker for specified .jac files or directories.
 
 ```bash
-jac check <file_path>
+jac check <paths...> [options]
 ```
 
 Parameters to execute the check command:
 
-- `file_path`: Path of .jac file to run type checker.
+- `paths`: One or more paths to .jac files or directories containing .jac files.
+- `-p, --print_errs`: Print errors. Defaults to True.
+- `-w, --warnonly`: Treat errors as warnings. Defaults to False.
+- `--ignore`: Comma-separated list of files/folders to ignore during checking.
+
+Examples:
+
+```bash
+# Check a single file
+jac check main.jac
+
+# Check multiple files
+jac check file1.jac file2.jac
+
+# Check all files in a directory
+jac check myproject/
+
+# Check with warnings only mode
+jac check myprogram.jac --warnonly
+
+# Check excluding specific folders/files
+jac check myproject/ --ignore fixtures,tests
+
+# Check excluding build artifacts
+jac check . --ignore node_modules,dist,__pycache__
+```
 
 ## `jac build`
 

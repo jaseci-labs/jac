@@ -368,7 +368,7 @@ impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
 impl debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
     def decorator(fn: T) -> Callable[P, Awaitable[None]] {
         @wraps(fn)
-        async def debounced( *args: P.args , **kwargs: P.kwargs)  -> None {
+        async def debounced(*args: P.args, **kwargs: P.kwargs) -> None {
             async def call_it -> None {
                 await fn(*args, _=kwargs);
             }
