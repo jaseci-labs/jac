@@ -123,7 +123,7 @@ impl VolatileMemory.get_mem -> dict[UUID, Anchor] {
 
 """Commit - no-op for volatile memory."""
 impl VolatileMemory.commit(anchor: (Anchor | None) = None) -> None {
-    pass;  # No persistence, nothing to commit
+# No persistence, nothing to commit
 }
 
 # =============================================================================

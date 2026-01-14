@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import keyword
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,33 @@ TOKEN_MAP.update({
     "BW_XOR_EQ": "^=", "BW_NOT_EQ": "~=", "LSHIFT_EQ": "<<=",
 })
 # fmt: on
+
+
+def _extract_jac_keywords() -> set[str]:
+    """Extract Jac keywords from TOKEN_MAP."""
+    keywords = set()
+
+    # Iterate through all KW_* tokens
+    for tok_name in dir(Tok):
+        if (
+            not (
+                tok_name.startswith("KW_")
+                or (tok_name.endswith("_OP"))
+                or tok_name in ("NULL", "NOT")
+            )
+            or tok_name not in TOKEN_MAP
+        ):
+            continue
+        else:
+            keywords.add(TOKEN_MAP[tok_name])
+    keywords.update(["or", "and", "False", "True"])
+
+    return keywords
+
+
+JAC_KEYWORDS = _extract_jac_keywords()
+# Python keywords that should NOT be used as names in Jac
+PYTHON_ONLY_KEYWORDS = set(keyword.kwlist) - JAC_KEYWORDS
 
 
 @dataclass
@@ -90,6 +118,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
         for child in node.kid:
             child.parent = node
             JacParser._recalculate_parents(child)
+
+    def _log_python_only_keyword_error(
+        self, keyword: str, node: uni.Token | None = None
+    ) -> None:
+        """Log error for Python-only keywords that are not valid in Jac."""
+        self.log_error(
+            f"'{keyword}' keyword is not allowed in Jac",
+            node_override=node,
+        )
+        self.log_error(
+            "Jac does not allow this keyword in any syntactic position",
+            node_override=node,
+        )
 
     @classmethod
     def _coerce_client_module(cls, module: uni.Module) -> None:
@@ -231,6 +272,18 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 if e.token_history and len(e.token_history) >= 1
                 else None
             )
+
+            # Check for unsupported python keywords in code blocks
+            if (
+                e.token
+                and e.token.value in PYTHON_ONLY_KEYWORDS
+                and (Tok.RBRACE.name in e.accepts or Tok.SEMI.name in e.accepts)
+            ):
+                self._log_python_only_keyword_error(
+                    e.token.value, self.error_to_token(e)
+                )
+                return True
+
             # If last token is DOT and we expect a NAME, insert a NAME token
             if (
                 last_tok
@@ -1256,6 +1309,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             name = self.consume(uni.Name)
             type_tag = self.consume(uni.SubTag)
             value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
+
             return uni.ParamVar(
                 name=name,
                 type_tag=type_tag,
@@ -1724,6 +1778,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """
             self.consume_token(Tok.KW_RETURN)
             expr = self.match(uni.Expr)
+
             return uni.ReturnStmt(
                 expr=expr,
                 kid=self.cur_nodes,
@@ -1824,6 +1879,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 value = self.consume(uni.Expr) if self.match_token(Tok.EQ) else None
 
             valid_assignees = [i for i in assignees if isinstance(i, (uni.Expr))]
+
             if is_aug:
                 return uni.Assignment(
                     target=valid_assignees,
@@ -3786,8 +3842,13 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 pos_start=token.start_pos if token.start_pos is not None else 0,
                 pos_end=token.end_pos if token.end_pos is not None else 0,
             )
-            if isinstance(ret, uni.Name) and token.type == Tok.KWESC_NAME:
-                ret.is_kwesc = True
+            if isinstance(ret, uni.Name):
+                if token.type == Tok.KWESC_NAME:
+                    ret.is_kwesc = True
+                # Check if Python-only keywords are used as names
+                elif ret.sym_name in PYTHON_ONLY_KEYWORDS:
+                    self.parse_ref._log_python_only_keyword_error(ret.sym_name, ret)
+
             self.terminals.append(ret)
             return ret
 

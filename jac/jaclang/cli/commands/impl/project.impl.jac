@@ -70,9 +70,7 @@ impl create(name: str = '', force: bool = False) -> int {
         if result.returncode == 0 {
             print("Pre-generated compiler cache");
         }
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
     print(f"\nProject '{project_name}' initialized successfully!");
     print("\nNext steps:");
     if name {
