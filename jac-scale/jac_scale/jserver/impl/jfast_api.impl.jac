@@ -1,8 +1,10 @@
 """Helper function to convert TransportResponse to JSONResponse (similar to HTTPTransport.send)."""
-def _convert_transport_response_to_json_response(transport_response: TransportResponse) -> JSONResponse {
+def _convert_transport_response_to_json_response(
+    transport_response: TransportResponse
+) -> JSONResponse {
     import json;
-    import from fastapi.responses { JSONResponse };
-    import from jaclang.runtimelib.transport { TransportResponse };
+    import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse }
     # Extract HTTP status from meta.extra or use defaults (same logic as HTTPTransport.send)
     status = 200 if transport_response.ok else 500;
     if transport_response.meta and transport_response.meta.extra {
@@ -52,7 +54,6 @@ def _convert_transport_response_to_json_response(transport_response: TransportRe
 }
 
 """Run the FastAPI server using Uvicorn."""
-
 impl JFastApiServer.run_server(
     self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
 ) -> None {
@@ -135,43 +136,43 @@ impl JFastApiServer._create_endpoint_function(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
     );
     if not parameters {
-            if accepts_kwargs {
-                if inspect.iscoroutinefunction(callback) {
-                    async def async_endpoint_wrapper(request: Request) -> EndpointResponse {
-                        import from jaclang.runtimelib.transport { TransportResponse };
-                        try {
-                            query_params = <>dict(request.query_params);
-                            result = await callback(**query_params);
-                            # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
-                            if isinstance(result, TransportResponse) {
-                                return _convert_transport_response_to_json_response(result);
-                            }
-                            return result;
-                        } except Exception as e {
-                            raise e from HTTPException(status_code=500, detail=str(e)) ;
+        if accepts_kwargs {
+            if inspect.iscoroutinefunction(callback) {
+                async def async_endpoint_wrapper(request: Request) -> EndpointResponse {
+                    import from jaclang.runtimelib.transport { TransportResponse }
+                    try {
+                        query_params = <>dict(request.query_params);
+                        result = await callback(**query_params);
+                        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                        if isinstance(result, TransportResponse) {
+                            return _convert_transport_response_to_json_response(result);
                         }
+                        return result;
+                    } except Exception as e {
+                        raise e from HTTPException(status_code=500, detail=str(e)) ;
                     }
-                    return async_endpoint_wrapper;
-                } else {
-                    def sync_endpoint_wrapper(request: Request) -> EndpointResponse {
-                        import from jaclang.runtimelib.transport { TransportResponse };
-                        try {
-                            query_params = <>dict(request.query_params);
-                            result = callback(**query_params);
-                            # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
-                            if isinstance(result, TransportResponse) {
-                                return _convert_transport_response_to_json_response(result);
-                            }
-                            return result;
-                        } except Exception as e {
-                            raise e from HTTPException(status_code=500, detail=str(e)) ;
-                        }
-                    }
-                    return sync_endpoint_wrapper;
                 }
-            } elif inspect.iscoroutinefunction(callback) {
+                return async_endpoint_wrapper;
+            } else {
+                def sync_endpoint_wrapper(request: Request) -> EndpointResponse {
+                    import from jaclang.runtimelib.transport { TransportResponse }
+                    try {
+                        query_params = <>dict(request.query_params);
+                        result = callback(**query_params);
+                        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                        if isinstance(result, TransportResponse) {
+                            return _convert_transport_response_to_json_response(result);
+                        }
+                        return result;
+                    } except Exception as e {
+                        raise e from HTTPException(status_code=500, detail=str(e)) ;
+                    }
+                }
+                return sync_endpoint_wrapper;
+            }
+        } elif inspect.iscoroutinefunction(callback) {
             async def async_endpoint_wrapper__1 -> EndpointResponse {
-                import from jaclang.runtimelib.transport { TransportResponse };
+                import from jaclang.runtimelib.transport { TransportResponse }
                 try {
                     result = await callback();
                     # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
@@ -186,7 +187,7 @@ impl JFastApiServer._create_endpoint_function(
             return async_endpoint_wrapper__1;
         } else {
             def sync_endpoint_wrapper__1 -> EndpointResponse {
-                import from jaclang.runtimelib.transport { TransportResponse };
+                import from jaclang.runtimelib.transport { TransportResponse }
                 try {
                     result = callback();
                     # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)

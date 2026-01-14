@@ -58,8 +58,12 @@ class JacAPIServer(JServer) {
 
     def login(self: JacAPIServer, username: str, password: str) -> TransportResponse;
     def register_login_endpoint(self: JacAPIServer) -> None;
-    def create_user(self: JacAPIServer, username: str, password: str) -> TransportResponse;
-    def refresh_token(self: JacAPIServer, token: (str | None) = None) -> TransportResponse;
+    def create_user(
+        self: JacAPIServer, username: str, password: str
+    ) -> TransportResponse;
+    def refresh_token(
+        self: JacAPIServer, token: (str | None) = None
+    ) -> TransportResponse;
     def register_create_user_endpoint(self: JacAPIServer) -> None;
     def register_refresh_token_endpoint(self: JacAPIServer) -> None;
     def get_sso(

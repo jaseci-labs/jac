@@ -1,12 +1,11 @@
 """Test for SSO (Single Sign-On) implementation in jac-scale."""
 
 import contextlib
+import json
 from dataclasses import dataclass
 from types import TracebackType
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
-
-import json
 
 import pytest
 from fastapi import Request

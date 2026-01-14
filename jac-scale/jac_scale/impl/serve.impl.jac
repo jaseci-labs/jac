@@ -1,5 +1,7 @@
 """Helper function to convert TransportResponse to dict for JSONResponse."""
-def _transport_response_to_dict(transport_response: TransportResponse) -> dict[str, Any] {
+def _transport_response_to_dict(
+    transport_response: TransportResponse
+) -> dict[str, Any] {
     result = {
         'ok': transport_response.ok,
         'type': transport_response.type,
@@ -37,14 +39,18 @@ def _transport_response_to_dict(transport_response: TransportResponse) -> dict[s
 """Helper function to get HTTP status code from TransportResponse."""
 def _get_http_status(transport_response: TransportResponse) -> int {
     if transport_response.meta and transport_response.meta.extra {
-        return transport_response.meta.extra.get('http_status', 200 if transport_response.ok else 500);
+        return transport_response.meta.extra.get(
+            'http_status', 200 if transport_response.ok else 500
+        );
     }
     return 200 if transport_response.ok else 500;
 }
 
 """Helper function to convert TransportResponse directly to JSONResponse."""
-def _transport_response_to_json_response(transport_response: TransportResponse) -> JSONResponse {
-    import from fastapi.responses { JSONResponse };
+def _transport_response_to_json_response(
+    transport_response: TransportResponse
+) -> JSONResponse {
+    import from fastapi.responses { JSONResponse }
     return JSONResponse(
         status_code=_get_http_status(transport_response),
         content=_transport_response_to_dict(transport_response)
@@ -522,7 +528,7 @@ impl JacAPIServer.create_function_parameters(
 impl JacAPIServer.create_function_callback(
     self: JacAPIServer, func_name: str
 ) -> Callable[..., TransportResponse] {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
     def callback(**kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
@@ -558,8 +564,7 @@ impl JacAPIServer.create_function_callback(
             );
         }
         return TransportResponse.success(
-            data=result,
-            meta=Meta(extra={'http_status': 200})
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     return callback;
@@ -640,11 +645,9 @@ impl JacAPIServer.create_walker_parameters(
 impl JacAPIServer.create_walker_callback(
     self: JacAPIServer, walker_name: str, has_node_param: bool = False
 ) -> Callable[..., TransportResponse] {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-    def callback(
-        node: (str | None) = None, **kwargs: JsonValue
-    ) -> TransportResponse {
+    def callback(node: (str | None) = None, **kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
             authorization = kwargs.pop('Authorization', None);
@@ -680,8 +683,7 @@ impl JacAPIServer.create_walker_callback(
             );
         }
         return TransportResponse.success(
-            data=result,
-            meta=Meta(extra={'http_status': 200})
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     return callback;
@@ -746,7 +748,7 @@ impl JacAPIServer.register_create_user_endpoint(self: JacAPIServer) -> None {
 impl JacAPIServer.refresh_token(
     self: JacAPIServer, token: (str | None) = None
 ) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (not token) {
         return TransportResponse.fail(
             code='VALIDATION_ERROR',
@@ -775,7 +777,7 @@ impl JacAPIServer.create_user(
     self: JacAPIServer, username: str, password: str
 ) -> TransportResponse {
     import traceback;
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     try {
         res = self.user_manager.create_user(username, password);
         if ('error' in res) {
@@ -787,8 +789,7 @@ impl JacAPIServer.create_user(
         }
         res['token'] = self.create_jwt_token(username);
         return TransportResponse.success(
-            data=res,
-            meta=Meta(extra={'http_status': 201})
+            data=res, meta=Meta(extra={'http_status': 201})
         );
     } except Exception as e {
         error_trace = traceback.format_exc();
@@ -836,7 +837,7 @@ impl JacAPIServer.register_login_endpoint(self: JacAPIServer) -> None {
 impl JacAPIServer.login(
     self: JacAPIServer, username: str, password: str
 ) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (not username or not password) {
         return TransportResponse.fail(
             code='VALIDATION_ERROR',
@@ -854,8 +855,7 @@ impl JacAPIServer.login(
     }
     result['token'] = self.create_jwt_token(username);
     return TransportResponse.success(
-        data=dict[(str, JsonValue)](result),
-        meta=Meta(extra={'http_status': 200})
+        data=dict[(str, JsonValue)](result), meta=Meta(extra={'http_status': 200})
     );
 }
 
@@ -981,11 +981,13 @@ impl JacAPIServer.get_sso(
 impl JacAPIServer.sso_initiate(
     self: JacAPIServer, platform: str, operation: str
 ) -> (Response | TransportResponse) {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (platform not in [p.value for p in Platforms]) {
         return TransportResponse.fail(
             code='INVALID_PLATFORM',
-            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join([p.value for p in Platforms])}",
+            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
+                [p.value for p in Platforms]
+            )}",
             meta=Meta(extra={'http_status': 400})
         );
     }
@@ -1019,11 +1021,13 @@ impl JacAPIServer.sso_initiate(
 impl JacAPIServer.sso_callback(
     self: JacAPIServer, request: Request, platform: str, operation: str
 ) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta };
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (platform not in [p.value for p in Platforms]) {
         return TransportResponse.fail(
             code='INVALID_PLATFORM',
-            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join([p.value for p in Platforms])}",
+            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
+                [p.value for p in Platforms]
+            )}",
             meta=Meta(extra={'http_status': 400})
         );
     }
@@ -1102,8 +1106,7 @@ impl JacAPIServer.sso_callback(
                 result['token'] = token;
                 result['platform'] = platform;
                 return TransportResponse.success(
-                    data=result,
-                    meta=Meta(extra={'http_status': 201})
+                    data=result, meta=Meta(extra={'http_status': 201})
                 );
             }
         }
@@ -1216,7 +1219,9 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
         if walker_name not in walkers {
             return TransportResponse.fail(
                 code='NOT_FOUND',
-                message=f"Walker '{walker_name}' not found. Available: {list(walkers.keys())}",
+                message=f"Walker '{walker_name}' not found. Available: {list(
+                    walkers.keys()
+                )}",
                 meta=Meta(extra={'http_status': 404})
             );
         }
@@ -1260,8 +1265,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
             );
         }
         return TransportResponse.success(
-            data=result,
-            meta=Meta(extra={'http_status': 200})
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     # Register catch-all route for walkers with node parameter
@@ -1355,7 +1359,9 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
         if function_name not in functions {
             return TransportResponse.fail(
                 code='NOT_FOUND',
-                message=f"Function '{function_name}' not found. Available: {list(functions.keys())}",
+                message=f"Function '{function_name}' not found. Available: {list(
+                    functions.keys()
+                )}",
                 meta=Meta(extra={'http_status': 404})
             );
         }
@@ -1394,8 +1400,7 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
             );
         }
         return TransportResponse.success(
-            data=result,
-            meta=Meta(extra={'http_status': 200})
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     self.server_impl.add_endpoint(
