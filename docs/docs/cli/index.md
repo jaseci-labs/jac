@@ -173,7 +173,7 @@ jac build main.jac -t
 Type check Jac code for errors.
 
 ```bash
-jac check [-h] [-p] [-np] [-w] [-nw] paths [paths ...]
+jac check [-h] [-p] [-np] [-w] [-nw] [--ignore PATTERNS] paths [paths ...]
 ```
 
 | Option | Description | Default |
@@ -181,6 +181,7 @@ jac check [-h] [-p] [-np] [-w] [-nw] paths [paths ...]
 | `paths` | Files/directories to check | Required |
 | `-p, --print_errs` | Print errors | `True` |
 | `-w, --warnonly` | Warnings only (no errors) | `False` |
+| `--ignore` | Comma-separated list of files/folders to ignore | None |
 
 **Examples:**
 
@@ -193,6 +194,12 @@ jac check src/
 
 # Warnings only mode
 jac check main.jac -w
+
+# Check directory excluding specific folders/files
+jac check myproject/ --ignore fixtures,tests
+
+# Check excluding multiple patterns
+jac check . --ignore node_modules,dist,__pycache__
 ```
 
 ---
