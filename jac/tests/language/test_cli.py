@@ -4,6 +4,7 @@ import contextlib
 import inspect
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -958,3 +959,25 @@ verbose = true
                 or "not found" in stdout.lower()
                 or process.returncode != 0
             )
+
+
+def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int:
+    """Run jac check and return file count."""
+    cmd = ["jac", "check", test_dir]
+    if ignore_pattern:
+        cmd.extend(["--ignore", ignore_pattern])
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    stdout, stderr = process.communicate()
+    match = re.search(r"Checked (\d+)", stdout + stderr)
+    return int(match.group(1)) if match else 0
+
+
+def test_jac_cli_check_ignore_patterns(fixture_path: Callable[[str], str]) -> None:
+    """Test --ignore flag with exact pattern matching (combined patterns)."""
+    test_dir = fixture_path("deep")
+    result_count = _run_jac_check(test_dir, "deeper,one_lev_dup.jac,one_lev.jac,mycode")
+    # Only mycode.jac is checked; all other files are ignored
+    assert result_count == 1

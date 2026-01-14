@@ -94,4 +94,18 @@ class KubernetesRedisProvider(DatabaseProvider) {
         # Cleanup is handled by the deployment target
         pass;
     }
+
+    override def get_init_container(
+        self: KubernetesRedisProvider, app_name: str, wait_image: str
+    ) -> (dict[(str, Any)] | None) {
+        return {
+            'name': 'wait-for-redis',
+            'image': wait_image,
+            'command': [
+                'sh',
+                '-c',
+                f"until nc -z {app_name}-redis-service 6379; do echo waiting for redis; sleep 3; done"
+            ]
+        };
+    }
 }

@@ -8,7 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Hot Module Replacement (HMR)**: Added `--watch` flag to `jac start` for live development with automatic reload on `.jac` file changes. When enabled, the file watcher detects changes and automatically recompiles backend code while Vite handles frontend hot-reloading. New options include `-w/--watch` to enable HMR mode, `--api-port` to set a separate API port, and `--no-client` for API-only mode without frontend bundling. Example usage: `jac start main.jac --watch`.
 - **Default Watchdog Dependency**: The `jac create` command now includes `watchdog` in `[dev-dependencies]` by default, enabling HMR support out of the box. Install with `jac install --dev`.
 - **Simplified `.jac` Directory Gitignore**: The `jac create` command now creates a `.gitignore` file inside the `.jac/` directory containing `*` to ignore all build artifacts, instead of modifying the project root `.gitignore`. This keeps project roots cleaner and makes the `.jac` directory self-contained.
--
+- **Ignore Patterns for Type Checking**: Added `--ignore` flag to the `jac check` command, allowing users to exclude specific files or folders from type checking. The flag accepts a comma-separated list of patterns (e.g., `--ignore fixtures,tests,__pycache__`). Patterns are matched against path components, so `--ignore tests` will exclude any file or folder named `tests` at any depth in the directory tree.
 
 ## jaclang 0.9.7 (Latest Release)
 
