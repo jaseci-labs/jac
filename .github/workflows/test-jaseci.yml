@@ -25,7 +25,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e jac
+        pip install build
+        python -m build jac
+        pip install jac/dist/jaclang-*.whl
         pip install pytest
         pip install pytest-xdist
 
@@ -48,8 +50,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-client
+        pip install build
+        python -m build jac
+        pip install jac/dist/jaclang-*.whl
+        python -m build jac-client
+        pip install jac-client/dist/jac_client-*.whl
         pip install pytest
         pip install pytest-xdist
 
@@ -76,9 +81,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-byllm
-        pip install -e jac-streamlit
+        pip install build
+        python -m build jac
+        pip install jac/dist/jaclang-*.whl
+        python -m build jac-byllm
+        pip install jac-byllm/dist/byllm-*.whl
+        python -m build jac-streamlit
+        pip install jac-streamlit/dist/jac_streamlit-*.whl
         pip install pytest
         pip install pytest-xdist
 
@@ -108,8 +117,11 @@ jobs:
     - name: Install Jaseci scale package
       run: |
         python -m pip install --upgrade pip
-        pip install -e jac
-        pip install -e jac-scale
+        pip install build
+        python -m build jac
+        pip install jac/dist/jaclang-*.whl
+        python -m build jac-scale
+        pip install jac-scale/dist/jac_scale-*.whl
         pip install pytest
         pip install pytest-asyncio
         pip install -e jac-client
@@ -147,8 +159,11 @@ jobs:
       - name: Install Jaseci scale package
         run: |
           python -m pip install --upgrade pip
-          pip install -e jac
-          pip install -e jac-scale
+          pip install build
+          python -m build jac
+          pip install jac/dist/jaclang-*.whl
+          python -m build jac-scale
+          pip install jac-scale/dist/jac_scale-*.whl
           pip install pytest
           pip install pytest-asyncio
 
