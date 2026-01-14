@@ -49,7 +49,11 @@ def _extract_jac_keywords() -> set[str]:
     # Iterate through all KW_* tokens
     for tok_name in dir(Tok):
         if (
-            not (tok_name.startswith("KW_") or tok_name in ("NULL", "NOT"))
+            not (
+                tok_name.startswith("KW_")
+                or (tok_name.endswith("_OP"))
+                or tok_name in ("NULL", "NOT")
+            )
             or tok_name not in TOKEN_MAP
         ):
             continue
@@ -120,11 +124,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
     ) -> None:
         """Log error for Python-only keywords that are not valid in Jac."""
         self.log_error(
-            f"'{keyword}' is not a valid keyword in Jac",
+            f"'{keyword}' keyword is not allowed in Jac",
             node_override=node,
         )
         self.log_error(
-            "Jac codegen to Python,Python-only keywords are disallowed in Jac.",
+            "Jac does not allow this keyword in any syntactic position",
             node_override=node,
         )
 
