@@ -47,26 +47,32 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Get init containers from all enabled database providers."""
-    def _get_database_init_containers(self: KubernetesTarget, app_name: str) -> list[dict[(str, Any)]] {
+    def _get_database_init_containers(
+        self: KubernetesTarget, app_name: str
+    ) -> list[dict[(str, Any)]] {
         init_containers = [];
         wait_image = self.k8s_config.wait_image;
-        
+
         if self.k8s_config.mongodb_enabled {
-            mongo_provider = DatabaseProviderFactory.create('kubernetes_mongo', self, {'app_name': app_name});
+            mongo_provider = DatabaseProviderFactory.create(
+                'kubernetes_mongo', self, {'app_name': app_name}
+            );
             init_container = mongo_provider.get_init_container(app_name, wait_image);
             if init_container {
                 init_containers.append(init_container);
             }
         }
-        
+
         if self.k8s_config.redis_enabled {
-            redis_provider = DatabaseProviderFactory.create('kubernetes_redis', self, {'app_name': app_name});
+            redis_provider = DatabaseProviderFactory.create(
+                'kubernetes_redis', self, {'app_name': app_name}
+            );
             init_container = redis_provider.get_init_container(app_name, wait_image);
             if init_container {
                 init_containers.append(init_container);
             }
         }
-        
+
         return init_containers;
     }
 
@@ -79,7 +85,7 @@ class KubernetesTarget(DeploymentTarget) {
         if self.k8s_config.memory_request {
             resource_requests['memory'] = self.k8s_config.memory_request;
         }
-        
+
         resource_limits: dict[(str, str)] = {};
         if self.k8s_config.cpu_limit {
             resource_limits['cpu'] = self.k8s_config.cpu_limit;
@@ -87,7 +93,7 @@ class KubernetesTarget(DeploymentTarget) {
         if self.k8s_config.memory_limit {
             resource_limits['memory'] = self.k8s_config.memory_limit;
         }
-        
+
         resources: dict[(str, dict)] = {};
         if resource_requests {
             resources['requests'] = resource_requests;
@@ -95,12 +101,14 @@ class KubernetesTarget(DeploymentTarget) {
         if resource_limits {
             resources['limits'] = resource_limits;
         }
-        
+
         return resources;
     }
 
     """Build readiness and liveness probe configurations."""
-    def _build_probe_config(self: KubernetesTarget, health_check_path: str) -> dict[(str, Any)] {
+    def _build_probe_config(
+        self: KubernetesTarget, health_check_path: str
+    ) -> dict[(str, Any)] {
         probe_config = {
             'httpGet': {
                 'path': health_check_path,
@@ -110,20 +118,23 @@ class KubernetesTarget(DeploymentTarget) {
             'initialDelaySeconds': self.k8s_config.readiness_initial_delay,
             'periodSeconds': self.k8s_config.readiness_period
         };
-        
+
         liveness_probe = dict(probe_config);
         liveness_probe['initialDelaySeconds'] = self.k8s_config.liveness_initial_delay;
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
-        
-        return {
-            'readiness': probe_config,
-            'liveness': liveness_probe
-        };
+
+        return {'readiness': probe_config, 'liveness': liveness_probe};
     }
 
     """Build Kubernetes service configuration."""
-    def _build_service_config(self: KubernetesTarget, app_name: str, is_aws: bool, health_check_path: str, service_type: str) -> dict[(str, Any)] {
+    def _build_service_config(
+        self: KubernetesTarget,
+        app_name: str,
+        is_aws: bool,
+        health_check_path: str,
+        service_type: str
+    ) -> dict[(str, Any)] {
         service_port = 80 if is_aws else self.k8s_config.container_port;
         port_config: dict[(str, Any)] = {
             'protocol': 'TCP',
@@ -133,13 +144,13 @@ class KubernetesTarget(DeploymentTarget) {
         if not is_aws {
             port_config['nodePort'] = self.k8s_config.node_port;
         }
-        
+
         service_metadata: dict[(str, Any)] = {
             'name': f"{app_name}-service",
             'namespace': self.k8s_config.namespace,
             'labels': {'app': app_name}
         };
-        
+
         if is_aws {
             service_metadata['annotations'] = {
                 'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
@@ -147,7 +158,7 @@ class KubernetesTarget(DeploymentTarget) {
                 'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
             };
         }
-        
+
         service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -158,75 +169,70 @@ class KubernetesTarget(DeploymentTarget) {
                 'selector': {'app': app_name}
             }
         };
-        
+
         return service;
     }
 
     """Build the bash command for setting up Jaseci runtime environment.
-    
+
     This replaces the hard-coded command with a configurable version.
     """
-    def _build_runtime_setup_command(self: KubernetesTarget, app_config: AppConfig) -> list[str] {
+    def _build_runtime_setup_command(
+        self: KubernetesTarget, app_config: AppConfig
+    ) -> list[str] {
         config = self.k8s_config;
         commands = [];
-        
+
         # Base setup
         commands.append('export DEBIAN_FRONTEND=noninteractive');
         commands.append('apt-get update');
-        
+
         # Install base packages
         base_packages = ['git', 'npm', 'nodejs'];
         if config.additional_packages {
             base_packages.extend(config.additional_packages);
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
-        
+
         # Clone and setup Jaseci if enabled
         if config.install_jaseci {
             commands.append('rm -rf jaseci');
-            
             # Clone repository
             clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
             commands.append(clone_cmd);
-            
             commands.append('cd ./jaseci');
-            
             # Checkout specific commit if provided
             if config.jaseci_commit {
                 commands.append(f"git checkout {config.jaseci_commit}");
             }
-            
             # Update submodules
             commands.append('git submodule update --init --recursive');
-            
             # Setup virtual environment
             commands.append('python -m venv venv');
             commands.append('source venv/bin/activate');
-            
             # Install Jaseci components
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
-            
             commands.append('cd ..');
         }
-        
+
         # Change to app directory (project is already copied there via volume mount)
         commands.append(f"cd {config.app_mount_path}");
-        
+
         # Install Python requirements
         commands.append('jac add');
-        
+
         # Install Node requirements
         commands.append('jac add --cl');
-        
+
         # Start the application
         commands.append(f"jac start {app_config.file_name}");
-        
+
         # Join all commands
         full_command = ' && '.join(commands);
-        
+
         return ['bash', '-c', full_command];
     }
 
@@ -250,7 +256,7 @@ class KubernetesTarget(DeploymentTarget) {
             'readinessProbe': probe_configs['readiness'],
             'livenessProbe': probe_configs['liveness']
         };
-        
+
         if command {
             container_config['command'] = command;
         }
@@ -263,7 +269,7 @@ class KubernetesTarget(DeploymentTarget) {
         if resources_config {
             container_config['resources'] = resources_config;
         }
-        
+
         return container_config;
     }
 
@@ -278,20 +284,15 @@ class KubernetesTarget(DeploymentTarget) {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
         sync_image = self.k8s_config.busybox_image;
-        
+
         ensure_pvc_exists(core_v1, namespace, pvc_name, pvc_size);
         if self.logger {
             self.logger.info('Syncing application code to PVC');
         }
         sync_code_to_pvc(
-            core_v1,
-            namespace,
-            pvc_name,
-            app_config.code_folder,
-            app_name,
-            sync_image
+            core_v1, namespace, pvc_name, app_config.code_folder, app_name, sync_image
         );
-        
+
         build_container = {
             'name': 'build-app',
             'image': self.k8s_config.python_image,
@@ -305,64 +306,87 @@ class KubernetesTarget(DeploymentTarget) {
                 {'name': 'code-source', 'mountPath': self.k8s_config.code_mount_path}
             ]
         };
-        
+
         volumes = [
             {'name': 'app-code', 'emptyDir': {}},
-            {
-                'name': 'code-source',
-                'persistentVolumeClaim': {'claimName': pvc_name}
-            }
+            {'name': 'code-source', 'persistentVolumeClaim': {'claimName': pvc_name}}
         ];
-        
+
         return {'volumes': volumes, 'build_container': build_container};
     }
 
     """Deploy all enabled databases."""
-    def _deploy_databases(self: KubernetesTarget, app_name: str, namespace: str, apps_v1: Any, core_v1: Any) -> None {
+    def _deploy_databases(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any
+    ) -> None {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             mongodb_service_name = f"{mongodb_name}-service";
-            mongo_provider = DatabaseProviderFactory.create('kubernetes_mongo', self, {'app_name': app_name});
+            mongo_provider = DatabaseProviderFactory.create(
+                'kubernetes_mongo', self, {'app_name': app_name}
+            );
             mongo_result = mongo_provider.deploy({});
             try {
-                apps_v1.read_namespaced_stateful_set(name=mongodb_name, namespace=namespace);
+                apps_v1.read_namespaced_stateful_set(
+                    name=mongodb_name, namespace=namespace
+                );
             } except ApiException as e {
                 if (e.status == 404) {
-                    apps_v1.create_namespaced_stateful_set(namespace=namespace, body=mongo_result['deployment']);
+                    apps_v1.create_namespaced_stateful_set(
+                        namespace=namespace, body=mongo_result['deployment']
+                    );
                 } else {
                     raise ;
                 }
             }
             try {
-                core_v1.read_namespaced_service(name=mongodb_service_name, namespace=namespace);
+                core_v1.read_namespaced_service(
+                    name=mongodb_service_name, namespace=namespace
+                );
             } except ApiException as e {
                 if (e.status == 404) {
-                    core_v1.create_namespaced_service(namespace=namespace, body=mongo_result['service']);
+                    core_v1.create_namespaced_service(
+                        namespace=namespace, body=mongo_result['service']
+                    );
                 } else {
                     raise ;
                 }
             }
         }
-        
+
         if self.k8s_config.redis_enabled {
             redis_name = f"{app_name}-redis";
             redis_service_name = f"{redis_name}-service";
-            redis_provider = DatabaseProviderFactory.create('kubernetes_redis', self, {'app_name': app_name});
+            redis_provider = DatabaseProviderFactory.create(
+                'kubernetes_redis', self, {'app_name': app_name}
+            );
             redis_result = redis_provider.deploy({});
             try {
-                apps_v1.read_namespaced_deployment(name=redis_name, namespace=namespace);
+                apps_v1.read_namespaced_deployment(
+                    name=redis_name, namespace=namespace
+                );
             } except ApiException as e {
                 if (e.status == 404) {
-                    apps_v1.create_namespaced_deployment(namespace=namespace, body=redis_result['deployment']);
+                    apps_v1.create_namespaced_deployment(
+                        namespace=namespace, body=redis_result['deployment']
+                    );
                 } else {
                     raise ;
                 }
             }
             try {
-                core_v1.read_namespaced_service(name=redis_service_name, namespace=namespace);
+                core_v1.read_namespaced_service(
+                    name=redis_service_name, namespace=namespace
+                );
             } except ApiException as e {
                 if (e.status == 404) {
-                    core_v1.create_namespaced_service(namespace=namespace, body=redis_result['service']);
+                    core_v1.create_namespaced_service(
+                        namespace=namespace, body=redis_result['service']
+                    );
                 } else {
                     raise ;
                 }
@@ -371,7 +395,13 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Wait for deployment to be ready and check status."""
-    def _wait_for_deployment(self: KubernetesTarget, app_name: str, namespace: str, health_check_path: str, is_aws: bool) -> None {
+    def _wait_for_deployment(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        health_check_path: str,
+        is_aws: bool
+    ) -> None {
         path = health_check_path;
         if is_aws {
             time.sleep(self.k8s_config.aws_nlb_wait);
@@ -379,7 +409,9 @@ class KubernetesTarget(DeploymentTarget) {
             try {
                 k8s_config.load_kube_config();
                 core_v1 = client.CoreV1Api();
-                service_obj = core_v1.read_namespaced_service(f"{app_name}-service", namespace);
+                service_obj = core_v1.read_namespaced_service(
+                    f"{app_name}-service", namespace
+                );
                 nlb_ingress = service_obj.status.load_balancer.ingress;
                 if (nlb_ingress and (len(nlb_ingress) > 0)) {
                     endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip;
@@ -418,7 +450,9 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Handle image registry if build is requested."""
-    def _handle_image_registry(self: KubernetesTarget, app_name: str, app_config: AppConfig) -> str {
+    def _handle_image_registry(
+        self: KubernetesTarget, app_name: str, app_config: AppConfig
+    ) -> str {
         image_name = self.k8s_config.docker_image_name or f"{app_name}:latest";
         repository_name: str;
         if app_config.build and self.image_registry {
@@ -450,55 +484,57 @@ class KubernetesTarget(DeploymentTarget) {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
         namespace = os.getenv('K8s_NAMESPACE') or self.k8s_config.namespace;
-        
+
         if self.logger {
             self.logger.info(
                 f"Deploying application '{app_name}' to Kubernetes",
                 {'namespace': namespace, 'build': app_config.build}
             );
         }
-        
+
         validate_resource_limits(
             self.k8s_config.cpu_request,
             self.k8s_config.cpu_limit,
             self.k8s_config.memory_request,
             self.k8s_config.memory_limit
         );
-        
+
         # 2. Initialize Kubernetes clients
         k8s_config.load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
         check_K8s_status();
         ensure_namespace_exists(namespace);
-        
+
         # 3. Load environment variables
         env_list = load_env_variables(app_config.code_folder);
-        
+
         # 4. Determine cluster type
         cluster_env = cluster_type();
         is_aws = cluster_env == 'aws';
         service_type = 'LoadBalancer' if is_aws else 'NodePort';
-        
+
         # 5. Handle image registry if build is requested
         repository_name = self._handle_image_registry(app_name, app_config);
-        
+
         # 6. Get health check path
-        health_check_path = os.getenv('K8s_HEALTHCHECK_PATH', self.k8s_config.health_check_path);
-        
+        health_check_path = os.getenv(
+            'K8s_HEALTHCHECK_PATH', self.k8s_config.health_check_path
+        );
+
         # 7. Get database init containers
         init_containers = self._get_database_init_containers(app_name);
-        
+
         # 8. Build configurations
         volumes = [];
         resources_config = self._build_resource_config();
         probe_configs = self._build_probe_config(health_check_path);
-        
+
         # 9. Build container configuration
         container_config = self._build_container_config(
             app_name, repository_name, env_list, probe_configs, resources_config
         );
-        
+
         # 10. Handle volumes and build container if not building image
         if not app_config.build {
             volumes_config = self._build_volumes_config(
@@ -507,7 +543,6 @@ class KubernetesTarget(DeploymentTarget) {
             volumes = volumes_config['volumes'];
             build_container = volumes_config['build_container'];
             init_containers.append(build_container);
-            
             # Build runtime setup command
             command = self._build_runtime_setup_command(app_config);
             container_config = self._build_container_config(
@@ -518,16 +553,24 @@ class KubernetesTarget(DeploymentTarget) {
                 resources_config,
                 command=command,
                 working_dir=self.k8s_config.app_mount_path,
-                volume_mounts=[{'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path}]
+                volume_mounts=[
+                    {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path}
+                ]
             );
         }
-        
+
         # 11. Build service and deployment
-        service = self._build_service_config(app_name, is_aws, health_check_path, service_type);
+        service = self._build_service_config(
+            app_name, is_aws, health_check_path, service_type
+        );
         deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
-            'metadata': {'name': app_name, 'namespace': namespace, 'labels': {'app': app_name}},
+            'metadata': {
+                'name': app_name,
+                'namespace': namespace,
+                'labels': {'app': app_name}
+            },
             'spec': {
                 'replicas': 1,
                 'selector': {'matchLabels': {'app': app_name}},
@@ -541,7 +584,7 @@ class KubernetesTarget(DeploymentTarget) {
                 }
             }
         };
-        
+
         # 12. Delete existing resources if they exist
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
@@ -553,27 +596,27 @@ class KubernetesTarget(DeploymentTarget) {
             'Service'
         );
         time.sleep(self.k8s_config.resource_deletion_wait);
-        
+
         # 13. Deploy databases
         self._deploy_databases(app_name, namespace, apps_v1, core_v1);
-        
+
         # 14. Deploy main application
         if self.logger {
             self.logger.info(f'Deploying Jaseci-app app...');
         }
         apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment);
         core_v1.create_namespaced_service(namespace=namespace, body=service);
-        
+
         # 15. Wait for deployment and get service URL
         self._wait_for_deployment(app_name, namespace, health_check_path, is_aws);
         service_url = self.get_service_url(app_name);
-        
+
         if self.logger {
             self.logger.info(
                 f"Deployment complete for '{app_name}'", {'service_url': service_url}
             );
         }
-        
+
         return DeploymentResult(
             success=True,
             service_url=service_url,
@@ -582,7 +625,13 @@ class KubernetesTarget(DeploymentTarget) {
     }
 
     """Destroy all enabled databases."""
-    def _destroy_databases(self: KubernetesTarget, app_name: str, namespace: str, apps_v1: Any, core_v1: Any) -> None {
+    def _destroy_databases(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any
+    ) -> None {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             delete_if_exists(
@@ -598,7 +647,7 @@ class KubernetesTarget(DeploymentTarget) {
                 'Service'
             );
         }
-        
+
         if self.k8s_config.redis_enabled {
             redis_name = f"{app_name}-redis";
             delete_if_exists(

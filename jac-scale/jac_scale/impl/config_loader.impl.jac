@@ -100,7 +100,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
         k8s_config['docker_image_name'] = f"{app_name}:latest";
     }
     # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
-    import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig };
+    import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
 }

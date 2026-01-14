@@ -37,13 +37,15 @@ class DatabaseProvider {
     def cleanup(self: DatabaseProvider) -> None;
 
     """Get the init container configuration for the database.
-    
+
     Args:
         app_name: Name of the application
         wait_image: Docker image to use for the wait container
-    
+
     Returns:
         Dictionary representing the init container, or None if not applicable.
     """
-    def get_init_container(self: DatabaseProvider, app_name: str, wait_image: str) -> (dict[(str, Any)] | None);
+    def get_init_container(
+        self: DatabaseProvider, app_name: str, wait_image: str
+    ) -> (dict[(str, Any)] | None);
 }

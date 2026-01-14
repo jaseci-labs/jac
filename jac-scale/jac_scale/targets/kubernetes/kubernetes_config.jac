@@ -62,25 +62,25 @@ class KubernetesConfig(BaseConfig) {
         liveness_period: int = 20,
         liveness_failure_threshold: int = 80,
         health_check_path: str = '/docs',
-        # Runtime configuration
         python_image: str = 'python:3.12-slim',
         busybox_image: str = 'busybox:1.36',
         wait_image: str = 'busybox',
-        # Storage configuration
         pvc_size: str = '5Gi',
-        # Timing configuration
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
-        # Paths
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
         workspace_path: str = '/code/workspace',
-        # Runtime environment
         jaseci_repo_url: str = 'https://github.com/jaseci-labs/jaseci.git',
         jaseci_branch: str = 'main',
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
         additional_packages: list[str] = []
+        # Runtime configuration
+        # Storage configuration
+        # Timing configuration
+        # Paths
+        # Runtime environment
     ) -> None {
         self.app_name = app_name;
         self.namespace = namespace;
@@ -189,25 +189,27 @@ class KubernetesConfig(BaseConfig) {
             liveness_period=config.get('liveness_period', 20),
             liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
             health_check_path=config.get('health_check_path', '/docs'),
-            # Runtime configuration
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
             wait_image=config.get('wait_image', 'busybox'),
-            # Storage configuration
             pvc_size=config.get('pvc_size', '5Gi'),
-            # Timing configuration
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
             aws_nlb_wait=config.get('aws_nlb_wait', 60),
-            # Paths
             app_mount_path=config.get('app_mount_path', '/app'),
             code_mount_path=config.get('code_mount_path', '/code'),
             workspace_path=config.get('workspace_path', '/code/workspace'),
-            # Runtime environment
-            jaseci_repo_url=config.get('jaseci_repo_url', 'https://github.com/jaseci-labs/jaseci.git'),
+            jaseci_repo_url=config.get(
+                'jaseci_repo_url', 'https://github.com/jaseci-labs/jaseci.git'
+            ),
             jaseci_branch=config.get('jaseci_branch', 'main'),
             jaseci_commit=config.get('jaseci_commit'),
             install_jaseci=config.get('install_jaseci', True),
             additional_packages=config.get('additional_packages', [])
+            # Runtime configuration
+            # Storage configuration
+            # Timing configuration
+            # Paths
+            # Runtime environment
         );
     }
 }
