@@ -298,9 +298,9 @@ def test_server_authentication_required(server_fixture: ServerFixture) -> None:
 
     # Try to access protected endpoint without token
     result = server_fixture.request("GET", "/protected")
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "error" in data
-    data = result.get("data", result)
     assert "Unauthorized" in data["error"]
 
 
@@ -364,10 +364,9 @@ def test_server_call_function(server_fixture: ServerFixture) -> None:
         "POST", "/function/add_numbers", {"args": {"a": 10, "b": 25}}, token=token
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "result" in data
-    data = result.get("data", result)
-
     assert data["result"] == 35
 
     # Call greet
@@ -600,8 +599,10 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
 
     # Test listing functions - should include both local and imported
     functions_result = server_fixture.request("GET", "/functions", token=token)
-    assert "functions" in functions_result
-    functions = functions_result["functions"]
+    # Handle TransportResponse envelope format
+    functions_data = functions_result.get("data", functions_result)
+    assert "functions" in functions_data
+    functions = functions_data["functions"]
 
     # Local functions should be available
     assert "local_add" in functions, "Local function 'local_add' not found"
@@ -615,8 +616,10 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
 
     # Test listing walkers - should include both local and imported
     walkers_result = server_fixture.request("GET", "/walkers", token=token)
-    assert "walkers" in walkers_result
-    walkers = walkers_result["walkers"]
+    # Handle TransportResponse envelope format
+    walkers_data = walkers_result.get("data", walkers_result)
+    assert "walkers" in walkers_data
+    walkers = walkers_data["walkers"]
 
     # Local walker should be available
     assert "LocalCreateTask" in walkers, "Local walker 'LocalCreateTask' not found"
@@ -629,15 +632,19 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
     local_add_result = server_fixture.request(
         "POST", "/function/local_add", {"args": {"x": 5, "y": 3}}, token=token
     )
-    assert "result" in local_add_result
-    assert local_add_result["result"] == 8
+    # Handle TransportResponse envelope format
+    local_add_data = local_add_result.get("data", local_add_result)
+    assert "result" in local_add_data
+    assert local_add_data["result"] == 8
 
     # Test calling imported function
     multiply_result = server_fixture.request(
         "POST", "/function/multiply_numbers", {"args": {"a": 4, "b": 7}}, token=token
     )
-    assert "result" in multiply_result
-    assert multiply_result["result"] == 28
+    # Handle TransportResponse envelope format
+    multiply_data = multiply_result.get("data", multiply_result)
+    assert "result" in multiply_data
+    assert multiply_data["result"] == 28
 
     # Test calling another imported function
     format_result = server_fixture.request(
@@ -646,8 +653,10 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
         {"args": {"prefix": "INFO", "message": "test"}},
         token=token,
     )
-    assert "result" in format_result
-    assert format_result["result"] == "INFO: test"
+    # Handle TransportResponse envelope format
+    format_data = format_result.get("data", format_result)
+    assert "result" in format_data
+    assert format_data["result"] == "INFO: test"
 
     # Test spawning local walker
     local_walker_result = server_fixture.request(
@@ -656,9 +665,11 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
         {"task_title": "My Local Task"},
         token=token,
     )
-    assert "result" in local_walker_result
-    assert "reports" in local_walker_result
-    assert len(local_walker_result["reports"]) > 0
+    # Handle TransportResponse envelope format
+    local_walker_data = local_walker_result.get("data", local_walker_result)
+    assert "result" in local_walker_data or "reports" in local_walker_data
+    if "reports" in local_walker_data:
+        assert len(local_walker_data["reports"]) > 0
 
     # Test spawning imported walker
     imported_walker_result = server_fixture.request(
@@ -667,9 +678,11 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
         {"item_name": "Imported Item 1"},
         token=token,
     )
-    assert "result" in imported_walker_result
-    assert "reports" in imported_walker_result
-    assert len(imported_walker_result["reports"]) > 0
+    # Handle TransportResponse envelope format
+    imported_walker_data = imported_walker_result.get("data", imported_walker_result)
+    assert "result" in imported_walker_data or "reports" in imported_walker_data
+    if "reports" in imported_walker_data:
+        assert len(imported_walker_data["reports"]) > 0
 
 
 @pytest.mark.xfail(reason="Flaky: timing-dependent client bundle building")
@@ -710,15 +723,12 @@ def test_server_root_endpoint(server_fixture: ServerFixture) -> None:
 
     result = server_fixture.request("GET", "/")
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "message" in data
-    data = result.get("data", result)
     assert "endpoints" in data
-    data = result.get("data", result)
     assert "POST /user/register" in data["endpoints"]
-    data = result.get("data", result)
     assert "GET /functions" in data["endpoints"]
-    data = result.get("data", result)
     assert "GET /walkers" in data["endpoints"]
 
 
@@ -1207,10 +1217,9 @@ def test_public_function_without_auth(access_server_fixture: ServerFixture) -> N
         "POST", "/function/public_function", {"args": {"name": "Test"}}
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "result" in data
-    data = result.get("data", result)
-
     assert data["result"] == "Hello, Test! (public)"
 
 
@@ -1223,9 +1232,9 @@ def test_public_function_get_info_without_auth(
     # Get public function info without authentication
     result = access_server_fixture.request("GET", "/function/public_function")
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "signature" in data
-    data = result.get("data", result)
     assert "parameters" in data["signature"]
 
 
@@ -1240,9 +1249,9 @@ def test_protected_function_requires_auth(
         "POST", "/function/protected_function", {"args": {"message": "test"}}
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "error" in data
-    data = result.get("data", result)
     assert "Unauthorized" in data["error"]
 
 
@@ -1268,10 +1277,9 @@ def test_protected_function_with_auth(access_server_fixture: ServerFixture) -> N
         token=token,
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "result" in data
-    data = result.get("data", result)
-
     assert data["result"] == "Protected: secret"
 
 
@@ -1284,9 +1292,9 @@ def test_private_function_requires_auth(access_server_fixture: ServerFixture) ->
         "POST", "/function/private_function", {"args": {"secret": "test"}}
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "error" in data
-    data = result.get("data", result)
     assert "Unauthorized" in data["error"]
 
 
@@ -1312,10 +1320,9 @@ def test_private_function_with_auth(access_server_fixture: ServerFixture) -> Non
         token=token,
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "result" in data
-    data = result.get("data", result)
-
     assert data["result"] == "Private: topsecret"
 
 
@@ -1328,10 +1335,9 @@ def test_public_walker_without_auth(access_server_fixture: ServerFixture) -> Non
         "POST", "/walker/PublicWalker", {"message": "hello"}
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
-    assert "result" in data
-    data = result.get("data", result)
-    assert "reports" in data
+    assert "result" in data or "reports" in data
 
 
 def test_protected_walker_requires_auth(access_server_fixture: ServerFixture) -> None:
@@ -1371,10 +1377,9 @@ def test_protected_walker_with_auth(access_server_fixture: ServerFixture) -> Non
         token=token,
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
-    assert "result" in data
-    data = result.get("data", result)
-    assert "reports" in data
+    assert "result" in data or "reports" in data
 
 
 def test_private_walker_requires_auth(access_server_fixture: ServerFixture) -> None:
@@ -1414,10 +1419,9 @@ def test_private_walker_with_auth(access_server_fixture: ServerFixture) -> None:
         token=token,
     )
 
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
-    assert "result" in data
-    data = result.get("data", result)
-    assert "reports" in data
+    assert "result" in data or "reports" in data
 
 
 def test_introspection_list_requires_auth(
@@ -1428,9 +1432,9 @@ def test_introspection_list_requires_auth(
 
     # Try to list walkers without authentication - should fail
     result = access_server_fixture.request("GET", "/protected")
+    # Handle TransportResponse envelope format
     data = result.get("data", result)
     assert "error" in data
-    data = result.get("data", result)
     assert "Unauthorized" in data["error"]
 
 

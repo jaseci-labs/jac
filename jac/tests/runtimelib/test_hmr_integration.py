@@ -484,7 +484,9 @@ with entry {
                 method="POST",
                 data={},
             )
-            v1 = resp1.get("reports", [{}])[0].get("version")
+            # Handle TransportResponse envelope format
+            resp1_data = resp1.get("data", resp1)
+            v1 = resp1_data.get("reports", [{}])[0].get("version")
 
             # Update the version
             app_file.write_text(
@@ -511,7 +513,9 @@ with entry {
                 method="POST",
                 data={},
             )
-            v2 = resp2.get("reports", [{}])[0].get("version")
+            # Handle TransportResponse envelope format
+            resp2_data = resp2.get("data", resp2)
+            v2 = resp2_data.get("reports", [{}])[0].get("version")
 
             assert v2 == 2, f"Expected version 2 after HMR, got {v2}"
             assert v1 != v2, "Version did not change after HMR"
