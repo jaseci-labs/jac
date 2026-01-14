@@ -790,7 +790,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()
+        data = self._extract_transport_response_data(response.json())
         assert "token" in data
 
     def test_status_code_user_login_400_missing_credentials(self) -> None:
@@ -802,7 +802,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code in [400, 422]  # 422 from FastAPI validation
-        data = response.json()
+        data = self._extract_transport_response_data(response.json())
         # Either custom error or FastAPI validation error
         assert "error" in data or "detail" in data
 
