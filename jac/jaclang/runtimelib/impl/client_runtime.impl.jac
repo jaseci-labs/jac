@@ -421,17 +421,16 @@ impl jacSignup(username: str, password: str) -> dict {
         try {
             error_payload = JSON.parse(error_text);
             # Handle TransportResponse envelope format
-            error_data = error_payload["data"] if error_payload["data"] else error_payload;
+            error_data = error_payload["data"]
+            if error_payload["data"]
+            else error_payload;
             error_msg = None;
             try {
                 if error_data["error"] {
                     error_msg = error_data["error"];
                 }
             } except Exception { }
-            return {
-                "success": False,
-                "error": error_msg if error_msg else "Signup failed"
-            };
+            return {"success": False, "error": error_msg or "Signup failed"};
         } except Exception {
             return {"success": False, "error": error_text};
         }

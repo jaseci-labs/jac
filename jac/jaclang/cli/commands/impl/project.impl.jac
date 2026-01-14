@@ -122,7 +122,8 @@ impl add(
         # If --cl flag is used, we need jac.toml to exist
         if cl {
             print(
-                "No jac.toml found. Run 'jac init' to create a project.", file=sys.stderr
+                "No jac.toml found. Run 'jac init' to create a project.",
+                file=sys.stderr
             );
             return 1;
         }
