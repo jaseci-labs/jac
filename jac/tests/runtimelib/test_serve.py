@@ -595,7 +595,8 @@ def test_server_imported_functions_and_walkers(server_fixture: ServerFixture) ->
     create_result = server_fixture.request(
         "POST", "/user/register", {"username": "importuser", "password": "pass"}
     )
-    token = create_result["token"]
+    create_data = create_result.get("data", create_result)
+    token = create_data["token"]
 
     # Test listing functions - should include both local and imported
     functions_result = server_fixture.request("GET", "/functions", token=token)

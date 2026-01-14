@@ -299,7 +299,9 @@ with entry {
                 method="POST",
                 data={},
             )
-            initial_reports = response.get("reports", [])
+            # Handle TransportResponse envelope format
+            response_data = response.get("data", response)
+            initial_reports = response_data.get("reports", [])
 
             # Update walker to return 2
             app_file.write_text(
@@ -324,7 +326,9 @@ with entry {
                 method="POST",
                 data={},
             )
-            updated_reports = response.get("reports", [])
+            # Handle TransportResponse envelope format
+            response_data = response.get("data", response)
+            updated_reports = response_data.get("reports", [])
 
             assert initial_reports != updated_reports, "Walker code was not reloaded"
 
