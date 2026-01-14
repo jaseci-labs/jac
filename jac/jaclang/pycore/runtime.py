@@ -17,6 +17,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import wraps
+from http.server import HTTPServer
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
+    from jaclang.runtimelib.server import JacAPIServer as JacServer
     from jaclang.runtimelib.server import ModuleIntrospector
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -1682,6 +1684,16 @@ class JacAPIServer:
         from jaclang.runtimelib.server import JacAPIServer
 
         return JacAPIServer
+
+    @staticmethod
+    def create_server(
+        jac_server: JacServer,
+        host: str,
+        port: int,
+    ) -> HTTPServer:
+        """Create the API server instance."""
+        handler_class = jac_server.create_handler()
+        return HTTPServer((host, port), handler_class)
 
     @staticmethod
     def render_page(

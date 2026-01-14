@@ -751,6 +751,7 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
+    self.server = Jac.create_server(self, '0.0.0.0', self.port);
 }
 
 """Create HTTP request handler."""
@@ -1221,11 +1222,10 @@ impl JacAPIServer.start -> None {
             );
         }
     }
-    handler_class = self.create_handler();
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
-    with HTTPServer(('0.0.0.0', self.port), handler_class) as httpd {
+    with self.server as httpd {
         print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         print(f"Module: {self.module_name}");
         print(f"Session: {self.session_path}");

@@ -91,8 +91,7 @@ class KubernetesRedisProvider(DatabaseProvider) {
     }
 
     def cleanup(self: KubernetesRedisProvider) -> None {
-        # Cleanup is handled by the deployment target
-        pass;
+    # Cleanup is handled by the deployment target
     }
 
     override def get_init_container(

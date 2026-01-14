@@ -57,10 +57,11 @@ class ServerFixture:
         test_name = request.node.name
         self.session_file = fixture_abs_path(f"test_serve_{test_name}.session")
 
+        # Clean up any leftover session files from previous runs
+        del_session(self.session_file)
+
     def start_server(self, api_file: str = "serve_api.jac") -> None:
         """Start the API server in a background thread."""
-        from http.server import HTTPServer
-
         # Load the module with the same session_file for persistence
         base, mod, mach = proc_file_sess(fixture_abs_path(api_file), self.session_file)
         Jac.set_base_path(base)
@@ -78,12 +79,13 @@ class ServerFixture:
             port=self.port,
         )
 
+        # Use the HTTPServer created by JacAPIServer
+        self.httpd = self.server.server
+
         # Start server in thread
         def run_server():
             try:
                 self.server.load_module()
-                handler_class = self.server.create_handler()
-                self.httpd = HTTPServer(("127.0.0.1", self.port), handler_class)
                 self.httpd.serve_forever()
             except Exception:
                 pass
@@ -778,6 +780,10 @@ def test_module_loading_and_introspection(server_fixture: ServerFixture) -> None
     assert "title" in walker_info["fields"]
     assert "priority" in walker_info["fields"]
 
+    # Clean up server socket
+    server.user_manager.close()
+    if server.server:
+        server.server.server_close()
     mach.close()
 
 
@@ -847,6 +853,10 @@ def test_csr_mode_with_server_default(server_fixture: ServerFixture) -> None:
     html_content = result.get("data", result)["html"]
     assert '<div id="__jac_root"></div>' in html_content
 
+    # Clean up server socket
+    server.user_manager.close()
+    if server.server:
+        server.server.server_close()
     mach.close()
 
 
@@ -1558,12 +1568,13 @@ class ConfiguredServerFixture:
                 port=self.port,
             )
 
+            # Use the HTTPServer created by JacAPIServer
+            self.httpd = self.server.server
+
             # Start server in thread
             def run_server():
                 try:
                     self.server.load_module()
-                    handler_class = self.server.create_handler()
-                    self.httpd = HTTPServer(("127.0.0.1", self.port), handler_class)
                     self.httpd.serve_forever()
                 except Exception:
                     pass
@@ -1636,12 +1647,25 @@ class ConfiguredServerFixture:
         """Stop server and cleanup."""
         from jaclang.project.config import set_config
 
+        # Close user manager if it exists
+        if self.server and hasattr(self.server, "user_manager"):
+            with contextlib.suppress(Exception):
+                self.server.user_manager.close()
+
+        # Commit and close the ExecutionContext
+        with contextlib.suppress(Exception):
+            Jac.commit()
+            Jac.get_context().close()
+
         if self.httpd:
             self.httpd.shutdown()
             self.httpd.server_close()
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(timeout=2)
         set_config(None)
+
+        # Give a moment for resources to be released before cleaning up session
+        time.sleep(0.1)
         del_session(self.session_file)
 
 

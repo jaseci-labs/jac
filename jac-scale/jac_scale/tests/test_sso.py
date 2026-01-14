@@ -131,7 +131,7 @@ class TestJacAPIServerSSO:
             )
 
         # Replace server components with mocks
-        self.server.server_impl = self.mock_server_impl
+        self.server.server = self.mock_server_impl
         self.server.user_manager = self.mock_user_manager
         self.server.introspector = self.mock_introspector
         self.server.execution_manager = self.mock_execution_manager

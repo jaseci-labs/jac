@@ -73,10 +73,11 @@ def littlex_server():
                     except Exception:
                         pass
 
+    # Clean up any leftover session files from previous runs
+    _del_session(server_data["session_file"])
+
     def _start_server() -> None:
         """Start the API server in a background thread."""
-        from http.server import HTTPServer
-
         # Load the module
         jac_file = os.path.join(os.path.dirname(__file__), "littleX_single_nodeps.jac")
         base, mod, mach = proc_file_sess(jac_file, "")
@@ -95,12 +96,13 @@ def littlex_server():
             base_path=base,
         )
 
+        # Use the HTTPServer created by JacAPIServer
+        server_data["httpd"] = server_data["server"].server
+
         # Start server in thread
         def run_server():
             try:
                 server_data["server"].load_module()
-                handler_class = server_data["server"].create_handler()
-                server_data["httpd"] = HTTPServer(("127.0.0.1", server_data["port"]), handler_class)
                 server_data["httpd"].serve_forever()
             except Exception:
                 pass
