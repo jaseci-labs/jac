@@ -6,12 +6,15 @@ from types import TracebackType
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
+import json
+
 import pytest
 from fastapi import Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from jac_scale.config_loader import reset_scale_config
 from jac_scale.serve import JacAPIServer, Operations, Platforms
+from jaclang.runtimelib.transport import TransportResponse
 
 
 def mock_sso_config_with_credentials() -> dict:
@@ -141,6 +144,41 @@ class TestJacAPIServerSSO:
         with contextlib.suppress(BaseException):
             del self.server
 
+    @staticmethod
+    def _get_response_body(result: JSONResponse | TransportResponse) -> str:
+        """Extract body content from JSONResponse or TransportResponse."""
+        if isinstance(result, JSONResponse):
+            return result.body.decode("utf-8")
+        elif isinstance(result, TransportResponse):
+            # Convert TransportResponse to JSON string
+            response_dict = {
+                "ok": result.ok,
+                "type": result.type,
+                "data": result.data,
+                "error": None,
+            }
+            if not result.ok and result.error:
+                response_dict["error"] = {
+                    "code": result.error.code,
+                    "message": result.error.message,
+                    "details": result.error.details,
+                }
+            if result.meta:
+                meta_dict = {}
+                if result.meta.request_id:
+                    meta_dict["request_id"] = result.meta.request_id
+                if result.meta.trace_id:
+                    meta_dict["trace_id"] = result.meta.trace_id
+                if result.meta.timestamp:
+                    meta_dict["timestamp"] = result.meta.timestamp
+                if result.meta.extra:
+                    meta_dict["extra"] = result.meta.extra
+                if meta_dict:
+                    response_dict["meta"] = meta_dict
+            return json.dumps(response_dict)
+        else:
+            raise TypeError(f"Unexpected response type: {type(result)}")
+
     def test_get_sso_with_google_platform(self) -> None:
         """Test get_sso returns GoogleSSO instance for Google platform."""
         with patch("jac_scale.serve.GoogleSSO", return_value=MockGoogleSSO) as mock_sso:
@@ -201,9 +239,9 @@ class TestJacAPIServerSSO:
             "invalid_platform", Operations.LOGIN.value
         )
 
-        assert isinstance(result, JSONResponse)
-        # Extract body from JSONResponse
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        # Extract body from JSONResponse or TransportResponse
+        body = self._get_response_body(result)
         assert "Invalid platform" in body
 
     @pytest.mark.asyncio
@@ -216,8 +254,8 @@ class TestJacAPIServerSSO:
             Platforms.GOOGLE.value, Operations.LOGIN.value
         )
 
-        assert isinstance(result, JSONResponse)
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        body = self._get_response_body(result)
         assert "not configured" in body
 
     @pytest.mark.asyncio
@@ -227,8 +265,8 @@ class TestJacAPIServerSSO:
             Platforms.GOOGLE.value, "invalid_operation"
         )
 
-        assert isinstance(result, JSONResponse)
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        body = self._get_response_body(result)
         assert "Invalid operation" in body
 
     @pytest.mark.asyncio
@@ -239,8 +277,8 @@ class TestJacAPIServerSSO:
                 Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
             assert "Failed to initialize SSO" in body
 
     @pytest.mark.asyncio
@@ -271,8 +309,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "Login successful" in body
             assert "test@example.com" in body
@@ -311,7 +349,7 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
             )
 
-            assert isinstance(result, JSONResponse)
+            assert isinstance(result, (JSONResponse, TransportResponse))
             # Verify create_user was called with random password
             self.mock_user_manager.create_user.assert_called_once_with(
                 "newuser@example.com", "random_pass"
@@ -337,8 +375,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "User not found" in body
 
@@ -365,8 +403,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "User already exists" in body
 
@@ -379,8 +417,8 @@ class TestJacAPIServerSSO:
             mock_request, "invalid_platform", Operations.LOGIN.value
         )
 
-        assert isinstance(result, JSONResponse)
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        body = self._get_response_body(result)
         assert "Invalid platform" in body
 
     @pytest.mark.asyncio
@@ -395,8 +433,8 @@ class TestJacAPIServerSSO:
             mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
         )
 
-        assert isinstance(result, JSONResponse)
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        body = self._get_response_body(result)
         assert "not configured" in body
 
     @pytest.mark.asyncio
@@ -408,8 +446,8 @@ class TestJacAPIServerSSO:
             mock_request, Platforms.GOOGLE.value, "invalid_operation"
         )
 
-        assert isinstance(result, JSONResponse)
-        body = result.body.decode("utf-8")
+        assert isinstance(result, (JSONResponse, TransportResponse))
+        body = self._get_response_body(result)
         assert "Invalid operation" in body
 
     @pytest.mark.asyncio
@@ -422,8 +460,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
             assert "Failed to initialize SSO" in body
 
     @pytest.mark.asyncio
@@ -442,8 +480,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "Email not provided" in body
 
@@ -463,8 +501,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "Authentication failed" in body
 
@@ -495,8 +533,8 @@ class TestJacAPIServerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
             )
 
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "Failed to create user" in body
 
@@ -630,8 +668,8 @@ class TestJacAPIServerSSO:
             mock_create_token.assert_called_once_with(user_email)
 
             # Verify response contains the token
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "generated_token" in body
 
@@ -673,7 +711,7 @@ class TestJacAPIServerSSO:
             mock_create_token.assert_called_once_with(user_email)
 
             # Verify response contains the token
-            assert isinstance(result, JSONResponse)
-            body = result.body.decode("utf-8")
+            assert isinstance(result, (JSONResponse, TransportResponse))
+            body = self._get_response_body(result)
 
             assert "new_user_token" in body

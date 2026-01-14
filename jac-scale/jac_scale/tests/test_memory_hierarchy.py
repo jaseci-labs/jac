@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import redis
 import requests
@@ -143,8 +144,15 @@ class TestMemoryHierarchy:
         )
 
     @staticmethod
-    def _extract_transport_response_data(json_response: dict) -> dict:
+    def _extract_transport_response_data(
+        json_response: dict[str, Any] | list[Any]
+    ) -> dict[str, Any] | list[Any]:
         """Extract data from TransportResponse envelope format."""
+        # Handle jac-scale's tuple response format [status, body]
+        if isinstance(json_response, list) and len(json_response) == 2:
+            body: dict[str, Any] = json_response[1]
+            json_response = body
+
         # Handle TransportResponse envelope format
         if isinstance(json_response, dict) and "ok" in json_response and "data" in json_response:
             if json_response.get("ok") and json_response.get("data") is not None:
@@ -153,7 +161,7 @@ class TestMemoryHierarchy:
             elif not json_response.get("ok") and json_response.get("error"):
                 # Error case: return error info
                 error_info = json_response["error"]
-                result: dict = {"error": error_info.get("message", "Unknown error")}
+                result: dict[str, Any] = {"error": error_info.get("message", "Unknown error")}
                 if "code" in error_info:
                     result["error_code"] = error_info["code"]
                 if "details" in error_info:

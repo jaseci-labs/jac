@@ -183,7 +183,9 @@ class TestJacScaleServe:
                 shutil.rmtree(client_build_dir)
 
     @staticmethod
-    def _extract_transport_response_data(json_response: Any) -> Any:
+    def _extract_transport_response_data(
+        json_response: dict[str, Any] | list[Any]
+    ) -> dict[str, Any] | list[Any]:
         """Extract data from TransportResponse envelope format.
 
         Handles both success and error responses.
