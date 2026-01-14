@@ -168,7 +168,6 @@ impl MTRuntime.get_output_schema() -> dict | None {
             return None;  # Strings are default and not using a schema.
 
         }
-        print("here");
         return type_to_schema(resp_type=self.resp_type, info=self.mtir.ir_info.return_type);
     }
     # If the are tools, the final output will be sent to the finish_tool

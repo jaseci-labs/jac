@@ -37,12 +37,12 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "", info:Info = None
     # Handle Union
     if get_origin(ty) in (Union, UnionType) {
         args = get_args(ty);
-        return {"anyOf": [_type_to_schema(arg) for arg in args], "title": title,} | context;
+        return {"anyOf": [_type_to_schema(arg, info=info.type_info[i+1]) for (i, arg) in enumerate(args)], "title": title,} | context;
     }
     # Handle annotated list
     if get_origin(ty) is list {
         item_type: type = get_args(ty)[0];
-        return {"type": "array", "items": _type_to_schema(item_type),} | context;
+        return {"type": "array", "items": _type_to_schema(item_type, info=info.type_info[1] if info.type_info[0]=="list" else None),} | context;
     }
     # Handle annotated tuple/set
     if get_origin(ty) in (tuple, set) {
@@ -50,7 +50,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "", info:Info = None
         args = get_args(ty);
         if len(args) == 2 and args[1] is Ellipsis {
             item_type = args[0];
-            return {"type": "array", "items": _type_to_schema(item_type),} | context;
+            return {"type": "array", "items": _type_to_schema(item_type, info=info.type_info[1] if info.type_info[0]=="tuple" else None),} | context;
         }
         raise ValueError(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
@@ -67,11 +67,17 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "", info:Info = None
             for (name, type) in get_type_hints(ty).items()
             if not name.startswith("_")
         };
+        if isinstance(info, FieldInfo) {
+            info_fields = info.type_info.fields if info else [];;
+        } else {
+            info_fields = info.fields if info else [];
+        }
+
         properties = {
-            name: _type_to_schema(
-                type, name, semstr_inner.get(name, "")
+            field.name: _type_to_schema(
+                fields[field.name], field.name, field.semstr if semstr is not None else "", info=field
             )  # type: ignore
-             for (name, type) in fields.items()
+            for field in info_fields
         };
         return {
             "title": title or ty.__name__,
@@ -117,8 +123,8 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "", info:Info = None
         hints = get_type_hints(ty);
         hints.pop("return", None);
         params = {
-            name: _type_to_schema(type, name, semstr_inner.get(name, ""))
-            for (name, type) in hints.items()
+            param.name: _type_to_schema(hints[param.name], param.name, param.semstr, info=param)
+            for param in info.params
         };
         return {
             "title": title or ty.__name__,
@@ -215,7 +221,7 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
 }
 
 """Return the JSON schema for a response type, formatted for LLM APIs."""
-impl type_to_schema(resp_type: type, info:Info=None) -> dict[str, object] {
+impl type_to_schema(resp_type: type, info:Info) -> dict[str, object] {
     type_name = _name_of_type(resp_type, info=info);
     schema = _type_to_schema(resp_type, type_name, info=info);
     schema = _wrap_to_object(schema);
