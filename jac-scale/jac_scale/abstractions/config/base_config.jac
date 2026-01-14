@@ -3,8 +3,17 @@ import from typing { Any }
 
 """Base configuration class that all target-specific configs should inherit from."""
 class BaseConfig {
-    has app_name: str;
-    has namespace: str = 'default';
+    has app_name: str,
+        namespace: str = 'default';
+
+    def init(
+        self: BaseConfig,
+        app_name: str = 'jaseci',
+        namespace: str = 'default'
+    ) -> None {
+        self.app_name = app_name;
+        self.namespace = namespace;
+    }
 
     def to_dict(self: BaseConfig) -> dict[str, Any] {
         return {

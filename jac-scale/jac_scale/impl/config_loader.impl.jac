@@ -48,7 +48,27 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'readiness_period': 20,
             'liveness_initial_delay': 10,
             'liveness_period': 20,
-            'liveness_failure_threshold': 80
+            'liveness_failure_threshold': 80,
+            'health_check_path': '/docs',
+            # Runtime configuration
+            'python_image': 'python:3.12-slim',
+            'busybox_image': 'busybox:1.36',
+            'wait_image': 'busybox',
+            # Storage configuration
+            'pvc_size': '5Gi',
+            # Timing configuration
+            'resource_deletion_wait': 5,
+            'aws_nlb_wait': 60,
+            # Paths
+            'app_mount_path': '/app',
+            'code_mount_path': '/code',
+            'workspace_path': '/code/workspace',
+            # Runtime environment
+            'jaseci_repo_url': 'https://github.com/jaseci-labs/jaseci.git',
+            'jaseci_branch': 'main',
+            'jaseci_commit': None,
+            'install_jaseci': True,
+            'additional_packages': []
         },
         'server': {'port': 8000, 'host': '0.0.0.0'}
     };
@@ -124,7 +144,31 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
         'readiness_period': readiness_period,
         'liveness_initial_delay': liveness_initial_delay,
         'liveness_period': liveness_period,
-        'liveness_failure_threshold': liveness_failure_threshold
+        'liveness_failure_threshold': liveness_failure_threshold,
+        'health_check_path': k8s_config.get('health_check_path', '/docs'),
+        # Runtime configuration (from TOML)
+        'python_image': k8s_config.get('python_image', 'python:3.12-slim'),
+        'busybox_image': k8s_config.get('busybox_image', 'busybox:1.36'),
+        'wait_image': k8s_config.get('wait_image', 'busybox'),
+        # Storage configuration
+        'pvc_size': k8s_config.get('pvc_size', '5Gi'),
+        # Timing configuration
+        'resource_deletion_wait': int(k8s_config.get('resource_deletion_wait', 5)),
+        'aws_nlb_wait': int(k8s_config.get('aws_nlb_wait', 60)),
+        # Paths
+        'app_mount_path': k8s_config.get('app_mount_path', '/app'),
+        'code_mount_path': k8s_config.get('code_mount_path', '/code'),
+        'workspace_path': k8s_config.get('workspace_path', '/code/workspace'),
+        # Runtime environment (defaults to official Jaseci repo)
+        # Allow env var overrides for CI/CD scenarios where different versions might be tested
+        'jaseci_repo_url': os.getenv('K8s_JASECI_REPO_URL',
+            k8s_config.get('jaseci_repo_url', 'https://github.com/jaseci-labs/jaseci.git')),
+        'jaseci_branch': os.getenv('K8s_JASECI_BRANCH',
+            k8s_config.get('jaseci_branch', 'main')),
+        'jaseci_commit': os.getenv('K8s_JASECI_COMMIT',
+            k8s_config.get('jaseci_commit')),  # Optional
+        'install_jaseci': k8s_config.get('install_jaseci', True),
+        'additional_packages': k8s_config.get('additional_packages', [])
     };
 }
 

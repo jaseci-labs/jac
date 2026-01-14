@@ -21,6 +21,101 @@ class KubernetesConfig(BaseConfig) {
     has liveness_period: int = 20;
     has liveness_failure_threshold: int = 80;
     has health_check_path: str = '/docs';
+    
+    # Runtime configuration
+    has python_image: str = 'python:3.12-slim';
+    has busybox_image: str = 'busybox:1.36';
+    has wait_image: str = 'busybox';
+    
+    # Storage configuration
+    has pvc_size: str = '5Gi';
+    
+    # Timing configuration
+    has resource_deletion_wait: int = 5;  # seconds
+    has aws_nlb_wait: int = 60;  # seconds
+    
+    # Paths
+    has app_mount_path: str = '/app';
+    has code_mount_path: str = '/code';
+    has workspace_path: str = '/code/workspace';
+    
+    # Runtime environment (defaults to official Jaseci repo)
+    has jaseci_repo_url: str = 'https://github.com/jaseci-labs/jaseci.git';
+    has jaseci_branch: str = 'main';
+    has jaseci_commit: (str | None) = None;  # Optional - if set, checkout specific commit
+    has install_jaseci: bool = True;
+    has additional_packages: list[str] = [];
+
+    def init(
+        self: KubernetesConfig,
+        app_name: str = 'jaseci',
+        namespace: str = 'default',
+        docker_image_name: str = '',
+        docker_username: str = '',
+        docker_password: str = '',
+        container_port: int = 8000,
+        node_port: int = 30001,
+        mongodb_enabled: bool = True,
+        redis_enabled: bool = True,
+        cpu_request: (str | None) = None,
+        cpu_limit: (str | None) = None,
+        memory_request: (str | None) = None,
+        memory_limit: (str | None) = None,
+        readiness_initial_delay: int = 10,
+        readiness_period: int = 20,
+        liveness_initial_delay: int = 10,
+        liveness_period: int = 20,
+        liveness_failure_threshold: int = 80,
+        health_check_path: str = '/docs',
+        python_image: str = 'python:3.12-slim',
+        busybox_image: str = 'busybox:1.36',
+        wait_image: str = 'busybox',
+        pvc_size: str = '5Gi',
+        resource_deletion_wait: int = 5,
+        aws_nlb_wait: int = 60,
+        app_mount_path: str = '/app',
+        code_mount_path: str = '/code',
+        workspace_path: str = '/code/workspace',
+        jaseci_repo_url: str = 'https://github.com/jaseci-labs/jaseci.git',
+        jaseci_branch: str = 'main',
+        jaseci_commit: (str | None) = None,
+        install_jaseci: bool = True,
+        additional_packages: list[str] = []
+    ) -> None {
+        self.app_name = app_name;
+        self.namespace = namespace;
+        self.docker_image_name = docker_image_name;
+        self.docker_username = docker_username;
+        self.docker_password = docker_password;
+        self.container_port = container_port;
+        self.node_port = node_port;
+        self.mongodb_enabled = mongodb_enabled;
+        self.redis_enabled = redis_enabled;
+        self.cpu_request = cpu_request;
+        self.cpu_limit = cpu_limit;
+        self.memory_request = memory_request;
+        self.memory_limit = memory_limit;
+        self.readiness_initial_delay = readiness_initial_delay;
+        self.readiness_period = readiness_period;
+        self.liveness_initial_delay = liveness_initial_delay;
+        self.liveness_period = liveness_period;
+        self.liveness_failure_threshold = liveness_failure_threshold;
+        self.health_check_path = health_check_path;
+        self.python_image = python_image;
+        self.busybox_image = busybox_image;
+        self.wait_image = wait_image;
+        self.pvc_size = pvc_size;
+        self.resource_deletion_wait = resource_deletion_wait;
+        self.aws_nlb_wait = aws_nlb_wait;
+        self.app_mount_path = app_mount_path;
+        self.code_mount_path = code_mount_path;
+        self.workspace_path = workspace_path;
+        self.jaseci_repo_url = jaseci_repo_url;
+        self.jaseci_branch = jaseci_branch;
+        self.jaseci_commit = jaseci_commit;
+        self.install_jaseci = install_jaseci;
+        self.additional_packages = additional_packages;
+    }
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
         base = super().to_dict();
@@ -41,13 +136,31 @@ class KubernetesConfig(BaseConfig) {
             'liveness_initial_delay': self.liveness_initial_delay,
             'liveness_period': self.liveness_period,
             'liveness_failure_threshold': self.liveness_failure_threshold,
-            'health_check_path': self.health_check_path
+            'health_check_path': self.health_check_path,
+            # Runtime configuration
+            'python_image': self.python_image,
+            'busybox_image': self.busybox_image,
+            'wait_image': self.wait_image,
+            # Storage configuration
+            'pvc_size': self.pvc_size,
+            # Timing configuration
+            'resource_deletion_wait': self.resource_deletion_wait,
+            'aws_nlb_wait': self.aws_nlb_wait,
+            # Paths
+            'app_mount_path': self.app_mount_path,
+            'code_mount_path': self.code_mount_path,
+            'workspace_path': self.workspace_path,
+            # Runtime environment
+            'jaseci_repo_url': self.jaseci_repo_url,
+            'jaseci_branch': self.jaseci_branch,
+            'jaseci_commit': self.jaseci_commit,
+            'install_jaseci': self.install_jaseci,
+            'additional_packages': self.additional_packages
         });
         return base;
     }
 
     static def from_dict(cls: type, config: dict[str, Any]) -> KubernetesConfig {
-        base = super().from_dict(config);
         return cls(
             app_name=config.get('app_name', 'jaseci'),
             namespace=config.get('namespace', 'default'),
@@ -67,7 +180,26 @@ class KubernetesConfig(BaseConfig) {
             liveness_initial_delay=config.get('liveness_initial_delay', 10),
             liveness_period=config.get('liveness_period', 20),
             liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
-            health_check_path=config.get('health_check_path', '/docs')
+            health_check_path=config.get('health_check_path', '/docs'),
+            # Runtime configuration
+            python_image=config.get('python_image', 'python:3.12-slim'),
+            busybox_image=config.get('busybox_image', 'busybox:1.36'),
+            wait_image=config.get('wait_image', 'busybox'),
+            # Storage configuration
+            pvc_size=config.get('pvc_size', '5Gi'),
+            # Timing configuration
+            resource_deletion_wait=config.get('resource_deletion_wait', 5),
+            aws_nlb_wait=config.get('aws_nlb_wait', 60),
+            # Paths
+            app_mount_path=config.get('app_mount_path', '/app'),
+            code_mount_path=config.get('code_mount_path', '/code'),
+            workspace_path=config.get('workspace_path', '/code/workspace'),
+            # Runtime environment
+            jaseci_repo_url=config.get('jaseci_repo_url', 'https://github.com/jaseci-labs/jaseci.git'),
+            jaseci_branch=config.get('jaseci_branch', 'main'),
+            jaseci_commit=config.get('jaseci_commit'),
+            install_jaseci=config.get('install_jaseci', True),
+            additional_packages=config.get('additional_packages', [])
         );
     }
 }

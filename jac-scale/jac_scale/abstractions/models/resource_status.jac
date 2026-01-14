@@ -12,10 +12,23 @@ class ResourceStatus(Enum) {
 
 """Detailed resource status information."""
 class ResourceStatusInfo {
-    has status: ResourceStatus;
-    has replicas: int = 0;
-    has ready_replicas: int = 0;
-    has message: (str | None) = None;
+    has status: ResourceStatus,
+        replicas: int = 0,
+        ready_replicas: int = 0,
+        message: (str | None) = None;
+
+    def init(
+        self: ResourceStatusInfo,
+        status: ResourceStatus,
+        replicas: int = 0,
+        ready_replicas: int = 0,
+        message: (str | None) = None
+    ) -> None {
+        self.status = status;
+        self.replicas = replicas;
+        self.ready_replicas = ready_replicas;
+        self.message = message;
+    }
 
     def is_ready(self: ResourceStatusInfo) -> bool {
         return self.status == ResourceStatus.RUNNING and self.replicas > 0 and self.ready_replicas == self.replicas;
