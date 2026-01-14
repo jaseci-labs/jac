@@ -423,7 +423,7 @@ entry-point = "app.jac"
 
 
 def test_install_without_cl_flag() -> None:
-    """Test add command without --cl flag should fail when no jac.toml exists."""
+    """Test add command without --cl flag should skip silently when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -436,9 +436,11 @@ def test_install_without_cl_flag() -> None:
                 text=True,
             )
 
-            # Should fail with non-zero exit code because no jac.toml
-            assert result.returncode != 0
-            assert "No jac.toml found" in result.stderr
+            # Should skip silently (return 0) when no jac.toml exists
+            assert result.returncode == 0
+            # No error message should be printed
+            assert "No jac.toml found" not in result.stderr
+            assert "No jac.toml found" not in result.stdout
 
         finally:
             os.chdir(original_cwd)
