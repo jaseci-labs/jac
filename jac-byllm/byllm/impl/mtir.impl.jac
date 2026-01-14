@@ -2,7 +2,7 @@ glob SYSTEM_PERSONA = """\
     This is a task you must complete by returning only the output.
     Do not include explanations, code, or extra text—only the result.
     """,
-    INSTRUCTION_TOOL = """
+     INSTRUCTION_TOOL = """
     Use the tools provided to reach the goal. Call one tool at a time with \
     proper args—no explanations, no narration. Think step by step, invoking tools \
     as needed. When done, always call finish_tool(output) to return the final
@@ -53,12 +53,11 @@ impl MTRuntime.factory(
     if isinstance(caller, MethodType) {
         inputs_detail.insert(0, f"self = {caller.__self__}");
     }
-
     system_content = SYSTEM_PERSONA;
-    if call_params.get("_allow_system_override") and call_params.get("_system_prompt_override") {
+    if call_params.get("_allow_system_override")
+    and call_params.get("_system_prompt_override") {
         system_content = call_params.get("_system_prompt_override");
     }
-
     # Prepare the messages for the LLM call.
     messages: list[MessageType] = [
         Message(

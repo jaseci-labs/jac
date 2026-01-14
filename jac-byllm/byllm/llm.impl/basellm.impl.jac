@@ -134,7 +134,6 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
     output_value = mtir.parse_response(output_content);
-
     tool_calls: list[ToolCall] = [];
     tool_calls_list = message.get("tool_calls") if message else None;
     if tool_calls_list {
@@ -146,7 +145,7 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
             } else {
                 raise RuntimeError(
                     f"Attempted to call tool: '{tool_call.function.name}' which was not present."
-                );
+                ) ;
             }
         }
     }

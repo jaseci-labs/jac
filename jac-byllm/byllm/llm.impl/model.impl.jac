@@ -68,20 +68,14 @@ impl Model.model_call_with_stream(params: dict) {
 
 Useful for custom endpoints with specific SSL/mTLS requirements.
 """
-impl Model.model_call_http(url: str, token: str, payload: dict, ca_bundle: str) -> object {
+impl Model.model_call_http(
+    url: str, token: str, payload: dict, ca_bundle: str
+) -> object {
     import requests;
     import from litellm.types.utils { Message as LiteLLMMessage }
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    };
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
     response = requests.post(
-        url=url,
-        headers=headers,
-        json=payload,
-        timeout=60,
-        verify=ca_bundle if ca_bundle else True,
+        url=url, headers=headers, json=payload, timeout=60, verify=ca_bundle or True,
     );
     return response.json();
 }
