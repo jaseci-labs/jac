@@ -7,7 +7,7 @@
 
   <h1>Jaseci</h1>
   <h3>The AI-Native Stack for Python Developers</h3>
-
+ 
   <p>
     <a href="https://pypi.org/project/jaclang/">
       <img src="https://img.shields.io/pypi/v/jaclang.svg?style=flat-square" alt="PyPI version">
