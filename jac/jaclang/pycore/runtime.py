@@ -17,6 +17,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from functools import wraps
+from http.server import HTTPServer
 from inspect import getfile
 from logging import getLogger
 from pathlib import Path
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
+    from jaclang.runtimelib.server import JacAPIServer as JacServer
     from jaclang.runtimelib.server import ModuleIntrospector
 
 plugin_manager = pluggy.PluginManager("jac")
@@ -435,205 +437,366 @@ class JacWalker:
             raise TypeError("Invalid walker object")
 
     @staticmethod
+    def _execute_entries(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        current_loc: NodeArchetype | EdgeArchetype,
+    ) -> bool:
+        """Execute all entry abilities for current location.
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        from jaclang.runtimelib.utils import all_issubclass
+
+        # walker ability with loc entry
+        for i in warch._jac_entry_funcs_:
+            if (
+                i.trigger
+                and (
+                    all_issubclass(i.trigger, NodeArchetype)
+                    or all_issubclass(i.trigger, EdgeArchetype)
+                )
+                and isinstance(current_loc, i.trigger)
+            ):
+                i.func(warch, current_loc)
+            if walker.disengaged:
+                return False
+
+        # loc ability with any entry
+        for i in current_loc._jac_entry_funcs_:
+            if not i.trigger:
+                i.func(current_loc, warch)
+            if walker.disengaged:
+                return False
+
+        # loc ability with walker entry
+        for i in current_loc._jac_entry_funcs_:
+            if (
+                i.trigger
+                and all_issubclass(i.trigger, WalkerArchetype)
+                and isinstance(warch, i.trigger)
+            ):
+                i.func(current_loc, warch)
+            if walker.disengaged:
+                return False
+
+        return True
+
+    @staticmethod
+    def _execute_exits(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        current_loc: NodeArchetype | EdgeArchetype,
+    ) -> bool:
+        """Execute all exit abilities for current location.
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        from jaclang.runtimelib.utils import all_issubclass
+
+        # loc ability with walker exit
+        for i in current_loc._jac_exit_funcs_:
+            if (
+                i.trigger
+                and all_issubclass(i.trigger, WalkerArchetype)
+                and isinstance(warch, i.trigger)
+            ):
+                i.func(current_loc, warch)
+            if walker.disengaged:
+                return False
+
+        # loc ability with any exit
+        for i in current_loc._jac_exit_funcs_:
+            if not i.trigger:
+                i.func(current_loc, warch)
+            if walker.disengaged:
+                return False
+
+        # walker ability with loc exit
+        for i in warch._jac_exit_funcs_:
+            if (
+                i.trigger
+                and (
+                    all_issubclass(i.trigger, NodeArchetype)
+                    or all_issubclass(i.trigger, EdgeArchetype)
+                )
+                and isinstance(current_loc, i.trigger)
+            ):
+                i.func(warch, current_loc)
+            if walker.disengaged:
+                return False
+
+        return True
+
+    @staticmethod
+    def _visit_node_recursive(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        anchor: NodeAnchor | EdgeAnchor,
+    ) -> bool:
+        """Recursively visit a node with DFS semantics.
+
+        1. Execute entries for this node
+        2. Recursively visit all children added during entry
+        3. Execute exits for this node (post-order)
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        current_loc = anchor.archetype
+        if not current_loc:
+            return True
+
+        # Track in path for debugging/introspection
+        walker.path.append(anchor)
+
+        # Phase 1: Execute entry abilities
+        if not JacWalker._execute_entries(warch, walker, current_loc):
+            return False
+
+        # Phase 2: Process children (nodes added to walker.next during entries)
+        # We drain the queue here - children added during entry are processed recursively
+        while walker.next:
+            child_anchor = walker.next.pop(0)
+            if (
+                child_anchor not in walker.ignores
+                and not JacWalker._visit_node_recursive(warch, walker, child_anchor)
+            ):
+                return False
+
+        # Phase 3: Execute exit abilities (post-order - after all descendants)
+        return JacWalker._execute_exits(warch, walker, current_loc)
+
+    @staticmethod
     def spawn_call(
         walker: WalkerAnchor,
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
-        """Jac's spawn operator feature."""
-        from jaclang.runtimelib.utils import all_issubclass
+        """Jac's spawn operator feature with recursive DFS semantics.
 
+        Entry abilities execute when entering a node, exit abilities execute
+        after all descendants are visited (post-order/LIFO).
+        """
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
 
-        # walker ability on any entry (runs once at spawn)
+        # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
                 i.func(warch, current_loc)
             if walker.disengaged:
+                walker.ignores = []
                 return warch
 
-        while len(walker.next):
-            if current_loc := walker.next.pop(0).archetype:
-                # walker ability with loc entry
-                for i in warch._jac_entry_funcs_:
-                    if (
-                        i.trigger
-                        and (
-                            all_issubclass(i.trigger, NodeArchetype)
-                            or all_issubclass(i.trigger, EdgeArchetype)
-                        )
-                        and isinstance(current_loc, i.trigger)
-                    ):
-                        i.func(warch, current_loc)
-                    if walker.disengaged:
-                        return warch
+        # Traverse recursively (walker.next is already set by spawn())
+        while walker.next:
+            next_anchor = walker.next.pop(0)
+            if (
+                next_anchor not in walker.ignores
+                and not JacWalker._visit_node_recursive(warch, walker, next_anchor)
+            ):
+                break
 
-                # loc ability with any entry
-                for i in current_loc._jac_entry_funcs_:
-                    if not i.trigger:
-                        i.func(current_loc, warch)
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with walker entry
-                for i in current_loc._jac_entry_funcs_:
-                    if (
-                        i.trigger
-                        and all_issubclass(i.trigger, WalkerArchetype)
-                        and isinstance(warch, i.trigger)
-                    ):
-                        i.func(current_loc, warch)
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with walker exit
-                for i in current_loc._jac_exit_funcs_:
-                    if (
-                        i.trigger
-                        and all_issubclass(i.trigger, WalkerArchetype)
-                        and isinstance(warch, i.trigger)
-                    ):
-                        i.func(current_loc, warch)
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with any exit
-                for i in current_loc._jac_exit_funcs_:
-                    if not i.trigger:
-                        i.func(current_loc, warch)
-                    if walker.disengaged:
-                        return warch
-
-                # walker ability with loc exit
-                for i in warch._jac_exit_funcs_:
-                    if (
-                        i.trigger
-                        and (
-                            all_issubclass(i.trigger, NodeArchetype)
-                            or all_issubclass(i.trigger, EdgeArchetype)
-                        )
-                        and isinstance(current_loc, i.trigger)
-                    ):
-                        i.func(warch, current_loc)
-                    if walker.disengaged:
-                        return warch
-        # walker ability with any exit
+        # Walker ability with any exit (runs once after traversal completes)
+        if walker.path:
+            current_loc = walker.path[-1].archetype
         for i in warch._jac_exit_funcs_:
             if not i.trigger:
                 i.func(warch, current_loc)
             if walker.disengaged:
-                return warch
+                break
 
         walker.ignores = []
         return warch
+
+    @staticmethod
+    async def _async_execute_entries(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        current_loc: NodeArchetype | EdgeArchetype,
+    ) -> bool:
+        """Async version: Execute all entry abilities for current location.
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        from jaclang.runtimelib.utils import all_issubclass
+
+        # walker ability with loc entry
+        for i in warch._jac_entry_funcs_:
+            if (
+                i.trigger
+                and (
+                    all_issubclass(i.trigger, NodeArchetype)
+                    or all_issubclass(i.trigger, EdgeArchetype)
+                )
+                and isinstance(current_loc, i.trigger)
+            ):
+                result = i.func(warch, current_loc)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        # loc ability with any entry
+        for i in current_loc._jac_entry_funcs_:
+            if not i.trigger:
+                result = i.func(current_loc, warch)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        # loc ability with walker entry
+        for i in current_loc._jac_entry_funcs_:
+            if (
+                i.trigger
+                and all_issubclass(i.trigger, WalkerArchetype)
+                and isinstance(warch, i.trigger)
+            ):
+                result = i.func(current_loc, warch)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        return True
+
+    @staticmethod
+    async def _async_execute_exits(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        current_loc: NodeArchetype | EdgeArchetype,
+    ) -> bool:
+        """Async version: Execute all exit abilities for current location.
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        from jaclang.runtimelib.utils import all_issubclass
+
+        # loc ability with walker exit
+        for i in current_loc._jac_exit_funcs_:
+            if (
+                i.trigger
+                and all_issubclass(i.trigger, WalkerArchetype)
+                and isinstance(warch, i.trigger)
+            ):
+                result = i.func(current_loc, warch)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        # loc ability with any exit
+        for i in current_loc._jac_exit_funcs_:
+            if not i.trigger:
+                result = i.func(current_loc, warch)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        # walker ability with loc exit
+        for i in warch._jac_exit_funcs_:
+            if (
+                i.trigger
+                and (
+                    all_issubclass(i.trigger, NodeArchetype)
+                    or all_issubclass(i.trigger, EdgeArchetype)
+                )
+                and isinstance(current_loc, i.trigger)
+            ):
+                result = i.func(warch, current_loc)
+                if isinstance(result, Coroutine):
+                    await result
+            if walker.disengaged:
+                return False
+
+        return True
+
+    @staticmethod
+    async def _async_visit_node_recursive(
+        warch: WalkerArchetype,
+        walker: WalkerAnchor,
+        anchor: NodeAnchor | EdgeAnchor,
+    ) -> bool:
+        """Async version: Recursively visit a node with DFS semantics.
+
+        1. Execute entries for this node
+        2. Recursively visit all children added during entry
+        3. Execute exits for this node (post-order)
+
+        Returns True if walker should continue, False if disengaged.
+        """
+        current_loc = anchor.archetype
+        if not current_loc:
+            return True
+
+        # Track in path for debugging/introspection
+        walker.path.append(anchor)
+
+        # Phase 1: Execute entry abilities
+        if not await JacWalker._async_execute_entries(warch, walker, current_loc):
+            return False
+
+        # Phase 2: Process children (nodes added to walker.next during entries)
+        while walker.next:
+            child_anchor = walker.next.pop(0)
+            if (
+                child_anchor not in walker.ignores
+                and not await JacWalker._async_visit_node_recursive(
+                    warch, walker, child_anchor
+                )
+            ):
+                return False
+
+        # Phase 3: Execute exit abilities (post-order - after all descendants)
+        return await JacWalker._async_execute_exits(warch, walker, current_loc)
 
     @staticmethod
     async def async_spawn_call(
         walker: WalkerAnchor,
         node: NodeAnchor | EdgeAnchor,
     ) -> WalkerArchetype:
-        """Jac's spawn operator feature."""
-        from jaclang.runtimelib.utils import all_issubclass
+        """Jac's async spawn operator feature with recursive DFS semantics.
 
+        Entry abilities execute when entering a node, exit abilities execute
+        after all descendants are visited (post-order/LIFO).
+        """
         warch = walker.archetype
         walker.path = []
         current_loc = node.archetype
 
-        # walker ability on any entry
+        # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
                 result = i.func(warch, current_loc)
                 if isinstance(result, Coroutine):
                     await result
             if walker.disengaged:
+                walker.ignores = []
                 return warch
 
-        while len(walker.next):
-            if current_loc := walker.next.pop(0).archetype:
-                # walker ability with loc entry
-                for i in warch._jac_entry_funcs_:
-                    if (
-                        i.trigger
-                        and (
-                            all_issubclass(i.trigger, NodeArchetype)
-                            or all_issubclass(i.trigger, EdgeArchetype)
-                        )
-                        and isinstance(current_loc, i.trigger)
-                    ):
-                        result = i.func(warch, current_loc)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
+        # Traverse recursively (walker.next is already set by spawn())
+        while walker.next:
+            next_anchor = walker.next.pop(0)
+            if (
+                next_anchor not in walker.ignores
+                and not await JacWalker._async_visit_node_recursive(
+                    warch, walker, next_anchor
+                )
+            ):
+                break
 
-                # loc ability with any entry
-                for i in current_loc._jac_entry_funcs_:
-                    if not i.trigger:
-                        result = i.func(current_loc, warch)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with walker entry
-                for i in current_loc._jac_entry_funcs_:
-                    if (
-                        i.trigger
-                        and all_issubclass(i.trigger, WalkerArchetype)
-                        and isinstance(warch, i.trigger)
-                    ):
-                        result = i.func(current_loc, warch)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with walker exit
-                for i in current_loc._jac_exit_funcs_:
-                    if (
-                        i.trigger
-                        and all_issubclass(i.trigger, WalkerArchetype)
-                        and isinstance(warch, i.trigger)
-                    ):
-                        result = i.func(current_loc, warch)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
-
-                # loc ability with any exit
-                for i in current_loc._jac_exit_funcs_:
-                    if not i.trigger:
-                        result = i.func(current_loc, warch)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
-
-                # walker ability with loc exit
-                for i in warch._jac_exit_funcs_:
-                    if (
-                        i.trigger
-                        and (
-                            all_issubclass(i.trigger, NodeArchetype)
-                            or all_issubclass(i.trigger, EdgeArchetype)
-                        )
-                        and isinstance(current_loc, i.trigger)
-                    ):
-                        result = i.func(warch, current_loc)
-                        if isinstance(result, Coroutine):
-                            await result
-                    if walker.disengaged:
-                        return warch
-        # walker ability with any exit
+        # Walker ability with any exit (runs once after traversal completes)
+        if walker.path:
+            current_loc = walker.path[-1].archetype
         for i in warch._jac_exit_funcs_:
             if not i.trigger:
                 result = i.func(warch, current_loc)
                 if isinstance(result, Coroutine):
                     await result
             if walker.disengaged:
-                return warch
+                break
 
         walker.ignores = []
         return warch
@@ -1521,6 +1684,16 @@ class JacAPIServer:
         from jaclang.runtimelib.server import JacAPIServer
 
         return JacAPIServer
+
+    @staticmethod
+    def create_server(
+        jac_server: JacServer,
+        host: str,
+        port: int,
+    ) -> HTTPServer:
+        """Create the API server instance."""
+        handler_class = jac_server.create_handler()
+        return HTTPServer((host, port), handler_class)
 
     @staticmethod
     def render_page(

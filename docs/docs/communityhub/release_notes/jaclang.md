@@ -2,15 +2,19 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.8 (Unreleased)
+## jaclang 0.9.9 (Unreleased)
 
+## jaclang 0.9.8 (Latest Release)
+
+- **Recursive DFS Walker Traversal with Deferred Exits**: Walker traversal semantics have been fundamentally changed to use recursive post-order exit execution. Entry abilities now execute when entering a node, while exit abilities are deferred until all descendants are visited. This means exits execute in LIFO order (last visited node exits first), similar to function call stack unwinding. The `walker.path` field is now actively populated during traversal, tracking visited nodes in order.
 - **Imported Functions and Walkers as API Endpoints**: The `jac start` command now automatically convert imported functions and walkers to API endpoints, in addition to locally defined ones. Previously, only functions and walkers defined directly in the target file were exposed as endpoints. Now, any function or walker explicitly imported into the file will also be available as an API endpoint.
 - **Hot Module Replacement (HMR)**: Added `--watch` flag to `jac start` for live development with automatic reload on `.jac` file changes. When enabled, the file watcher detects changes and automatically recompiles backend code while Vite handles frontend hot-reloading. New options include `-w/--watch` to enable HMR mode, `--api-port` to set a separate API port, and `--no-client` for API-only mode without frontend bundling. Example usage: `jac start main.jac --watch`.
 - **Default Watchdog Dependency**: The `jac create` command now includes `watchdog` in `[dev-dependencies]` by default, enabling HMR support out of the box. Install with `jac install --dev`.
 - **Simplified `.jac` Directory Gitignore**: The `jac create` command now creates a `.gitignore` file inside the `.jac/` directory containing `*` to ignore all build artifacts, instead of modifying the project root `.gitignore`. This keeps project roots cleaner and makes the `.jac` directory self-contained.
 - **Ignore Patterns for Type Checking**: Added `--ignore` flag to the `jac check` command, allowing users to exclude specific files or folders from type checking. The flag accepts a comma-separated list of patterns (e.g., `--ignore fixtures,tests,__pycache__`). Patterns are matched against path components, so `--ignore tests` will exclude any file or folder named `tests` at any depth in the directory tree.
+- **Project Clean Command**: Added `jac clean` command to remove build artifacts from the `.jac/` directory. By default, it cleans the data directory (`.jac/data`). Use `--all` to clean all artifacts (data, cache, packages, client), or specify individual directories with `--data`, `--cache`, or `--packages` flags. The `--force` flag skips the confirmation prompt.
 
-## jaclang 0.9.7 (Latest Release)
+## jaclang 0.9.7
 
 - **Unified `jac start` Command**: The `jac serve` command has been renamed to `jac start`. The `jac scale` command (from jac-scale plugin) now uses `jac start --scale` instead of a separate command. This provides a unified interface for running Jac applications locally or deploying to Kubernetes.
 - **Eager Client Bundle Loading**: The `jac start` command now builds the client bundle at server startup instead of lazily on first request.

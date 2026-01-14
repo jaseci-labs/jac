@@ -57,6 +57,7 @@ def test_render_client_page_returns_html():
     bundle_code = server.get_client_bundle_code()
     assert "function __jacJsx" in bundle_code
     assert bundle_code == html_bundle["bundle_code"]
+    server.server.server_close()
 
 
 def test_render_unknown_page_raises():
@@ -66,3 +67,4 @@ def test_render_unknown_page_raises():
 
     with pytest.raises(ValueError):
         server.render_client_page("missing", {}, "tester")
+    server.server.server_close()
