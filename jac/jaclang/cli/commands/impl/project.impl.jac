@@ -119,7 +119,14 @@ impl add(
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     config = get_config();
     if config is None {
-        # Skip if jac.toml doesn't exist
+        # If --cl flag is used, we need jac.toml to exist
+        if cl {
+            print(
+                "No jac.toml found. Run 'jac init' to create a project.", file=sys.stderr
+            );
+            return 1;
+        }
+        # Skip silently if jac.toml doesn't exist (for regular Python deps)
         return 0;
     }
     if cl {
