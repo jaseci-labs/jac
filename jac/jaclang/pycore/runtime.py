@@ -1601,7 +1601,7 @@ class JacByLLM:
         return decorator
 
     @staticmethod
-    def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
+    def call_llm(model: object, mt_run: MTRuntime) -> Any:  # noqa: ANN401
         """Call the LLM model."""
         from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
@@ -1696,17 +1696,17 @@ class JacByLLM:
         )
 
     @staticmethod
-    def add_mtir_to_map(node: uni.Ability, mtir: MTIR) -> None:
+    def add_mtir_to_map(scope: str, mtir: MTIR) -> None:
         """Add MTIR to the node's MTIR map."""
-        JacRuntime.program.mtir_map[node] = mtir
-
+        JacRuntime.program.mtir_map[scope] = mtir
+    
     @staticmethod
-    def get_mtir_from_map(node: uni.Ability) -> MTIR | None:
+    def get_mtir_from_map(scope: str) -> MTIR | None:
         """Get MTIR from the node's MTIR map."""
         try:
-            if node not in JacRuntime.program.mtir_map.keys():
-                raise KeyError(f"MTIR not found for node {node}")
-            return JacRuntime.program.mtir_map[node]
+            if scope not in JacRuntime.program.mtir_map.keys():
+                raise KeyError(f"MTIR not found for scope {scope}")
+            return JacRuntime.program.mtir_map[scope]
         except AttributeError:
             raise AttributeError("JacRuntime.program.mtir_map is not initialized")
 

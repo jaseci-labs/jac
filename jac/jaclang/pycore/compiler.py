@@ -25,6 +25,7 @@ from jaclang.pycore.passes import (
     SemanticAnalysisPass,
     SymTabBuildPass,
     Transform,
+    MTIRGenPass,
 )
 from jaclang.pycore.tsparser import TypeScriptParser
 
@@ -47,6 +48,7 @@ def get_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
         SemanticAnalysisPass,
         SemDefMatchPass,
         CFGBuildPass,
+        MTIRGenPass,
     ]
 
 

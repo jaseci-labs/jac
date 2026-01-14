@@ -4,17 +4,36 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import TYPE_CHECKING
-
+import inspect
+import sys
+from pathlib import Path
+from jaclang.pycore.runtime import hookimpl, JacRuntime as Jac
 from jaclang.pycore.mtp import Info
-from jaclang.pycore.runtime import hookimpl
-
 if TYPE_CHECKING:
     from byllm.llm import Model
     from byllm.mtir import MTRuntime
 
 
 def fetch_mtir(func: Callable) -> Info:
-    module = func.__module__
+    def resolve_module(f: Callable) -> str:
+        module_name = getattr(f, "__module__", None)
+        if module_name and module_name != "__main__":
+            return module_name
+        # Try to get the module object
+        mod = inspect.getmodule(f)
+        if mod and getattr(mod, "__name__", None) != "__main__":
+            return mod.__name__
+        # Fall back to the source file name (script filename without suffix)
+        try:
+            file = inspect.getsourcefile(f) or inspect.getfile(f)
+        except TypeError:
+            file = None
+        if file:
+            return Path(file).stem
+        # As a last resort, use the invoked script name from argv
+        return Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__"
+
+    module = resolve_module(func)
     qualname = func.__qualname__
     from jaclang.pycore.runtime import JacRuntime as Jac
 
