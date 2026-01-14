@@ -5,9 +5,9 @@ impl JacLangServer.shutdown -> None {
     }
     self._shutdown_called = True;
     try {
-        if self?.worker_thread and self?.worker_thread.is_alive() {
-            self.queue.put(None);  # Signal the worker thread to exit
-            self.worker_thread.join();  # Wait for the worker thread to finish
+        if self?.worker_future and not self?.worker_future.done() {
+            self.queue.put(None);  # Signal the worker to exit
+            wait self.worker_future ;  # Wait for the worker to finish
         }
     } finally {
         super.shutdown();
@@ -547,9 +547,8 @@ impl JacLangServer.postinit -> None {
     LanguageServer.init(self, 'jac-lsp', 'v0.1');
     JacProgram.init(self);
     self.module_manager = ModuleManager(self, self.sem_managers);
-    # Worker thread for type checking.
-    self.worker_thread = threading.Thread(target=self.dispatcher);
-    self.worker_thread.start();
+    # Worker for type checking using flow.
+    self.worker_future = flow self.dispatcher() ;
 }
 
 impl Task.postinit -> None {

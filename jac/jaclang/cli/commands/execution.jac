@@ -88,12 +88,33 @@ def enter(
             help="Print docs only (no server)",
             short="f"
         ),
+        Arg.create(
+            "watch",
+            typ=bool,
+            default=False,
+            help="Enable HMR (Hot Module Replacement) mode",
+            short="w"
+        ),
+        Arg.create(
+            "api_port",
+            typ=int,
+            default=0,
+            help="Separate API port for HMR mode (0=same as port)"
+        ),
+        Arg.create(
+            "no_client",
+            typ=bool,
+            default=False,
+            help="Skip client bundling/serving (API only)"
+        ),
 
     ],
     examples=[
         ("jac start app.jac", "Start server on default port"),
         ("jac start app.jac --port 3000", "Start server on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
+        ("jac start app.jac --watch", "Start with hot module replacement"),
+        ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
 
     ],
     group="execution"
@@ -103,7 +124,10 @@ def start(
     session: str = "",
     port: int = 8000,
     main: bool = True,
-    faux: bool = False
+    faux: bool = False,
+    watch: bool = False,
+    api_port: int = 0,
+    no_client: bool = False
 ) -> int;
 
 """Debug a Jac program using Python debugger."""

@@ -304,11 +304,7 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     functions: dict[(str, Callable[(..., Any)])] = {};
     export_names = <>set(self._client_manifest.get('exports', []));
     for (name, <>obj) in inspect.getmembers(self._module) {
-        if (
-            inspect.isfunction(<>obj)
-            and not name.startswith('_')
-            and (<>obj.__module__ == self._module.__name__)
-        ) {
+        if (inspect.isfunction(<>obj) and not name.startswith('_')) {
             functions[name] = <>obj;
             if (name in export_names) {
                 self._client_functions[name] = <>obj;
@@ -338,7 +334,6 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
             isinstance(<>obj, <>type)
             and issubclass(<>obj, WalkerArchetype)
             and (<>obj is not WalkerArchetype)
-            and (<>obj.__module__ == self._module.__name__)
         ) {
             walkers[name] = <>obj;
         }
@@ -346,10 +341,38 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
     return walkers;
 }
 
+"""Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
+impl ModuleIntrospector._check_module_freshness -> None {
+    if not self._module {
+        return;
+    }
+    # Check if any cached walker class is stale (different from what's in the module)
+    # This handles the case where importlib.reload() updates the module in place
+    needs_refresh = False;
+    for (name, cached_cls) in self._walkers.items() {
+        current_cls = getattr(self._module, name, None);
+        if current_cls is not cached_cls {
+            needs_refresh = True;
+            break;
+        }
+    }
+    if needs_refresh {
+        # Module was reloaded, refresh our caches
+        self._load_manifest();
+        self._extract_access_levels();
+        self._functions = self._collect_functions();
+        self._walkers = self._collect_walkers();
+        self._bundle = None;
+        self._bundle_error = None;
+    }
+}
+
 """Get all functions."""
 impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
     if not self._functions {
         self.load();
+    } else {
+        self._check_module_freshness();
     }
     return <>dict(self._functions);
 }
@@ -358,6 +381,8 @@ impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
 impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     if not self._walkers {
         self.load();
+    } else {
+        self._check_module_freshness();
     }
     return <>dict(self._walkers);
 }

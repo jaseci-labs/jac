@@ -1,11 +1,11 @@
 """Automate the reference guide generation."""
 
-impl AstTool.automate_ref(self: AstTool) -> str {
+impl AstTool.automate_ref -> str {
     return auto_generate_refs();
 }
 
 """Generate mermaid markdown doc for uninodes."""
-impl AstTool.autodoc_uninode(self: AstTool) -> str {
+impl AstTool.autodoc_uninode -> str {
     output = '';
     tick = chr(96);
     fence = tick * 3;
@@ -45,7 +45,7 @@ impl AstTool.autodoc_uninode(self: AstTool) -> str {
 }
 
 """Generate a AST, SymbolTable tree for .jac file, or Python AST for .py file."""
-impl AstTool.ir(self: AstTool, args: list[str]) -> str {
+impl AstTool.ir(args: list[str]) -> str {
     error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
     if (len(args) != 2) {
         return error;
@@ -161,7 +161,7 @@ impl AstTool.ir(self: AstTool, args: list[str]) -> str {
 }
 
 """List python ast nodes."""
-impl AstTool.py_uni_nodes(self: AstTool) -> str {
+impl AstTool.py_uni_nodes -> str {
     import from jaclang.compiler.passes.main { PyastBuildPass }
     visit_methods = [
         method
@@ -194,7 +194,7 @@ impl AstTool.py_uni_nodes(self: AstTool) -> str {
 }
 
 """Generate pass template."""
-impl AstTool.pass_template(self: AstTool) -> str {
+impl AstTool.pass_template -> str {
     output = 'import jaclang.pycore.unitree as ast\nfrom jaclang.pycore.passes import Pass\n\nclass SomePass(Pass):\n';
     """Emit to output.""";
     def emit(to_append: str) -> None {
@@ -228,7 +228,7 @@ impl AstTool.pass_template(self: AstTool) -> str {
 }
 
 """Initialize."""
-impl AstTool.init(self: AstTool) -> None {
+impl AstTool.init -> None {
     module = sys.modules[uni.__name__];
     source_code = inspect.getsource(module);
     classes = inspect.getmembers(module, inspect.isclass);
@@ -279,7 +279,7 @@ impl AstTool.init(self: AstTool) -> None {
 }
 
 """Process UniNode class."""
-impl UniNodeInfo.process(self: UniNodeInfo, cls: type[uni.UniNode]) -> None {
+impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     self.name = cls.__name__;
     self.doc = cls.__doc__;
     UniNodeInfo.type_map[self.name] = cls;
@@ -300,16 +300,6 @@ impl UniNodeInfo.process(self: UniNodeInfo, cls: type[uni.UniNode]) -> None {
 }
 
 """Initialize."""
-impl UniNodeInfo.init(self: UniNodeInfo, cls: type) -> None {
-    self.cls = cls;
-    self.process(cls);
-}
-
-"""Initialize."""
-impl AstKidInfo.init(
-    self: AstKidInfo, name: str, typ: str, <>default: (str | None) = None
-) -> None {
-    self.name = name;
-    self.typ = typ;
-    self.default = <>default;
+impl UniNodeInfo.postinit -> None {
+    self.process(self.cls);
 }

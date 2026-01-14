@@ -28,6 +28,7 @@ jobs:
         pip install -e jac
         pip install pytest
         pip install pytest-xdist
+        pip install watchdog
 
     - name: Run Jac core tests
       run: pytest -x jac -n auto

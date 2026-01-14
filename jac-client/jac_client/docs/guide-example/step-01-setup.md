@@ -179,9 +179,29 @@ When you run `jac start main.jac`:
 2. **Frontend code** (inside `cl`) → Compiled to JavaScript
 3. **Backend code** (outside `cl`) → Stays as Python-like backend code
 4. **Single server** serves both on port 8000
-5. **Auto-reload** watches for file changes (coming soon...)
 
 It's like running a Flask/FastAPI server, but it ALSO compiles and serves your React frontend - all in one command!
+
+### Hot Module Replacement (HMR)
+
+For faster development, use `--watch` mode:
+
+```bash
+jac start main.jac --watch
+```
+
+With HMR enabled:
+
+- **File watcher** monitors `*.jac` files for changes
+- **Backend** automatically recompiles when you save
+- **Frontend** hot-reloads without full page refresh
+- **No more manual restarts!**
+
+**Note:** HMR requires the `watchdog` package. Install dev dependencies with:
+
+```bash
+jac install --dev
+```
 
 ### File Organization
 
@@ -239,7 +259,13 @@ Then visit `http://localhost:8080/cl/app`
 
 ### Issue: Changes not showing
 
-**Solution**:
+**Best solution**: Use HMR mode for automatic reloading:
+
+```bash
+jac start main.jac --watch
+```
+
+**Alternative** (if not using HMR):
 
 - Stop the server (Ctrl+C)
 - Restart: `jac start main.jac`

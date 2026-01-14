@@ -2,8 +2,8 @@
 name = "jaclang"
 version = "0.9.7"
 description = "Jac is a unique and powerful programming language that extends Python, offering an unprecedented level of awesomenss."
-authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
-maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
+authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
+maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 license = "MIT"
 readme = "README.md"
 keywords = [
@@ -33,6 +33,7 @@ dev = [
     "pytest-xdist>=3.6.1",
     "pytest-cov>=5.0.0",
     "pre-commit>=3.7.1",
+    "watchdog>=3.0.0",
 ]
 
 [tool.setuptools.packages.find]

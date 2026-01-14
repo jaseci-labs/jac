@@ -40,7 +40,6 @@ with entry {
 # RevealExpr,
 # SetComprehension,
 # SetExpr,
-# SliceExpr,
 # StarExpr,
 # StrExpr,
 # SuperExpr,
