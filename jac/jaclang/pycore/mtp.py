@@ -1,11 +1,12 @@
 """Meaning Typed Programming constructs for Jac Language."""
 
 from __future__ import annotations
+
 from collections.abc import Callable
 from dataclasses import dataclass
 
 # from jaclang.vendor.cattrs._compat import has
-from jaclang.pycore import unitree as uni
+
 
 @dataclass
 class MTRuntime:
@@ -22,7 +23,7 @@ class MTRuntime:
         args: dict[int | str, object],
         call_params: dict[str, object],
         mtir: MTIR = None,
-    ) -> "MTRuntime":
+    ) -> MTRuntime:
         """Create a new MTRuntime instance."""
         return MTRuntime(caller=caller, args=args, call_params=call_params, mtir=mtir)
 
@@ -41,29 +42,35 @@ class MTIR:
         """Convert to runtime context."""
         return MTRuntime.factory(self.caller, self.args, self.call_params)
 
+
 # PRIMITIVE_TYPES = {'int', 'float', 'str', 'bool', 'None', 'bytes', 'list', 'dict', 'set', 'tuple'}
 
+
 @dataclass
-class Info :
+class Info:
     name: str
     semstr: str | None
 
+
 @dataclass
-class VarInfo(Info) :
+class VarInfo(Info):
     # type_info may be a simple primitive name (`str`), a resolved `ClassInfo`,
     # or a tuple-based generic encoding (see helpers below).
     type_info: ClassInfo | str | tuple | None = None
+
 
 @dataclass
 class ParamInfo(VarInfo):
     pass
 
+
 @dataclass
 class FieldInfo(VarInfo):
     pass
 
+
 @dataclass
-class ClassInfo(Info) :
+class ClassInfo(Info):
     fields: list[FieldInfo]
     base_classes: list[ClassInfo]
     methods: list[MethodInfo]
@@ -78,8 +85,9 @@ class ClassInfo(Info) :
         if self.methods is None:
             self.methods = []
 
+
 @dataclass
-class FunctionInfo(Info) :
+class FunctionInfo(Info):
     params: list[ParamInfo] = None
     return_type: str | ClassInfo | tuple | None = None
     tools: list[MethodInfo] = None
@@ -91,11 +99,10 @@ class FunctionInfo(Info) :
             self.params = []
         if self.tools is None:
             self.tools = []
-        
 
 
 @dataclass
-class MethodInfo(FunctionInfo) :
+class MethodInfo(FunctionInfo):
     parent_class: ClassInfo = None
 
 
@@ -105,6 +112,7 @@ class MethodInfo(FunctionInfo) :
 #  - dict[K,V] -> ("dict", K, V)
 #  - tuple[A,B,...] -> ("tuple", A, B, ...)
 #  - union types -> ("union", T1, T2, ...)
+
 
 def mk_list(inner: object) -> tuple:
     return ("list", inner)
@@ -155,7 +163,7 @@ def type_to_str(t: object) -> str:
         from dataclasses import is_dataclass
 
         if is_dataclass(t) and hasattr(t, "name"):
-            return getattr(t, "name")
+            return t.name
     except Exception:
         pass
     if isinstance(t, tuple):

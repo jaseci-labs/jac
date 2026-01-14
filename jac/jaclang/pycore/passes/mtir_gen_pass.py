@@ -1,30 +1,37 @@
 """Jac Semantic Analysis Pass."""
+
 from __future__ import annotations
-from jaclang.pycore.jaclib import Obj, field
-import ast as ast3
+
 from collections.abc import Sequence
+
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import Tokens as Tok
-from jaclang.pycore.passes import UniPass
 from jaclang import JacRuntime as Jac
 from jaclang.pycore.mtp import (
-    Info,
-    VarInfo,
-    FunctionInfo,
-    MethodInfo,
     ClassInfo,
     FieldInfo,
+    FunctionInfo,
+    MethodInfo,
     ParamInfo,
-    mk_list,
     mk_dict,
+    mk_list,
     mk_tuple,
-    mk_union,
     type_to_str,
 )
-import uuid
-from typing import Optional
+from jaclang.pycore.passes import UniPass
 
-PRIMITIVE_TYPES: list[str] = ['int', 'float', 'str', 'bool', 'None', 'bytes', 'list', 'dict', 'set', 'tuple']
+PRIMITIVE_TYPES: list[str] = [
+    "int",
+    "float",
+    "str",
+    "bool",
+    "None",
+    "bytes",
+    "list",
+    "dict",
+    "set",
+    "tuple",
+]
+
 
 class MTIRGenPass(UniPass):
     """Jac MTIR Generation Pass."""
@@ -39,7 +46,9 @@ class MTIRGenPass(UniPass):
             return type_expr.value in PRIMITIVE_TYPES
         return False
 
-    def _parse_type_expr(self, type_expr: uni.Expr | None, scope: uni.UniScopeNode) -> ClassInfo | str | tuple | None:
+    def _parse_type_expr(
+        self, type_expr: uni.Expr | None, scope: uni.UniScopeNode
+    ) -> ClassInfo | str | tuple | None:
         """Parse a unitree type expression into a primitive name, ClassInfo,
         or tuple-based generic representation (using mk_list/mk_dict/mk_tuple).
         This is deliberately conservative to avoid wide refactors.
@@ -103,7 +112,9 @@ class MTIRGenPass(UniPass):
 
         return None
 
-    def _extract_type_symbol(self, type_expr: uni.Expr | None, scope: uni.UniScopeNode) -> uni.Symbol | None:
+    def _extract_type_symbol(
+        self, type_expr: uni.Expr | None, scope: uni.UniScopeNode
+    ) -> uni.Symbol | None:
         """Extract symbol from type expression if it's not a primitive type."""
         if type_expr is None or self._is_primitive_type(type_expr):
             return None
@@ -137,7 +148,15 @@ class MTIRGenPass(UniPass):
         # Extract class name
         class_name = arch_node.name.value
         # Create placeholder ClassInfo early and stash in cache to break cycles.
-        placeholder = ClassInfo(name=class_name, semstr=symbol.semstr if symbol.semstr else (arch_node.doc.lit_value if arch_node.doc else None), fields=[], base_classes=[], methods=[])
+        placeholder = ClassInfo(
+            name=class_name,
+            semstr=symbol.semstr
+            if symbol.semstr
+            else (arch_node.doc.lit_value if arch_node.doc else None),
+            fields=[],
+            base_classes=[],
+            methods=[],
+        )
         self._class_info_cache[cache_key] = placeholder
 
         # Extract base classes (as ClassInfo objects)
@@ -168,8 +187,12 @@ class MTIRGenPass(UniPass):
                         type_annotation = var.type_tag.tag if var.type_tag else None
                         parsed_type = self._parse_type_expr(type_annotation, arch_node)
                         # Attempt to get a semstr from a referenced symbol when possible
-                        type_symbol_obj = self._extract_type_symbol(type_annotation, arch_node)
-                        semstr_val = type_symbol_obj.semstr if type_symbol_obj else symbol.semstr
+                        type_symbol_obj = self._extract_type_symbol(
+                            type_annotation, arch_node
+                        )
+                        semstr_val = (
+                            type_symbol_obj.semstr if type_symbol_obj else symbol.semstr
+                        )
                         field_info = FieldInfo(
                             name=var.name.value,
                             semstr=semstr_val,
@@ -213,7 +236,7 @@ class MTIRGenPass(UniPass):
                     type_info=parsed_type,
                 )
                 parameters.append(param_info)
-                
+
         # Extract return type
         return_type: str | ClassInfo | tuple | None = None
         if node.signature and isinstance(node.signature, uni.FuncSignature):
@@ -228,33 +251,42 @@ class MTIRGenPass(UniPass):
                     if isinstance(param, uni.KWPair):
                         if param.key.value == "tools":
                             for tool in param.value.values:
-                                tool_ability = node.lookup(tool.value, deep=True).symbol_table
+                                tool_ability = node.lookup(
+                                    tool.value, deep=True
+                                ).symbol_table
                                 if tool_ability.is_method:
-                                    
                                     tool_info = self._extract_method_info(tool_ability)
                                 else:
-                                    tool_info = self._extract_function_info(tool_ability)
+                                    tool_info = self._extract_function_info(
+                                        tool_ability
+                                    )
                                 tools.append(tool_info)
         # Return FunctionInfo
         return FunctionInfo(
             name=function_name,
-            semstr=node.sym.semstr if hasattr(node, 'sym') and node.sym else None,
+            semstr=node.sym.semstr if hasattr(node, "sym") and node.sym else None,
             params=parameters,
             return_type=return_type,
-            tools=tools if tools else None
+            tools=tools if tools else None,
         )
-    
-    def _extract_method_info(self, node: uni.Ability, by_call:bool=False) -> MethodInfo:
+
+    def _extract_method_info(
+        self, node: uni.Ability, by_call: bool = False
+    ) -> MethodInfo:
         """Extract method information from an Ability node."""
         func_info = self._extract_function_info(node=node)
-        
-        
+
         # Find parent archetype and extract its ClassInfo
         parent_arch = node.find_parent_of_type(uni.Archetype)
         parent_class_info = None
-        if parent_arch and hasattr(parent_arch.name, 'sym') and parent_arch.name.sym and by_call:
+        if (
+            parent_arch
+            and hasattr(parent_arch.name, "sym")
+            and parent_arch.name.sym
+            and by_call
+        ):
             parent_class_info = self._extract_class_info(parent_arch.name.sym)
-        
+
         return MethodInfo(
             name=func_info.name,
             semstr=func_info.semstr,
@@ -262,7 +294,6 @@ class MTIRGenPass(UniPass):
             return_type=func_info.return_type,
             parent_class=parent_class_info,
         )
-        
 
     def enter_ability(self, node: uni.Ability) -> None:
         """Handle entering an ability node for MTIR generation."""
@@ -272,16 +303,22 @@ class MTIRGenPass(UniPass):
         # Extract function or method info based on type
         if node.is_method:
             func_info = self._extract_method_info(node=node, by_call=True)
-            
-            if isinstance(func_info.return_type, str) and func_info.parent_class and func_info.return_type == func_info.parent_class.name:
+
+            if (
+                isinstance(func_info.return_type, str)
+                and func_info.parent_class
+                and func_info.return_type == func_info.parent_class.name
+            ):
                 func_info.return_type = func_info.parent_class
                 # Avoid printing full dataclass repr (can contain cycles). Print concise info instead.
-                parent_name = func_info.parent_class.name if func_info.parent_class else None
+                parent_name = (
+                    func_info.parent_class.name if func_info.parent_class else None
+                )
                 ret_str = type_to_str(func_info.return_type)
-                print(f"Method Info: {func_info.name} -> {ret_str} (parent={parent_name})")
+                print(
+                    f"Method Info: {func_info.name} -> {ret_str} (parent={parent_name})"
+                )
         else:
             func_info = self._extract_function_info(node=node)
         # Add to MTIR map
         Jac.add_mtir_to_map(node, func_info)
-        
- 

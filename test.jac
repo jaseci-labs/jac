@@ -1,7 +1,7 @@
 import from byllm.lib {Model}
 
 glob llm = Model(model_name="gpt-4o", config={"verbose":False});
- 
+
 glob omg: str = "Hello, JacLang with ByLLM!";
 
 obj blob1 {
@@ -29,7 +29,7 @@ with entry {
     n4 =b3.foo("para1", b2);
     print(n4);
 
-}   
+}
 
 sem blob2 = "Semstring 1";
 sem blob2.id = "Semstring 2";
@@ -37,9 +37,3 @@ sem blob2.blob = "Semstring 3";
 sem blob3.items = "Semstring 4";
 sem blob3.foo.para1 = "Semstring 6";
 sem omg = "Semstring 5";
- 
-
-
-
-
-

@@ -25,7 +25,7 @@ obj FieldInfo {
     has    has_default: bool;
     has    is_static: bool;
 }
-        
+
 """Extracted information about a class/archetype."""
 
 obj ClassInfo {
@@ -47,7 +47,7 @@ obj FunctionInfo {
 """Jac MTIR Generation Pass."""
 obj MTIRGenPass(UniPass) {
     has PRIMITIVE_TYPES: list[str] = ['int','float','str','bool','None','bytes','list','dict','set','tuple'];
-    
+
 
     """Check if a type expression represents a primitive type."""
     def _is_primitive_type( type_expr: (uni.Expr | None)) -> bool {
@@ -204,7 +204,7 @@ obj MTIRGenPass(UniPass) {
         # print(f"Parameters: {len(func_info.parameters)}")
         # for param in func_info.parameters:
         #     print(f"  - {param.name}: primitive={param.is_primitive}, has_symbol={param.type_symbol is not None}")
-            
+
         #     # If parameter has a custom type, extract its class structure
         #     if param.type_symbol:
         #         class_info = self._extract_class_info(param.type_symbol)
@@ -213,15 +213,15 @@ obj MTIRGenPass(UniPass) {
         #             print(f"    Fields: {len(class_info.fields)}")
         #             for field in class_info.fields:
         #                 print(f"      - {field.name}: {field.type_annotation.value if isinstance(field.type_annotation, uni.Name) else 'complex'} (primitive={field.is_primitive}, static={field.is_static})")
-                        
+
         #                 # Recursively extract nested class info
         #                 if field.type_symbol:
         #                     nested_class = self._extract_class_info(field.type_symbol)
         #                     if nested_class:
         #                         print(f"        Nested class: {nested_class.class_name} with {len(nested_class.fields)} fields")
-        
+
         # print(f"Return: primitive={func_info.return_is_primitive}, has_symbol={func_info.return_type_symbol is not None}")
-        
+
         # # Extract return type class structure if it's a custom type
         # if func_info.return_type_symbol:
         #     class_info = self._extract_class_info(func_info.return_type_symbol)
@@ -233,4 +233,3 @@ obj MTIRGenPass(UniPass) {
         # print(f"{'='*60}\n")
     }
 }
-

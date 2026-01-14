@@ -14,7 +14,7 @@ def get_function_scope(func:Callable) -> str {
 
     module = func.__module__;
     qualname = func.__qualname__;
-    
+
     # For methods: qualname is "ClassName.method_name"
     # For functions: qualname is just "function_name"
 
@@ -43,7 +43,7 @@ class JacRuntime {
         # Full example:
 
         print(get_function_scope(caller));
-        
+
         return MTIR(caller, args, call_params).runtime;
     }
 
