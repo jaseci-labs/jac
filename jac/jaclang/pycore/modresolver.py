@@ -96,15 +96,31 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     level = 0
     while level < len(parts) and parts[level] == "":
         level += 1
-    #Check if the last part is a known file extension and merge it back
-    common_extensions = {".js", ".mjs", ".cjs", ".css", ".scss", ".sass", ".less", ".wasm", ".json", ".ts", ".tsx", ".jsx", ".jac", ".py", ".pyi"}
+    # Check if the last part is a known file extension and merge it back
+    common_extensions = {
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".wasm",
+        ".json",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".jac",
+        ".py",
+        ".pyi",
+    }
     if len(parts) > level + 1:
         potential_ext = "." + parts[-1]
         if potential_ext in common_extensions:
-            #Merge the extension back with the filename
+            # Merge the extension back with the filename
             parts = parts[:-1]
             parts[-1] = parts[-1] + potential_ext
-  
+
     actual_parts = parts[level:]
 
     for sp in get_jac_search_paths(base_path):
