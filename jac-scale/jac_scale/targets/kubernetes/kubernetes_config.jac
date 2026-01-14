@@ -124,7 +124,7 @@ class KubernetesConfig(BaseConfig) {
     }
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
-        base = super().to_dict();
+        base = super.to_dict();
         base.update(
             {
                 'docker_image_name': self.docker_image_name,
