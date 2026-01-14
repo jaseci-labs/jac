@@ -14,7 +14,7 @@ llm = Model(model_name="mockllm", outputs=["SecureP@ss1"])
 def generate_password() -> str:
     return call_llm(
         model=llm(),
-        mtir=get_mtir(caller=generate_password, args={}, call_params=llm().call_params),
+        mt_run=get_mtir(caller=generate_password, args={}, call_params=llm().call_params),
     )
 
 

@@ -16,7 +16,7 @@ def fetch_mtir(func: Callable) -> Info:
     if module == '__main__' and ir.main:
         module = ir.main
     else:
-        module = ir.hub.get(module)
+        module = ir.hub.get(module) #TODO Test external modules
     scopes = qualname.split('.')
     current_scope = module
     for scope in scopes[:-1]:
@@ -39,9 +39,9 @@ class JacRuntime:
 
     @staticmethod
     @hookimpl
-    def call_llm(model: Model, mtir: MTRuntime) -> object:
+    def call_llm(model: Model, mt_run: MTRuntime) -> object:
         """Call JacLLM and return the result."""
-        return model.invoke(mtir=mtir)
+        return model.invoke(mt_run=mt_run)
 
     @staticmethod
     @hookimpl
@@ -57,7 +57,7 @@ class JacRuntime:
                     invoke_args[i] = arg
                 for key, value in kwargs.items():
                     invoke_args[key] = value
-                mtir = MTIR(caller=caller, args=invoke_args, call_params=model.call_params).runtime
-                return model.invoke(mtir=mtir)
+                mtir = MTIR(caller=caller, args=invoke_args, call_params=model.call_params, ir_info=fetch_mtir(caller)).runtime
+                return model.invoke(mt_run=mtir.runtime)
             return _wrapped_caller
         return _decorator

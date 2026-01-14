@@ -99,6 +99,7 @@ impl MTRuntime.factory(
         resp_type=return_type,
         stream=is_streaming,
         call_params=call_params,
+        mtir=mtir
     );
 }
 
@@ -155,19 +156,20 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
 }
 
 """Return the tools as JSON schemas for the LLM API."""
-impl MTRuntime.get_tool_list(info: Info=None) -> list[dict] {
+impl MTRuntime.get_tool_list() -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
 """Return the JSON schema for the response type, if applicable."""
-impl MTRuntime.get_output_schema(info: Info=None) -> dict | None {
+impl MTRuntime.get_output_schema() -> dict | None {
     assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);  #Finish tool should be present in the tools list.
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {
             return None;  # Strings are default and not using a schema.
 
         }
-        return type_to_schema(resp_type=self.resp_type, info=info);
+        print("here");
+        return type_to_schema(resp_type=self.resp_type, info=self.mtir.ir_info.return_type);
     }
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.

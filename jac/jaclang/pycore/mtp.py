@@ -14,15 +14,17 @@ class MTRuntime:
     caller: Callable[..., object]
     args: dict[int | str, object]
     call_params: dict[str, object]
+    mtir: MTIR
 
     @staticmethod
     def factory(
         caller: Callable[..., object],
         args: dict[int | str, object],
         call_params: dict[str, object],
+        mtir: MTIR = None,
     ) -> "MTRuntime":
         """Create a new MTRuntime instance."""
-        return MTRuntime(caller=caller, args=args, call_params=call_params)
+        return MTRuntime(caller=caller, args=args, call_params=call_params, mtir=mtir)
 
 
 @dataclass

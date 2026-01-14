@@ -202,6 +202,10 @@ class MTIRGenPass(UniPass):
         # Extract function or method info based on type
         if node.is_method:
             func_info = self._extract_method_info(node=node, by_call=True)
+            
+            if isinstance(func_info.return_type, str) and func_info.parent_class and func_info.return_type == func_info.parent_class.name:
+                func_info.return_type = func_info.parent_class
+                print(f"Method Info: {func_info}")
         else:
             func_info = self._extract_function_info(node=node)
         # Add to MTIR map
