@@ -119,10 +119,8 @@ impl add(
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     config = get_config();
     if config is None {
-        print(
-            "No jac.toml found. Run 'jac init' to create a project.", file=sys.stderr
-        );
-        return 1;
+        # Skip if jac.toml doesn't exist
+        return 0;
     }
     if cl {
         import from jaclang.project.dep_registry { get_dependency_registry }
@@ -174,9 +172,18 @@ impl add(
         }
         return 0;
     }
+    # If no packages specified and not git, install all Python dependencies
     if not packages and not git {
-        print("No packages specified.", file=sys.stderr);
-        return 1;
+        installer = DependencyInstaller(config=config, verbose=verbose);
+        print("Installing all Python dependencies from jac.toml...");
+        success = installer.install_all(include_dev=dev);
+        if success {
+            print("\nAll dependencies installed successfully!");
+            return 0;
+        } else {
+            print("\nSome dependencies failed to install.", file=sys.stderr);
+            return 1;
+        }
     }
     installer = DependencyInstaller(config=config, verbose=verbose);
     resolver = DependencyResolver(config=config);
