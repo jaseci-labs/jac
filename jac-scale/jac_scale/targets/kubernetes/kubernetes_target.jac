@@ -209,23 +209,20 @@ class KubernetesTarget(DeploymentTarget) {
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
             
-            commands.append('cd ../../..');
+            commands.append('cd ..');
         }
         
-        # Create client app
-        commands.append('jac create --cl client_app');
-        commands.append('cp -r ./app/* ./client_app/src');
-        commands.append('[ -f ./app/jac.toml ] && cp ./app/jac.toml ./client_app/jac.toml || true');
-        commands.append('cd ./client_app');
+        # Change to app directory (project is already copied there via volume mount)
+        commands.append(f"cd {config.app_mount_path}");
+        
+        # Install Python requirements
+        commands.append('jac add');
+        
+        # Install Node requirements
         commands.append('jac add --cl');
         
-        # Add install/start command
-        if ('requirements.txt' in os.listdir(app_config.code_folder)) {
-            install_part = f"pip install -r /app/requirements.txt && jac start src/{app_config.file_name}";
-        } else {
-            install_part = f"jac start src/{app_config.file_name} ";
-        }
-        commands.append(install_part);
+        # Start the application
+        commands.append(f"jac start {app_config.file_name}");
         
         # Join all commands
         full_command = ' && '.join(commands);
