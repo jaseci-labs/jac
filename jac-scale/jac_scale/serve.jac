@@ -41,6 +41,10 @@ class Operations(StrEnum) {
 }
 
 class JacAPIServer(JServer) {
+    # HMR (Hot Module Replacement) support fields
+    has _hmr_pending: bool = False,
+        _hot_reloader: Any | None = None;
+
     static def create_jwt_token(username: str) -> str;
     static def validate_jwt_token(token: str) -> (str | None);
     static def refresh_jwt_token(token: str) -> (str | None);
@@ -90,6 +94,10 @@ class JacAPIServer(JServer) {
 
     def register_functions_endpoints(self: JacAPIServer) -> None;
     def render_page_callback(self: JacAPIServer) -> Callable[..., HTMLResponse];
+    def render_base_route_callback(
+        self: JacAPIServer, app_name: str
+    ) -> Callable[..., HTMLResponse];
+
     def register_page_endpoint(self: JacAPIServer) -> None;
     def serve_client_js_callback(self: JacAPIServer) -> Callable[..., Response];
     def register_client_js_endpoint(self: JacAPIServer) -> None;
@@ -98,5 +106,10 @@ class JacAPIServer(JServer) {
     def register_root_asset_endpoint(self: JacAPIServer) -> None;
     def serve_root_asset(self: JacAPIServer, file_path: str) -> Response;
     def _configure_openapi_security(self: JacAPIServer) -> None;
-    def start(self: JacAPIServer) -> None;
+    def start(self: JacAPIServer, watch: bool = False) -> None;
+    # HMR (Hot Module Replacement) dynamic routing methods
+    def enable_hmr(self: JacAPIServer, hot_reloader: Any) -> None;
+    def register_dynamic_walker_endpoint(self: JacAPIServer) -> None;
+    def register_dynamic_function_endpoint(self: JacAPIServer) -> None;
+    def register_dynamic_introspection_endpoints(self: JacAPIServer) -> None;
 }

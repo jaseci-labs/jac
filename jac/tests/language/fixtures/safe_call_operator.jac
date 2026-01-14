@@ -1,7 +1,7 @@
 obj Name {
     has value: str;
 
-    def change(new_value: str) {
+    def change(new_value: str) -> str {
         self.value = new_value;
         return self.value;
     }

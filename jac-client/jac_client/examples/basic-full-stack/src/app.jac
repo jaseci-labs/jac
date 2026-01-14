@@ -1,5 +1,5 @@
 # Todo App
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 
 node Todo {
     has text: str,
@@ -34,14 +34,14 @@ walker read_todos {
 
 cl {
     def:pub app -> any {
-        [todos, setTodos] = useState([]);
-        [inputValue, setInputValue] = useState("");
-        [filter, setFilter] = useState("all");
+        has todos: list = [];
+        has inputValue: str = "";
+        has filter: str = "all";
 
         useEffect(
             lambda   -> None{ async def loadTodos -> None {
-                todos = root spawn read_todos();
-                setTodos(todos.reports);
+                result = root spawn read_todos();
+                todos = result.reports;
             } loadTodos();} ,
             []
         );
@@ -54,41 +54,35 @@ cl {
             newTodo = {"id": Date.now(), "text": inputValue.trim(), "done": False};
             response = root spawn create_todo(text=inputValue.trim());
             newTodos = todos.concat([response.reports[0][0]]);
-            setTodos(newTodos);
-            setInputValue("");
+            todos = newTodos;
+            inputValue = "";
         }
 
         # Toggle todo completion status
         async def toggleTodo(id: any) -> None {
             console.log("toggleTodo", id);
             id spawn toggle_todo();
-            setTodos(
-                todos.map(
-                    lambda  todo: any  -> any{ if todo._jac_id == id {
-                        updatedTodo = {
-                            "_jac_id": todo._jac_id,
-                            "text": todo.text,
-                            "done": not todo.done,
-                            "id": todo.id
-                        };
-                        return updatedTodo;
-                    }return todo; }
-                )
+            todos = todos.map(
+                lambda  todo: any  -> any{ if todo._jac_id == id {
+                    updatedTodo = {
+                        "_jac_id": todo._jac_id,
+                        "text": todo.text,
+                        "done": not todo.done,
+                        "id": todo.id
+                    };
+                    return updatedTodo;
+                }return todo; }
             );
         }
 
         # Delete a todo
         def deleteTodo(id: any) -> None {
-            setTodos(
-                todos.filter(lambda  todo: any  -> bool{ return todo.id != id; } )
-            );
+            todos = todos.filter(lambda  todo: any  -> bool{ return todo.id != id; } );
         }
 
         # Clear all completed todos
         def clearCompleted -> None {
-            setTodos(
-                todos.filter(lambda  todo: any  -> bool{ return not todo.done; } )
-            );
+            todos = todos.filter(lambda  todo: any  -> bool{ return not todo.done; } );
         }
 
         # Filter todos based on current filter
@@ -146,7 +140,7 @@ cl {
                 <input
                     type="text"
                     value={inputValue}
-                    onChange={lambda  e: any  -> None{ setInputValue(e.target.value);} }
+                    onChange={lambda  e: any  -> None{ inputValue = e.target.value;} }
                     onKeyPress={lambda  e: any  -> None{ if e.key == "Enter" {
                         addTodo();
                     }} }
@@ -187,7 +181,7 @@ cl {
                 }}
             >
                 <button
-                    onClick={lambda   -> None{ setFilter("all");} }
+                    onClick={lambda   -> None{ filter = "all";} }
                     style={{
                         "padding": "8px 16px",
                         "background": ("#3b82f6" if filter == "all" else "#ffffff"),
@@ -202,7 +196,7 @@ cl {
                     All
                 </button>
                 <button
-                    onClick={lambda   -> None{ setFilter("active");} }
+                    onClick={lambda   -> None{ filter = "active";} }
                     style={{
                         "padding": "8px 16px",
                         "background": ("#3b82f6" if filter == "active" else "#ffffff"),
@@ -217,7 +211,7 @@ cl {
                     Active
                 </button>
                 <button
-                    onClick={lambda   -> None{ setFilter("completed");} }
+                    onClick={lambda   -> None{ filter = "completed";} }
                     style={{
                         "padding": "8px 16px",
                         "background": (

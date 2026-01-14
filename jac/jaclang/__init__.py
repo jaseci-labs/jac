@@ -1,6 +1,5 @@
 """The Jac Programming Language."""
 
-import os
 import sys
 
 from jaclang.meta_importer import JacMetaImporter
@@ -14,6 +13,7 @@ if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
 # Prefer `jaclang.pycore.runtime` going forward.
 import jaclang.pycore.runtime as _runtime_mod
 from jaclang import compiler as _compiler  # noqa: F401
+from jaclang.pycore.helpers import get_disabled_plugins, load_plugins_with_disabling
 from jaclang.pycore.runtime import (
     JacRuntime,
     JacRuntimeImpl,
@@ -25,9 +25,16 @@ sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
 plugin_manager.register(JacRuntimeImpl)
 
-# Load external plugins unless JAC_DISABLE_PLUGINS is set
-# This is needed for subprocess-based tests that spawn new jac processes
-if not os.environ.get("JAC_DISABLE_PLUGINS"):
+# Load external plugins with disabling support
+# Disabling can be configured via JAC_DISABLED_PLUGINS env var or jac.toml [plugins].disabled
+# Use "*" to disable all external plugins, "package:*" for all from a package,
+# or "package:plugin" for specific plugins
+_disabled_list = get_disabled_plugins()
+if _disabled_list:
+    # Use qualified blocking for fine-grained control
+    load_plugins_with_disabling(plugin_manager, _disabled_list)
+else:
+    # No disabling - load all plugins normally
     plugin_manager.load_setuptools_entrypoints("jac")
 
 __all__ = ["JacRuntimeInterface", "JacRuntime"]

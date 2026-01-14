@@ -123,7 +123,7 @@ impl onMount(mountFn: any) -> None {
         __jacReactiveContext.mountedComponents[componentId] = True;
         # Run in next tick to ensure component is fully rendered
         try {
-            setTimeout(lambda   -> None{ __jacRunEffect(mountFn);} , 0);
+            setTimeout(lambda -> None { __jacRunEffect(mountFn);}, 0);
         } except Exception {
             # Fallback if setTimeout not available
             __jacRunEffect(mountFn);
@@ -250,14 +250,14 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     # Listen to hash changes
     window.addEventListener(
         "hashchange",
-        lambda  event: any  -> None{ newPath = __jacGetHashPath();if not newPath {
+        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
     # Listen to popstate (back/forward buttons)
     window.addEventListener(
         "popstate",
-        lambda  event: any  -> None{ newPath = __jacGetHashPath();if not newPath {
+        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
@@ -696,9 +696,9 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
         return;
     }
     # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda   -> any{ __jacReactiveContext.currentComponent = "__root__";result = target.apply(
+    __jacReactiveContext.rootComponent = lambda -> any { __jacReactiveContext.currentComponent = "__root__";result = target.apply(
         scope, orderedArgs
-    );__jacReactiveContext.currentComponent = None;return result; } ;
+    );__jacReactiveContext.currentComponent = None;return result; };
     renderer = __jacResolveRenderer(scope);
     if not renderer {
         console.warn("[Jac] renderJsxTree is not available in client bundle");
@@ -707,9 +707,9 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
         value.then(
-            lambda  node: any  -> None{ __jacApplyRender(renderer, rootEl, node);}
+            lambda node: any  -> None { __jacApplyRender(renderer, rootEl, node);}
         ).catch(
-            lambda  err: any  -> None{ console.error(
+            lambda err: any  -> None { console.error(
                 "[Jac] Error resolving client function promise", err
             );}
         );
@@ -741,7 +741,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda  _event: any  -> None{ __jacExecuteHydration();} ,
+            lambda _event: any  -> None { __jacExecuteHydration();},
             {"once": True}
         );
     }

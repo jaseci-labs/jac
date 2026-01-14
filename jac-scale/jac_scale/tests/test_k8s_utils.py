@@ -7,8 +7,8 @@ import pytest
 from kubernetes.client.exceptions import ApiException
 from pytest import MonkeyPatch
 
-from jac_scale.kubernetes import utils
-from jac_scale.kubernetes.utils import (
+from jac_scale.targets.kubernetes.utils import kubernetes_utils as utils
+from jac_scale.targets.kubernetes.utils.kubernetes_utils import (
     create_tarball,
     ensure_pvc_exists,
     load_env_variables,

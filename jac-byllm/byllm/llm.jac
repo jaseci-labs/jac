@@ -56,8 +56,8 @@ obj BaseLLM {
         call_params: dict[(str, object)] = {};
 
     def __call__( **kwargs: object)  -> BaseLLM;
-    def invoke(mt_run: MTRuntime) -> object;
-    def make_model_params(mt_run: MTRuntime) -> dict;
+    def invoke(mtir: MTRuntime) -> object;
+    def make_model_params(mtir: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;

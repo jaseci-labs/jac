@@ -53,13 +53,15 @@ In your Jac file, import the CSS file:
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import ".styles.css";
 
-cl {
-    def app() -> any {
-        [count, setCount] = useState(0);
+# Note: useState is auto-injected when using `has` variables
 
+cl {
+    has count: int = 0;  # Automatically creates React state
+
+    def app() -> any {
         return <div className="container">
             <div className="card">
                 <h1 className="title">Counter Application</h1>
@@ -291,7 +293,7 @@ Use media queries for responsive layouts:
 - Learn about [CSS Variables](https://developer.mozilla.org/en-US/docs/Web/CSS/Using_CSS_custom_properties) for advanced theming
 - Explore [Sass/SCSS](./sass.md) for preprocessing features
 - Check out [Tailwind CSS](./tailwind.md) for utility-first approach
-- See [CSS Modules](./css-modules.md) for scoped styles (coming soon)
+- See CSS Modules for scoped styles (coming soon)
 
 ## Resources
 

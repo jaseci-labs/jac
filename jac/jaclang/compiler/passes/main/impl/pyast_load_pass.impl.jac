@@ -1,8 +1,6 @@
 """aug_mapper."""
 
-impl PyastBuildPass.aug_op_map(
-    self: PyastBuildPass, tok_dict: dict, op: uni.Token
-) -> str {
+impl PyastBuildPass.aug_op_map(tok_dict: dict, op: uni.Token) -> str {
     op.value += '=';
     for (_key, value) in tok_dict.items() {
         if (value == op.value) {
@@ -13,7 +11,7 @@ impl PyastBuildPass.aug_op_map(
 }
 
 """Convert a string to a docstring."""
-impl PyastBuildPass.convert_to_doc(self: PyastBuildPass, string: uni.String) -> None {
+impl PyastBuildPass.convert_to_doc(string: uni.String) -> None {
     import codecs;
     # string.value is in repr format (e.g., 'line1\nline2' with escaped newlines)
     # For docstrings, we need to decode escape sequences back to actual characters
@@ -35,9 +33,7 @@ Process python node.
             context_expr: expr
             optional_vars: expr | None
 """
-impl PyastBuildPass.proc_withitem(
-    self: PyastBuildPass, <>node: py_ast.withitem
-) -> uni.ExprAsItem {
+impl PyastBuildPass.proc_withitem(<>node: py_ast.withitem) -> uni.ExprAsItem {
     context_expr = self.convert(<>node.context_expr);
     optional_vars = self.convert(<>node.optional_vars)
     if <>node.optional_vars
@@ -64,9 +60,7 @@ Process python node.
             guard: expr | None
             body: list[stmt]
 """
-impl PyastBuildPass.proc_match_case(
-    self: PyastBuildPass, <>node: py_ast.match_case
-) -> uni.MatchCase {
+impl PyastBuildPass.proc_match_case(<>node: py_ast.match_case) -> uni.MatchCase {
     pattern = self.convert(<>node.pattern);
     guard = self.convert(<>node.guard) if <>node.guard else None;
     body = [self.convert(i) for i in <>node.body];
@@ -99,9 +93,7 @@ Process python node.
         arg: _Identifier | None
         value: expr
 """
-impl PyastBuildPass.proc_keyword(
-    self: PyastBuildPass, <>node: py_ast.keyword
-) -> uni.KWPair {
+impl PyastBuildPass.proc_keyword(<>node: py_ast.keyword) -> uni.KWPair {
     arg = None;
     if <>node.arg {
         import from jaclang.pycore.jac_parser { TOKEN_MAP }
@@ -136,9 +128,7 @@ Process python node.
             ifs: list[expr]
             is_async: int
 """
-impl PyastBuildPass.proc_comprehension(
-    self: PyastBuildPass, <>node: py_ast.comprehension
-) -> uni.InnerCompr {
+impl PyastBuildPass.proc_comprehension(<>node: py_ast.comprehension) -> uni.InnerCompr {
     target = self.convert(<>node.target);
     iter = self.convert(<>node.iter);
     if (len(<>node.ifs) != 0) {
@@ -166,174 +156,152 @@ impl PyastBuildPass.proc_comprehension(
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_not_in(
-    self: PyastBuildPass, <>node: py_ast.NotIn
-) -> uni.Token {
+impl PyastBuildPass.proc_not_in(<>node: py_ast.NotIn) -> uni.Token {
     return self.operator(Tok.KW_NIN, 'not in');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_not_eq(
-    self: PyastBuildPass, <>node: py_ast.NotEq
-) -> uni.Token {
+impl PyastBuildPass.proc_not_eq(<>node: py_ast.NotEq) -> uni.Token {
     return self.operator(Tok.NE, '!=');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_lt_e(self: PyastBuildPass, <>node: py_ast.LtE) -> uni.Token {
+impl PyastBuildPass.proc_lt_e(<>node: py_ast.LtE) -> uni.Token {
     return self.operator(Tok.LTE, '<=');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_lt(self: PyastBuildPass, <>node: py_ast.Lt) -> uni.Token {
+impl PyastBuildPass.proc_lt(<>node: py_ast.Lt) -> uni.Token {
     return self.operator(Tok.LT, '<');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_is_not(
-    self: PyastBuildPass, <>node: py_ast.IsNot
-) -> uni.Token {
+impl PyastBuildPass.proc_is_not(<>node: py_ast.IsNot) -> uni.Token {
     return self.operator(Tok.KW_ISN, 'is not');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_is(self: PyastBuildPass, <>node: py_ast.Is) -> uni.Token {
+impl PyastBuildPass.proc_is(<>node: py_ast.Is) -> uni.Token {
     return self.operator(Tok.KW_IS, 'is');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_in(self: PyastBuildPass, <>node: py_ast.In) -> uni.Token {
+impl PyastBuildPass.proc_in(<>node: py_ast.In) -> uni.Token {
     return self.operator(Tok.KW_IN, 'in');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_gt_e(self: PyastBuildPass, <>node: py_ast.GtE) -> uni.Token {
+impl PyastBuildPass.proc_gt_e(<>node: py_ast.GtE) -> uni.Token {
     return self.operator(Tok.GTE, '>=');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_gt(self: PyastBuildPass, <>node: py_ast.Gt) -> uni.Token {
+impl PyastBuildPass.proc_gt(<>node: py_ast.Gt) -> uni.Token {
     return self.operator(Tok.GT, '>');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_eq(self: PyastBuildPass, <>node: py_ast.Eq) -> uni.Token {
+impl PyastBuildPass.proc_eq(<>node: py_ast.Eq) -> uni.Token {
     return self.operator(Tok.EE, '==');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_u_sub(self: PyastBuildPass, <>node: py_ast.USub) -> uni.Token {
+impl PyastBuildPass.proc_u_sub(<>node: py_ast.USub) -> uni.Token {
     return self.operator(Tok.MINUS, '-');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_u_add(self: PyastBuildPass, <>node: py_ast.UAdd) -> uni.Token {
+impl PyastBuildPass.proc_u_add(<>node: py_ast.UAdd) -> uni.Token {
     return self.operator(Tok.PLUS, '+');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_not(self: PyastBuildPass, <>node: py_ast.Not) -> uni.Token {
+impl PyastBuildPass.proc_not(<>node: py_ast.Not) -> uni.Token {
     return self.operator(Tok.NOT, 'not');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_invert(
-    self: PyastBuildPass, <>node: py_ast.Invert
-) -> uni.Token {
+impl PyastBuildPass.proc_invert(<>node: py_ast.Invert) -> uni.Token {
     return self.operator(Tok.BW_NOT, '~');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_sub(self: PyastBuildPass, <>node: py_ast.Sub) -> uni.Token {
+impl PyastBuildPass.proc_sub(<>node: py_ast.Sub) -> uni.Token {
     return self.operator(Tok.MINUS, '-');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_r_shift(
-    self: PyastBuildPass, <>node: py_ast.RShift
-) -> uni.Token {
+impl PyastBuildPass.proc_r_shift(<>node: py_ast.RShift) -> uni.Token {
     return self.operator(Tok.RSHIFT, '>>');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_pow(self: PyastBuildPass, <>node: py_ast.Pow) -> uni.Token {
+impl PyastBuildPass.proc_pow(<>node: py_ast.Pow) -> uni.Token {
     return self.operator(Tok.STAR_POW, '**');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_mat_mult(
-    self: PyastBuildPass, <>node: py_ast.MatMult
-) -> uni.Token {
+impl PyastBuildPass.proc_mat_mult(<>node: py_ast.MatMult) -> uni.Token {
     return self.operator(Tok.DECOR_OP, '@');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_mult(self: PyastBuildPass, <>node: py_ast.Mult) -> uni.Token {
+impl PyastBuildPass.proc_mult(<>node: py_ast.Mult) -> uni.Token {
     return self.operator(Tok.STAR_MUL, '*');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_mod(self: PyastBuildPass, <>node: py_ast.Mod) -> uni.Token {
+impl PyastBuildPass.proc_mod(<>node: py_ast.Mod) -> uni.Token {
     return self.operator(Tok.MOD, '%');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_l_shift(
-    self: PyastBuildPass, <>node: py_ast.LShift
-) -> uni.Token {
+impl PyastBuildPass.proc_l_shift(<>node: py_ast.LShift) -> uni.Token {
     return self.operator(Tok.LSHIFT, '<<');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_floor_div(
-    self: PyastBuildPass, <>node: py_ast.FloorDiv
-) -> uni.Token {
+impl PyastBuildPass.proc_floor_div(<>node: py_ast.FloorDiv) -> uni.Token {
     return self.operator(Tok.FLOOR_DIV, '//');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_div(self: PyastBuildPass, <>node: py_ast.Div) -> uni.Token {
+impl PyastBuildPass.proc_div(<>node: py_ast.Div) -> uni.Token {
     return self.operator(Tok.DIV, '/');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_bit_xor(
-    self: PyastBuildPass, <>node: py_ast.BitXor
-) -> uni.Token {
+impl PyastBuildPass.proc_bit_xor(<>node: py_ast.BitXor) -> uni.Token {
     return self.operator(Tok.BW_XOR, '^');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_bit_or(
-    self: PyastBuildPass, <>node: py_ast.BitOr
-) -> uni.Token {
+impl PyastBuildPass.proc_bit_or(<>node: py_ast.BitOr) -> uni.Token {
     return self.operator(Tok.BW_OR, '|');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_bit_and(
-    self: PyastBuildPass, <>node: py_ast.BitAnd
-) -> uni.Token {
+impl PyastBuildPass.proc_bit_and(<>node: py_ast.BitAnd) -> uni.Token {
     return self.operator(Tok.BW_AND, '&');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_add(self: PyastBuildPass, <>node: py_ast.Add) -> uni.Token {
+impl PyastBuildPass.proc_add(<>node: py_ast.Add) -> uni.Token {
     return self.operator(Tok.PLUS, '+');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_or(self: PyastBuildPass, <>node: py_ast.Or) -> uni.Token {
+impl PyastBuildPass.proc_or(<>node: py_ast.Or) -> uni.Token {
     return self.operator(Tok.KW_OR, 'or');
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_and(self: PyastBuildPass, <>node: py_ast.And) -> uni.Token {
+impl PyastBuildPass.proc_and(<>node: py_ast.And) -> uni.Token {
     return self.operator(Tok.KW_AND, 'and');
 }
 
 """Create an operator token."""
-impl PyastBuildPass.operator(self: PyastBuildPass, tok: Tok, value: str) -> uni.Token {
+impl PyastBuildPass.operator(tok: Tok, value: str) -> uni.Token {
     return uni.Token(
         orig_src=self.orig_src,
         name=tok,
@@ -359,9 +327,7 @@ Process python node.
             kwarg: arg | None
             defaults: list[expr]
 """
-impl PyastBuildPass.proc_arguments(
-    self: PyastBuildPass, <>node: py_ast.arguments
-) -> uni.FuncSignature {
+impl PyastBuildPass.proc_arguments(<>node: py_ast.arguments) -> uni.FuncSignature {
     def _apply_kind(params: list, kind: uni.ParamKind) -> list {
         for param in params {
             cast(uni.ParamVar, param).param_kind = kind;
@@ -477,7 +443,7 @@ Process python node.
             arg: _Identifier
             annotation: expr | None
 """
-impl PyastBuildPass.proc_arg(self: PyastBuildPass, <>node: py_ast.arg) -> uni.ParamVar {
+impl PyastBuildPass.proc_arg(<>node: py_ast.arg) -> uni.ParamVar {
     import from jaclang.pycore.jac_parser { TOKEN_MAP }
     reserved_keywords = [
         v
@@ -528,9 +494,7 @@ Process python node.
             name: _Identifier
             asname: _Identifier | None
 """
-impl PyastBuildPass.proc_alias(
-    self: PyastBuildPass, <>node: py_ast.alias
-) -> uni.ExprAsItem {
+impl PyastBuildPass.proc_alias(<>node: py_ast.alias) -> uni.ExprAsItem {
     name = uni.Name(
         orig_src=self.orig_src,
         name=Tok.NAME,
@@ -561,9 +525,7 @@ impl PyastBuildPass.proc_alias(
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_yield_from(
-    self: PyastBuildPass, <>node: py_ast.YieldFrom
-) -> uni.YieldExpr {
+impl PyastBuildPass.proc_yield_from(<>node: py_ast.YieldFrom) -> uni.YieldExpr {
     value = self.convert(<>node.value);
     if isinstance(value, uni.Expr) {
         return uni.YieldExpr(expr=value, with_from=True, kid=[value]);
@@ -578,9 +540,7 @@ Process python node.
         class Yield(expr):
             value: expr | None
 """
-impl PyastBuildPass.proc_yield(
-    self: PyastBuildPass, <>node: py_ast.Yield
-) -> uni.YieldExpr {
+impl PyastBuildPass.proc_yield(<>node: py_ast.Yield) -> uni.YieldExpr {
     value = self.convert(<>node.value) if <>node.value else None;
     if isinstance(value, uni.Expr) {
         return uni.YieldExpr(expr=value, with_from=False, kid=[value]);
@@ -600,9 +560,7 @@ Process python node.
             elts: list[expr]
             ctx: expr_context
 """
-impl PyastBuildPass.proc_tuple(
-    self: PyastBuildPass, <>node: py_ast.Tuple
-) -> uni.TupleVal {
+impl PyastBuildPass.proc_tuple(<>node: py_ast.Tuple) -> uni.TupleVal {
     elts = [self.convert(elt) for elt in <>node.elts];
     if (len(<>node.elts) != 0) {
         valid_elts = [
@@ -632,9 +590,7 @@ Process python node.
             orelse: list[stmt]
             finalbody: list[stmt]
 """
-impl PyastBuildPass.proc_try_star(
-    self: PyastBuildPass, <>node: py_ast.TryStar
-) -> uni.TryStmt {
+impl PyastBuildPass.proc_try_star(<>node: py_ast.TryStar) -> uni.TryStmt {
     return self.proc_try(<>node);
 }
 
@@ -647,9 +603,7 @@ Process python node.
             orelse: list[stmt]
             finalbody: list[stmt]
 """
-impl PyastBuildPass.proc_try(
-    self: PyastBuildPass, <>node: (py_ast.Try | py_ast.TryStar)
-) -> uni.TryStmt {
+impl PyastBuildPass.proc_try(<>node: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
     body = [self.convert(i) for i in <>node.body];
     valid = [
         i
@@ -727,9 +681,7 @@ Process python node.
             slice: _Slice
             ctx: expr_context
 """
-impl PyastBuildPass.proc_subscript(
-    self: PyastBuildPass, <>node: py_ast.Subscript
-) -> uni.AtomTrailer {
+impl PyastBuildPass.proc_subscript(<>node: py_ast.Subscript) -> uni.AtomTrailer {
     value = self.convert(<>node.value);
     slice = self.convert(<>node.slice);
     if (not isinstance(slice, uni.IndexSlice) and isinstance(slice, uni.Expr)) {
@@ -773,9 +725,7 @@ Process python node.
             value: expr
             ctx: expr_context
 """
-impl PyastBuildPass.proc_starred(
-    self: PyastBuildPass, <>node: py_ast.Starred
-) -> uni.UnaryExpr {
+impl PyastBuildPass.proc_starred(<>node: py_ast.Starred) -> uni.UnaryExpr {
     star_tok = self.operator(Tok.STAR_MUL, '*');
     value = self.convert(<>node.value);
     if isinstance(value, uni.Expr) {
@@ -793,9 +743,7 @@ Process python node.
             upper: expr | None
             step: expr | None
 """
-impl PyastBuildPass.proc_slice(
-    self: PyastBuildPass, <>node: py_ast.Slice
-) -> uni.IndexSlice {
+impl PyastBuildPass.proc_slice(<>node: py_ast.Slice) -> uni.IndexSlice {
     lower = self.convert(<>node.lower) if <>node.lower else None;
     upper = self.convert(<>node.upper) if <>node.upper else None;
     step = self.convert(<>node.step) if <>node.step else None;
@@ -829,9 +777,7 @@ Process python node.
             elt: expr
             generators: list[comprehension]
 """
-impl PyastBuildPass.proc_set_comp(
-    self: PyastBuildPass, <>node: py_ast.SetComp
-) -> uni.ListCompr {
+impl PyastBuildPass.proc_set_comp(<>node: py_ast.SetComp) -> uni.ListCompr {
     elt = self.convert(<>node.elt);
     generators = [self.convert(gen) for gen in <>node.generators];
     valid = [
@@ -855,7 +801,7 @@ Process python node.
         class Set(expr):
             elts: list[expr]
 """
-impl PyastBuildPass.proc_set(self: PyastBuildPass, <>node: py_ast.Set) -> uni.SetVal {
+impl PyastBuildPass.proc_set(<>node: py_ast.Set) -> uni.SetVal {
     if (len(<>node.elts) != 0) {
         elts = [self.convert(i) for i in <>node.elts];
         valid = [
@@ -877,7 +823,7 @@ impl PyastBuildPass.proc_set(self: PyastBuildPass, <>node: py_ast.Set) -> uni.Se
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_pass(self: PyastBuildPass, <>node: py_ast.Pass) -> uni.Semi {
+impl PyastBuildPass.proc_pass(<>node: py_ast.Pass) -> uni.Semi {
     return uni.Semi(
         orig_src=self.orig_src,
         name=Tok.SEMI,
@@ -897,9 +843,7 @@ Process python node.
         class Nonlocal(stmt):
             names: list[_Identifier]
 """
-impl PyastBuildPass.proc_nonlocal(
-    self: PyastBuildPass, <>node: py_ast.Nonlocal
-) -> uni.NonLocalStmt {
+impl PyastBuildPass.proc_nonlocal(<>node: py_ast.Nonlocal) -> uni.NonLocalStmt {
     import from jaclang.pycore.jac_parser { TOKEN_MAP }
     reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     names: list[uni.NameAtom] = [];
@@ -929,9 +873,7 @@ Process python node.
             target: Name
             value: expr
 """
-impl PyastBuildPass.proc_named_expr(
-    self: PyastBuildPass, <>node: py_ast.NamedExpr
-) -> uni.AtomUnit {
+impl PyastBuildPass.proc_named_expr(<>node: py_ast.NamedExpr) -> uni.AtomUnit {
     target = self.convert(<>node.target);
     value = self.convert(<>node.value);
     if (isinstance(value, uni.Expr) and isinstance(target, uni.Name)) {
@@ -965,7 +907,7 @@ Process python node.
         id: _Identifier
         ctx: expr_context
 """
-impl PyastBuildPass.proc_name(self: PyastBuildPass, <>node: py_ast.Name) -> uni.Name {
+impl PyastBuildPass.proc_name(<>node: py_ast.Name) -> uni.Name {
     import from jaclang.pycore.jac_parser { TOKEN_MAP }
     reserved_keywords = [
         v
@@ -999,9 +941,7 @@ Process python node.
         class MatchValue(pattern):
             value: expr
 """
-impl PyastBuildPass.proc_match_value(
-    self: PyastBuildPass, <>node: py_ast.MatchValue
-) -> uni.MatchValue {
+impl PyastBuildPass.proc_match_value(<>node: py_ast.MatchValue) -> uni.MatchValue {
     value = self.convert(<>node.value);
     if isinstance(value, uni.Expr) {
         return uni.MatchValue(value=value, kid=[value]);
@@ -1016,9 +956,7 @@ Process python node.
         class MatchStar(pattern):
             name: _Identifier | None
 """
-impl PyastBuildPass.proc_match_star(
-    self: PyastBuildPass, <>node: py_ast.MatchStar
-) -> uni.MatchStar {
+impl PyastBuildPass.proc_match_star(<>node: py_ast.MatchStar) -> uni.MatchStar {
     name = uni.Name(
         orig_src=self.orig_src,
         name=Tok.NAME,
@@ -1040,7 +978,7 @@ Process python node.
             value: Literal[True, False] | None
 """
 impl PyastBuildPass.proc_match_singleton(
-    self: PyastBuildPass, <>node: py_ast.MatchSingleton
+    <>node: py_ast.MatchSingleton
 ) -> uni.MatchSingleton {
     <>type = Tok.NULL if (<>node.value is None) else Tok.BOOL;
     ret_type = uni.Null if (<>node.value is None) else uni.Bool;
@@ -1069,7 +1007,7 @@ Process python node.
             patterns: list[pattern]
 """
 impl PyastBuildPass.proc_match_sequence(
-    self: PyastBuildPass, <>node: py_ast.MatchSequence
+    <>node: py_ast.MatchSequence
 ) -> uni.MatchSequence {
     patterns = [self.convert(i) for i in <>node.patterns];
     valid = [
@@ -1090,9 +1028,7 @@ Process python node.
         class MatchOr(pattern):
             patterns: list[pattern]
 """
-impl PyastBuildPass.proc_match_or(
-    self: PyastBuildPass, <>node: py_ast.MatchOr
-) -> uni.MatchOr {
+impl PyastBuildPass.proc_match_or(<>node: py_ast.MatchOr) -> uni.MatchOr {
     patterns = [self.convert(i) for i in <>node.patterns];
     valid = [
         i
@@ -1110,9 +1046,7 @@ Process python node.
             patterns: list[pattern]
             rest: _Identifier | None
 """
-impl PyastBuildPass.proc_match_mapping(
-    self: PyastBuildPass, <>node: py_ast.MatchMapping
-) -> uni.MatchMapping {
+impl PyastBuildPass.proc_match_mapping(<>node: py_ast.MatchMapping) -> uni.MatchMapping {
     values: list[(uni.MatchKVPair | uni.MatchStar)] = [];
     keys = [self.convert(i) for i in <>node.keys];
     valid_keys = [
@@ -1160,9 +1094,7 @@ Process python node.
             kwd_attrs: list[_Identifier]
             kwd_patterns: list[pattern]
 """
-impl PyastBuildPass.proc_match_class(
-    self: PyastBuildPass, <>node: py_ast.MatchClass
-) -> uni.MatchArch {
+impl PyastBuildPass.proc_match_class(<>node: py_ast.MatchClass) -> uni.MatchArch {
     self.in_match_pattern = True;
     cls = self.convert(<>node.cls);
     self.in_match_pattern = False;
@@ -1238,7 +1170,7 @@ Process python node.
             name: _Identifier | None
 """
 impl PyastBuildPass.proc_match_as(
-    self: PyastBuildPass, <>node: py_ast.MatchAs
+    <>node: py_ast.MatchAs
 ) -> (uni.MatchAs | uni.MatchWild) {
     pattern = self.convert(<>node.pattern) if <>node.pattern else None;
     name = uni.Name(
@@ -1274,9 +1206,7 @@ Process python node.
             subject: expr
             cases: list[match_case]
 """
-impl PyastBuildPass.proc_match(
-    self: PyastBuildPass, <>node: py_ast.Match
-) -> uni.MatchStmt {
+impl PyastBuildPass.proc_match(<>node: py_ast.Match) -> uni.MatchStmt {
     subject = self.convert(<>node.subject);
     cases = [self.convert(i) for i in <>node.cases];
     valid = [
@@ -1298,9 +1228,7 @@ Process python node.
             elt: expr
             generators: list[comprehension]
 """
-impl PyastBuildPass.proc_list_comp(
-    self: PyastBuildPass, <>node: py_ast.ListComp
-) -> uni.ListCompr {
+impl PyastBuildPass.proc_list_comp(<>node: py_ast.ListComp) -> uni.ListCompr {
     elt = self.convert(<>node.elt);
     generators = [self.convert(gen) for gen in <>node.generators];
     valid = [
@@ -1325,7 +1253,7 @@ Process python node.
             elts: list[expr]
             ctx: expr_context
 """
-impl PyastBuildPass.proc_list(self: PyastBuildPass, <>node: py_ast.List) -> uni.ListVal {
+impl PyastBuildPass.proc_list(<>node: py_ast.List) -> uni.ListVal {
     elts = [self.convert(elt) for elt in <>node.elts];
     valid_elts = [
         elt
@@ -1349,9 +1277,7 @@ Process python node.
             args: arguments
             body: expr
 """
-impl PyastBuildPass.proc_lambda(
-    self: PyastBuildPass, <>node: py_ast.Lambda
-) -> uni.LambdaExpr {
+impl PyastBuildPass.proc_lambda(<>node: py_ast.Lambda) -> uni.LambdaExpr {
     args = self.convert(<>node.args);
     body = self.convert(<>node.body);
     if (isinstance(args, uni.FuncSignature) and isinstance(body, uni.Expr)) {
@@ -1369,9 +1295,7 @@ Process python node.
             __match_args__ = ("values",)
         values: list[expr]
 """
-impl PyastBuildPass.proc_joined_str(
-    self: PyastBuildPass, <>node: py_ast.JoinedStr
-) -> uni.MultiString {
+impl PyastBuildPass.proc_joined_str(<>node: py_ast.JoinedStr) -> uni.MultiString {
     valid: list[(uni.String | uni.FormattedValue)] = [];
     for i in <>node.values {
         if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
@@ -1454,9 +1378,7 @@ Process python node.
             names: list[alias]
             level: int
 """
-impl PyastBuildPass.proc_import_from(
-    self: PyastBuildPass, <>node: py_ast.ImportFrom
-) -> uni.Import {
+impl PyastBuildPass.proc_import_from(<>node: py_ast.ImportFrom) -> uni.Import {
     lang = uni.Name(
         orig_src=self.orig_src,
         name=Tok.NAME,
@@ -1537,9 +1459,7 @@ Process python node.
         class Import(stmt):
             names: list[alias]
 """
-impl PyastBuildPass.proc_import(
-    self: PyastBuildPass, <>node: py_ast.Import
-) -> uni.Import {
+impl PyastBuildPass.proc_import(<>node: py_ast.Import) -> uni.Import {
     names = [self.convert(name) for name in <>node.names];
     valid_names = [
         name
@@ -1583,9 +1503,7 @@ Process python node.
             body: expr
             orelse: expr
 """
-impl PyastBuildPass.proc_if_exp(
-    self: PyastBuildPass, <>node: py_ast.IfExp
-) -> uni.IfElseExpr {
+impl PyastBuildPass.proc_if_exp(<>node: py_ast.IfExp) -> uni.IfElseExpr {
     <>test = self.convert(<>node.test);
     body = self.convert(<>node.body);
     orelse = self.convert(<>node.orelse);
@@ -1608,9 +1526,7 @@ Process python node.
         class Global(stmt):
             names: list[_Identifier]
 """
-impl PyastBuildPass.proc_global(
-    self: PyastBuildPass, <>node: py_ast.Global
-) -> uni.GlobalStmt {
+impl PyastBuildPass.proc_global(<>node: py_ast.Global) -> uni.GlobalStmt {
     names: list[uni.NameAtom] = [];
     for id in <>node.names {
         names.append(
@@ -1637,9 +1553,7 @@ Process python node..
             elt: expr
             generators: list[comprehension]
 """
-impl PyastBuildPass.proc_generator_exp(
-    self: PyastBuildPass, <>node: py_ast.GeneratorExp
-) -> uni.GenCompr {
+impl PyastBuildPass.proc_generator_exp(<>node: py_ast.GeneratorExp) -> uni.GenCompr {
     elt = self.convert(<>node.elt);
     generators = [self.convert(gen) for gen in <>node.generators];
     valid = [
@@ -1668,7 +1582,7 @@ Process python node.
         format_spec: expr | None
 """
 impl PyastBuildPass.proc_formatted_value(
-    self: PyastBuildPass, <>node: py_ast.FormattedValue
+    <>node: py_ast.FormattedValue
 ) -> uni.FormattedValue {
     prev_in_fstring = self.in_fstring_expr;
     self.in_fstring_expr = True;
@@ -1696,9 +1610,7 @@ Process python node.
         class Expr(stmt):
             value: expr
 """
-impl PyastBuildPass.proc_expr(
-    self: PyastBuildPass, <>node: py_ast.Expr
-) -> uni.ExprStmt {
+impl PyastBuildPass.proc_expr(<>node: py_ast.Expr) -> uni.ExprStmt {
     value = self.convert(<>node.value);
     if isinstance(value, uni.Expr) {
         return uni.ExprStmt(expr=value, in_fstring=False, kid=[value]);
@@ -1715,9 +1627,7 @@ Process python node.
             name: _Identifier | None
             body: list[stmt]
 """
-impl PyastBuildPass.proc_except_handler(
-    self: PyastBuildPass, <>node: py_ast.ExceptHandler
-) -> uni.Except {
+impl PyastBuildPass.proc_except_handler(<>node: py_ast.ExceptHandler) -> uni.Except {
     <>type = self.convert(<>node.type) if <>node.type else None;
     name: (uni.Name | None) = None;
     if (not <>type and not <>node.name) {
@@ -1787,9 +1697,7 @@ Process python node.
             value: expr
             generators: list[comprehension]
 """
-impl PyastBuildPass.proc_dict_comp(
-    self: PyastBuildPass, <>node: py_ast.DictComp
-) -> uni.DictCompr {
+impl PyastBuildPass.proc_dict_comp(<>node: py_ast.DictComp) -> uni.DictCompr {
     key = self.convert(<>node.key);
     value = self.convert(<>node.value);
     if (isinstance(key, uni.Expr) and isinstance(value, uni.Expr)) {
@@ -1816,7 +1724,7 @@ Process python node.
             keys: list[expr | None]
             values: list[expr]
 """
-impl PyastBuildPass.proc_dict(self: PyastBuildPass, <>node: py_ast.Dict) -> uni.DictVal {
+impl PyastBuildPass.proc_dict(<>node: py_ast.Dict) -> uni.DictVal {
     keys = [self.convert(i) if i else None for i in <>node.keys];
     values = [self.convert(i) for i in <>node.values];
     valid_keys = [
@@ -1848,9 +1756,7 @@ impl PyastBuildPass.proc_dict(self: PyastBuildPass, <>node: py_ast.Dict) -> uni.
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_continue(
-    self: PyastBuildPass, <>node: py_ast.Continue
-) -> uni.CtrlStmt {
+impl PyastBuildPass.proc_continue(<>node: py_ast.Continue) -> uni.CtrlStmt {
     continue_tok = uni.Token(
         orig_src=self.orig_src,
         name=Tok.KW_CONTINUE,
@@ -1875,9 +1781,7 @@ Process python node.
             s: Any
             n: int | float | complex
 """
-impl PyastBuildPass.proc_constant(
-    self: PyastBuildPass, <>node: py_ast.Constant
-) -> uni.Literal {
+impl PyastBuildPass.proc_constant(<>node: py_ast.Constant) -> uni.Literal {
     type_mapping = {
         int: uni.Int,
         float: uni.Float,
@@ -1940,9 +1844,7 @@ Process python node.
         ops: list[cmpop]
         comparators: list[expr]
 """
-impl PyastBuildPass.proc_compare(
-    self: PyastBuildPass, <>node: py_ast.Compare
-) -> uni.AtomUnit {
+impl PyastBuildPass.proc_compare(<>node: py_ast.Compare) -> uni.AtomUnit {
     left = self.convert(<>node.left);
     comparators = [self.convert(comparator) for comparator in <>node.comparators];
     valid_comparators = [
@@ -1984,9 +1886,7 @@ Process python node.
         args: list[expr]
         keywords: list[keyword]
 """
-impl PyastBuildPass.proc_call(
-    self: PyastBuildPass, <>node: py_ast.Call
-) -> uni.FuncCall {
+impl PyastBuildPass.proc_call(<>node: py_ast.Call) -> uni.FuncCall {
     func = self.convert(<>node.func);
     params_in: list[(uni.Expr | uni.KWPair)] = [];
     args = [self.convert(arg) for arg in <>node.args];
@@ -2010,9 +1910,7 @@ impl PyastBuildPass.proc_call(
 }
 
 """Process python node."""
-impl PyastBuildPass.proc_break(
-    self: PyastBuildPass, <>node: py_ast.Break
-) -> uni.CtrlStmt {
+impl PyastBuildPass.proc_break(<>node: py_ast.Break) -> uni.CtrlStmt {
     break_tok = uni.Token(
         orig_src=self.orig_src,
         name=Tok.KW_BREAK,
@@ -2034,9 +1932,7 @@ Process python node.
             op: boolop
             values: list[expr]
 """
-impl PyastBuildPass.proc_bool_op(
-    self: PyastBuildPass, <>node: py_ast.BoolOp
-) -> uni.AtomUnit {
+impl PyastBuildPass.proc_bool_op(<>node: py_ast.BoolOp) -> uni.AtomUnit {
     op = self.convert(<>node.op);
     values = [self.convert(value) for value in <>node.values];
     valid = [
@@ -2062,9 +1958,7 @@ Process python node.
             op: unaryop
             operand: expr
 """
-impl PyastBuildPass.proc_unary_op(
-    self: PyastBuildPass, <>node: py_ast.UnaryOp
-) -> uni.UnaryExpr {
+impl PyastBuildPass.proc_unary_op(<>node: py_ast.UnaryOp) -> uni.UnaryExpr {
     op = self.convert(<>node.op);
     operand = self.convert(<>node.operand);
     if (isinstance(op, uni.Token) and isinstance(operand, uni.Expr)) {
@@ -2085,7 +1979,7 @@ Process python node.
             right: expr
 """
 impl PyastBuildPass.proc_bin_op(
-    self: PyastBuildPass, <>node: py_ast.BinOp
+    <>node: py_ast.BinOp
 ) -> (uni.AtomUnit | uni.BinaryExpr) {
     left = self.convert(<>node.left);
     op = self.convert(<>node.op);
@@ -2127,9 +2021,7 @@ Process python node.
         class Await(expr):
             value: expr
 """
-impl PyastBuildPass.proc_await(
-    self: PyastBuildPass, <>node: py_ast.Await
-) -> uni.AwaitExpr {
+impl PyastBuildPass.proc_await(<>node: py_ast.Await) -> uni.AwaitExpr {
     value = self.convert(<>node.value);
     if isinstance(value, uni.Expr) {
         return uni.AwaitExpr(target=value, kid=[value]);
@@ -2148,9 +2040,7 @@ Proassignment targetscess python node.
         attr: _Identifier
         ctx: expr_context
 """
-impl PyastBuildPass.proc_attribute(
-    self: PyastBuildPass, <>node: py_ast.Attribute
-) -> uni.AtomTrailer {
+impl PyastBuildPass.proc_attribute(<>node: py_ast.Attribute) -> uni.AtomTrailer {
     value = self.convert(<>node.value);
     if (
         isinstance(value, uni.FuncCall)
@@ -2202,9 +2092,7 @@ Process python node.
             test: expr
             msg: expr | None
 """
-impl PyastBuildPass.proc_assert(
-    self: PyastBuildPass, <>node: py_ast.Assert
-) -> uni.AssertStmt {
+impl PyastBuildPass.proc_assert(<>node: py_ast.Assert) -> uni.AssertStmt {
     <>test = self.convert(<>node.test);
     msg = self.convert(<>node.msg) if <>node.msg else None;
     if (isinstance(<>test, uni.Expr) and (isinstance(msg, uni.Expr) or (msg is None))) {
@@ -2223,9 +2111,7 @@ Process python node.
             exc: expr | None
             cause: expr | None
 """
-impl PyastBuildPass.proc_raise(
-    self: PyastBuildPass, <>node: py_ast.Raise
-) -> uni.RaiseStmt {
+impl PyastBuildPass.proc_raise(<>node: py_ast.Raise) -> uni.RaiseStmt {
     exc = self.convert(<>node.exc) if <>node.exc else None;
     cause = self.convert(<>node.cause) if <>node.cause else None;
     kid: list[(uni.Expr | uni.Token)] = [];
@@ -2264,9 +2150,7 @@ Process AsyncWith node.
             items: list[withitem]
             body: list[stmt]
 """
-impl PyastBuildPass.proc_async_with(
-    self: PyastBuildPass, <>node: py_ast.AsyncWith
-) -> uni.WithStmt {
+impl PyastBuildPass.proc_async_with(<>node: py_ast.AsyncWith) -> uni.WithStmt {
     items = [self.convert(item) for item in <>node.items];
     valid_items = [
         item
@@ -2301,9 +2185,7 @@ Process With node.
             items: list[withitem]
             body: list[stmt]
 """
-impl PyastBuildPass.proc_with(
-    self: PyastBuildPass, <>node: py_ast.With
-) -> uni.WithStmt {
+impl PyastBuildPass.proc_with(<>node: py_ast.With) -> uni.WithStmt {
     items = [self.convert(item) for item in <>node.items];
     valid_items = [
         item
@@ -2339,7 +2221,7 @@ Process If node.
             body: list[stmt]
             orelse: list[stmt]
 """
-impl PyastBuildPass.proc_if(self: PyastBuildPass, <>node: py_ast.If) -> uni.IfStmt {
+impl PyastBuildPass.proc_if(<>node: py_ast.If) -> uni.IfStmt {
     <>test = self.convert(<>node.test);
     body = [self.convert(stmt) for stmt in <>node.body];
     valid_body = [
@@ -2394,9 +2276,7 @@ Process While node.
             body: list[stmt]
             orelse: list[stmt]
 """
-impl PyastBuildPass.proc_while(
-    self: PyastBuildPass, <>node: py_ast.While
-) -> uni.WhileStmt {
+impl PyastBuildPass.proc_while(<>node: py_ast.While) -> uni.WhileStmt {
     <>test = self.convert(<>node.test);
     body = [self.convert(stmt) for stmt in <>node.body];
     valid_body = [
@@ -2439,9 +2319,7 @@ Process AsyncFor node.
             body: list[stmt]
             orelse: list[stmt]`
 """
-impl PyastBuildPass.proc_async_for(
-    self: PyastBuildPass, <>node: py_ast.AsyncFor
-) -> uni.InForStmt {
+impl PyastBuildPass.proc_async_for(<>node: py_ast.AsyncFor) -> uni.InForStmt {
     target = self.convert(<>node.target);
     iter = self.convert(<>node.iter);
     body = [self.convert(i) for i in <>node.body];
@@ -2490,7 +2368,7 @@ Process python node.
             body: list[stmt]
             orelse: list[stmt]
 """
-impl PyastBuildPass.proc_for(self: PyastBuildPass, <>node: py_ast.For) -> uni.InForStmt {
+impl PyastBuildPass.proc_for(<>node: py_ast.For) -> uni.InForStmt {
     target = self.convert(<>node.target);
     iter = self.convert(<>node.iter);
     body = [self.convert(i) for i in <>node.body];
@@ -2539,9 +2417,7 @@ Process python node.
             value: expr | None
             simple: int
 """
-impl PyastBuildPass.proc_ann_assign(
-    self: PyastBuildPass, <>node: py_ast.AnnAssign
-) -> uni.Assignment {
+impl PyastBuildPass.proc_ann_assign(<>node: py_ast.AnnAssign) -> uni.Assignment {
     target = self.convert(<>node.target);
     self.in_type_annotation = True;
     annotation = self.convert(<>node.annotation);
@@ -2580,9 +2456,7 @@ Process python node.
             op: operator
             value: expr
 """
-impl PyastBuildPass.proc_aug_assign(
-    self: PyastBuildPass, <>node: py_ast.AugAssign
-) -> uni.Assignment {
+impl PyastBuildPass.proc_aug_assign(<>node: py_ast.AugAssign) -> uni.Assignment {
     import from jaclang.pycore.jac_parser { TOKEN_MAP }
     target = self.convert(<>node.target);
     op = self.convert(<>node.op);
@@ -2615,9 +2489,7 @@ Process python node.
             targets: list[expr]
             value: expr
 """
-impl PyastBuildPass.proc_assign(
-    self: PyastBuildPass, <>node: py_ast.Assign
-) -> uni.Assignment {
+impl PyastBuildPass.proc_assign(<>node: py_ast.Assign) -> uni.Assignment {
     value = self.convert(<>node.value);
     targets = [self.convert(target) for target in <>node.targets];
     valid = [
@@ -2648,9 +2520,7 @@ Process python node.
             __match_args__ = ("targets",)
             targets: list[expr]
 """
-impl PyastBuildPass.proc_delete(
-    self: PyastBuildPass, <>node: py_ast.Delete
-) -> uni.DeleteStmt {
+impl PyastBuildPass.proc_delete(<>node: py_ast.Delete) -> uni.DeleteStmt {
     exprs = [self.convert(target) for target in <>node.targets];
     valid_exprs = [
         expr
@@ -2673,9 +2543,7 @@ Process python node.
             __match_args__ = ("value",)
             value: expr | None
 """
-impl PyastBuildPass.proc_return(
-    self: PyastBuildPass, <>node: py_ast.Return
-) -> (uni.ReturnStmt | None) {
+impl PyastBuildPass.proc_return(<>node: py_ast.Return) -> (uni.ReturnStmt | None) {
     value = self.convert(<>node.value) if <>node.value else None;
     if not value {
         return uni.ReturnStmt(expr=None, kid=[self.operator(Tok.KW_RETURN, 'return')]);
@@ -2701,7 +2569,7 @@ Process python node.
             type_params: list[type_param]
 """
 impl PyastBuildPass.proc_class_def(
-    self: PyastBuildPass, <>node: py_ast.ClassDef
+    <>node: py_ast.ClassDef
 ) -> (uni.Archetype | uni.Enum) {
     name = uni.Name(
         orig_src=self.orig_src,
@@ -2823,7 +2691,7 @@ Process python node.
                 type_params: list[type_param]
 """
 impl PyastBuildPass.proc_async_function_def(
-    self: PyastBuildPass, <>node: py_ast.AsyncFunctionDef
+    <>node: py_ast.AsyncFunctionDef
 ) -> uni.Ability {
     ability = self.proc_function_def(<>node);
     ability.is_async = True;
@@ -2843,7 +2711,7 @@ Process python node.
             type_params: list[type_param]
 """
 impl PyastBuildPass.proc_function_def(
-    self: PyastBuildPass, <>node: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
+    <>node: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
 ) -> uni.Ability {
     import from jaclang.pycore.jac_parser { TOKEN_MAP }
     reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
@@ -2896,6 +2764,22 @@ impl PyastBuildPass.proc_function_def(
     else None;
     self.in_type_annotation = True;
     ret_sig = self.convert(<>node.returns) if <>node.returns else None;
+    # NOTE: if python function doesn't have a return annotation, we set the return type to "object"
+    # because no return considerred as returning "None value".
+    if ret_sig is None {
+        ret_sig = uni.Name(
+            orig_src=self.orig_src,
+            name=Tok.NAME,
+            value='object',
+            line=<>node.lineno,
+            end_line=<>node.lineno,
+            col_start=<>node.col_offset,
+            col_end=<>node.col_offset,
+            pos_start=0,
+            pos_end=0,
+            is_kwesc=False,
+        );
+    }
     self.in_type_annotation = False;
     if isinstance(ret_sig, uni.Expr) {
         if not sig {
@@ -2913,14 +2797,19 @@ impl PyastBuildPass.proc_function_def(
             sig.add_kids_right([sig.return_type]);
         }
     }
-    kid = (
-        ([doc] if doc else []) + (
-            [name, sig, *valid_body] if sig else [name, *valid_body]
-        )
-    );
     if not sig {
         raise self.ice('Function signature not found') ;
     }
+    kid = [];
+    if doc {
+        kid.append(doc);
+    }
+    if valid_decorators {
+        kid.extend(valid_decorators);
+    }
+    kid.append(name);
+    kid.append(sig);
+    kid.extend(valid_body);
     ret = uni.Ability(
         name_ref=name,
         is_async=False,
@@ -2945,9 +2834,7 @@ Process python node.
             body: list[stmt]
             type_ignores: list[TypeIgnore]
 """
-impl PyastBuildPass.proc_module(
-    self: PyastBuildPass, <>node: py_ast.Module
-) -> uni.Module {
+impl PyastBuildPass.proc_module(<>node: py_ast.Module) -> uni.Module {
     if not <>node.body {
         return uni.Module.make_stub(inject_src=self.ir_in.orig_src);
     }
@@ -2982,7 +2869,7 @@ impl PyastBuildPass.proc_module(
 
 """Extract with entry from a body."""
 impl PyastBuildPass.extract_with_entry(
-    self: PyastBuildPass, body: list[uni.UniNode], exclude_types: TypeAlias = T
+    body: list[uni.UniNode], exclude_types: TypeAlias = T
 ) -> list[(T | uni.ModuleCode)] {
     def gen_mod_code(with_entry_body: list[uni.CodeBlockStmt]) -> uni.ModuleCode {
         return uni.ModuleCode(
@@ -3014,15 +2901,13 @@ impl PyastBuildPass.extract_with_entry(
 }
 
 """Transform input IR."""
-impl PyastBuildPass.transform(
-    self: PyastBuildPass, ir_in: uni.PythonModuleAst
-) -> uni.Module {
+impl PyastBuildPass.transform(ir_in: uni.PythonModuleAst) -> uni.Module {
     self.ir_out: uni.Module = self.proc_module(ir_in.ast);
     return self.ir_out;
 }
 
 """Get python node type."""
-impl PyastBuildPass.convert(self: PyastBuildPass, <>node: py_ast.AST) -> uni.UniNode {
+impl PyastBuildPass.convert(<>node: py_ast.AST) -> uni.UniNode {
     import from jaclang.pycore.helpers { pascal_to_snake }
     if self.is_canceled() {
         raise StopIteration ;
@@ -3036,22 +2921,19 @@ impl PyastBuildPass.convert(self: PyastBuildPass, <>node: py_ast.AST) -> uni.Uni
 }
 
 """Update node."""
-impl PyastBuildPass.nu(self: PyastBuildPass, <>node: T) -> T {
+impl PyastBuildPass.nu(<>node: T) -> T {
     self.cur_node = <>node;
     return <>node;
 }
 
 """Initialize parser."""
-impl PyastBuildPass.init(
-    self: PyastBuildPass,
-    ir_in: uni.PythonModuleAst,
-    prog: JacProgram,
-    cancel_token: (Event | None) = None
-) -> None {
-    self.mod_path = ir_in.loc.mod_path;
-    self.orig_src = ir_in.loc.orig_src;
+impl PyastBuildPass.postinit -> None {
+    self.mod_path = self.ir_in.loc.mod_path;
+    self.orig_src = self.ir_in.loc.orig_src;
     self.in_type_annotation = False;
     self.in_match_pattern = False;
     self.in_fstring_expr = False;
-    Transform.init(self, ir_in=ir_in, prog=prog, cancel_token=cancel_token);
+    Transform.init(
+        self, ir_in=self.ir_in, prog=self.prog, cancel_token=self.cancel_token
+    );
 }

@@ -53,8 +53,10 @@ $secondary-color: #6c757d;
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import ".styles.scss";
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {
@@ -393,8 +395,8 @@ Vite automatically processes SCSS imports and compiles them to CSS.
 ## Next Steps
 
 - Explore [Sass Documentation](https://sass-lang.com/documentation)
-- Check out [Less](./less.md) for similar preprocessing (coming soon)
-- Learn about [PostCSS](./postcss.md) for CSS transformations (coming soon)
+- Check out Less for similar preprocessing (coming soon)
+- Learn about PostCSS for CSS transformations (coming soon)
 - See [Pure CSS](./pure-css.md) for traditional CSS approach
 
 ## Resources

@@ -9,11 +9,31 @@ The `jac.toml` file is the central configuration file for Jac projects. Similar 
 To create a new Jac project with a `jac.toml` file:
 
 ```bash
-jac init my-project
+jac create my-project
 cd my-project
 ```
 
-This creates a new directory with a basic `jac.toml`:
+The `jac create` command supports several options:
+
+- `-f, --force`: Overwrite existing `jac.toml` if present
+- `-c, --cl`: Include client-side (frontend) setup with Vite bundling
+- `-s, --skip`: Skip installing default packages (only for `--cl` projects)
+- `-v, --verbose`: Show detailed output during package installation
+
+Examples:
+
+```bash
+# Create a basic project
+jac create myapp
+
+# Create with frontend support
+jac create --cl myapp
+
+# Create in current directory (overwrites existing jac.toml)
+jac create --force
+```
+
+This creates a project with a basic `jac.toml`:
 
 ```toml
 [project]
@@ -23,6 +43,9 @@ description = "A Jac project"
 entry-point = "main.jac"
 
 [dependencies]
+
+[dev-dependencies]
+watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
 
 [run]
 main = true
@@ -112,10 +135,13 @@ Development-only dependencies (not installed in production):
 
 ```toml
 [dev-dependencies]
+watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
 pytest = ">=8.2.1"
 mypy = ">=1.0.0"
 black = ">=23.0.0"
 ```
+
+The `watchdog` package is included by default in new projects to enable Hot Module Replacement during development.
 
 ### [dependencies.git] Section
 
@@ -162,14 +188,24 @@ max_failures = 0        # Max failures before stopping (0 = unlimited)
 
 ### [serve] Section
 
-Server configuration for `jac serve`:
+Server configuration for `jac start`:
 
 ```toml
 [serve]
-port = 8000         # Server port
-session = ""        # Session name
-main = true         # Run as main module
+port = 8000              # Server port
+session = ""             # Session name
+main = true              # Run as main module
+cl_route_prefix = "cl"   # URL prefix for client apps (default: "cl")
+base_route_app = ""      # Client app to serve at root "/" (default: none)
 ```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `port` | int | `8000` | Server port number |
+| `session` | string | `""` | Session file name for persistence |
+| `main` | bool | `true` | Run as main module |
+| `cl_route_prefix` | string | `"cl"` | URL prefix for client-side apps. Apps are served at `/<prefix>/<app_name>`. |
+| `base_route_app` | string | `""` | Name of a client app to serve at root `/`. When set, visiting `/` renders this app instead of the API info page. |
 
 ### [format] Section
 
@@ -190,6 +226,29 @@ Type checker configuration:
 print_errs = true   # Print errors to console
 warnonly = false    # Treat errors as warnings
 ```
+
+### [dot] Section
+
+Graph visualization configuration for `jac dot`:
+
+```toml
+[dot]
+depth = -1          # Traversal depth (-1 = unlimited)
+traverse = false    # Traverse connections
+bfs = false         # Use BFS traversal (vs DFS)
+edge_limit = 512    # Maximum edges in output
+node_limit = 512    # Maximum nodes in output
+format = "dot"      # Output format
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `depth` | int | `-1` | How deep to traverse (-1 = unlimited) |
+| `traverse` | bool | `false` | Whether to traverse connections |
+| `bfs` | bool | `false` | Use breadth-first search (default is DFS) |
+| `edge_limit` | int | `512` | Maximum number of edges to include |
+| `node_limit` | int | `512` | Maximum number of nodes to include |
+| `format` | string | `"dot"` | Output format for the graph |
 
 ### [cache] Section
 
@@ -220,7 +279,7 @@ dev = "jac run main.jac"
 build = "jac build main.jac --typecheck"
 test = "jac test tests/"
 lint = "jac check ."
-clean = "jac clean"
+format = "jac format . --fix"
 ```
 
 Run scripts with:
@@ -342,7 +401,7 @@ jac run main.jac --no-cache --session my-session
 jac test --verbose --fail-fast --max-failures 5
 
 # Override serve settings
-jac serve --port 3000
+jac start --port 3000
 
 # Override build settings
 jac build main.jac --typecheck
@@ -377,6 +436,7 @@ requests = ">=2.28.0"
 pydantic = ">=2.0.0"
 
 [dev-dependencies]
+watchdog = ">=3.0.0"  # Required for HMR
 pytest = ">=8.2.1"
 pytest-asyncio = ">=0.21.0"
 
@@ -391,9 +451,6 @@ private-utils = { git = "https://github.com/myorg/utils.git", branch = "main" }
 main = true
 cache = true
 
-[build]
-typecheck = true
-
 [test]
 directory = "tests"
 verbose = true
@@ -401,12 +458,27 @@ fail_fast = false
 
 [serve]
 port = 8000
+cl_route_prefix = "cl"   # Client apps at /cl/<name>
+base_route_app = ""      # Set to app name to serve at /
+
+[format]
+fix = false
+
+[check]
+print_errs = true
+warnonly = false
+
+[dot]
+depth = -1               # Unlimited depth
+edge_limit = 512
+node_limit = 512
 
 #===============================================================================
 # BUILD AND CACHE SETTINGS
 #===============================================================================
 
 [build]
+typecheck = true
 dir = ".jac"             # All build artifacts go here (.jac/cache, .jac/packages, etc.)
 
 [cache]
@@ -452,8 +524,8 @@ model = "gpt-4"
 dev = "jac run main.jac"
 build = "jac build main.jac --typecheck"
 test = "jac test"
-serve = "jac serve --port 8000"
-clean = "jac clean"
+serve = "jac start --port 8000"
+format = "jac format . --fix"
 ```
 
 ## Project Discovery

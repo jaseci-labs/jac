@@ -24,94 +24,55 @@ import from jaclang.pycore.passes { UniPass }
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.jac_parser { TOKEN_MAP }
 """Auto linting pass that applies code style corrections to Jac AST."""
-class JacAutoLintPass(UniPass) {
+obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
-    with entry {
-        lint_enabled: bool = True;
+    has lint_enabled: bool = True,
         main_module: uni.Module | None = None;
-    }
 
-    def enter_module(self: JacAutoLintPass, node: uni.Module) -> None;
-    def can_convert_to_glob(self: JacAutoLintPass, assignment: uni.Assignment) -> bool;
-    def is_module_level_construct(self: JacAutoLintPass, stmt: uni.UniNode) -> bool;
-    def create_glob_from_assignment(
-        self: JacAutoLintPass, assignment: uni.Assignment
-    ) -> uni.GlobalVars;
-
-    def create_entry_block(self: JacAutoLintPass, stmts: list) -> uni.ModuleCode;
-    def can_combine_has(
-        self: JacAutoLintPass, has1: uni.ArchHas, has2: uni.ArchHas
-    ) -> bool;
-
-    def can_combine_glob(
-        self: JacAutoLintPass, glob1: uni.GlobalVars, glob2: uni.GlobalVars
-    ) -> bool;
-
-    def combine_consecutive_has(self: JacAutoLintPass, body: list) -> list;
-    def combine_consecutive_glob(self: JacAutoLintPass, body: list) -> list;
-    def enter_archetype(self: JacAutoLintPass, node: uni.Archetype) -> None;
-    def enter_enum(self: JacAutoLintPass, node: uni.Enum) -> None;
-    def enter_impl_def(self: JacAutoLintPass, node: uni.ImplDef) -> None;
-    def exit_impl_def(self: JacAutoLintPass, <>node: uni.ImplDef) -> None;
-    def enter_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None;
-    def _remove_staticmethod_from_kids(
-        self: JacAutoLintPass, ability_node: uni.Ability
-    ) -> None;
-
-    def exit_ability(self: JacAutoLintPass, ability_node: uni.Ability) -> None;
-    def enter_name(self: JacAutoLintPass, <>node: uni.Name) -> None;
-    def enter_special_var_ref(self: JacAutoLintPass, <>node: uni.SpecialVarRef) -> None;
-    def enter_builtin_type(self: JacAutoLintPass, <>node: uni.BuiltinType) -> None;
-    def exit_func_call(self: JacAutoLintPass, node: uni.FuncCall) -> None;
-    def _convert_hasattr_to_null_ok(
-        self: JacAutoLintPass, node: uni.FuncCall
-    ) -> (uni.AtomTrailer | None);
-
+    def init(ir_in: uni.Module, prog: Any) -> None;
+    def enter_module(node: uni.Module) -> None;
+    def can_convert_to_glob(assignment: uni.Assignment) -> bool;
+    def is_module_level_construct(stmt: uni.UniNode) -> bool;
+    def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
+    def create_entry_block(stmts: list) -> uni.ModuleCode;
+    def can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool;
+    def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
+    def combine_consecutive_has(body: list) -> list;
+    def combine_consecutive_glob(body: list) -> list;
+    def enter_archetype(node: uni.Archetype) -> None;
+    def enter_enum(node: uni.Enum) -> None;
+    def enter_impl_def(node: uni.ImplDef) -> None;
+    def exit_impl_def(<>node: uni.ImplDef) -> None;
+    def enter_ability(ability_node: uni.Ability) -> None;
+    def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
+    def exit_ability(ability_node: uni.Ability) -> None;
+    def enter_name(<>node: uni.Name) -> None;
+    def enter_special_var_ref(<>node: uni.SpecialVarRef) -> None;
+    def enter_builtin_type(<>node: uni.BuiltinType) -> None;
+    def exit_func_call(node: uni.FuncCall) -> None;
+    def _convert_hasattr_to_null_ok(node: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _is_matching_attr_access(
-        self: JacAutoLintPass,
-        trailer: uni.AtomTrailer,
-        obj_expr: uni.Expr,
-        attr_name: str
+        trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
     ) -> bool;
 
-    def _make_null_ok(self: JacAutoLintPass, trailer: uni.AtomTrailer) -> None;
-    def _collect_atom_trailers(
-        self: JacAutoLintPass, uni_node: uni.UniNode, results: list
-    ) -> None;
-
-    def _expr_to_key(self: JacAutoLintPass, expr: uni.Expr) -> (str | None);
-    def _get_trailer_key(
-        self: JacAutoLintPass, trailer: uni.AtomTrailer
-    ) -> (str | None);
-
-    def _exprs_are_identical(
-        self: JacAutoLintPass, expr1: uni.Expr, expr2: uni.Expr
-    ) -> bool;
-
-    def _convert_ternary_to_or(
-        self: JacAutoLintPass, if_else_node: uni.IfElseExpr
-    ) -> bool;
-
-    def exit_if_else_expr(self: JacAutoLintPass, if_else_node: uni.IfElseExpr) -> None;
-    def exit_bool_expr(self: JacAutoLintPass, bool_node: uni.BoolExpr) -> None;
-    def _is_future_annotations_import(self: JacAutoLintPass, stmt: uni.UniNode) -> bool;
-    def _fix_impl_signature_mismatch(
-        self: JacAutoLintPass, impl_node: uni.ImplDef
-    ) -> None;
-
+    def _make_null_ok(trailer: uni.AtomTrailer) -> None;
+    def _collect_atom_trailers(uni_node: uni.UniNode, results: list) -> None;
+    def _expr_to_key(expr: uni.Expr) -> (str | None);
+    def _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None);
+    def _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool;
+    def _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool;
+    def exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None;
+    def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
+    def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
+    def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
     def _signatures_match(
-        self: JacAutoLintPass, decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
+        decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
     ) -> bool;
 
-    def enter_import(self: JacAutoLintPass, import_node: uni.Import) -> None;
+    def enter_import(import_node: uni.Import) -> None;
     def _remove_empty_parens_from_sig(
-        self: JacAutoLintPass,
-        target_node: uni.UniNode,
-        sig: uni.FuncSignature,
-        sig_attr: str
+        target_node: uni.UniNode, sig: uni.FuncSignature, sig_attr: str
     ) -> None;
 
-    def _extract_string_literal_value(
-        self: JacAutoLintPass, expr: uni.Expr
-    ) -> (str | None);
+    def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
 }

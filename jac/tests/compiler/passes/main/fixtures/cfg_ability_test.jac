@@ -1,13 +1,13 @@
 obj math_mod {
-    def divide(x: int, y: int) {
+    def divide(x: int, y: int) -> int {
         if y == 0 {
             return 0;
         } else {
-            return x / y;
+            return x // y;
         }
     }
 
-    def multiply(x: int, y: int) {
+    def multiply(x: int, y: int) -> int {
         return x * y;
     }
 }

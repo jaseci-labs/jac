@@ -33,7 +33,7 @@ npm install
 Start the development server:
 
 ```bash
-jac serve app.jac
+jac start app.jac
 ```
 
 Then open your browser to `http://localhost:8000`

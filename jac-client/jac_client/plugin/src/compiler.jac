@@ -60,7 +60,7 @@ class ViteCompiler {
     ) -> None;
 
     def copy_root_assets(self: ViteCompiler) -> None;
-    def create_entry_file(self: ViteCompiler) -> None;
+    def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];

@@ -60,8 +60,10 @@ Create `global.css`:
 
 ```jac
 # Pages
-cl import from react {useState, useEffect}
+cl import from react { useEffect }
 cl import ".global.css";
+
+# Note: useState is auto-injected when using `has` variables
 
 cl {
     def app() -> any {
@@ -324,8 +326,8 @@ theme: {
 ## Next Steps
 
 - Explore [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- Check out [UnoCSS](./unocss.md) for similar utility-first approach (coming soon)
-- Learn about [CSS Modules](./css-modules.md) for component-scoped styles (coming soon)
+- Check out UnoCSS for similar utility-first approach (coming soon)
+- Learn about CSS Modules for component-scoped styles (coming soon)
 - See [Pure CSS](./pure-css.md) for traditional CSS approach
 
 ## Resources

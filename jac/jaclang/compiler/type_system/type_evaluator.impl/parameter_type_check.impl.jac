@@ -1,6 +1,6 @@
 """Validate that the argument types can be assigned to the parameter types."""
 impl TypeEvaluator.validate_arg_types(
-    self: TypeEvaluator, args: MatchArgsToParamsResult, checking_overload: bool = False
+    args: MatchArgsToParamsResult, checking_overload: bool = False
 ) -> bool {
     has_errors: bool = False;
     for (arg, param) in args.arg_params.items() {
@@ -35,9 +35,7 @@ Specializes the call based on arg types, and returns the specialized
 type of the return value. If it detects an error along the way, it emits
 a diagnostic and sets argumentErrors to true.
 """
-impl TypeEvaluator.validate_call_args(
-    self: TypeEvaluator, expr: uni.FuncCall
-) -> TypeBase {
+impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
     # 1. Call to a function.
     if isinstance(caller_type, types.FunctionType) {
@@ -84,9 +82,24 @@ impl TypeEvaluator.validate_call_args(
             # Only validate __new__ if it's not from object (the base class)
             # object.__new__ accepts (*args, **kwargs) which matches anything
             is_from_object = new_method.class_type.shared.class_name == "object";
+            # TODO: This bellow logic to extract overloads is also used in another place
+            # unify them and place them in a helper method.
+            method_ty = self.get_type_of_symbol(new_method.symbol);
+            overloaded_fns: list[types.FunctionType] = [method_ty];
+            for overload in new_method.overloads {
+                overload_member_ty = self.get_type_of_symbol(overload);
+                if isinstance(overload_member_ty, types.FunctionType) {
+                    overload_member_ty = overload_member_ty.specialize(caller_type);
+                    overloaded_fns.append(overload_member_ty);
+                }
+            }
+            overloaded_ty: types.OverloadedType | None = None;
+            if len(overloaded_fns) > 1 {
+                overloaded_ty = types.OverloadedType(overloads=overloaded_fns);
+            }
             if not is_from_object {
                 validated = self._validate_constructor_method(
-                    expr, self.get_type_of_symbol(new_method.symbol)
+                    expr, overloaded_ty or method_ty
                 );
             }
         }
@@ -125,7 +138,6 @@ validation is left to the caller.
 This logic is based on PEP 3102: https://www.python.org/dev/peps/pep-3102/
 """
 impl TypeEvaluator.match_args_to_params(
-    self: TypeEvaluator,
     arg_nodes: list[uni.Expr | uni.KWPair],
     node_for_error: uni.Expr | None,
     func_type: types.FunctionType,
@@ -196,7 +208,7 @@ Validate constructor method arguments. Handles both FunctionType and OverloadedT
 Returns True if validation was performed (method has meaningful parameters), False otherwise.
 """
 impl TypeEvaluator._validate_constructor_method(
-    self: TypeEvaluator, expr: uni.FuncCall, method_type: TypeBase
+    expr: uni.FuncCall, method_type: TypeBase
 ) -> bool {
     if isinstance(method_type, types.FunctionType) {
         # Check if method has meaningful params to validate.

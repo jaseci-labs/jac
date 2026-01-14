@@ -60,7 +60,7 @@ obj Tool {
         params_desc: dict[(str, str)] = None;
 
     def postinit -> None;
-    def __call__( *args: list , **kwargs: dict)  -> object;
+    def __call__(*args: list, **kwargs: dict) -> object;
     def get_name -> str;
     static def get_func_description(func: Callable) -> str;
     static def make_finish_tool(resp_type: type) -> Tool;

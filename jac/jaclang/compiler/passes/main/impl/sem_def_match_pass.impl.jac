@@ -4,7 +4,7 @@ When source_sym_tab and target_sym_tab are the same, this connects within the sa
 When different, it connects implementations from impl_mod to declarations in the main module.
 """
 impl SemDefMatchPass.connect_sems(
-    self: SemDefMatchPass, source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
+    source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
 ) -> None {
     for sym in source_sym_tab.names_in_scope.values() {
         if not isinstance(sym.decl.name_of, uni.SemDef) {
@@ -26,7 +26,7 @@ Example:
 target_sym_tab.lookup("Foo").lookup("bar").lookup("baz")
 """
 impl SemDefMatchPass.find_symbol_from_dotted_name(
-    self: SemDefMatchPass, dotted_name: str, target_sym_tab: UniScopeNode
+    dotted_name: str, target_sym_tab: UniScopeNode
 ) -> (Symbol | None) {
     parts = dotted_name.lstrip('sem.').split('.');
     current_sym_tab: (UniScopeNode | None) = target_sym_tab;
@@ -45,11 +45,18 @@ impl SemDefMatchPass.find_symbol_from_dotted_name(
 }
 
 """Connect Decls and Defs."""
-impl SemDefMatchPass.transform(self: SemDefMatchPass, ir_in: uni.Module) -> uni.Module {
+impl SemDefMatchPass.transform(ir_in: uni.Module) -> uni.Module {
     self.cur_node = ir_in;
     self.connect_sems(ir_in.sym_tab, ir_in.sym_tab);
     for impl_module in ir_in.impl_mod {
         self.connect_sems(impl_module.sym_tab, ir_in.sym_tab);
     }
     return ir_in;
+}
+
+"""Initialize SemDefMatchPass."""
+impl SemDefMatchPass.init(
+    ir_in: uni.Module, prog: Any, cancel_token: Any = None
+) -> None {
+    super.init(ir_in, prog, cancel_token);
 }

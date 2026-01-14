@@ -2,7 +2,7 @@
 
 Allows chaining like: `model(temperature=0.5).invoke(mtir)`.
 """
-impl BaseLLM.__call__( **kwargs: object)  -> BaseLLM {
+impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
     self.call_params = kwargs;
     return self;
 }

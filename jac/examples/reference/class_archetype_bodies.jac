@@ -9,8 +9,8 @@ obj Vehicle {
     # Static members
     static has count: int = 0;
     # Access modifiers
-    has : pub public_id: str = "V123";
-    has : priv private_data: int = 0;
+    has:pub public_id: str = "V123";
+    has:priv private_data: int = 0;
     # Has with postinit initialization
     has config: dict by postinit;
 

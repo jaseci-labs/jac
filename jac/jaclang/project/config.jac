@@ -50,7 +50,9 @@ obj TestConfig {
 obj ServeConfig {
     has port: int = 8000,
         session: str = "",
-        main: bool = True;
+        main: bool = True,
+        cl_route_prefix: str = "cl",
+        base_route_app: str = "";
 }
 
 """Format command defaults from [format] section."""
@@ -85,7 +87,7 @@ obj CacheConfig {
 obj PluginsConfig {
     has discovery: str = "auto",
         enabled: list[str] = [],
-        disabled: list[str] = [];
+        disabled: list[str] = [];  # Plugins temporarily bypassed by user
 }
 
 """Environment configuration from [environment] section."""

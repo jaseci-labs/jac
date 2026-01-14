@@ -72,7 +72,7 @@ def get_type_of_binary_operation(
         if expr.op.name == Tok.BW_OR {
             # TODO: Handle None instance used
             if is_annotation_type(left_type) and is_annotation_type(right_type) {
-                return jtypes.UnionType([left_type, right_type]);
+                return jtypes.UnionType(types=[left_type, right_type]);
             }
         }
         (magic, rmagic) = BINARY_OPERATOR_MAP[expr.op.name];
@@ -89,19 +89,27 @@ def get_type_of_binary_operation(
 
     # Connection operations
     if isinstance(expr.op, (uni.ConnectOp, uni.DisconnectOp)) {
+        # TODO: In strict mode, UnknownType, AnyType, TypeVarType, and object should be errors
         if (
-            not isinstance(left_type, jtypes.ClassType)
-            or not left_type.is_node_type()
-            or not left_type.is_instance()
+            not left_type.is_any_type()
+            and (
+                not isinstance(left_type, jtypes.ClassType)
+                or not left_type.is_node_type()
+                or not left_type.is_instance()
+            )
         ) {
             evaluator.add_diagnostic(
                 expr.left, 'Connection left operand must be a node instance'
             );
         }
+        # TODO: In strict mode, UnknownType, AnyType, TypeVarType, and object should be errors
         if (
-            not isinstance(right_type, jtypes.ClassType)
-            or not right_type.is_node_type()
-            or not right_type.is_instance()
+            not right_type.is_any_type()
+            and (
+                not isinstance(right_type, jtypes.ClassType)
+                or not right_type.is_node_type()
+                or not right_type.is_instance()
+            )
         ) {
             evaluator.add_diagnostic(
                 expr.right, 'Connection right operand must be a node instance'

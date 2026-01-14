@@ -1,4 +1,7 @@
-# Chapter 20: Performance Optimization
+# Chapter 19: Performance Optimization
+
+!!! tip "Quick Reference"
+    For a condensed performance optimization guide, see the [Advanced Topics - Performance Optimization](../advanced/index.md#performance-optimization) section.
 
 In this chapter, we'll explore techniques for optimizing Jac applications to achieve better performance in both local and distributed environments. We'll build and progressively optimize a friend-finding algorithm that demonstrates graph structure optimization, traversal efficiency, and memory management strategies.
 
@@ -712,7 +715,7 @@ When deploying to Jac Cloud, consider performance implications of distributed ex
 
 ```bash
 # Deploy the optimized version
-jac serve distributed_friends.jac
+jac start distributed_friends.jac
 
 # Generate test data
 curl -X POST http://localhost:8000/walker/generate_test_network \

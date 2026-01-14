@@ -10,7 +10,11 @@ entry-point = "src/app.jac"
 # vite.build = {}
 
 [dependencies.npm]
+"jac-client-node" = "1.0.3"
 "@emotion/react" = "^11.14.0"
 "@emotion/styled" = "^11.14.1"
 "@mui/icons-material" = "^7.3.5"
 "@mui/material" = "^7.3.5"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"

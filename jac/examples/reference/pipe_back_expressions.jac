@@ -15,7 +15,7 @@ def add_five(x: int) -> int {
 # Basic backward pipe: function <| value
 glob result1 = double <| 5,
      result2 = add_five <| 10,
-     result3 = (lambda  n: int: n * 3) <| 10,
+     result3 = (lambda n: int : n * 3) <| 10,
      total = sum <| [1, 2, 3, 4, 5],
      temp = double <| 2,
      result4 = triple <| temp;

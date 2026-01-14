@@ -590,9 +590,9 @@ def InteractiveExample(props: dict) -> any {
 
 ### Key Points:
 
-- Import `useState` from react: `cl import from react {useState}`
-- Use tuple unpacking: `(state, setState) = useState(initialValue);`
-- Use `lambda` for inline handlers: `onClick={lambda: setState(newValue)}`
+- Use `has` variables for reactive state: `has count: int = 0;` (useState is auto-injected)
+- Assignments to `has` variables automatically call the setter: `count = count + 1;`
+- Use `lambda` for inline handlers: `onClick={lambda -> None { count = count + 1; }}`
 
 ---
 

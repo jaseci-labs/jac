@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 import pytest
 
 import jaclang.pycore.unitree as uni
-from jaclang.cli import cli
+from jaclang.cli.commands import execution  # type: ignore[attr-defined]
 from jaclang.pycore.program import JacProgram
 
 
@@ -147,8 +147,8 @@ def test_double_empty_anx(
 ) -> None:
     """Test importing python."""
     with capture_stdout() as captured_output:
-        cli.run(fixture_path("autoimpl.jac"))
-        cli.run(fixture_path("autoimpl.jac"))
+        execution.run(fixture_path("autoimpl.jac"))
+        execution.run(fixture_path("autoimpl.jac"))
     stdout_value = captured_output.getvalue()
     assert "foo" in stdout_value
     assert "bar" in stdout_value

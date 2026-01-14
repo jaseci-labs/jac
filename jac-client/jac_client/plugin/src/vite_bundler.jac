@@ -4,7 +4,7 @@ import json;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from typing { Optional }
+import from typing { Any, Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
 """Handles Vite bundling operations."""
@@ -34,4 +34,11 @@ class ViteBundler {
     ) -> Path;
 
     def create_tsconfig(self: ViteBundler) -> Path;
+    """Create a dev-mode vite config with API proxy for HMR."""
+    def create_dev_vite_config(
+        self: ViteBundler, entry_file: Path, api_port: int = 8000
+    ) -> Path;
+
+    """Start Vite dev server as a subprocess."""
+    def start_dev_server(self: ViteBundler, port: int = 3000) -> Any;
 }

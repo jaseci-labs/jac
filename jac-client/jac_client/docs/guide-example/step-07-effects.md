@@ -19,22 +19,25 @@ We'll use `useEffect` to handle this!
 
 ### Step 7.2: Add useEffect Import
 
-First, import `useEffect`:
+First, import `useEffect` (note: `useState` is auto-injected when using `has` variables, so you only need to import `useEffect`):
 
 ```jac
-cl import from react {useState, useEffect}
+cl import from react {useEffect}
 
 cl {
     # ... your components
+    # useState is automatically available - no import needed!
 }
 ```
+
+> **Note:** The `useState` import is automatically injected when you use `has` variables in `cl {}` blocks or `.cl.jac` files. You only need to explicitly import other hooks like `useEffect`.
 
 ### Step 7.3: Run Code When App Loads
 
 Let's log a message when the app starts:
 
 ```jac
-cl import from react {useState, useEffect}
+cl import from react {useEffect}
 
 cl {
     # ... (keep all your components from step 6)
@@ -61,7 +64,7 @@ cl {
 Let's persist todos using localStorage:
 
 ```jac
-cl import from react {useState, useEffect}
+cl import from react {useEffect}
 
 cl {
     # ... (keep all components)
@@ -99,7 +102,7 @@ cl {
 Let's add a loading indicator:
 
 ```jac
-cl import from react {useState, useEffect}
+cl import from react {useEffect}
 
 cl {
     # ... (keep all components)

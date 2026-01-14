@@ -1,4 +1,4 @@
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from '@mui/material/Button' { default as Button }
 cl import from '@mui/material/Card' { default as Card }
 cl import from '@mui/material/CardContent' { default as CardContent }
@@ -13,15 +13,15 @@ cl import from '@mui/icons-material/Refresh' { default as RefreshIcon }
 
 cl {
     def:pub app -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
 
         useEffect(lambda   -> None{ console.log("Count changed: ", count);} , [count]);
 
-        handleIncrement = lambda  e: any  -> None{ setCount(count + 1);} ;
+        handleIncrement = lambda  e: any  -> None{ count = count + 1;} ;
 
-        handleDecrement = lambda  e: any  -> None{ setCount(count - 1);} ;
+        handleDecrement = lambda  e: any  -> None{ count = count - 1;} ;
 
-        handleReset = lambda  e: any  -> None{ setCount(0);} ;
+        handleReset = lambda  e: any  -> None{ count = 0;} ;
 
         return <Box
             sx={{

@@ -1,5 +1,5 @@
 # React Router HashRouter Example
-cl import from react { useState, useEffect }
+cl import from react { useEffect }
 cl import from "@jac-client/utils" {
     Router,
     Routes,
@@ -122,15 +122,15 @@ cl {
 
     # Contact Page Component
     def Contact -> any {
-        [submitted, setSubmitted] = useState(False);
+        has submitted: bool = False;
 
         def handleSubmit(e: any) -> None {
             e.preventDefault();
-            setSubmitted(True);
+            submitted = True;
         }
 
         def resetForm(e: any) -> None {
-            setSubmitted(False);
+            submitted = False;
         }
 
         if submitted {

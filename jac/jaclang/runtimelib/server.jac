@@ -98,6 +98,7 @@ obj ModuleIntrospector {
     def _extract_access_levels -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
+    def _check_module_freshness -> None;
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def get_client_functions -> dict[str, Callable[(..., Any)]];

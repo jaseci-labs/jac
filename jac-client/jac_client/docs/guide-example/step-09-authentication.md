@@ -13,7 +13,8 @@ In this step, you'll add user authentication so each person has their own privat
 Add these imports at the top of your `cl` block:
 
 ```jac
-cl import from react {useState, useEffect}
+# Note: useState is auto-injected, only useEffect needs explicit import
+cl import from react {useEffect}
 cl import from "@jac-client/utils" {
     jacLogin,
     jacSignup,
@@ -25,6 +26,8 @@ cl {
     # ... your components
 }
 ```
+
+> **Note:** The `useState` import is automatically injected when you use `has` variables in `cl {}` blocks or `.cl.jac` files. You only need to explicitly import other hooks like `useEffect`.
 
 ### Step 9.2: Create the Login Page
 

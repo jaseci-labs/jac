@@ -149,37 +149,6 @@ jobs:
         with:
           node-version: '20'
 
-      # Clone, build and deploy playground
-      - name: Build and deploy playground
-        working-directory: .
-        run: |
-          echo "Cloning jac_playground repository..."
-          git clone https://github.com/jaseci-labs/jac_playground.git ./tmp/jac_playground
-
-          echo "Updating PLAYGROUND_PATH in src and public folders..."
-          sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/src/lib/assetPaths.ts
-          sed -i 's|const PLAYGROUND_PATH = .*;|const PLAYGROUND_PATH = "/playground";|' ./tmp/jac_playground/public/python/python.js
-
-          echo "Installing dependencies..."
-          npm install --prefix ./tmp/jac_playground
-
-          echo "Building the React project..."
-          npm run build --prefix ./tmp/jac_playground
-
-          echo "Creating playground directory if it doesn't exist..."
-          mkdir -p ./docs/docs/playground/
-
-          echo "Copying build files to the playground directory..."
-          cp -r ./tmp/jac_playground/dist/* ./docs/docs/playground/
-
-          echo "Removing jaclang.zip from playground directory if it exists..."
-          rm -f ./docs/docs/playground/jaclang.zip
-
-          echo "Removing temporary jac_playground directory..."
-          rm -rf ./tmp/
-
-          echo "Playground build and deployment completed."
-
       # Build and push Docker image
       - name: Build and push Docker image
         env:
@@ -197,6 +166,7 @@ jobs:
           RUN apt-get update && apt-get install -y \
               curl \
               git \
+              graphviz \
               && rm -rf /var/lib/apt/lists/*
 
           # Set working directory

@@ -1,6 +1,6 @@
 """Make convenient check.Equal(...) etc."""
 
-impl JacTestCheck.__getattr__(self: JacTestCheck, name: str) -> object {
+impl JacTestCheck.__getattr__(name: str) -> object {
     return getattr(JacTestCheck.test_case, name);
 }
 
@@ -79,27 +79,25 @@ impl JacTestCheck.reset -> None {
 }
 
 """Override the method to return an instance of JacTestResult."""
-impl JacTextTestRunner._makeResult(self: JacTextTestRunner) -> JacTestResult {
+impl JacTextTestRunner._makeResult -> JacTestResult {
     return JacTestResult(
         self.stream, self.descriptions, self.verbosity, max_failures=self.max_failures
     );
 }
 
 """Initialize JacTextTestRunner object."""
-impl JacTextTestRunner.init(
-    self: JacTextTestRunner, max_failures: (int | None) = None, **kwargs: Any
-) -> None {
+impl JacTextTestRunner.init(max_failures: (int | None) = None, **kwargs: Any) -> None {
     self.max_failures = max_failures;
     super.init(**kwargs);
 }
 
 """Stop the test execution."""
-impl JacTestResult.stop(self: JacTestResult) -> None {
+impl JacTestResult.stop -> None {
     self.shouldStop = True;
 }
 
 """Count failures and stop."""
-impl JacTestResult.addFailure(self: JacTestResult, <>test: Any, err: Any) -> None {
+impl JacTestResult.addFailure(<>test: Any, err: Any) -> None {
     super.addFailure(<>test, err);
     self.failures_count += 1;
     if ((self.max_failures is not None) and (self.failures_count >= self.max_failures)) {
@@ -108,14 +106,7 @@ impl JacTestResult.addFailure(self: JacTestResult, <>test: Any, err: Any) -> Non
 }
 
 """Initialize FailFastTestResult object."""
-impl JacTestResult.init(
-    self: JacTestResult,
-    stream: Any,
-    descriptions: Any,
-    verbosity: int,
-    max_failures: (int | None) = None
-) -> None {
-    super.init(stream, descriptions, verbosity);
+impl JacTestResult.postinit -> None {
     self.failures_count = JacTestCheck.failcount;
-    self.max_failures = max_failures;
+    super.init(self.stream, self.descriptions, self.verbosity);
 }

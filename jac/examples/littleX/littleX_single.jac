@@ -215,7 +215,7 @@ walker load_feed(visit_profile) {
     }
 
     can report_feed with exit {
-        self.results.sort(key=lambda  x: dict: x['similarity'][0], reverse=True);
+        self.results.sort(key=lambda x: dict : x['similarity'][0], reverse=True);
         report self.results ;
     }
 }

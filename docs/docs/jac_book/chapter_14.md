@@ -1,5 +1,8 @@
 # Chapter 14: Multi-User Architecture and Permissions
 
+!!! note "About Jac Cloud vs Jac Scale"
+    This chapter references **Jac Cloud**, which has been superseded by **jac-scale**. The core concepts remain the same, but for new projects, please use [jac-scale](../production/index.md) instead. See the [Advanced Topics](../advanced/index.md) for current multi-user architecture documentation.
+
 In this chapter, we'll explore how to build secure, multi-user applications in Jac Cloud. We'll develop a shared notebook system that demonstrates user isolation, permission systems, and access control strategies through practical examples that evolve throughout the chapter.
 
 !!! info "What You'll Learn"
@@ -271,7 +274,7 @@ For multi-user applications, you need to implement user identification patterns.
 Deploy your user-aware application:
 
 ```bash
-jac serve user_notebook.jac
+jac start user_notebook.jac
 ```
 
 ### Testing User Authentication

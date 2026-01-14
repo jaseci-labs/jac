@@ -5,15 +5,31 @@ import os
 import socket
 import threading
 import time
-from typing import TypedDict
+from typing import Any, TypedDict
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
 
-from jaclang.cli import cli
 from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
+
+
+def proc_file_sess(
+    filename: str, session: str, root: str | None = None
+) -> tuple[str, str, Any]:
+    """Create JacRuntime and return the base path, module name, and runtime state."""
+    base, mod = os.path.split(filename)
+    base = base or "./"
+    if filename.endswith(".jac") or filename.endswith(".jir"):
+        mod = mod[:-4]
+    elif filename.endswith(".py"):
+        mod = mod[:-3]
+    else:
+        raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
+    mach = Jac.create_j_context(session=session, root=root)
+    Jac.set_context(mach)
+    return (base, mod, mach)
 
 
 def get_free_port() -> int:
@@ -63,7 +79,7 @@ def littlex_server():
 
         # Load the module
         jac_file = os.path.join(os.path.dirname(__file__), "littleX_single_nodeps.jac")
-        base, mod, mach = cli.proc_file_sess(jac_file, "")
+        base, mod, mach = proc_file_sess(jac_file, "")
         Jac.set_base_path(base)
         Jac.jac_import(
             target=mod,

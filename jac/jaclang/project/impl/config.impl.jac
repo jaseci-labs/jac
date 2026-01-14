@@ -237,6 +237,7 @@ entry-point = "{project_name}.jac"
 [dependencies]
 
 [dev-dependencies]
+watchdog = ">=3.0.0"
 ''';
 }
 
@@ -287,12 +288,21 @@ impl JacConfig.save -> None {
         }
     }
     # Update plugins configuration
-    if self.plugins {
+    # Always update plugins section if it exists in doc or we have data to write
+    has_existing_plugins = "plugins" in doc;
+    needs_update = self.plugins or self.plugins_config.disabled is not None;
+    if has_existing_plugins or needs_update {
         if "plugins" not in doc {
             doc["plugins"] = {};
         }
         for (plugin_name, plugin_config) in self.plugins.items() {
             doc["plugins"][plugin_name] = plugin_config;
+        }
+        # Persist disabled plugins list - handle both setting and clearing
+        if self.plugins_config.disabled {
+            doc["plugins"]["disabled"] = self.plugins_config.disabled;
+        } elif "disabled" in doc.get("plugins", {}) {
+            del doc["plugins"]["disabled"] ;  # Remove if empty
         }
     }
     # Write using simple TOML serializer
@@ -550,7 +560,9 @@ impl _parse_toml_data(
         config.serve = ServeConfig(
             port=serve_data.get("port", 8000),
             session=serve_data.get("session", ""),
-            main=serve_data.get("main", True)
+            main=serve_data.get("main", True),
+            cl_route_prefix=serve_data.get("cl_route_prefix", "cl"),
+            base_route_app=serve_data.get("base_route_app", "")
         );
     }
     if "format" in data {

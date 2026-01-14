@@ -16,7 +16,7 @@ impl Profile.get{
 
 impl Profile.follow{
     current_profile = [root-->(`?Profile)];
-    current_profile[0] +>: Follow() :+> self;
+    current_profile[0] +>: Follow :+> self;
     report self ;
 }
 
@@ -39,7 +39,7 @@ impl Tweet.delete{
 
 impl Tweet.like_tweet{
     current_profile = [root-->(`?Profile)];
-    self +>: Like() :+> current_profile[0];
+    self +>: Like :+> current_profile[0];
     report self ;
 }
 
@@ -52,7 +52,7 @@ impl Tweet.remove_like{
 
 impl Tweet.comment{
     current_profile = [root-->(`?Profile)];
-    comment_node = current_profile[0] +>: Post() :+> Comment(content=visitor.content);
+    comment_node = current_profile[0] +>: Post :+> Comment(content=visitor.content);
     grant(comment_node[0], level=ConnectPerm);
     self ++> comment_node[0];
     report comment_node[0] ;
@@ -113,7 +113,7 @@ impl load_user_profiles.report_profiles{
 
 impl create_tweet.tweet{
     embedding = vectorizer.fit_transform([self.content]).toarray().tolist();
-    tweet_node = here +>: Post() :+> Tweet(content=self.content, embedding=embedding);
+    tweet_node = here +>: Post :+> Tweet(content=self.content, embedding=embedding);
     grant(tweet_node[0], level=ConnectPerm);
     report tweet_node ;
 }
@@ -126,6 +126,6 @@ impl load_feed.load{
 }
 
 impl load_feed.report_feed{
-    self.results.sort(key=lambda  x: dict: x['similarity'][0], reverse=True);
+    self.results.sort(key=lambda x: dict : x['similarity'][0], reverse=True);
     report self.results ;
 }

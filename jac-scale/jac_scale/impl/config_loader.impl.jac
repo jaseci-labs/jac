@@ -24,9 +24,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'google': {'client_id': '', 'client_secret': ''}
         },
         'database': {
-            'mongodb_uri': 'mongodb://root:rootpassword123@localhost:27017/',
-            'redis_url': 'redis://:mypassword123@localhost:6379/0',
-            'shelf_db_path': 'anchor_store.db'
+            'mongodb_uri': None,
+            'redis_url': None,
+            'shelf_db_path': '.jac/data/anchor_store.db'
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -84,13 +84,9 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
     config = self.load();
     db_config = config.get('database', {});
     return {
-        'mongodb_uri': db_config.get(
-            'mongodb_uri', 'mongodb://root:rootpassword123@localhost:27017/'
-        ),
-        'redis_url': db_config.get(
-            'redis_url', 'redis://:mypassword123@localhost:6379/0'
-        ),
-        'shelf_db_path': db_config.get('shelf_db_path', 'anchor_store.db')
+        'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
+        'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
+        'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db')
     };
 }
 
@@ -98,38 +94,15 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
-    app_name = k8s_config.get('app_name', 'jaseci');
-    default_image = f"{app_name}:latest";
-    # Start with file config and apply environment overrides for resource/probe settings
-    cpu_request = k8s_config.get('cpu_request', None);
-    cpu_limit = k8s_config.get('cpu_limit', None);
-    memory_request = k8s_config.get('memory_request', None);
-    memory_limit = k8s_config.get('memory_limit', None);
-    readiness_initial_delay = int(k8s_config.get('readiness_initial_delay', 10));
-    readiness_period = int(k8s_config.get('readiness_period', 20));
-    liveness_initial_delay = int(k8s_config.get('liveness_initial_delay', 10));
-    liveness_period = int(k8s_config.get('liveness_period', 20));
-    liveness_failure_threshold = int(k8s_config.get('liveness_failure_threshold', 80));
-    return {
-        'app_name': app_name,
-        'docker_image_name': k8s_config.get('docker_image_name', default_image),
-        'docker_username': k8s_config.get('docker_username', ''),
-        'docker_password': k8s_config.get('docker_password', ''),
-        'namespace': k8s_config.get('namespace', 'default'),
-        'container_port': int(k8s_config.get('container_port', 8000)),
-        'node_port': int(k8s_config.get('node_port', 30001)),
-        'mongodb_enabled': bool(k8s_config.get('mongodb_enabled', True)),
-        'redis_enabled': bool(k8s_config.get('redis_enabled', True)),
-        'cpu_request': cpu_request,
-        'cpu_limit': cpu_limit,
-        'memory_request': memory_request,
-        'memory_limit': memory_limit,
-        'readiness_initial_delay': readiness_initial_delay,
-        'readiness_period': readiness_period,
-        'liveness_initial_delay': liveness_initial_delay,
-        'liveness_period': liveness_period,
-        'liveness_failure_threshold': liveness_failure_threshold
-    };
+    # Handle docker_image_name default (needs app_name)
+    if not k8s_config.get('docker_image_name') {
+        app_name = k8s_config.get('app_name', 'jaseci');
+        k8s_config['docker_image_name'] = f"{app_name}:latest";
+    }
+    # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
+    import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+    k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
+    return k8s_config_obj.to_dict();
 }
 
 """Get server configuration from jac.toml."""

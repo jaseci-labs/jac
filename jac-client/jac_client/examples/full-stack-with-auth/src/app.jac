@@ -139,32 +139,32 @@ cl {
 
     # Login Page
     def LoginPage -> any {
-        [username, setUsername] = useState("");
-        [password, setPassword] = useState("");
-        [error, setError] = useState("");
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
         navigate = useNavigate();
 
         async def handleLogin(e: any) -> None {
             e.preventDefault();
-            setError("");
+            error = "";
             if not username or not password {
-                setError("Please fill in all fields");
+                error = "Please fill in all fields";
                 return;
             }
             success = await jacLogin(username, password);
             if success {
                 navigate("/todos");
             } else {
-                setError("Invalid credentials");
+                error = "Invalid credentials";
             }
         }
 
         def handleUsernameChange(e: any) -> None {
-            setUsername(e.target.value);
+            username = e.target.value;
         }
 
         def handlePasswordChange(e: any) -> None {
-            setPassword(e.target.value);
+            password = e.target.value;
         }
 
         errorDisplay = None;
@@ -265,32 +265,32 @@ cl {
 
     # Signup Page
     def SignupPage -> any {
-        [username, setUsername] = useState("");
-        [password, setPassword] = useState("");
-        [error, setError] = useState("");
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
         navigate = useNavigate();
 
         async def handleSignup(e: any) -> None {
             e.preventDefault();
-            setError("");
+            error = "";
             if not username or not password {
-                setError("Please fill in all fields");
+                error = "Please fill in all fields";
                 return;
             }
             result = await jacSignup(username, password);
             if result["success"] {
                 navigate("/todos");
             } else {
-                setError(result["error"] if result["error"] else "Signup failed");
+                error = result["error"] if result["error"] else "Signup failed";
             }
         }
 
         def handleUsernameChange(e: any) -> None {
-            setUsername(e.target.value);
+            username = e.target.value;
         }
 
         def handlePasswordChange(e: any) -> None {
-            setPassword(e.target.value);
+            password = e.target.value;
         }
 
         errorDisplay = None;

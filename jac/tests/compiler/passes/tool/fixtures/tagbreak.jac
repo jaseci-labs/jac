@@ -256,7 +256,7 @@ def x3() {
 }
 
 class HH {
-    def test()  -> Optional[str] {
+    def test() -> Optional[str] {
         a = """!
 hello
 hru
@@ -327,7 +327,7 @@ async def type_check(self: JacLangServer, file_path: str) -> None {
     # self.cancel_tokens[file_path] = mythreading.Event();
 
     # Create a debounced function that will run the actual type check
-    def debounced_type_check()  -> None {
+    def debounced_type_check() -> None {
         # Start new thread for type checking
         print(" debounced_type_check ->", time.time(), file=sys.stderr);
         self.type_check_threads[file_path] = threading.Thread(

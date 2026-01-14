@@ -69,8 +69,8 @@ jac create --cl todo-app
 This command will:
 
 - Create a new directory with your project name
-- Set up an organized project structure with `src/` folder
-- Create a starter `src/app.jac` file with a sample component
+- Set up an organized project structure
+- Create a starter `main.jac` file with a sample component
 - Include a sample TypeScript component
 - **Automatically install npm packages** in the `.jac/client/` directory
 
@@ -101,10 +101,9 @@ Or you can manually run `npm install` in the `.jac/client/configs/` directory af
 ```
 todo-app/
 ├── jac.toml              # Project configuration
-├── src/                  # Source files
-│   ├── app.jac           # Main application file
-│   └── components/       # Reusable components
-│       └── Button.tsx    # Example TypeScript component
+├── main.jac              # Main application file
+├── components/           # Reusable components
+│   └── Button.tsx        # Example TypeScript component
 ├── assets/               # Static assets
 └── build/                # Build output (generated)
 ```
@@ -115,7 +114,7 @@ Navigate to your project directory and start the development server:
 
 ```bash
 cd todo-app
-jac serve src/app.jac
+jac start main.jac
 ```
 
 This starts both:
@@ -124,6 +123,28 @@ This starts both:
 - **Frontend development server**: Serves your React components
 
 You can access your app at `http://localhost:8000`
+
+### Hot Module Replacement (HMR)
+
+For faster development with live reloading, use `--watch` mode:
+
+```bash
+jac start main.jac --watch
+```
+
+This enables Hot Module Replacement, which automatically reloads your code when you make changes:
+
+- **Vite dev server** runs on port 8000 (open this in your browser)
+- **API server** runs on port 8001 (proxied via Vite)
+- **File watcher** monitors `*.jac` files for changes
+
+When you edit a `.jac` file, the backend recompiles automatically and the frontend hot-reloads without a full page refresh.
+
+**Note:** HMR requires the `watchdog` package, which is included in `[dev-dependencies]` by default. Install it with:
+
+```bash
+jac install --dev
+```
 
 ---
 
@@ -136,15 +157,16 @@ Every Jac client application needs an entry point function. This is where your a
 Inside your `cl` block, define a function called `app()`:
 
 ```jac
-cl import from react {useState}
+# Note: useState is auto-injected by the Jac compiler - no import needed!
+# The 'has' keyword automatically creates reactive state with useState under the hood.
 
 cl {
     def app() -> any {
-        [count, setCount] = useState(0);
+        has count: int = 0;
         return <div>
             <h1>Hello, World!</h1>
             <p>Count: {count}</p>
-            <button onClick={lambda e: any -> None { setCount(count + 1); }}>
+            <button onClick={lambda e: any -> None { count = count + 1; }}>
                 Increment
             </button>
         </div>;
@@ -163,7 +185,9 @@ cl {
 **Example with Multiple Components:**
 
 ```jac
-cl import from react {useState, useEffect}
+# Note: Only import hooks that aren't auto-injected (useEffect, useRef, etc.)
+# useState is auto-injected when you use 'has' for state variables.
+cl import from react { useEffect }
 
 cl {
     def TodoList(todos: list) -> any {
@@ -175,12 +199,12 @@ cl {
     }
 
     def:pub app() -> any {
-        [todos, setTodos] = useState([]);
+        has todos: list = [];
 
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 result = root spawn read_todos();
-                setTodos(result.reports if result.reports else []);
+                todos = result.reports if result.reports else [];
             }
             loadTodos();
         }, []);
@@ -274,14 +298,16 @@ def TodoItem(item: dict) -> any {
 
 ## 4. Adding State with React Hooks
 
-Jac uses React hooks for state management. You can use all standard React hooks by importing them:
+Jac simplifies state management with the `has` keyword, which automatically uses React's `useState` under the hood. You can also use other React hooks by importing them explicitly.
 
 ```jac
-cl import from react { useState, useEffect }
+# Note: useState is auto-injected - only import other hooks you need
+cl import from react { useEffect }
 
 cl {
     def Counter() -> any {
-        [count, setCount] = useState(0);
+        # The 'has' keyword creates reactive state (auto-injects useState)
+        has count: int = 0;
 
         useEffect(lambda -> None {
             console.log("Count changed:", count);
@@ -290,7 +316,7 @@ cl {
         return <div>
             <h1>Count: {count}</h1>
             <button onClick={lambda e: any -> None {
-                setCount(count + 1);
+                count = count + 1;
             }}>
                 Increment
             </button>
@@ -299,33 +325,41 @@ cl {
 }
 ```
 
-**Available React Hooks:**
+**State with `has` Keyword:**
 
-- `useState` - For state management
+- `has varname: type = value;` - Declares reactive state (useState is auto-injected)
+- Direct assignment `varname = newValue;` - Updates the state (calls the setter automatically)
+
+**Available React Hooks (import as needed):**
+
 - `useEffect` - For side effects
 - `useRef` - For refs
 - `useContext` - For context
 - `useCallback`, `useMemo` - For performance optimization
 - And more...
 
+> **Note:** You do NOT need to import `useState` - the Jac compiler auto-injects it when you use the `has` keyword for state variables.
+
 ### State Management Example
 
 Here's a complete example showing state management in a todo app:
 
 ```jac
-cl import from react {useState, useEffect}
+# Only import useEffect - useState is auto-injected via 'has' keyword
+cl import from react { useEffect }
 
 cl {
     def app() -> any {
-        [todos, setTodos] = useState([]);
-        [input, setInput] = useState("");
-        [filter, setFilter] = useState("all");
+        # Reactive state using 'has' - no useState import needed!
+        has todos: list = [];
+        has input: str = "";
+        has filter: str = "all";
 
         # Load todos on mount
         useEffect(lambda -> None {
             async def loadTodos() -> None {
                 result = root spawn read_todos();
-                setTodos(result.reports if result.reports else []);
+                todos = result.reports if result.reports else [];
             }
             loadTodos();
         }, []);
@@ -335,8 +369,8 @@ cl {
             if not input.trim() { return; }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
-            setInput("");
+            todos = todos.concat([new_todo]);
+            input = "";
         }
 
         # Filter todos
@@ -355,7 +389,7 @@ cl {
             <h1>My Todos</h1>
             <input
                 value={input}
-                onChange={lambda e: any -> None { setInput(e.target.value); }}
+                onChange={lambda e: any -> None { input = e.target.value; }}
                 onKeyPress={lambda e: any -> None {
                     if e.key == "Enter" { addTodo(); }
                 }}
@@ -396,14 +430,15 @@ def Button() -> any {
 
 ```jac
 def InputField() -> any {
-    [value, setValue] = useState("");
+    # 'has' creates reactive state - useState is auto-injected
+    has value: str = "";
 
     return <input
         type="text"
         value={value}
         onChange={lambda e: any -> None {
             console.log("Input value:", e.target.value);
-            setValue(e.target.value);
+            value = e.target.value;
         }}
     />;
 }
@@ -656,27 +691,28 @@ walker create_todo {
 # ============================================================================
 # FRONTEND: Components, State, and Events
 # ============================================================================
-cl import from react {useState}
+# Note: No need to import useState - it's auto-injected when using 'has' keyword
 
 cl {
     def app() -> any {
-        [todos, setTodos] = useState([]);
-        [input, setInput] = useState("");
+        # Reactive state with 'has' - useState is auto-injected by the compiler
+        has todos: list = [];
+        has input: str = "";
 
         # Event Handler
         async def addTodo() -> None {
             if not input.trim() { return; }
             response = root spawn create_todo(text=input.trim());
             new_todo = response.reports[0][0];
-            setTodos(todos.concat([new_todo]));
-            setInput("");
+            todos = todos.concat([new_todo]);
+            input = "";
         }
 
         return <div>
             <h2>My Todos</h2>
             <input
                 value={input}
-                onChange={lambda e: any -> None { setInput(e.target.value); }}
+                onChange={lambda e: any -> None { input = e.target.value; }}
                 onKeyPress={lambda e: any -> None {
                     if e.key == "Enter" { addTodo(); }
                 }}
@@ -703,7 +739,7 @@ To run this example:
 
 ```bash
 # From the todo-app directory
-jac serve src/app.jac
+jac start main.jac
 ```
 
 Then visit `http://localhost:8000` in your browser.
