@@ -30,13 +30,6 @@ impl JacClient.send_static_file(
     }
 }
 
-"""Get a module introspector for the supplied module."""
-impl JacClient.get_module_introspector(
-    module_name: str, base_path: (str | None)
-) -> ModuleIntrospector {
-    return JacClientModuleIntrospector(module_name, base_path);
-}
-
 """Build a client bundle for the supplied module."""
 impl JacClient.build_client_bundle(
     module: types.ModuleType, force: bool = False
@@ -92,21 +85,21 @@ impl JacClient.get_client_bundle_builder -> ViteClientBundleBuilder {
 }
 
 """Render HTML page for client function using the Vite bundle."""
-impl JacClientModuleIntrospector.render_page(
-    self: JacClientModuleIntrospector,
+impl JacClient.render_page(
+    introspector: ModuleIntrospector,
     function_name: str,
     args: dict[(str, Any)],
     username: str
 ) -> dict[str, Any] {
-    self.load();
+    introspector.load();
     available_exports = (
-        set(self._client_manifest.get('exports', []))
-        or set(self.get_client_functions().keys())
+        set(introspector._client_manifest.get('exports', []))
+        or set(introspector.get_client_functions().keys())
     );
     if (function_name not in available_exports) {
         raise ValueError(f"Client function '{function_name}' not found") ;
     }
-    bundle_hash = self.ensure_bundle();
+    bundle_hash = introspector.ensure_bundle();
     import from jaclang.project.config { find_project_root, get_config }
     # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
     base_path_dir = Path(Jac.base_path_dir);
@@ -192,5 +185,9 @@ impl JacClientModuleIntrospector.render_page(
         head_content += f"\n            {css_link}";
     }
     page = f'<!DOCTYPE html><html lang="en"><head>{head_content}</head><body><div id="root"></div><script src="/static/client.js?hash={bundle_hash}" defer></script></body></html>';
-    return {'html': page, 'bundle_hash': bundle_hash, 'bundle_code': self._bundle.code};
+    return {
+        'html': page,
+        'bundle_hash': bundle_hash,
+        'bundle_code': introspector._bundle.code
+    };
 }

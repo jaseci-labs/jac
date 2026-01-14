@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import html
 import inspect
+import json
 import os
 import sys
 import types
@@ -1683,14 +1684,47 @@ class JacAPIServer:
         return JacAPIServer
 
     @staticmethod
-    def get_module_introspector(
-        module_name: str,
-        base_path: str | None = None,
-    ) -> ModuleIntrospector:
-        from jaclang.runtimelib.server import ModuleIntrospector
+    def render_page(
+        introspector: ModuleIntrospector,
+        function_name: str,
+        args: dict[(str, Any)],
+        username: str,
+    ) -> dict[str, Any]:
+        """Render HTML page for client function."""
+        from jaclang.runtimelib.server import JacSerializer
 
-        """Get the module introspector instance."""
-        return ModuleIntrospector(module_name, base_path)
+        introspector.load()
+        available_exports = set(
+            introspector._client_manifest.get("exports", [])
+        ) or set(introspector.get_client_functions().keys())
+        if function_name not in available_exports:
+            raise ValueError(f"Client function '{function_name}' not found")
+        bundle_hash = introspector.ensure_bundle()
+        arg_order = list(
+            introspector._client_manifest.get("params", {}).get(function_name, [])
+        )
+        globals_payload = {
+            name: JacSerializer.serialize(value)
+            for name, value in introspector._collect_client_globals().items()
+        }
+        initial_state = {
+            "module": introspector._module.__name__
+            if introspector._module
+            else introspector.module_name,
+            "function": function_name,
+            "args": {
+                key: JacSerializer.serialize(value) for key, value in args.items()
+            },
+            "globals": globals_payload,
+            "argOrder": arg_order,
+        }
+        safe_initial_json = json.dumps(initial_state).replace("</", "<\\/")
+        page = f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>{html.escape(function_name)}</title></head><body><div id="__jac_root"></div><script id="__jac_init__" type="application/json">{safe_initial_json}</script><script src="/static/client.js?hash={bundle_hash}" defer></script></body></html>'
+        return {
+            "html": page,
+            "bundle_hash": bundle_hash,
+            "bundle_code": introspector._bundle.code,
+        }
 
 
 class JacResponseBuilder:
