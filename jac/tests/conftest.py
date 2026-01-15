@@ -1,8 +1,7 @@
-"""Shared pytest fixtures for the tests directory.
+"""Shared pytest fixtures for jac/tests directory.
 
-Note: Session-level hooks (pytest_configure, pytest_unconfigure) and
-autouse fixtures (isolate_jac_context, cleanup_plugin_artifacts) are
-defined in the root jac/conftest.py to apply to all tests including examples.
+Plugin management is configured here to apply only to core jac tests,
+not to package-specific tests like jac-byllm, jac-client, etc.
 """
 
 import contextlib
@@ -19,6 +18,47 @@ from typing import Any
 import pytest
 
 import jaclang
+
+# =============================================================================
+# Plugin Management - Core Jac Tests Only
+# =============================================================================
+
+# Store unregistered plugins for session-level management
+_external_plugins: list[tuple[str, Any]] = []
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable external plugins at the start of the jac test session.
+
+    External plugins (jac-scale, jac-client, etc.) are disabled during core jac tests
+    to ensure a clean test environment without MongoDB connections or other
+    plugin-specific dependencies.
+
+    NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
+    """
+    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+
+    global _external_plugins
+    for name, plugin in list(plugin_manager.list_name_plugin()):
+        if plugin is JacRuntimeImpl or name in (
+            "JacRuntimeImpl",
+            "JacRuntimeInterfaceImpl",
+        ):
+            continue
+        _external_plugins.append((name, plugin))
+        plugin_manager.unregister(plugin=plugin, name=name)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Re-register external plugins at the end of the jac test session."""
+    from jaclang.pycore.runtime import plugin_manager
+
+    global _external_plugins
+    for name, plugin in _external_plugins:
+        with contextlib.suppress(ValueError):
+            plugin_manager.register(plugin, name=name)
+    _external_plugins.clear()
+
 
 # =============================================================================
 # Test Utilities (moved from cli module)
