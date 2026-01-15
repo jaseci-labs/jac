@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 from collections.abc import Generator
 from pathlib import Path
 
@@ -11,6 +12,15 @@ import pytest
 
 from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
+
+
+def get_free_port() -> int:
+    """Get a free port by binding to port 0 and releasing it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+    return port
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +39,7 @@ def make_server() -> JacAPIServer:
     server = JacAPIServer(
         module_name="client_app",
         base_path=str(fixtures_dir),
+        port=get_free_port(),
     )
     server.load_module()
     return server

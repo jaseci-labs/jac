@@ -39,6 +39,19 @@ def get_free_port() -> int:
     return port
 
 
+def del_session(session_file: str) -> None:
+    """Delete session files including related database files."""
+    session_path = Path(session_file)
+    # Delete the session file itself
+    if session_path.exists():
+        session_path.unlink()
+    # Delete related database files (SQLite WAL mode creates additional files)
+    for suffix in [".db", ".db-wal", ".db-shm"]:
+        related = session_path.with_suffix(suffix)
+        if related.exists():
+            related.unlink()
+
+
 class ServerFixture:
     """Server fixture helper class."""
 

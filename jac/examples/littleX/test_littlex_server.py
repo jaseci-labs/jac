@@ -25,9 +25,8 @@ def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, An
         mod = mod[:-3]
     else:
         raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
-    # Only set base path if not already set (allows isolate_jac_context fixture to work)
-    if not Jac.base_path_dir:
-        Jac.set_base_path(base)
+    # Always set base path for server tests - they need to find the .jac files
+    Jac.set_base_path(base)
     mach = Jac.create_j_context(user_root=user_root)
     Jac.set_context(mach)
     return (base, mod, mach)
@@ -74,8 +73,16 @@ def littlex_server():
                     except Exception:
                         pass
 
-    # Clean up any leftover session files from previous runs
+    def _clean_jac_data() -> None:
+        """Clean up .jac/data directory from previous runs."""
+        import shutil
+        jac_dir = os.path.join(os.path.dirname(__file__), ".jac")
+        if os.path.exists(jac_dir):
+            shutil.rmtree(jac_dir, ignore_errors=True)
+
+    # Clean up any leftover session files and database from previous runs
     _del_session(server_data["session_file"])
+    _clean_jac_data()
 
     def _start_server() -> None:
         """Start the API server in a background thread."""
@@ -139,8 +146,8 @@ def littlex_server():
         """Helper to create a user and store credentials."""
         result = _request("POST", "/user/register", {"username": username, "password": password})
         # Handle new TransportResponse envelope format
-        data = result.get("data", result)
-        if "token" in data:
+        data = result.get("data") or result
+        if data and "token" in data:
             server_data["users"][username] = {
                 "password": password,
                 "token": data["token"],
