@@ -6,6 +6,80 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Version 0.9.8
+
+#### 1. Walker Traversal Semantics Changed to Recursive DFS with Deferred Exits
+
+Walker traversal now uses recursive depth-first semantics where **entry abilities execute when entering a node**, and **exit abilities execute after all descendants are visited** (post-order). Previously, both entry and exit abilities executed on each node before moving to the next.
+
+**Before (v0.9.7 and earlier):**
+
+For a graph `root → A → B → C`, the execution order was:
+
+```
+Enter root → Exit root → Enter A → Exit A → Enter B → Exit B → Enter C → Exit C
+```
+
+Each node's entries AND exits completed before visiting the next node.
+
+**After (v0.9.8+):**
+
+```
+Enter root → Enter A → Enter B → Enter C → Exit C → Exit B → Exit A → Exit root
+```
+
+Entries execute depth-first, exits execute in reverse order (LIFO/stack unwinding).
+
+**Example with sibling nodes:**
+
+```jac
+# Graph: root → a, root → b, root → c (three children)
+
+# Before: a entries, a exits, b entries, b exits, c entries, c exits
+# After:  a entries, b entries, c entries, c exits, b exits, a exits
+```
+
+**Key Behavioral Changes:**
+
+1. **Exit abilities are deferred** until all descendants of a node are visited
+2. **If `disengage` is called during entry/child traversal**, exit abilities for ancestor nodes will NOT execute
+3. **Exit order is LIFO** (last visited node's exits run first)
+4. **`walker.path`** is now populated during traversal, tracking visited nodes in order
+
+**Migration Steps:**
+
+1. Review any code that relies on exit abilities running before visiting child nodes
+2. If your walker uses `disengage` and depends on ancestor exit abilities running, refactor to use entry abilities or remove the disengage
+3. Update tests that assert specific entry/exit execution order
+
+**Example migration for disengage pattern:**
+
+```jac
+# Before: Exit ability would run before disengage stops traversal
+walker MyWalker {
+    can process with MyNode entry {
+        if some_condition { disengage; }
+        visit [-->];
+    }
+    can cleanup with `root exit {
+        # This WOULD run before disengage in old semantics
+        print("Cleanup");
+    }
+}
+
+# After: Use entry ability instead, since exits won't run after disengage
+walker MyWalker {
+    can process with MyNode entry {
+        if some_condition { disengage; }
+        visit [-->];
+    }
+    can cleanup with `root entry {
+        # Use entry to ensure this runs before any disengage
+        print("Cleanup will run");
+    }
+}
+```
+
 ### Version 0.9.5
 
 #### 1. `jac serve` Renamed to `jac start`, `jac scale` Now Uses `--scale` Flag

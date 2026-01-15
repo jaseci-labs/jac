@@ -1,5 +1,59 @@
-"""Run the FastAPI server using Uvicorn."""
+"""Helper function to convert TransportResponse to JSONResponse (similar to HTTPTransport.send)."""
+def _convert_transport_response_to_json_response(
+    transport_response: TransportResponse
+) -> JSONResponse {
+    import json;
+    import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse }
+    # Extract HTTP status from meta.extra or use defaults (same logic as HTTPTransport.send)
+    status = 200 if transport_response.ok else 500;
+    if transport_response.meta and transport_response.meta.extra {
+        status = transport_response.meta.extra.get('http_status', status);
+    }
+    # Build response body following TransportResponse envelope pattern (same as HTTPTransport.send)
+    response_body = {
+        'ok': transport_response.ok,
+        'type': transport_response.type,
+        'data': transport_response.data,
+        'error': None
+    };
+    # Serialize error if present
+    if not transport_response.ok and transport_response.error {
+        error_obj = {};
+        if getattr(transport_response.error, "code", None) {
+            error_obj['code'] = transport_response.error.code;
+        }
+        if getattr(transport_response.error, "message", None) {
+            error_obj['message'] = transport_response.error.message;
+        }
+        if getattr(transport_response.error, "details", None) is not None {
+            error_obj['details'] = transport_response.error.details;
+        }
+        response_body['error'] = error_obj;
+    }
+    # Include metadata if present
+    if transport_response.meta {
+        meta_dict = {};
+        if getattr(transport_response.meta, "request_id", None) {
+            meta_dict['request_id'] = transport_response.meta.request_id;
+        }
+        if getattr(transport_response.meta, "trace_id", None) {
+            meta_dict['trace_id'] = transport_response.meta.trace_id;
+        }
+        if getattr(transport_response.meta, "timestamp", None) {
+            meta_dict['timestamp'] = transport_response.meta.timestamp;
+        }
+        if getattr(transport_response.meta, "extra", None) {
+            meta_dict['extra'] = transport_response.meta.extra;
+        }
+        if meta_dict {
+            response_body['meta'] = meta_dict;
+        }
+    }
+    return JSONResponse(status_code=status, content=response_body);
+}
 
+"""Run the FastAPI server using Uvicorn."""
 impl JFastApiServer.run_server(
     self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
 ) -> None {
@@ -85,9 +139,15 @@ impl JFastApiServer._create_endpoint_function(
         if accepts_kwargs {
             if inspect.iscoroutinefunction(callback) {
                 async def async_endpoint_wrapper(request: Request) -> EndpointResponse {
+                    import from jaclang.runtimelib.transport { TransportResponse }
                     try {
                         query_params = <>dict(request.query_params);
-                        return await callback(**query_params);
+                        result = await callback(**query_params);
+                        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                        if isinstance(result, TransportResponse) {
+                            return _convert_transport_response_to_json_response(result);
+                        }
+                        return result;
                     } except Exception as e {
                         raise e from HTTPException(status_code=500, detail=str(e)) ;
                     }
@@ -95,9 +155,15 @@ impl JFastApiServer._create_endpoint_function(
                 return async_endpoint_wrapper;
             } else {
                 def sync_endpoint_wrapper(request: Request) -> EndpointResponse {
+                    import from jaclang.runtimelib.transport { TransportResponse }
                     try {
                         query_params = <>dict(request.query_params);
-                        return callback(**query_params);
+                        result = callback(**query_params);
+                        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                        if isinstance(result, TransportResponse) {
+                            return _convert_transport_response_to_json_response(result);
+                        }
+                        return result;
                     } except Exception as e {
                         raise e from HTTPException(status_code=500, detail=str(e)) ;
                     }
@@ -106,8 +172,14 @@ impl JFastApiServer._create_endpoint_function(
             }
         } elif inspect.iscoroutinefunction(callback) {
             async def async_endpoint_wrapper__1 -> EndpointResponse {
+                import from jaclang.runtimelib.transport { TransportResponse }
                 try {
-                    return await callback();
+                    result = await callback();
+                    # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                    if isinstance(result, TransportResponse) {
+                        return _convert_transport_response_to_json_response(result);
+                    }
+                    return result;
                 } except Exception as e {
                     raise e from HTTPException(status_code=500, detail=str(e)) ;
                 }
@@ -115,8 +187,14 @@ impl JFastApiServer._create_endpoint_function(
             return async_endpoint_wrapper__1;
         } else {
             def sync_endpoint_wrapper__1 -> EndpointResponse {
+                import from jaclang.runtimelib.transport { TransportResponse }
                 try {
-                    return callback();
+                    result = callback();
+                    # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+                    if isinstance(result, TransportResponse) {
+                        return _convert_transport_response_to_json_response(result);
+                    }
+                    return result;
                 } except Exception as e {
                     raise e from HTTPException(status_code=500, detail=str(e)) ;
                 }
@@ -280,6 +358,9 @@ async def endpoint_wrapper({params}):
         callback_args: Dict[str, Any] = {{}}
 {callback_args_str}{extra_query_params_code}
         result = await callback(**callback_args)
+        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+        if isinstance(result, TransportResponse):
+            return _convert_transport_response_to_json_response(result)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -291,6 +372,9 @@ def endpoint_wrapper({params}):
         callback_args: Dict[str, Any] = {{}}
 {callback_args_str}{extra_query_params_code}
         result = callback(**callback_args)
+        # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
+        if isinstance(result, TransportResponse):
+            return _convert_transport_response_to_json_response(result)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -314,7 +398,10 @@ def endpoint_wrapper({params}):
         'float': float,
         'bool': bool,
         'list': <>list,
-        'dict': <>dict
+        'dict': <>dict,
+        'TransportResponse': TransportResponse,
+        '_convert_transport_response_to_json_response': _convert_transport_response_to_json_response,
+        'isinstance': isinstance
     };
     if body_model {
         exec_globals['RequestBody'] = body_model;

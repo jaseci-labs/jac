@@ -6,8 +6,10 @@ import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.pycore.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
+import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .context { JScaleExecutionContext }
 import from .serve { JacAPIServer }
+import from .jserver.jfast_api { JFastApiServer }
 import from .config_loader { get_scale_config }
 import from .factories.deployment_factory { DeploymentTargetFactory }
 import from .factories.registry_factory { ImageRegistryFactory }
@@ -177,6 +179,14 @@ class JacScalePlugin {
         session: (str | None) = None, <>root: (str | None) = None
     ) -> ExecutionContext {
         return JScaleExecutionContext(session=session, <>root=<>root);
+    }
+
+    """Create the API server instance."""
+    @hookimpl
+    static def create_server(
+        jac_server: JacServer, host: str, port: int
+    ) -> JFastApiServer {
+        return JFastApiServer([]);
     }
 
     """Provide jac-scale's enhanced JacAPIServer class."""

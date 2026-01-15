@@ -13,6 +13,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac check` | Type check code |
 | `jac test` | Run tests |
 | `jac format` | Format code |
+| `jac clean` | Clean project build artifacts |
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
@@ -603,6 +604,45 @@ jac remove requests
 
 # Remove multiple packages
 jac remove numpy pandas
+```
+
+---
+
+### jac clean
+
+Clean project build artifacts from the `.jac/` directory.
+
+```bash
+jac clean [-h] [-a] [-d] [-c] [-p] [-f]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-a, --all` | Clean all `.jac` artifacts (data, cache, packages, client) | `False` |
+| `-d, --data` | Clean data directory (`.jac/data`) | `False` |
+| `-c, --cache` | Clean cache directory (`.jac/cache`) | `False` |
+| `-p, --packages` | Clean packages directory (`.jac/packages`) | `False` |
+| `-f, --force` | Force clean without confirmation prompt | `False` |
+
+By default (no flags), `jac clean` removes only the data directory (`.jac/data`).
+
+**Examples:**
+
+```bash
+# Clean data directory (default)
+jac clean
+
+# Clean all build artifacts
+jac clean --all
+
+# Clean only cache
+jac clean --cache
+
+# Clean data and cache directories
+jac clean --data --cache
+
+# Force clean without confirmation
+jac clean --all --force
 ```
 
 ---

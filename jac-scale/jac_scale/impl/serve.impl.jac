@@ -1,3 +1,62 @@
+"""Helper function to convert TransportResponse to dict for JSONResponse."""
+def _transport_response_to_dict(
+    transport_response: TransportResponse
+) -> dict[str, Any] {
+    result = {
+        'ok': transport_response.ok,
+        'type': transport_response.type,
+        'data': transport_response.data,
+        'error': None
+    };
+    if not transport_response.ok and transport_response.error {
+        result['error'] = {
+            'code': transport_response.error.code,
+            'message': transport_response.error.message,
+            'details': transport_response.error.details
+        };
+    }
+    if transport_response.meta {
+        meta_dict = {};
+        if transport_response.meta.request_id {
+            meta_dict['request_id'] = transport_response.meta.request_id;
+        }
+        if transport_response.meta.trace_id {
+            meta_dict['trace_id'] = transport_response.meta.trace_id;
+        }
+        if transport_response.meta.timestamp {
+            meta_dict['timestamp'] = transport_response.meta.timestamp;
+        }
+        if transport_response.meta.extra {
+            meta_dict['extra'] = transport_response.meta.extra;
+        }
+        if meta_dict {
+            result['meta'] = meta_dict;
+        }
+    }
+    return result;
+}
+
+"""Helper function to get HTTP status code from TransportResponse."""
+def _get_http_status(transport_response: TransportResponse) -> int {
+    if transport_response.meta and transport_response.meta.extra {
+        return transport_response.meta.extra.get(
+            'http_status', 200 if transport_response.ok else 500
+        );
+    }
+    return 200 if transport_response.ok else 500;
+}
+
+"""Helper function to convert TransportResponse directly to JSONResponse."""
+def _transport_response_to_json_response(
+    transport_response: TransportResponse
+) -> JSONResponse {
+    import from fastapi.responses { JSONResponse }
+    return JSONResponse(
+        status_code=_get_http_status(transport_response),
+        content=_transport_response_to_dict(transport_response)
+    );
+}
+
 impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in watch mode)
@@ -41,20 +100,20 @@ impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
-    self.server_impl.run_server(port=self.port);
+    self.server.run_server(port=self.port);
 }
 
 """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
 impl JacAPIServer._configure_openapi_security(self: JacAPIServer) -> None {
     import from fastapi.openapi.utils { get_openapi }
     def custom_openapi -> dict[str, Any] {
-        if self.server_impl.app.openapi_schema {
-            return self.server_impl.app.openapi_schema;
+        if self.server.app.openapi_schema {
+            return self.server.app.openapi_schema;
         }
         openapi_schema = get_openapi(
-            title=self.server_impl.app.title,
-            version=self.server_impl.app.version,
-            routes=self.server_impl.app.routes
+            title=self.server.app.title,
+            version=self.server.app.version,
+            routes=self.server.app.routes
         );
         openapi_schema['components'] = openapi_schema.get('components', {});
         openapi_schema['components']['securitySchemes'] = {
@@ -98,10 +157,10 @@ impl JacAPIServer._configure_openapi_security(self: JacAPIServer) -> None {
                 }
             }
         }
-        self.server_impl.app.openapi_schema = openapi_schema;
+        self.server.app.openapi_schema = openapi_schema;
         return openapi_schema;
     }
-    self.server_impl.app.openapi = custom_openapi;
+    self.server.app.openapi = custom_openapi;
 }
 
 """Serve root-level assets like /img.png, /icons/logo.svg, etc."""
@@ -163,7 +222,7 @@ impl JacAPIServer.serve_root_asset(self: JacAPIServer, file_path: str) -> Respon
 
 """Register root-level asset serving endpoint for files like /img.png, /logo.svg"""
 impl JacAPIServer.register_root_asset_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/{file_path:path}',
@@ -266,7 +325,7 @@ impl JacAPIServer.serve_static_file(self: JacAPIServer, file_path: str) -> Respo
 
 """Register the static file serving endpoint using JEndPoint."""
 impl JacAPIServer.register_static_file_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/static/{file_path:path}',
@@ -291,7 +350,7 @@ impl JacAPIServer.register_static_file_endpoint(self: JacAPIServer) -> None {
 
 """Register the client.js serving endpoint using JEndPoint."""
 impl JacAPIServer.register_client_js_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/static/client.js',
@@ -331,7 +390,7 @@ impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
     # Register the configurable cl route (e.g., /cl/{page_name})
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path=f'/{cl_route_prefix}/{{page_name}}',
@@ -354,7 +413,7 @@ impl JacAPIServer.register_page_endpoint(self: JacAPIServer) -> None {
     );
     # If base_route_app is configured, register it at /
     if base_route_app {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.GET,
                 path='/',
@@ -417,7 +476,7 @@ impl JacAPIServer.render_base_route_callback(
 
 impl JacAPIServer.register_functions_endpoints(self: JacAPIServer) -> None {
     for func_name in self.get_functions() {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/function/{func_name}",
@@ -468,9 +527,10 @@ impl JacAPIServer.create_function_parameters(
 
 impl JacAPIServer.create_function_callback(
     self: JacAPIServer, func_name: str
-) -> Callable[..., dict[(str, JsonValue)]] {
+) -> Callable[..., TransportResponse] {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
-    def callback(**kwargs: JsonValue) -> dict[str, JsonValue] {
+    def callback(**kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
             authorization = kwargs.pop('Authorization', None);
@@ -484,12 +544,27 @@ impl JacAPIServer.create_function_callback(
             }
             username = self.validate_jwt_token(token) if token else None;
             if not username {
-                return {'error': 'Unauthorized', 'status': 401};
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized',
+                    meta=Meta(extra={'http_status': 401})
+                );
             }
         }
         print(f"Executing function '{func_name}' with params: {kwargs}");
-        return self.execution_manager.execute_function(
+        result = self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or '__guest__')
+        );
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Function execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     return callback;
@@ -497,7 +572,7 @@ impl JacAPIServer.create_function_callback(
 
 impl JacAPIServer.register_walkers_endpoints(self: JacAPIServer) -> None {
     for walker_name in self.get_walkers() {
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/walker/{walker_name}/{{node}}",
@@ -511,7 +586,7 @@ impl JacAPIServer.register_walkers_endpoints(self: JacAPIServer) -> None {
                 description='API Entry'
             )
         );
-        self.server_impl.add_endpoint(
+        self.server.add_endpoint(
             JEndPoint(
                 method=HTTPMethod.POST,
                 path=f"/walker/{walker_name}",
@@ -569,11 +644,10 @@ impl JacAPIServer.create_walker_parameters(
 
 impl JacAPIServer.create_walker_callback(
     self: JacAPIServer, walker_name: str, has_node_param: bool = False
-) -> Callable[..., dict[(str, JsonValue)]] {
+) -> Callable[..., TransportResponse] {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-    def callback(
-        node: (str | None) = None, **kwargs: JsonValue
-    ) -> dict[str, JsonValue] {
+    def callback(node: (str | None) = None, **kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
             authorization = kwargs.pop('Authorization', None);
@@ -587,21 +661,36 @@ impl JacAPIServer.create_walker_callback(
             }
             username = self.validate_jwt_token(token) if token else None;
             if not username {
-                return {'error': 'Unauthorized', 'status': 401};
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized',
+                    meta=Meta(extra={'http_status': 401})
+                );
             }
         }
         if node {
             kwargs['_jac_spawn_node'] = node;
         }
-        return self.execution_manager.spawn_walker(
+        result = self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], kwargs, (username or '__guest__')
+        );
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Walker execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     return callback;
 }
 
 impl JacAPIServer.register_refresh_token_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/refresh-token',
@@ -625,7 +714,7 @@ impl JacAPIServer.register_refresh_token_endpoint(self: JacAPIServer) -> None {
 }
 
 impl JacAPIServer.register_create_user_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/register',
@@ -658,47 +747,63 @@ impl JacAPIServer.register_create_user_endpoint(self: JacAPIServer) -> None {
 
 impl JacAPIServer.refresh_token(
     self: JacAPIServer, token: (str | None) = None
-) -> JSONResponse {
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (not token) {
-        return JSONResponse(status_code=400, content={'error': 'Token is required'});
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='Token is required',
+            meta=Meta(extra={'http_status': 400})
+        );
     }
     if token.startswith('Bearer ') {
         token = token[7:];
     }
     new_token = self.refresh_jwt_token(token);
     if (not new_token) {
-        return JSONResponse(
-            status_code=401, content={'error': 'Invalid or expired token'}
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
         );
     }
-    return JSONResponse(
-        status_code=200,
-        content={'token': new_token, 'message': 'Token refreshed successfully'}
+    return TransportResponse.success(
+        data={'token': new_token, 'message': 'Token refreshed successfully'},
+        meta=Meta(extra={'http_status': 200})
     );
 }
 
 impl JacAPIServer.create_user(
     self: JacAPIServer, username: str, password: str
-) -> JSONResponse {
+) -> TransportResponse {
     import traceback;
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     try {
         res = self.user_manager.create_user(username, password);
         if ('error' in res) {
-            return JSONResponse(content=res, status_code=400);
+            return TransportResponse.fail(
+                code='USER_EXISTS',
+                message=res.get('error', 'User creation failed'),
+                meta=Meta(extra={'http_status': 400})
+            );
         }
         res['token'] = self.create_jwt_token(username);
-        return JSONResponse(content=res, status_code=201);
+        return TransportResponse.success(
+            data=res, meta=Meta(extra={'http_status': 201})
+        );
     } except Exception as e {
         error_trace = traceback.format_exc();
         print(f"Error in create_user: {e}\n{error_trace}");
-        return JSONResponse(
-            status_code=500, content={'error': f"Registration failed: {e}"}
+        return TransportResponse.fail(
+            code='INTERNAL_ERROR',
+            message=f"Registration failed: {e}",
+            meta=Meta(extra={'http_status': 500})
         );
     }
 }
 
 impl JacAPIServer.register_login_endpoint(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/user/login',
@@ -731,18 +836,27 @@ impl JacAPIServer.register_login_endpoint(self: JacAPIServer) -> None {
 
 impl JacAPIServer.login(
     self: JacAPIServer, username: str, password: str
-) -> JSONResponse {
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (not username or not password) {
-        return JSONResponse(
-            status_code=400, content={'error': 'Username and password required'}
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='Username and password required',
+            meta=Meta(extra={'http_status': 400})
         );
     }
     result = self.user_manager.authenticate(username, password);
     if not result {
-        return JSONResponse(status_code=401, content={'error': 'Invalid credentials'});
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid credentials',
+            meta=Meta(extra={'http_status': 401})
+        );
     }
     result['token'] = self.create_jwt_token(username);
-    return JSONResponse(status_code=200, content=dict[(str, JsonValue)](result));
+    return TransportResponse.success(
+        data=dict[(str, JsonValue)](result), meta=Meta(extra={'http_status': 200})
+    );
 }
 
 impl JacAPIServer.init(
@@ -753,8 +867,7 @@ impl JacAPIServer.init(
     base_path: (str | None) = None
 ) -> None {
     super.init(module_name, session_path, port, base_path);
-    self.server_impl = JFastApiServer([]);
-    self.server_impl.app.add_middleware(
+    self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
         allow_credentials=True,
@@ -787,7 +900,7 @@ impl JacAPIServer.init(
                 return response;
             }
         }
-        self.server_impl.app.add_middleware(CustomHeadersMiddleware);
+        self.server.app.add_middleware(CustomHeadersMiddleware);
     }
     self.SUPPORTED_PLATFORMS: dict = {};
     # Load SSO config fresh (not from cached global) to support env var overrides at runtime
@@ -867,38 +980,37 @@ impl JacAPIServer.get_sso(
 
 impl JacAPIServer.sso_initiate(
     self: JacAPIServer, platform: str, operation: str
-) -> Response {
+) -> (Response | TransportResponse) {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (platform not in [p.value for p in Platforms]) {
-        return JSONResponse(
-            status_code=400,
-            content={
-                'error': f"Invalid platform '{platform}'. Supported platforms: {', '.join(
-                    [p.value for p in Platforms]
-                )}"
-            }
+        return TransportResponse.fail(
+            code='INVALID_PLATFORM',
+            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
+                [p.value for p in Platforms]
+            )}",
+            meta=Meta(extra={'http_status': 400})
         );
     }
     if (platform not in self.SUPPORTED_PLATFORMS) {
-        return JSONResponse(
-            status_code=501,
-            content={
-                'error': f"SSO for platform '{platform}' is not configured. Please set SSO_{platform.upper()}_CLIENT_ID and SSO_{platform.upper()}_CLIENT_SECRET environment variables."
-            }
+        return TransportResponse.fail(
+            code='SSO_NOT_CONFIGURED',
+            message=f"SSO for platform '{platform}' is not configured. Please set SSO_{platform.upper()}_CLIENT_ID and SSO_{platform.upper()}_CLIENT_SECRET environment variables.",
+            meta=Meta(extra={'http_status': 501})
         );
     }
     if (operation not in [o.value for o in Operations]) {
-        return JSONResponse(
-            status_code=400,
-            content={
-                'error': f"Invalid operation '{operation}'. Must be 'login' or 'register'"
-            }
+        return TransportResponse.fail(
+            code='INVALID_OPERATION',
+            message=f"Invalid operation '{operation}'. Must be 'login' or 'register'",
+            meta=Meta(extra={'http_status': 400})
         );
     }
     sso = self.get_sso(platform, operation);
     if not sso {
-        return JSONResponse(
-            status_code=500,
-            content={'error': f"Failed to initialize SSO for platform '{platform}'"}
+        return TransportResponse.fail(
+            code='SSO_INIT_FAILED',
+            message=f"Failed to initialize SSO for platform '{platform}'",
+            meta=Meta(extra={'http_status': 500})
         );
     }
     with sso {
@@ -908,38 +1020,37 @@ impl JacAPIServer.sso_initiate(
 
 impl JacAPIServer.sso_callback(
     self: JacAPIServer, request: Request, platform: str, operation: str
-) -> JSONResponse {
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     if (platform not in [p.value for p in Platforms]) {
-        return JSONResponse(
-            status_code=400,
-            content={
-                'error': f"Invalid platform '{platform}'. Supported platforms: {', '.join(
-                    [p.value for p in Platforms]
-                )}"
-            }
+        return TransportResponse.fail(
+            code='INVALID_PLATFORM',
+            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
+                [p.value for p in Platforms]
+            )}",
+            meta=Meta(extra={'http_status': 400})
         );
     }
     if (platform not in self.SUPPORTED_PLATFORMS) {
-        return JSONResponse(
-            status_code=501,
-            content={
-                'error': f"SSO for platform '{platform}' is not configured. Please set SSO_{platform.upper()}_CLIENT_ID and SSO_{platform.upper()}_CLIENT_SECRET environment variables."
-            }
+        return TransportResponse.fail(
+            code='SSO_NOT_CONFIGURED',
+            message=f"SSO for platform '{platform}' is not configured. Please set SSO_{platform.upper()}_CLIENT_ID and SSO_{platform.upper()}_CLIENT_SECRET environment variables.",
+            meta=Meta(extra={'http_status': 501})
         );
     }
     if (operation not in [o.value for o in Operations]) {
-        return JSONResponse(
-            status_code=400,
-            content={
-                'error': f"Invalid operation '{operation}'. Must be 'login' or 'register'"
-            }
+        return TransportResponse.fail(
+            code='INVALID_OPERATION',
+            message=f"Invalid operation '{operation}'. Must be 'login' or 'register'",
+            meta=Meta(extra={'http_status': 400})
         );
     }
     sso = self.get_sso(platform, operation);
     if not sso {
-        return JSONResponse(
-            status_code=500,
-            content={'error': f"Failed to initialize SSO for platform '{platform}'"}
+        return TransportResponse.fail(
+            code='SSO_INIT_FAILED',
+            message=f"Failed to initialize SSO for platform '{platform}'",
+            meta=Meta(extra={'http_status': 500})
         );
     }
     try {
@@ -947,58 +1058,69 @@ impl JacAPIServer.sso_callback(
             user_info = await sso.verify_and_process(request);
             email = user_info.email;
             if not email {
-                return JSONResponse(
-                    status_code=400,
-                    content={'error': f"Email not provided by {platform}"}
+                return TransportResponse.fail(
+                    code='EMAIL_MISSING',
+                    message=f"Email not provided by {platform}",
+                    meta=Meta(extra={'http_status': 400})
                 );
             }
             if (operation == Operations.LOGIN.value) {
                 user = self.user_manager.get_user(email);
                 if not user {
-                    return JSONResponse(
-                        status_code=404,
-                        content={'error': 'User not found. Please register first.'}
+                    return TransportResponse.fail(
+                        code='USER_NOT_FOUND',
+                        message='User not found. Please register first.',
+                        meta=Meta(extra={'http_status': 404})
                     );
                 }
                 token = self.create_jwt_token(email);
-                return JSONResponse(
-                    status_code=200,
-                    content={
+                return TransportResponse.success(
+                    data={
                         'message': 'Login successful',
                         'email': email,
                         'token': token,
                         'platform': platform,
                         'user': dict[(str, JsonValue)](user)
-                    }
+                    },
+                    meta=Meta(extra={'http_status': 200})
                 );
             } elif (operation == Operations.REGISTER.value) {
                 existing_user = self.user_manager.get_user(email);
                 if existing_user {
-                    return JSONResponse(
-                        status_code=400,
-                        content={'error': 'User already exists. Please login instead.'}
+                    return TransportResponse.fail(
+                        code='USER_EXISTS',
+                        message='User already exists. Please login instead.',
+                        meta=Meta(extra={'http_status': 400})
                     );
                 }
                 random_password = generate_random_password();
                 result = self.user_manager.create_user(email, random_password);
                 if ('error' in result) {
-                    return JSONResponse(status_code=400, content=result);
+                    return TransportResponse.fail(
+                        code='USER_CREATION_FAILED',
+                        message=result.get('error', 'User creation failed'),
+                        meta=Meta(extra={'http_status': 400})
+                    );
                 }
                 token = self.create_jwt_token(email);
                 result['token'] = token;
                 result['platform'] = platform;
-                return JSONResponse(status_code=201, content=result);
+                return TransportResponse.success(
+                    data=result, meta=Meta(extra={'http_status': 201})
+                );
             }
         }
     } except Exception as e {
-        return JSONResponse(
-            status_code=500, content={'error': f"Authentication failed: {str(e)}"}
+        return TransportResponse.fail(
+            code='AUTHENTICATION_FAILED',
+            message=f"Authentication failed: {str(e)}",
+            meta=Meta(extra={'http_status': 500})
         );
     }
 }
 
 impl JacAPIServer.register_sso_endpoints(self: JacAPIServer) -> None {
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/sso/{platform}/{operation}',
@@ -1027,7 +1149,7 @@ impl JacAPIServer.register_sso_endpoints(self: JacAPIServer) -> None {
             description='Redirects to the SSO provider for authentication. Supported platforms: Google. Configure each platform by setting SSO_{PLATFORM}_CLIENT_ID and SSO_{PLATFORM}_CLIENT_SECRET environment variables.'
         )
     );
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/sso/{platform}/{operation}/callback',
@@ -1081,11 +1203,11 @@ we register catch-all routes that look up walkers at request time.
 This enables HMR since introspector.load() is called per-request.
 """
 impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
-    import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     # Dynamic handler that looks up walker at request time
     def dynamic_walker_handler(
         walker_name: str, node: str | None = None, **kwargs: JsonValue
-    ) -> dict[str, JsonValue] {
+    ) -> TransportResponse {
         # Reload introspector if files changed (HMR)
         if self._hmr_pending {
             self.introspector.load(force_reload=True);
@@ -1095,12 +1217,13 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
         walkers = self.get_walkers();
 
         if walker_name not in walkers {
-            return {
-                'error': f"Walker '{walker_name}' not found. Available: {list(
+            return TransportResponse.fail(
+                code='NOT_FOUND',
+                message=f"Walker '{walker_name}' not found. Available: {list(
                     walkers.keys()
                 )}",
-                'status': 404
-            };
+                meta=Meta(extra={'http_status': 404})
+            );
         }
 
         # Handle authentication if required
@@ -1117,7 +1240,11 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
             }
             username = self.validate_jwt_token(token) if token else None;
             if not username {
-                return {'error': 'Unauthorized', 'status': 401};
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized',
+                    meta=Meta(extra={'http_status': 401})
+                );
             }
         }
 
@@ -1126,8 +1253,19 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
             kwargs['_jac_spawn_node'] = node;
         }
 
-        return self.execution_manager.spawn_walker(
+        result = self.execution_manager.spawn_walker(
             walkers[walker_name], kwargs, (username or '__guest__')
+        );
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Walker execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     # Register catch-all route for walkers with node parameter
@@ -1206,9 +1344,10 @@ Similar to dynamic walker routing, this enables HMR for functions.
 """
 impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None {
     import from fastapi.responses { JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
     def dynamic_function_handler(
         function_name: str, **kwargs: JsonValue
-    ) -> dict[str, JsonValue] {
+    ) -> TransportResponse {
         # Reload introspector if files changed (HMR)
         if self._hmr_pending {
             self.introspector.load(force_reload=True);
@@ -1218,12 +1357,13 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
         functions = self.get_functions();
 
         if function_name not in functions {
-            return {
-                'error': f"Function '{function_name}' not found. Available: {list(
+            return TransportResponse.fail(
+                code='NOT_FOUND',
+                message=f"Function '{function_name}' not found. Available: {list(
                     functions.keys()
                 )}",
-                'status': 404
-            };
+                meta=Meta(extra={'http_status': 404})
+            );
         }
 
         # Handle authentication if required
@@ -1240,12 +1380,27 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
             }
             username = self.validate_jwt_token(token) if token else None;
             if not username {
-                return {'error': 'Unauthorized', 'status': 401};
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Unauthorized',
+                    meta=Meta(extra={'http_status': 401})
+                );
             }
         }
 
-        return self.execution_manager.execute_function(
+        result = self.execution_manager.execute_function(
             functions[function_name], kwargs, (username or '__guest__')
+        );
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Function execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
         );
     }
     self.server_impl.add_endpoint(

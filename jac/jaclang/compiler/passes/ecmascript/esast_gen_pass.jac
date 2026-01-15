@@ -140,7 +140,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         <>node: uni.UniScopeNode, statements: list[es.Statement]
     ) -> list[es.Statement];
 
-    def _is_in_client_scope -> bool;
     def _strip_spawn_await(
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
@@ -199,6 +198,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_has_var(<>node: uni.HasVar) -> None;
     def _get_setter_name(var_name: str) -> str;
     def _inject_usestate_import(<>node: uni.UniNode) -> None;
+    def _has_usestate_import -> bool;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;
