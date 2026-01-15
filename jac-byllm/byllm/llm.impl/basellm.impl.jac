@@ -128,7 +128,6 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
     # https://docs.litellm.ai/docs/#response-format-openai-format
     #
     # TODO: Handle stream output (type ignoring stream response)
-    # message: LiteLLMMessage = response.choices[0].message;  # type: ignore
     message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
     mtir.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
