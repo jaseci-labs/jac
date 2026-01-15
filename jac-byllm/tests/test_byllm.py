@@ -359,7 +359,10 @@ def test_visit_by_for_routing(fixture_path: Callable[[str], str]) -> None:
     assert "Agentic minds, we hold dear" in stdout_value
     assert "Math Result: 35" in stdout_value
 
-def test_http_client_with_system_prompt_override(fixture_path: Callable[[str], str]) -> None:
+
+def test_http_client_with_system_prompt_override(
+    fixture_path: Callable[[str], str],
+) -> None:
     """Test byLLM prompt override and direct HTTP model calling."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
@@ -368,4 +371,6 @@ def test_http_client_with_system_prompt_override(fixture_path: Callable[[str], s
     stdout_value = captured_output.getvalue()
     assert "Hello, Alice! It's great to meet you." in stdout_value
     assert "You are a friendly assistant. Greet the" in stdout_value
-    assert "'api_base': 'https://your_api_base_here/v1/chat/completions'" in stdout_value
+    assert (
+        "'api_base': 'https://your_api_base_here/v1/chat/completions'" in stdout_value
+    )
