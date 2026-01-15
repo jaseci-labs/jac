@@ -26,17 +26,37 @@ glob registry = get_registry();
             help="Overwrite existing jac.toml",
             short="f"
         ),
+        Arg.create(
+            "template",
+            default="default",
+            help="Template to use (default, client, etc.)",
+            short="t"
+        ),
+        Arg.create(
+            "list_templates",
+            typ=bool,
+            default=False,
+            help="List available templates",
+            short="l"
+        ),
 
     ],
     examples=[
         ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
+        ("jac create myapp --template client", "Create with client template"),
+        ("jac create --list-templates", "List available templates"),
 
     ],
     group="project"
 )
-def create(name: str = "", force: bool = False) -> int;
+def create(
+    name: str = "",
+    force: bool = False,
+    template: str = "default",
+    list_templates: bool = False
+) -> int;
 
 """Install all dependencies from jac.toml."""
 @registry.command(
