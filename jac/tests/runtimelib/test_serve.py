@@ -8,6 +8,7 @@ import threading
 import time
 from collections.abc import Generator
 from http.server import HTTPServer
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -20,6 +21,15 @@ from tests.conftest import proc_file_sess
 from tests.runtimelib.conftest import fixture_abs_path
 
 
+@pytest.fixture(autouse=True)
+def reset_machine(tmp_path: Path) -> Generator[None, None, None]:
+    """Reset Jac machine before and after each test for session isolation."""
+    # Use tmp_path for session isolation in parallel tests
+    Jac.reset_machine(base_path=str(tmp_path))
+    yield
+    Jac.reset_machine(base_path=str(tmp_path))
+
+
 def get_free_port() -> int:
     """Get a free port by binding to port 0 and releasing it."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -29,23 +39,27 @@ def get_free_port() -> int:
     return port
 
 
-def del_session(session: str) -> None:
-    """Delete session files including user database files."""
-    path = os.path.dirname(session)
-    prefix = os.path.basename(session)
-    if os.path.exists(path):
-        for file in os.listdir(path):
-            # Clean up session files and user database files (.users)
-            if file.startswith(prefix):
-                with contextlib.suppress(Exception):
-                    os.remove(f"{path}/{file}")
+def del_session(session_file: str) -> None:
+    """Delete session files including related database files."""
+    session_path = Path(session_file)
+    # Delete the session file itself
+    if session_path.exists():
+        session_path.unlink()
+    # Delete related database files (SQLite WAL mode creates additional files)
+    for suffix in [".db", ".db-wal", ".db-shm"]:
+        related = session_path.with_suffix(suffix)
+        if related.exists():
+            related.unlink()
 
 
 class ServerFixture:
     """Server fixture helper class."""
 
-    def __init__(self, request: pytest.FixtureRequest) -> None:
+    def __init__(
+        self, request: pytest.FixtureRequest, tmp_path: Path | None = None
+    ) -> None:
         """Initialize server fixture."""
+
         self.server: JacAPIServer | None = None
         self.server_thread: threading.Thread | None = None
         self.httpd: HTTPServer | None = None
@@ -55,16 +69,23 @@ class ServerFixture:
             pytest.skip("Socket operations are not permitted in this environment")
         self.base_url = f"http://localhost:{self.port}"
         test_name = request.node.name
-        self.session_file = fixture_abs_path(f"test_serve_{test_name}.session")
+        # Use tmp_path for session isolation in parallel tests
+        if tmp_path:
+            self.session_dir = tmp_path
+            self.session_file = str(tmp_path / f"test_serve_{test_name}.session")
+        else:
+            self.session_dir = Path(fixture_abs_path(""))
+            self.session_file = fixture_abs_path(f"test_serve_{test_name}.session")
 
         # Clean up any leftover session files from previous runs
         del_session(self.session_file)
 
     def start_server(self, api_file: str = "serve_api.jac") -> None:
         """Start the API server in a background thread."""
-        # Load the module with the same session_file for persistence
-        base, mod, mach = proc_file_sess(fixture_abs_path(api_file), self.session_file)
-        Jac.set_base_path(base)
+        # Load the module with isolated base_path for persistence
+        base, mod, mach = proc_file_sess(
+            fixture_abs_path(api_file), str(self.session_dir)
+        )
         Jac.jac_import(
             target=mod,
             base_path=base,
@@ -72,11 +93,11 @@ class ServerFixture:
             lng="jac",
         )
 
-        # Create server with same session path
+        # Create server with same base path
         self.server = JacAPIServer(
             module_name="__main__",
-            session_path=self.session_file,
             port=self.port,
+            base_path=str(self.session_dir),
         )
 
         # Use the HTTPServer created by JacAPIServer
@@ -164,16 +185,15 @@ class ServerFixture:
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(timeout=2)
 
-        # Clean up session files
-        del_session(self.session_file)
+        # tmp_path is automatically cleaned up by pytest
 
 
 @pytest.fixture
 def server_fixture(
-    request: pytest.FixtureRequest,
+    request: pytest.FixtureRequest, tmp_path: Path
 ) -> Generator[ServerFixture, None, None]:
     """Pytest fixture for server setup and teardown."""
-    fixture = ServerFixture(request)
+    fixture = ServerFixture(request, tmp_path)
     yield fixture
     fixture.cleanup()
 
@@ -736,9 +756,10 @@ def test_server_root_endpoint(server_fixture: ServerFixture) -> None:
 
 def test_module_loading_and_introspection(server_fixture: ServerFixture) -> None:
     """Test that module loads correctly and introspection works."""
-    # Load module
-    base, mod, mach = proc_file_sess(fixture_abs_path("serve_api.jac"), "")
-    Jac.set_base_path(base)
+    # Load module with isolated base_path
+    base, mod, mach = proc_file_sess(
+        fixture_abs_path("serve_api.jac"), str(server_fixture.session_dir)
+    )
     Jac.jac_import(
         target=mod,
         base_path=base,
@@ -749,8 +770,8 @@ def test_module_loading_and_introspection(server_fixture: ServerFixture) -> None
     # Create server
     server = JacAPIServer(
         module_name="__main__",
-        session_path=server_fixture.session_file,
         port=9999,  # Different port, won't actually start
+        base_path=str(server_fixture.session_dir),
     )
     server.load_module()
 
@@ -820,9 +841,10 @@ def test_csr_mode_empty_root(server_fixture: ServerFixture) -> None:
 
 def test_csr_mode_with_server_default(server_fixture: ServerFixture) -> None:
     """render_client_page returns an empty shell when called directly."""
-    # Load module
-    base, mod, mach = proc_file_sess(fixture_abs_path("serve_api.jac"), "")
-    Jac.set_base_path(base)
+    # Load module with isolated base_path
+    base, mod, mach = proc_file_sess(
+        fixture_abs_path("serve_api.jac"), str(server_fixture.session_dir)
+    )
     Jac.jac_import(
         target=mod,
         base_path=base,
@@ -833,8 +855,8 @@ def test_csr_mode_with_server_default(server_fixture: ServerFixture) -> None:
     # Create server
     server = JacAPIServer(
         module_name="__main__",
-        session_path=server_fixture.session_file,
         port=9998,
+        base_path=str(server_fixture.session_dir),
     )
     server.load_module()
 
@@ -1102,6 +1124,9 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
     import io
     from contextlib import redirect_stdout
 
+    # Set base_path to server_fixture's session_dir for isolation
+    Jac.set_base_path(str(server_fixture.session_dir))
+
     # Capture stdout
     captured_output = io.StringIO()
 
@@ -1110,7 +1135,6 @@ def test_faux_flag_prints_endpoint_docs(server_fixture: ServerFixture) -> None:
             # Call start with faux=True
             execution.start(
                 filename=fixture_abs_path("serve_api.jac"),
-                session=server_fixture.session_file,
                 port=server_fixture.port,
                 main=True,
                 faux=True,
@@ -1210,10 +1234,10 @@ def test_faux_flag_with_littlex_example(server_fixture: ServerFixture) -> None:
 
 @pytest.fixture
 def access_server_fixture(
-    request: pytest.FixtureRequest,
+    request: pytest.FixtureRequest, tmp_path: Path
 ) -> Generator[ServerFixture, None, None]:
     """Pytest fixture for access level server setup and teardown."""
-    fixture = ServerFixture(request)
+    fixture = ServerFixture(request, tmp_path)
     yield fixture
     fixture.cleanup()
 
@@ -1551,9 +1575,8 @@ class ConfiguredServerFixture:
             # Force config re-discovery from the new directory
             get_config(force_discover=True)
 
-            # Load the module
-            base, mod, mach = proc_file_sess(self.jac_file, self.session_file)
-            Jac.set_base_path(base)
+            # Load the module with project_dir as base_path
+            base, mod, mach = proc_file_sess(self.jac_file, self.project_dir)
             Jac.jac_import(
                 target=mod,
                 base_path=base,
@@ -1564,8 +1587,8 @@ class ConfiguredServerFixture:
             # Create server
             self.server = JacAPIServer(
                 module_name="__main__",
-                session_path=self.session_file,
                 port=self.port,
+                base_path=self.project_dir,
             )
 
             # Use the HTTPServer created by JacAPIServer
@@ -1663,10 +1686,7 @@ class ConfiguredServerFixture:
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(timeout=2)
         set_config(None)
-
-        # Give a moment for resources to be released before cleaning up session
-        time.sleep(0.1)
-        del_session(self.session_file)
+        # temp_dir is automatically cleaned up by tempfile.TemporaryDirectory
 
 
 def test_cl_route_prefix_from_jac_toml(request: pytest.FixtureRequest) -> None:

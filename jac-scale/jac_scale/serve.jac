@@ -49,11 +49,7 @@ class JacAPIServer(JServer) {
     static def validate_jwt_token(token: str) -> (str | None);
     static def refresh_jwt_token(token: str) -> (str | None);
     def init(
-        self: JacAPIServer,
-        module_name: str,
-        session_path: str,
-        port: int = 8000,
-        base_path: (str | None) = None
+        self: JacAPIServer, module_name: str, port: int = 8000, base_path: str = ""
     ) -> None;
 
     def login(self: JacAPIServer, username: str, password: str) -> TransportResponse;

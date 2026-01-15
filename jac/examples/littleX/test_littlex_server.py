@@ -15,9 +15,7 @@ from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
 
 
-def proc_file_sess(
-    filename: str, session: str, root: str | None = None
-) -> tuple[str, str, Any]:
+def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, Any]:
     """Create JacRuntime and return the base path, module name, and runtime state."""
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -27,7 +25,9 @@ def proc_file_sess(
         mod = mod[:-3]
     else:
         raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
-    mach = Jac.create_j_context(session=session, root=root)
+    # Always set base path for server tests - they need to find the .jac files
+    Jac.set_base_path(base)
+    mach = Jac.create_j_context(user_root=user_root)
     Jac.set_context(mach)
     return (base, mod, mach)
 
@@ -73,15 +73,22 @@ def littlex_server():
                     except Exception:
                         pass
 
-    # Clean up any leftover session files from previous runs
+    def _clean_jac_data() -> None:
+        """Clean up .jac/data directory from previous runs."""
+        import shutil
+        jac_dir = os.path.join(os.path.dirname(__file__), ".jac")
+        if os.path.exists(jac_dir):
+            shutil.rmtree(jac_dir, ignore_errors=True)
+
+    # Clean up any leftover session files and database from previous runs
     _del_session(server_data["session_file"])
+    _clean_jac_data()
 
     def _start_server() -> None:
         """Start the API server in a background thread."""
         # Load the module
         jac_file = os.path.join(os.path.dirname(__file__), "littleX_single_nodeps.jac")
-        base, mod, mach = proc_file_sess(jac_file, "")
-        Jac.set_base_path(base)
+        base, mod, mach = proc_file(jac_file)
         Jac.jac_import(
             target=mod,
             base_path=base,
@@ -91,7 +98,6 @@ def littlex_server():
         # Create server
         server_data["server"] = JacAPIServer(
             module_name=mod,
-            session_path=server_data["session_file"],
             port=server_data["port"],
             base_path=base,
         )
@@ -140,8 +146,8 @@ def littlex_server():
         """Helper to create a user and store credentials."""
         result = _request("POST", "/user/register", {"username": username, "password": password})
         # Handle new TransportResponse envelope format
-        data = result.get("data", result)
-        if "token" in data:
+        data = result.get("data") or result
+        if data and "token" in data:
             server_data["users"][username] = {
                 "password": password,
                 "token": data["token"],

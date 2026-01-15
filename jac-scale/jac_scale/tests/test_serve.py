@@ -33,7 +33,6 @@ class TestJacScaleServe:
     test_file: Path
     port: int
     base_url: str
-    session_file: Path
     server_process: subprocess.Popen[str] | None = None
 
     @classmethod
@@ -50,11 +49,8 @@ class TestJacScaleServe:
         cls.port = get_free_port()
         cls.base_url = f"http://localhost:{cls.port}"
 
-        # Use unique session file for tests
-        cls.session_file = cls.fixtures_dir / f"test_serve_{cls.port}.session"
-
-        # Clean up any existing session files before starting
-        cls._cleanup_session_files()
+        # Clean up any existing database files before starting
+        cls._cleanup_db_files()
 
         # Start the server process
         cls.server_process = None
@@ -77,8 +73,8 @@ class TestJacScaleServe:
         # Run garbage collection to clean up lingering socket objects
         gc.collect()
 
-        # Clean up session files
-        cls._cleanup_session_files()
+        # Clean up database files
+        cls._cleanup_db_files()
 
     @classmethod
     def _start_server(cls) -> None:
@@ -93,8 +89,6 @@ class TestJacScaleServe:
             str(jac_executable),
             "start",
             str(cls.test_file),
-            "--session",
-            str(cls.session_file),
             "--port",
             str(cls.port),
         ]
@@ -148,37 +142,33 @@ class TestJacScaleServe:
             )
 
     @classmethod
-    def _cleanup_session_files(cls) -> None:
-        """Delete session files including user database files and anchor_store.db."""
-        if cls.session_file.exists():
-            session_dir = cls.session_file.parent
-            prefix = cls.session_file.name
+    def _cleanup_db_files(cls) -> None:
+        """Delete SQLite database files and legacy shelf files."""
+        import shutil
 
-            for file in session_dir.iterdir():
-                if file.name.startswith(prefix):
-                    with contextlib.suppress(Exception):
-                        file.unlink()
-
-        # Clean up anchor_store.db files created by ShelfDB in cwd
+        # Clean up SQLite database files (WAL mode creates -wal and -shm files)
         for pattern in [
+            "*.db",
+            "*.db-wal",
+            "*.db-shm",
+            # Legacy shelf files
             "anchor_store.db.dat",
             "anchor_store.db.bak",
             "anchor_store.db.dir",
         ]:
-            for anchor_file in glob.glob(pattern):
+            for db_file in glob.glob(pattern):
                 with contextlib.suppress(Exception):
-                    Path(anchor_file).unlink()
+                    Path(db_file).unlink()
 
-        session_pattern = str(cls.fixtures_dir / "test_serve_*.session*")
-        for file_path in glob.glob(session_pattern):
-            with contextlib.suppress(Exception):
-                Path(file_path).unlink()
+        # Clean up database files in fixtures directory
+        for pattern in ["*.db", "*.db-wal", "*.db-shm"]:
+            for db_file in glob.glob(str(cls.fixtures_dir / pattern)):
+                with contextlib.suppress(Exception):
+                    Path(db_file).unlink()
 
         # Clean up .jac directory created during serve
         client_build_dir = cls.fixtures_dir / ".jac"
         if client_build_dir.exists():
-            import shutil
-
             with contextlib.suppress(Exception):
                 shutil.rmtree(client_build_dir)
 

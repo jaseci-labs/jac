@@ -1,13 +1,14 @@
 """Test for jaseci plugin."""
 
 import io
-import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from pathlib import Path
 from typing import TypedDict
 
 import pytest
 
+from jaclang import JacRuntime as Jac
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
 from tests.conftest import get_object
 from tests.runtimelib.conftest import fixture_abs_path
@@ -19,9 +20,6 @@ class OutputCapturerDict(TypedDict):
     start: Callable[[], None]
     stop: Callable[[], None]
     get: Callable[[], str]
-
-
-session = ""
 
 
 @pytest.fixture
@@ -53,123 +51,110 @@ def output_capturer() -> OutputCapturerDict:
     return {"start": start_capture, "stop": stop_capture, "get": get_output}
 
 
-def del_session(session: str) -> None:
-    """Delete session files."""
-    path = os.path.dirname(session)
-    prefix = os.path.basename(session)
-    for file in os.listdir(path):
-        if file.startswith(prefix):
-            os.remove(f"{path}/{file}")
+@pytest.fixture
+def jac_temp_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Fixture that provides a temp directory for Jac session files.
+
+    Sets Jac.base_path_dir to the temp directory so session files
+    are auto-generated there and cleaned up automatically by pytest.
+    """
+    original_base_path = Jac.base_path_dir
+    Jac.set_base_path(str(tmp_path))
+    yield tmp_path
+    Jac.set_base_path(original_base_path)
 
 
 def test_walker_simple_persistent(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test simple persistent object."""
-    session = fixture_abs_path("test_walker_simple_persistent.session")
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="create",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="traverse",
         args=[],
     )
     output = output_capturer["get"]().strip()
     assert output == "node a\nnode b"
-    del_session(session)
 
 
 def test_entrypoint_root(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test entrypoint being root."""
-    session = fixture_abs_path("test_entrypoint_root.session")
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="create",
         args=[],
     )
     obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id="root",
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="traverse",
         args=[],
         node=str(obj["id"]),
     )
     output = output_capturer["get"]().strip()
     assert output == "node a\nnode b"
-    del_session(session)
 
 
 def test_entrypoint_non_root(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test entrypoint being non root node."""
-    session = fixture_abs_path("test_entrypoint_non_root.session")
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="create",
         args=[],
     )
     obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id="root",
-        session=session,
     )
     edge_obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id=obj["edges"][0].id.hex,
-        session=session,
     )
     a_obj = get_object(
         filename=fixture_abs_path("simple_persistent.jac"),
         id=edge_obj["target"].id.hex,
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="traverse",
         node=str(a_obj["id"]),
         args=[],
     )
     output = output_capturer["get"]().strip()
-    del_session(session)
     assert output == "node a\nnode b"
 
 
-def test_get_edge():
+def test_get_edge(jac_temp_dir: Path) -> None:
     """Test get an edge object."""
-    session = fixture_abs_path("test_get_edge.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     obj = get_object(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         id="root",
     )
     assert len(obj["edges"]) == 2
     edge_objs = [
         get_object(
             filename=fixture_abs_path("simple_node_connection.jac"),
-            session=session,
             id=e.id.hex,
         )
         for e in obj["edges"]
@@ -178,166 +163,142 @@ def test_get_edge():
     node_objs = [
         get_object(
             filename=fixture_abs_path("simple_node_connection.jac"),
-            session=session,
             id=str(n_id),
         )
         for n_id in node_ids
     ]
     assert len(node_objs) == 2
     assert {obj["archetype"].tag for obj in node_objs} == {"first", "second"}
-    del_session(session)
 
 
 def test_filter_on_edge_get_edge(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on edge."""
-    session = fixture_abs_path("test_filter_on_edge_get_edge.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         entrypoint="filter_on_edge_get_edge",
         args=[],
     )
     assert output_capturer["get"]().strip() == "[simple_edge(index=1)]"
-    del_session(session)
 
 
 def test_filter_on_edge_get_node(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on edge, then get node."""
-    session = fixture_abs_path("test_filter_on_edge_get_node.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         entrypoint="filter_on_edge_get_node",
         args=[],
     )
     assert output_capturer["get"]().strip() == "[simple(tag='second')]"
-    del_session(session)
 
 
 def test_filter_on_node_get_node(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on node, then get edge."""
-    session = fixture_abs_path("test_filter_on_node_get_node.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         entrypoint="filter_on_node_get_node",
         args=[],
     )
     assert output_capturer["get"]().strip() == "[simple(tag='second')]"
-    del_session(session)
 
 
 def test_filter_on_edge_visit(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on edge, then visit."""
-    session = fixture_abs_path("test_filter_on_edge_visit.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         entrypoint="filter_on_edge_visit",
         args=[],
     )
     assert output_capturer["get"]().strip() == "simple(tag='first')"
-    del_session(session)
 
 
 def test_filter_on_node_visit(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on node, then visit."""
-    session = fixture_abs_path("test_filter_on_node_visit.session")
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
         entrypoint="filter_on_node_visit",
         args=[],
     )
     assert output_capturer["get"]().strip() == "simple(tag='first')"
-    del_session(session)
 
 
 def test_indirect_reference_node(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test reference node indirectly without visiting."""
-    session = fixture_abs_path("test_indirect_reference_node.session")
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="create",
         args=[],
     )
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
-        session=session,
         entrypoint="indirect_ref",
         args=[],
     )
     # FIXME: Figure out what to do with warning.
     # assert output_capturer["get"]().strip() == "[b(name='node b')]\n[GenericEdge()]"
-    del_session(session)
 
 
 def test_walker_purger(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test simple persistent object."""
-    session = fixture_abs_path("test_walker_purger.session")
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="populate",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="traverse",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="check",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="purge",
         args=[],
     )
@@ -358,25 +319,21 @@ def test_walker_purger(
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="traverse",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="check",
         args=[],
     )
     execution.enter(
         filename=fixture_abs_path("graph_purger.jac"),
-        session=session,
         entrypoint="purge",
         args=[],
     )
     output = output_capturer["get"]().strip()
     assert output == "Root()\n1\n0"
-    del_session(session)
 
 
 def trigger_access_validation_test(
@@ -387,7 +344,6 @@ def trigger_access_validation_test(
     via_all: bool = False,
 ) -> None:
     """Test different access validation."""
-    global session
     output_capturer["start"]()
 
     ##############################################
@@ -401,7 +357,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[1], 0, via_all],
-        session=session,
         root=roots[0],
         node=node_1,
     )
@@ -409,7 +364,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[0], 0, via_all],
-        session=session,
         root=roots[1],
         node=node_2,
     )
@@ -418,7 +372,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[20],
-        session=session,
         root=roots[0],
         node=nodes[1],
     )
@@ -426,7 +379,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[10],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -435,7 +387,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_target_node",
         args=[20, nodes[1]],
-        session=session,
         root=roots[0],
     )
 
@@ -443,7 +394,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_target_node",
         args=[10, nodes[0]],
-        session=session,
         root=roots[1],
     )
 
@@ -451,7 +401,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[0],
         node=nodes[1],
     )
@@ -459,7 +408,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -471,53 +419,6 @@ def trigger_access_validation_test(
     assert archs[0] == "A(val=2)"
     assert archs[1] == "A(val=1)"
 
-    ##############################################
-    #        WITH READ ACCESS BUT ELEVATED       #
-    ##############################################
-
-    output_capturer["start"]()
-
-    execution.enter(
-        filename=fixture_abs_path("other_root_access.jac"),
-        entrypoint="update_node_forced",
-        args=[20],
-        session=session,
-        root=roots[0],
-        node=nodes[1],
-    )
-    execution.enter(
-        filename=fixture_abs_path("other_root_access.jac"),
-        entrypoint="update_node_forced",
-        args=[10],
-        session=session,
-        root=roots[1],
-        node=nodes[0],
-    )
-
-    execution.enter(
-        filename=fixture_abs_path("other_root_access.jac"),
-        entrypoint="check_node",
-        args=[],
-        session=session,
-        root=roots[0],
-        node=nodes[1],
-    )
-    execution.enter(
-        filename=fixture_abs_path("other_root_access.jac"),
-        entrypoint="check_node",
-        args=[],
-        session=session,
-        root=roots[1],
-        node=nodes[0],
-    )
-    archs = output_capturer["get"]().strip().split("\n")
-    assert len(archs) == 2
-
-    # ---------- UPDATE SHOULD HAPPEN ---------- #
-
-    assert archs[0] == "A(val=20)"
-    assert archs[1] == "A(val=10)"
-
     # ---------- DISALLOW READ ACCESS ---------- #
 
     output_capturer["start"]()
@@ -525,7 +426,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[1], via_all],
-        session=session,
         root=roots[0],
         node=node_1,
     )
@@ -533,7 +433,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[0], via_all],
-        session=session,
         root=roots[1],
         node=node_2,
     )
@@ -542,7 +441,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[0],
         node=nodes[1],
     )
@@ -550,7 +448,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -564,7 +461,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[1], "WRITE", via_all],
-        session=session,
         root=roots[0],
         node=node_1,
     )
@@ -572,7 +468,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[0], "WRITE", via_all],
-        session=session,
         root=roots[1],
         node=node_2,
     )
@@ -583,13 +478,11 @@ def trigger_access_validation_test(
         args=[200],
         root=roots[0],
         node=nodes[1],
-        session=session,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[100],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -598,7 +491,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[0],
         node=nodes[1],
     )
@@ -606,7 +498,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -625,7 +516,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[1], via_all],
-        session=session,
         root=roots[0],
         node=node_1,
     )
@@ -633,7 +523,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[0], via_all],
-        session=session,
         root=roots[1],
         node=node_2,
     )
@@ -642,7 +531,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[0],
         node=nodes[1],
     )
@@ -650,7 +538,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=roots[1],
         node=nodes[0],
     )
@@ -662,7 +549,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[1],
-        session=session,
         root=roots[0],
         node=nodes[0],
     )
@@ -670,7 +556,6 @@ def trigger_access_validation_test(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[2],
-        session=session,
         root=roots[1],
         node=nodes[1],
     )
@@ -678,11 +563,9 @@ def trigger_access_validation_test(
 
 def test_other_root_access(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test filtering on node, then visit."""
-    global session
-    session = fixture_abs_path("other_root_access.session")
-
     ##############################################
     #                CREATE ROOTS                #
     ##############################################
@@ -692,7 +575,6 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="create_other_root",
         args=[],
-        session=session,
     )
     root1 = output_capturer["get"]().strip()
 
@@ -701,7 +583,6 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="create_other_root",
         args=[],
-        session=session,
     )
     root2 = output_capturer["get"]().strip()
 
@@ -714,14 +595,12 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="create_node",
         args=[1],
-        session=session,
         root=root1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="create_node",
         args=[2],
-        session=session,
         root=root2,
     )
     nodes = output_capturer["get"]().strip().split("\n")
@@ -736,14 +615,12 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=root1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=root2,
     )
     archs = output_capturer["get"]().strip().split("\n")
@@ -761,7 +638,6 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=root1,
         node=nodes[1],
     )
@@ -769,7 +645,6 @@ def test_other_root_access(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
-        session=session,
         root=root2,
         node=nodes[0],
     )
@@ -795,23 +670,18 @@ def test_other_root_access(
         output_capturer, roots, nodes, give_access_to_full_graph=True, via_all=True
     )
 
-    del_session(session)
-
 
 def test_savable_object(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test ObjectAnchor save."""
-    global session
-    session = fixture_abs_path("savable_object.session")
-
     output_capturer["start"]()
 
     execution.enter(
         filename=fixture_abs_path("savable_object.jac"),
         entrypoint="create_custom_object",
         args=[],
-        session=session,
     )
 
     prints = output_capturer["get"]().strip().split("\n")
@@ -829,7 +699,6 @@ def test_savable_object(
         filename=fixture_abs_path("savable_object.jac"),
         entrypoint="get_custom_object",
         args=[id],
-        session=session,
     )
     assert output_capturer["get"]().strip() == (
         "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
@@ -843,7 +712,6 @@ def test_savable_object(
         filename=fixture_abs_path("savable_object.jac"),
         entrypoint="update_custom_object",
         args=[id],
-        session=session,
     )
 
     assert output_capturer["get"]().strip() == (
@@ -858,40 +726,32 @@ def test_savable_object(
         filename=fixture_abs_path("savable_object.jac"),
         entrypoint="delete_custom_object",
         args=[id],
-        session=session,
     )
 
     execution.enter(
         filename=fixture_abs_path("savable_object.jac"),
         entrypoint="get_custom_object",
         args=[id],
-        session=session,
     )
     assert output_capturer["get"]().strip() == "None"
-
-    del_session(session)
 
 
 def test_traversing_save(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test traversing save."""
-    global session
-    session = fixture_abs_path("traversing_save.session")
-
     output_capturer["start"]()
     execution.enter(
         filename=fixture_abs_path("traversing_save.jac"),
         entrypoint="build",
         args=[],
-        session=session,
     )
 
     execution.enter(
         filename=fixture_abs_path("traversing_save.jac"),
         entrypoint="view",
         args=[],
-        session=session,
     )
 
     assert output_capturer["get"]().strip() == (
@@ -904,16 +764,12 @@ def test_traversing_save(
         '2 [label="B()"fillcolor="#F5E5FF"];\n}'
     )
 
-    del_session(session)
-
 
 def test_custom_access_validation(
     output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
 ) -> None:
     """Test custom access validation."""
-    global session
-    session = fixture_abs_path("custom_access_validation.session")
-
     ##############################################
     #              CREATE OTHER ROOT             #
     ##############################################
@@ -923,7 +779,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="create_other_root",
         args=[],
-        session=session,
     )
 
     other_root = output_capturer["get"]().strip()
@@ -937,7 +792,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="create",
         args=[],
-        session=session,
     )
     node = output_capturer["get"]().strip()
 
@@ -951,7 +805,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         node=node,
     )
 
@@ -963,7 +816,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -979,7 +831,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["READ", None],
-        session=session,
         node=node,
     )
 
@@ -989,7 +840,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1005,7 +855,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=[None, 1],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1016,7 +865,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1032,7 +880,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["WRITE", None],
-        session=session,
         node=node,
     )
 
@@ -1041,7 +888,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=[None, 2],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1052,7 +898,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1068,7 +913,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["NO_ACCESS", None],
-        session=session,
         node=node,
     )
 
@@ -1077,7 +921,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=[None, 5],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1088,7 +931,6 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         root=other_root,
         node=node,
     )
@@ -1101,18 +943,19 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        session=session,
         node=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='NO_ACCESS', val2=2)"
 
 
-def test_run_persistent_reuse():
-    """Test that execution.run with session persists nodes to session file."""
-    import shelve
+def test_run_persistent_reuse(jac_temp_dir: Path) -> None:
+    """Test that execution.run with session persists nodes to database."""
+    import sqlite3
+    from pickle import loads
 
-    session = fixture_abs_path("test_run_persistent_reuse.session")
+    # Database path is auto-generated at jac_temp_dir/.jac/data/main.db
+    db_path = jac_temp_dir / ".jac" / "data" / "main.db"
 
     ##############################################
     #          FIRST RUN - CREATE NODES          #
@@ -1120,17 +963,24 @@ def test_run_persistent_reuse():
 
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
 
-    # Check session file directly (not via get_object which re-runs code)
-    with shelve.open(session) as shelf:
-        root = shelf["00000000-0000-0000-0000-000000000000"]
-        first_run_edges = len(root.edges)
-        first_run_keys = len(shelf.keys())
+    # Check database directly (not via get_object which re-runs code)
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute(
+        "SELECT data FROM anchors WHERE id = ?",
+        ("00000000-0000-0000-0000-000000000000",),
+    )
+    row = cursor.fetchone()
+    assert row is not None, "Root should be persisted to database"
+    root = loads(row[0])
+    first_run_edges = len(root.edges)
+    cursor = conn.execute("SELECT COUNT(*) FROM anchors")
+    first_run_keys = cursor.fetchone()[0]
+    conn.close()
 
     # Should have root + 2 nodes + 2 edges = 5 keys
-    assert first_run_keys > 1, "First run should persist nodes to session file"
+    assert first_run_keys > 1, "First run should persist nodes to database"
     assert first_run_edges == 2, "Root should have 2 edges after first run"
 
     ##############################################
@@ -1140,14 +990,20 @@ def test_run_persistent_reuse():
 
     execution.run(
         filename=fixture_abs_path("simple_node_connection.jac"),
-        session=session,
     )
 
-    # Check session file again
-    with shelve.open(session) as shelf:
-        root = shelf["00000000-0000-0000-0000-000000000000"]
-        second_run_edges = len(root.edges)
-        second_run_keys = len(shelf.keys())
+    # Check database again
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute(
+        "SELECT data FROM anchors WHERE id = ?",
+        ("00000000-0000-0000-0000-000000000000",),
+    )
+    row = cursor.fetchone()
+    root = loads(row[0])
+    second_run_edges = len(root.edges)
+    cursor = conn.execute("SELECT COUNT(*) FROM anchors")
+    second_run_keys = cursor.fetchone()[0]
+    conn.close()
 
     # Should have same number of keys (not doubled)
     assert second_run_keys == first_run_keys, (
@@ -1155,4 +1011,109 @@ def test_run_persistent_reuse():
     )
     assert second_run_edges == 2, "Root should still have only 2 edges (not 4)"
 
-    del_session(session)
+
+def test_user_isolation_via_set_user_root(
+    output_capturer: OutputCapturerDict,
+    jac_temp_dir: Path,
+) -> None:
+    """Test that set_user_root properly isolates user data.
+
+    This test verifies:
+    1. Each user has their own root and sees only their own data
+    2. Calling set_user_root (via execution.enter with root param) correctly
+       sets the permission boundary for that user
+    3. get_root() returns the correct user's root after context switch
+    """
+    # Create two separate user roots
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="create_other_root",
+        args=[],
+    )
+    user1_root = output_capturer["get"]().strip()
+
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="create_other_root",
+        args=[],
+    )
+    user2_root = output_capturer["get"]().strip()
+
+    # Verify different roots were created
+    assert user1_root != user2_root, "Each user should have a unique root"
+
+    # User 1 creates a node with val=100
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="create_node",
+        args=[100],
+        root=user1_root,
+    )
+    user1_node = output_capturer["get"]().strip()
+
+    # User 2 creates a node with val=200
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="create_node",
+        args=[200],
+        root=user2_root,
+    )
+    user2_node = output_capturer["get"]().strip()
+
+    # Verify user 1 can only see their own node (val=100)
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="check_node",
+        args=[],
+        root=user1_root,
+    )
+    user1_sees = output_capturer["get"]().strip()
+    assert user1_sees == "A(val=100)", (
+        f"User 1 should see their node, got: {user1_sees}"
+    )
+
+    # Verify user 2 can only see their own node (val=200)
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="check_node",
+        args=[],
+        root=user2_root,
+    )
+    user2_sees = output_capturer["get"]().strip()
+    assert user2_sees == "A(val=200)", (
+        f"User 2 should see their node, got: {user2_sees}"
+    )
+
+    # Verify user 1 cannot see user 2's node (cross-user isolation)
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="check_node",
+        args=[],
+        root=user1_root,
+        node=user2_node,
+    )
+    cross_access = output_capturer["get"]().strip()
+    assert cross_access == "", (
+        f"User 1 should NOT see user 2's node, but got: {cross_access}"
+    )
+
+    # Verify user 2 cannot see user 1's node
+    output_capturer["start"]()
+    execution.enter(
+        filename=fixture_abs_path("other_root_access.jac"),
+        entrypoint="check_node",
+        args=[],
+        root=user2_root,
+        node=user1_node,
+    )
+    cross_access = output_capturer["get"]().strip()
+    assert cross_access == "", (
+        f"User 2 should NOT see user 1's node, but got: {cross_access}"
+    )

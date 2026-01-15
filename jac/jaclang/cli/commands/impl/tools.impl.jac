@@ -19,7 +19,7 @@ def _ensure_jac_runtime -> None {
 }
 
 """Create JacRuntime and return the base path, module name, and runtime state."""
-def _proc_file_sess(filename: str, session: str) -> tuple {
+def _proc_file(filename: str) -> tuple {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
@@ -34,7 +34,12 @@ def _proc_file_sess(filename: str, session: str) -> tuple {
         );
         <>exit(1);
     }
-    mach = Jac.create_j_context(session=session);
+    # Only set base path if not already set (allows tests to override)
+    if not Jac.base_path_dir {
+        Jac.set_base_path(base);
+    }
+    # Tools run in system context (no user authentication)
+    mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
     return (base, mod, mach);
 }
@@ -64,7 +69,6 @@ impl tool(tool: str, args: list = []) -> int {
 """Generate graph visualization."""
 impl dot(
     filename: str,
-    session: str = "",
     initial: str = "",
     depth: int = -1,
     traverse: bool = False,
@@ -79,7 +83,7 @@ impl dot(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.builtin { printgraph }
-    (base, mod, jac_machine) = _proc_file_sess(filename, session);
+    (base, mod, jac_machine) = _proc_file(filename);
     if filename.endswith('.jac') {
         Jac.jac_import(target=mod, base_path=base, override_name='__main__');
         module = Jac.loaded_modules.get('__main__');
