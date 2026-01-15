@@ -10,7 +10,7 @@ glob llm: MockLLM = MockLLM(
         # Use these config options to call your own LLM endpoint
         "api_base": "https://your_api_base_here/v1/chat/completions",
         "api_key": "your_api_key_here",
-        "use_http_client": True,
+        "http_client": True,
         "ca_bundle": True,
 
         # for test cases
