@@ -6,7 +6,9 @@ Configures logging when using real LLM backends.
 impl Model.postinit -> None {
     # Check instance config first, then fall back to global config
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
-    self.http_client = bool(self.config.get("http_client", _model_config.get("http_client", False)));
+    self.http_client = bool(
+        self.config.get("http_client", _model_config.get("http_client", False))
+    );
     # When model_name is 'mockllm', delegate to MockLLM behavior
     if self.model_name == MODEL_MOCK {
         self._mock_delegate = MockLLM(model_name=self.model_name, config=self.config);
