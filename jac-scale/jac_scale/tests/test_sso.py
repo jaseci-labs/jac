@@ -128,7 +128,6 @@ class TestJacAPIServerSSO:
         with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             self.server = JacAPIServer(
                 module_name="test_module",
-                session_path="/tmp/test_session.db",
                 port=8000,
             )
 
@@ -199,7 +198,6 @@ class TestJacAPIServerSSO:
         with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
-                session_path="/tmp/test_session.db",
                 port=8000,
             )
             sso = server.get_sso(Platforms.GOOGLE.value, Operations.LOGIN.value)
@@ -590,7 +588,6 @@ class TestJacAPIServerSSO:
         with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
-                session_path="/tmp/test_session.db",
                 port=8000,
             )
 
@@ -611,7 +608,6 @@ class TestJacAPIServerSSO:
         with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
-                session_path="/tmp/test_session.db",
                 port=8000,
             )
 
@@ -628,7 +624,6 @@ class TestJacAPIServerSSO:
         with patch("jac_scale.serve.get_scale_config", return_value=mock_config):
             server = JacAPIServer(
                 module_name="test_module",
-                session_path="/tmp/test_session.db",
                 port=8000,
             )
 
