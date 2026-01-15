@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.14 (Unreleased)
 
+- **Direct HTTP model calls:** Added support for calling custom LLM endpoints via direct HTTP (`use_http_client` in model config).
+
 ## byllm 0.4.13 (Latest Release)
 
 ## byllm 0.4.12
