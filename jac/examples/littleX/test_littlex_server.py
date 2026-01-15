@@ -15,9 +15,7 @@ from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
 
 
-def proc_file_sess(
-    filename: str, session: str, root: str | None = None
-) -> tuple[str, str, Any]:
+def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, Any]:
     """Create JacRuntime and return the base path, module name, and runtime state."""
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -27,7 +25,10 @@ def proc_file_sess(
         mod = mod[:-3]
     else:
         raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
-    mach = Jac.create_j_context(session=session, root=root)
+    # Only set base path if not already set (allows isolate_jac_context fixture to work)
+    if not Jac.base_path_dir:
+        Jac.set_base_path(base)
+    mach = Jac.create_j_context(user_root=user_root)
     Jac.set_context(mach)
     return (base, mod, mach)
 
@@ -80,8 +81,7 @@ def littlex_server():
         """Start the API server in a background thread."""
         # Load the module
         jac_file = os.path.join(os.path.dirname(__file__), "littleX_single_nodeps.jac")
-        base, mod, mach = proc_file_sess(jac_file, "")
-        Jac.set_base_path(base)
+        base, mod, mach = proc_file(jac_file)
         Jac.jac_import(
             target=mod,
             base_path=base,
@@ -91,7 +91,6 @@ def littlex_server():
         # Create server
         server_data["server"] = JacAPIServer(
             module_name=mod,
-            session_path=server_data["session_file"],
             port=server_data["port"],
             base_path=base,
         )

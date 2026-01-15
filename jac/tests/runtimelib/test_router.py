@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -10,11 +11,12 @@ from jaclang import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)
-def reset_machine():
+def reset_machine(tmp_path: Path) -> Generator[None, None, None]:
     """Reset Jac machine before and after each test."""
-    Jac.reset_machine()
+    # Use tmp_path for session isolation in parallel tests
+    Jac.reset_machine(base_path=str(tmp_path))
     yield
-    Jac.reset_machine()
+    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def test_router_compiles():

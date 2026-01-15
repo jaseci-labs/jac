@@ -22,8 +22,12 @@ def _ensure_jac_runtime -> None {
     }
 }
 
-"""Create JacRuntime and return the base path, module name, and runtime state."""
-def _proc_file_sess(filename: str, session: str, <>root: (str | None) = None) -> tuple {
+"""Create JacRuntime and return the base path, module name, and runtime state.
+
+This is the canonical function for setting up CLI execution context.
+It handles base_path setup, closing any existing context, and creating a new one.
+"""
+def _proc_file(filename: str) -> tuple {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
@@ -38,20 +42,22 @@ def _proc_file_sess(filename: str, session: str, <>root: (str | None) = None) ->
         );
         <>exit(1);
     }
-    mach = Jac.create_j_context(session=session, <>root=<>root);
+    # Only set base path if not already set (allows tests to override)
+    if not Jac.base_path_dir {
+        Jac.set_base_path(base);
+    }
+    # CLI contexts use system_root (no user authentication)
+    mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
     return (base, mod, mach);
 }
 
 """Run the specified .jac file."""
-impl run(
-    filename: str, session: str = '', main: bool = True, cache: bool = True
-) -> int {
+impl run(filename: str, main: bool = True, cache: bool = True) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    (base, mod, mach) = _proc_file_sess(filename, session);
+    (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
-    Jac.set_base_path(base);
     try {
         if filename.endswith(('.jac', '.py')) {
             Jac.jac_import(
@@ -86,7 +92,6 @@ impl enter(
     filename: str,
     entrypoint: str,
     args: list = [],
-    session: str = '',
     main: bool = True,
     <>root: str = '',
     <>node: str = ''
@@ -94,7 +99,11 @@ impl enter(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from jaclang.pycore.constructs { WalkerArchetype }
-    (base, mod, mach) = _proc_file_sess(filename, session, <>root);
+    (base, mod, mach) = _proc_file(filename);
+    # Set user root if provided (for permission boundary)
+    if <>root {
+        mach.set_user_root(<>root);
+    }
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(
             target=mod, base_path=base, override_name='__main__' if main else None
@@ -135,7 +144,6 @@ impl enter(
 """Start REST API server for the specified .jac file."""
 impl start(
     filename: str,
-    session: str = '',
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
@@ -145,22 +153,8 @@ impl start(
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
-    # Compute session_path BEFORE proc_file_sess so context has proper persistence
-    (base, mod) = os.path.split(filename);
-    base = base or os.getcwd();
-    if (filename.endswith('.jac') or filename.endswith('.jir')) {
-        mod = mod[:-4];
-    } elif filename.endswith('.py') {
-        mod = mod[:-3];
-    }
-    # Use .jac/data/ directory for session files (runtime artifacts)
-    data_dir = os.path.join(base, ".jac", "data");
-    os.makedirs(data_dir, exist_ok=True);
-    session_path = session or os.path.join(data_dir, f"{mod}.session");
-    # Now call proc_file_sess with the computed session_path
-    (base, mod, mach) = _proc_file_sess(filename, session_path);
+    (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
-    Jac.set_base_path(base);
     try {
         if filename.endswith(('.jac', '.py')) {
             Jac.jac_import(target=mod, base_path=base, lng=lng);
@@ -193,12 +187,7 @@ impl start(
     }
     # Get server class from plugin hook (allows jac-scale to provide enhanced server)
     ServerClass = Jac.get_api_server_class();
-    server = ServerClass(
-        module_name=mod,
-        session_path=session_path,
-        port=actual_api_port,
-        base_path=base
-    );
+    server = ServerClass(module_name=mod, port=actual_api_port, base_path=base);
     if faux {
         try {
             server.print_endpoint_docs();
@@ -404,7 +393,7 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
         if bytecode {
             code = marshal.loads(bytecode);
             if db.has_breakpoint(bytecode) {
-                run(filename, '', main, cache);
+                run(filename, main, cache);
             } else {
                 func = types.FunctionType(code, globals());
                 print('Debugging with Jac debugger.\n');

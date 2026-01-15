@@ -15,19 +15,23 @@ glob __all__ = ['ExecutionContext'];
 The `mem` field is a Memory implementation (typically TieredMemory) that provides
 a unified interface to all storage tiers. TieredMemory handles read-through
 caching and write-through persistence with access control internally.
+
+Fields:
+- system_root: The global system root (superuser access, fixed UUID)
+- user_root: The current user's root node (for permission checks and ownership)
+- entry_node: Where walkers start traversal (defaults to user_root)
 """
 obj ExecutionContext {
     has mem: Memory | None = None,
         reports: list[Any] = [],
         custom: Any = MISSING,
         system_root: NodeAnchor | None = None,
-        entry_node: NodeAnchor | None = None,
-        root_state: NodeAnchor | None = None,
-        session: (str | None) = None,
-        <>root: (str | None) = None;
+        user_root: NodeAnchor | None = None,
+        entry_node: NodeAnchor | None = None;
 
     def postinit -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;
+    def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
     def get_root -> Root;

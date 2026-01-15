@@ -51,7 +51,9 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
 }
 
 impl UserManager.postinit -> None {
-    self._db_path = f"{self.session_path}.users.json";
+    data_dir = os.path.join(self.base_path, ".jac", "data");
+    os.makedirs(data_dir, exist_ok=True);
+    self._db_path = os.path.join(data_dir, "users.json");
     self._load_db();
 }
 
@@ -151,9 +153,9 @@ impl ExecutionManager.execute_function(
     if not root_id {
         return {'error': 'User not found'};
     }
-    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    # Set user context for permission checks and ownership
     ctx = Jac.get_context();
-    ctx.set_entry_node(root_id);
+    ctx.set_user_root(root_id);
     ctx.reports = [];  # Clear reports for this request
     try {
         result = func(**args);
@@ -177,9 +179,9 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
-    # Use existing context and set entry node to user's root (avoids shelf locking issues)
+    # Set user context for permission checks and ownership
     ctx = Jac.get_context();
-    ctx.set_entry_node(root_id);
+    ctx.set_user_root(root_id);
     ctx.reports = [];  # Clear reports for this request
     try {
         <>walker = walker_cls(**fields);
@@ -192,6 +194,7 @@ impl ExecutionManager.spawn_walker(
             target_node = ctx.get_root();
         }
         Jac.spawn(<>walker, target_node);
+        Jac.commit();  # Persist changes
         return {
             'result': JacSerializer.serialize(<>walker),
             'reports': JacSerializer.serialize(ctx.reports)
@@ -731,10 +734,10 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
-    self.user_manager = UserManager(session_path=self.session_path);
+    self.user_manager = UserManager(base_path=self.base_path);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
-        session_path=self.session_path, user_manager=self.user_manager
+        base_path=self.base_path, user_manager=self.user_manager
     );
     self.auth_handler = AuthHandler(
         introspector=self.introspector,
@@ -1228,7 +1231,6 @@ impl JacAPIServer.start -> None {
     with self.server as httpd {
         print(f"Jac API Server running on http://0.0.0.0:{self.port}");
         print(f"Module: {self.module_name}");
-        print(f"Session: {self.session_path}");
         print('\nAvailable endpoints:');
         print('  POST /user/register - Create a new user');
         print('  POST /user/login - Login and get auth token');

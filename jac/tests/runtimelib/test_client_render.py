@@ -4,21 +4,22 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
 from jaclang import JacRuntime as Jac
 from jaclang.runtimelib.server import JacAPIServer
-from tests.runtimelib.conftest import fixture_abs_path
 
 
 @pytest.fixture(autouse=True)
-def reset_machine():
+def reset_machine(tmp_path: Path) -> Generator[None, None, None]:
     """Reset Jac machine before and after each test."""
-    Jac.reset_machine()
+    # Use tmp_path for session isolation in parallel tests
+    Jac.reset_machine(base_path=str(tmp_path))
     yield
-    Jac.reset_machine()
+    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def make_server() -> JacAPIServer:
@@ -27,7 +28,7 @@ def make_server() -> JacAPIServer:
     Jac.jac_import("client_app", str(fixtures_dir))
     server = JacAPIServer(
         module_name="client_app",
-        session_path=str(fixture_abs_path("client.session")),
+        base_path=str(fixtures_dir),
     )
     server.load_module()
     return server

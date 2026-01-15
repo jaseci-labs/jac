@@ -1,15 +1,14 @@
-"""ScaleTieredMemory Implementation - Multi-tier storage coordination."""
+"""ScaleTieredMemory Implementation - Multi-tier storage coordination.
+
+Storage configuration comes from environment variables or jac.toml.
+"""
 import logging;
-import from jaclang.runtimelib.memory { ShelfMemory }
+import from jaclang.runtimelib.memory { SqliteMemory }
 
 glob logger = logging.getLogger(__name__);
 
 """Initialize ScaleTieredMemory with distributed backends."""
-impl ScaleTieredMemory.init(
-    session: (str | None) = None, use_cache: bool = True
-) -> None {
-    # Store session path for reference
-    self.session_path = session;
+impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
@@ -23,21 +22,17 @@ impl ScaleTieredMemory.init(
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
     }
-    # L3: Try MongoDB first (replaces ShelfMemory), fall back to ShelfMemory
+    # L3: Try MongoDB first (replaces SqliteMemory), fall back to SqliteMemory
     mongo_backend = MongoBackend();
     if mongo_backend.is_available() {
         self.l3 = mongo_backend;
         self._persistence_type = 'mongodb';
         logger.info("MongoDB persistence backend initialized");
     } else {
-        # Fall back to jaclang's ShelfMemory
-        if session {
-            self.l3 = ShelfMemory(path=session);
-        } else {
-            self.l3 = ShelfMemory(path=_db_config['shelf_db_path']);
-        }
-        self._persistence_type = 'shelf';
-        logger.info("MongoDB not available, using ShelfMemory for persistence");
+        # Fall back to jaclang's SqliteMemory using configured path
+        self.l3 = SqliteMemory(path=_db_config['shelf_db_path']);
+        self._persistence_type = 'sqlite';
+        logger.info("MongoDB not available, using SqliteMemory for persistence");
     }
 }
 

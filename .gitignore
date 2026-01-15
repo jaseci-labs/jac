@@ -71,3 +71,6 @@ demo/
 .env
 
 node_modules
+
+# Claude Code local instructions
+CLAUDE.local.md

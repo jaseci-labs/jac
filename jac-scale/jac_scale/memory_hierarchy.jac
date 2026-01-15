@@ -4,10 +4,10 @@ Memory Hierarchy Implementation for jac-scale.
 This module provides scalable storage backends that replace the default
 implementations in jaclang.runtimelib.memory:
 - RedisBackend: Replaces LocalCacheMemory as L2 distributed cache
-- MongoBackend: Replaces ShelfMemory as L3 persistent storage
+- MongoBackend: Replaces SqliteMemory as L3 persistent storage
 
 ScaleTieredMemory extends TieredMemory by swapping in these backends.
-Falls back to jaclang's ShelfMemory when MongoDB is unavailable.
+Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 """
 import logging;
 import from collections.abc { Callable, Generator, Iterable }
@@ -22,7 +22,7 @@ import from jaclang.runtimelib.memory {
     CacheMemory,
     PersistentMemory,
     TieredMemory,
-    ShelfMemory
+    SqliteMemory
 }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jac_scale.config_loader { get_scale_config }
@@ -71,7 +71,7 @@ obj RedisBackend(CacheMemory) {
 
 """
 MongoDB persistence backend - implements PersistentMemory for durable L3 storage.
-Replaces ShelfMemory when MongoDB is available.
+Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
     has client: (MongoClient | None) = None,
@@ -115,15 +115,15 @@ Scalable Tiered Memory - extends TieredMemory with distributed backends.
 
 Swaps the default implementations:
 - L2: RedisBackend instead of LocalCacheMemory (when Redis available)
-- L3: MongoBackend instead of ShelfMemory (when MongoDB available)
+- L3: MongoBackend instead of SqliteMemory (when MongoDB available)
 
-Falls back to jaclang's ShelfMemory for L3 when MongoDB is unavailable.
+Falls back to jaclang's SqliteMemory for L3 when MongoDB is unavailable.
+Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
-        _persistence_type: str = 'none',
-        session_path: (str | None) = None;
+        _persistence_type: str = 'none';
 
-    def init(session: (str | None) = None, use_cache: bool = True) -> None;
+    def init(use_cache: bool = True) -> None;
     def close -> None;
 }

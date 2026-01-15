@@ -860,13 +860,9 @@ impl JacAPIServer.login(
 }
 
 impl JacAPIServer.init(
-    self: JacAPIServer,
-    module_name: str,
-    session_path: str,
-    port: int = 8000,
-    base_path: (str | None) = None
+    self: JacAPIServer, module_name: str, port: int = 8000, base_path: str = ""
 ) -> None {
-    super.init(module_name, session_path, port, base_path);
+    super.init(module_name, port, base_path);
     self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
