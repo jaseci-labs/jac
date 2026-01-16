@@ -384,13 +384,18 @@ def test_all_in_one_app_endpoints() -> None:
                         f"Failed to GET /workers/worker.js after retries: {exc}"
                     )
 
-                # "/walker/get_server_message" – walkers are integrated and up and running
+                # POST /walker/get_server_message – walkers are integrated and up and running
                 try:
-                    print("[DEBUG] Sending GET request to /walker/get_server_message")
-                    with urlopen(
+                    print(
+                        "[DEBUG] Sending POST request to /walker/get_server_message endpoint"
+                    )
+                    req = Request(
                         "http://127.0.0.1:8000/walker/get_server_message",
-                        timeout=20,
-                    ) as resp_walker:
+                        data=json.dumps({}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urlopen(req, timeout=20) as resp_walker:
                         walker_body = resp_walker.read().decode(
                             "utf-8", errors="ignore"
                         )
@@ -400,12 +405,13 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{walker_body[:500]}"
                         )
                         assert resp_walker.status == 200
-                        assert "get_server_message" in walker_body
-                except (URLError, HTTPError) as exc:
+                        # The walker reports "hello from a basic walker!"
+                        assert "hello from a basic walker" in walker_body.lower()
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(
                         f"[DEBUG] Error while requesting /walker/get_server_message: {exc}"
                     )
-                    pytest.fail("Failed to GET /walker/get_server_message")
+                    pytest.fail("Failed to POST /walker/get_server_message")
 
                 # POST /walker/create_todo – create a Todo via walker HTTP API
                 try:
