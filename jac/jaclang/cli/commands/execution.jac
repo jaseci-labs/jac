@@ -71,7 +71,12 @@ def enter(
     name="start",
     help="Start REST API server for a Jac program",
     args=[
-        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
+        Arg.create(
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            default="main.jac",
+            help="Path to .jac file (default: main.jac)"
+        ),
         Arg.create("port", typ=int, default=8000, help="Server port", short="p"),
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create(
@@ -103,10 +108,11 @@ def enter(
 
     ],
     examples=[
-        ("jac start app.jac", "Start server on default port"),
-        ("jac start app.jac --port 3000", "Start server on port 3000"),
+        ("jac start", "Start server with default main.jac"),
+        ("jac start app.jac", "Start server with specific file"),
+        ("jac start --port 3000", "Start main.jac on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start app.jac --watch", "Start with hot module replacement"),
+        ("jac start --watch", "Start with hot module replacement"),
         ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
 
     ],

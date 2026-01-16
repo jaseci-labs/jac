@@ -68,11 +68,14 @@ Create a full-stack project with frontend and backend:
 jac create --cl myapp
 cd myapp
 
-# Start the development server
+# Start the development server (uses main.jac by default)
+# If main.jac doesn't exist, specify your entry file: jac start app.jac --watch
 jac start --watch
 ```
 
 Open `http://localhost:8000` to see your app running. The `--watch` flag enables Hot Module Replacement - edit your code and see changes instantly!
+
+> **Note**: If your project uses a different entry file (e.g., `app.jac`), you can specify it: `jac start app.jac --watch`.
 
 Your project includes:
 

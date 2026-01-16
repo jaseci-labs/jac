@@ -478,8 +478,12 @@ cl {
 ## Build Commands
 
 ```bash
-# Development server
-jac start main.jac
+# Development server (uses main.jac by default)
+# If main.jac doesn't exist, specify your entry file: jac start app.jac
+jac start
+
+# Start with specific file (if your entry point is not main.jac)
+jac start app.jac
 
 # Production build
 jac build main.jac
@@ -488,6 +492,10 @@ jac build main.jac
 jac start  # Uses [project].entry-point
 ```
 
+> **Note**:
+>
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), specify it explicitly: `jac start app.jac`
+>
 ---
 
 ## Hot Module Replacement (HMR)
@@ -512,8 +520,8 @@ jac install --dev
 ### Development Workflow
 
 ```bash
-# Start with HMR enabled
-jac start main.jac --watch
+# Start with HMR enabled (uses main.jac by default)
+jac start --watch
 ```
 
 This starts:
@@ -540,14 +548,14 @@ When you edit a `.jac` file:
 **Examples:**
 
 ```bash
-# Full-stack HMR (frontend + backend)
-jac start main.jac --watch
+# Full-stack HMR (frontend + backend, uses main.jac by default)
+jac start --watch
 
 # API-only HMR (no frontend bundling)
-jac start main.jac --watch --no-client
+jac start --watch --no-client
 
 # Custom ports
-jac start main.jac --watch -p 3000 --api-port 3001
+jac start --watch -p 3000 --api-port 3001
 ```
 
 ### Troubleshooting

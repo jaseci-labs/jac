@@ -90,6 +90,30 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                 );
                             }
                         }
+                        # Check if this member is a property. If so, return the property's
+                        # return type instead of the FunctionType.
+                        if self._is_symbol_property(member.symbol) {
+                            if overloaded_ty {
+                                # For overloaded properties, use the return type from the first overload
+                                # TODO: In the future, we might want to union the return types
+                                if overloaded_ty.overloads
+                                and len(overloaded_ty.overloads) > 0 {
+                                    prop_return_type = overloaded_ty.overloads[0].return_type;
+                                    if prop_return_type {
+                                        member.symbol.add_use(expr.right);
+                                        expr.right.type = prop_return_type;
+                                        return expr.right.type;
+                                    }
+                                }
+                            } elif isinstance(member_ty, types.FunctionType) {
+                                prop_return_type = member_ty.return_type;
+                                if prop_return_type {
+                                    member.symbol.add_use(expr.right);
+                                    expr.right.type = prop_return_type;
+                                    return expr.right.type;
+                                }
+                            }
+                        }
                         # NOTE: If this atom trailer is called `<atom_trailer>()` we can resolve
                         # which overload is being called based on the arguments, and update the type
                         # based on the call, maybe for future.

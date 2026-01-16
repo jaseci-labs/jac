@@ -1797,3 +1797,123 @@ base_route_app = "client_page"
             assert status == 404
         finally:
             fixture.cleanup()
+
+
+def test_start_with_default_main_jac(tmp_path: Path) -> None:
+    """Test that jac start uses main.jac as default when available."""
+    import io
+    from contextlib import redirect_stderr
+
+    main_jac = tmp_path / "main.jac"
+    main_jac.write_text('with entry { "Hello from main.jac" :> print; }')
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        Jac.set_base_path(str(tmp_path))
+
+        captured_output = io.StringIO()
+
+        with redirect_stderr(captured_output):
+            execution.start(
+                filename="main.jac",
+                port=get_free_port(),
+                main=True,
+                faux=True,
+            )
+
+        output = captured_output.getvalue()
+        assert "not found" not in output.lower()
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_start_without_main_jac_error(tmp_path: Path) -> None:
+    """Test that jac start provides helpful error when main.jac is missing."""
+    import io
+    from contextlib import redirect_stderr
+
+    main_jac = tmp_path / "main.jac"
+    if main_jac.exists():
+        main_jac.unlink()
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        Jac.set_base_path(str(tmp_path))
+
+        captured_output = io.StringIO()
+
+        with redirect_stderr(captured_output):
+            result = execution.start(
+                filename="main.jac",
+                port=get_free_port(),
+                main=True,
+                faux=True,
+            )
+
+        assert result == 1
+
+        output = captured_output.getvalue()
+        assert "main.jac" in output
+        assert "not found" in output.lower()
+        assert "Current directory" in output
+        assert "Please specify a file" in output
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_start_with_explicit_file(server_fixture: ServerFixture) -> None:
+    """Test that explicit filename still works (backward compatibility)."""
+    import io
+    from contextlib import redirect_stdout
+
+    Jac.set_base_path(str(server_fixture.session_dir))
+
+    captured_output = io.StringIO()
+
+    try:
+        with redirect_stdout(captured_output):
+            execution.start(
+                filename=fixture_abs_path("serve_api.jac"),
+                port=server_fixture.port,
+                main=True,
+                faux=True,
+            )
+    except SystemExit:
+        pass
+
+    output = captured_output.getvalue()
+    assert "FUNCTIONS" in output
+    assert "/function/add_numbers" in output
+
+
+def test_start_with_nonexistent_file_error(tmp_path: Path) -> None:
+    """Test that jac start provides clear error for non-existent explicit file."""
+    import io
+    from contextlib import redirect_stderr
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        Jac.set_base_path(str(tmp_path))
+
+        captured_output = io.StringIO()
+
+        with redirect_stderr(captured_output):
+            result = execution.start(
+                filename="nonexistent.jac",
+                port=get_free_port(),
+                main=True,
+                faux=True,
+            )
+
+        assert result == 1
+
+        output = captured_output.getvalue()
+        assert "nonexistent.jac" in output
+        assert "not found" in output.lower()
+        assert "Current directory" in output
+        assert "Please specify a file" not in output
+    finally:
+        os.chdir(original_cwd)

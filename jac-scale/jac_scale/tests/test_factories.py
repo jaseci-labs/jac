@@ -121,12 +121,12 @@ def test_app_config_creation():
     """Test AppConfig creation."""
     app_config = AppConfig(
         code_folder="/path/to/code",
-        file_name="app.jac",
+        file_name="main.jac",
         build=True,
     )
 
     assert app_config.code_folder == "/path/to/code"
-    assert app_config.file_name == "app.jac"
+    assert app_config.file_name == "main.jac"
     assert app_config.build is True
     assert app_config.testing is False
 

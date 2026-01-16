@@ -153,6 +153,25 @@ impl start(
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from pathlib { Path }
+    if not Path(filename).exists() {
+        if filename == "main.jac" {
+            print(
+                f"Error: File 'main.jac' not found in the current directory.",
+                file=sys.stderr
+            );
+            print(f"  Current directory: {os.getcwd()}", file=sys.stderr);
+            print(
+                "  Please specify a file: jac start <filename.jac> or make sure main.jac exists in the current directory",
+                file=sys.stderr
+            );
+        } else {
+            print(f"Error: File '{filename}' not found.", file=sys.stderr);
+            print(f"  Current directory: {os.getcwd()}", file=sys.stderr);
+            print("  Please check the file path and try again.", file=sys.stderr);
+        }
+        return 1;
+    }
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
