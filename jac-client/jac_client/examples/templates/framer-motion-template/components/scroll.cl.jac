@@ -108,7 +108,7 @@ def Card(props: dict) -> any {
 # Main ScrollTriggered Component
 def:pub ScrollTriggered() -> any {
     return <div style={container}>
-     
+
 
         {
             food.map(lambda item:any, i:int -> any {
