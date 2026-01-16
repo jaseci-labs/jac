@@ -240,17 +240,17 @@ def test_all_in_one_app_endpoints() -> None:
                     f"STDERR:\n{jac_add_result.stderr}\n"
                 )
 
-            app_jac_path = os.path.join(project_path, "app.jac")
-            assert os.path.isfile(app_jac_path), "all-in-one src/app.jac file missing"
+            app_jac_path = os.path.join(project_path, "main.jac")
+            assert os.path.isfile(app_jac_path), "all-in-one main.jac file missing"
 
-            # 4. Start the server: `jac start src/app.jac`
+            # 4. Start the server: `jac start main.jac`
             # NOTE: We don't use text mode here, so `Popen` defaults to bytes.
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac start src/app.jac'")
+                print("[DEBUG] Starting server with 'jac start main.jac'")
                 server = Popen(
-                    ["jac", "start", "src/app.jac"],
+                    ["jac", "start", "main.jac"],
                     cwd=project_path,
                 )
                 # Wait for localhost:8000 to become available
