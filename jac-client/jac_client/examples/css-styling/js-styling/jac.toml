@@ -2,7 +2,7 @@
 name = "js-styling"
 version = "1.0.0"
 description = "Jac client application: js-styling"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [dependencies.npm]
 "jac-client-node" = "1.0.3"

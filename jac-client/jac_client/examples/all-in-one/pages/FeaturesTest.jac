@@ -2,7 +2,7 @@
 # This file is intentionally kept empty to demonstrate the separation of concerns
 # where UI logic resides in .cl.jac files and backend walker logic in app.jac
 
-# All walker implementations for this feature are in src/app.jac
+# All walker implementations for this feature are in main.jac
 # This demonstrates that you can have separate .jac files for different purposes
 # Features Test - Backend Walkers
 # This file demonstrates walker functionality for testing various JAC features

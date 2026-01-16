@@ -2,7 +2,7 @@
 name = "material-ui"
 version = "1.0.0"
 description = "Jac client application: material-ui"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

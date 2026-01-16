@@ -2,7 +2,7 @@
 name = "basic-full-stack"
 version = "1.0.0"
 description = "Jac client application: basic-full-stack"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)
