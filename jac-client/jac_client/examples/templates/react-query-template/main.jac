@@ -49,6 +49,7 @@ cl import from "@tanstack/react-query" {
 }
 cl import from react { useState }
 
+cl import  ".styles.css";
 
 cl {
 
@@ -72,7 +73,6 @@ async def toggle_todo(id: int) -> any {
 
 async def delete_todo(id: str) -> any {
     result = id spawn delete_todo();
-    console.log("Delete result:", result);
 
     return result.reports[0];
 }
@@ -222,50 +222,84 @@ def TodoApp() -> any {
         lambda t:any -> bool { return not t.done; }
     ).length;
 
-    return <div>
-        <input
-            value={inputValue}
-            onChange={lambda e:any -> None {
-                setInputValue(e.target.value);
-            }}
-            onKeyDown={lambda e:any -> None {
-                if e.key == "Enter" {
-                    addTodo();
-                }
-            }}
-        />
-
-        <button onClick={addTodo}>Add</button>
-
-        {filteredTodos().map(lambda todo:any -> any {
-            return <div key={todo._jac_id}>
+    return <div className="todo-app-container">
+        <div className="todo-header">
+            <h2 className="todo-title">Todo List</h2>
+            <div className="todo-input-row">
                 <input
-                    type="checkbox"
-                    checked={todo.done}
-                    onChange={lambda -> None {
-                        toggleTodo.mutate(todo._jac_id);
+                    className="todo-input"
+                    placeholder="Add a new todo..."
+                    value={inputValue}
+                    onChange={lambda e:any -> None {
+                        setInputValue(e.target.value);
+                    }}
+                    onKeyDown={lambda e:any -> None {
+                        if e.key == "Enter" {
+                            addTodo();
+                        }
                     }}
                 />
-                <span
-                    style={{
-                        "textDecoration": (
-                            "line-through" if todo.done else "none"
-                        )
-                    }}
-                >
-                    {todo.text}
-
-                </span>
-                 <button onClick={lambda -> None {
-                        deleteTodo(todo._jac_id);
-                    }}>Delete</button>
-            </div>;
-        })}
-
-        <div>
-            {activeCount} items left
+                <button
+                    className="todo-add-btn"
+                    onClick={addTodo}
+                >Add</button>
+            </div>
+            <div className="todo-filters">
+                <button
+                    className={f"todo-filter-btn {" active" if filters == "all" else "" }"}
+                    onClick={lambda -> None { setFilters("all"); }}
+                >All</button>
+                <button
+                    className={f"todo-filter-btn {" active" if filters == "active" else "" }"}
+                    onClick={lambda -> None { setFilters("active"); }}
+                >Active</button>
+                <button
+                    className={f"todo-filter-btn {" active" if filters == "completed" else "" }"}
+                    onClick={lambda -> None { setFilters("completed"); }}
+                >Completed</button>
+                
+            </div>
         </div>
-
+        <div className="todo-list">
+            {(<div className="todo-empty">
+                    No todos found.
+                </div>) 
+                if filteredTodos().length == 0  else
+                  filteredTodos().map(lambda todo:any -> any {
+                    return <div
+                        key={todo._jac_id}
+                        className={f"todo-item {"done" if todo.done else ""}"}
+                    >
+                        <input
+                            className="todo-checkbox"
+                            type="checkbox"
+                            checked={todo.done}
+                            onChange={lambda -> None {
+                                toggleTodo.mutate(todo._jac_id);
+                            }}
+                        />
+                        <span
+                            className="todo-text"
+                        >
+                            {todo.text}
+                        </span>
+                        <button
+                            className="todo-delete-btn"
+                            onClick={lambda -> None {
+                                return deleteTodo(todo._jac_id);
+                            }}
+                        >Delete</button>
+                    </div>;
+                   
+                })
+            }
+        </div>
+        <div className="todo-footer">
+            <span>{activeCount} items left</span>
+            <span className="todo-total">
+                {todos.length} total
+            </span>
+        </div>
     </div>;
 }
 

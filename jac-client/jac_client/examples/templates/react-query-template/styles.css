@@ -1,0 +1,189 @@
+/* Minimal, modern, monochromatic, high whitespace Todo styles */
+
+.todo-app-container {
+  max-width: 420px;
+  margin: 48px auto;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.04);
+  padding: 40px 32px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.todo-header {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.todo-title {
+  font-weight: 700;
+  font-size: 2rem;
+  color: #222;
+  margin: 0;
+}
+
+.todo-input-row {
+  display: flex;
+  gap: 12px;
+}
+
+.todo-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: #fafbfc;
+}
+
+.todo-add-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #222;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.todo-add-btn:hover {
+  background: #444;
+}
+
+.todo-filters {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.todo-filter-btn {
+  background: #f4f4f4;
+  color: #222;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.todo-filter-btn.active,
+.todo-filter-btn:focus {
+  background: #222;
+  color: #fff;
+}
+
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.todo-empty {
+  color: #aaa;
+  text-align: center;
+  padding: 32px 0;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.todo-item.done .todo-text {
+  color: #bbb;
+  text-decoration: line-through;
+}
+.todo-checkbox {
+  width: 20px;
+  height: 20px;
+  accent-color: #222;
+  margin-right: 8px;
+}
+.todo-text {
+  flex: 1;
+  font-size: 1.08rem;
+  color: #222;
+  letter-spacing: 0.01em;
+}
+.todo-delete-btn {
+  background: none;
+  border: none;
+  color: #d32f2f;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+.todo-delete-btn:hover {
+  background: #fbe9e7;
+}
+
+.todo-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  color: #888;
+  font-size: 0.98rem;
+}
+.todo-total {
+  font-size: 0.92rem;
+}
+
+
+input[type="checkbox"] {
+  /* Add if not using autoprefixer */
+  -webkit-appearance: none;
+  /* Remove most all native input styles */
+  appearance: none;
+  /* For iOS < 15 */
+  background-color: var(--form-background);
+  /* Not removed via appearance */
+  margin: 0;
+
+  font: inherit;
+  color: currentColor;
+  width: 1.15em;
+  height: 1.15em;
+  border: 0.15em solid currentColor;
+  border-radius: 0.15em;
+  transform: translateY(-0.075em);
+
+  display: grid;
+  place-content: center;
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 0.65em;
+  height: 0.65em;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  transform: scale(0);
+  transform-origin: bottom left;
+  transition: 120ms transform ease-in-out;
+  box-shadow: inset 1em 1em var(--form-control-color);
+  /* Windows High Contrast Mode */
+  background-color: CanvasText;
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+input[type="checkbox"]:focus {
+  outline: max(2px, 0.15em) solid currentColor;
+  outline-offset: max(2px, 0.15em);
+}
+
+input[type="checkbox"]:disabled {
+  --form-control-color: var(--form-control-disabled);
+
+  color: var(--form-control-disabled);
+  cursor: not-allowed;
+}
