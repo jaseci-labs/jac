@@ -168,9 +168,7 @@ class EsJsxProcessor:
                 )
             else:
                 # Single part starting with lowercase - HTML element string
-                expr = self.pass_ref.sync_loc(
-                    es.Literal(value=first), jac_node=node
-                )
+                expr = self.pass_ref.sync_loc(es.Literal(value=first), jac_node=node)
         node.gen.es_ast = expr
         return expr
 
