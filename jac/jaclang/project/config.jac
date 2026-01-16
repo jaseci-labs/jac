@@ -156,7 +156,6 @@ obj JacConfig {
     def get_data_dir -> Path;
     def get_client_dir -> Path;
     def is_valid -> bool;
-    static def create_default_toml(project_name: str) -> str;
     def save -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"

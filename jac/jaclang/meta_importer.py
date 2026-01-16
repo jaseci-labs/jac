@@ -12,6 +12,8 @@ import importlib.machinery
 import importlib.util
 import os
 from collections.abc import Sequence
+from functools import cache
+from pathlib import Path
 from types import ModuleType
 
 from jaclang.pycore.log import logging
@@ -22,26 +24,30 @@ from jaclang.pycore.modresolver import (
 logger = logging.getLogger(__name__)
 
 
+@cache
+def _discover_minimal_compile_modules() -> frozenset[str]:
+    """Auto-discover .jac compiler passes that need minimal compilation."""
+    jaclang_dir = Path(__file__).parent
+    passes_dir = jaclang_dir / "compiler" / "passes"
+    modules = set()
+
+    for subdir in ["main", "ecmascript"]:
+        for jac_file in (passes_dir / subdir).rglob("*.jac"):
+            if jac_file.name.endswith(".impl.jac"):
+                continue
+            module_path = jac_file.relative_to(jaclang_dir).with_suffix("")
+            modules.add(f"jaclang.{module_path.as_posix().replace('/', '.')}")
+
+    return frozenset(modules)
+
+
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
-    # Compiler passes written in Jac need minimal compilation to avoid
-    # circular imports (they're used by the compiler during compilation itself).
-    MINIMAL_COMPILE_MODULES: frozenset[str] = frozenset(
-        {
-            "jaclang.compiler.passes.main.sem_def_match_pass",
-            "jaclang.compiler.passes.main.annex_pass",
-            "jaclang.compiler.passes.main.semantic_analysis_pass",
-            "jaclang.compiler.passes.main.pyjac_ast_link_pass",
-            "jaclang.compiler.passes.main.type_checker_pass",
-            "jaclang.compiler.passes.main.def_impl_match_pass",
-            "jaclang.compiler.passes.main.cfg_build_pass",
-            "jaclang.compiler.passes.main.pyast_load_pass",
-            "jaclang.compiler.passes.ecmascript.estree",
-            "jaclang.compiler.passes.ecmascript.es_unparse",
-            "jaclang.compiler.passes.ecmascript.esast_gen_pass",
-        }
-    )
+    @property
+    def MINIMAL_COMPILE_MODULES(self) -> frozenset[str]:  # noqa: N802
+        """Compiler passes written in Jac that need minimal compilation."""
+        return _discover_minimal_compile_modules()
 
     def find_spec(
         self,
