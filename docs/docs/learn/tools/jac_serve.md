@@ -40,8 +40,10 @@ jac start --watch --no-client
 jac start --scale
 ```
 
-> **Note**: 
+> **Note**:
+>
 > - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
+>
  ```
 
 ## API Endpoints

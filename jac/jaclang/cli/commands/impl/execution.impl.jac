@@ -154,7 +154,6 @@ impl start(
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     import from pathlib { Path }
-    
     if not Path(filename).exists() {
         if filename == "main.jac" {
             print(
@@ -173,7 +172,6 @@ impl start(
         }
         return 1;
     }
-    
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {

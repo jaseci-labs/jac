@@ -492,8 +492,10 @@ jac build main.jac
 jac start  # Uses [project].entry-point
 ```
 
-> **Note**: 
+> **Note**:
+>
 > - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), specify it explicitly: `jac start app.jac`
+>
 ---
 
 ## Hot Module Replacement (HMR)

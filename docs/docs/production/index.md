@@ -37,7 +37,8 @@ jac destroy main.jac
 jac start [filename.jac] [options]
 ```
 
-> **Note**: 
+> **Note**:
+>
 > - If no filename is provided, `jac start` defaults to `main.jac` in the current directory
 > - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), specify it explicitly: `jac start app.jac`
 | Option | Default | Description |
