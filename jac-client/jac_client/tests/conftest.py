@@ -88,9 +88,9 @@ def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
         Jac.exec_ctx.mem.close()
 
     # Remove user .jac modules from sys.modules so they get re-imported fresh
-    # Keep jaclang.* modules to avoid breaking dataclass references
+    # Keep jaclang.* and __main__ to avoid breaking dataclass references
     for mod in list(Jac.loaded_modules.values()):
-        if not mod.__name__.startswith("jaclang."):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     Jac.loaded_modules.clear()
 
@@ -106,7 +106,7 @@ def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
     if Jac.exec_ctx is not None:
         Jac.exec_ctx.mem.close()
     for mod in list(Jac.loaded_modules.values()):
-        if not mod.__name__.startswith("jaclang."):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     Jac.loaded_modules.clear()
 

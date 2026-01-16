@@ -280,9 +280,9 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
         JacRuntime.exec_ctx.mem.close()
 
     # Remove user .jac modules from sys.modules so they get re-imported fresh
-    # Keep jaclang.* modules to avoid breaking dataclass references
+    # Keep jaclang.* and __main__ to avoid breaking dataclass references
     for mod in list(JacRuntime.loaded_modules.values()):
-        if not mod.__name__.startswith("jaclang."):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
 
@@ -298,6 +298,6 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
     for mod in list(JacRuntime.loaded_modules.values()):
-        if not mod.__name__.startswith("jaclang."):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
