@@ -141,7 +141,11 @@ class EsJsxProcessor:
         else:
             parts = [part.value for part in node.parts]
             first = parts[0]
-            if first and first[0].isupper():
+            # If there are multiple parts (dotted name like motion.section),
+            # always treat as member expression, not string literal
+            # This allows imported objects like motion.section to work correctly
+            if len(parts) > 1:
+                # Multiple parts - create member expression chain
                 expr = self.pass_ref.sync_loc(
                     es.Identifier(name=first), jac_node=node.parts[0]
                 )
@@ -157,10 +161,14 @@ class EsJsxProcessor:
                         ),
                         jac_node=node,
                     )
-            else:
+            elif first and first[0].isupper():
+                # Single part starting with uppercase - component identifier
                 expr = self.pass_ref.sync_loc(
-                    es.Literal(value=".".join(parts)), jac_node=node
+                    es.Identifier(name=first), jac_node=node.parts[0]
                 )
+            else:
+                # Single part starting with lowercase - HTML element string
+                expr = self.pass_ref.sync_loc(es.Literal(value=first), jac_node=node)
         node.gen.es_ast = expr
         return expr
 

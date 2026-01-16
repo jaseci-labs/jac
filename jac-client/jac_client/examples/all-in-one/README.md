@@ -1,5 +1,4 @@
-  # all-in-one-new
-
+# all-in-one-new
 
 A Jac client-side application with React support.
 

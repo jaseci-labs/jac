@@ -447,9 +447,7 @@ class TestJacClientExamples:
     def test_js_styling(self) -> None:
         """Test JS and styling example file."""
         # Point to your example file
-        example_file = (
-            JacClientExamples / "css-styling" / "js-styling" / "main.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "js-styling" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="js_styling_test", setup_npm=True
         ) as runner:
@@ -458,9 +456,7 @@ class TestJacClientExamples:
 
     def test_material_ui(self) -> None:
         """Test Material-UI styling example."""
-        example_file = (
-            JacClientExamples / "css-styling" / "material-ui" / "main.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "material-ui" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="material_ui_test", setup_npm=True
         ) as runner:
@@ -468,9 +464,7 @@ class TestJacClientExamples:
 
     def test_pure_css(self) -> None:
         """Test Pure CSS example."""
-        example_file = (
-            JacClientExamples / "css-styling" / "pure-css" / "main.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "pure-css" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="pure_css_test", setup_npm=True
         ) as runner:
