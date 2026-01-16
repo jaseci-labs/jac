@@ -174,7 +174,7 @@ cl import from "@jac-client/utils" {
 }
 
 # Pure CSS + asset-in-CSS example
-cl import ".styles.css";
+cl import ".styles/styles.css";
 
  # Login Page
 cl import from .pages.loginPage { LoginPage }

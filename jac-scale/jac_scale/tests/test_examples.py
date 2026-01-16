@@ -432,7 +432,7 @@ class TestJacClientExamples:
         with JacScaleTestRunner(
             example_file, session_name="custom_test", setup_npm=True
         ) as runner:
-            assert "background-image" in runner.request_raw("GET", "/styles.css")
+            assert "background-image" in runner.request_raw("GET", "/styles/styles.css")
             assert "PNG" in runner.request_raw("GET", "/static/assets/burger.png")
             assert "/static/client.js" in runner.request_raw("GET", "/cl/app")
             assert (
