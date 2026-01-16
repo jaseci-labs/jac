@@ -53,262 +53,262 @@ cl import  ".styles.css";
 
 cl {
 
-async def getTodos() -> any {
-    result = root spawn read_todos();
+    async def getTodos() -> any {
+        result = root spawn read_todos();
 
-    return result.reports || [];
-}
-
-async def create_todo(text: str) -> any {
-    result = root spawn create_todo(text=text);
-
-    return result.reports[0][0];
-}
-
-async def toggle_todo(id: int) -> any {
-    result = id spawn toggle_todo();
-
-    return result.reports[0];
-}
-
-async def delete_todo(id: str) -> any {
-    result = id spawn delete_todo();
-
-    return result.reports[0];
-}
-
-def useTodo() -> dict {
-    qc = useQueryClient();
-
-
-
-    # -------------------------
-    # READ TODOS
-    # -------------------------
-    todosQuery = useQuery({
-        "queryKey": ["todos"],
-        "queryFn":  getTodos
-    });
-
-    # -------------------------
-    # CREATE TODO
-    # -------------------------
-    createTodo = useMutation({
-        "mutationFn": create_todo,
-        "onSuccess": lambda -> None {
-            console.log("Todo created successfully");
-            qc.invalidateQueries({ "queryKey": ["todos"] });
-        },
-        "onError": lambda err:str -> None {
-            console.error("Error creating todo:", err);
-        },
-        "onSettled": lambda -> None {
-            console.log("Create todo mutation settled");
-        },
-        "onMutate": lambda newText:str -> None {
-            console.log("Creating todo with text:", newText);
-        }
-
-    });
-
-    # -------------------------
-    # TOGGLE TODO (OPTIMISTIC)
-    # -------------------------
-    toggleTodo = useMutation({
-
-        # Actual backend mutation
-        "mutationFn": toggle_todo,
-
-        # Optimistic update
-        "onMutate": lambda id:int -> dict {
-            qc.cancelQueries({ "queryKey": ["todos"] });
-
-            previous = qc.getQueryData(["todos"]);
-
-            qc.setQueryData(
-                ["todos"],
-                lambda old:any -> any {
-                    return old.map(lambda t:any -> any {
-                        if t._jac_id == id {
-                            return {
-                                "_jac_id": t._jac_id,
-                                "text": t.text,
-                                "done": not t.done
-                            };
-                        }
-                        return t;
-                    });
-                }
-            );
-
-            return { "previous": previous };
-        },
-
-        # Rollback if error
-        "onError": lambda err:str, id:int, ctx:dict -> None {
-            qc.setQueryData(
-                ["todos"],
-                ctx["previous"]
-            );
-        },
-
-        # Final truth sync
-        "onSettled": lambda -> None {
-            qc.invalidateQueries({ "queryKey": ["todos"] });
-        }
-    });
-
-    deleteTodo = useMutation({
-        "mutationFn": delete_todo,
-        "onSuccess": lambda -> None {
-            console.log("Todo deleted successfully");
-            qc.invalidateQueries({ "queryKey": ["todos"] });
-        },
-        "onError": lambda err:str -> None {
-            console.error("Error deleting todo:", err);
-        }
-    });
-
-    return {
-        "todosQuery": todosQuery,
-        "createTodo": createTodo,
-        "toggleTodo": toggleTodo,
-        "deleteTodo": deleteTodo
-    };
-}
-
-
-
-
-
-def TodoApp() -> any {
-    [inputValue, setInputValue] = useState("");
-    [filters, setFilters] = useState("all");
-
-    todo = useTodo();
-    todosQuery = todo["todosQuery"];
-    createTodo = todo["createTodo"];
-    toggleTodo = todo["toggleTodo"];
-
-    if todosQuery.isLoading {
-        return <div>Loading todos…</div>;
+        return result.reports || [];
     }
 
-    todos = todosQuery.data or [];
+    async def create_todo(text: str) -> any {
+        result = root spawn create_todo(text=text);
 
-    def addTodo() -> None {
-        if not inputValue.trim() {
-            return;
-        }
-        createTodo.mutate(inputValue.trim());
-        setInputValue("");
+        return result.reports[0][0];
     }
 
-    def deleteTodo(id: str) -> None {
-        todo["deleteTodo"].mutate(id);
+    async def toggle_todo(id: int) -> any {
+        result = id spawn toggle_todo();
+
+        return result.reports[0];
     }
 
+    async def delete_todo(id: str) -> any {
+        result = id spawn delete_todo();
 
-    def filteredTodos() -> list {
-        if filters == "active" {
-            return todos.filter(lambda t:any -> bool { return not t.done; });
-        } elif filters == "completed" {
-            return todos.filter(lambda t:any -> bool { return t.done; });
-        }
-        return todos;
+        return result.reports[0];
     }
 
-    activeCount = todos.filter(
-        lambda t:any -> bool { return not t.done; }
-    ).length;
+    def useTodo() -> dict {
+        qc = useQueryClient();
 
-    return <div className="todo-app-container">
-        <div className="todo-header">
-            <h2 className="todo-title">Todo List</h2>
-            <div className="todo-input-row">
-                <input
-                    className="todo-input"
-                    placeholder="Add a new todo..."
-                    value={inputValue}
-                    onChange={lambda e:any -> None {
-                        setInputValue(e.target.value);
-                    }}
-                    onKeyDown={lambda e:any -> None {
-                        if e.key == "Enter" {
-                            addTodo();
-                        }
-                    }}
-                />
-                <button
-                    className="todo-add-btn"
-                    onClick={addTodo}
-                >Add</button>
-            </div>
-            <div className="todo-filters">
-                <button
-                    className={f"todo-filter-btn {" active" if filters == "all" else "" }"}
-                    onClick={lambda -> None { setFilters("all"); }}
-                >All</button>
-                <button
-                    className={f"todo-filter-btn {" active" if filters == "active" else "" }"}
-                    onClick={lambda -> None { setFilters("active"); }}
-                >Active</button>
-                <button
-                    className={f"todo-filter-btn {" active" if filters == "completed" else "" }"}
-                    onClick={lambda -> None { setFilters("completed"); }}
-                >Completed</button>
 
-            </div>
-        </div>
-        <div className="todo-list">
-            {(<div className="todo-empty">
-                    No todos found.
-                </div>)
-                if filteredTodos().length == 0  else
-                  filteredTodos().map(lambda todo:any -> any {
-                    return <div
-                        key={todo._jac_id}
-                        className={f"todo-item {"done" if todo.done else ""}"}
-                    >
-                        <input
-                            className="todo-checkbox"
-                            type="checkbox"
-                            checked={todo.done}
-                            onChange={lambda -> None {
-                                toggleTodo.mutate(todo._jac_id);
-                            }}
-                        />
-                        <span
-                            className="todo-text"
-                        >
-                            {todo.text}
-                        </span>
-                        <button
-                            className="todo-delete-btn"
-                            onClick={lambda -> None {
-                                return deleteTodo(todo._jac_id);
-                            }}
-                        >Delete</button>
-                    </div>;
 
-                })
+        # -------------------------
+        # READ TODOS
+        # -------------------------
+        todosQuery = useQuery({
+            "queryKey": ["todos"],
+            "queryFn":  getTodos
+        });
+
+        # -------------------------
+        # CREATE TODO
+        # -------------------------
+        createTodo = useMutation({
+            "mutationFn": create_todo,
+            "onSuccess": lambda -> None {
+                console.log("Todo created successfully");
+                qc.invalidateQueries({ "queryKey": ["todos"] });
+            },
+            "onError": lambda err:str -> None {
+                console.error("Error creating todo:", err);
+            },
+            "onSettled": lambda -> None {
+                console.log("Create todo mutation settled");
+            },
+            "onMutate": lambda newText:str -> None {
+                console.log("Creating todo with text:", newText);
             }
-        </div>
-        <div className="todo-footer">
-            <span>{activeCount} items left</span>
-            <span className="todo-total">
-                {todos.length} total
-            </span>
-        </div>
-    </div>;
-}
+
+        });
+
+        # -------------------------
+        # TOGGLE TODO (OPTIMISTIC)
+        # -------------------------
+        toggleTodo = useMutation({
+
+            # Actual backend mutation
+            "mutationFn": toggle_todo,
+
+            # Optimistic update
+            "onMutate": lambda id:int -> dict {
+                qc.cancelQueries({ "queryKey": ["todos"] });
+
+                previous = qc.getQueryData(["todos"]);
+
+                qc.setQueryData(
+                    ["todos"],
+                    lambda old:any -> any {
+                        return old.map(lambda t:any -> any {
+                            if t._jac_id == id {
+                                return {
+                                    "_jac_id": t._jac_id,
+                                    "text": t.text,
+                                    "done": not t.done
+                                };
+                            }
+                            return t;
+                        });
+                    }
+                );
+
+                return { "previous": previous };
+            },
+
+            # Rollback if error
+            "onError": lambda err:str, id:int, ctx:dict -> None {
+                qc.setQueryData(
+                    ["todos"],
+                    ctx["previous"]
+                );
+            },
+
+            # Final truth sync
+            "onSettled": lambda -> None {
+                qc.invalidateQueries({ "queryKey": ["todos"] });
+            }
+        });
+
+        deleteTodo = useMutation({
+            "mutationFn": delete_todo,
+            "onSuccess": lambda -> None {
+                console.log("Todo deleted successfully");
+                qc.invalidateQueries({ "queryKey": ["todos"] });
+            },
+            "onError": lambda err:str -> None {
+                console.error("Error deleting todo:", err);
+            }
+        });
+
+        return {
+            "todosQuery": todosQuery,
+            "createTodo": createTodo,
+            "toggleTodo": toggleTodo,
+            "deleteTodo": deleteTodo
+        };
+    }
 
 
-def:pub app -> any {
-    return <QueryProvider>
-        <TodoApp />
-    </QueryProvider>;
-}
+
+
+
+    def TodoApp() -> any {
+        [inputValue, setInputValue] = useState("");
+        [filters, setFilters] = useState("all");
+
+        todo = useTodo();
+        todosQuery = todo["todosQuery"];
+        createTodo = todo["createTodo"];
+        toggleTodo = todo["toggleTodo"];
+
+        if todosQuery.isLoading {
+            return <div>Loading todos…</div>;
+        }
+
+        todos = todosQuery.data or [];
+
+        def addTodo() -> None {
+            if not inputValue.trim() {
+                return;
+            }
+            createTodo.mutate(inputValue.trim());
+            setInputValue("");
+        }
+
+        def deleteTodo(id: str) -> None {
+            todo["deleteTodo"].mutate(id);
+        }
+
+
+        def filteredTodos() -> list {
+            if filters == "active" {
+                return todos.filter(lambda t:any -> bool { return not t.done; });
+            } elif filters == "completed" {
+                return todos.filter(lambda t:any -> bool { return t.done; });
+            }
+            return todos;
+        }
+
+        activeCount = todos.filter(
+            lambda t:any -> bool { return not t.done; }
+        ).length;
+
+        return <div className="todo-app-container">
+            <div className="todo-header">
+                <h2 className="todo-title">Todo List</h2>
+                <div className="todo-input-row">
+                    <input
+                        className="todo-input"
+                        placeholder="Add a new todo..."
+                        value={inputValue}
+                        onChange={lambda e:any -> None {
+                            setInputValue(e.target.value);
+                        }}
+                        onKeyDown={lambda e:any -> None {
+                            if e.key == "Enter" {
+                                addTodo();
+                            }
+                        }}
+                    />
+                    <button
+                        className="todo-add-btn"
+                        onClick={addTodo}
+                    >Add</button>
+                </div>
+                <div className="todo-filters">
+                    <button
+                        className={f"todo-filter-btn {" active" if filters == "all" else "" }"}
+                        onClick={lambda -> None { setFilters("all"); }}
+                    >All</button>
+                    <button
+                        className={f"todo-filter-btn {" active" if filters == "active" else "" }"}
+                        onClick={lambda -> None { setFilters("active"); }}
+                    >Active</button>
+                    <button
+                        className={f"todo-filter-btn {" active" if filters == "completed" else "" }"}
+                        onClick={lambda -> None { setFilters("completed"); }}
+                    >Completed</button>
+
+                </div>
+            </div>
+            <div className="todo-list">
+                {(<div className="todo-empty">
+                        No todos found.
+                    </div>)
+                    if filteredTodos().length == 0  else
+                    filteredTodos().map(lambda todo:any -> any {
+                        return <div
+                            key={todo._jac_id}
+                            className={f"todo-item {"done" if todo.done else ""}"}
+                        >
+                            <input
+                                className="todo-checkbox"
+                                type="checkbox"
+                                checked={todo.done}
+                                onChange={lambda -> None {
+                                    toggleTodo.mutate(todo._jac_id);
+                                }}
+                            />
+                            <span
+                                className="todo-text"
+                            >
+                                {todo.text}
+                            </span>
+                            <button
+                                className="todo-delete-btn"
+                                onClick={lambda -> None {
+                                    return deleteTodo(todo._jac_id);
+                                }}
+                            >Delete</button>
+                        </div>;
+
+                    })
+                }
+            </div>
+            <div className="todo-footer">
+                <span>{activeCount} items left</span>
+                <span className="todo-total">
+                    {todos.length} total
+                </span>
+            </div>
+        </div>;
+    }
+
+
+    def:pub app -> any {
+        return <QueryProvider>
+            <TodoApp />
+        </QueryProvider>;
+    }
 
 
 
