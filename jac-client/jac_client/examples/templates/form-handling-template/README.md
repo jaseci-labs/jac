@@ -4,6 +4,7 @@
 A minimal **Jac client-side template** demonstrating a clean and reusable **form handling pattern** inspired by modern React practices (React Hook Form–style architecture).
 
 This template focuses on:
+
 - Component-driven UI
 - Schema-based validation
 - Centralized form state management
@@ -12,7 +13,7 @@ It is intended as a **starter template**, not a full application.
 
 ---
 
-##  What This Template Demonstrates
+## What This Template Demonstrates
 
 - Form component isolation
 - Validation logic separated into schemas
@@ -20,6 +21,7 @@ It is intended as a **starter template**, not a full application.
 - Clear, minimal project structure
 
 This pattern can be reused for:
+
 - Login forms
 - Registration forms
 - Settings forms
@@ -27,7 +29,7 @@ This pattern can be reused for:
 
 ---
 
-##  Project Structure
+## Project Structure
 
 ```
 
@@ -47,28 +49,32 @@ jac-form-handling-template/
 
 ---
 
-##  Architecture Overview
+## Architecture Overview
 
 **Component**
+
 - Handles UI rendering
 - Reads and updates form state
 
 **Schema**
+
 - Defines validation rules
 - Keeps business logic out of UI
 
 **Store**
+
 - Manages form values and errors
 - Allows reuse across multiple components
 
 This separation keeps the codebase:
+
 - Easy to reason about
 - Easy to extend
 - Easy to reuse as a template
 
 ---
 
-##  Getting Started
+## Getting Started
 
 Run the template locally:
 
@@ -78,7 +84,7 @@ jac start main.jac
 
 ---
 
-##  Reusing This Template
+## Reusing This Template
 
 To adapt this template for a new form:
 
@@ -95,9 +101,8 @@ No structural changes are required.
 
 This template is designed to:
 
-* Serve as a reference implementation
-* Provide a consistent form-handling pattern
-* Act as a starting point for Jac-based frontend projects
+- Serve as a reference implementation
+- Provide a consistent form-handling pattern
+- Act as a starting point for Jac-based frontend projects
 
 It intentionally avoids overengineering to remain clear and instructional.
-

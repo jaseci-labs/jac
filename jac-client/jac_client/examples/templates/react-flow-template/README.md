@@ -1,5 +1,4 @@
-  # react-flow-template
-
+# react-flow-template
 
 A Jac client-side application with React support.
 

@@ -8,7 +8,7 @@ import from ..schema.loginSchema {
 }
 import from ..store.useFormStore { useFormStore }
 
-  
+
 
 # Login Form Component
 def:pub LoginForm() -> any {
@@ -22,7 +22,7 @@ def:pub LoginForm() -> any {
         "defaultValues": {
             "username": "",
             "password": "",
-            
+
         }
     });
 
@@ -99,7 +99,7 @@ def:pub LoginForm() -> any {
                 )}
             </div>
 
-            
+
 
             <button
                 type="submit"
@@ -109,6 +109,6 @@ def:pub LoginForm() -> any {
             </button>
         </form>
 
-        
+
     </div>;
 }

@@ -37,7 +37,7 @@ glob formStore = create(lambda setState: any, getState: any -> dict {
             });
         },
 
-        
+
 
         "clearAllData": lambda -> None {
             setState(lambda state: any -> dict {
