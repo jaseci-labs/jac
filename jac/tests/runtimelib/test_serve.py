@@ -1818,7 +1818,7 @@ def test_start_with_default_main_jac(tmp_path: Path) -> None:
         captured_output = io.StringIO()
 
         with redirect_stderr(captured_output):
-            result = execution.start(
+            execution.start(
                 filename="main.jac",
                 port=get_free_port(),
                 main=True,
