@@ -251,6 +251,10 @@ impl start(
                 base_path=base, module_name=mod, watcher=watcher
             );
             hot_reloader.start();
+            # Connect the hot reloader to the server for HMR support
+            if server?.enable_hmr {
+                server.enable_hmr(hot_reloader);
+            }
         } except ImportError as e {
             print(f"Error: Could not initialize HMR: {e}", file=sys.stderr, flush=True);
             print(
@@ -273,7 +277,7 @@ impl start(
     # Print startup message
     _print_startup_message(watch, no_client, port, actual_api_port);
     try {
-        server.start();
+        server.start(watch=watch);
         return 0;
     } except KeyboardInterrupt {
         print('\nShutting down...');

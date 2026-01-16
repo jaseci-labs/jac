@@ -78,9 +78,19 @@ def test_reference_file(filename: str) -> None:
             mode="exec",
         )
         output_jac = execute_and_capture_output(code_obj, filename=filename)
-        # Clear state between .jac and .py runs
+        # Clear state between .jac and .py runs - need fresh execution context
+        # to avoid root node edges persisting from JAC run to Python run
+        import tempfile
+
+        from jaclang.pycore.runtime import JacRuntimeInterface
+
+        if Jac.exec_ctx is not None:
+            Jac.exec_ctx.mem.close()
+        # Use a different temp directory to get clean storage
+        Jac.base_path_dir = tempfile.mkdtemp()
         Jac.loaded_modules.clear()
         Jac.attach_program(JacProgram())
+        Jac.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
 
         # Clear byllm modules from cache
         sys.modules.pop("byllm", None)

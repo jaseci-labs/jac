@@ -1222,10 +1222,10 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
             );
         }
 
-        # Handle authentication if required
+        # Handle authentication - always pop Authorization to prevent it from being passed to walker
         username: str | None = None;
+        authorization = kwargs.pop('Authorization', None);
         if self.introspector.is_auth_required_for_walker(walker_name) {
-            authorization = kwargs.pop('Authorization', None);
             token: str | None = None;
             if (
                 authorization
@@ -1265,7 +1265,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
         );
     }
     # Register catch-all route for walkers with node parameter
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/walker/{walker_name}/{node}',
@@ -1303,7 +1303,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint(self: JacAPIServer) -> None {
         )
     );
     # Register catch-all route for walkers without node parameter (root)
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/walker/{walker_name}',
@@ -1362,10 +1362,10 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
             );
         }
 
-        # Handle authentication if required
+        # Handle authentication - always pop Authorization to prevent it from being passed to function
         username: str | None = None;
+        authorization = kwargs.pop('Authorization', None);
         if self.introspector.is_auth_required_for_function(function_name) {
-            authorization = kwargs.pop('Authorization', None);
             token: str | None = None;
             if (
                 authorization
@@ -1399,7 +1399,7 @@ impl JacAPIServer.register_dynamic_function_endpoint(self: JacAPIServer) -> None
             data=result, meta=Meta(extra={'http_status': 200})
         );
     }
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/function/{function_name}',
@@ -1505,7 +1505,7 @@ impl JacAPIServer.register_dynamic_introspection_endpoints(self: JacAPIServer) -
         };
     }
     # List all walkers
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/introspect/walkers',
@@ -1518,7 +1518,7 @@ impl JacAPIServer.register_dynamic_introspection_endpoints(self: JacAPIServer) -
         )
     );
     # List all functions
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/introspect/functions',
@@ -1531,7 +1531,7 @@ impl JacAPIServer.register_dynamic_introspection_endpoints(self: JacAPIServer) -
         )
     );
     # Get specific walker info
-    self.server_impl.add_endpoint(
+    self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
             path='/introspect/walker/{walker_name}',
