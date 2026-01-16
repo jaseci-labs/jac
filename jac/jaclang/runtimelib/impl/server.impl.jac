@@ -344,7 +344,21 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 
 """Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
 impl ModuleIntrospector._check_module_freshness -> None {
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     if not self._module {
+        return;
+    }
+    # First check if HMR replaced the module entirely in Jac.loaded_modules
+    current_module = Jac.loaded_modules.get(self.module_name);
+    if (current_module is not None and current_module is not self._module) {
+        # Module was replaced by HMR, do a full refresh
+        self._module = current_module;
+        self._load_manifest();
+        self._extract_access_levels();
+        self._functions = self._collect_functions();
+        self._walkers = self._collect_walkers();
+        self._bundle = None;
+        self._bundle_error = None;
         return;
     }
     # Check if any cached walker class is stale (different from what's in the module)
