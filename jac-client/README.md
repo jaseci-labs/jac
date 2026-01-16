@@ -176,4 +176,4 @@ MIT License - see [LICENSE](../LICENSE) file.
 
 ---
 
-**Happy coding with Jac!!**
+**Happy coding with Jac!**
