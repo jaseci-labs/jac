@@ -13,6 +13,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac check` | Type check code |
 | `jac test` | Run tests |
 | `jac format` | Format code |
+| `jac clean` | Clean project build artifacts |
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
@@ -68,12 +69,12 @@ jac run main.jac --no-cache
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--watch` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] filename
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] [filename]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Jac file to serve | Required |
+| `filename` | Jac file to serve | `main.jac` |
 | `-s, --session` | Session name | None |
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
@@ -87,28 +88,32 @@ jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port POR
 **Examples:**
 
 ```bash
-# Start on default port
-jac start main.jac
+# Start with default main.jac on default port
+jac start
 
 # Start on custom port
-jac start main.jac -p 3000
+jac start -p 3000
 
 # Start with session
-jac start main.jac -s prod_session
+jac start -s prod_session
 
 # Start with Hot Module Replacement (development)
-jac start main.jac --watch
+jac start --watch
 
 # HMR mode without client bundling (API only)
-jac start main.jac --watch --no-client
+jac start --watch --no-client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
-jac start main.jac --scale
+jac start --scale
 
 # Build and deploy to Kubernetes
-jac start main.jac --scale --build
+jac start --scale --build
 ```
 
+> **Note**:
+>
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
+>
 ---
 
 ### jac create
@@ -490,8 +495,8 @@ jac config list -o toml
 Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
-jac start main.jac --scale           # Deploy without building
-jac start main.jac --scale --build   # Build and deploy
+jac start --scale           # Deploy without building
+jac start --scale --build   # Build and deploy
 ```
 
 ---
@@ -603,6 +608,45 @@ jac remove requests
 
 # Remove multiple packages
 jac remove numpy pandas
+```
+
+---
+
+### jac clean
+
+Clean project build artifacts from the `.jac/` directory.
+
+```bash
+jac clean [-h] [-a] [-d] [-c] [-p] [-f]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-a, --all` | Clean all `.jac` artifacts (data, cache, packages, client) | `False` |
+| `-d, --data` | Clean data directory (`.jac/data`) | `False` |
+| `-c, --cache` | Clean cache directory (`.jac/cache`) | `False` |
+| `-p, --packages` | Clean packages directory (`.jac/packages`) | `False` |
+| `-f, --force` | Force clean without confirmation prompt | `False` |
+
+By default (no flags), `jac clean` removes only the data directory (`.jac/data`).
+
+**Examples:**
+
+```bash
+# Clean data directory (default)
+jac clean
+
+# Clean all build artifacts
+jac clean --all
+
+# Clean only cache
+jac clean --cache
+
+# Clean data and cache directories
+jac clean --data --cache
+
+# Force clean without confirmation
+jac clean --all --force
 ```
 
 ---
@@ -743,7 +787,7 @@ jac format . --fix
 
 ```bash
 # Start locally
-jac start main.jac -p 8000
+jac start -p 8000
 
 # Deploy to Kubernetes
 jac start main.jac --scale

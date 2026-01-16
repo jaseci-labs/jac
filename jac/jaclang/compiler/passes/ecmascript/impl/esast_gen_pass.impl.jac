@@ -723,7 +723,7 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
         <>node.gen.es_ast = typeof_expr;
         return;
     }
-    if (self._is_in_client_scope() and isinstance(<>node.target, uni.Name)) {
+    if (<>node.in_client_context() and isinstance(<>node.target, uni.Name)) {
         target_sym = getattr(<>node.target, 'sym', None);
         if (target_sym and target_sym.defn) {
             defn_node = target_sym.defn[0];
@@ -1634,6 +1634,20 @@ impl EsastGenPass._get_setter_name(var_name: str) -> str {
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
+"""Check if useState is already imported (either by user or auto-injection)."""
+impl EsastGenPass._has_usestate_import -> bool {
+    for import_decl in self.imports {
+        for spec in import_decl.specifiers {
+            if isinstance(spec, es.ImportSpecifier) {
+                if spec.local and spec.local.name == 'useState' {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}
+
 """Auto-inject useState import from @jac-client/utils when reactive has variables are used."""
 impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
     # Create: import { useState } from "@jac-client/utils";
@@ -1657,14 +1671,13 @@ impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
 
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
-    # Check if this is client-side reactive state (inside a cl {} block)
-    is_client = <>node.find_parent_of_type(uni.ClientBlock) is not None;
-    if not is_client {
+    # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
+    if not <>node.in_client_context() {
         <>node.gen.es_ast = None;
         return;
     }
-    # Auto-inject useState import if not already done
-    if not self.has_injected_usestate {
+    # Auto-inject useState import if not already done and user hasn't imported it
+    if not self.has_injected_usestate and not self._has_usestate_import() {
         self._inject_usestate_import(<>node);
         self.has_injected_usestate = True;
     }
@@ -1864,15 +1877,10 @@ impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
             <>node.gen.es_ast = func_decl;
         }
     }
-    if self.client_scope_stack {
-        self.client_scope_stack.pop();
-    }
 }
 
-"""Track entry into ability to manage client scope."""
+"""Ensure ImplDef body is properly parented for traversal."""
 impl EsastGenPass.enter_ability(<>node: uni.Ability) -> None {
-    is_client = getattr(<>node, 'is_client_decl', False);
-    self.client_scope_stack.append(is_client);
     if isinstance(<>node.body, uni.ImplDef) and (<>node.body not in <>node.kid) {
         <>node.body.parent = <>node;
         <>node.kid.append(<>node.body);
@@ -2578,11 +2586,6 @@ impl EsastGenPass._strip_spawn_await(
     return (cur_node, cur_es);
 }
 
-"""Check if we're currently in a client-side function."""
-impl EsastGenPass._is_in_client_scope -> bool {
-    return <>any(self.client_scope_stack);
-}
-
 """Insert hoisted declarations, if any, ahead of the given statements."""
 impl EsastGenPass._prepend_hoisted(
     <>node: uni.UniScopeNode, statements: list[es.Statement]
@@ -2716,7 +2719,6 @@ impl EsastGenPass.before_pass -> None {
     self.scope_stack: list[ScopeInfo] = [];
     self.scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {};
     self.client_manifest = ClientManifest();
-    self.client_scope_stack: list[bool] = [];
     self.jsx_processor = EsJsxProcessor(self);
     # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
     self.reactive_vars: dict[str, str] = {};

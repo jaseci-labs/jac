@@ -1,7 +1,10 @@
-"""Shared pytest fixtures for the tests directory."""
+"""Shared pytest fixtures for jac/tests directory.
+
+Plugin management is configured here to apply only to core jac tests,
+not to package-specific tests like jac-byllm, jac-client, etc.
+"""
 
 import contextlib
-import glob
 import inspect
 import io
 import os
@@ -15,6 +18,47 @@ from typing import Any
 import pytest
 
 import jaclang
+
+# =============================================================================
+# Plugin Management - Core Jac Tests Only
+# =============================================================================
+
+# Store unregistered plugins for session-level management
+_external_plugins: list[tuple[str, Any]] = []
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Disable external plugins at the start of the jac test session.
+
+    External plugins (jac-scale, jac-client, etc.) are disabled during core jac tests
+    to ensure a clean test environment without MongoDB connections or other
+    plugin-specific dependencies.
+
+    NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
+    """
+    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+
+    global _external_plugins
+    for name, plugin in list(plugin_manager.list_name_plugin()):
+        if plugin is JacRuntimeImpl or name in (
+            "JacRuntimeImpl",
+            "JacRuntimeInterfaceImpl",
+        ):
+            continue
+        _external_plugins.append((name, plugin))
+        plugin_manager.unregister(plugin=plugin, name=name)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Re-register external plugins at the end of the jac test session."""
+    from jaclang.pycore.runtime import plugin_manager
+
+    global _external_plugins
+    for name, plugin in _external_plugins:
+        with contextlib.suppress(ValueError):
+            plugin_manager.register(plugin, name=name)
+    _external_plugins.clear()
+
 
 # =============================================================================
 # Test Utilities (moved from cli module)
@@ -33,12 +77,15 @@ def ensure_jac_runtime() -> None:
         _runtime_initialized = True
 
 
-def proc_file_sess(
-    filename: str, session: str, root: str | None = None
-) -> tuple[str, str, Any]:
+def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, Any]:
     """Create JacRuntime and return the base path, module name, and runtime state.
 
     This is a test utility for setting up Jac runtime context.
+    Database path is computed from base_path via TieredMemory.
+
+    Args:
+        filename: Path to .jac, .jir, or .py file
+        user_root: User root ID for permission boundary (None for system context)
     """
     from jaclang.pycore.runtime import JacRuntime as Jac
 
@@ -51,22 +98,58 @@ def proc_file_sess(
     else:
         raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
 
-    mach = Jac.create_j_context(session=session, root=root)
+    # Only set base path if not already set (allows tests to override via jac_temp_dir fixture)
+    if not Jac.base_path_dir:
+        Jac.set_base_path(base)
+
+    # Create context - db path auto-computed from base_path
+    mach = Jac.create_j_context(user_root=user_root)
     Jac.set_context(mach)
     return (base, mod, mach)
 
 
-def get_object(
-    filename: str, id: str, session: str = "", main: bool = True
-) -> dict[str, Any]:
+def proc_file_sess(
+    filename: str, base_path: str, user_root: str | None = None
+) -> tuple[str, str, Any]:
+    """Create JacRuntime with explicit base_path (for isolated tests).
+
+    This sets base_path explicitly to ensure tests use isolated storage.
+    The database path is computed from base_path by TieredMemory.
+
+    Args:
+        filename: Path to .jac, .jir, or .py file
+        base_path: Base directory for database storage
+        user_root: User root ID for permission boundary (None for system context)
+    """
+    from jaclang.pycore.runtime import JacRuntime as Jac
+
+    base, mod = os.path.split(filename)
+    base = base or "./"
+    if filename.endswith(".jac") or filename.endswith(".jir"):
+        mod = mod[:-4]
+    elif filename.endswith(".py"):
+        mod = mod[:-3]
+    else:
+        raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
+
+    # Set base path explicitly for isolated storage
+    Jac.set_base_path(base_path)
+
+    # Create context - db path auto-computed from base_path
+    mach = Jac.create_j_context(user_root=user_root)
+    Jac.set_context(mach)
+    return (base, mod, mach)
+
+
+def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
     """Get an object by ID from a Jac program.
 
     This is a test utility for inspecting object state.
+    Session is auto-generated based on base_path.
 
     Args:
         filename: Path to the .jac or .jir file
         id: Object ID to retrieve
-        session: Optional session identifier
         main: Treat the module as __main__ (default: True)
 
     Returns:
@@ -75,7 +158,7 @@ def get_object(
     ensure_jac_runtime()
     from jaclang.pycore.runtime import JacRuntime as Jac
 
-    base, mod, mach = proc_file_sess(filename, session)
+    base, mod, mach = proc_file(filename)
     if filename.endswith(".jac"):
         Jac.jac_import(
             target=mod, base_path=base, override_name="__main__" if main else None
@@ -173,63 +256,3 @@ def lang_fixture_path() -> Callable[[str], str]:
         return str(file_path.resolve())
 
     return _lang_fixture_path
-
-
-# Store unregistered plugins globally for session-level management
-_external_plugins: list = []
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Disable external plugins at the start of the test session.
-
-    External plugins (jac-scale, jac-client, etc.) are disabled during tests
-    to ensure a clean test environment without MongoDB connections or other
-    plugin-specific dependencies.
-
-    Uses JAC_DISABLED_PLUGINS=* for subprocess-based tests that spawn new jac processes.
-    """
-    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
-
-    # Set env var for subprocess-based tests that spawn new jac processes
-    os.environ["JAC_DISABLED_PLUGINS"] = "*"
-
-    global _external_plugins
-    for name, plugin in list(plugin_manager.list_name_plugin()):
-        if plugin is JacRuntimeImpl or name == "JacRuntimeImpl":
-            continue
-        _external_plugins.append((name, plugin))
-        plugin_manager.unregister(plugin=plugin, name=name)
-
-
-def pytest_unconfigure(config: pytest.Config) -> None:
-    """Re-register external plugins at the end of the test session."""
-    from jaclang.pycore.runtime import plugin_manager
-
-    # Remove env var
-    os.environ.pop("JAC_DISABLED_PLUGINS", None)
-
-    global _external_plugins
-    for name, plugin in _external_plugins:
-        with contextlib.suppress(ValueError):
-            plugin_manager.register(plugin, name=name)
-    _external_plugins.clear()
-
-
-def _cleanup_shelf_db_files() -> None:
-    """Remove anchor_store.db files that may be created by jac-scale plugin."""
-    for pattern in [
-        "anchor_store.db.dat",
-        "anchor_store.db.bak",
-        "anchor_store.db.dir",
-    ]:
-        for file in glob.glob(pattern):
-            with contextlib.suppress(Exception):
-                Path(file).unlink()
-
-
-@pytest.fixture(autouse=True)
-def cleanup_plugin_artifacts():
-    """Clean up files created by external plugins before and after each test."""
-    _cleanup_shelf_db_files()
-    yield
-    _cleanup_shelf_db_files()

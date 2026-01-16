@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jac-client 0.2.8 (Unreleased)
+## jac-client 0.2.9 (Unreleased)
+
+## jac-client 0.2.8 (Latest Release)
 
 - **Vite Dev Server Integration for HMR**: Added support for Hot Module Replacement during development. When using `jac start --watch`, the Vite dev server runs alongside the Jac API server with automatic proxy configuration for `/walker`, `/function`, `/user`, and `/introspect` routes. This enables instant frontend updates without full page reloads while maintaining seamless backend communication.
 
-## jac-client 0.2.7 (Latest Release)
+## jac-client 0.2.7
 
 - **Reactive State Variables**: The `jac create --cl` template now uses the new `has` keyword for React state management. Instead of `[count, setCount] = useState(0);`, you can write `has count: int = 0;` and use direct assignment `count = count + 1;`. The compiler automatically generates the `useState` destructuring and transforms assignments to setter calls, providing cleaner and more intuitive state management syntax.
 - **Simplified Project Structure**: Reorganized the default project structure created by `jac create --cl`. The entry point is now `main.jac` at the project root instead of `src/app.jac`, and the `components/` directory is now at the project root instead of `src/components/`. This flatter structure reduces nesting and aligns with modern frontend project conventions. Existing projects using the `src/` structure continue to work but new projects use the simplified layout.

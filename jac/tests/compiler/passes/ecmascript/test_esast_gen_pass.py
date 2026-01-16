@@ -291,3 +291,37 @@ def test_reactive_state_generates_use_state(
     )
     assert "setCount(42)" in js_code, "Direct assignment should use setter"
     assert "setName(" in js_code, "Assignment to name should use setName"
+
+
+def test_reactive_state_in_cl_jac_file(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that has variables work in .cl.jac files without explicit cl {} wrapper.
+
+    Regression test for bug where has variables only worked inside cl {} blocks
+    in .jac files, but failed when defined directly in .cl.jac files.
+    """
+    es_ast = compile_to_esast(fixture_path("reactive_state.cl.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useState is imported from @jac-client/utils (auto-injected)
+    assert 'import { useState } from "@jac-client/utils"' in js_code, (
+        "useState should be auto-imported from @jac-client/utils in .cl.jac files"
+    )
+
+    # Check that has declarations generate useState destructuring
+    # has count: int = 0; -> const [count, setCount] = useState(0);
+    assert "const [count, setCount] = useState(0)" in js_code, (
+        "has count should generate useState destructuring in .cl.jac files"
+    )
+    assert 'const [name, setName] = useState("test")' in js_code, (
+        "has name should generate useState destructuring in .cl.jac files"
+    )
+
+    # Check that assignments to reactive vars generate setter calls
+    # count = count + 1; -> setCount(count + 1);
+    assert "setCount(count + 1)" in js_code, (
+        "Assignment to reactive var should use setter in .cl.jac files"
+    )
+    assert "setCount(42)" in js_code, "Direct assignment should use setter"
+    assert "setName(" in js_code, "Assignment to name should use setName"

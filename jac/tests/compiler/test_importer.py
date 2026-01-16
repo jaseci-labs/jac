@@ -3,7 +3,8 @@
 import io
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from pathlib import Path
 
 import pytest
 
@@ -33,12 +34,13 @@ def fixture_abs_path() -> Callable[[str], str]:
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_machine():
+def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
     """Reset Jac machine before each test."""
-    Jac.reset_machine()
+    # Use tmp_path for session isolation in parallel tests
+    Jac.reset_machine(base_path=str(tmp_path))
     yield
     # Optional cleanup after test
-    Jac.reset_machine()
+    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def test_import_basic_python(fixture_abs_path: Callable[[str], str]) -> None:

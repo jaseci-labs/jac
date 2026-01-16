@@ -97,7 +97,7 @@ def test_deploy_todo_app():
     # Create app config
     app_config = AppConfig(
         code_folder=todo_app_path,
-        file_name="app.jac",
+        file_name="main.jac",
         build=False,
     )
 

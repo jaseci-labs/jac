@@ -17,24 +17,34 @@ When you run `jac start`, it:
 ## Usage
 
 ```bash
-# Basic usage
+# Basic usage (uses main.jac by default)
+# If main.jac doesn't exist, you'll get an error suggesting to specify a filename
+jac start
+
+# Start with specific file (if your entry point is not main.jac)
 jac start myprogram.jac
 
 # Specify a custom port
-jac start myprogram.jac --port 8080
+jac start --port 8080
 
 # Use a specific session file for persistence
-jac start myprogram.jac --session myapp.session
+jac start --session myapp.session
 
 # Start with Hot Module Replacement (development)
-jac start myprogram.jac --watch
+jac start --watch
 
 # HMR mode without client bundling (API only)
-jac start myprogram.jac --watch --no-client
+jac start --watch --no-client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
-jac start myprogram.jac --scale
+jac start --scale
 ```
+
+> **Note**:
+>
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
+>
+ ```
 
 ## API Endpoints
 
@@ -457,8 +467,8 @@ jac install --dev
 ### Development Workflow
 
 ```bash
-# Start with HMR enabled
-jac start main.jac --watch
+# Start with HMR enabled (uses main.jac by default)
+jac start --watch
 ```
 
 This starts:
@@ -485,14 +495,14 @@ When you edit a `.jac` file:
 **Examples:**
 
 ```bash
-# Full-stack HMR (frontend + backend)
-jac start main.jac --watch
+# Full-stack HMR (frontend + backend, uses main.jac by default)
+jac start --watch
 
 # API-only HMR (no frontend bundling)
-jac start main.jac --watch --no-client
+jac start --watch --no-client
 
 # Custom ports
-jac start main.jac --watch -p 3000 --api-port 3001
+jac start --watch -p 3000 --api-port 3001
 ```
 
 ### Troubleshooting

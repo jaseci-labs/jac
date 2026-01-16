@@ -4,11 +4,11 @@ import from uuid { UUID }
 import from jaclang.pycore.constant { Constants as Con }
 import from jaclang.runtimelib.context { ExecutionContext }
 
-"""Jac Scale Execution Context with custom memory backend."""
+"""Jac Scale Execution Context with custom memory backend.
+
+Storage backend is configured via environment variables (e.g., MONGODB_URI),
+not per-context parameters.
+"""
 class JScaleExecutionContext(ExecutionContext) {
-    def init(
-        self: JScaleExecutionContext,
-        session: (str | None) = None,
-        <>root: (str | None) = None
-    ) -> None;
+    def init(self: JScaleExecutionContext) -> None;
 }

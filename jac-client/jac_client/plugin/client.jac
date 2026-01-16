@@ -18,16 +18,6 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
 
-"""Jac Client Module Introspector."""
-class JacClientModuleIntrospector(ModuleIntrospector) {
-    def render_page(
-        self: JacClientModuleIntrospector,
-        function_name: str,
-        args: dict[(str, Any)],
-        username: str
-    ) -> dict[str, Any];
-}
-
 """Jac Client."""
 class JacClient {
     @hookimpl
@@ -39,14 +29,17 @@ class JacClient {
     ) -> ClientBundle;
 
     @hookimpl
-    static def get_module_introspector(
-        module_name: str, base_path: (str | None)
-    ) -> ModuleIntrospector;
-
-    @hookimpl
     static def send_static_file(
         handler: BaseHTTPRequestHandler,
         file_path: Path,
         content_type: (str | None) = None
     ) -> None;
+
+    @hookimpl
+    static def render_page(
+        introspector: ModuleIntrospector,
+        function_name: str,
+        args: dict[(str, Any)],
+        username: str
+    ) -> dict[str, Any];
 }

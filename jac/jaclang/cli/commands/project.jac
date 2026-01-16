@@ -26,17 +26,37 @@ glob registry = get_registry();
             help="Overwrite existing jac.toml",
             short="f"
         ),
+        Arg.create(
+            "template",
+            default="default",
+            help="Template to use (default, client, etc.)",
+            short="t"
+        ),
+        Arg.create(
+            "list_templates",
+            typ=bool,
+            default=False,
+            help="List available templates",
+            short="l"
+        ),
 
     ],
     examples=[
         ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
+        ("jac create myapp --template client", "Create with client template"),
+        ("jac create --list-templates", "List available templates"),
 
     ],
     group="project"
 )
-def create(name: str = "", force: bool = False) -> int;
+def create(
+    name: str = "",
+    force: bool = False,
+    template: str = "default",
+    list_templates: bool = False
+) -> int;
 
 """Install all dependencies from jac.toml."""
 @registry.command(
@@ -148,3 +168,62 @@ def remove(packages: list = [], dev: bool = False, cl: bool = False) -> int;
     group="project"
 )
 def script(name: str = "", list_scripts: bool = False) -> int;
+
+"""Clean project build artifacts."""
+@registry.command(
+    name="clean",
+    help="Clean project build artifacts",
+    args=[
+        Arg.create(
+            "all",
+            typ=bool,
+            default=False,
+            help="Clean all .jac artifacts (data, cache, packages, client)",
+            short="a"
+        ),
+        Arg.create(
+            "data",
+            typ=bool,
+            default=False,
+            help="Clean data directory (.jac/data)",
+            short="d"
+        ),
+        Arg.create(
+            "cache",
+            typ=bool,
+            default=False,
+            help="Clean cache directory (.jac/cache)",
+            short="c"
+        ),
+        Arg.create(
+            "packages",
+            typ=bool,
+            default=False,
+            help="Clean packages directory (.jac/packages)",
+            short="p"
+        ),
+        Arg.create(
+            "force",
+            typ=bool,
+            default=False,
+            help="Force clean without confirmation",
+            short="f"
+        ),
+
+    ],
+    examples=[
+        ("jac clean", "Clean data directory (default)"),
+        ("jac clean --all", "Clean all .jac artifacts"),
+        ("jac clean --cache", "Clean only cache directory"),
+        ("jac clean --data --cache", "Clean data and cache directories"),
+
+    ],
+    group="project"
+)
+def clean(
+    all: bool = False,
+    data: bool = False,
+    cache: bool = False,
+    packages: bool = False,
+    force: bool = False
+) -> int;

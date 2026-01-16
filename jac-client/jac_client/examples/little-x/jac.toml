@@ -2,7 +2,7 @@
 name = "little-x"
 version = "1.0.0"
 description = "Jac client application: little-x"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

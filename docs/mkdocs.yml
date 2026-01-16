@@ -6,13 +6,13 @@ use_directory_urls: true
 nav:
   - Quick Guide:
     - Getting Started: "getting-started/index.md"
+    - Build a Web App: "full-stack/index.md"
     - Language Guide:
       - Overview: "language/index.md"
       - Syntax & Basics: "language/syntax/index.md"
       - Object-Spatial Programming: "language/osp/index.md"
       - Enhanced OOP: "language/oop/index.md"
     - AI Integration (byLLM): "ai-integration/index.md"
-    - Full-Stack (jac-client): "full-stack/index.md"
     - Production (jac-scale): "production/index.md"
     - CLI Reference: "cli/index.md"
     - Configuration: "configuration/index.md"
