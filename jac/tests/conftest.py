@@ -264,7 +264,7 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
 
     This fixture:
     - Closes any existing execution context
-    - Clears loaded modules (and removes them from sys.modules)
+    - Clears loaded modules tracking (but keeps sys.modules intact)
     - Creates fresh JacProgram
     - Creates fresh execution context with isolated storage
     - Cleans up after test
@@ -278,21 +278,8 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
-    # Clear loaded modules and remove from sys.modules
-    # (except core jaclang modules that shouldn't be reloaded)
-    core_modules = {
-        "jaclang.runtimelib.memory",
-        "jaclang.runtimelib.context",
-        "jaclang.runtimelib.test",
-        "jaclang.compiler.passes.ecmascript.estree",
-        "jaclang.compiler.type_system.types",
-        "jaclang.compiler.type_system.type_evaluator",
-        "jaclang.compiler.type_system.type_utils",
-        "jaclang.langserve.engine",
-    }
-    for mod in list(JacRuntime.loaded_modules.values()):
-        if mod.__name__ not in core_modules:
-            sys.modules.pop(mod.__name__, None)
+    # Clear loaded modules tracking (don't remove from sys.modules to avoid
+    # breaking dataclass references and other module-level state)
     JacRuntime.loaded_modules.clear()
 
     # Set up fresh state
@@ -306,7 +293,4 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     # Cleanup after test
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
-    for mod in list(JacRuntime.loaded_modules.values()):
-        if mod.__name__ not in core_modules:
-            sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
