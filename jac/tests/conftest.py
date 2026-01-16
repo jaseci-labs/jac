@@ -259,12 +259,6 @@ def lang_fixture_path() -> Callable[[str], str]:
 
 
 @pytest.fixture
-def isolate_jac_context(tmp_path: Path) -> Path:
-    """Alias for tmp_path - provides isolated directory for test context."""
-    return tmp_path
-
-
-@pytest.fixture
 def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     """Provide fresh, isolated Jac context for test.
 
