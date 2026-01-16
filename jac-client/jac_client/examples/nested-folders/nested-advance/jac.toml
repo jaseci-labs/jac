@@ -2,7 +2,7 @@
 name = "nested-advance"
 version = "1.0.0"
 description = "Jac client application: nested-advance"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)
