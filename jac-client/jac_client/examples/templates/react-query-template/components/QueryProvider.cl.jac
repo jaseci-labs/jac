@@ -21,4 +21,3 @@ def:pub QueryProvider(props: dict) -> any {
         {props["children"]}
     </QueryClientProvider>;
 }
-

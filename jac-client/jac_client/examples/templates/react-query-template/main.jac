@@ -254,7 +254,7 @@ def TodoApp() -> any {
                     }}
                 >
                     {todo.text}
-                   
+
                 </span>
                  <button onClick={lambda -> None {
                         deleteTodo(todo._jac_id);
