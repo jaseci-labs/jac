@@ -104,6 +104,7 @@ nav:
         - Styled Components: "jac-client/styling/styled-components.md"
         - JavaScript Styling: "jac-client/styling/js-styling.md"
         - Material-UI: "jac-client/styling/material-ui.md"
+        - shadcn/ui: "jac-client/styling/shadcn-ui.md"
       - Routing: "jac-client/routing.md"
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"

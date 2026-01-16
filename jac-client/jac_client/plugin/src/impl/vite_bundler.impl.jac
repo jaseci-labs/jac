@@ -291,9 +291,30 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     if (isinstance(server_config, <>dict) and server_config)
     else '';
     resolve_config = vite_config_data.get('resolve', {});
-    resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
-    if (isinstance(resolve_config, <>dict) and resolve_config)
+    # Extract alias separately to merge with defaults
+    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, <>dict) else {};
+    # Remove alias from resolve_config so we don't duplicate it
+    resolve_config_without_alias = {k: v for (k, v) in resolve_config.items() if k != 'alias'} if isinstance(resolve_config, <>dict) else {};
+    resolve_overrides_str = self._format_config_object(resolve_config_without_alias, indent=6)
+    if (isinstance(resolve_config_without_alias, <>dict) and resolve_config_without_alias)
     else '';
+    # Build merged alias block with defaults + user aliases
+    alias_entries = [];
+    # Default aliases
+    alias_entries.append(f'        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
+    alias_entries.append(f'        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
+    # User aliases - resolve relative paths using path.resolve
+    if isinstance(user_aliases, <>dict) and user_aliases {
+        for (alias_key, alias_path) in user_aliases.items() {
+            # If path is relative, resolve it relative to projectRoot
+            if isinstance(alias_path, str) {
+                # Remove leading ./ if present
+                clean_path = alias_path.lstrip('./');
+                alias_entries.append(f'        "{alias_key}": path.resolve(projectRoot, "compiled/{clean_path}"),');
+            }
+        }
+    }
+    alias_str = '\n'.join(alias_entries);
     imports_section = f"{imports_str}\n" if imports_str else '';
     newline = '\n';
     server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
@@ -330,8 +351,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),
-        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+{alias_str}
       }},
       extensions: [{extensions_str}],
 {resolve_overrides_str}
@@ -503,6 +523,27 @@ impl ViteBundler.create_dev_vite_config(
     # Extensions for TypeScript
     extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
     extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
+    # Get user aliases from config
+    vite_config_data = self.config_loader.get_vite_config();
+    resolve_config = vite_config_data.get('resolve', {});
+    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, <>dict) else {};
+    # Build merged alias block with defaults + user aliases
+    alias_entries = [];
+    # Default aliases
+    alias_entries.append(f'      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
+    alias_entries.append(f'      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
+    # User aliases - resolve relative paths using path.resolve
+    if isinstance(user_aliases, <>dict) and user_aliases {
+        for (alias_key, alias_path) in user_aliases.items() {
+            # If path is relative, resolve it relative to projectRoot
+            if isinstance(alias_path, str) {
+                # Remove leading ./ if present
+                clean_path = alias_path.lstrip('./');
+                alias_entries.append(f'      "{alias_key}": path.resolve(projectRoot, "{clean_path}"),');
+            }
+        }
+    }
+    alias_str = '\n'.join(alias_entries);
     # Generate dev config with proxy for API routes
     config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
@@ -547,8 +588,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),
-      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+{alias_str}
     }},
     extensions: [{extensions_str}],
   }},

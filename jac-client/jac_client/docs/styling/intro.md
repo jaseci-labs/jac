@@ -14,6 +14,7 @@ This guide covers all styling approaches available in Jac web applications. Each
 | [**Styled Components**](./styled-components.md) | CSS-in-JS with styled-components | [`examples/css-styling/styled-components/`](https://docs.jaseci.org/jac-client/styling/styled-components/) |
 | [**JavaScript Styling**](./js-styling.md) | Inline styles using JavaScript objects | [`examples/css-styling/js-styling/`](https://docs.jaseci.org/jac-client/styling/js-styling/) |
 | [**Material-UI**](./material-ui.md) | React component library with Material Design | [`examples/css-styling/material-ui/`](https://docs.jaseci.org/jac-client/styling/material-ui/) |
+| [**shadcn/ui**](./shadcn-ui.md) | Re-usable components built with Radix UI and Tailwind CSS | [`examples/all-in-one/`](../../examples/all-in-one/) |
 
 ## Styling Approaches Overview
 
@@ -51,6 +52,11 @@ This guide covers all styling approaches available in Jac web applications. Each
   - Pre-built, accessible components
   - Material Design system
 
+- **shadcn/ui:** Re-usable components built with Radix UI and Tailwind CSS
+  - Copy components into your project for full control
+  - Accessible, customizable, and modern
+  - Built on Radix UI primitives
+
 ## Choosing the Right Approach
 
 ### Decision Matrix
@@ -63,6 +69,7 @@ This guide covers all styling approaches available in Jac web applications. Each
 | Styled Components | Medium | Medium | Medium | Component libraries |
 | JavaScript Styling | Low | Small | Low | Dynamic styles |
 | Material-UI | Low | Large | Low | Enterprise apps |
+| shadcn/ui | Medium | Small | None | Modern, customizable UIs |
 
 *Tailwind bundle size is small after purging unused classes.
 
@@ -103,6 +110,13 @@ This guide covers all styling approaches available in Jac web applications. Each
 - Wanting pre-built components
 - Needing accessibility
 - Preferring Material Design
+
+**Choose shadcn/ui if**:
+
+- Wanting full control over component code
+- Preferring Tailwind CSS
+- Needing accessible, customizable components
+- Building modern, custom UIs
 
 ## Import Syntax
 

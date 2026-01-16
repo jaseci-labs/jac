@@ -176,6 +176,8 @@ cl import from "@jac-client/utils" {
 # Pure CSS + asset-in-CSS example
 cl import ".styles.css";
 
+# Shadcn/ui components
+cl import from .components {ShadcnExample}
  # Login Page
 cl import from .pages.loginPage { LoginPage }
 
@@ -322,6 +324,7 @@ cl {
                 example.
             </p>
         </div>
+        <ShadcnExample />
         <Card
             title="TypeScript Card Component"
             description="This card is built with TypeScript and demonstrates type-safe component usage in Jac"
