@@ -29,7 +29,15 @@ pip install jaclang
 jac --version
 ```
 
-### 2. Hello World
+### 2. Install the VS Code Extension
+
+For the best development experience with syntax highlighting, autocomplete, error detection, and graph visualizations:
+
+**VS Code:** Open Extensions (`Ctrl+Shift+X`), search "Jac", and install the [official Jac extension](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension).
+
+**Cursor:** Download the latest `.vsix` from [GitHub releases](https://github.com/Jaseci-Labs/jaseci/releases/latest), then use `Ctrl+Shift+P` → "Install from VSIX".
+
+### 3. Hello World
 
 Create a file named `hello.jac`:
 
@@ -51,7 +59,7 @@ Output:
 Hello, Jac World!
 ```
 
-### 3. Create a Project
+### 4. Create a Project
 
 Create a full-stack project with frontend and backend:
 
