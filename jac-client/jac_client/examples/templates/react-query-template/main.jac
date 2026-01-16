@@ -257,13 +257,13 @@ def TodoApp() -> any {
                     className={f"todo-filter-btn {" active" if filters == "completed" else "" }"}
                     onClick={lambda -> None { setFilters("completed"); }}
                 >Completed</button>
-                
+
             </div>
         </div>
         <div className="todo-list">
             {(<div className="todo-empty">
                     No todos found.
-                </div>) 
+                </div>)
                 if filteredTodos().length == 0  else
                   filteredTodos().map(lambda todo:any -> any {
                     return <div
@@ -290,7 +290,7 @@ def TodoApp() -> any {
                             }}
                         >Delete</button>
                     </div>;
-                   
+
                 })
             }
         </div>
