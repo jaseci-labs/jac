@@ -1,4 +1,4 @@
-"""Test SymTable Link Pass."""
+"""Test SymTable Build Pass."""
 
 import os
 
@@ -45,3 +45,21 @@ def test_package() -> None:
     prog.compile(file_path)
     assert prog.errors_had == []
     assert prog.warnings_had == []
+
+
+def test_inner_compr_iteration_variable() -> None:
+    """Test that iteration variables in comprehensions are registered in symbol table."""
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "symtab_link_tests",
+        "list_comprehension.jac",
+    )
+    mod = JacProgram().compile(file_path)
+
+    compr_names = mod.sym_tab.kid_scope[0].names_in_scope
+
+    # The iteration variable 'x' should be in the InnerCompr's symbol table
+    assert "x" in compr_names, (
+        "Iteration variable 'x' should be registered in InnerCompr symbol table"
+    )
