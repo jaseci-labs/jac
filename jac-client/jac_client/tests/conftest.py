@@ -15,13 +15,15 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from jaclang.pycore.program import JacProgram
 from jaclang.pycore.runtime import JacRuntime as Jac
-from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+from jaclang.pycore.runtime import JacRuntimeImpl, JacRuntimeInterface, plugin_manager
 
 # Store unregistered plugins globally for session-level management
 _external_plugins: list = []
@@ -79,11 +81,31 @@ def _get_env_with_npm() -> dict[str, str]:
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_machine() -> Generator[None, None, None]:
+def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
     """Reset Jac machine before and after each test."""
-    Jac.reset_machine()
+    # Close existing context if any
+    if Jac.exec_ctx is not None:
+        Jac.exec_ctx.mem.close()
+
+    # Clear loaded modules
+    for mod in list(Jac.loaded_modules.values()):
+        sys.modules.pop(mod.__name__, None)
+    Jac.loaded_modules.clear()
+
+    # Set up fresh state
+    Jac.base_path_dir = str(tmp_path)
+    Jac.program = JacProgram()
+    Jac.pool = ThreadPoolExecutor()
+    Jac.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
+
     yield
-    Jac.reset_machine()
+
+    # Cleanup after test
+    if Jac.exec_ctx is not None:
+        Jac.exec_ctx.mem.close()
+    for mod in list(Jac.loaded_modules.values()):
+        sys.modules.pop(mod.__name__, None)
+    Jac.loaded_modules.clear()
 
 
 # Session-scoped cache for npm installation
