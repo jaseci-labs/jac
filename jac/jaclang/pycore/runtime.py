@@ -83,12 +83,6 @@ class JacAccessValidation:
     """Jac Access Validation Specs."""
 
     @staticmethod
-    def elevate_root() -> None:
-        """Elevate context root to system_root."""
-        jctx = JacRuntimeInterface.get_context()
-        jctx.root_state = jctx.system_root
-
-    @staticmethod
     def allow_root(
         archetype: Archetype,
         root_id: UUID,
@@ -230,10 +224,10 @@ class JacAccessValidation:
 
         jctx = JacRuntimeInterface.get_context()
 
-        jroot = jctx.root_state
+        jroot = jctx.user_root
 
-        # if current root is system_root
-        # if current root id is equal to target anchor's root id
+        # if current root is system_root (superuser)
+        # if current root id is equal to target anchor's root id (ownership)
         # if current root is the target anchor
         if jroot == jctx.system_root or jroot.id == to.root or jroot == to:
             return AccessLevel.WRITE
@@ -990,7 +984,7 @@ class JacBasics:
     def get_context() -> ExecutionContext:
         """Get current execution context."""
         if JacRuntime.exec_ctx is None:
-            JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context()
+            JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
         return JacRuntime.exec_ctx
 
     @staticmethod
@@ -1006,19 +1000,22 @@ class JacBasics:
     @staticmethod
     def reset_graph(root: Root | None = None) -> int:
         """Purge current or target graph."""
-        from shelve import Shelf
+        import pickle
+        import sqlite3
 
         ctx = JacRuntimeInterface.get_context()
         mem = ctx.mem
-        ranchor = root.__jac__ if root else ctx.root_state
+        ranchor = root.__jac__ if root else ctx.user_root
 
         deleted_count = 0
         deleted_ids: set[UUID] = set()
         # Get anchors from persistence if available, otherwise from memory
         # Convert to list to avoid modifying during iteration
         persistence = mem.l3
-        if persistence and isinstance(getattr(persistence, "__shelf__", None), Shelf):
-            anchors = list(persistence.__shelf__.values())
+        conn = getattr(persistence, "__conn__", None) if persistence else None
+        if conn and isinstance(conn, sqlite3.Connection):
+            cursor = conn.execute("SELECT data FROM anchors")
+            anchors = [pickle.loads(row[0]) for row in cursor.fetchall()]
         else:
             anchors = list(mem.get_mem().values())
 
@@ -1042,7 +1039,7 @@ class JacBasics:
     def get_object(id: str) -> Archetype | None:
         """Get object given id."""
         if id == "root":
-            return JacRuntimeInterface.get_context().root_state.archetype
+            return JacRuntimeInterface.get_context().user_root.archetype
         elif obj := JacRuntimeInterface.get_context().mem.get(UUID(id)):
             return obj.archetype
 
@@ -1600,7 +1597,7 @@ class JacBasics:
 
         if not anchor.persistent and not anchor.root:
             anchor.persistent = True
-            anchor.root = jctx.root_state.id
+            anchor.root = jctx.user_root.id
 
         jctx.mem.put(anchor)
 
@@ -1910,13 +1907,24 @@ class JacUtils:
     """Jac Machine Utilities."""
 
     @staticmethod
-    def create_j_context(
-        session: str | None = None, root: str | None = None
-    ) -> ExecutionContext:
-        """Hook for initialization or custom greeting logic."""
+    def create_j_context(user_root: str | None) -> ExecutionContext:
+        """Create a new execution context.
+
+        Args:
+            user_root: User root ID for permission boundary. Required parameter.
+                       Pass None for CLI/system contexts (uses system_root).
+                       Pass user's root ID for authenticated server requests.
+
+        Storage backend is configured via plugins/environment, not per-context.
+        For file backend: auto-generates path from JacRuntime.base_path_dir.
+        For database backends (jac-scale): configured via environment variables.
+        """
         from jaclang.runtimelib.context import ExecutionContext
 
-        return ExecutionContext(session=session, root=root)
+        ctx = ExecutionContext()
+        if user_root is not None:
+            ctx.set_user_root(user_root)
+        return ctx
 
     @staticmethod
     def attach_program(jac_program: JacProgram) -> None:
@@ -2059,7 +2067,7 @@ class JacUtils:
                 # Use jac_import with reload flag
                 result = JacRuntimeInterface.jac_import(
                     target=module_name,
-                    base_path=JacRuntime.base_path_dir,
+                    base_path=JacRuntime.base_path_dir or os.getcwd(),
                     items=items,
                     reload_module=True,
                     lng="jac",
@@ -2211,6 +2219,29 @@ class JacPluginConfig:
         """
         return None
 
+    @staticmethod
+    def register_project_template() -> dict[str, Any] | None:
+        """Register a project template for jac create.
+
+        Allows plugins to provide custom project templates that can be
+        selected via `jac create --template <name>`.
+
+        Returns:
+            dict with keys:
+                - name: Template name (e.g., 'client')
+                - description: Human-readable description
+                - config: dict for jac.toml content (with {{name}} placeholders)
+                - files: dict[path, content] with {{name}} placeholders
+                - directories: list of directories to create
+                - gitignore_entries: list of .gitignore entries
+                - post_create: optional callable(project_path, project_name)
+        """
+        return None
+
+
+# Sentinel for "not provided" in reset_machine
+_RESET_MACHINE_UNSET = object()
+
 
 class JacRuntimeInterface(
     JacClassReferences,
@@ -2348,7 +2379,7 @@ plugin_manager.add_hookspecs(JacRuntimeSpec)
 class JacRuntime(JacRuntimeInterface):
     """Jac Machine State."""
 
-    base_path_dir: str = os.getcwd()
+    base_path_dir: str | None = os.getcwd()
     compiler: JacCompiler | None = None
     program: JacProgram | None = None
     pool: ThreadPoolExecutor = ThreadPoolExecutor()
@@ -2378,11 +2409,17 @@ class JacRuntime(JacRuntimeInterface):
         return cls.program
 
     @staticmethod
-    def set_base_path(base_path: str) -> None:
-        """Set the base path for the machine."""
-        JacRuntime.base_path_dir = (
-            base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
-        )
+    def set_base_path(base_path: str | None) -> None:
+        """Set the base path for the machine.
+
+        When base_path is None, L3 persistence is disabled (faster for tests).
+        """
+        if base_path is None:
+            JacRuntime.base_path_dir = None
+        else:
+            JacRuntime.base_path_dir = (
+                base_path if os.path.isdir(base_path) else os.path.dirname(base_path)
+            )
 
     @staticmethod
     def set_context(context: ExecutionContext) -> None:
@@ -2390,12 +2427,18 @@ class JacRuntime(JacRuntimeInterface):
         JacRuntime.exec_ctx = context
 
     @staticmethod
-    def reset_machine() -> None:
+    def reset_machine(base_path: str | None = _RESET_MACHINE_UNSET) -> None:  # type: ignore[assignment]
         """Reset the machine.
 
         Note: The compiler singleton is preserved across resets since it's
         stateless with respect to any particular program. Only the program
         state (modules, errors, context) is reset.
+
+        Args:
+            base_path: Base path for the new context.
+                       - If not provided: defaults to os.getcwd()
+                       - If explicitly None: disables L3 persistence (faster for tests)
+                       - If a path string: uses that path for persistence
         """
         # Remove Jac modules from sys.modules, but skip special module names
         # that Python relies on (like __main__, __mp_main__, etc.)
@@ -2424,19 +2467,27 @@ class JacRuntime(JacRuntimeInterface):
             # mismatches during pickling.
             "jaclang.compiler.passes.ecmascript.estree",
         }
+        # Close the context first to sync shelf before removing modules
+        # (pickle needs the module classes to still be importable)
+        if JacRuntime.exec_ctx is not None:
+            JacRuntime.exec_ctx.mem.close()
+
+        # Now safe to remove loaded modules from sys.modules
         for i in JacRuntime.loaded_modules.values():
             if i.__name__ not in special_modules:
                 sys.modules.pop(i.__name__, None)
         JacRuntime.loaded_modules.clear()
-        JacRuntime.base_path_dir = os.getcwd()
+        # Handle base_path: sentinel means use cwd, explicit None means no persistence
+        if base_path is _RESET_MACHINE_UNSET:
+            JacRuntime.base_path_dir = os.getcwd()
+        else:
+            JacRuntime.base_path_dir = base_path
         from jaclang.pycore.program import JacProgram
 
         # Reset only the program, keep the compiler singleton
         JacRuntime.program = JacProgram()
         JacRuntime.pool = ThreadPoolExecutor()
-        if JacRuntime.exec_ctx is not None:
-            JacRuntime.exec_ctx.mem.close()
-        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context()
+        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
 
 
 @contextmanager

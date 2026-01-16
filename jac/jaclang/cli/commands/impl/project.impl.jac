@@ -9,10 +9,38 @@ import sys;
 import from pathlib { Path }
 
 """Initialize a new Jac project."""
-impl create(name: str = '', force: bool = False) -> int {
-    import from jaclang.project.config { JacConfig, find_project_root }
+impl create(
+    name: str = '',
+    force: bool = False,
+    template: str = "default",
+    list_templates: bool = False
+) -> int {
+    import from jaclang.project.config { find_project_root }
+    import from jaclang.project.template_registry { get_template_registry }
+    registry = get_template_registry();
+    # Handle --list-templates
+    if list_templates {
+        templates = registry.list_templates();
+        if not templates {
+            print("No templates available.");
+            return 0;
+        }
+        print("Available templates:");
+        for (tname, desc) in templates {
+            print(f"  {tname}: {desc}");
+        }
+        return 0;
+    }
+    # Get template
+    tmpl = registry.get(template);
+    if tmpl is None {
+        print(f"Unknown template: {template}", file=sys.stderr);
+        print("Use --list-templates to see available templates.", file=sys.stderr);
+        return 1;
+    }
     cwd = Path.cwd();
     project_name = name or cwd.name;
+    # Validate/create project directory
     if name {
         project_path = cwd / name;
         if project_path.exists() and not force {
@@ -38,40 +66,59 @@ impl create(name: str = '', force: bool = False) -> int {
         print(f"jac.toml already exists. Use --force to overwrite.", file=sys.stderr);
         return 1;
     }
-    toml_content = JacConfig.create_default_toml(project_name);
+    # Create directories from template
+    for dir_path in tmpl.directories {
+        (project_path / dir_path).mkdir(parents=True, exist_ok=True);
+    }
+    # Generate jac.toml from config dict
+    toml_content = _render_config_to_toml(tmpl.config, project_name);
     with open(toml_path, "w") as f {
         f.write(toml_content);
     }
     print(f"Created {toml_path}");
+    # Generate files from template
+    for (file_path, content) in tmpl.files.items() {
+        rendered = content.replace("{{name}}", project_name);
+        full_path = project_path / file_path;
+        full_path.parent.mkdir(parents=True, exist_ok=True);
+        if not full_path.exists() or force {
+            with open(full_path, "w") as f {
+                f.write(rendered);
+            }
+            print(f"Created {full_path}");
+        }
+    }
+    # Create .gitignore files from template
+    if tmpl.gitignore_entries {
+        _create_jac_gitignore(project_path, tmpl.gitignore_entries);
+    }
+    if tmpl.root_gitignore_entries {
+        _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
+    }
+    # Pre-generate compiler cache if main.jac exists
     main_jac = project_path / "main.jac";
-    if not main_jac.exists() {
-        with open(main_jac, "w") as f {
-            f.write(
-                f'"""Main entry point for {project_name}."""\n\nwith entry {{\n    print("Hello from {project_name}!");\n}}\n'
+    if main_jac.exists() {
+        try {
+            result = subprocess.run(
+                [sys.executable, "-m", "jaclang", "build", str(main_jac)],
+                capture_output=True,
+                text=True,
+                cwd=str(project_path)
             );
-        }
-        print(f"Created {main_jac}");
+            if result.returncode == 0 {
+                print("Pre-generated compiler cache");
+            }
+        } except Exception { }
     }
-    # Create .jac directory with its own .gitignore to exclude build artifacts
-    jac_dir = project_path / ".jac";
-    jac_dir.mkdir(parents=True, exist_ok=True);
-    jac_gitignore = jac_dir / ".gitignore";
-    with open(jac_gitignore, "w") as f {
-        f.write("# Ignore all build artifacts in .jac directory\n*\n");
-    }
-    print(f"Created {jac_gitignore}");
-    try {
-        result = subprocess.run(
-            [sys.executable, "-m", "jaclang", "build", str(project_path / "main.jac")],
-            capture_output=True,
-            text=True,
-            cwd=str(project_path)
-        );
-        if result.returncode == 0 {
-            print("Pre-generated compiler cache");
+    # Run post-create hook if defined
+    if tmpl.post_create is not None {
+        try {
+            tmpl.post_create(project_path, project_name);
+        } except Exception as e {
+            print(f"Warning: post-create hook failed: {e}", file=sys.stderr);
         }
-    } except Exception { }
-    print(f"\nProject '{project_name}' initialized successfully!");
+    }
+    print(f"\nProject '{project_name}' created successfully!");
     print("\nNext steps:");
     if name {
         print(f"  cd {name}");
@@ -80,6 +127,112 @@ impl create(name: str = '', force: bool = False) -> int {
     print("  jac add <package>   # Add dependencies");
     print("  jac install         # Install all dependencies");
     return 0;
+}
+
+"""Quote TOML key if it contains special characters."""
+def _quote_toml_key(k: str) -> str {
+    # TOML bare keys can only contain A-Za-z0-9_-
+    stripped: str = k.replace('_', '').replace('-', '');
+    if stripped.isalnum() and len(k) > 0 {
+        return k;
+    }
+    return f'"{k}"';
+}
+
+"""Render a config dict to TOML format."""
+def _render_config_to_toml(config: dict, project_name: str) -> str {
+    lines: list[str] = [];
+
+    def render_value(v: any) -> str {
+        if isinstance(v, str) {
+            # Replace {{name}} placeholder and escape for TOML
+            v = v.replace("{{name}}", project_name);
+            return f'"{v}"';
+        } elif isinstance(v, bool) {
+            return "true" if v else "false";
+        } elif isinstance(v, (int, float)) {
+            return str(v);
+        } elif isinstance(v, list) {
+            items = [render_value(item) for item in v];
+            return "[" + ", ".join(items) + "]";
+        } else {
+            return str(v);
+        }
+    }
+
+    def render_section(section_name: str, section_data: dict, indent: str = "") -> None {
+        # Separate simple values from nested dicts
+        simple_values: dict = {};
+        nested_sections: dict = {};
+
+        for (k, v) in section_data.items() {
+            if isinstance(v, dict) {
+                nested_sections[k] = v;
+            } else {
+                simple_values[k] = v;
+            }
+        }
+
+        # Write section header
+        if section_name {
+            lines.append(f"[{section_name}]");
+        }
+
+        # Write simple values
+        for (k, v) in simple_values.items() {
+            lines.append(f"{_quote_toml_key(k)} = {render_value(v)}");
+        }
+
+        if simple_values and nested_sections {
+            lines.append("");
+        }
+
+        # Write nested sections
+        for (k, v) in nested_sections.items() {
+            nested_name = f"{section_name}.{k}" if section_name else k;
+            render_section(nested_name, v);
+            lines.append("");
+        }
+    }
+
+    # Render top-level sections
+    for (section, data) in config.items() {
+        if isinstance(data, dict) {
+            render_section(section, data);
+            lines.append("");
+        } else {
+            lines.append(f"{section} = {render_value(data)}");
+        }
+    }
+
+    # Clean up trailing newlines
+    while lines and lines[-1] == "" {
+        lines.pop();
+    }
+    lines.append("");
+
+    return "\n".join(lines);
+}
+
+"""Create .jac/.gitignore with entries."""
+def _create_jac_gitignore(project_path: Path, entries: list[str]) -> None {
+    jac_dir = project_path / ".jac";
+    if jac_dir.exists() {
+        jac_gitignore = jac_dir / ".gitignore";
+        with open(jac_gitignore, "w") as f {
+            f.write("\n".join(entries) + "\n");
+        }
+        print(f"Created {jac_gitignore}");
+    }
+}
+
+"""Create project-root .gitignore with entries."""
+def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
+    gitignore_path = project_path / ".gitignore";
+    with open(gitignore_path, "w") as f {
+        f.write("\n".join(entries) + "\n");
+    }
+    print(f"Created {gitignore_path}");
 }
 
 """Install all dependencies from jac.toml."""

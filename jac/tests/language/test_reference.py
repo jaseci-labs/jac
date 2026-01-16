@@ -49,10 +49,14 @@ def normalize_function_addresses(text: str) -> str:
 
 @pytest.fixture(autouse=True)
 def reset_jac_runtime():
-    """Reset Jac runtime before and after each test."""
-    Jac.reset_machine()
+    """Reset Jac runtime before and after each test.
+
+    Reference tests don't need persistence - they just test compilation
+    and execution. Pass base_path=None to disable L3 persistence.
+    """
+    Jac.reset_machine(base_path=None)
     yield
-    Jac.reset_machine()
+    Jac.reset_machine(base_path=None)
 
 
 @pytest.mark.parametrize("filename", get_reference_jac_files())
@@ -75,7 +79,9 @@ def test_reference_file(filename: str) -> None:
             mode="exec",
         )
         output_jac = execute_and_capture_output(code_obj, filename=filename)
-        Jac.reset_machine()
+        Jac.reset_machine(
+            base_path=None
+        )  # Keep persistence disabled between .jac and .py runs
 
         # Clear byllm modules from cache
         sys.modules.pop("byllm", None)

@@ -5,7 +5,7 @@
 Firstly make sure that Python 3.12 or higher is installed in your environment, then simply install Jac using pip:
 
 ```bash
-python -m pip install -U jaclang
+python -m pip install -U jaclang jac-client
 ```
 
 Once you've got Jaclang installed, just give the Jac CLI a try to make sure everything's up and running smoothly.

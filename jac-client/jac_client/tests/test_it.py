@@ -240,17 +240,17 @@ def test_all_in_one_app_endpoints() -> None:
                     f"STDERR:\n{jac_add_result.stderr}\n"
                 )
 
-            app_jac_path = os.path.join(project_path, "app.jac")
-            assert os.path.isfile(app_jac_path), "all-in-one src/app.jac file missing"
+            app_jac_path = os.path.join(project_path, "main.jac")
+            assert os.path.isfile(app_jac_path), "all-in-one main.jac file missing"
 
-            # 4. Start the server: `jac start src/app.jac`
+            # 4. Start the server: `jac start main.jac`
             # NOTE: We don't use text mode here, so `Popen` defaults to bytes.
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             try:
-                print("[DEBUG] Starting server with 'jac start src/app.jac'")
+                print("[DEBUG] Starting server with 'jac start main.jac'")
                 server = Popen(
-                    ["jac", "start", "src/app.jac"],
+                    ["jac", "start", "main.jac"],
                     cwd=project_path,
                 )
                 # Wait for localhost:8000 to become available
@@ -384,13 +384,18 @@ def test_all_in_one_app_endpoints() -> None:
                         f"Failed to GET /workers/worker.js after retries: {exc}"
                     )
 
-                # "/walker/get_server_message" – walkers are integrated and up and running
+                # POST /walker/get_server_message – walkers are integrated and up and running
                 try:
-                    print("[DEBUG] Sending GET request to /walker/get_server_message")
-                    with urlopen(
+                    print(
+                        "[DEBUG] Sending POST request to /walker/get_server_message endpoint"
+                    )
+                    req = Request(
                         "http://127.0.0.1:8000/walker/get_server_message",
-                        timeout=20,
-                    ) as resp_walker:
+                        data=json.dumps({}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urlopen(req, timeout=20) as resp_walker:
                         walker_body = resp_walker.read().decode(
                             "utf-8", errors="ignore"
                         )
@@ -400,12 +405,13 @@ def test_all_in_one_app_endpoints() -> None:
                             f"Body (truncated to 500 chars):\n{walker_body[:500]}"
                         )
                         assert resp_walker.status == 200
-                        assert "get_server_message" in walker_body
-                except (URLError, HTTPError) as exc:
+                        # The walker reports "hello from a basic walker!"
+                        assert "hello from a basic walker" in walker_body.lower()
+                except (URLError, HTTPError, RemoteDisconnected) as exc:
                     print(
                         f"[DEBUG] Error while requesting /walker/get_server_message: {exc}"
                     )
-                    pytest.fail("Failed to GET /walker/get_server_message")
+                    pytest.fail("Failed to POST /walker/get_server_message")
 
                 # POST /walker/create_todo – create a Todo via walker HTTP API
                 try:

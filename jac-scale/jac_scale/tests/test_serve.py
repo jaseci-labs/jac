@@ -9,7 +9,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import jwt as pyjwt
 import pytest
@@ -33,7 +33,6 @@ class TestJacScaleServe:
     test_file: Path
     port: int
     base_url: str
-    session_file: Path
     server_process: subprocess.Popen[str] | None = None
 
     @classmethod
@@ -50,11 +49,8 @@ class TestJacScaleServe:
         cls.port = get_free_port()
         cls.base_url = f"http://localhost:{cls.port}"
 
-        # Use unique session file for tests
-        cls.session_file = cls.fixtures_dir / f"test_serve_{cls.port}.session"
-
-        # Clean up any existing session files before starting
-        cls._cleanup_session_files()
+        # Clean up any existing database files before starting
+        cls._cleanup_db_files()
 
         # Start the server process
         cls.server_process = None
@@ -77,8 +73,8 @@ class TestJacScaleServe:
         # Run garbage collection to clean up lingering socket objects
         gc.collect()
 
-        # Clean up session files
-        cls._cleanup_session_files()
+        # Clean up database files
+        cls._cleanup_db_files()
 
     @classmethod
     def _start_server(cls) -> None:
@@ -93,8 +89,6 @@ class TestJacScaleServe:
             str(jac_executable),
             "start",
             str(cls.test_file),
-            "--session",
-            str(cls.session_file),
             "--port",
             str(cls.port),
         ]
@@ -148,39 +142,74 @@ class TestJacScaleServe:
             )
 
     @classmethod
-    def _cleanup_session_files(cls) -> None:
-        """Delete session files including user database files and anchor_store.db."""
-        if cls.session_file.exists():
-            session_dir = cls.session_file.parent
-            prefix = cls.session_file.name
+    def _cleanup_db_files(cls) -> None:
+        """Delete SQLite database files and legacy shelf files."""
+        import shutil
 
-            for file in session_dir.iterdir():
-                if file.name.startswith(prefix):
-                    with contextlib.suppress(Exception):
-                        file.unlink()
-
-        # Clean up anchor_store.db files created by ShelfDB in cwd
+        # Clean up SQLite database files (WAL mode creates -wal and -shm files)
         for pattern in [
+            "*.db",
+            "*.db-wal",
+            "*.db-shm",
+            # Legacy shelf files
             "anchor_store.db.dat",
             "anchor_store.db.bak",
             "anchor_store.db.dir",
         ]:
-            for anchor_file in glob.glob(pattern):
+            for db_file in glob.glob(pattern):
                 with contextlib.suppress(Exception):
-                    Path(anchor_file).unlink()
+                    Path(db_file).unlink()
 
-        session_pattern = str(cls.fixtures_dir / "test_serve_*.session*")
-        for file_path in glob.glob(session_pattern):
-            with contextlib.suppress(Exception):
-                Path(file_path).unlink()
+        # Clean up database files in fixtures directory
+        for pattern in ["*.db", "*.db-wal", "*.db-shm"]:
+            for db_file in glob.glob(str(cls.fixtures_dir / pattern)):
+                with contextlib.suppress(Exception):
+                    Path(db_file).unlink()
 
         # Clean up .jac directory created during serve
         client_build_dir = cls.fixtures_dir / ".jac"
         if client_build_dir.exists():
-            import shutil
-
             with contextlib.suppress(Exception):
                 shutil.rmtree(client_build_dir)
+
+    @staticmethod
+    def _extract_transport_response_data(
+        json_response: dict[str, Any] | list[Any],
+    ) -> dict[str, Any] | list[Any]:
+        """Extract data from TransportResponse envelope format.
+
+        Handles both success and error responses.
+        """
+        # Handle jac-scale's tuple response format [status, body]
+        if isinstance(json_response, list) and len(json_response) == 2:
+            body: dict[str, Any] = json_response[1]
+            json_response = body
+
+        # Handle TransportResponse envelope format
+        # If response has 'ok', 'type', 'data', 'error' keys, extract data/error
+        if (
+            isinstance(json_response, dict)
+            and "ok" in json_response
+            and "data" in json_response
+        ):
+            if json_response.get("ok") and json_response.get("data") is not None:
+                # Success case: return the data field
+                return json_response["data"]
+            elif not json_response.get("ok") and json_response.get("error"):
+                # Error case: return error info in a format tests expect
+                error_info = json_response["error"]
+                result: dict[str, Any] = {
+                    "error": error_info.get("message", "Unknown error")
+                }
+                if "code" in error_info:
+                    result["error_code"] = error_info["code"]
+                if "details" in error_info:
+                    result["error_details"] = error_info["details"]
+                return result
+
+        # FastAPI validation errors (422) have "detail" field - return as-is
+        # These come from Pydantic validation before our endpoint is called
+        return json_response
 
     def _request(
         self,
@@ -223,13 +252,7 @@ class TestJacScaleServe:
 
         assert response is not None, "No response received"
         json_response: Any = response.json()
-
-        # Handle jac-scale's tuple response format [status, body]
-        if isinstance(json_response, list) and len(json_response) == 2:
-            body: dict[str, Any] = json_response[1]
-            return body
-
-        return json_response  # type: ignore[return-value]
+        return self._extract_transport_response_data(json_response)  # type: ignore[return-value]
 
     def _create_expired_token(self, username: str, days_ago: int = 1) -> str:
         """Create an expired JWT token for testing."""
@@ -723,7 +746,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 201
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert "token" in data
         assert "username" in data
         assert data["username"] == "status201"
@@ -745,7 +770,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert "error" in data
 
     def test_status_code_user_login_200_success(self) -> None:
@@ -765,7 +792,7 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()
+        data = self._extract_transport_response_data(response.json())
         assert "token" in data
 
     def test_status_code_user_login_400_missing_credentials(self) -> None:
@@ -777,7 +804,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code in [400, 422]  # 422 from FastAPI validation
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         # Either custom error or FastAPI validation error
         assert "error" in data or "detail" in data
 
@@ -804,7 +833,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert data["error"] == "Username and password required"
 
     def test_status_code_user_login_401_invalid_credentials(self) -> None:
@@ -824,7 +855,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 401
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert data["error"] == "Invalid credentials"
 
         # Non-existent user
@@ -843,7 +876,11 @@ class TestJacScaleServe:
             json={"username": "status200refresh", "password": "password123"},
             timeout=5,
         )
-        token = create_response.json()["token"]
+        create_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(create_response.json()),
+        )
+        token = create_data["token"]
 
         # Refresh token
         response = requests.post(
@@ -852,7 +889,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert "token" in data
         assert data["message"] == "Token refreshed successfully"
 
@@ -865,7 +904,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 400
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert data["error"] == "Token is required"
 
         # Null token - FastAPI validation may return 422
@@ -885,7 +926,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 401
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert data["error"] == "Invalid or expired token"
 
         # Malformed JWT
@@ -904,7 +947,11 @@ class TestJacScaleServe:
             json={"username": "status200walker", "password": "password123"},
             timeout=5,
         )
-        token = create_response.json()["token"]
+        create_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(create_response.json()),
+        )
+        token = create_data["token"]
 
         # Execute walker
         response = requests.post(
@@ -923,7 +970,11 @@ class TestJacScaleServe:
             json={"username": "status200func", "password": "password123"},
             timeout=5,
         )
-        token = create_response.json()["token"]
+        create_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(create_response.json()),
+        )
+        token = create_data["token"]
 
         # Execute function
         response = requests.post(
@@ -933,7 +984,9 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
         assert "result" in data
 
     def test_status_code_page_404_not_found(self) -> None:
@@ -1018,7 +1071,11 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert register_response.status_code == 201
-        token1 = register_response.json()["token"]
+        data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token1 = data["token"]
 
         # Login - 200
         login_response = requests.post(
@@ -1027,7 +1084,10 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert login_response.status_code == 200
-        token2 = login_response.json()["token"]
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(login_response.json())
+        )
+        token2 = data["token"]
 
         # Refresh token - 200
         refresh_response = requests.post(
@@ -1036,7 +1096,11 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert refresh_response.status_code == 200
-        token3 = refresh_response.json()["token"]
+        data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(refresh_response.json()),
+        )
+        token3 = data["token"]
 
         # Failed login - 401
         fail_response = requests.post(
@@ -1079,7 +1143,10 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()["reports"][0]
+        response_data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "Private task created"
         assert "task" in data
@@ -1092,7 +1159,10 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()["reports"][0]
+        response_data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
         assert "auth_required" in data
@@ -1116,7 +1186,10 @@ class TestJacScaleServe:
             timeout=5,
         )
         assert response.status_code == 200
-        data = response.json()["reports"][0]
+        response_data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        data = response_data["reports"][0]
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
 

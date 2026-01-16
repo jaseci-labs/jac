@@ -17,9 +17,6 @@ glob registry = get_registry();
             "filename", kind=ArgKind.POSITIONAL, help="Path to .jac, .jir, or .py file"
         ),
         Arg.create(
-            "session", default="", help="Session ID for persistent state", short="s"
-        ),
-        Arg.create(
             "main", typ=bool, default=True, help="Treat module as __main__", short="m"
         ),
         Arg.create(
@@ -29,13 +26,12 @@ glob registry = get_registry();
     ],
     examples=[
         ("jac run hello.jac", "Run a simple program"),
-        ("jac run app.jac --session myapp", "Run with persistent session"),
         ("jac run app.jac --no-cache", "Run without caching"),
 
     ],
     group="execution"
 )
-def run(filename: str, session: str = "", main: bool = True, cache: bool = True) -> int;
+def run(filename: str, main: bool = True, cache: bool = True) -> int;
 
 """Run the specified entrypoint function in the given .jac file."""
 @registry.command(
@@ -49,7 +45,6 @@ def run(filename: str, session: str = "", main: bool = True, cache: bool = True)
             "entrypoint", kind=ArgKind.POSITIONAL, help="Function/walker to invoke"
         ),
         Arg.create("args", kind=ArgKind.REMAINDER, help="Arguments for entrypoint"),
-        Arg.create("session", default="", help="Session ID", short="s"),
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create("root", default="", help="Root executor ID", short="r"),
         Arg.create("node", default="", help="Starting node ID", short="n"),
@@ -66,7 +61,6 @@ def enter(
     filename: str,
     entrypoint: str,
     args: list = [],
-    session: str = "",
     main: bool = True,
     <>root: str = "",
     <>node: str = ""
@@ -77,8 +71,12 @@ def enter(
     name="start",
     help="Start REST API server for a Jac program",
     args=[
-        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
-        Arg.create("session", default="", help="Session identifier", short="s"),
+        Arg.create(
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            default="main.jac",
+            help="Path to .jac file (default: main.jac)"
+        ),
         Arg.create("port", typ=int, default=8000, help="Server port", short="p"),
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create(
@@ -110,10 +108,11 @@ def enter(
 
     ],
     examples=[
-        ("jac start app.jac", "Start server on default port"),
-        ("jac start app.jac --port 3000", "Start server on port 3000"),
+        ("jac start", "Start server with default main.jac"),
+        ("jac start app.jac", "Start server with specific file"),
+        ("jac start --port 3000", "Start main.jac on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start app.jac --watch", "Start with hot module replacement"),
+        ("jac start --watch", "Start with hot module replacement"),
         ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
 
     ],
@@ -121,7 +120,6 @@ def enter(
 )
 def start(
     filename: str,
-    session: str = "",
     port: int = 8000,
     main: bool = True,
     faux: bool = False,

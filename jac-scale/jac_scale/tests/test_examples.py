@@ -284,8 +284,30 @@ class JacScaleTestRunner:
 
         # Handle jac-scale's tuple response format [status, body]
         if isinstance(json_response, list) and len(json_response) == 2:
-            return json_response[1]  # type: ignore[return-value]
+            json_response = json_response[1]
 
+        # Handle TransportResponse envelope format
+        if (
+            isinstance(json_response, dict)
+            and "ok" in json_response
+            and "data" in json_response
+        ):
+            if json_response.get("ok") and json_response.get("data") is not None:
+                # Success case: return the data field
+                return json_response["data"]
+            elif not json_response.get("ok") and json_response.get("error"):
+                # Error case: return error info
+                error_info = json_response["error"]
+                result: dict[str, Any] = {
+                    "error": error_info.get("message", "Unknown error")
+                }
+                if "code" in error_info:
+                    result["error_code"] = error_info["code"]
+                if "details" in error_info:
+                    result["error_details"] = error_info["details"]
+                return result
+
+        # FastAPI validation errors (422) have "detail" field - return as-is
         return json_response  # type: ignore[return-value]
 
     def request_raw(
@@ -406,7 +428,7 @@ class TestJacClientExamples:
     def test_all_in_one(self) -> None:
         """Test a custom example file."""
         # Point to your example file
-        example_file = JacClientExamples / "all-in-one" / "src" / "app.jac"
+        example_file = JacClientExamples / "all-in-one" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="custom_test", setup_npm=True
         ) as runner:
@@ -425,9 +447,7 @@ class TestJacClientExamples:
     def test_js_styling(self) -> None:
         """Test JS and styling example file."""
         # Point to your example file
-        example_file = (
-            JacClientExamples / "css-styling" / "js-styling" / "src" / "app.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "js-styling" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="js_styling_test", setup_npm=True
         ) as runner:
@@ -436,9 +456,7 @@ class TestJacClientExamples:
 
     def test_material_ui(self) -> None:
         """Test Material-UI styling example."""
-        example_file = (
-            JacClientExamples / "css-styling" / "material-ui" / "src" / "app.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "material-ui" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="material_ui_test", setup_npm=True
         ) as runner:
@@ -446,9 +464,7 @@ class TestJacClientExamples:
 
     def test_pure_css(self) -> None:
         """Test Pure CSS example."""
-        example_file = (
-            JacClientExamples / "css-styling" / "pure-css" / "src" / "app.jac"
-        )
+        example_file = JacClientExamples / "css-styling" / "pure-css" / "main.jac"
         with JacScaleTestRunner(
             example_file, session_name="pure_css_test", setup_npm=True
         ) as runner:
@@ -459,7 +475,7 @@ class TestJacClientExamples:
     def test_styled_components(self) -> None:
         """Test Styled Components example."""
         example_file = (
-            JacClientExamples / "css-styling" / "styled-components" / "src" / "app.jac"
+            JacClientExamples / "css-styling" / "styled-components" / "main.jac"
         )
         with JacScaleTestRunner(
             example_file, session_name="styled_components_test", setup_npm=True

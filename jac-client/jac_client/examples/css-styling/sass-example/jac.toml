@@ -2,7 +2,7 @@
 name = "sass-example"
 version = "1.0.0"
 description = "Jac client application: sass-example"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

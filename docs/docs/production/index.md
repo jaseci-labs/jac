@@ -17,11 +17,11 @@ Deploy your Jac applications to production with jac-scale. Transform your local 
 ## Quick Start
 
 ```bash
-# Start locally (development)
-jac start main.jac
+# Start locally (development, uses main.jac by default)
+jac start
 
 # Deploy to Kubernetes (production)
-jac start main.jac --scale
+jac start --scale
 
 # Teardown deployment
 jac destroy main.jac
@@ -34,9 +34,13 @@ jac destroy main.jac
 ### `jac start` - Local API Server (and Kubernetes Deployment)
 
 ```bash
-jac start <filename.jac> [options]
+jac start [filename.jac] [options]
 ```
 
+> **Note**:
+>
+> - If no filename is provided, `jac start` defaults to `main.jac` in the current directory
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), specify it explicitly: `jac start app.jac`
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--port` | 8000 | Server port |
@@ -59,13 +63,13 @@ jac start <filename.jac> [options]
 1. **Fast Mode (Default)**: Uses Python base image, syncs code via PVC
 
    ```bash
-   jac start main.jac --scale
+   jac start --scale
    ```
 
 2. **Production Mode**: Builds Docker image, pushes to registry
 
    ```bash
-   jac start main.jac --scale --build
+   jac start --scale --build
    ```
 
 ### `jac destroy` - Teardown
@@ -346,11 +350,11 @@ host = "0.0.0.0"
 jac run main.jac
 
 # 2. Local API: Test as server
-jac start main.jac
+jac start
 # → http://localhost:8000/docs
 
 # 3. Production: Deploy to K8s
-jac start main.jac --scale
+jac start --scale
 # → http://localhost:30001/docs (NodePort)
 # → or LoadBalancer URL (AWS)
 
@@ -366,7 +370,7 @@ export DOCKER_USERNAME="your-username"
 export DOCKER_PASSWORD="your-token"
 
 # Build, push, and deploy
-jac start main.jac --scale --build
+jac start --scale --build
 ```
 
 ---
