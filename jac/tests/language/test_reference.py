@@ -7,7 +7,9 @@ import io
 import os
 import re
 import sys
+from collections.abc import Generator
 from contextlib import redirect_stdout
+from pathlib import Path
 from types import CodeType
 
 import pytest
@@ -48,15 +50,12 @@ def normalize_function_addresses(text: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_runtime():
+def reset_jac_runtime(fresh_jac_context: Path) -> Generator[None, None, None]:
     """Reset Jac runtime before and after each test.
 
-    Reference tests don't need persistence - they just test compilation
-    and execution. Pass base_path=None to disable L3 persistence.
+    Uses fresh_jac_context fixture to provide isolated state.
     """
-    Jac.reset_machine(base_path=None)
     yield
-    Jac.reset_machine(base_path=None)
 
 
 @pytest.mark.parametrize("filename", get_reference_jac_files())
@@ -79,9 +78,9 @@ def test_reference_file(filename: str) -> None:
             mode="exec",
         )
         output_jac = execute_and_capture_output(code_obj, filename=filename)
-        Jac.reset_machine(
-            base_path=None
-        )  # Keep persistence disabled between .jac and .py runs
+        # Clear state between .jac and .py runs
+        Jac.loaded_modules.clear()
+        Jac.attach_program(JacProgram())
 
         # Clear byllm modules from cache
         sys.modules.pop("byllm", None)

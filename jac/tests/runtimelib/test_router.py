@@ -11,12 +11,9 @@ from jaclang import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)
-def reset_machine(tmp_path: Path) -> Generator[None, None, None]:
-    """Reset Jac machine before and after each test."""
-    # Use tmp_path for session isolation in parallel tests
-    Jac.reset_machine(base_path=str(tmp_path))
+def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
+    """Provide fresh Jac context for each test."""
     yield
-    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def test_router_compiles():

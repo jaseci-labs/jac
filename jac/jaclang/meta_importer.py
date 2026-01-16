@@ -120,8 +120,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         file_path = module.__spec__.origin
         is_pkg = module.__spec__.submodule_search_locations is not None
 
-        # Register module in JacRuntime's tracking
-        Jac.load_module(module.__name__, module)
+        # Register module in JacRuntime's tracking (skip internal jaclang modules)
+        if not module.__name__.startswith("jaclang."):
+            Jac.load_module(module.__name__, module)
 
         # Use minimal compilation for compiler passes to avoid circular imports
         use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES

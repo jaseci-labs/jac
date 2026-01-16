@@ -256,3 +256,63 @@ def lang_fixture_path() -> Callable[[str], str]:
         return str(file_path.resolve())
 
     return _lang_fixture_path
+
+
+@pytest.fixture
+def isolate_jac_context(tmp_path: Path) -> Path:
+    """Alias for tmp_path - provides isolated directory for test context."""
+    return tmp_path
+
+
+@pytest.fixture
+def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide fresh, isolated Jac context for test.
+
+    This fixture:
+    - Closes any existing execution context
+    - Clears loaded modules (and removes them from sys.modules)
+    - Creates fresh JacProgram
+    - Creates fresh execution context with isolated storage
+    - Cleans up after test
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from jaclang.pycore.program import JacProgram
+    from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+
+    # Close existing context if any
+    if JacRuntime.exec_ctx is not None:
+        JacRuntime.exec_ctx.mem.close()
+
+    # Clear loaded modules and remove from sys.modules
+    # (except core jaclang modules that shouldn't be reloaded)
+    core_modules = {
+        "jaclang.runtimelib.memory",
+        "jaclang.runtimelib.context",
+        "jaclang.runtimelib.test",
+        "jaclang.compiler.passes.ecmascript.estree",
+        "jaclang.compiler.type_system.types",
+        "jaclang.compiler.type_system.type_evaluator",
+        "jaclang.compiler.type_system.type_utils",
+        "jaclang.langserve.engine",
+    }
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if mod.__name__ not in core_modules:
+            sys.modules.pop(mod.__name__, None)
+    JacRuntime.loaded_modules.clear()
+
+    # Set up fresh state
+    JacRuntime.base_path_dir = str(tmp_path)
+    JacRuntime.program = JacProgram()
+    JacRuntime.pool = ThreadPoolExecutor()
+    JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
+
+    yield tmp_path
+
+    # Cleanup after test
+    if JacRuntime.exec_ctx is not None:
+        JacRuntime.exec_ctx.mem.close()
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if mod.__name__ not in core_modules:
+            sys.modules.pop(mod.__name__, None)
+    JacRuntime.loaded_modules.clear()
