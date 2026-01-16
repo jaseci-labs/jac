@@ -23,7 +23,7 @@ from jaclang.pycore.runtime import JacRuntime as Jac
 
 def get_free_port() -> int:
     """Get a free port by binding to port 0 and releasing it.
-    
+
     This ensures each test instance gets a unique port when running in parallel.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -262,21 +262,27 @@ def test_all_in_one_app_endpoints() -> None:
             # Use dynamic port allocation to avoid conflicts when running tests in parallel
             server_port = get_free_port()
             try:
-                print(f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'")
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
                 server = Popen(
                     ["jac", "start", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
                 )
                 # Wait for localhost:8000 to become available
-                print(f"[DEBUG] Waiting for server to be available on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Waiting for server to be available on 127.0.0.1:{server_port}"
+                )
                 _wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(f"[DEBUG] Server is now accepting connections on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Server is now accepting connections on 127.0.0.1:{server_port}"
+                )
 
                 # "/" – server up (serves client app HTML due to base_route_app="app")
                 # Note: The root endpoint may return 503 while the client bundle is building.
                 # We use _wait_for_endpoint to retry on 503 until it's ready.
                 try:
-                    print(f"[DEBUG] Sending GET request to root endpoint / (with retry)")
+                    print("[DEBUG] Sending GET request to root endpoint / (with retry)")
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -730,7 +736,9 @@ def test_default_client_app_renders() -> None:
             # Use dynamic port allocation to avoid conflicts when running tests in parallel
             server_port = get_free_port()
             try:
-                print(f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'")
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
                 server = Popen(
                     [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
@@ -740,13 +748,15 @@ def test_default_client_app_renders() -> None:
                 # Wait for server to be ready
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
                 _wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
+                )
 
                 # 4. Test root endpoint - for client-only apps, root serves the HTML app
                 # Note: The root endpoint may return 503 while the client bundle is building.
                 # We use _wait_for_endpoint to retry on 503 until it's ready.
                 try:
-                    print(f"[DEBUG] Testing root endpoint / (with retry)")
+                    print("[DEBUG] Testing root endpoint / (with retry)")
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -770,7 +780,7 @@ def test_default_client_app_renders() -> None:
 
                 # 5. Test client app endpoint - the rendered React app
                 try:
-                    print(f"[DEBUG] Testing client app endpoint /cl/app")
+                    print("[DEBUG] Testing client app endpoint /cl/app")
                     page_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}/cl/app",
                         timeout=120.0,
