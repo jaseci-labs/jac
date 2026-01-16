@@ -264,7 +264,8 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
 
     This fixture:
     - Closes any existing execution context
-    - Clears loaded modules tracking (but keeps sys.modules intact)
+    - Clears user modules from sys.modules (keeps jaclang.* to preserve dataclass refs)
+    - Clears loaded modules tracking
     - Creates fresh JacProgram
     - Creates fresh execution context with isolated storage
     - Cleans up after test
@@ -278,8 +279,11 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
-    # Clear loaded modules tracking (don't remove from sys.modules to avoid
-    # breaking dataclass references and other module-level state)
+    # Remove user .jac modules from sys.modules so they get re-imported fresh
+    # Keep jaclang.* modules to avoid breaking dataclass references
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if not mod.__name__.startswith("jaclang."):
+            sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
 
     # Set up fresh state
@@ -293,4 +297,7 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     # Cleanup after test
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if not mod.__name__.startswith("jaclang."):
+            sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
