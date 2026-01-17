@@ -13,7 +13,8 @@ impl create(
     name: str = '',
     force: bool = False,
     template: str = "default",
-    list_templates: bool = False
+    list_templates: bool = False,
+    no_cache: bool = False
 ) -> int {
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry { get_template_registry }
@@ -95,20 +96,22 @@ impl create(
     if tmpl.root_gitignore_entries {
         _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
     }
-    # Pre-generate compiler cache if main.jac exists
-    main_jac = project_path / "main.jac";
-    if main_jac.exists() {
-        try {
-            result = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", str(main_jac)],
-                capture_output=True,
-                text=True,
-                cwd=str(project_path)
-            );
-            if result.returncode == 0 {
-                print("Pre-generated compiler cache");
-            }
-        } except Exception { }
+    # Pre-generate compiler cache if main.jac exists (unless --no-cache)
+    if not no_cache {
+        main_jac = project_path / "main.jac";
+        if main_jac.exists() {
+            try {
+                result = subprocess.run(
+                    [sys.executable, "-m", "jaclang", "build", str(main_jac)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(project_path)
+                );
+                if result.returncode == 0 {
+                    print("Pre-generated compiler cache");
+                }
+            } except Exception { }
+        }
     }
     # Run post-create hook if defined
     if tmpl.post_create is not None {

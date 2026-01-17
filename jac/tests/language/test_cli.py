@@ -990,7 +990,7 @@ class TestCleanCommand:
     def _create_project(tmpdir: str) -> str:
         """Create a jac project using jac create and return the project path."""
         process = subprocess.Popen(
-            ["jac", "create", "testproj"],
+            ["jac", "create", "testproj", "--no-cache"],
             cwd=tmpdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
