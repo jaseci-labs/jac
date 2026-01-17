@@ -260,13 +260,20 @@ impl ModuleIntrospector._load_manifest -> None {
     self._client_manifest = {};
 }
 
-"""Extract access level information from module AST."""
+"""Extract access level information from module AST.
+
+Access level logic:
+- Explicitly marked with `pub`: no authentication required (stores False)
+- Explicitly marked with `protect` or `priv`: authentication required (stores True)
+- No access modifier specified: authentication required (stores True) - secure by default
+"""
 impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
     import jaclang.pycore.unitree as uni;
     import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.pycore.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
     mod_path = getattr(self._module, '__file__', None);
@@ -284,13 +291,20 @@ impl ModuleIntrospector._extract_access_levels -> None {
     for item in mod_ast.body {
         if (isinstance(item, uni.Ability) and (item.name_ref is not None)) {
             func_name = item.name_ref.sym_name;
-            self._function_access[func_name] = not item.public_access;
+            # Only explicitly `pub` marked functions are public (no auth required)
+            # No modifier or protect/priv = requires auth (secure by default)
+            is_explicitly_public = item.access and (item.access.tag.name == Tok.KW_PUB);
+            self._function_access[func_name] = not is_explicitly_public;
         } elif isinstance(item, uni.Archetype) {
             arch_name = item.name.sym_name;
             if hasattr(self._module, arch_name) {
                 cls = getattr(self._module, arch_name);
                 if (isinstance(cls, <>type) and issubclass(cls, WalkerArchetype)) {
-                    self._walker_access[arch_name] = not item.public_access;
+                    # Only explicitly `pub` marked walkers are public (no auth required)
+                    # No modifier or protect/priv = requires auth (secure by default)
+                    is_explicitly_public = item.access
+                    and (item.access.tag.name == Tok.KW_PUB);
+                    self._walker_access[arch_name] = not is_explicitly_public;
                 }
             }
         }
@@ -501,20 +515,20 @@ impl ModuleIntrospector.render_page(
 
 """Check if authentication is required for a function based on its access level.
 
-Public functions: no authentication required
-Protected/Private functions: authentication required
+Explicitly `pub` functions: no authentication required
+No modifier / Protected / Private functions: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
-    return self._function_access.get(func_name, False);
+    return self._function_access.get(func_name, True);
 }
 
 """Check if authentication is required for a walker based on its access level.
 
-Public walkers: no authentication required
-Protected/Private walkers: authentication required
+Explicitly `pub` walkers: no authentication required
+No modifier / Protected / Private walkers: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
-    return self._walker_access.get(walker_name, False);
+    return self._walker_access.get(walker_name, True);
 }
 
 """Collect client-exposed global values."""
@@ -768,7 +782,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
-    self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    # Only create real server if port > 0 (port=0 is test mode - no socket binding)
+    if self.port > 0 {
+        self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    } else {
+        self.server = None;
+    }
 }
 
 """Create HTTP request handler."""

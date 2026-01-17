@@ -1,0 +1,693 @@
+"""Tests for JacAPIServer using JacTestClient (port-free).
+
+This file mirrors the tests in test_serve.py but uses JacTestClient
+instead of real HTTP connections, making tests faster and more reliable.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Generator
+from pathlib import Path
+
+import pytest
+
+from jaclang.runtimelib.testing import JacTestClient
+from tests.runtimelib.conftest import fixture_abs_path
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client with isolated base path."""
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("serve_api.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestServerClientMigrated:
+    """Migrated tests from test_serve.py using JacTestClient."""
+
+    def test_user_creation(self, client: JacTestClient) -> None:
+        """Test user creation endpoint (migrated from test_server_user_creation)."""
+        response = client.post(
+            "/user/register",
+            json={"username": "alice", "password": "secret123"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "username" in data
+        assert "token" in data
+        assert "root_id" in data
+        assert data["username"] == "alice"
+
+    def test_user_login(self, client: JacTestClient) -> None:
+        """Test user login endpoint (migrated from test_server_user_login)."""
+        # Create user
+        create_response = client.post(
+            "/user/register",
+            json={"username": "bob", "password": "pass456"},
+        )
+        create_data = create_response.data
+
+        # Login with correct credentials
+        login_response = client.post(
+            "/user/login",
+            json={"username": "bob", "password": "pass456"},
+        )
+
+        assert login_response.ok
+        login_data = login_response.data
+        assert "token" in login_data
+        assert login_data["username"] == "bob"
+        assert login_data["root_id"] == create_data["root_id"]
+
+        # Login with wrong password
+        client.clear_auth()
+        fail_response = client.post(
+            "/user/login",
+            json={"username": "bob", "password": "wrongpass"},
+        )
+
+        assert not fail_response.ok or "error" in fail_response.json()
+
+    def test_authentication_required(self, client: JacTestClient) -> None:
+        """Test that protected endpoints require authentication (migrated)."""
+        response = client.get("/protected")
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_list_functions(self, client: JacTestClient) -> None:
+        """Test listing functions endpoint (migrated from test_server_list_functions)."""
+        # Create user and get token
+        client.register_user("funcuser", "pass")
+
+        # List functions
+        response = client.get("/functions")
+
+        assert response.ok
+        data = response.data
+        assert "functions" in data
+        assert "add_numbers" in data["functions"]
+        assert "greet" in data["functions"]
+
+    def test_get_function_signature(self, client: JacTestClient) -> None:
+        """Test getting function signature (migrated from test_server_get_function_signature)."""
+        # Create user
+        client.register_user("siguser", "pass")
+
+        # Get signature
+        response = client.get("/function/add_numbers")
+
+        assert response.ok
+        data = response.data
+        assert "signature" in data
+        sig = data["signature"]
+        assert "parameters" in sig
+        assert "a" in sig["parameters"]
+        assert "b" in sig["parameters"]
+        assert sig["parameters"]["a"]["required"] is True
+        assert sig["parameters"]["b"]["required"] is True
+
+    def test_call_function(self, client: JacTestClient) -> None:
+        """Test calling a function endpoint (migrated from test_server_call_function)."""
+        # Create user
+        client.register_user("calluser", "pass")
+
+        # Call add_numbers
+        response = client.post(
+            "/function/add_numbers",
+            json={"args": {"a": 10, "b": 25}},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data
+        assert data["result"] == 35
+
+        # Call greet
+        response2 = client.post(
+            "/function/greet",
+            json={"args": {"name": "World"}},
+        )
+
+        assert response2.ok
+        data2 = response2.data
+        assert "result" in data2
+        assert data2["result"] == "Hello, World!"
+
+    def test_call_function_with_defaults(self, client: JacTestClient) -> None:
+        """Test calling function with default parameters (migrated)."""
+        # Create user
+        client.register_user("defuser", "pass")
+
+        # Call greet without name (should use default)
+        response = client.post(
+            "/function/greet",
+            json={"args": {}},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data
+        assert data["result"] == "Hello, World!"
+
+    def test_list_walkers(self, client: JacTestClient) -> None:
+        """Test listing walkers endpoint (migrated from test_server_list_walkers)."""
+        # Create user
+        client.register_user("walkuser", "pass")
+
+        # List walkers
+        response = client.get("/walkers")
+
+        assert response.ok
+        data = response.data
+        assert "walkers" in data
+        assert "CreateTask" in data["walkers"]
+        assert "ListTasks" in data["walkers"]
+        assert "CompleteTask" in data["walkers"]
+
+    def test_get_walker_info(self, client: JacTestClient) -> None:
+        """Test getting walker information (migrated from test_server_get_walker_info)."""
+        # Create user
+        client.register_user("infouser", "pass")
+
+        # Get walker info
+        response = client.get("/walker/CreateTask")
+
+        assert response.ok
+        data = response.data
+        assert "info" in data
+        info = data["info"]
+        assert "fields" in info
+        assert "title" in info["fields"]
+        assert "priority" in info["fields"]
+        assert "_jac_spawn_node" in info["fields"]
+
+        # Check that priority has a default
+        assert info["fields"]["priority"]["required"] is False
+        assert info["fields"]["priority"]["default"] is not None
+
+    def test_spawn_walker(self, client: JacTestClient) -> None:
+        """Test spawning a walker (migrated from test_server_spawn_walker)."""
+        # Create user
+        client.register_user("spawnuser", "pass")
+
+        # Spawn CreateTask walker
+        response = client.post(
+            "/walker/CreateTask",
+            json={"title": "Test Task", "priority": 2},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+        # Get jid from response for later use
+        jid = data.get("reports", [{}])[0].get("_jac_id", "")
+
+        # Spawn ListTasks walker to verify task was created
+        response2 = client.post("/walker/ListTasks", json={})
+
+        assert response2.ok
+        data2 = response2.data
+        assert "result" in data2 or "reports" in data2
+
+        # Get Task node using GetTask walker
+        if jid:
+            response3 = client.post(f"/walker/GetTask/{jid}", json={})
+            assert response3.ok
+            data3 = response3.data
+            assert "result" in data3 or "reports" in data3
+
+    def test_user_isolation(self, client: JacTestClient) -> None:
+        """Test that users have isolated graph spaces (migrated from test_server_user_isolation)."""
+        # Create two users
+        user1_response = client.post(
+            "/user/register",
+            json={"username": "user1", "password": "pass1"},
+        )
+        user1_data = user1_response.data
+
+        # Clear auth to register second user
+        client.clear_auth()
+        user2_response = client.post(
+            "/user/register",
+            json={"username": "user2", "password": "pass2"},
+        )
+        user2_data = user2_response.data
+
+        # User1 creates a task
+        client.set_auth_token(user1_data["token"])
+        client.post(
+            "/walker/CreateTask",
+            json={"fields": {"title": "User1 Task", "priority": 1}},
+        )
+
+        # User2 creates a different task
+        client.set_auth_token(user2_data["token"])
+        client.post(
+            "/walker/CreateTask",
+            json={"fields": {"title": "User2 Task", "priority": 2}},
+        )
+
+        # Both users should have different root IDs
+        assert user1_data["root_id"] != user2_data["root_id"]
+
+    def test_invalid_function(self, client: JacTestClient) -> None:
+        """Test calling nonexistent function (migrated from test_server_invalid_function)."""
+        # Create user
+        client.register_user("invaliduser", "pass")
+
+        # Try to call nonexistent function
+        response = client.post(
+            "/function/nonexistent",
+            json={"args": {}},
+        )
+
+        # Should get error response
+        assert not response.ok or "error" in response.json()
+
+    def test_invalid_walker(self, client: JacTestClient) -> None:
+        """Test spawning nonexistent walker (migrated from test_server_invalid_walker)."""
+        # Create user
+        client.register_user("invalidwalk", "pass")
+
+        # Try to spawn nonexistent walker
+        response = client.post(
+            "/walker/NonExistentWalker",
+            json={"fields": {}},
+        )
+
+        # Should get error response
+        assert not response.ok or "error" in response.json()
+
+    def test_server_root_endpoint(self, client: JacTestClient) -> None:
+        """Test root endpoint returns API information (migrated)."""
+        response = client.get("/")
+
+        assert response.ok
+        data = response.data
+        assert "message" in data
+        assert "endpoints" in data
+        assert "POST /user/register" in data["endpoints"]
+        assert "GET /functions" in data["endpoints"]
+        assert "GET /walkers" in data["endpoints"]
+
+
+@pytest.fixture
+def imports_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for serve_api_with_imports.jac."""
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("serve_api_with_imports.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestImportedFunctionsAndWalkers:
+    """Tests for imported functions and walkers as API endpoints."""
+
+    def test_imported_functions_and_walkers(
+        self, imports_client: JacTestClient
+    ) -> None:
+        """Test that imported functions and walkers are available as API endpoints."""
+        # Create user and get token
+        imports_client.register_user("importuser", "pass")
+
+        # Test listing functions - should include both local and imported
+        functions_response = imports_client.get("/functions")
+        assert functions_response.ok
+        functions_data = functions_response.data
+        assert "functions" in functions_data
+        functions = functions_data["functions"]
+
+        # Local functions should be available
+        assert "local_add" in functions, "Local function 'local_add' not found"
+        assert "local_greet" in functions, "Local function 'local_greet' not found"
+
+        # Imported functions should also be available
+        assert "multiply_numbers" in functions, (
+            "Imported function 'multiply_numbers' not found"
+        )
+        assert "format_message" in functions, (
+            "Imported function 'format_message' not found"
+        )
+
+        # Test listing walkers - should include both local and imported
+        walkers_response = imports_client.get("/walkers")
+        assert walkers_response.ok
+        walkers_data = walkers_response.data
+        assert "walkers" in walkers_data
+        walkers = walkers_data["walkers"]
+
+        # Local walker should be available
+        assert "LocalCreateTask" in walkers, "Local walker 'LocalCreateTask' not found"
+
+        # Imported walkers should also be available
+        assert "ImportedWalker" in walkers, "Imported walker 'ImportedWalker' not found"
+        assert "ImportedCounter" in walkers, (
+            "Imported walker 'ImportedCounter' not found"
+        )
+
+        # Test calling local function
+        local_add_response = imports_client.post(
+            "/function/local_add",
+            json={"args": {"x": 5, "y": 3}},
+        )
+        assert local_add_response.ok
+        local_add_data = local_add_response.data
+        assert "result" in local_add_data
+        assert local_add_data["result"] == 8
+
+        # Test calling imported function
+        multiply_response = imports_client.post(
+            "/function/multiply_numbers",
+            json={"args": {"a": 4, "b": 7}},
+        )
+        assert multiply_response.ok
+        multiply_data = multiply_response.data
+        assert "result" in multiply_data
+        assert multiply_data["result"] == 28
+
+        # Test calling another imported function
+        format_response = imports_client.post(
+            "/function/format_message",
+            json={"args": {"prefix": "INFO", "message": "test"}},
+        )
+        assert format_response.ok
+        format_data = format_response.data
+        assert "result" in format_data
+        assert format_data["result"] == "INFO: test"
+
+        # Test spawning local walker
+        local_walker_response = imports_client.post(
+            "/walker/LocalCreateTask",
+            json={"task_title": "My Local Task"},
+        )
+        assert local_walker_response.ok
+        local_walker_data = local_walker_response.data
+        assert "result" in local_walker_data or "reports" in local_walker_data
+
+        # Test spawning imported walker
+        imported_walker_response = imports_client.post(
+            "/walker/ImportedWalker",
+            json={"item_name": "Imported Item 1"},
+        )
+        assert imported_walker_response.ok
+        imported_walker_data = imported_walker_response.data
+        assert "result" in imported_walker_data or "reports" in imported_walker_data
+
+
+@pytest.fixture
+def access_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for serve_api_access.jac (access level tests)."""
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("serve_api_access.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestAccessLevels:
+    """Tests for access level control (public, protected, private)."""
+
+    def test_public_function_without_auth(self, access_client: JacTestClient) -> None:
+        """Test that public functions can be called without authentication."""
+        # Call public function without authentication
+        response = access_client.post(
+            "/function/public_function",
+            json={"args": {"name": "Test"}},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data
+        assert data["result"] == "Hello, Test! (public)"
+
+    def test_public_function_get_info_without_auth(
+        self, access_client: JacTestClient
+    ) -> None:
+        """Test that public function info can be retrieved without authentication."""
+        # Get public function info without authentication
+        response = access_client.get("/function/public_function")
+
+        assert response.ok
+        data = response.data
+        assert "signature" in data
+        assert "parameters" in data["signature"]
+
+    def test_protected_function_requires_auth(
+        self, access_client: JacTestClient
+    ) -> None:
+        """Test that protected functions require authentication."""
+        # Try to call protected function without authentication - should fail
+        response = access_client.post(
+            "/function/protected_function",
+            json={"args": {"message": "test"}},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_protected_function_with_auth(self, access_client: JacTestClient) -> None:
+        """Test that protected functions work with authentication."""
+        # Create user and get token
+        access_client.register_user("authuser", "pass123")
+
+        # Call protected function with authentication
+        response = access_client.post(
+            "/function/protected_function",
+            json={"args": {"message": "secret"}},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data
+        assert data["result"] == "Protected: secret"
+
+    def test_private_function_requires_auth(self, access_client: JacTestClient) -> None:
+        """Test that private functions require authentication."""
+        # Try to call private function without authentication - should fail
+        response = access_client.post(
+            "/function/private_function",
+            json={"args": {"secret": "test"}},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_private_function_with_auth(self, access_client: JacTestClient) -> None:
+        """Test that private functions work with authentication."""
+        # Create user and get token
+        access_client.register_user("privuser", "pass456")
+
+        # Call private function with authentication
+        response = access_client.post(
+            "/function/private_function",
+            json={"args": {"secret": "topsecret"}},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data
+        assert data["result"] == "Private: topsecret"
+
+    def test_public_walker_without_auth(self, access_client: JacTestClient) -> None:
+        """Test that public walkers can be spawned without authentication."""
+        # Spawn public walker without authentication
+        response = access_client.post(
+            "/walker/PublicWalker",
+            json={"message": "hello"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_protected_walker_requires_auth(self, access_client: JacTestClient) -> None:
+        """Test that protected walkers require authentication."""
+        # Try to spawn protected walker without authentication - should fail
+        response = access_client.post(
+            "/walker/ProtectedWalker",
+            json={"data": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_protected_walker_with_auth(self, access_client: JacTestClient) -> None:
+        """Test that protected walkers work with authentication."""
+        # Create user and get token
+        access_client.register_user("walkuser", "pass789")
+
+        # Spawn protected walker with authentication
+        response = access_client.post(
+            "/walker/ProtectedWalker",
+            json={"data": "mydata"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_private_walker_requires_auth(self, access_client: JacTestClient) -> None:
+        """Test that private walkers require authentication."""
+        # Try to spawn private walker without authentication - should fail
+        response = access_client.post(
+            "/walker/PrivateWalker",
+            json={"secret": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_private_walker_with_auth(self, access_client: JacTestClient) -> None:
+        """Test that private walkers work with authentication."""
+        # Create user and get token
+        access_client.register_user("privwalk", "pass000")
+
+        # Spawn private walker with authentication
+        response = access_client.post(
+            "/walker/PrivateWalker",
+            json={"secret": "verysecret"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_introspection_list_requires_auth(
+        self, access_client: JacTestClient
+    ) -> None:
+        """Test that introspection list endpoints require authentication."""
+        # Try to access protected endpoint without authentication - should fail
+        response = access_client.get("/protected")
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_mixed_access_levels(self, access_client: JacTestClient) -> None:
+        """Test server with mixed access levels (public, protected, private)."""
+        # Create authenticated user
+        access_client.register_user("mixeduser", "mixedpass")
+        token = access_client._auth_token
+
+        # Public function without auth - should work
+        access_client.clear_auth()
+        result1 = access_client.post(
+            "/function/public_add",
+            json={"args": {"a": 5, "b": 10}},
+        )
+        data1 = result1.data
+        assert "result" in data1
+        assert data1["result"] == 15
+
+        # Protected function without auth - should fail
+        result2 = access_client.post(
+            "/function/protected_function",
+            json={"args": {"message": "test"}},
+        )
+        data2 = result2.data
+        assert "error" in data2
+
+        # Protected function with auth - should work
+        access_client.set_auth_token(token)
+        result3 = access_client.post(
+            "/function/protected_function",
+            json={"args": {"message": "test"}},
+        )
+        data3 = result3.data
+        assert "result" in data3
+
+        # Private function with auth - should work
+        result4 = access_client.post(
+            "/function/private_function",
+            json={"args": {"secret": "test"}},
+        )
+        data4 = result4.data
+        assert "result" in data4
+
+
+@pytest.fixture
+def client_app_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for client_app.jac (client rendering tests)."""
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("client_app.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestClientRendering:
+    """Tests for client-side rendering functionality."""
+
+    def test_render_client_page_returns_html(
+        self, client_app_client: JacTestClient
+    ) -> None:
+        """Test that client page endpoint returns proper HTML (migrated)."""
+        import json
+        import re
+
+        # Create user for authentication
+        client_app_client.register_user("tester", "pass")
+
+        # Request the client page
+        response = client_app_client.get("/cl/client_page")
+
+        # The response should be HTML (not JSON), so we check the text directly
+        html = response.text
+
+        # Check basic HTML structure
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+        assert "/static/client.js?hash=" in html
+
+        # Check __jac_init__ script contains expected data
+        init_match = re.search(
+            r'<script id="__jac_init__" type="application/json">([^<]*)</script>',
+            html,
+        )
+        assert init_match is not None
+        payload = json.loads(init_match.group(1)) if init_match else {}
+        assert payload.get("function") == "client_page"
+        assert payload.get("globals", {}).get("API_LABEL") == "Runtime Test"
+
+    def test_render_unknown_page_returns_error(
+        self, client_app_client: JacTestClient
+    ) -> None:
+        """Test that rendering unknown page returns error (migrated)."""
+        # Create user for authentication
+        client_app_client.register_user("tester", "pass")
+
+        # Request a non-existent client page
+        response = client_app_client.get("/cl/missing")
+
+        # Should get error response (404 or error message)
+        assert not response.ok or "error" in response.text.lower()

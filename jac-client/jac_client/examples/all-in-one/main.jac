@@ -8,7 +8,7 @@ node Todo {
         done: bool = False;
 }
 
-walker create_todo {
+walker : pub create_todo {
     has text: str;
 
     can create with `root entry {
@@ -17,13 +17,13 @@ walker create_todo {
     }
 }
 
-walker ping_server {
+walker : pub ping_server {
     can ping with `root entry {
         report "pong from backend!" ;
     }
 }
 
-walker get_server_message {
+walker : pub get_server_message {
     can info with `root entry {
         report "hello from a basic walker!" ;
     }
