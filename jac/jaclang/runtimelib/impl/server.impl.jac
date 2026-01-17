@@ -754,7 +754,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
-    self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    # Only create real server if port > 0 (port=0 is test mode - no socket binding)
+    if self.port > 0 {
+        self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    } else {
+        self.server = None;
+    }
 }
 
 """Create HTTP request handler."""
