@@ -16,13 +16,13 @@ from tests.runtimelib.conftest import fixture_abs_path
 
 
 @pytest.fixture
-def client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
+def client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
     """Create test client with isolated base path."""
     from jaclang.runtimelib.testing import JacTestClient
 
     client = JacTestClient.from_file(
         fixture_abs_path("serve_api.jac"),
-        base_path=str(fresh_jac_context),
+        base_path=str(tmp_path),
     )
     yield client
     client.close()
@@ -303,13 +303,13 @@ class TestServerClientMigrated:
 
 
 @pytest.fixture
-def imports_client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
+def imports_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
     """Create test client for serve_api_with_imports.jac."""
     from jaclang.runtimelib.testing import JacTestClient
 
     client = JacTestClient.from_file(
         fixture_abs_path("serve_api_with_imports.jac"),
-        base_path=str(fresh_jac_context),
+        base_path=str(tmp_path),
     )
     yield client
     client.close()
@@ -410,13 +410,13 @@ class TestImportedFunctionsAndWalkers:
 
 
 @pytest.fixture
-def access_client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
+def access_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
     """Create test client for serve_api_access.jac (access level tests)."""
     from jaclang.runtimelib.testing import JacTestClient
 
     client = JacTestClient.from_file(
         fixture_abs_path("serve_api_access.jac"),
-        base_path=str(fresh_jac_context),
+        base_path=str(tmp_path),
     )
     yield client
     client.close()
@@ -633,13 +633,13 @@ class TestAccessLevels:
 
 
 @pytest.fixture
-def client_app_client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
+def client_app_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
     """Create test client for client_app.jac (client rendering tests)."""
     from jaclang.runtimelib.testing import JacTestClient
 
     client = JacTestClient.from_file(
         fixture_abs_path("client_app.jac"),
-        base_path=str(fresh_jac_context),
+        base_path=str(tmp_path),
     )
     yield client
     client.close()
