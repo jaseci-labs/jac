@@ -12,13 +12,13 @@ from tests.runtimelib.conftest import fixture_abs_path
 
 
 @pytest.fixture
-def client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
+def client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
     """Create test client with isolated base path."""
     from jaclang.runtimelib.testing import JacTestClient
 
     client = JacTestClient.from_file(
         fixture_abs_path("serve_api.jac"),
-        base_path=str(fresh_jac_context),
+        base_path=str(tmp_path),
     )
     yield client
     client.close()
@@ -27,26 +27,26 @@ def client(fresh_jac_context: Path) -> Generator[JacTestClient, None, None]:
 class TestJacTestClientBasics:
     """Basic tests for JacTestClient functionality."""
 
-    def test_client_creation(self, fresh_jac_context: Path) -> None:
+    def test_client_creation(self, tmp_path: Path) -> None:
         """Test that JacTestClient can be created from a .jac file."""
         from jaclang.runtimelib.testing import JacTestClient
 
         client = JacTestClient.from_file(
             fixture_abs_path("serve_api.jac"),
-            base_path=str(fresh_jac_context),
+            base_path=str(tmp_path),
         )
         assert client is not None
         assert client._jac_file.endswith("serve_api.jac")
         client.close()
 
-    def test_client_file_not_found(self, fresh_jac_context: Path) -> None:
+    def test_client_file_not_found(self, tmp_path: Path) -> None:
         """Test that JacTestClient raises error for missing file."""
         from jaclang.runtimelib.testing import JacTestClient
 
         with pytest.raises(FileNotFoundError):
             JacTestClient.from_file(
                 "nonexistent.jac",
-                base_path=str(fresh_jac_context),
+                base_path=str(tmp_path),
             )
 
     def test_get_root_endpoint(self, client: JacTestClient) -> None:
