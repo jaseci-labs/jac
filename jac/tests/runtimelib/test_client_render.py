@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 import socket
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 
@@ -25,26 +26,36 @@ def get_free_port() -> int:
 
 
 @pytest.fixture
-def isolated_fixtures(fresh_jac_context: Path) -> Generator[Path, None, None]:
+def isolated_fixtures(
+    fresh_jac_context: Path,
+) -> Generator[tuple[Path, str], None, None]:
     """Copy fixtures to temp directory for test isolation.
 
     This prevents parallel test interference with shared .jac cache.
+    Returns tuple of (fixtures_path, unique_module_name).
     """
     fixtures_src = Path(__file__).parent / "fixtures"
-    fixtures_dest = fresh_jac_context / "fixtures"
+    # Use unique module name to avoid parallel test conflicts
+    unique_id = uuid.uuid4().hex[:8]
+    module_name = f"client_app_{unique_id}"
+    fixtures_dest = fresh_jac_context / module_name
     # Copy only the .jac source files, not the .jac cache directory
     fixtures_dest.mkdir(parents=True, exist_ok=True)
     for f in fixtures_src.glob("*.jac"):
         if f.is_file():  # Skip .jac directory
-            shutil.copy(f, fixtures_dest / f.name)
-    yield fixtures_dest
+            # Rename client_app.jac to unique module name
+            dest_name = f.name
+            if f.name == "client_app.jac":
+                dest_name = f"{module_name}.jac"
+            shutil.copy(f, fixtures_dest / dest_name)
+    yield (fixtures_dest, module_name)
 
 
-def make_server(fixtures_dir: Path) -> JacAPIServer:
+def make_server(fixtures_dir: Path, module_name: str) -> JacAPIServer:
     """Create a test server instance."""
-    Jac.jac_import("client_app", str(fixtures_dir))
+    Jac.jac_import(module_name, str(fixtures_dir))
     server = JacAPIServer(
-        module_name="client_app",
+        module_name=module_name,
         base_path=str(fixtures_dir),
         port=get_free_port(),
     )
@@ -52,9 +63,12 @@ def make_server(fixtures_dir: Path) -> JacAPIServer:
     return server
 
 
-def test_render_client_page_returns_html(isolated_fixtures: Path):
+def test_render_client_page_returns_html(
+    isolated_fixtures: tuple[Path, str],
+) -> None:
     """Test that render_client_page returns HTML."""
-    server = make_server(isolated_fixtures)
+    fixtures_dir, module_name = isolated_fixtures
+    server = make_server(fixtures_dir, module_name)
     server.user_manager.create_user("tester", "pass")
     html_bundle = server.render_client_page("client_page", {}, "tester")
 
@@ -68,7 +82,7 @@ def test_render_client_page_returns_html(isolated_fixtures: Path):
     )
     assert init_match is not None
     payload = json.loads(init_match.group(1)) if init_match else {}
-    assert payload.get("module") == "client_app"
+    assert payload.get("module") == module_name
     assert payload.get("function") == "client_page"
     assert payload.get("globals", {}).get("API_LABEL") == "Runtime Test"
     assert payload.get("argOrder") == []
@@ -79,9 +93,10 @@ def test_render_client_page_returns_html(isolated_fixtures: Path):
     server.server.server_close()
 
 
-def test_render_unknown_page_raises(isolated_fixtures: Path):
+def test_render_unknown_page_raises(isolated_fixtures: tuple[Path, str]) -> None:
     """Test that rendering unknown page raises ValueError."""
-    server = make_server(isolated_fixtures)
+    fixtures_dir, module_name = isolated_fixtures
+    server = make_server(fixtures_dir, module_name)
     server.user_manager.create_user("tester", "pass")
 
     with pytest.raises(ValueError):
