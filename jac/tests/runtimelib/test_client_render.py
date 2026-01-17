@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import socket
 from collections.abc import Generator
 from pathlib import Path
@@ -23,15 +24,24 @@ def get_free_port() -> int:
     return port
 
 
-@pytest.fixture(autouse=True)
-def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
-    """Provide fresh Jac context for each test."""
-    yield
+@pytest.fixture
+def isolated_fixtures(fresh_jac_context: Path) -> Generator[Path, None, None]:
+    """Copy fixtures to temp directory for test isolation.
+
+    This prevents parallel test interference with shared .jac cache.
+    """
+    fixtures_src = Path(__file__).parent / "fixtures"
+    fixtures_dest = fresh_jac_context / "fixtures"
+    # Copy only the .jac source files, not the .jac cache directory
+    fixtures_dest.mkdir(parents=True, exist_ok=True)
+    for f in fixtures_src.glob("*.jac"):
+        if f.is_file():  # Skip .jac directory
+            shutil.copy(f, fixtures_dest / f.name)
+    yield fixtures_dest
 
 
-def make_server() -> JacAPIServer:
+def make_server(fixtures_dir: Path) -> JacAPIServer:
     """Create a test server instance."""
-    fixtures_dir = Path(__file__).parent / "fixtures"
     Jac.jac_import("client_app", str(fixtures_dir))
     server = JacAPIServer(
         module_name="client_app",
@@ -42,9 +52,9 @@ def make_server() -> JacAPIServer:
     return server
 
 
-def test_render_client_page_returns_html():
+def test_render_client_page_returns_html(isolated_fixtures: Path):
     """Test that render_client_page returns HTML."""
-    server = make_server()
+    server = make_server(isolated_fixtures)
     server.user_manager.create_user("tester", "pass")
     html_bundle = server.render_client_page("client_page", {}, "tester")
 
@@ -69,9 +79,9 @@ def test_render_client_page_returns_html():
     server.server.server_close()
 
 
-def test_render_unknown_page_raises():
+def test_render_unknown_page_raises(isolated_fixtures: Path):
     """Test that rendering unknown page raises ValueError."""
-    server = make_server()
+    server = make_server(isolated_fixtures)
     server.user_manager.create_user("tester", "pass")
 
     with pytest.raises(ValueError):
