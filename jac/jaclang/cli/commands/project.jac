@@ -39,12 +39,6 @@ glob registry = get_registry();
             help="List available templates",
             short="l"
         ),
-        Arg.create(
-            "no_cache",
-            typ=bool,
-            default=False,
-            help="Skip pre-generating compiler cache"
-        ),
 
     ],
     examples=[
@@ -53,7 +47,6 @@ glob registry = get_registry();
         ("jac create --force", "Reinitialize existing project"),
         ("jac create myapp --template client", "Create with client template"),
         ("jac create --list-templates", "List available templates"),
-        ("jac create myapp --no-cache", "Create without pre-generating cache"),
 
     ],
     group="project"
@@ -62,8 +55,7 @@ def create(
     name: str = "",
     force: bool = False,
     template: str = "default",
-    list_templates: bool = False,
-    no_cache: bool = False
+    list_templates: bool = False
 ) -> int;
 
 """Install all dependencies from jac.toml."""
