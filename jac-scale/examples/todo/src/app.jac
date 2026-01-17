@@ -24,8 +24,8 @@ cl import from react {
 
 cl {
     def app -> any {
-        has todos: list = [];
-        has input: str = "";
+        has todos: list = [],
+            input: str = "";
 
         # Event Handler
         async def addTodo -> None {
