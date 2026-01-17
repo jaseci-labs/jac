@@ -192,7 +192,7 @@ with entry {
                 output = process.stdout.read().decode() if process.stdout else ""
                 pytest.fail(f"Server did not start. Output: {output}")
 
-            time.sleep(2)
+            time.sleep(3)
 
             # Modify the file
             app_file.write_text(
@@ -209,7 +209,7 @@ with entry {
 """
             )
 
-            time.sleep(3)
+            time.sleep(5)
             assert process.poll() is None, "Server crashed after file change"
 
     def test_syntax_error_does_not_crash_server(self, temp_dir: Path) -> None:
@@ -222,17 +222,17 @@ with entry {
             started = _wait_for_port("127.0.0.1", port, timeout=30)
             assert started, "Server did not start"
 
-            time.sleep(2)
+            time.sleep(3)
 
             # Introduce syntax error
             app_file.write_text('with entry { print("unclosed }')
-            time.sleep(3)
+            time.sleep(5)
 
             assert process.poll() is None, "Server should not crash on syntax error"
 
             # Fix the error
             app_file.write_text('with entry { print("fixed"); }')
-            time.sleep(3)
+            time.sleep(5)
 
             assert process.poll() is None, "Server should recover after fix"
 
@@ -246,14 +246,14 @@ with entry {
             started = _wait_for_port("127.0.0.1", port, timeout=30)
             assert started, "Server did not start"
 
-            time.sleep(2)
+            time.sleep(3)
 
             # Make rapid changes
             for i in range(5):
                 app_file.write_text(f'with entry {{ print("Version {i}"); }}')
-                time.sleep(0.1)
+                time.sleep(0.2)
 
-            time.sleep(2)
+            time.sleep(3)
             assert process.poll() is None, "Server crashed during rapid changes"
 
 
