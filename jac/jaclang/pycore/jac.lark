@@ -212,7 +212,7 @@ assert_stmt: KW_ASSERT expression (COMMA expression)?
 delete_stmt: KW_DELETE expression
 
 // [Heading]: Report statements.
-report_stmt: KW_REPORT expression
+report_stmt: KW_REPORT (expression | yield_expr)
 
 // [Heading]: Control statements.
 ctrl_stmt: KW_SKIP | KW_BREAK | KW_CONTINUE

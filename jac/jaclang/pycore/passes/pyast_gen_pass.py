@@ -1967,13 +1967,17 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         node.gen.py_ast = [self.sync(destroy_expr), self.sync(delete_stmt)]
 
     def exit_report_stmt(self, node: uni.ReportStmt) -> None:
+        if isinstance(node.expr, uni.YieldExpr):
+            fun_name = "log_report_yield"
+        else:
+            fun_name = "log_report"
         node.gen.py_ast = [
             self.sync(
                 ast3.Expr(
                     value=self.sync(
                         self.sync(
                             ast3.Call(
-                                func=self.jaclib_obj("log_report"),
+                                func=self.jaclib_obj(fun_name),
                                 args=cast(list[ast3.expr], node.expr.gen.py_ast),
                                 keywords=[],
                             )
