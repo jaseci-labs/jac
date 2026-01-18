@@ -613,6 +613,7 @@ class TestHasattrConversion:
         # Step 2: becomes obj?.attr or default (ternary-to-or optimization)
         assert "instance?.value or 0" in formatted
         assert 'instance?.name or "default"' in formatted
+        assert "instance?.name" in formatted
 
         # Check that we don't have "instance.value if" (non-null-safe value with null-safe condition)
         assert "instance.value if instance?.value" not in formatted
