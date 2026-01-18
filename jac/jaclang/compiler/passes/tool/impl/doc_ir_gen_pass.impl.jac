@@ -1615,10 +1615,15 @@ impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
 """Generate DocIR for return statements."""
 impl DocIRGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
     parts: list[doc.DocType] = [];
+    # Check if returning a JSX element directly (not wrapped in parens)
+    is_jsx_return = isinstance(<>node.expr, uni.JsxElement);
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
+        } elif (is_jsx_return and isinstance(i, uni.JsxElement)) {
+            # For JSX returns, add hard line and indent
+            parts.append(self.indent(self.concat([self.hard_line(), i.gen.doc_ir])));
         } else {
             parts.append(i.gen.doc_ir);
         }
