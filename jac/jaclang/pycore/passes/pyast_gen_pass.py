@@ -134,7 +134,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         """Enter node."""
         # Prune ClientBlocks from Python generation
         if isinstance(node, uni.ClientBlock) or (
-            isinstance(node, uni.ClientFacingNode)
+            isinstance(node, uni.ContextAwareNode)
             and node.code_context == CodeContext.CLIENT
             and (node.parent is None or isinstance(node.parent, uni.Module))
         ):
@@ -152,7 +152,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         if isinstance(node, uni.ClientBlock):
             return
         if (
-            isinstance(node, uni.ClientFacingNode)
+            isinstance(node, uni.ContextAwareNode)
             and node.code_context == CodeContext.CLIENT
             and (node.parent is None or isinstance(node.parent, uni.Module))
         ):
