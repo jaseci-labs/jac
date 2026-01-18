@@ -19,7 +19,7 @@ from jaclang.pycore.constructs import Archetype as Obj
 from jaclang.pycore.constructs import EdgeArchetype as Edge
 from jaclang.pycore.constructs import NodeArchetype as Node
 from jaclang.pycore.constructs import WalkerArchetype as Walker
-from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+from jaclang.pycore.runtime import JacRuntimeInterface
 
 __all__ = [
     # Archetypes
@@ -42,7 +42,6 @@ __all__ = [
     "disconnect",
     "create_j_context",
     "get_context",
-    "reset_machine",
     # Code generation helpers
     "impl_patch_filename",
     "jac_test",
@@ -98,6 +97,3 @@ on_entry = JacRuntimeInterface.on_entry
 on_exit = JacRuntimeInterface.on_exit
 thread_run = JacRuntimeInterface.thread_run
 thread_wait = JacRuntimeInterface.thread_wait
-
-# Methods only on JacRuntime
-reset_machine = JacRuntime.reset_machine

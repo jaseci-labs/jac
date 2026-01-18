@@ -15,15 +15,11 @@ from jaclang.pycore.program import JacProgram
 
 @pytest.fixture(autouse=True)
 def setup_jac_runtime(
-    fixture_path: Callable[[str], str], tmp_path: Path
+    fixture_path: Callable[[str], str], fresh_jac_context: Path
 ) -> Generator[None, None, None]:
     """Set up and tear down Jac runtime for each test."""
-    # Use tmp_path for session isolation in parallel tests
-    Jac.reset_machine(base_path=str(tmp_path))
     Jac.attach_program(JacProgram())
     yield
-    # Use same tmp_path for teardown to avoid contention with other parallel tests
-    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def test_parameter_count_mismatch(fixture_path: Callable[[str], str]) -> None:

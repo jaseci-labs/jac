@@ -1122,7 +1122,7 @@ class TestJacScaleServe:
             json={"title": "Private Task", "priority": 1},
             timeout=5,
         )
-        assert response.status_code == 422
+        assert response.status_code == 401
 
     @pytest.mark.xfail(reason="possible issue with user.json", strict=False)
     def test_private_walker_200_with_auth(self) -> None:
@@ -1207,3 +1207,236 @@ class TestJacScaleServe:
         assert response.headers["cross-origin-opener-policy"] == "same-origin"
         assert "cross-origin-embedder-policy" in response.headers
         assert response.headers["cross-origin-embedder-policy"] == "require-corp"
+
+
+class TestJacScaleServeWatchMode:
+    """Test jac-scale serve with --watch mode (dynamic routing).
+
+    This tests that the dynamic routing endpoints correctly parse request body
+    parameters, which is essential for HMR support.
+    """
+
+    fixtures_dir: Path
+    test_file: Path
+    port: int
+    base_url: str
+    server_process: subprocess.Popen[str] | None = None
+
+    @classmethod
+    def setup_class(cls) -> None:
+        """Set up test class - runs once for all tests."""
+        cls.fixtures_dir = Path(__file__).parent / "fixtures"
+        cls.test_file = cls.fixtures_dir / "test_api.jac"
+
+        if not cls.test_file.exists():
+            raise FileNotFoundError(f"Test fixture not found: {cls.test_file}")
+
+        cls.port = get_free_port()
+        cls.base_url = f"http://localhost:{cls.port}"
+
+        cls._cleanup_db_files()
+        cls.server_process = None
+        cls._start_server_watch_mode()
+
+    @classmethod
+    def teardown_class(cls) -> None:
+        """Tear down test class."""
+        if cls.server_process:
+            cls.server_process.terminate()
+            try:
+                cls.server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls.server_process.kill()
+                cls.server_process.wait()
+
+        time.sleep(0.5)
+        gc.collect()
+        cls._cleanup_db_files()
+
+    @classmethod
+    def _start_server_watch_mode(cls) -> None:
+        """Start the jac-scale server in watch mode (dynamic routing).
+
+        In watch mode, the REST API runs on port+1 while Vite runs on port.
+        We connect directly to the REST API port to avoid Vite dependency issues.
+        """
+        import sys
+
+        jac_executable = Path(sys.executable).parent / "jac"
+        # Use --api-only to skip Vite dev server (if supported), otherwise use base port
+        # The REST API in watch mode runs on base_port + 1
+        vite_port = cls.port
+        api_port = cls.port + 1
+        cls.base_url = f"http://localhost:{api_port}"
+
+        cmd = [
+            str(jac_executable),
+            "start",
+            str(cls.test_file),
+            "--port",
+            str(vite_port),
+            "--watch",  # Enable watch mode for dynamic routing
+        ]
+
+        cls.server_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        max_attempts = 50
+        server_ready = False
+
+        for _ in range(max_attempts):
+            if cls.server_process.poll() is not None:
+                stdout, stderr = cls.server_process.communicate()
+                raise RuntimeError(
+                    f"Server process terminated unexpectedly.\n"
+                    f"STDOUT: {stdout}\nSTDERR: {stderr}"
+                )
+
+            try:
+                # Connect to the REST API port (port+1), not Vite port
+                response = requests.get(f"{cls.base_url}/docs", timeout=2)
+                if response.status_code in (200, 404):
+                    print(
+                        f"Watch mode server started successfully on API port {api_port}"
+                    )
+                    server_ready = True
+                    break
+            except (requests.ConnectionError, requests.Timeout):
+                time.sleep(2)
+
+        if not server_ready:
+            cls.server_process.terminate()
+            try:
+                stdout, stderr = cls.server_process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                cls.server_process.kill()
+                stdout, stderr = cls.server_process.communicate()
+
+            raise RuntimeError(
+                f"Server failed to start in watch mode after {max_attempts} attempts.\n"
+                f"STDOUT: {stdout}\nSTDERR: {stderr}"
+            )
+
+    @classmethod
+    def _cleanup_db_files(cls) -> None:
+        """Delete SQLite database files."""
+        import shutil
+
+        for pattern in [
+            "*.db",
+            "*.db-wal",
+            "*.db-shm",
+            "anchor_store.db.dat",
+            "anchor_store.db.bak",
+            "anchor_store.db.dir",
+        ]:
+            for db_file in glob.glob(pattern):
+                with contextlib.suppress(Exception):
+                    Path(db_file).unlink()
+
+        for pattern in ["*.db", "*.db-wal", "*.db-shm"]:
+            for db_file in glob.glob(str(cls.fixtures_dir / pattern)):
+                with contextlib.suppress(Exception):
+                    Path(db_file).unlink()
+
+        client_build_dir = cls.fixtures_dir / ".jac"
+        if client_build_dir.exists():
+            with contextlib.suppress(Exception):
+                shutil.rmtree(client_build_dir)
+
+    @staticmethod
+    def _extract_data(json_response: dict[str, Any]) -> dict[str, Any]:
+        """Extract data from TransportResponse envelope."""
+        if isinstance(json_response, dict) and "ok" in json_response:
+            if json_response.get("ok") and json_response.get("data") is not None:
+                return json_response["data"]
+            elif not json_response.get("ok") and json_response.get("error"):
+                error_info = json_response["error"]
+                return {"error": error_info.get("message", "Unknown error")}
+        return json_response
+
+    def test_watch_mode_walker_body_parsing(self) -> None:
+        """Test that walkers in watch mode correctly parse request body parameters.
+
+        This is a regression test for the fix where dynamic routing endpoints
+        weren't parsing JSON body content into walker fields.
+        """
+        # Register user
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": f"watchtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        token = self._extract_data(register_response.json())["token"]
+
+        # Call walker with body parameters - this is what was broken
+        response = requests.post(
+            f"{self.base_url}/walker/CreateTask",
+            json={"title": "Watch Mode Task", "priority": 5},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = self._extract_data(response.json())
+
+        # Verify the walker received and processed the body parameters
+        assert "result" in data or "reports" in data, f"Unexpected response: {data}"
+
+    def test_watch_mode_function_body_parsing(self) -> None:
+        """Test that functions in watch mode correctly parse request body parameters."""
+        # Register user
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": f"watchfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        token = self._extract_data(register_response.json())["token"]
+
+        # Call function with body parameters
+        response = requests.post(
+            f"{self.base_url}/function/add_numbers",
+            json={"a": 42, "b": 58},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = self._extract_data(response.json())
+
+        # Verify the function received and processed the body parameters
+        assert "result" in data, f"Expected 'result' in response: {data}"
+        assert data["result"] == 100, f"Expected 100, got {data['result']}"
+
+    def test_watch_mode_public_walker_no_auth(self) -> None:
+        """Test that public walkers work without auth in watch mode."""
+        response = requests.post(
+            f"{self.base_url}/walker/PublicInfo",
+            json={},
+            timeout=10,
+        )
+
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert "reports" in data
+        assert data["reports"][0]["message"] == "This is a public endpoint"
+
+    def test_watch_mode_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require auth in watch mode."""
+        response = requests.post(
+            f"{self.base_url}/walker/PrivateCreateTask",
+            json={"title": "Private Task", "priority": 1},
+            timeout=10,
+        )
+
+        assert response.status_code == 401

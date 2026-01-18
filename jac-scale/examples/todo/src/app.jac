@@ -24,8 +24,8 @@ cl import from react {
 
 cl {
     def app -> any {
-        has todos: list = [];
-        has input: str = "";
+        has todos: list = [],
+            input: str = "";
 
         # Event Handler
         async def addTodo -> None {
@@ -38,33 +38,31 @@ cl {
             input = "";
         }
 
-        return <div>
-            <h2>
-                My Todos
-            </h2>
-            <input
-                value={input}
-                onChange={lambda e: any  -> None { input = e.target.value;}}
-                onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
-                    addTodo();
-                }}}
-            />
-            <button
-                onClick={addTodo}
-            >
-                Add Todo
-            </button>
+        return
             <div>
-                {todos.map(
-                    lambda todo: any  -> any { return <div
-                        key={todo._jac_id}
-                    >
-                        <span>
-                            {todo.text}
-                        </span>
-                    </div>; }
-                )}
-            </div>
-        </div>;
+                <h2>
+                    My Todos
+                </h2>
+                <input
+                    value={input}
+                    onChange={lambda e: any  -> None { input = e.target.value;}}
+                    onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                        addTodo();
+                    }}}
+                />
+                <button onClick={addTodo}>
+                    Add Todo
+                </button>
+                <div>
+                    {todos.map(
+                        lambda todo: any  -> any { return
+                            <div key={todo._jac_id}>
+                                <span>
+                                    {todo.text}
+                                </span>
+                            </div>; }
+                    )}
+                </div>
+            </div>;
     }
 }

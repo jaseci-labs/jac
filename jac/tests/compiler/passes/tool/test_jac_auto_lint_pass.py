@@ -245,6 +245,45 @@ class TestCombineConsecutiveHas:
         has_count = person_section.count("has ") + person_section.count("has:")
         assert has_count == 3, f"Expected 3 has statements in Person, got {has_count}"
 
+    def test_consecutive_has_combined_in_ability(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that consecutive has statements in abilities (functions) are combined."""
+        input_path = auto_lint_fixture_path("ability_has.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        formatted = prog.mod.main.gen.jac
+
+        # has statements in app function should be combined
+        assert "has count: int = 0," in formatted
+        assert "name: str = " in formatted
+        assert "enabled: bool = True;" in formatted
+
+        # has statements in client-side counter function should be combined
+        assert "has value: int = 0," in formatted
+        assert "label: str = " in formatted
+        assert "visible: bool = True;" in formatted
+
+        # has statements in Widget.render method should be combined
+        assert "has prefix: str = " in formatted
+        assert "suffix: str = " in formatted
+        assert "content: str = " in formatted
+
+        # Verify statements were actually combined (count has statements)
+        # app function: 1 combined has statement (originally 3)
+        app_section = formatted.split("def app")[1].split("}")[0]
+        app_has_count = app_section.count("has ")
+        assert app_has_count == 1, (
+            f"Expected 1 has statement in app, got {app_has_count}"
+        )
+
+        # render method: 1 combined has statement (originally 3)
+        render_section = formatted.split("def render")[1].split("}")[0]
+        render_has_count = render_section.count("has ")
+        assert render_has_count == 1, (
+            f"Expected 1 has statement in render, got {render_has_count}"
+        )
+
 
 class TestCombineConsecutiveGlob:
     """Tests for combining consecutive glob statements."""

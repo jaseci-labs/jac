@@ -988,17 +988,23 @@ class TestCleanCommand:
 
     @staticmethod
     def _create_project(tmpdir: str) -> str:
-        """Create a jac project using jac create and return the project path."""
-        process = subprocess.Popen(
-            ["jac", "create", "testproj"],
-            cwd=tmpdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        stdout, stderr = process.communicate()
-        assert process.returncode == 0, f"jac create failed: {stderr}"
-        return os.path.join(tmpdir, "testproj")
+        """Create a minimal jac project structure for testing."""
+        project_path = os.path.join(tmpdir, "testproj")
+        os.makedirs(project_path, exist_ok=True)
+
+        # Create minimal jac.toml
+        toml_content = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+"""
+        with open(os.path.join(project_path, "jac.toml"), "w") as f:
+            f.write(toml_content)
+
+        # Create .jac directory structure
+        os.makedirs(os.path.join(project_path, ".jac"), exist_ok=True)
+
+        return project_path
 
     def test_clean_no_project(self) -> None:
         """Test jac clean fails when no jac.toml exists."""

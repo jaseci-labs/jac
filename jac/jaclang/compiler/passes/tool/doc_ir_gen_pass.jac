@@ -168,7 +168,6 @@ obj DocIRGenPass(UniPass) {
     def exit_bool(<>node: uni.Bool) -> None;
     def exit_null(<>node: uni.Null) -> None;
     def exit_ellipsis(<>node: uni.Ellipsis) -> None;
-    def _jsx_attrs_need_multiline(<>node: uni.JsxElement) -> bool;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;

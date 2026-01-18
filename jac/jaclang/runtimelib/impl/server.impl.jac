@@ -51,36 +51,43 @@ impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue]
 }
 
 impl UserManager.postinit -> None {
+    import sqlite3;
     data_dir = os.path.join(self.base_path, ".jac", "data");
     os.makedirs(data_dir, exist_ok=True);
-    self._db_path = os.path.join(data_dir, "users.json");
-    self._load_db();
+    self._db_path = os.path.join(data_dir, "main.db");
+    self._conn = None;
 }
 
-"""Load user data from persistent storage."""
-impl UserManager._load_db -> None {
-    try {
-        with open(self._db_path, encoding='utf-8') as fh {
-            data = json.load(fh);
-            self._users = data.get('__jac_users__', {});
-            self._tokens = data.get('__jac_tokens__', {});
-        }
-    } except Exception {
-        (self._users, self._tokens) = ({}, {});
+"""Lazily initialize SQLite connection when first needed."""
+impl UserManager._ensure_connection -> None {
+    import sqlite3;
+    if self._conn is not None {
+        return;
     }
-}
-
-"""Save user data to persistent storage."""
-impl UserManager._persist -> None {
-    with open(self._db_path, 'w', encoding='utf-8') as fh {
-        json.dump({'__jac_users__': self._users, '__jac_tokens__': self._tokens}, fh);
-    }
+    self._conn = sqlite3.connect(self._db_path, check_same_thread=False);
+    self._conn.execute("PRAGMA journal_mode=WAL");
+    self._conn.execute("PRAGMA synchronous=NORMAL");
+    self._conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            token TEXT UNIQUE NOT NULL,
+            root_id TEXT NOT NULL
+        )
+        """
+    );
+    self._conn.execute("CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)");
+    self._conn.commit();
 }
 
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.pycore.constructs { Root }
-    if (username in self._users) {
+    self._ensure_connection();
+    # Check if user already exists
+    cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
+    if cursor.fetchone() {
         return {'error': 'User already exists'};
     }
     # Use existing context instead of creating new one (avoids shelf locking issues)
@@ -92,13 +99,11 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     root_id = root_anchor.id.hex;
     token = secrets.token_urlsafe(32);
     password_hash = hashlib.sha256(password.encode()).hexdigest();
-    self._users[username] = {
-        'password_hash': password_hash,
-        'token': token,
-        'root_id': root_id
-    };
-    self._tokens[token] = username;
-    self._persist();
+    self._conn.execute(
+        "INSERT INTO users (username, password_hash, token, root_id) VALUES (?, ?, ?, ?)",
+        (username, password_hash, token, root_id)
+    );
+    self._conn.commit();
     return {'username': username, 'token': token, 'root_id': root_id};
 }
 
@@ -106,43 +111,120 @@ impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
 impl UserManager.authenticate(
     username: str, password: str
 ) -> (dict[(str, str)] | None) {
-    if (username not in self._users) {
-        return None;
-    }
-    user = self._users[username];
+    self._ensure_connection();
     password_hash = hashlib.sha256(password.encode()).hexdigest();
-    if (user['password_hash'] == password_hash) {
-        return {
-            'username': username,
-            'token': user['token'],
-            'root_id': user['root_id']
-        };
+    cursor = self._conn.execute(
+        "SELECT token, root_id FROM users WHERE username = ? AND password_hash = ?",
+        (username, password_hash)
+    );
+    row = cursor.fetchone();
+    if row {
+        return {'username': username, 'token': row[0], 'root_id': row[1]};
     }
     return None;
 }
 
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
-    return self._tokens.get(token);
+    self._ensure_connection();
+    cursor = self._conn.execute(
+        "SELECT username FROM users WHERE token = ?", (token, )
+    );
+    row = cursor.fetchone();
+    return row[0] if row else None;
 }
 
 """Get user's root node ID."""
 impl UserManager.get_root_id(username: str) -> (str | None) {
-    return self._users[username]['root_id'] if (username in self._users) else None;
+    self._ensure_connection();
+    cursor = self._conn.execute(
+        "SELECT root_id FROM users WHERE username = ?", (username, )
+    );
+    row = cursor.fetchone();
+    return row[0] if row else None;
 }
 
 """Get user data by username."""
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
-    if (username not in self._users) {
+    self._ensure_connection();
+    cursor = self._conn.execute(
+        "SELECT token, root_id FROM users WHERE username = ?", (username, )
+    );
+    row = cursor.fetchone();
+    if not row {
         return None;
     }
-    user = self._users[username];
-    return {'email': username, 'token': user['token'], 'root_id': user['root_id']};
+    return {'email': username, 'token': row[0], 'root_id': row[1]};
 }
 
-"""Close and persist user data."""
+"""Check if a user exists."""
+impl UserManager.user_exists(username: str) -> bool {
+    self._ensure_connection();
+    cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
+    return cursor.fetchone() is not None;
+}
+
+"""Update user's username."""
+impl UserManager.update_username(
+    current_username: str, new_username: str
+) -> dict[str, str] {
+    import hashlib;
+    self._ensure_connection();
+    # Check if new username already exists
+    cursor = self._conn.execute(
+        "SELECT 1 FROM users WHERE username = ? ", (new_username, )
+    );
+    if cursor.fetchone() {
+        return {'error': 'Username already taken'};
+    }
+    # Update username
+    cursor = self._conn.execute(
+        "UPDATE users SET username = ? WHERE username = ?",
+        (new_username, current_username)
+    );
+    self._conn.commit();
+    if cursor.rowcount == 0 {
+        return {'error': 'User not found'};
+    }
+    # Get updated user data
+    cursor = self._conn.execute(
+        "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
+    );
+    row = cursor.fetchone();
+    return {'username': new_username, 'token': row[0], 'root_id': row[1]};
+}
+
+"""Update user's password."""
+impl UserManager.update_password(
+    username: str, current_password: str, new_password: str
+) -> dict[str, str] {
+    import hashlib;
+    self._ensure_connection();
+    # Verify current password
+    current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
+    cursor = self._conn.execute(
+        "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
+        (username, current_password_hash)
+    );
+    if not cursor.fetchone() {
+        return {'error': 'Current password is incorrect'};
+    }
+    # Update password
+    new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
+    cursor = self._conn.execute(
+        "UPDATE users SET password_hash = ? WHERE username = ?",
+        (new_password_hash, username)
+    );
+    self._conn.commit();
+    return {'username': username, 'message': 'Password updated successfully'};
+}
+
+"""Close SQLite connection."""
 impl UserManager.close -> None {
-    self._persist();
+    if self._conn {
+        self._conn.close();
+        self._conn = None;
+    }
 }
 
 """Execute a function in user's context."""
@@ -260,13 +342,20 @@ impl ModuleIntrospector._load_manifest -> None {
     self._client_manifest = {};
 }
 
-"""Extract access level information from module AST."""
+"""Extract access level information from module AST.
+
+Access level logic:
+- Explicitly marked with `pub`: no authentication required (stores False)
+- Explicitly marked with `protect` or `priv`: authentication required (stores True)
+- No access modifier specified: authentication required (stores True) - secure by default
+"""
 impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
     import jaclang.pycore.unitree as uni;
     import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.pycore.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
     mod_path = getattr(self._module, '__file__', None);
@@ -284,13 +373,20 @@ impl ModuleIntrospector._extract_access_levels -> None {
     for item in mod_ast.body {
         if (isinstance(item, uni.Ability) and (item.name_ref is not None)) {
             func_name = item.name_ref.sym_name;
-            self._function_access[func_name] = not item.public_access;
+            # Only explicitly `pub` marked functions are public (no auth required)
+            # No modifier or protect/priv = requires auth (secure by default)
+            is_explicitly_public = item.access and (item.access.tag.name == Tok.KW_PUB);
+            self._function_access[func_name] = not is_explicitly_public;
         } elif isinstance(item, uni.Archetype) {
             arch_name = item.name.sym_name;
             if hasattr(self._module, arch_name) {
                 cls = getattr(self._module, arch_name);
                 if (isinstance(cls, <>type) and issubclass(cls, WalkerArchetype)) {
-                    self._walker_access[arch_name] = not item.public_access;
+                    # Only explicitly `pub` marked walkers are public (no auth required)
+                    # No modifier or protect/priv = requires auth (secure by default)
+                    is_explicitly_public = item.access
+                    and (item.access.tag.name == Tok.KW_PUB);
+                    self._walker_access[arch_name] = not is_explicitly_public;
                 }
             }
         }
@@ -344,7 +440,21 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 
 """Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
 impl ModuleIntrospector._check_module_freshness -> None {
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     if not self._module {
+        return;
+    }
+    # First check if HMR replaced the module entirely in Jac.loaded_modules
+    current_module = Jac.loaded_modules.get(self.module_name);
+    if (current_module is not None and current_module is not self._module) {
+        # Module was replaced by HMR, do a full refresh
+        self._module = current_module;
+        self._load_manifest();
+        self._extract_access_levels();
+        self._functions = self._collect_functions();
+        self._walkers = self._collect_walkers();
+        self._bundle = None;
+        self._bundle_error = None;
         return;
     }
     # Check if any cached walker class is stale (different from what's in the module)
@@ -487,20 +597,20 @@ impl ModuleIntrospector.render_page(
 
 """Check if authentication is required for a function based on its access level.
 
-Public functions: no authentication required
-Protected/Private functions: authentication required
+Explicitly `pub` functions: no authentication required
+No modifier / Protected / Private functions: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
-    return self._function_access.get(func_name, False);
+    return self._function_access.get(func_name, True);
 }
 
 """Check if authentication is required for a walker based on its access level.
 
-Public walkers: no authentication required
-Protected/Private walkers: authentication required
+Explicitly `pub` walkers: no authentication required
+No modifier / Protected / Private walkers: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
-    return self._walker_access.get(walker_name, False);
+    return self._walker_access.get(walker_name, True);
 }
 
 """Collect client-exposed global values."""
@@ -580,7 +690,7 @@ impl ResponseBuilder.send_css(handler: BaseHTTPRequestHandler, css: str) -> None
 """Add CORS headers to response."""
 impl ResponseBuilder._add_cors_headers(handler: BaseHTTPRequestHandler) -> None {
     handler.send_header('Access-Control-Allow-Origin', '*');
-    handler.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    handler.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
     handler.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
@@ -634,6 +744,92 @@ impl AuthHandler.login(username: str, password: str) -> TransportResponse {
             code='UNAUTHORIZED',
             message='Invalid credentials',
             meta=Meta(extra={'http_status': 401})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Update user's username."""
+impl AuthHandler.update_username(
+    current_username: str, new_username: str, token: str
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    # Validate token
+    token_username = self.user_manager.validate_token(token);
+    if not token_username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Ensure user is updating their own username
+    if (token_username != current_username) {
+        return TransportResponse.fail(
+            code='FORBIDDEN',
+            message='Cannot update another user\'s username',
+            meta=Meta(extra={'http_status': 403})
+        );
+    }
+    if (not new_username) {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='New username is required',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    result = self.user_manager.update_username(current_username, new_username);
+    if ('error' in result) {
+        return TransportResponse.fail(
+            code='UPDATE_FAILED',
+            message=result.get('error', 'Username update failed'),
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Update user's password."""
+impl AuthHandler.update_password(
+    username: str, current_password: str, new_password: str, token: str
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    # Validate token
+    token_username = self.user_manager.validate_token(token);
+    if not token_username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Ensure user is updating their own password
+    if (token_username != username) {
+        return TransportResponse.fail(
+            code='FORBIDDEN',
+            message='Cannot update another user\'s password',
+            meta=Meta(extra={'http_status': 403})
+        );
+    }
+    if (not current_password or not new_password) {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='Current password and new password are required',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    result = self.user_manager.update_password(
+        username, current_password, new_password
+    );
+    if ('error' in result) {
+        return TransportResponse.fail(
+            code='UPDATE_FAILED',
+            message=result.get('error', 'Password update failed'),
+            meta=Meta(extra={'http_status': 400})
         );
     }
     return TransportResponse.success(
@@ -754,7 +950,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
-    self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    # Only create real server if port > 0 (port=0 is test mode - no socket binding)
+    if self.port > 0 {
+        self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    } else {
+        self.server = None;
+    }
 }
 
 """Create HTTP request handler."""
@@ -949,7 +1150,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     username = self._authenticate();
                     if not username {
                         username = '__guest__';
-                        if (username not in server.user_manager._users) {
+                        if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
                             );
@@ -998,7 +1199,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 username = self._authenticate();
                 if not username {
                     username = '__guest__';
-                    if (username not in server.user_manager._users) {
+                    if not server.user_manager.user_exists(username) {
                         server.user_manager.create_user(username, '__no_password__');
                     }
                 }
@@ -1100,7 +1301,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     username = self._authenticate();
                     if not username {
                         username = '__guest__';
-                        if (username not in server.user_manager._users) {
+                        if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
                             );
@@ -1126,7 +1327,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     username = self._authenticate();
                     if not username {
                         username = '__guest__';
-                        if (username not in server.user_manager._users) {
+                        if not server.user_manager.user_exists(username) {
                             server.user_manager.create_user(
                                 username, '__no_password__'
                             );
@@ -1141,6 +1342,49 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             } else {
                 Jac.send_json(self, 404, {'error': 'Not found'});
             }
+        }
+
+        """Handle PUT requests for user updates."""
+        def do_PUT(self: JacRequestHandler) -> None {
+            parsed_path = urlparse(self.path);
+            path = parsed_path.path;
+
+            try {
+                data = self._read_json();
+            } except json.JSONDecodeError {
+                Jac.send_json(self, 400, {'error': 'Invalid JSON'});
+                return;
+            }
+
+            # Require authentication for all PUT requests
+            token = self._get_auth_token();
+            if not token {
+                Jac.send_json(self, 401, {'error': 'Authentication required'});
+                return;
+            }
+
+            if (path == '/user/username') {
+                response = server.auth_handler.update_username(
+                    data.get('current_username', ''),
+                    data.get('new_username', ''),
+                    token
+                );
+                self._send_response(response);
+                return;
+            }
+
+            if (path == '/user/password') {
+                response = server.auth_handler.update_password(
+                    data.get('username', ''),
+                    data.get('current_password', ''),
+                    data.get('new_password', ''),
+                    token
+                );
+                self._send_response(response);
+                return;
+            }
+
+            Jac.send_json(self, 404, {'error': 'Not found'});
         }
 
         """Log HTTP requests."""
@@ -1203,26 +1447,28 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start -> None {
+impl JacAPIServer.start(watch: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports
-    client_exports = self.introspector._client_manifest.get('exports', []);
-    if client_exports {
-        import time;
-        print("Building client bundle...", flush=True);
-        start_time = time.time();
-        try {
-            self.introspector.ensure_bundle();
-            elapsed = time.time() - start_time;
-            print(f"Client bundle ready ({elapsed:.1f}s).");
-        } except Exception as e {
-            import sys;
-            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-            print(f"{e}", file=sys.stderr);
-            print(
-                f"\nClient pages will not be available until this is fixed.\n",
-                file=sys.stderr
-            );
+    # Eagerly build client bundle if there are client exports (skip in watch mode)
+    if not watch {
+        client_exports = self.introspector._client_manifest.get('exports', []);
+        if client_exports {
+            import time;
+            print("Building client bundle...", flush=True);
+            start_time = time.time();
+            try {
+                self.introspector.ensure_bundle();
+                elapsed = time.time() - start_time;
+                print(f"Client bundle ready ({elapsed:.1f}s).");
+            } except Exception as e {
+                import sys;
+                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+                print(f"{e}", file=sys.stderr);
+                print(
+                    f"\nClient pages will not be available until this is fixed.\n",
+                    file=sys.stderr
+                );
+            }
         }
     }
     config = get_config();
@@ -1234,6 +1480,8 @@ impl JacAPIServer.start -> None {
         print('\nAvailable endpoints:');
         print('  POST /user/register - Create a new user');
         print('  POST /user/login - Login and get auth token');
+        print('  PUT  /user/username - Update username (auth required)');
+        print('  PUT  /user/password - Update password (auth required)');
         print('  GET /functions - List all functions');
         print('  GET /walkers - List all walkers');
         print('  GET /function/<name> - Get function signature');

@@ -83,21 +83,18 @@ impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
             None
         );
         attr_docs = [attr.gen.doc_ir for attr in <>node.attributes];
-        needs_multiline = self._jsx_attrs_need_multiline(<>node);
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
         }
+        # Use soft lines for attributes - formatter decides based on line length
         if attr_docs {
-            if needs_multiline {
-                attr_block: list[doc.DocType] = [self.hard_line()];
-                attr_block.extend(self.intersperse(attr_docs, self.hard_line()));
-                parts.append(self.indent(self.concat(attr_block), ast_node=<>node));
-                parts.append(self.hard_line());
-            } else {
-                parts.append(self.space());
-                parts.append(self.join(self.space(), attr_docs));
-            }
+            # Indent attributes with soft line breaks
+            attr_content: list[doc.DocType] = [self.line()];
+            attr_content.extend(self.intersperse(attr_docs, self.line()));
+            parts.append(self.indent(self.concat(attr_content), ast_node=<>node));
+            # When broken: newline before closing bracket; when flat: nothing
+            parts.append(self.if_break(self.line(), self.concat([])));
         }
         is_self_closing = end_token.name == Tok.JSX_SELF_CLOSE;
         if (not is_self_closing and <>node.children) {
@@ -134,9 +131,8 @@ impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
             }
         }
         if is_self_closing {
-            if ((attr_docs and not needs_multiline) or not attr_docs) {
-                parts.append(self.space());
-            }
+            # Space before /> when inline, nothing extra when broken (line handles it)
+            parts.append(self.if_break(self.concat([]), self.space()));
             parts.append(end_token.gen.doc_ir);
         } else {
             parts.append(end_token.gen.doc_ir);
@@ -178,23 +174,6 @@ impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
     }
     parts.append(closing_doc);
     <>node.gen.doc_ir = self.group(self.concat(parts), ast_node=<>node);
-}
-
-"""Return True if JSX attributes should be split across multiple lines."""
-impl DocIRGenPass._jsx_attrs_need_multiline(<>node: uni.JsxElement) -> bool {
-    if (len(<>node.attributes) > 1) {
-        return True;
-    }
-    for attr in <>node.attributes {
-        if isinstance(attr, uni.JsxNormalAttribute) {
-            if ((attr.value is None) or isinstance(attr.value, uni.String)) {
-                continue;
-            }
-            return True;
-        }
-        return True;
-    }
-    return False;
 }
 
 """Generate DocIR for ellipsis."""
@@ -1636,10 +1615,15 @@ impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
 """Generate DocIR for return statements."""
 impl DocIRGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
     parts: list[doc.DocType] = [];
+    # Check if returning a JSX element directly (not wrapped in parens)
+    is_jsx_return = isinstance(<>node.expr, uni.JsxElement);
     for i in <>node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
+        } elif (is_jsx_return and isinstance(i, uni.JsxElement)) {
+            # For JSX returns, add hard line and indent
+            parts.append(self.indent(self.concat([self.hard_line(), i.gen.doc_ir])));
         } else {
             parts.append(i.gen.doc_ir);
         }

@@ -2239,10 +2239,6 @@ class JacPluginConfig:
         return None
 
 
-# Sentinel for "not provided" in reset_machine
-_RESET_MACHINE_UNSET = object()
-
-
 class JacRuntimeInterface(
     JacClassReferences,
     JacAccessValidation,
@@ -2425,69 +2421,6 @@ class JacRuntime(JacRuntimeInterface):
     def set_context(context: ExecutionContext) -> None:
         """Set the context for the machine."""
         JacRuntime.exec_ctx = context
-
-    @staticmethod
-    def reset_machine(base_path: str | None = _RESET_MACHINE_UNSET) -> None:  # type: ignore[assignment]
-        """Reset the machine.
-
-        Note: The compiler singleton is preserved across resets since it's
-        stateless with respect to any particular program. Only the program
-        state (modules, errors, context) is reset.
-
-        Args:
-            base_path: Base path for the new context.
-                       - If not provided: defaults to os.getcwd()
-                       - If explicitly None: disables L3 persistence (faster for tests)
-                       - If a path string: uses that path for persistence
-        """
-        # Remove Jac modules from sys.modules, but skip special module names
-        # that Python relies on (like __main__, __mp_main__, etc.)
-        # Also skip runtime library modules (archetype, constructs, memory, mtp)
-        # to prevent class redefinition issues with pickle
-        special_modules = {
-            "__main__",
-            "__mp_main__",
-            "builtins",
-            "jaclang.pycore.archetype",
-            "jaclang.pycore.constructs",
-            "jaclang.pycore.mtp",
-            "jaclang.runtimelib.memory",
-            "jaclang.runtimelib.context",
-            "jaclang.runtimelib.test",
-            "jaclang.compiler.passes.tool.doc_ir",
-            # Keep language server + type-system modules stable across resets.
-            # These are imported at module scope in tests and rely on `isinstance`
-            # checks against types defined in these modules.
-            "jaclang.langserve.engine",
-            "jaclang.compiler.type_system.types",
-            "jaclang.compiler.type_system.type_evaluator",
-            "jaclang.compiler.type_system.type_utils",
-            # ES AST nodes are stored in compiled program state and may be pickled.
-            # Keep their defining module stable across resets to avoid class identity
-            # mismatches during pickling.
-            "jaclang.compiler.passes.ecmascript.estree",
-        }
-        # Close the context first to sync shelf before removing modules
-        # (pickle needs the module classes to still be importable)
-        if JacRuntime.exec_ctx is not None:
-            JacRuntime.exec_ctx.mem.close()
-
-        # Now safe to remove loaded modules from sys.modules
-        for i in JacRuntime.loaded_modules.values():
-            if i.__name__ not in special_modules:
-                sys.modules.pop(i.__name__, None)
-        JacRuntime.loaded_modules.clear()
-        # Handle base_path: sentinel means use cwd, explicit None means no persistence
-        if base_path is _RESET_MACHINE_UNSET:
-            JacRuntime.base_path_dir = os.getcwd()
-        else:
-            JacRuntime.base_path_dir = base_path
-        from jaclang.pycore.program import JacProgram
-
-        # Reset only the program, keep the compiler singleton
-        JacRuntime.program = JacProgram()
-        JacRuntime.pool = ThreadPoolExecutor()
-        JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
 
 
 @contextmanager
