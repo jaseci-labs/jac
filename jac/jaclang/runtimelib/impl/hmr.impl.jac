@@ -145,8 +145,20 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
             js_code = jac_runtime_import + '\n' + js_code;
         }
 
-        # Ensure output directory exists
-        output_dir = Path(self.base_path) / self._client_output_dir;
+        # Preserve directory structure: components/AuthForm.cl.jac -> components/AuthForm.js
+        base_dir = Path(self.base_path).resolve();
+        source_dir = source_path.parent;
+        try {
+            # Get the relative path from base_path to source file's directory
+            rel_dir = source_dir.relative_to(base_dir);
+        } except ValueError {
+            # File is not under base_path, put in root
+            rel_dir = Path('.');
+        }
+
+        # Build output path preserving directory structure
+        output_base = Path(self.base_path) / self._client_output_dir;
+        output_dir = output_base / rel_dir;
         output_dir.mkdir(parents=True, exist_ok=True);
 
         # Generate output filename (foo.jac -> foo.js, foo.cl.jac -> foo.js)
