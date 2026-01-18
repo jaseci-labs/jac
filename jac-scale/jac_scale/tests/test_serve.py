@@ -1209,6 +1209,17 @@ class TestJacScaleServe:
         assert response.headers["cross-origin-embedder-policy"] == "require-corp"
 
 
+def _has_watchdog() -> bool:
+    """Check if watchdog package is installed."""
+    try:
+        import watchdog  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.mark.skipif(not _has_watchdog(), reason="watchdog package not installed")
 class TestJacScaleServeWatchMode:
     """Test jac-scale serve with --watch mode (dynamic routing).
 
