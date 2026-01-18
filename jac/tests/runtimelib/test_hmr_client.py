@@ -606,3 +606,48 @@ cl {
         assert "import {__jacJsx" in content or "import{__jacJsx" in content, (
             "__jacJsx is used but import statement is missing"
         )
+
+    def test_client_recompile_preserves_directory_structure(
+        self, temp_project: Path
+    ) -> None:
+        """Test that nested component files preserve directory structure.
+
+        Regression test: components/AuthForm.cl.jac should compile to
+        .jac/client/compiled/components/AuthForm.js, not .jac/client/compiled/AuthForm.js
+        """
+        # Create a nested components directory
+        components_dir = temp_project / "components"
+        components_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create a component file in the subdirectory
+        component_file = components_dir / "Button.cl.jac"
+        component_file.write_text(
+            """
+cl {
+    def Button() {
+        return <button>Click me</button>;
+    }
+}
+"""
+        )
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._recompile_client_code(str(component_file))
+
+        # The output should preserve the components/ subdirectory
+        correct_output = (
+            temp_project / ".jac" / "client" / "compiled" / "components" / "Button.js"
+        )
+        wrong_output = temp_project / ".jac" / "client" / "compiled" / "Button.js"
+
+        assert correct_output.exists(), (
+            f"Expected output at {correct_output}, but file not found. "
+            f"Directory structure not preserved."
+        )
+        assert not wrong_output.exists(), (
+            f"File incorrectly written to {wrong_output} instead of {correct_output}"
+        )
