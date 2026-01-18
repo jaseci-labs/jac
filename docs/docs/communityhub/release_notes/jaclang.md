@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.9 (Unreleased)
 
+- **Report Yield Support**: The `report` statement now supports yield expressions (e.g., `report yield "Hello, World!";`), laying the groundwork for streaming response support in walkers.
+
 - **User Management Endpoints**:  Added new user management endpoints to the `jac start` API server:
   - `GET /user/info` - Retrieve authenticated user's information (username, token, root_id)
   - `PUT /user/username` - Update the authenticated user's username
