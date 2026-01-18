@@ -3,9 +3,10 @@
 
 # Simple component function that returns JSX
 def Button(text: str, onclick: str) -> dict {
-    return <button onclick={onclick}>
-        {text}
-    </button>;
+    return
+        <button onclick={onclick}>
+            {text}
+        </button>;
 }
 
 # Component with multiple props
