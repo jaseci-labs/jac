@@ -391,25 +391,17 @@ cl {
                     @{tweet.username}
                 </div>
                 # Random comment
-                <div
-                    class="tweet-content"
-                    style={{"marginBottom": "12px"}}
-                >
+                <div class="tweet-content" style={{"marginBottom": "12px"}}>
                     {tweet.content} # Another andom comment
                 </div>
-                <div
-                    class="tweet-actions"
-                    style={{"display": "flex", "gap": "15px"}}
-                >
+                <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                     <button
                         onclick={like_tweet_action(tweet.id)}
                         style={{"padding": "5px 10px", "cursor": "pointer"}}
                     >
                         Like ({tweet.likes.length})
                     </button>
-                    <button
-                        style={{"padding": "5px 10px"}}
-                    >
+                    <button style={{"padding": "5px 10px"}}>
                         Comment ({tweet.comments.length})
                     </button>
                 </div>
@@ -419,13 +411,8 @@ cl {
     # UI Components - Render a single tweet card
     def TweetCard2(tweet: ClientTweet) -> any {
         return
-            <div
-                class="tweet-actions"
-                style={{"display": "flex", "gap": "15px"}}
-            >
-                <button
-                    style={{"padding": "5px 10px"}}
-                >
+            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                <button style={{"padding": "5px 10px"}}>
                     Comment ({tweet.comments.length})
                 </button>
             </div>;
@@ -434,13 +421,8 @@ cl {
     # UI Components - Render a single tweet card
     def TweetCard3(tweet: ClientTweet) -> any {
         return (
-            <div
-                class="tweet-actions"
-                style={{"display": "flex", "gap": "15px"}}
-            >
-                <button
-                    style={{"padding": "5px 10px"}}
-                >
+            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                <button style={{"padding": "5px 10px"}}>
                     Comment ({tweet.comments.length})
                 </button>
             </div>
