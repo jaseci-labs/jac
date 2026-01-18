@@ -1236,26 +1236,28 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start -> None {
+impl JacAPIServer.start(watch: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports
-    client_exports = self.introspector._client_manifest.get('exports', []);
-    if client_exports {
-        import time;
-        print("Building client bundle...", flush=True);
-        start_time = time.time();
-        try {
-            self.introspector.ensure_bundle();
-            elapsed = time.time() - start_time;
-            print(f"Client bundle ready ({elapsed:.1f}s).");
-        } except Exception as e {
-            import sys;
-            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-            print(f"{e}", file=sys.stderr);
-            print(
-                f"\nClient pages will not be available until this is fixed.\n",
-                file=sys.stderr
-            );
+    # Eagerly build client bundle if there are client exports (skip in watch mode)
+    if not watch {
+        client_exports = self.introspector._client_manifest.get('exports', []);
+        if client_exports {
+            import time;
+            print("Building client bundle...", flush=True);
+            start_time = time.time();
+            try {
+                self.introspector.ensure_bundle();
+                elapsed = time.time() - start_time;
+                print(f"Client bundle ready ({elapsed:.1f}s).");
+            } except Exception as e {
+                import sys;
+                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+                print(f"{e}", file=sys.stderr);
+                print(
+                    f"\nClient pages will not be available until this is fixed.\n",
+                    file=sys.stderr
+                );
+            }
         }
     }
     config = get_config();
