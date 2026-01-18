@@ -260,13 +260,20 @@ impl ModuleIntrospector._load_manifest -> None {
     self._client_manifest = {};
 }
 
-"""Extract access level information from module AST."""
+"""Extract access level information from module AST.
+
+Access level logic:
+- Explicitly marked with `pub`: no authentication required (stores False)
+- Explicitly marked with `protect` or `priv`: authentication required (stores True)
+- No access modifier specified: authentication required (stores True) - secure by default
+"""
 impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
     import jaclang.pycore.unitree as uni;
     import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.pycore.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
     mod_path = getattr(self._module, '__file__', None);
@@ -284,13 +291,20 @@ impl ModuleIntrospector._extract_access_levels -> None {
     for item in mod_ast.body {
         if (isinstance(item, uni.Ability) and (item.name_ref is not None)) {
             func_name = item.name_ref.sym_name;
-            self._function_access[func_name] = not item.public_access;
+            # Only explicitly `pub` marked functions are public (no auth required)
+            # No modifier or protect/priv = requires auth (secure by default)
+            is_explicitly_public = item.access and (item.access.tag.name == Tok.KW_PUB);
+            self._function_access[func_name] = not is_explicitly_public;
         } elif isinstance(item, uni.Archetype) {
             arch_name = item.name.sym_name;
             if hasattr(self._module, arch_name) {
                 cls = getattr(self._module, arch_name);
                 if (isinstance(cls, <>type) and issubclass(cls, WalkerArchetype)) {
-                    self._walker_access[arch_name] = not item.public_access;
+                    # Only explicitly `pub` marked walkers are public (no auth required)
+                    # No modifier or protect/priv = requires auth (secure by default)
+                    is_explicitly_public = item.access
+                    and (item.access.tag.name == Tok.KW_PUB);
+                    self._walker_access[arch_name] = not is_explicitly_public;
                 }
             }
         }
@@ -344,7 +358,21 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 
 """Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
 impl ModuleIntrospector._check_module_freshness -> None {
+    import from jaclang.pycore.runtime { JacRuntime as Jac }
     if not self._module {
+        return;
+    }
+    # First check if HMR replaced the module entirely in Jac.loaded_modules
+    current_module = Jac.loaded_modules.get(self.module_name);
+    if (current_module is not None and current_module is not self._module) {
+        # Module was replaced by HMR, do a full refresh
+        self._module = current_module;
+        self._load_manifest();
+        self._extract_access_levels();
+        self._functions = self._collect_functions();
+        self._walkers = self._collect_walkers();
+        self._bundle = None;
+        self._bundle_error = None;
         return;
     }
     # Check if any cached walker class is stale (different from what's in the module)
@@ -487,20 +515,20 @@ impl ModuleIntrospector.render_page(
 
 """Check if authentication is required for a function based on its access level.
 
-Public functions: no authentication required
-Protected/Private functions: authentication required
+Explicitly `pub` functions: no authentication required
+No modifier / Protected / Private functions: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_function(func_name: str) -> bool {
-    return self._function_access.get(func_name, False);
+    return self._function_access.get(func_name, True);
 }
 
 """Check if authentication is required for a walker based on its access level.
 
-Public walkers: no authentication required
-Protected/Private walkers: authentication required
+Explicitly `pub` walkers: no authentication required
+No modifier / Protected / Private walkers: authentication required (secure by default)
 """
 impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
-    return self._walker_access.get(walker_name, False);
+    return self._walker_access.get(walker_name, True);
 }
 
 """Collect client-exposed global values."""
@@ -754,7 +782,12 @@ impl JacAPIServer.postinit -> None {
         execution_manager=self.execution_manager,
         user_manager=self.user_manager
     );
-    self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    # Only create real server if port > 0 (port=0 is test mode - no socket binding)
+    if self.port > 0 {
+        self.server = Jac.create_server(self, '0.0.0.0', self.port);
+    } else {
+        self.server = None;
+    }
 }
 
 """Create HTTP request handler."""
@@ -1203,26 +1236,28 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start -> None {
+impl JacAPIServer.start(watch: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports
-    client_exports = self.introspector._client_manifest.get('exports', []);
-    if client_exports {
-        import time;
-        print("Building client bundle...", flush=True);
-        start_time = time.time();
-        try {
-            self.introspector.ensure_bundle();
-            elapsed = time.time() - start_time;
-            print(f"Client bundle ready ({elapsed:.1f}s).");
-        } except Exception as e {
-            import sys;
-            print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-            print(f"{e}", file=sys.stderr);
-            print(
-                f"\nClient pages will not be available until this is fixed.\n",
-                file=sys.stderr
-            );
+    # Eagerly build client bundle if there are client exports (skip in watch mode)
+    if not watch {
+        client_exports = self.introspector._client_manifest.get('exports', []);
+        if client_exports {
+            import time;
+            print("Building client bundle...", flush=True);
+            start_time = time.time();
+            try {
+                self.introspector.ensure_bundle();
+                elapsed = time.time() - start_time;
+                print(f"Client bundle ready ({elapsed:.1f}s).");
+            } except Exception as e {
+                import sys;
+                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
+                print(f"{e}", file=sys.stderr);
+                print(
+                    f"\nClient pages will not be available until this is fixed.\n",
+                    file=sys.stderr
+                );
+            }
         }
     }
     config = get_config();

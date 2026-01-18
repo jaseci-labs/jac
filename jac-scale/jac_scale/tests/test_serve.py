@@ -1122,7 +1122,7 @@ class TestJacScaleServe:
             json={"title": "Private Task", "priority": 1},
             timeout=5,
         )
-        assert response.status_code == 422
+        assert response.status_code == 401
 
     @pytest.mark.xfail(reason="possible issue with user.json", strict=False)
     def test_private_walker_200_with_auth(self) -> None:
