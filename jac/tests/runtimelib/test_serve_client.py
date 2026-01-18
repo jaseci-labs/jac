@@ -6,6 +6,8 @@ instead of real HTTP connections, making tests faster and more reliable.
 
 from __future__ import annotations
 
+import shutil
+import uuid
 from collections.abc import Generator
 from pathlib import Path
 
@@ -634,12 +636,30 @@ class TestAccessLevels:
 
 @pytest.fixture
 def client_app_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
-    """Create test client for client_app.jac (client rendering tests)."""
-    from jaclang.runtimelib.testing import JacTestClient
+    """Create test client for client_app.jac with isolated fixtures.
+
+    Copies fixtures to temp directory with unique module names to prevent
+    parallel test interference with shared .jac cache.
+    """
+    fixtures_src = Path(fixture_abs_path("")).resolve()
+    # Use unique module name to avoid parallel test conflicts
+    unique_id = uuid.uuid4().hex[:8]
+    module_name = f"client_app_{unique_id}"
+    fixtures_dest = tmp_path / module_name
+    fixtures_dest.mkdir(parents=True, exist_ok=True)
+
+    # Copy .jac source files, renaming client_app.jac to unique module name
+    for f in fixtures_src.glob("*.jac"):
+        if f.is_file():
+            dest_name = f.name
+            if f.name == "client_app.jac":
+                dest_name = f"{module_name}.jac"
+            shutil.copy(f, fixtures_dest / dest_name)
 
     client = JacTestClient.from_file(
-        fixture_abs_path("client_app.jac"),
-        base_path=str(tmp_path),
+        str(fixtures_dest / f"{module_name}.jac"),
+        base_path=str(fixtures_dest),
+        module_name=module_name,
     )
     yield client
     client.close()

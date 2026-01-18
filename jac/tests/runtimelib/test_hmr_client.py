@@ -6,12 +6,15 @@ The reload() method simulates what happens when a file changes.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 
+from jaclang.runtimelib.hmr import HotReloader
 from jaclang.runtimelib.testing import JacTestClient
+from jaclang.runtimelib.watcher import JacFileWatcher
 
 
 class TestHMRWalkerReload:
@@ -285,17 +288,17 @@ def get_message() -> str {
 
 
 class TestHMRStatePreservation:
-    """Tests that user state is preserved across reloads."""
+    """Tests for state handling across reloads."""
 
-    def test_auth_preserved_after_reload(self, tmp_path: Path) -> None:
-        """Test that authentication is preserved after module reload."""
+    def test_auth_token_preserved_after_reload(self, tmp_path: Path) -> None:
+        """Test that authentication token is preserved after module reload."""
         app_file = tmp_path / "app.jac"
 
         app_file.write_text(
             """
-walker get_user_info {
-    can enter with `root entry {
-        report {"status": "authenticated"};
+walker get_status {
+    can check with `root entry {
+        report {"status": "v1"};
     }
 }
 """
@@ -304,30 +307,96 @@ walker get_user_info {
         client = JacTestClient.from_file(str(app_file), base_path=str(tmp_path))
 
         try:
-            # Register and authenticate
             client.register_user("testuser", "password123")
 
             # Verify auth works
-            response1 = client.post("/walker/get_user_info", json={})
-            assert response1.ok
+            resp1 = client.post("/walker/get_status", json={})
+            assert resp1.ok
+            assert resp1.data.get("reports", [{}])[0].get("status") == "v1"
 
             # Reload module
             app_file.write_text(
                 """
-walker get_user_info {
-    can enter with `root entry {
-        report {"status": "still_authenticated"};
+walker get_status {
+    can check with `root entry {
+        report {"status": "v2"};
     }
 }
 """
             )
-
             client.reload()
 
             # Auth should still work (token preserved in client)
-            response2 = client.post("/walker/get_user_info", json={})
-            assert response2.ok
-            assert "still_authenticated" in str(response2.data)
+            resp2 = client.post("/walker/get_status", json={})
+            assert resp2.ok, "Auth failed after reload"
+            assert resp2.data.get("reports", [{}])[0].get("status") == "v2", (
+                "Code change not applied after reload"
+            )
+
+        finally:
+            client.close()
+
+    def test_user_isolation_without_reload(self, tmp_path: Path) -> None:
+        """Test that user isolation works correctly (baseline test)."""
+        app_file = tmp_path / "app.jac"
+
+        app_file.write_text(
+            """
+node Secret {
+    has data: str;
+}
+
+walker store_secret {
+    has data: str;
+    can store with `root entry {
+        here ++> Secret(data=self.data);
+        report {"stored": self.data};
+    }
+}
+
+walker get_secrets {
+    can collect with `root entry {
+        visit [-->];
+    }
+    can gather with Secret entry {
+        report {"data": here.data};
+    }
+}
+"""
+        )
+
+        client = JacTestClient.from_file(str(app_file), base_path=str(tmp_path))
+
+        try:
+            # User A stores a secret
+            client.register_user("userA", "passA")
+            resp1 = client.post("/walker/store_secret", json={"data": "A's secret"})
+            assert resp1.ok
+
+            # User B stores a different secret
+            client.clear_auth()
+            client.register_user("userB", "passB")
+            resp2 = client.post("/walker/store_secret", json={"data": "B's secret"})
+            assert resp2.ok
+
+            # User B should only see their own secret
+            resp3 = client.post("/walker/get_secrets", json={})
+            assert resp3.ok
+            secrets_b = [r.get("data") for r in resp3.data.get("reports", [])]
+            assert "B's secret" in secrets_b, "User B can't see their own data"
+            assert "A's secret" not in secrets_b, (
+                "User isolation broken: B can see A's data"
+            )
+
+            # User A should only see their own secret
+            client.login("userA", "passA")
+            resp4 = client.post("/walker/get_secrets", json={})
+            assert resp4.ok
+            secrets_a = [r.get("data") for r in resp4.data.get("reports", [])]
+            assert "A's secret" in secrets_a, "User A can't see their own data"
+            assert "B's secret" not in secrets_a, (
+                "User isolation broken: A can see B's data"
+            )
 
         finally:
             client.close()
@@ -336,16 +405,15 @@ walker get_user_info {
 class TestHMRErrorHandling:
     """Tests for error handling during HMR."""
 
-    def test_recovery_after_syntax_fix(self, tmp_path: Path) -> None:
-        """Test that module can be reloaded after fixing syntax error."""
+    def test_recovery_from_syntax_error(self, tmp_path: Path) -> None:
+        """Test that module can recover from syntax error and continue working."""
         app_file = tmp_path / "app.jac"
 
-        # Start with valid code
         app_file.write_text(
             """
-walker test_walker {
-    can enter with `root entry {
-        report {"status": "ok"};
+walker get_value {
+    can check with `root entry {
+        report {"value": 1};
     }
 }
 """
@@ -356,27 +424,185 @@ walker test_walker {
         try:
             client.register_user("testuser", "password123")
 
-            # Verify it works
-            response1 = client.post("/walker/test_walker", json={})
-            assert response1.ok
+            # Verify initial code works
+            resp1 = client.post("/walker/get_value", json={})
+            assert resp1.ok
+            assert resp1.data.get("reports", [{}])[0].get("value") == 1
 
-            # Fix and reload with new valid code
+            # Introduce syntax error
             app_file.write_text(
                 """
-walker test_walker {
-    can enter with `root entry {
-        report {"status": "fixed"};
+walker get_value {
+    can check with `root entry {
+        # SYNTAX ERROR - missing closing brace
+        report {"value": 2};
+}
+"""
+            )
+
+            # Reload should handle error gracefully (not crash)
+            with contextlib.suppress(Exception):
+                client.reload()
+
+            # Fix the syntax error with new value
+            app_file.write_text(
+                """
+walker get_value {
+    can check with `root entry {
+        report {"value": 3};
     }
+}
+"""
+            )
+
+            # Reload with fixed code
+            client.reload()
+
+            # Should work with fixed code
+            resp2 = client.post("/walker/get_value", json={})
+            assert resp2.ok
+            assert resp2.data.get("reports", [{}])[0].get("value") == 3, (
+                "Code not updated after recovery from syntax error"
+            )
+
+        finally:
+            client.close()
+
+    def test_reload_with_code_change_preserves_functionality(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that code changes work correctly after reload."""
+        app_file = tmp_path / "app.jac"
+
+        # Version 1: multiply by 2
+        app_file.write_text(
+            """
+def compute(x: int) -> int {
+    return x * 2;
+}
+"""
+        )
+
+        client = JacTestClient.from_file(str(app_file), base_path=str(tmp_path))
+
+        try:
+            client.register_user("testuser", "password123")
+
+            # Test v1 logic
+            resp1 = client.post("/function/compute", json={"args": {"x": 5}})
+            assert resp1.ok
+            assert resp1.data.get("result") == 10  # 5 * 2
+
+            # Version 2: multiply by 3
+            app_file.write_text(
+                """
+def compute(x: int) -> int {
+    return x * 3;
 }
 """
             )
 
             client.reload()
 
-            # Should work with new code
-            response2 = client.post("/walker/test_walker", json={})
-            assert response2.ok
-            assert "fixed" in str(response2.data)
+            # Test v2 logic - should now multiply by 3
+            resp2 = client.post("/function/compute", json={"args": {"x": 5}})
+            assert resp2.ok
+            assert resp2.data.get("result") == 15, (  # 5 * 3
+                f"Expected 15 (5*3), got {resp2.data.get('result')} - code change not applied"
+            )
 
         finally:
             client.close()
+
+
+class TestHMRClientCodeRecompilation:
+    """Tests for client-side code HMR recompilation."""
+
+    @pytest.fixture
+    def temp_project(self, tmp_path: Path) -> Generator[Path, None, None]:
+        """Create a temporary project directory with client structure."""
+        import uuid
+
+        # Use unique subdirectory to avoid cross-test contamination
+        unique_dir = tmp_path / f"project_{uuid.uuid4().hex[:8]}"
+        unique_dir.mkdir(parents=True, exist_ok=True)
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled"
+        compiled_dir.mkdir(parents=True, exist_ok=True)
+        yield unique_dir
+
+    @pytest.mark.xfail(
+        reason="HotReloader has global state issue causing cross-test contamination"
+    )
+    def test_client_js_file_updated_on_change(self, temp_project: Path) -> None:
+        """Test that client JS file is actually updated when .jac file changes."""
+        app_file = temp_project / "app.jac"
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello Version 1</div>;
+    }
+}
+"""
+        )
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._recompile_client_code(str(app_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "app.js"
+        assert output_file.exists(), "JS file was not created"
+
+        content_v1 = output_file.read_text()
+
+        # Modify the jac file
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello Version 2</div>;
+    }
+}
+"""
+        )
+
+        reloader._recompile_client_code(str(app_file))
+        content_v2 = output_file.read_text()
+
+        assert content_v1 != content_v2, "JS file was not updated after change"
+        assert "Version 2" in content_v2, "New content not in recompiled JS"
+
+    def test_jacjsx_import_added_in_real_compilation(self, temp_project: Path) -> None:
+        """Test that __jacJsx import is added when JSX is used."""
+        app_file = temp_project / "app.jac"
+        app_file.write_text(
+            """
+cl {
+    def app() {
+        return <div>Hello</div>;
+    }
+}
+"""
+        )
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._recompile_client_code(str(app_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "app.js"
+        assert output_file.exists(), "JS file was not created"
+
+        content = output_file.read_text()
+        # JSX code should compile to use __jacJsx
+        assert "__jacJsx" in content, (
+            "Compiled JS should contain __jacJsx for JSX elements"
+        )
+        assert "import {__jacJsx" in content or "import{__jacJsx" in content, (
+            "__jacJsx is used but import statement is missing"
+        )
