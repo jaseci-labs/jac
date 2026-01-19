@@ -270,18 +270,20 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
             if route.path == path {
                 # Check guard if present
                 if route.guard and not route.guard() {
-                    return <div>
-                        Access Denied
-                    </div>;
+                    return
+                        <div>
+                            Access Denied
+                        </div>;
                 }
                 return route.component();
             }
         }
 
         # No match - show 404
-        return <div>
-            404 - Route not found: {path}
-        </div>;
+        return
+            <div>
+                404 - Route not found: {path}
+            </div>;
     }
     # Navigate method
     def navigateTo(path: str) -> None {

@@ -370,6 +370,10 @@ class SymTabBuildPass(UniPass):
     def exit_with_stmt(self, node: uni.WithStmt) -> None:
         self.pop_scope()
 
+    def exit_expr_as_item(self, node: uni.ExprAsItem) -> None:
+        if node.alias and isinstance(node.alias, uni.Name):
+            node.alias.sym_tab.def_insert(node.alias, single_decl="context var")
+
     def enter_lambda_expr(self, node: uni.LambdaExpr) -> None:
         self.push_scope_and_link(node)
 
@@ -378,6 +382,8 @@ class SymTabBuildPass(UniPass):
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
         self.push_scope_and_link(node)
+        if isinstance(node.target, uni.Name):
+            node.sym_tab.def_insert(node.target, single_decl="iterator")
 
     def exit_inner_compr(self, node: uni.InnerCompr) -> None:
         self.pop_scope()

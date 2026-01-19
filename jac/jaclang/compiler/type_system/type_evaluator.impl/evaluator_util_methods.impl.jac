@@ -221,3 +221,19 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     }
     return False;
 }
+
+"""Check if a symbol represents a property."""
+impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
+    node_ = symbol.decl.name_of;
+    if isinstance(node_, uni.Ability) {
+        ability = node_;
+        if ability.decorators {
+            for decorator in ability.decorators {
+                if isinstance(decorator, uni.Name) and decorator.value == "property" {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}

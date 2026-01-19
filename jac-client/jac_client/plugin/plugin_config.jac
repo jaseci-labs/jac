@@ -5,10 +5,13 @@ configuration system, registering:
 - Plugin metadata (name, version)
 - Config schema for [plugins.client] section
 - npm dependency type for [dependencies.npm] section
+- Project templates (client, fullstack)
 """
 
+import os;
 import subprocess;
 import sys;
+import json;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.runtime { hookimpl }
@@ -86,8 +89,192 @@ class JacClientPluginConfig {
             "remove_handler": _npm_remove_handler
         };
     }
+
+    """Register the client and fullstack project templates."""
+    @hookimpl
+    static def register_project_template -> list[dict[str, Any]] {
+        templates: list[dict[str, Any]] = [];
+
+        # Load templates from bundled JSON files
+        for template_name in ["client", "fullstack"] {
+            template = _load_template(template_name);
+            if template {
+                templates.append(template);
+            }
+        }
+
+        return templates;
+    }
 }
 
+# ===============================================================================
+# Template Loader
+# ===============================================================================
+"""Load a template from bundled JSON file."""
+def _load_template(template_name: str) -> dict[str, Any] | None {
+    # Find the template JSON file relative to this module
+    # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
+    module_dir = Path(__file__).parent.parent;  # jac_client directory
+    template_path = module_dir / "templates" / f"{template_name}.jacpac";
+
+    if not template_path.exists() {
+        # Fallback: look in installed package location
+        import from importlib.resources { files }
+        try {
+            package_files = files("jac_client");
+            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpac";
+        } except Exception {
+            return None;
+        }
+    }
+
+    if not template_path.exists() {
+        return None;
+    }
+
+    try {
+        with open(template_path, "r") as f {
+            data = json.load(f);
+        }
+
+        # Attach the post_create hook
+        data["post_create"] = _post_create_client;
+
+        return data;
+    } except Exception as e {
+        print(
+            f"Warning: Could not load {template_name} template: {e}", file=sys.stderr
+        );
+        return None;
+    }
+}
+
+# ===============================================================================
+# Post-create Hook for Client Template
+# ===============================================================================
+"""Post-create hook to ensure Node.js is installed and optionally install npm packages."""
+def _post_create_client(project_path: Path, project_name: str) -> None {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jac_client.plugin.utils.node_installer { NodeInstaller }
+    import shutil;
+
+    # First, ensure Node.js is installed
+    print("\nChecking Node.js installation...");
+    node_result = NodeInstaller.ensure_node_installed(interactive=True);
+    node_installed = node_result[0];
+    message = node_result[1];
+    was_just_installed = node_result[2];
+
+    if not node_installed {
+        print(f"\n{message}", file=sys.stderr);
+        print(
+            "\nProject created successfully, but Node.js is required for client development."
+        );
+        print("After installing Node.js, run: jac add --cl", file=sys.stderr);
+        return;
+    }
+
+    print(f"{message}");
+
+    # Check if npm package installation should be skipped
+    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
+        print(
+            "\nSkipping npm package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)."
+        );
+        print("Run 'jac add --cl' when you're ready to install packages.");
+        return;
+    }
+
+    print("\nInstalling default npm packages...");
+
+    try {
+        # Verify jac.toml exists
+        toml_path = project_path / "jac.toml";
+        if not toml_path.exists() {
+            print(
+                "Warning: jac.toml not found, skipping package installation",
+                file=sys.stderr
+            );
+            return;
+        }
+
+        # Create ViteBundler instance
+        bundler = ViteBundler(project_path);
+
+        # Generate package.json with default packages
+        bundler.create_package_json(project_name=project_name);
+
+        # Ensure .jac/client directory exists
+        client_dir = bundler._get_client_dir();
+        client_dir.mkdir(parents=True, exist_ok=True);
+
+        # Copy package.json to .jac/client/ for npm install
+        configs_package_json = client_dir / 'configs' / 'package.json';
+        build_package_json = client_dir / 'package.json';
+
+        if not configs_package_json.exists() {
+            print(
+                "Warning: package.json was not generated, skipping package installation",
+                file=sys.stderr
+            );
+            return;
+        }
+
+        shutil.copy2(configs_package_json, build_package_json);
+
+        # Run npm install using NodeInstaller to handle NVM environment
+        try {
+            NodeInstaller.run_npm_with_nvm(['install'], cwd=client_dir, timeout=300);
+
+            # Move package-lock.json to configs/ if it was created
+            build_package_lock = client_dir / 'package-lock.json';
+            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
+            if build_package_lock.exists() {
+                if configs_package_lock.exists() {
+                    configs_package_lock.unlink();
+                }
+                shutil.move(str(build_package_lock), str(configs_package_lock));
+            }
+
+            print("Default packages installed successfully");
+        } except subprocess.CalledProcessError as e {
+            print(f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr);
+            print("You can install packages later with: jac add --cl", file=sys.stderr);
+        } except FileNotFoundError {
+            print(
+                "Warning: npm command not found. This may require reloading your shell.",
+                file=sys.stderr
+            );
+            print("You can install packages later with: jac add --cl", file=sys.stderr);
+        } finally {
+            # Clean up temporary package.json
+            if build_package_json.exists() {
+                build_package_json.unlink();
+            }
+        }
+    } except Exception as e {
+        print(f"Warning: Could not install default packages: {e}", file=sys.stderr);
+        print("You can install packages later with: jac add --cl", file=sys.stderr);
+    }
+
+    # If Node.js was just installed, offer to restart terminal for full integration
+    if was_just_installed {
+        print("\n" + "=" * 70);
+        print("IMPORTANT: Node.js was just installed via NVM");
+        print("=" * 70);
+        print("\nFor Node.js to be available in your current shell, you need to:");
+        print("  1. Run: source ~/.nvm/nvm.sh");
+        print("  2. Or restart your terminal");
+        print("\nNote: npm commands from jac will work immediately, but if you want");
+        print("to use 'node' or 'npm' directly in this terminal, please reload your");
+        print("shell configuration.");
+        print("=" * 70 + "\n");
+    }
+}
+
+# ===============================================================================
+# NPM Dependency Handlers
+# ===============================================================================
 """Install an npm package."""
 def _npm_install_handler(
     config: JacConfig,
@@ -101,15 +288,13 @@ def _npm_install_handler(
         raise RuntimeError("No project root found") ;
     }
 
-    project_dir = config.project_root;
-
     # Add to config (core JacConfig handles this)
-    package_version = version or "latest";
+    package_version: str = version or "latest";
     config.add_dependency(package_name, package_version, dev=is_dev, dep_type="npm");
     config.save();
 
     # Generate package.json and run npm install
-    _regenerate_and_install(project_dir);
+    _regenerate_and_install(Path(str(config.project_root)));
 }
 
 """Install all npm packages from jac.toml."""
@@ -118,7 +303,7 @@ def _npm_install_all_handler(config: JacConfig) -> None {
         raise RuntimeError("No project root found") ;
     }
 
-    _regenerate_and_install(config.project_root);
+    _regenerate_and_install(Path(str(config.project_root)));
 }
 
 """Remove an npm package."""
@@ -129,7 +314,7 @@ def _npm_remove_handler(
         raise RuntimeError("No project root found") ;
     }
 
-    project_dir = config.project_root;
+    project_dir: Path = Path(str(config.project_root));
 
     # Remove from config (core JacConfig handles this)
     result = config.remove_dependency(package_name, dev=is_dev, dep_type="npm");
@@ -147,7 +332,27 @@ def _npm_remove_handler(
 """Regenerate package.json from jac.toml and run npm install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jac_client.plugin.utils.node_installer { NodeInstaller }
     import shutil;
+
+    # Ensure Node.js is installed before proceeding
+    node_result = NodeInstaller.ensure_node_installed(interactive=True);
+    node_installed = node_result[0];
+    message = node_result[1];
+    was_just_installed = node_result[2];
+
+    if not node_installed {
+        raise RuntimeError(
+            f"Node.js installation required:\n{message}\n" + "Please install Node.js and try again."
+        ) ;
+    }
+
+    # Inform user if Node.js was just installed
+    if was_just_installed {
+        print(
+            "\nNote: Node.js was just installed. npm commands will work via NVM sourcing."
+        );
+    }
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
@@ -164,18 +369,13 @@ def _regenerate_and_install(project_dir: Path) -> None {
     }
 
     try {
-        subprocess.run(
-            ["npm", "install"],
-            cwd=client_dir,
-            check=True,
-            capture_output=True,
-            text=True
-        );
+        # Use NodeInstaller.run_npm_with_nvm to handle NVM environment
+        NodeInstaller.run_npm_with_nvm(["install"], cwd=client_dir, timeout=300);
     } except subprocess.CalledProcessError as e {
         raise RuntimeError(f"Failed to install npm packages: {e.stderr}") from e ;
     } except FileNotFoundError {
         raise RuntimeError(
-            "npm command not found. Ensure Node.js and npm are installed."
+            "npm command not found. This may require reloading your shell after Node.js installation."
         ) from None ;
     } finally {
         # Clean up temporary package.json

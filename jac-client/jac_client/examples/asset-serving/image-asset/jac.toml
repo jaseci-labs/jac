@@ -2,7 +2,7 @@
 name = "image-asset"
 version = "1.0.0"
 description = "Jac client application: image-asset"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

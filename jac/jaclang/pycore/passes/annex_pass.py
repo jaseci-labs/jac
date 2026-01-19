@@ -1,13 +1,13 @@
 """Annex module loading pass for the Jac compiler.
 
 This pass handles the discovery, loading, and attachment of annex modules to their base modules.
-Annex modules are specialized extension files (.impl.jac, .test.jac, .cl.jac) that provide
+Annex modules are specialized extension files (.impl.jac, .test.jac) that provide
 implementations or tests for a base module.
 
 Annex files are discovered from:
 - Same directory: foo.impl.jac for foo.jac
 - Module-specific folder: foo.impl/bar.impl.jac for foo.jac
-- Shared folder: impl/foo.impl.jac, test/foo.test.jac, cl/foo.cl.jac
+- Shared folder: impl/foo.impl.jac, test/foo.test.jac
 
 This enables the separation of interface and implementation, as well as test code organization.
 """
@@ -25,15 +25,12 @@ if TYPE_CHECKING:
 
 
 class JacAnnexPass(Transform[uni.Module, uni.Module]):
-    """Handles loading and attaching of annex files (.impl.jac, .test.jac, .cl.jac)."""
+    """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
 
     def transform(self, ir_in: uni.Module) -> uni.Module:
         """Load and attach annex modules to the given module."""
         mod_path = ir_in.loc.mod_path
-        # Allow both .jac and .cl.jac files to have annexes loaded.
-        # .cl.jac files can exist standalone without a base .jac file.
-        is_jac_file = mod_path.endswith(".jac") or mod_path.endswith(".cl.jac")
-        if ir_in.stub_only or not is_jac_file or ir_in.annexable_by:
+        if ir_in.stub_only or not mod_path.endswith(".jac") or ir_in.annexable_by:
             return ir_in
 
         self._load_annexes(self.prog, ir_in, mod_path)
@@ -44,10 +41,6 @@ class JacAnnexPass(Transform[uni.Module, uni.Module]):
     ) -> None:
         """Parse and attach annex modules to the node."""
         for path in discover_annex_files(mod_path, ".impl.jac"):
-            if mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True):
-                node.impl_mod.append(mod)
-
-        for path in discover_annex_files(mod_path, ".cl.jac"):
             if mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True):
                 node.impl_mod.append(mod)
 

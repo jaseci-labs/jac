@@ -256,3 +256,48 @@ def lang_fixture_path() -> Callable[[str], str]:
         return str(file_path.resolve())
 
     return _lang_fixture_path
+
+
+@pytest.fixture
+def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide fresh, isolated Jac context for test.
+
+    This fixture:
+    - Closes any existing execution context
+    - Clears user modules from sys.modules (keeps jaclang.* to preserve dataclass refs)
+    - Clears loaded modules tracking
+    - Creates fresh JacProgram
+    - Creates fresh execution context with isolated storage
+    - Cleans up after test
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from jaclang.pycore.program import JacProgram
+    from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+
+    # Close existing context if any
+    if JacRuntime.exec_ctx is not None:
+        JacRuntime.exec_ctx.mem.close()
+
+    # Remove user .jac modules from sys.modules so they get re-imported fresh
+    # Keep jaclang.* and __main__ to avoid breaking dataclass references
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
+            sys.modules.pop(mod.__name__, None)
+    JacRuntime.loaded_modules.clear()
+
+    # Set up fresh state
+    JacRuntime.base_path_dir = str(tmp_path)
+    JacRuntime.program = JacProgram()
+    JacRuntime.pool = ThreadPoolExecutor()
+    JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
+
+    yield tmp_path
+
+    # Cleanup after test
+    if JacRuntime.exec_ctx is not None:
+        JacRuntime.exec_ctx.mem.close()
+    for mod in list(JacRuntime.loaded_modules.values()):
+        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
+            sys.modules.pop(mod.__name__, None)
+    JacRuntime.loaded_modules.clear()

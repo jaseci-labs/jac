@@ -132,7 +132,7 @@ impl EsastGenPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
 
 """Process global variables."""
 impl EsastGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
-    if getattr(<>node, 'is_client_decl', False) {
+    if <>node.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         for assignment in <>node.assignments {
             for target in assignment.target {
@@ -729,7 +729,7 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
             defn_node = target_sym.defn[0];
             if isinstance(defn_node.parent, uni.Ability) {
                 ability_node = defn_node.parent;
-                is_server_func = not getattr(ability_node, 'is_client_decl', False);
+                is_server_func = ability_node.code_context != CodeContext.CLIENT;
                 if is_server_func {
                     func_name = <>node.target.sym_name;
                     param_names: list[str] = [];
@@ -1759,7 +1759,7 @@ impl EsastGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
 
 """Process ability (function/method) declaration."""
 impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
-    if (getattr(<>node, 'is_client_decl', False) and not <>node.is_method) {
+    if (<>node.code_context == CodeContext.CLIENT and not <>node.is_method) {
         self.client_manifest.has_client = True;
         name = <>node.name_ref.sym_name;
         self.client_manifest.exports.append(name);
@@ -1950,7 +1950,7 @@ impl EsastGenPass.exit_enum(<>node: uni.Enum) -> None {
 
 """Process archetype (class) declaration."""
 impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
-    if getattr(<>node, 'is_client_decl', False) {
+    if <>node.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
         self.client_manifest.exports.append(<>node.name.sym_name);
     }
@@ -2130,13 +2130,18 @@ impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
 
 """Process import statement."""
 impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
-    if (<>node.from_loc and <>node.items and <>node.is_client_decl) {
+    # Only process client-side imports for JavaScript generation
+    if <>node.code_context != CodeContext.CLIENT {
+        # Server-side import (sv keyword or default) - skip JS generation
+        return;
+    }
+    if (<>node.from_loc and <>node.items) {
         resolved_path = <>node.from_loc.resolve_relative_path();
         import_key = <>node.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;
         js_import_path = convert_to_js_import_path(<>node.from_loc.dot_path_str);
-    } elif (not <>node.from_loc and <>node.items and <>node.is_client_decl) {
+    } elif (not <>node.from_loc and <>node.items) {
         self.client_manifest.has_client = True;
         first_item = <>node.items[0];
         if (isinstance(first_item, uni.ModulePath) and first_item.path) {
@@ -2150,6 +2155,9 @@ impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
         resolved_path = resolve_relative_path(import_key, <>node.loc.mod_path);
         self.client_manifest.imports[import_key] = resolved_path;
         js_import_path = convert_to_js_import_path(import_key);
+    } else {
+        # No valid import to process
+        return;
     }
     source = self.sync_loc(es.Literal(value=js_import_path), jac_node=<>node.from_loc);
     specifiers:
@@ -2266,7 +2274,7 @@ impl EsastGenPass.exit_module(<>node: uni.Module) -> None {
     fallback_items: list[es.Statement | list[es.Statement] | None] = [];
     for stmt in merged_body {
         if stmt.gen.es_ast {
-            if getattr(stmt, 'is_client_decl', True) {
+            if getattr(stmt, 'code_context', CodeContext.CLIENT) == CodeContext.CLIENT {
                 client_items.append(cast(es.Statement, stmt.gen.es_ast));
             } else {
                 ;
@@ -2422,14 +2430,24 @@ impl EsastGenPass._resolve_spawn_walker(
         return None;
     }
     target_symbol = self._resolve_expr_symbol(stripped_node.target);
-    if (not target_symbol or (target_symbol.sym_type != SymbolType.WALKER_ARCH)) {
-        return None;
+    # If symbol is found and is a walker, use it
+    if target_symbol and (target_symbol.sym_type == SymbolType.WALKER_ARCH) {
+        walker_name = target_symbol.sym_name;
+        fields_obj = self._build_spawn_arg_object(stripped_node, target_symbol);
+        return SpawnWalkerInfo(
+            call_node=stripped_node, walker_name=walker_name, fields_object=fields_obj
+        );
     }
-    walker_name = target_symbol.sym_name;
-    fields_obj = self._build_spawn_arg_object(stripped_node, target_symbol);
-    return SpawnWalkerInfo(
-        call_node=stripped_node, walker_name=walker_name, fields_object=fields_obj
-    );
+    # Allow function calls that look like walker constructors (server walkers from sv imports)
+    # These are validated at runtime via API calls
+    if isinstance(stripped_node.target, uni.Name) {
+        walker_name = stripped_node.target.sym_name;
+        fields_obj = self._build_spawn_arg_object(stripped_node, None);
+        return SpawnWalkerInfo(
+            call_node=stripped_node, walker_name=walker_name, fields_object=fields_obj
+        );
+    }
+    return None;
 }
 
 """Convert walker constructor arguments into a JSON payload."""
@@ -2677,8 +2695,8 @@ impl EsastGenPass.sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -
 impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
-        and isinstance(<>node, uni.ClientFacingNode)
-        and not <>node.is_client_decl
+        and isinstance(<>node, uni.ContextAwareNode)
+        and <>node.code_context != CodeContext.CLIENT
         and ((<>node.parent is None) or isinstance(<>node.parent, uni.Module))
     ) {
         return;
@@ -2693,8 +2711,8 @@ impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
 impl EsastGenPass.enter_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
-        and isinstance(<>node, uni.ClientFacingNode)
-        and not <>node.is_client_decl
+        and isinstance(<>node, uni.ContextAwareNode)
+        and <>node.code_context != CodeContext.CLIENT
         and ((<>node.parent is None) or isinstance(<>node.parent, uni.Module))
     ) {
         self.prune();

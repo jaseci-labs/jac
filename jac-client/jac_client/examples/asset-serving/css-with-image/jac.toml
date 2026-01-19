@@ -2,7 +2,7 @@
 name = "css-with-image"
 version = "1.0.0"
 description = "Jac client application: css-with-image"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

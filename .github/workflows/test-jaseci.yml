@@ -59,7 +59,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-client
+      run: pytest -x jac-client -n auto
 
   test-packages-and-docs:
     runs-on: ubuntu-latest
@@ -115,6 +115,7 @@ jobs:
         pip install pytest-asyncio
         pip install -e jac-client
         pip install testcontainers
+        pip install watchdog
 
     - name: Run Backend tests
       run: |

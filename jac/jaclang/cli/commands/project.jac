@@ -26,17 +26,37 @@ glob registry = get_registry();
             help="Overwrite existing jac.toml",
             short="f"
         ),
+        Arg.create(
+            "template",
+            default="default",
+            help="Template to use (default, client, etc.)",
+            short="t"
+        ),
+        Arg.create(
+            "list_templates",
+            typ=bool,
+            default=False,
+            help="List available templates",
+            short="l"
+        ),
 
     ],
     examples=[
         ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
+        ("jac create myapp --template client", "Create with client template"),
+        ("jac create --list-templates", "List available templates"),
 
     ],
     group="project"
 )
-def create(name: str = "", force: bool = False) -> int;
+def create(
+    name: str = "",
+    force: bool = False,
+    template: str = "default",
+    list_templates: bool = False
+) -> int;
 
 """Install all dependencies from jac.toml."""
 @registry.command(
@@ -207,3 +227,37 @@ def clean(
     packages: bool = False,
     force: bool = False
 ) -> int;
+
+"""Bundle a template directory into a distributable .jacpac file."""
+@registry.command(
+    name="jacpac",
+    help="Manage project templates (.jacpac files)",
+    args=[
+        Arg.create(
+            "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
+        ),
+        Arg.create(
+            "path",
+            kind=ArgKind.POSITIONAL,
+            default="",
+            help="Template directory path (for pack) or .jacpac path (for info)"
+        ),
+        Arg.create(
+            "output",
+            default="",
+            help="Output file path for bundled template",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        (
+            "jac jacpac pack ./my-template -o my-template.jacpac",
+            "Bundle a template directory"
+        ),
+        ("jac jacpac list", "List available templates"),
+
+    ],
+    group="project"
+)
+def jacpac(action: str = "", path: str = "", output: str = "") -> int;

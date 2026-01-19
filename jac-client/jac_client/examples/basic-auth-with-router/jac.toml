@@ -2,7 +2,7 @@
 name = "basic-auth-with-router"
 version = "1.0.0"
 description = "Jac client application: basic-auth-with-router"
-entry-point = "src/app.jac"
+entry-point = "main.jac"
 
 [plugins.client]
 # Vite bundler configuration (optional overrides)

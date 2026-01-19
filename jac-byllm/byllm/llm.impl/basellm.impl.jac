@@ -17,8 +17,36 @@ impl BaseLLM.invoke(mtir: MTRuntime) -> object {
     if mtir.stream and len(mtir.tools) == 0 {
         return self.dispatch_streaming(mtir);
     }
+    max_iters = (
+        mtir.call_params.get("max_react_iterations")
+        or self.call_params.get("max_react_iterations")
+        or _call_params_config.get("max_react_iterations")
+        or 0
+    );
+    iter_count = 0;
     # Invoke the LLM and handle tool calls (ReAct loop).
     while True {
+        iter_count += 1;
+        if int(max_iters) > 0 and iter_count > int(max_iters) {
+            # If streaming, reuse the existing streaming final-answer path
+            if mtir.stream {
+                return self._stream_final_answer(mtir);
+            }
+            # Non-streaming: disable tools and ask for final answer once
+            final_instruction = Message(
+                role=MessageRole.USER,
+                content="Based on the tool calls and their results above, provide only your final answer.",
+            );
+            mtir.add_message(final_instruction);
+            original_tools = mtir.tools;
+            mtir.tools = [];
+            try {
+                final_resp = self.dispatch_no_streaming(mtir);
+                return final_resp.output;
+            } finally {
+                mtir.tools = original_tools;
+            }
+        }
         resp = self.dispatch_no_streaming(mtir);
         if resp.tool_calls {
             for tool_call in resp.tool_calls {
