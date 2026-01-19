@@ -55,7 +55,7 @@ obj BaseLLM {
         api_key: str = "",
         call_params: dict[(str, object)] = {};
 
-    def __call__( **kwargs: object)  -> BaseLLM;
+    def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
     def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
