@@ -32,7 +32,7 @@ in a JSON file for easy distribution.
 
 Args:
     template_dir: Path to the template directory with template.toml
-    output_path: Path for the output JSON file (e.g., fullstack.template.json)
+    output_path: Path for the output .jacpac file (e.g., fullstack.jacpac)
 """
 def bundle_template(template_dir: Path, output_path: Path) -> None;
 

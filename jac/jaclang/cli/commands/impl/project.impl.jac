@@ -623,7 +623,7 @@ impl template(action: str = "", path: str = "", output: str = "") -> int {
         if output {
             output_path = Path(output);
         } else {
-            # Default to <template-name>.template.json in current directory
+            # Default to <template-name>.jacpac in current directory
             manifest_path = template_dir / "template.toml";
             if manifest_path.exists() {
                 import tomllib;
@@ -634,7 +634,7 @@ impl template(action: str = "", path: str = "", output: str = "") -> int {
             } else {
                 name = template_dir.name;
             }
-            output_path = Path.cwd() / f"{name}.template.json";
+            output_path = Path.cwd() / f"{name}.jacpac";
         }
         try {
             bundle_template(template_dir, output_path);
