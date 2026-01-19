@@ -79,3 +79,91 @@ with entry {
         }
     }
 }
+
+# Tuple unpacking
+glob pairs = [(1, 2), (3, 4), (5, 6)];
+
+with entry {
+    for (a, b) in pairs {
+        print(f"a={a}, b={b}");
+    }
+}
+
+# List unpacking (uses tuple syntax in Jac)
+glob matrix = [[1, 2, 3], [4, 5, 6]];
+
+with entry {
+    for (x, y, z) in matrix {
+        print(f"x={x}, y={y}, z={z}");
+    }
+}
+
+# Nested tuple unpacking
+glob nested = [("alice", (10, 20)), ("bob", (30, 40))];
+
+with entry {
+    for (name, (x, y)) in nested {
+        print(f"{name}: x={x}, y={y}");
+    }
+}
+
+# Star unpacking (rest of elements)
+glob items = [(1, 2, 3, 4), (5, 6, 7, 8)];
+
+with entry {
+    for (first, *rest) in items {
+        print(f"first={first}, rest={rest}");
+    }
+}
+
+# Star unpacking in middle
+glob sequences = [(1, 2, 3, 4, 5), (6, 7, 8, 9, 10)];
+
+with entry {
+    for (first, *middle, last) in sequences {
+        print(f"first={first}, middle={middle}, last={last}");
+    }
+}
+
+# Dictionary items unpacking
+glob data = {
+         "name": "Alice",
+         "age": 30,
+         "city": "NYC"
+     };
+
+with entry {
+    for (key, value) in data.items() {
+        print(f"{key}: {value}");
+    }
+}
+
+# Enumerate with unpacking
+glob coords = [(10, 20), (30, 40), (50, 60)];
+
+with entry {
+    for (i, (x, y)) in enumerate(coords) {
+        print(f"Point {i}: ({x}, {y})");
+    }
+}
+
+# Zip with unpacking
+glob xs = [1, 2, 3],
+     ys = [10, 20, 30];
+
+with entry {
+    for (x, y) in zip(xs, ys) {
+        print(f"x={x}, y={y}");
+    }
+}
+
+# Complex: enumerate + zip + unpacking
+glob as_ = [1, 2, 3],
+     bs = [4, 5, 6],
+     cs = [7, 8, 9];
+
+with entry {
+    for (i, (a, b, c)) in enumerate(zip(as_, bs, cs)) {
+        print(f"Index {i}: a={a}, b={b}, c={c}");
+    }
+}
