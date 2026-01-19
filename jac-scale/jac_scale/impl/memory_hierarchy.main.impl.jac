@@ -17,7 +17,7 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     self._cache_available = redis_backend.is_available();
     if self._cache_available and use_cache {
         self.l2 = redis_backend;
-        logger.info("Redis cache backend initialized");
+        logger.debug("Redis cache backend initialized");
     } else {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
@@ -26,13 +26,13 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
     mongo_backend = MongoBackend();
     if mongo_backend.is_available() {
         self.l3 = mongo_backend;
-        self._persistence_type = 'mongodb';
-        logger.info("MongoDB persistence backend initialized");
+        self._persistence_type = PersistenceType.MONGODB;
+        logger.debug("MongoDB persistence backend initialized");
     } else {
         # Fall back to jaclang's SqliteMemory using configured path
         self.l3 = SqliteMemory(path=_db_config['shelf_db_path']);
-        self._persistence_type = 'sqlite';
-        logger.info("MongoDB not available, using SqliteMemory for persistence");
+        self._persistence_type = PersistenceType.SQLITE;
+        logger.debug("MongoDB not available, using SqliteMemory for persistence");
     }
 }
 
