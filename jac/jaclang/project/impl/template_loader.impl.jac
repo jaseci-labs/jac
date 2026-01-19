@@ -10,7 +10,7 @@ import importlib;
 # ===============================================================================
 # Load Template from Directory
 # ===============================================================================
-"""Load a template from a directory containing template.toml and source files."""
+"""Load a template from a directory containing jacpac.toml and source files."""
 impl load_template_from_directory(
     template_dir: Path, post_create_hook: Callable | None = None
 ) -> ProjectTemplate {
@@ -19,9 +19,9 @@ impl load_template_from_directory(
         raise ValueError(f"Template directory not found: {template_dir}") ;
     }
     # Load the manifest
-    manifest_path = template_dir / "template.toml";
+    manifest_path = template_dir / "jacpac.toml";
     if not manifest_path.exists() {
-        raise ValueError(f"No template.toml found in {template_dir}") ;
+        raise ValueError(f"No jacpac.toml found in {template_dir}") ;
     }
     with open(manifest_path, "rb") as f {
         manifest = tomllib.load(f);
@@ -30,11 +30,11 @@ impl load_template_from_directory(
     template_section = manifest.get("template", {});
     name = template_section.get("name");
     if not name {
-        raise ValueError("template.toml must have [template] name field") ;
+        raise ValueError("jacpac.toml must have [template] name field") ;
     }
     description = template_section.get("description", "");
     if not description {
-        raise ValueError(f"template.toml for '{name}' must have description field") ;
+        raise ValueError(f"jacpac.toml for '{name}' must have description field") ;
     }
     # Build config from manifest (everything under [config])
     config = manifest.get("config", {});
@@ -57,19 +57,19 @@ impl load_template_from_directory(
         # Explicit file list provided
         for pattern in file_patterns {
             for file_path in template_dir.glob(pattern) {
-                if file_path.is_file() and file_path.name != "template.toml" {
+                if file_path.is_file() and file_path.name != "jacpac.toml" {
                     relative_path = str(file_path.relative_to(template_dir));
                     files[relative_path] = file_path.read_text();
                 }
             }
         }
     } else {
-        # Auto-discover files (excluding template.toml and hidden files)
+        # Auto-discover files (excluding jacpac.toml and hidden files)
         for file_path in template_dir.rglob("*") {
             if file_path.is_file() {
                 relative_path = str(file_path.relative_to(template_dir));
                 # Skip manifest and hidden files
-                if relative_path != "template.toml"
+                if relative_path != "jacpac.toml"
                 and not relative_path.startswith(".")
                 and "/." not in relative_path {
                     files[relative_path] = file_path.read_text();
@@ -100,9 +100,9 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
         raise ValueError(f"Template directory not found: {template_dir}") ;
     }
     # Load manifest to get hook path if present
-    manifest_path = template_dir / "template.toml";
+    manifest_path = template_dir / "jacpac.toml";
     if not manifest_path.exists() {
-        raise ValueError(f"No template.toml found in {template_dir}") ;
+        raise ValueError(f"No jacpac.toml found in {template_dir}") ;
     }
     with open(manifest_path, "rb") as f {
         manifest = tomllib.load(f);

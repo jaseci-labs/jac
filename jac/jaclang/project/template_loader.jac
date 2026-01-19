@@ -1,7 +1,7 @@
 """Template loader for file-based project templates.
 
 This module provides functions to:
-- Load templates from a directory with a template.toml manifest
+- Load templates from a directory with a jacpac.toml manifest
 - Bundle a template directory into a single JSON file for distribution
 - Load templates from bundled JSON files
 
@@ -13,10 +13,10 @@ import from typing { Any, Callable }
 import from pathlib { Path }
 import from jaclang.project.template_registry { ProjectTemplate }
 
-"""Load a template from a directory containing template.toml and source files.
+"""Load a template from a directory containing jacpac.toml and source files.
 
 The directory should have:
-- template.toml: Manifest with metadata and config
+- jacpac.toml: Manifest with metadata and config
 - *.jac, *.md, etc.: Template files (with {{name}} placeholders)
 
 Returns a strongly-typed ProjectTemplate object.
@@ -31,7 +31,7 @@ Reads all files in the template directory and embeds their content
 in a JSON file for easy distribution.
 
 Args:
-    template_dir: Path to the template directory with template.toml
+    template_dir: Path to the template directory with jacpac.toml
     output_path: Path for the output .jacpac file (e.g., fullstack.jacpac)
 """
 def bundle_template(template_dir: Path, output_path: Path) -> None;

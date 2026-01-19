@@ -624,7 +624,7 @@ impl template(action: str = "", path: str = "", output: str = "") -> int {
             output_path = Path(output);
         } else {
             # Default to <template-name>.jacpac in current directory
-            manifest_path = template_dir / "template.toml";
+            manifest_path = template_dir / "jacpac.toml";
             if manifest_path.exists() {
                 import tomllib;
                 with open(manifest_path, "rb") as f {
