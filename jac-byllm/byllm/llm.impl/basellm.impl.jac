@@ -12,7 +12,7 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
-impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
+impl BaseLLM.invoke(mtir: MTRuntime) -> object {
     # If streaming without tools, stream immediately
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
@@ -74,7 +74,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
 Builds the parameter dict including model name, messages, tools,
 response format, and call parameters like temperature and max_tokens.
 """
-impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
+impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
     # Use call_params from config as defaults, then override with instance call_params
     default_temp = _call_params_config.get("temperature", 0.7);
     default_max_tokens = _call_params_config.get("max_tokens");

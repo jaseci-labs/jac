@@ -46,12 +46,11 @@ obj MTRuntime {
         mtir: MTIR;
 
     static def factory(mtir: MTIR) -> MTRuntime;
-
     def dispatch_params -> dict[str, object];
     def add_message(message: MessageType) -> None;
     def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];
     def parse_response(response: str) -> object;
     def get_tool(tool_name: str) -> Tool | None;
-    def get_tool_list() -> list[dict];
-    def get_output_schema() -> dict | None;
+    def get_tool_list -> list[dict];
+    def get_output_schema -> dict | None;
 }

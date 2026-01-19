@@ -18,22 +18,24 @@ import from jaclang.pycore.mtp {
 import from jaclang.pycore.passes { UniPass }
 
 glob PRIMITIVE_TYPES: list[str] = [
-        'int',
-        'float',
-        'str',
-        'bool',
-        'None',
-        'bytes',
-        'list',
-        'dict',
-        'set',
-        'tuple'
-    ];
+         'int',
+         'float',
+         'str',
+         'bool',
+         'None',
+         'bytes',
+         'list',
+         'dict',
+         'set',
+         'tuple'
+     ];
 
 """Jac MTIR Generation Pass."""
 obj MTIRGenPass(UniPass) {
-    has ir_in: uni.Module, prog: Any, cancel_token: Any = None;
-    
+    has ir_in: uni.Module,
+        prog: Any,
+        cancel_token: Any = None;
+
     def postinit {
         super.init(self.ir_in, self.prog, self.cancel_token);
     }
@@ -69,7 +71,7 @@ obj MTIRGenPass(UniPass) {
             return str(type_expr);
         }
         try {
-            if hasattr(type_expr, 'unparse') {
+            if type_expr?.unparse {
                 text = type_expr.unparse();
             } else {
                 text = str(type_expr);
@@ -85,10 +87,7 @@ obj MTIRGenPass(UniPass) {
                 resolved_parts: list[object] = [];
                 for p in parts {
                     try_sym = None;
-                    if (
-                        isinstance(scope, uni.UniScopeNode)
-                        and hasattr(scope, 'lookup')
-                    ) {
+                    if (isinstance(scope, uni.UniScopeNode) and scope?.lookup) {
                         try {
                             try_sym = scope.lookup(p, deep=True);
                         } except Exception {
@@ -97,7 +96,7 @@ obj MTIRGenPass(UniPass) {
                     }
                     if try_sym {
                         nested = self._extract_class_info(try_sym);
-                        resolved_parts.append(nested if nested else p);
+                        resolved_parts.append(nested or p);
                     } elif (p in PRIMITIVE_TYPES) {
                         resolved_parts.append(p);
                     } else {
@@ -150,10 +149,8 @@ obj MTIRGenPass(UniPass) {
     """Extract class structure information from a symbol.
         Args:
             symbol: Symbol representing a class/archetype"""
-    def _extract_class_info(
-        symbol: uni.Symbol
-    ) -> (ClassInfo | None) {
-        if not hasattr(self, '_class_info_cache') {
+    def _extract_class_info(symbol: uni.Symbol) -> (ClassInfo | None) {
+        if not self?._class_info_cache {
             self._class_info_cache = {};
         }
         cache_key = id(symbol);
@@ -168,9 +165,7 @@ obj MTIRGenPass(UniPass) {
         class_name = arch_node.name.value;
         placeholder = ClassInfo(
             name=class_name,
-            semstr=symbol.semstr
-            if symbol.semstr
-            else arch_node.doc.lit_value if arch_node.doc else None,
+            semstr=symbol.semstr or arch_node.doc.lit_value if arch_node.doc else None,
             fields=[],
             base_classes=[],
             methods=[]
@@ -202,12 +197,8 @@ obj MTIRGenPass(UniPass) {
             for stmt in arch_node.body {
                 if isinstance(stmt, uni.ArchHas) {
                     for var in stmt.vars {
-                        type_annotation = var.type_tag.tag
-                        if var.type_tag
-                        else None;
-                        parsed_type = self._parse_type_expr(
-                            type_annotation, arch_node
-                        );
+                        type_annotation = var.type_tag.tag if var.type_tag else None;
+                        parsed_type = self._parse_type_expr(type_annotation, arch_node);
                         type_symbol_obj = self._extract_type_symbol(
                             type_annotation, arch_node
                         );
@@ -247,13 +238,11 @@ obj MTIRGenPass(UniPass) {
             for param in all_params {
                 type_annotation = param.type_tag.tag if param.type_tag else None;
                 parsed_type = self._parse_type_expr(type_annotation, node);
-                type_symbol_obj = self._extract_type_symbol(
-                    type_annotation, node
-                );
+                type_symbol_obj = self._extract_type_symbol(type_annotation, node);
                 semstr_val = None;
                 if type_symbol_obj {
                     semstr_val = type_symbol_obj.semstr;
-                } elif (hasattr(param.name, 'sym') and param.name.sym) {
+                } elif (param.name?.sym and param.name.sym) {
                     semstr_val = param.name.sym.semstr;
                 }
                 param_info = ParamInfo(
@@ -277,9 +266,7 @@ obj MTIRGenPass(UniPass) {
                             for tool in param.value.values {
                                 tool_ability = node.lookup(tool.value, deep=True).symbol_table;
                                 if tool_ability.is_method {
-                                    tool_info = self._extract_method_info(
-                                        tool_ability
-                                    );
+                                    tool_info = self._extract_method_info(tool_ability);
                                 } else {
                                     tool_info = self._extract_function_info(
                                         tool_ability
@@ -294,28 +281,19 @@ obj MTIRGenPass(UniPass) {
         }
         return FunctionInfo(
             name=function_name,
-            semstr=node.sym.semstr
-            if (hasattr(node, 'sym') and node.sym)
-            else None,
+            semstr=node.sym.semstr if (node?.sym and node.sym) else None,
             params=parameters,
             return_type=return_type,
-            tools=tools if tools else None
+            tools=tools or None
         );
     }
 
     """Extract method information from an Ability node."""
-    def _extract_method_info(
-        node: uni.Ability, by_call: bool = False
-    ) -> MethodInfo {
+    def _extract_method_info(node: uni.Ability, by_call: bool = False) -> MethodInfo {
         func_info = self._extract_function_info(node=node);
         parent_arch = node.find_parent_of_type(uni.Archetype);
         parent_class_info = None;
-        if (
-            parent_arch
-            and hasattr(parent_arch.name, 'sym')
-            and parent_arch.name.sym
-            and by_call
-        ) {
+        if (parent_arch and parent_arch.name?.sym and parent_arch.name.sym and by_call) {
             parent_class_info = self._extract_class_info(parent_arch.name.sym);
         }
         return MethodInfo(
