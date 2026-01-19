@@ -347,14 +347,21 @@ class SymTabBuildPass(UniPass):
     def exit_iter_for_stmt(self, node: uni.IterForStmt) -> None:
         self.pop_scope()
 
+    def _def_insert_unpacking(self, node: uni.Expr, sym_tab: UniScopeNode) -> None:
+        """Recursively define symbols in unpacking expressions."""
+        from jaclang.pycore.constant import Tokens as Tok
+
+        if isinstance(node, uni.Name):
+            sym_tab.def_insert(node, single_decl="iterator")
+        elif isinstance(node, (uni.TupleVal, uni.ListVal)):
+            for target_var in node.values:
+                self._def_insert_unpacking(target_var, sym_tab)
+        elif isinstance(node, uni.UnaryExpr) and node.op.name == Tok.STAR_MUL:
+            self._def_insert_unpacking(node.operand, sym_tab)
+
     def enter_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.push_scope_and_link(node)
-        if isinstance(node.target, uni.Name):
-            node.sym_tab.def_insert(node.target, single_decl="iterator")
-        elif isinstance(node.target, uni.TupleVal):
-            for target_var in node.target.values:
-                if isinstance(target_var, uni.Name):
-                    node.sym_tab.def_insert(target_var, single_decl="iterator")
+        self._def_insert_unpacking(node.target, node.sym_tab)
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.pop_scope()
