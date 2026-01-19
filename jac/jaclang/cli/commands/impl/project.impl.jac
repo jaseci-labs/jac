@@ -586,8 +586,8 @@ impl clean(
     return 0;
 }
 
-"""Manage project templates."""
-impl template(action: str = "", path: str = "", output: str = "") -> int {
+"""Manage project templates (.jacpac files)."""
+impl jacpac(action: str = "", path: str = "", output: str = "") -> int {
     import from jaclang.project.template_registry { get_template_registry }
     import from jaclang.project.template_loader {
         load_template_from_directory,
@@ -611,7 +611,7 @@ impl template(action: str = "", path: str = "", output: str = "") -> int {
     if action == "pack" {
         if not path {
             print("Error: Template directory path required.", file=sys.stderr);
-            print("Usage: jac template pack <directory> [-o output.json]");
+            print("Usage: jac jacpac pack <directory> [-o output.jacpac]");
             return 1;
         }
         template_dir = Path(path);
@@ -647,7 +647,7 @@ impl template(action: str = "", path: str = "", output: str = "") -> int {
     if action == "info" {
         if not path {
             print("Error: Template path required.", file=sys.stderr);
-            print("Usage: jac template info <path>");
+            print("Usage: jac jacpac info <path>");
             return 1;
         }
         template_path = Path(path);

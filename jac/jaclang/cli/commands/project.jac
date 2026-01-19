@@ -228,10 +228,10 @@ def clean(
     force: bool = False
 ) -> int;
 
-"""Bundle a template directory into a distributable JSON file."""
+"""Bundle a template directory into a distributable .jacpac file."""
 @registry.command(
-    name="template",
-    help="Manage project templates",
+    name="jacpac",
+    help="Manage project templates (.jacpac files)",
     args=[
         Arg.create(
             "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
@@ -240,7 +240,7 @@ def clean(
             "path",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Template directory path (for pack) or JSON path (for info)"
+            help="Template directory path (for pack) or .jacpac path (for info)"
         ),
         Arg.create(
             "output",
@@ -252,12 +252,12 @@ def clean(
     ],
     examples=[
         (
-            "jac template pack ./my-template -o my-template.json",
+            "jac jacpac pack ./my-template -o my-template.jacpac",
             "Bundle a template directory"
         ),
-        ("jac template list", "List available templates"),
+        ("jac jacpac list", "List available templates"),
 
     ],
     group="project"
 )
-def template(action: str = "", path: str = "", output: str = "") -> int;
+def jacpac(action: str = "", path: str = "", output: str = "") -> int;
