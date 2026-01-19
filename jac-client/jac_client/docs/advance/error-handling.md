@@ -38,31 +38,32 @@ This means:
 ### Behavior During Rendering Errors
 
 When a rendering error occurs anywhere in the component tree:
+
 - The error is caught by `JacClientErrorBoundary`
 - The application does not crash
 - A predefined Error Fallback UI is rendered instead of a blank screen or fatal crash
-
-
 
 ## ErrorBoundary Props & Customization
 
 `JacClientErrorBoundary` supports the following props:
 
-| Prop         |          Description             |         
+| Prop         |          Description             |
 |--------------|----------------------------------|
-| `fallback`   | Custom fallback UI to show on error       |  
-| `FallbackComponent`| Show default fallback UI with error    |   
-
+| `fallback`   | Custom fallback UI to show on error       |
+| `FallbackComponent`| Show default fallback UI with error    |
 
 **Example with custom fallback:**
+
 ```jsx
 <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
   <ExpensiveWidget />
 </JacClientErrorBoundary>
 ```
+
 **Example with FallbackComponent:**
+
 ```jsx
-<JacClientErrorBoundary  FallbackComponent={ErrorFallback}> 
+<JacClientErrorBoundary  FallbackComponent={ErrorFallback}>
   <ExpensiveWidget />
 </JacClientErrorBoundary>
 ```
@@ -97,7 +98,6 @@ Given this structure:
 ```
 
 If `<AboutPage>` throws a error while rendering, **only `<JacClientErrorBoundary 2>`** triggers its fallback UI, and the rest of the app (`<HomePage>`, etc.) continues functioning normally.
-
 
 ---
 **Tip:** Use multiple, focused `JacClientErrorBoundary` components to provide clear user feedback and robust error recovery without affecting the whole application.
