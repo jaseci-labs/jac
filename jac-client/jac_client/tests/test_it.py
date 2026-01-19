@@ -18,8 +18,6 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from jaclang.pycore.runtime import JacRuntime as Jac
-
 
 def get_free_port() -> int:
     """Get a free port by binding to port 0 and releasing it.
@@ -62,14 +60,6 @@ def _get_env_with_npm() -> dict[str, str]:
                     env["PATH"] = f"{bin_dir}:{current_path}"
                 break
     return env
-
-
-@pytest.fixture(autouse=True)
-def reset_jac_machine():
-    """Reset Jac machine before and after each test."""
-    Jac.reset_machine()
-    yield
-    Jac.reset_machine()
 
 
 def _wait_for_port(

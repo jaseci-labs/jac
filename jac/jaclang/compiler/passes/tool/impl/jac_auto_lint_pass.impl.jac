@@ -83,7 +83,8 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -
     ability_node.kid = new_kids;
 }
 
-"""Process ability to convert @staticmethod decorator to static keyword and __init__/__post_init__ to init/postinit."""
+"""Process ability to convert @staticmethod decorator to static keyword, __init__/__post_init__ to init/postinit,
+and combine consecutive has statements in function bodies."""
 impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
@@ -116,7 +117,25 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if ability_node.is_static {
         self._remove_staticmethod_from_kids(ability_node);
     }
-    # Handle __init__ and __post_init__ conversion
+    # Combine consecutive has statements in ability body (applies to both methods and functions)
+    if ability_node.body is not None and isinstance(ability_node.body, list) {
+        old_body = list(ability_node.body);
+        new_body = self.combine_consecutive_has(old_body);
+        if len(new_body) != len(old_body) {
+            ability_node.body = new_body;
+            self.recalculate_parents(ability_node);
+            # Update kid list: remove merged-away statements, keep everything else
+            new_body_set = set(id(s) for s in new_body);
+            new_kid: list[uni.UniNode] = [];
+            for kid in ability_node.kid {
+                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
+                    new_kid.append(kid);
+                }
+            }
+            ability_node.kid = new_kid;
+        }
+    }
+    # Handle __init__ and __post_init__ conversion (only for methods)
     if not ability_node.is_method {
         return;
     }

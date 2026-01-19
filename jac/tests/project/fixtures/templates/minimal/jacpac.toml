@@ -1,0 +1,25 @@
+# Minimal Test Template
+# Used for testing template bundling infrastructure
+
+[template]
+name = "minimal"
+description = "A minimal test template"
+jaclang = "0.9.0"
+
+[[template.plugins]]
+name = "test-plugin"
+version = "1.0.0"
+
+[config]
+[config.project]
+name = "{{name}}"
+version = "0.1.0"
+description = "Project created from minimal template"
+entry-point = "main.jac"
+
+[config.dependencies]
+
+[options]
+directories = [".jac"]
+gitignore_entries = ["*"]
+root_gitignore_entries = [".jac/", "*.jir"]

@@ -712,9 +712,13 @@ def test_keyword_variables(fixture_path: Callable[[str], str]) -> None:
 
 
 def test_separated_files(fixture_path: Callable[[str], str]) -> None:
-    """Test features functionality with separated files."""
-    advanced_fixture = "separated.jac"
-    js_code = compile_fixture_to_js(advanced_fixture, fixture_path)
+    """Test features functionality with separated files.
+
+    With .cl.jac files as standalone modules, we compile the client file directly.
+    """
+    # Compile the standalone client module directly
+    client_fixture = "separated_client.cl.jac"
+    js_code = compile_fixture_to_js(client_fixture, fixture_path)
 
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code

@@ -84,6 +84,36 @@ Removes all Kubernetes resources: deployments, services, StatefulSets, PVCs.
 
 ## REST API Generation
 
+### Access Control (Secure by Default)
+
+By default, all walkers and functions **require authentication** when exposed as API endpoints. Use the `: pub` modifier to make endpoints publicly accessible without authentication.
+
+| Access Modifier | Authentication Required | Use Case |
+|----------------|------------------------|----------|
+| None (default) | **Yes** | Secure by default |
+| `: pub` | No | Public APIs |
+| `: protect` | Yes | Protected APIs |
+| `: priv` | Yes | Private APIs |
+
+```jac
+# Requires authentication (default - secure by default)
+walker create_item {
+    has name: str;
+}
+
+# Public endpoint - no authentication needed
+walker : pub get_items {
+    can list with `root entry {
+        report [here -->];
+    }
+}
+
+# Explicitly protected - requires authentication
+def : protect admin_action() -> str {
+    return "admin only";
+}
+```
+
 ### Walker Endpoints
 
 Walkers automatically become REST endpoints:

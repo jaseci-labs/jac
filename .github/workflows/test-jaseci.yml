@@ -115,6 +115,7 @@ jobs:
         pip install pytest-asyncio
         pip install -e jac-client
         pip install testcontainers
+        pip install watchdog
 
     - name: Run Backend tests
       run: |

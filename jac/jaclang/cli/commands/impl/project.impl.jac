@@ -585,3 +585,100 @@ impl clean(
     print("\nClean completed successfully.");
     return 0;
 }
+
+"""Manage project templates (.jacpac files)."""
+impl jacpac(action: str = "", path: str = "", output: str = "") -> int {
+    import from jaclang.project.template_registry { get_template_registry }
+    import from jaclang.project.template_loader {
+        load_template_from_directory,
+        load_template_from_json,
+        bundle_template
+    }
+    if not action or action == "list" {
+        # List available templates
+        registry = get_template_registry();
+        templates = registry.list_templates();
+        if not templates {
+            print("No templates available.");
+            return 0;
+        }
+        print("Available templates:");
+        for (tname, desc) in templates {
+            print(f"  {tname}: {desc}");
+        }
+        return 0;
+    }
+    if action == "pack" {
+        if not path {
+            print("Error: Template directory path required.", file=sys.stderr);
+            print("Usage: jac jacpac pack <directory> [-o output.jacpac]");
+            return 1;
+        }
+        template_dir = Path(path);
+        if not template_dir.is_dir() {
+            print(f"Error: Not a directory: {template_dir}", file=sys.stderr);
+            return 1;
+        }
+        # Determine output path
+        if output {
+            output_path = Path(output);
+        } else {
+            # Default to <template-name>.jacpac in current directory
+            manifest_path = template_dir / "jacpac.toml";
+            if manifest_path.exists() {
+                import tomllib;
+                with open(manifest_path, "rb") as f {
+                    manifest = tomllib.load(f);
+                }
+                name = manifest.get("template", {}).get("name", template_dir.name);
+            } else {
+                name = template_dir.name;
+            }
+            output_path = Path.cwd() / f"{name}.jacpac";
+        }
+        try {
+            bundle_template(template_dir, output_path);
+            return 0;
+        } except Exception as e {
+            print(f"Error bundling template: {e}", file=sys.stderr);
+            return 1;
+        }
+    }
+    if action == "info" {
+        if not path {
+            print("Error: Template path required.", file=sys.stderr);
+            print("Usage: jac jacpac info <path>");
+            return 1;
+        }
+        template_path = Path(path);
+        try {
+            if template_path.is_dir() {
+                tmpl = load_template_from_directory(template_path);
+            } elif template_path.suffix == ".json" {
+                tmpl = load_template_from_json(template_path);
+            } else {
+                print(f"Error: Unknown template format: {path}", file=sys.stderr);
+                return 1;
+            }
+
+            # Access strongly-typed ProjectTemplate fields
+            print(f"Template: {tmpl.name}");
+            print(f"Description: {tmpl.description}");
+            print(f"Files: {len(tmpl.files)}");
+            for file_path in sorted(tmpl.files.keys()) {
+                print(f"  - {file_path}");
+            }
+            print(f"Directories: {tmpl.directories}");
+            if tmpl.post_create is not None {
+                print("Post-create hook: Yes");
+            }
+            return 0;
+        } except Exception as e {
+            print(f"Error loading template: {e}", file=sys.stderr);
+            return 1;
+        }
+    }
+    print(f"Unknown action: {action}", file=sys.stderr);
+    print("Available actions: list, pack, info");
+    return 1;
+}
