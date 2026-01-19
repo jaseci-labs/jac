@@ -2143,8 +2143,11 @@ impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
         # Prepend dot for local Jac modules to make them relative imports in JS
         # Skip for jac: prefixed imports (built-in runtime modules)
         import_path = <>node.from_loc.dot_path_str;
-        has_jac_prefix = <>node.from_loc.prefix and <>node.from_loc.prefix.value == 'jac';
-        if resolved_path.endswith('.jac') and not import_path.startswith('.') and not has_jac_prefix {
+        has_jac_prefix = <>node.from_loc.prefix
+        and <>node.from_loc.prefix.value == 'jac';
+        if resolved_path.endswith('.jac')
+        and not import_path.startswith('.')
+        and not has_jac_prefix {
             import_path = '.' + import_path;
         }
         js_import_path = convert_to_js_import_path(import_path);
