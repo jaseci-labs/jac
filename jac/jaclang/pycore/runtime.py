@@ -2229,7 +2229,7 @@ class JacPluginConfig:
         """Register a project template for jac create.
 
         Allows plugins to provide custom project templates that can be
-        selected via `jac create --template <name>`.
+        selected via `jac create --use <name>`.
 
         Returns:
             dict with keys:

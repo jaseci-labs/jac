@@ -358,15 +358,23 @@ cl {
 
 ### Tailwind CSS
 
-Configure in `jac.toml`:
+Configure in `jac.toml` using `[plugins.client.configs]`:
 
 ```toml
-[plugins.client.vite]
-# Add Tailwind plugin configuration
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
 ```
+
+Then import your CSS file with Tailwind directives:
 
 ```jac
 cl {
+    import ".styles.css"  # Contains @tailwind directives
+
     def:pub TailwindComponent() -> any {
         return <div className="bg-blue-500 text-white p-4 rounded-lg">
             Tailwind Styled

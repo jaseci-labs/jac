@@ -71,6 +71,11 @@ class JacClientPluginConfig {
                     "type": "dict",
                     "default": {},
                     "description": "TypeScript configuration overrides"
+                },
+                "configs": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Generate config files for npm packages. Keys are config names (e.g., 'postcss', 'tailwind'), values are the config objects to export."
                 }
             }
         };

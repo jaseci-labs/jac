@@ -122,15 +122,15 @@ jac start --scale --build
 Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
 
 ```bash
-jac create [-h] [-f] [-t TEMPLATE] [-l] [name]
+jac create [-h] [-f] [-u USE] [-l] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
-| `-t, --template` | Template to use (e.g., `default`, `client`) | `default` |
-| `-l, --list-templates` | List available templates | `False` |
+| `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
+| `-l, --list-jacpacs` | List available jacpac templates | `False` |
 
 **Examples:**
 
@@ -140,10 +140,19 @@ jac create myapp
 cd myapp
 
 # Create full-stack project with client template
-jac create myapp --template client
+jac create myapp --use client
 
-# List available templates
-jac create --list-templates
+# Create from a local .jacpac file
+jac create myapp --use ./my-template.jacpac
+
+# Create from a local template directory
+jac create myapp --use ./my-template/
+
+# Create from a URL
+jac create myapp --use https://example.com/template.jacpac
+
+# List available jacpac templates
+jac create --list-jacpacs
 
 # Force overwrite existing
 jac create myapp --force
@@ -730,10 +739,10 @@ jac jacpac info mytemplate.jacpac
 
 **Using Templates with `jac create`:**
 
-Once a template is registered, use it with the `--template` flag:
+Once a template is registered, use it with the `--use` flag:
 
 ```bash
-jac create myproject --template mytemplate
+jac create myproject --use mytemplate
 ```
 
 ---

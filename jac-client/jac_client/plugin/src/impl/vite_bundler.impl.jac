@@ -78,6 +78,8 @@ impl ViteBundler.create_package_json(
     }
     # Generate tsconfig.json during build time
     self.create_tsconfig();
+    # Generate config files (postcss, tailwind, etc.) from jac.toml
+    self.create_config_files();
     return package_json_path;
 }
 
@@ -556,6 +558,50 @@ export default defineConfig({{
 ''';
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
+}
+
+"""Create config files from jac.toml [plugins.client.configs].
+
+Generates JavaScript config files (e.g., postcss.config.js, tailwind.config.js)
+from TOML configuration. Each key in [plugins.client.configs] becomes a config file.
+
+Example jac.toml:
+    [plugins.client.configs.postcss]
+    plugins = ["tailwindcss", "autoprefixer"]
+
+    [plugins.client.configs.tailwind]
+    content = ["./src/**/*.{js,jsx}"]
+
+This generates:
+    - .jac/client/configs/postcss.config.js
+    - .jac/client/configs/tailwind.config.js
+"""
+impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
+    configs = self.config_loader.get_configs();
+    if not configs {
+        return [];
+    }
+    build_dir = self._get_client_dir();
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(parents=True, exist_ok=True);
+    created_files: list[Path] = [];
+    for (config_name, config_data) in configs.items() {
+        config_path = configs_dir / f'{config_name}.config.js';
+
+        # Convert the TOML config to JavaScript module.exports
+        js_content = _toml_config_to_js(config_name, config_data);
+        config_path.write_text(js_content, encoding='utf-8');
+        created_files.append(config_path);
+    }
+    return created_files;
+}
+
+"""Convert TOML config data to JavaScript config file content.
+
+Generates a generic module.exports with the config data as JSON.
+"""
+def _toml_config_to_js(config_name: str, config_data: dict) -> str {
+    return f"module.exports = {json.dumps(config_data, indent=2)};\n";
 }
 
 """Start Vite dev server as a subprocess."""

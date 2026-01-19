@@ -3,7 +3,7 @@
 This module provides a registry for project templates that can be
 registered by plugins (e.g., client template from jac-client). The registry
 allows the `jac create` command to use different project templates based on
-the --template flag or plugin-specific flags like --cl.
+the --use flag or plugin-specific flags like --cl.
 """
 
 import from typing { Any, Callable }

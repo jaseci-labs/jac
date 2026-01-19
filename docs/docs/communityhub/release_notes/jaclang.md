@@ -16,11 +16,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Improved JSX Formatter**: The JSX formatter now uses soft line breaks with automatic line-length detection instead of forcing multiline formatting. Attributes stay on the same line when they fit within the line width limit (88 characters), producing more compact and readable output. For example, `<button id="submit" disabled />` now stays on one line instead of breaking each attribute onto separate lines.
 
-- **Template Bundling Infrastructure**: Added `jac jacpac pack` command to bundle project templates into distributable `.jacpac` files. Templates are defined using a `jacpac.toml` manifest with metadata, config, and options, alongside template source files with `{{name}}` placeholders. The bundled JSON format embeds all file contents for easy distribution, and templates can be loaded from either directories or `.jacpac` files for use with `jac create --template`.
+- **Template Bundling Infrastructure**: Added `jac jacpac pack` command to bundle project templates into distributable `.jacpac` files. Templates are defined using a `jacpac.toml` manifest with metadata, config, and options, alongside template source files with `{{name}}` placeholders. The bundled JSON format embeds all file contents for easy distribution, and templates can be loaded from either directories or `.jacpac` files for use with `jac create --use`.
 
 - **Secure by Default API Endpoints**: Walkers and functions exposed as API endpoints via `jac start` now **require authentication by default**. Previously, endpoints without an explicit access modifier were treated as public. Now, only endpoints explicitly marked with `: pub` are publicly accessible without authentication. This "secure by default" approach prevents accidental exposure of sensitive endpoints. Use `: pub` to make endpoints public (e.g., `walker : pub MyPublicWalker { ... }`).
 
 - **Default `main.jac` for `jac start`**: The `jac start` command now defaults to `main.jac` when no filename is provided, making it easier to start applications in standard project structures. You can still specify a different file explicitly (e.g., `jac start app.jac`), and the command provides helpful error messages if `main.jac` is not found.
+
+- **Renamed Template Flags for `jac create`**: The `--template`/`-t` flag has been renamed to `--use`/`-u`, and `--list-templates`/`-l` has been renamed to `--list-jacpacs`/`-l`. This aligns the CLI with jacpac terminology for clearer naming (e.g., `jac create myapp --use client`, `jac create --list-jacpacs`).
+
+- **Flexible Template Sources for `jac create`**: The `--use` flag now supports local file paths to `.jacpac` files, template directories, and URLs for downloading remote templates (e.g., `jac create --use ./my.jacpac` or `jac create --use https://example.com/template.jacpac`).
 
 ## jaclang 0.9.8 (Latest Release)
 

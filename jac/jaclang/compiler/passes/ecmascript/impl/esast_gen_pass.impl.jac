@@ -2140,7 +2140,17 @@ impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
         import_key = <>node.from_loc.dot_path_str;
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;
-        js_import_path = convert_to_js_import_path(<>node.from_loc.dot_path_str);
+        # Prepend dot for local Jac modules to make them relative imports in JS
+        # Skip for jac: prefixed imports (built-in runtime modules)
+        import_path = <>node.from_loc.dot_path_str;
+        has_jac_prefix = <>node.from_loc.prefix
+        and <>node.from_loc.prefix.value == 'jac';
+        if resolved_path.endswith('.jac')
+        and not import_path.startswith('.')
+        and not has_jac_prefix {
+            import_path = '.' + import_path;
+        }
+        js_import_path = convert_to_js_import_path(import_path);
     } elif (not <>node.from_loc and <>node.items) {
         self.client_manifest.has_client = True;
         first_item = <>node.items[0];
@@ -2154,7 +2164,12 @@ impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
         }
         resolved_path = resolve_relative_path(import_key, <>node.loc.mod_path);
         self.client_manifest.imports[import_key] = resolved_path;
-        js_import_path = convert_to_js_import_path(import_key);
+        # Prepend dot for local Jac modules to make them relative imports in JS
+        import_path = import_key;
+        if resolved_path.endswith('.jac') and not import_path.startswith('.') {
+            import_path = '.' + import_path;
+        }
+        js_import_path = convert_to_js_import_path(import_path);
     } else {
         # No valid import to process
         return;

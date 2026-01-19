@@ -27,16 +27,16 @@ glob registry = get_registry();
             short="f"
         ),
         Arg.create(
-            "template",
+            "use",
             default="default",
-            help="Template to use (default, client, etc.)",
-            short="t"
+            help="Jacpac template: name, file path, or URL",
+            short="u"
         ),
         Arg.create(
-            "list_templates",
+            "list_jacpacs",
             typ=bool,
             default=False,
-            help="List available templates",
+            help="List available jacpac templates",
             short="l"
         ),
 
@@ -45,8 +45,10 @@ glob registry = get_registry();
         ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
-        ("jac create myapp --template client", "Create with client template"),
-        ("jac create --list-templates", "List available templates"),
+        ("jac create myapp --use client", "Create with client jacpac template"),
+        ("jac create --use ./my.jacpac", "Create from local .jacpac file"),
+        ("jac create --use https://example.com/t.jacpac", "Create from URL"),
+        ("jac create --list-jacpacs", "List available jacpac templates"),
 
     ],
     group="project"
@@ -54,8 +56,8 @@ glob registry = get_registry();
 def create(
     name: str = "",
     force: bool = False,
-    template: str = "default",
-    list_templates: bool = False
+    use: str = "default",
+    list_jacpacs: bool = False
 ) -> int;
 
 """Install all dependencies from jac.toml."""
