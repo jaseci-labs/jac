@@ -19,7 +19,7 @@ type checking, and semantic analysis throughout the compilation process.
 """
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import SymbolAccess
+from jaclang.pycore.constant import SymbolAccess, Tokens
 from jaclang.pycore.passes.uni_pass import UniPass
 from jaclang.pycore.unitree import UniScopeNode
 
@@ -349,14 +349,12 @@ class SymTabBuildPass(UniPass):
 
     def _def_insert_unpacking(self, node: uni.Expr, sym_tab: UniScopeNode) -> None:
         """Recursively define symbols in unpacking expressions."""
-        from jaclang.pycore.constant import Tokens as Tok
-
         if isinstance(node, uni.Name):
             sym_tab.def_insert(node, single_decl="iterator")
         elif isinstance(node, (uni.TupleVal, uni.ListVal)):
             for target_var in node.values:
                 self._def_insert_unpacking(target_var, sym_tab)
-        elif isinstance(node, uni.UnaryExpr) and node.op.name == Tok.STAR_MUL:
+        elif isinstance(node, uni.UnaryExpr) and node.op.name == Tokens.STAR_MUL:
             self._def_insert_unpacking(node.operand, sym_tab)
 
     def enter_in_for_stmt(self, node: uni.InForStmt) -> None:
