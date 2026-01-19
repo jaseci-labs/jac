@@ -362,22 +362,22 @@ impl ModuleIntrospector._extract_access_levels -> None {
     import from jaclang.pycore.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
-
     # Helper to check if an archetype AST node is explicitly public
     def is_archetype_public(arch_ast: uni.Archetype) -> bool {
         return arch_ast.access is not None and arch_ast.access.tag.name == Tok.KW_PUB;
     }
-
     # Helper to find walker access level from a module AST
-    def find_walker_access_in_ast(mod_ast: uni.Module, walker_name: str) -> (bool | None) {
+    def find_walker_access_in_ast(
+        mod_ast: uni.Module, walker_name: str
+    ) -> (bool | None) {
         for item in mod_ast.body {
             if isinstance(item, uni.Archetype) and item.name.sym_name == walker_name {
                 return not is_archetype_public(item);  # True = auth required, False = public
+
             }
         }
         return None;
     }
-
     # Helper to get AST for a module path
     def get_module_ast(mod_path: str) -> (uni.Module | None) {
         ast = Jac.program.mod.hub.get(mod_path);
@@ -386,7 +386,6 @@ impl ModuleIntrospector._extract_access_levels -> None {
         }
         return ast;
     }
-
     # Get main module AST
     mod_path = getattr(self._module, '__file__', None);
     if not mod_path {
@@ -396,7 +395,6 @@ impl ModuleIntrospector._extract_access_levels -> None {
     if not mod_ast {
         return;
     }
-
     # Process direct definitions in main module
     for item in mod_ast.body {
         if isinstance(item, uni.Ability) and item.name_ref is not None {
@@ -413,7 +411,6 @@ impl ModuleIntrospector._extract_access_levels -> None {
             }
         }
     }
-
     # Process imported walkers - look up their source module's AST
     for (name, cls) in inspect.getmembers(self._module) {
         if (
@@ -430,21 +427,20 @@ impl ModuleIntrospector._extract_access_levels -> None {
                 self._walker_access[name] = True;
                 continue;
             }
-
             # Convert Python file path to Jac file path if needed
             # Generated Python files are in __jac_gen__ directory
             jac_source_file = source_file;
             if "__jac_gen__" in source_file and source_file.endswith(".py") {
-                jac_source_file = source_file.replace("__jac_gen__", "").replace(".py", ".jac");
+                jac_source_file = source_file.replace("__jac_gen__", "").replace(
+                    ".py", ".jac"
+                );
             }
-
             # Try to get the AST from the source module
             source_ast = get_module_ast(jac_source_file);
             if not source_ast {
                 # Try the original path as fallback
                 source_ast = get_module_ast(source_file);
             }
-
             if source_ast {
                 access_level = find_walker_access_in_ast(source_ast, name);
                 if access_level is not None {

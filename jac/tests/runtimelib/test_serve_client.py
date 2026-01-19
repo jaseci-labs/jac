@@ -1197,14 +1197,18 @@ class TestImportedWalkerAccessLevels:
             "/walker/PublicImportedWalker",
             json={"message": "public test"},
         )
-        assert result1.ok, f"Imported public walker should work without auth: {result1.data}"
+        assert result1.ok, (
+            f"Imported public walker should work without auth: {result1.data}"
+        )
 
         # Local public walker without auth - should work
         result2 = imported_access_client.post(
             "/walker/LocalPublicWalker",
             json={"msg": "local public test"},
         )
-        assert result2.ok, f"Local public walker should work without auth: {result2.data}"
+        assert result2.ok, (
+            f"Local public walker should work without auth: {result2.data}"
+        )
 
         # Imported protected walker without auth - should fail
         result3 = imported_access_client.post(
@@ -1227,13 +1231,17 @@ class TestImportedWalkerAccessLevels:
             "/walker/ProtectedImportedWalker",
             json={"data": "auth test"},
         )
-        assert result5.ok, f"Imported protected walker should work with auth: {result5.data}"
+        assert result5.ok, (
+            f"Imported protected walker should work with auth: {result5.data}"
+        )
 
         result6 = imported_access_client.post(
             "/walker/DefaultImportedWalker",
             json={"value": 42},
         )
-        assert result6.ok, f"Imported default walker should work with auth: {result6.data}"
+        assert result6.ok, (
+            f"Imported default walker should work with auth: {result6.data}"
+        )
 
         result7 = imported_access_client.post(
             "/walker/LocalDefaultWalker",
