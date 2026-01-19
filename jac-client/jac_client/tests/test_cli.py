@@ -753,6 +753,72 @@ def test_uninstall_without_config_toml() -> None:
             os.chdir(original_cwd)
 
 
+def test_config_files_from_jac_toml() -> None:
+    """Test that [plugins.client.configs] in jac.toml generates config files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create jac.toml with postcss and tailwind configs
+            toml_content = """[project]
+name = "test-configs"
+version = "1.0.0"
+description = "Test project"
+entry-point = "main.jac"
+
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./.jac/client/**/*.{js,jsx}"]
+plugins = []
+
+[plugins.client.configs.tailwind.theme.extend]
+colors = { primary = "#3490dc" }
+"""
+            config_path = os.path.join(temp_dir, "jac.toml")
+            with open(config_path, "w") as f:
+                f.write(toml_content)
+
+            # Import and use ViteBundler to generate config files
+            from pathlib import Path
+
+            from jac_client.plugin.src.vite_bundler import ViteBundler
+
+            bundler = ViteBundler(Path(temp_dir))
+            created_files = bundler.create_config_files()
+
+            # Verify two config files were created
+            assert len(created_files) == 2
+
+            # Verify postcss.config.js was created with correct content
+            configs_dir = os.path.join(temp_dir, ".jac", "client", "configs")
+            postcss_config = os.path.join(configs_dir, "postcss.config.js")
+            assert os.path.exists(postcss_config)
+
+            with open(postcss_config) as f:
+                postcss_content = f.read()
+
+            assert "module.exports" in postcss_content
+            assert "tailwindcss" in postcss_content
+            assert "autoprefixer" in postcss_content
+
+            # Verify tailwind.config.js was created with correct content
+            tailwind_config = os.path.join(configs_dir, "tailwind.config.js")
+            assert os.path.exists(tailwind_config)
+
+            with open(tailwind_config) as f:
+                tailwind_content = f.read()
+
+            assert "module.exports" in tailwind_content
+            assert "./**/*.jac" in tailwind_content
+            assert "#3490dc" in tailwind_content
+
+        finally:
+            os.chdir(original_cwd)
+
+
 def test_create_cl_and_run_no_root_files() -> None:
     """Test that jac create --cl + jac run doesn't create files outside .jac/ directory."""
     test_project_name = "test-cl-no-root-files"
