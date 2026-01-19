@@ -85,6 +85,7 @@ def test_expr_as_item_alias_variable() -> None:
 
     assert str(with_names["f"].sym_type) == "variable"
 
+
 def test_in_for_stmt_iteration_variables() -> None:
     """Test that iteration variables in for loops are registered in symbol table."""
 
