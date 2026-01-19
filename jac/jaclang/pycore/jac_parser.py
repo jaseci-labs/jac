@@ -155,7 +155,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
         for elem in elements:
             if isinstance(elem, uni.ServerBlock):
                 continue  # Keep as SERVER
-            if isinstance(elem, uni.ClientFacingNode):
+            if isinstance(elem, uni.ContextAwareNode):
                 # Skip elements that have explicit sv token (not just default SERVER context)
                 context_token = elem._source_context_token()
                 if context_token is not None and context_token.name == Tok.KW_SERVER:
@@ -163,7 +163,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 elem.code_context = CodeContext.CLIENT
                 if isinstance(elem, uni.ModuleCode) and elem.body:
                     for inner in elem.body:
-                        if isinstance(inner, uni.ClientFacingNode):
+                        if isinstance(inner, uni.ContextAwareNode):
                             inner.code_context = CodeContext.CLIENT
 
         # Keep elements as direct module children (no ClientBlock wrapper)
@@ -194,11 +194,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
         for elem in elements:
             if isinstance(elem, uni.ClientBlock):
                 continue  # Keep as CLIENT
-            if isinstance(elem, uni.ClientFacingNode):
+            if isinstance(elem, uni.ContextAwareNode):
                 elem.code_context = CodeContext.SERVER
                 if isinstance(elem, uni.ModuleCode) and elem.body:
                     for inner in elem.body:
-                        if isinstance(inner, uni.ClientFacingNode):
+                        if isinstance(inner, uni.ContextAwareNode):
                             inner.code_context = CodeContext.SERVER
 
         # Keep elements as direct module children (no ServerBlock wrapper)
@@ -635,12 +635,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                                 f"Code context keywords are mutually exclusive.",
                             )
 
-                        if isinstance(elem, uni.ClientFacingNode):
+                        if isinstance(elem, uni.ContextAwareNode):
                             elem.code_context = context
                             # Propagate to ModuleCode children (with entry blocks)
                             if isinstance(elem, uni.ModuleCode) and elem.body:
                                 for stmt in elem.body:
-                                    if isinstance(stmt, uni.ClientFacingNode):
+                                    if isinstance(stmt, uni.ContextAwareNode):
                                         stmt.code_context = context
                         elements.append(elem)
                     self.consume(uni.Token)  # RBRACE
@@ -658,12 +658,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else:
                     # Single statement: cl/sv import foo;
                     element = self.consume(uni.ElementStmt)
-                    if isinstance(element, uni.ClientFacingNode):
+                    if isinstance(element, uni.ContextAwareNode):
                         element.code_context = context
                         # Propagate to ModuleCode children (with entry blocks)
                         if isinstance(element, uni.ModuleCode) and element.body:
                             for stmt in element.body:
-                                if isinstance(stmt, uni.ClientFacingNode):
+                                if isinstance(stmt, uni.ContextAwareNode):
                                     stmt.code_context = context
                         element.add_kids_left([context_tok])
                     return element

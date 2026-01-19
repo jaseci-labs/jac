@@ -683,7 +683,7 @@ class AstAccessNode(UniNode):
 T = TypeVar("T", bound=UniNode)
 
 
-class ClientFacingNode(UniNode):
+class ContextAwareNode(UniNode):
     """Base class for nodes that can be marked with execution context (client/server)."""
 
     def __init__(self, code_context: CodeContext = CodeContext.SERVER) -> None:
@@ -1118,7 +1118,7 @@ class ProgramModule(UniNode):
         self.hub: dict[str, Module] = {self.loc.mod_path: main_mod} if main_mod else {}
 
 
-class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
+class GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode):
     """GlobalVars node type for Jac Ast."""
 
     def __init__(
@@ -1134,7 +1134,7 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         UniNode.__init__(self, kid=kid)
         AstAccessNode.__init__(self, access=access)
         AstDocNode.__init__(self, doc=doc)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1162,7 +1162,7 @@ class GlobalVars(ClientFacingNode, ElementStmt, AstAccessNode):
         return res
 
 
-class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
+class Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode):
     """Test node type for Jac Ast."""
 
     TEST_COUNT = 0
@@ -1208,7 +1208,7 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         )
         AstDocNode.__init__(self, doc=doc)
         UniScopeNode.__init__(self, name=self.sym_name)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1235,7 +1235,7 @@ class Test(ClientFacingNode, AstSymbolNode, ElementStmt, UniScopeNode):
         return res
 
 
-class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
+class ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
     """ModuleCode node type for Jac Ast."""
 
     def __init__(
@@ -1251,7 +1251,7 @@ class ModuleCode(ClientFacingNode, ElementStmt, ArchBlockStmt, EnumBlockStmt):
         UniNode.__init__(self, kid=kid)
         AstDocNode.__init__(self, doc=doc)
         EnumBlockStmt.__init__(self, is_enum_stmt=is_enum_stmt)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -1392,7 +1392,7 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt):
         return res
 
 
-class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
+class Import(ContextAwareNode, ElementStmt, CodeBlockStmt):
     """Import node type for Jac Ast."""
 
     def __init__(
@@ -1410,7 +1410,7 @@ class Import(ClientFacingNode, ElementStmt, CodeBlockStmt):
         UniNode.__init__(self, kid=kid)
         AstDocNode.__init__(self, doc=doc)
         CodeBlockStmt.__init__(self)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     @property
     def is_py(self) -> bool:
@@ -1643,7 +1643,7 @@ class ModuleItem(UniNode):
 
 
 class Archetype(
-    ClientFacingNode,
+    ContextAwareNode,
     ArchSpec,
     AstAccessNode,
     ArchBlockStmt,
@@ -1685,7 +1685,7 @@ class Archetype(
         ArchSpec.__init__(self, decorators=decorators)
         UniScopeNode.__init__(self, name=self.sym_name)
         CodeBlockStmt.__init__(self)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def _get_impl_resolved_body(self) -> list:
         return (
@@ -1788,7 +1788,7 @@ class Archetype(
 
 
 class ImplDef(
-    ClientFacingNode,
+    ContextAwareNode,
     CodeBlockStmt,
     ElementStmt,
     ArchBlockStmt,
@@ -1822,7 +1822,7 @@ class ImplDef(
         )
         CodeBlockStmt.__init__(self)
         UniScopeNode.__init__(self, name=self.sym_name)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def create_impl_name_node(self) -> Name:
         ret = Name(
@@ -1953,7 +1953,7 @@ class SemDef(ElementStmt, AstSymbolNode, UniScopeNode):
 
 
 class Enum(
-    ClientFacingNode,
+    ContextAwareNode,
     ArchSpec,
     AstAccessNode,
     AstImplNeedingNode,
@@ -1986,7 +1986,7 @@ class Enum(
         AstDocNode.__init__(self, doc=doc)
         ArchSpec.__init__(self, decorators=decorators)
         UniScopeNode.__init__(self, name=self.sym_name)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     def normalize(self, deep: bool = False) -> bool:
         res = True
@@ -2049,7 +2049,7 @@ class Enum(
 
 
 class Ability(
-    ClientFacingNode,
+    ContextAwareNode,
     AstAccessNode,
     ElementStmt,
     AstAsyncNode,
@@ -2131,7 +2131,7 @@ class Ability(
         AstAsyncNode.__init__(self, is_async=is_async)
         UniScopeNode.__init__(self, name=self.sym_name)
         CodeBlockStmt.__init__(self)
-        ClientFacingNode.__init__(self)
+        ContextAwareNode.__init__(self)
 
     @property
     def is_method(self) -> bool:

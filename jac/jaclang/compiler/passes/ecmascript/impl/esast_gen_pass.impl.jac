@@ -2695,7 +2695,7 @@ impl EsastGenPass.sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -
 impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
-        and isinstance(<>node, uni.ClientFacingNode)
+        and isinstance(<>node, uni.ContextAwareNode)
         and <>node.code_context != CodeContext.CLIENT
         and ((<>node.parent is None) or isinstance(<>node.parent, uni.Module))
     ) {
@@ -2711,7 +2711,7 @@ impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
 impl EsastGenPass.enter_node(<>node: uni.UniNode) -> None {
     if (
         isinstance(<>node, uni.ElementStmt)
-        and isinstance(<>node, uni.ClientFacingNode)
+        and isinstance(<>node, uni.ContextAwareNode)
         and <>node.code_context != CodeContext.CLIENT
         and ((<>node.parent is None) or isinstance(<>node.parent, uni.Module))
     ) {

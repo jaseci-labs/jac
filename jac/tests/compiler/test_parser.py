@@ -181,7 +181,7 @@ def test_all_ast_has_normalize() -> None:
         "UniNode",
         "UniScopeNode",
         "UniCFGNode",
-        "ClientFacingNode",
+        "ContextAwareNode",
         "ProgramModule",
         "WalkerStmtOnlyNode",
         "Source",
@@ -386,14 +386,14 @@ cl {
         "ClientBlock",
     ]
     assert [
-        isinstance(stmt, uni.ClientFacingNode)
+        isinstance(stmt, uni.ContextAwareNode)
         and stmt.code_context == CodeContext.CLIENT
         for stmt in body
     ] == [
         True,
         False,
         False,
-    ]  # cl glob, glob, ClientBlock (not ClientFacingNode)
+    ]  # cl glob, glob, ClientBlock (not ContextAwareNode)
     # Check the ClientBlock's body
     client_block = body[2]
     assert isinstance(client_block, uni.ClientBlock)
@@ -402,7 +402,7 @@ cl {
     assert all(
         stmt.code_context == CodeContext.CLIENT
         for stmt in client_block.body
-        if isinstance(stmt, uni.ClientFacingNode)
+        if isinstance(stmt, uni.ContextAwareNode)
     )
 
     # Test 2: Block with different statement types
@@ -425,7 +425,7 @@ cl {
     assert all(
         stmt.code_context == CodeContext.CLIENT
         for stmt in body[0].body
-        if isinstance(stmt, uni.ClientFacingNode)
+        if isinstance(stmt, uni.ContextAwareNode)
     )
 
     # Test 3: Multiple cl blocks at top level
@@ -447,7 +447,7 @@ cl {
     assert isinstance(body[1], uni.GlobalVars)
     assert isinstance(body[2], uni.ClientBlock)
     assert not (
-        isinstance(body[1], uni.ClientFacingNode)
+        isinstance(body[1], uni.ContextAwareNode)
         and body[1].code_context == CodeContext.CLIENT
     )  # glob b is not client
 
@@ -465,7 +465,7 @@ glob x = 1;
     assert len(body[0].body) == 0  # Empty
     assert isinstance(body[1], uni.GlobalVars)
     assert not (
-        isinstance(body[1], uni.ClientFacingNode)
+        isinstance(body[1], uni.ContextAwareNode)
         and body[1].code_context == CodeContext.CLIENT
     )
 
@@ -482,7 +482,7 @@ cl test my_test {}
     assert all(
         stmt.code_context == CodeContext.CLIENT
         for stmt in body
-        if isinstance(stmt, uni.ClientFacingNode)
+        if isinstance(stmt, uni.ContextAwareNode)
     )
 
 

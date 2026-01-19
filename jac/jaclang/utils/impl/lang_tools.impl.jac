@@ -242,7 +242,7 @@ impl AstTool.init -> None {
                     'UniNode',
                     'UniScopeNode',
                     'UniCFGNode',
-                    'ClientFacingNode',
+                    'ContextAwareNode',
                     'ProgramModule',
                     'OOPAccessNode',
                     'WalkerStmtOnlyNode',
