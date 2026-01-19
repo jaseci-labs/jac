@@ -13,10 +13,10 @@ base_route_app = "app"
 # vite.build = {}
 
 [plugins.client.app_meta_data]
-"title" = "all-in-one"
-"description" = "All-in-one Jac client application"
-"icon" = "static/assets/burger.png"
-"viewport" = "width=device-width, initial-scale=1.0"
+title = "All-In-One"
+icon = ".assets/burger.png"
+author = "Jaseci"
+# meta_color_scheme = "dark"
 
 [plugins.client.vite]
 plugins = ["tailwindcss()"]

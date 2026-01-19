@@ -1,5 +1,23 @@
 """Implementation of project template registry."""
 
+import from typing { Any }
+
+# ===============================================================================
+# ProjectTemplate Implementation
+# ===============================================================================
+"""Convert to dict for serialization (e.g., JSON bundling)."""
+impl ProjectTemplate.to_dict -> dict[str, Any] {
+    return {
+        "name": self.name,
+        "description": self.description,
+        "config": self.config,
+        "files": self.files,
+        "directories": self.directories,
+        "gitignore_entries": self.gitignore_entries,
+        "root_gitignore_entries": self.root_gitignore_entries
+    };
+}
+
 # ===============================================================================
 # TemplateRegistry Implementation
 # ===============================================================================

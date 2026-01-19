@@ -1,6 +1,9 @@
 import from react { useState }
 
-def app()  -> any {
+# Import walker from server module
+sv import from .separated { create_todo }
+
+def:pub app()  -> any {
     [todos, setTodos] = useState([]);
     [input, setInput] = useState("");
 

@@ -1159,3 +1159,39 @@ version = "0.1.0"
             assert os.path.exists(packages_dir)
             assert not os.path.exists(data_dir)
             assert not os.path.exists(cache_dir)
+
+
+def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -> None:
+    """Test that runtime errors show source code context and line numbers."""
+    # Test that import errors show the problematic line with context
+    process = subprocess.Popen(
+        ["jac", "run", fixture_path("import_error_traceback.jac")],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate()
+
+    # Should exit with error
+    assert process.returncode == 1, (
+        "run command should exit with code 1 on import error"
+    )
+
+    # Should show the error message
+    assert "Error" in stderr, "stderr should contain 'Error'"
+    assert "attempted relative import" in stderr or "ImportError" in stderr, (
+        "stderr should contain import error message"
+    )
+
+    # Should show the source code line that caused the error
+    assert "import from .nonexistent_module" in stderr, (
+        "stderr should show the problematic import statement"
+    )
+
+    # Should show the file path and line number
+    assert "import_error_traceback.jac" in stderr, (
+        "stderr should contain the source file name"
+    )
+    assert ":7" in stderr or "line 7" in stderr, (
+        "stderr should indicate line number 7 where the error occurred"
+    )

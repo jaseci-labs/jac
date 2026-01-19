@@ -1511,8 +1511,11 @@ impl JacAPIServer.start(watch: bool = False) -> None {
                 print(f"Client bundle ready ({elapsed:.1f}s).");
             } except Exception as e {
                 import sys;
+                import traceback;
                 print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
                 print(f"{e}", file=sys.stderr);
+                print("\nFull traceback:", file=sys.stderr);
+                traceback.print_exc(file=sys.stderr);
                 print(
                     f"\nClient pages will not be available until this is fixed.\n",
                     file=sys.stderr

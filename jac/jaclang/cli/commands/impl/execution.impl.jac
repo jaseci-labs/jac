@@ -191,7 +191,9 @@ impl start(
             return 1;
         }
     } except Exception as e {
+        import from jaclang.pycore.helpers { dump_traceback }
         print(f"Error loading {filename}: {e}", file=sys.stderr);
+        print(dump_traceback(e), file=sys.stderr);
         mach.close();
         return 1;
     }
@@ -211,7 +213,9 @@ impl start(
         try {
             server.print_endpoint_docs();
         } except Exception as e {
+            import from jaclang.pycore.helpers { dump_traceback }
             print(f"Error generating endpoint documentation: {e}", file=sys.stderr);
+            print(dump_traceback(e), file=sys.stderr);
             mach.close();
             return 1;
         } finally {
@@ -291,7 +295,9 @@ impl start(
         mach.close();
         return 0;
     } except Exception as e {
+        import from jaclang.pycore.helpers { dump_traceback }
         print(f"Server error: {e}", file=sys.stderr);
+        print(dump_traceback(e), file=sys.stderr);
         if hot_reloader {
             hot_reloader.stop();
         }

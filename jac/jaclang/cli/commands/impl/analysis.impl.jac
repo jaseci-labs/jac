@@ -156,7 +156,7 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
             changed = formatted_code != original_code;
             write_formatted_code(formatted_code, str(path_obj));
 
-            # Write impl modules (.impl.jac, .cl.jac files)
+            # Write impl modules (.impl.jac files)
             for impl_mod in prog.mod.main.impl_mod {
                 impl_path = impl_mod.loc.mod_path;
                 impl_formatted = impl_mod.gen.jac;

@@ -139,7 +139,10 @@ impl PyJacAstLinkPass.exit_module_path(<>node: uni.ModulePath) -> None {
 impl PyJacAstLinkPass.link_jac_py_nodes(
     jac_node: uni.UniNode, py_nodes: list[ast3.AST]
 ) -> None {
-    if (isinstance(jac_node, uni.ClientFacingNode) and jac_node.is_client_decl) {
+    if (
+        isinstance(jac_node, uni.ContextAwareNode)
+        and jac_node.code_context == CodeContext.CLIENT
+    ) {
         return;
     }
     jac_node.gen.py_ast = py_nodes;

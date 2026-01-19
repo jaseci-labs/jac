@@ -8,6 +8,7 @@ import sys;
 import time;
 import from pathlib { Path }
 import from typing { Any }
+import from jaclang.pycore.constant { CodeContext }
 
 """Start the hot reloader and begin watching for changes."""
 impl HotReloader.start -> None {
@@ -203,10 +204,10 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
         prog = JacProgram();
         mod = prog.compile(file_path, no_cgen=True);
 
-        # Check top-level declarations in module body for is_client_decl
+        # Check top-level declarations in module body for code_context
         for node in mod.body {
-            if node?.is_client_decl {
-                if node.is_client_decl {
+            if node?.code_context {
+                if node.code_context == CodeContext.CLIENT {
                     has_client = True;
                 } else {
                     has_server = True;

@@ -6,6 +6,87 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### `.cl.jac` Files No Longer Auto-Imported as Annexes
+
+Client module files (`.cl.jac`) are now treated as **standalone modules only**. Previously, `.cl.jac` files were automatically annexed to their corresponding `.jac` files (similar to `.impl.jac` files). This dual behavior has been removed to simplify the module system.
+
+**Before:**
+
+```jac
+# main.jac - automatically included main.cl.jac content
+node Todo { has title: str; }
+
+walker AddTodo { has title: str; }
+```
+
+```jac
+# main.cl.jac - auto-annexed to main.jac (no explicit import needed)
+cl {
+    def:pub app -> any {
+        return <div>Hello World</div>;
+    }
+}
+```
+
+**After:**
+
+```jac
+# main.jac - must explicitly import client code
+node Todo { has title: str; }
+
+walker AddTodo { has title: str; }
+
+# Explicit client block with import
+cl {
+    import from .frontend { app as ClientApp }
+
+    def:pub app -> any {
+        return <ClientApp />;
+    }
+}
+```
+
+```jac
+# frontend.cl.jac - standalone client module (renamed from main.cl.jac)
+def:pub app -> any {
+    return <div>Hello World</div>;
+}
+```
+
+**Key Changes:**
+
+- `.cl.jac` files are no longer automatically annexed to matching `.jac` files
+- Client code must be explicitly imported using `cl import` or imported inside a `cl {}` block
+- The main entry point must re-export the client app through a `cl {}` block to trigger client compilation
+- Use uppercase aliases when importing components (e.g., `app as ClientApp`) so JSX compiles to component references instead of strings
+
+**Migration Steps:**
+
+1. Rename your `main.cl.jac` to a descriptive name like `frontend.cl.jac` or `app.cl.jac`
+2. Add a `cl {}` block in your `main.jac` that imports and re-exports the client app:
+
+   ```jac
+   cl {
+       import from .frontend { app as ClientApp }
+
+       def:pub app -> any {
+           return <ClientApp />;
+       }
+   }
+   ```
+
+3. If your `.cl.jac` file references walkers defined in `main.jac`, add walker stub declarations in the client file:
+
+   ```jac
+   # frontend.cl.jac
+   walker AddTodo { has title: str; }  # Stub for RPC calls
+   walker ListTodos {}
+
+   def:pub app -> any { ... }
+   ```
+
+**Note:** `.cl.jac` files can still have their own `.impl.jac` annexes for separating declarations from implementations.
+
 ### Version 0.9.8
 
 #### 1. Walker Traversal Semantics Changed to Recursive DFS with Deferred Exits
