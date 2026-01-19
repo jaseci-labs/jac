@@ -218,6 +218,7 @@ primary = "#3490dc"
 This generates:
 
 **`.jac/client/configs/postcss.config.js`**:
+
 ```javascript
 module.exports = {
   "plugins": ["tailwindcss", "autoprefixer"]
@@ -225,6 +226,7 @@ module.exports = {
 ```
 
 **`.jac/client/configs/tailwind.config.js`**:
+
 ```javascript
 module.exports = {
   "content": ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"],

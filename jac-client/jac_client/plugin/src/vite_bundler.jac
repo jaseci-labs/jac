@@ -36,6 +36,7 @@ class ViteBundler {
     def create_tsconfig(self: ViteBundler) -> Path;
     """Create config files from jac.toml [plugins.client.configs]."""
     def create_config_files(self: ViteBundler) -> list[Path];
+
     """Create a dev-mode vite config with API proxy for HMR."""
     def create_dev_vite_config(
         self: ViteBundler, entry_file: Path, api_port: int = 8000

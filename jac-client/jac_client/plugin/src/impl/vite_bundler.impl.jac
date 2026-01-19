@@ -581,13 +581,10 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     if not configs {
         return [];
     }
-
     build_dir = self._get_client_dir();
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(parents=True, exist_ok=True);
-
     created_files: list[Path] = [];
-
     for (config_name, config_data) in configs.items() {
         config_path = configs_dir / f'{config_name}.config.js';
 
@@ -596,7 +593,6 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
         config_path.write_text(js_content, encoding='utf-8');
         created_files.append(config_path);
     }
-
     return created_files;
 }
 
