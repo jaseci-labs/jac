@@ -1,0 +1,23 @@
+[project]
+name = "i18n-template"
+version = "1.0.0"
+description = "Jac client application: i18n-template"
+entry-point = "main.jac"
+
+[dependencies.npm]
+jac-client-node = "1.0.3"
+i18next = "latest"
+react-i18next = "latest"
+i18next-browser-languagedetector = "latest"
+i18next-http-backend = "latest"
+
+[dependencies.npm.dev]
+"@jac-client/dev-deps" = "1.0.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
