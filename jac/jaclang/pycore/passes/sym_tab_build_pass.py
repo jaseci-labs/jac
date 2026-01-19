@@ -353,7 +353,8 @@ class SymTabBuildPass(UniPass):
             sym_tab.def_insert(node, single_decl="iterator")
         elif isinstance(node, (uni.TupleVal, uni.ListVal)):
             for target_var in node.values:
-                self._def_insert_unpacking(target_var, sym_tab)
+                if isinstance(target_var, uni.Expr):
+                    self._def_insert_unpacking(target_var, sym_tab)
         elif isinstance(node, uni.UnaryExpr) and node.op.name == Tokens.STAR_MUL:
             self._def_insert_unpacking(node.operand, sym_tab)
 
