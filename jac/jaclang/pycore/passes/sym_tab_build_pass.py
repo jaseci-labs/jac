@@ -389,8 +389,7 @@ class SymTabBuildPass(UniPass):
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
         self.push_scope_and_link(node)
-        if isinstance(node.target, uni.Name):
-            node.sym_tab.def_insert(node.target, single_decl="iterator")
+        self._def_insert_unpacking(node.target, node.sym_tab)
 
     def exit_inner_compr(self, node: uni.InnerCompr) -> None:
         self.pop_scope()
