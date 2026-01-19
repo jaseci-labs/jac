@@ -113,7 +113,8 @@ class JacClientPluginConfig {
 """Load a template from bundled JSON file."""
 def _load_template(template_name: str) -> dict[str, Any] | None {
     # Find the template JSON file relative to this module
-    module_dir = Path(__file__).parent.parent.parent;  # jac_client directory
+    # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
+    module_dir = Path(__file__).parent.parent;  # jac_client directory
     template_path = module_dir / "templates" / f"{template_name}.jacpac";
 
     if not template_path.exists() {
