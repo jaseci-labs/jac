@@ -218,6 +218,7 @@ flowchart TD
 **Common Patterns**
 
 Filtering during iteration:
+
 ```jac
 for x in items {
     if x > 10 {
@@ -227,6 +228,7 @@ for x in items {
 ```
 
 Aggregating values:
+
 ```jac
 glob total = 0;
 with entry {
@@ -237,6 +239,7 @@ with entry {
 ```
 
 Finding with for-else:
+
 ```jac
 for item in items {
     if item == target {
@@ -249,6 +252,7 @@ for item in items {
 ```
 
 Processing paired data:
+
 ```jac
 for (name, score) in students {
     print(f"{name}: {score}");
@@ -263,7 +267,6 @@ for (name, score) in students {
 4. **Same else clause**: Works identically to Python
 5. **Same unpacking**: Tuple, list, and star unpacking work exactly like Python
 6. **Parentheses in unpacking**: Jac transpiler uses `(a, b)` for all unpacking patterns
-
 
 **Tuple Unpacking**
 
@@ -407,6 +410,7 @@ This gives you the index and three unpacked values from three zipped lists, all 
 **Common Patterns**
 
 Filtering during iteration:
+
 ```jac
 for x in items {
     if x > 10 {
@@ -416,6 +420,7 @@ for x in items {
 ```
 
 Aggregating values:
+
 ```jac
 glob total = 0;
 with entry {
@@ -426,6 +431,7 @@ with entry {
 ```
 
 Finding with for-else:
+
 ```jac
 for item in items {
     if item == target {
@@ -438,6 +444,7 @@ for item in items {
 ```
 
 Processing paired data:
+
 ```jac
 for (name, score) in students {
     print(f"{name}: {score}");
