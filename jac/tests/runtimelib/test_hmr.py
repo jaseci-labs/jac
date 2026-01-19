@@ -12,6 +12,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Skip all tests in this module if watchdog is not installed
+pytest.importorskip("watchdog", reason="watchdog is required for HMR tests")
+
 from jaclang.runtimelib.hmr import HotReloader
 from jaclang.runtimelib.watcher import ChangeType, FileChangeEvent, JacFileWatcher
 
