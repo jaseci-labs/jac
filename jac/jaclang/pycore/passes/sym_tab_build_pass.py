@@ -353,7 +353,10 @@ class SymTabBuildPass(UniPass):
         if isinstance(node.target, uni.Name):
             node.sym_tab.def_insert(node.target, single_decl="iterator")
         # 2. for (<name> (, <name> ...)*) in collection
-        # TODO:
+        elif isinstance(node.target, uni.TupleVal):
+            for target_var in node.target.values:
+                if isinstance(target_var, uni.Name):
+                    node.sym_tab.def_insert(target_var, single_decl="iterator")
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.pop_scope()
