@@ -193,3 +193,37 @@ impl __removeLocalStorage(key: str) -> None {
         storage.removeItem(key);
     }
 }
+
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
+    return <div
+        role="alert"
+        style={{
+            "padding": "2rem",
+            "textAlign": "center",
+            "fontFamily": "system-ui, -apple-system, sans-serif"
+        }}
+    >
+        <h1>
+            Something went wrong
+        </h1>
+        <p
+            style={{"color": "red"}}
+        >
+            {error.error.message}
+        </p>
+        <button
+            style={{
+                marginTop: '20px',
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+            }}
+            onClick={lambda -> None { error.resetErrorBoundary();}}
+        >
+            Try again
+        </button>
+    </div>;
+}
