@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.9 (Unreleased)
 
+- **Error Handling with JacClientErrorBoundary**: Introduced  error boundary handling in Jac Client apps. The new `JacClientErrorBoundary` component allows you to wrap specific parts of your component tree to catch and display errors gracefully, without affecting the entire application.
+
 ## jac-client 0.2.8 (Latest Release)
 
 - **Vite Dev Server Integration for HMR**: Added support for Hot Module Replacement during development. When using `jac start --watch`, the Vite dev server runs alongside the Jac API server with automatic proxy configuration for `/walker`, `/function`, `/user`, and `/introspect` routes. This enables instant frontend updates without full page reloads while maintaining seamless backend communication.
