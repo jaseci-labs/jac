@@ -215,6 +215,7 @@ class KubernetesTarget(DeploymentTarget) {
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
+            commands.append('pip install -e ./jac-byllm');
             commands.append('cd ..');
         }
 

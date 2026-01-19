@@ -619,3 +619,52 @@ export default defineConfig({
 - `runtime_path`: Path to client runtime file
 - `vite_output_dir`: Build output (defaults to `compiled/dist/assets`)
 - `vite_minify`: Enable/disable minification
+
+### HTML Meta Data Configuration
+
+The Jac Client provides a comprehensive **HTML meta data configuration system** that allows developers to customize SEO, social media, and browser metadata for their client applications through `jac.toml`.
+
+#### Meta Data Configuration in jac.toml
+
+Meta data is configured in the `[plugin.client.app_meta_data]` section of `jac.toml`:
+
+```toml
+[plugin.client.app_meta_data]
+charset = "UTF-8"
+title = "My Awesome App"
+viewport = "width=device-width, initial-scale=1"
+description = "A powerful application built with Jac"
+robots = "index, follow"
+canonical = "https://example.com/app"
+
+# OpenGraph metadata for social media
+og_type = "website"
+og_title = "My Awesome App"
+og_description = "A powerful application built with Jac"
+og_url = "https://example.com/app"
+og_image = "https://example.com/og-image.png"
+
+# Browser/PWA metadata
+theme_color = "#4a90e2"
+icon = "/assets/favicon.ico"
+```
+
+#### Meta Data Processing Flow
+
+The meta data system follows a structured processing pipeline:
+
+```
+1. Load configuration from jac.toml
+   ↓
+2. Extract [plugin.client.app_meta_data] section
+   ↓
+3. Merge with default values (see meta_defaults)
+   ↓
+4. Apply HEAD_SCHEMA to structure tags
+   ↓
+5. Generate HTML head content with build_head()
+   ↓
+6. Inject into page template with CSS links
+   ↓
+7. Serve rendered HTML with proper meta tags
+```
