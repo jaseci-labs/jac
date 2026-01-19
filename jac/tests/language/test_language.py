@@ -21,18 +21,11 @@ from jaclang.runtimelib.utils import read_file_with_encoding
 @pytest.fixture(autouse=True)
 def setup_jac_runtime(
     fixture_path: Callable[[str], str],
-    isolate_jac_context: Path,  # Use tmp_path for database isolation
+    fresh_jac_context: Path,  # Provides isolated Jac context
 ) -> Generator[None, None, None]:
-    """Set up and tear down Jac runtime for each test.
-
-    Note: base_path is passed to reset_machine for database isolation.
-    Tests use explicit base_path in jac_import for module resolution.
-    """
-    # Pass tmp_path to reset_machine so context is created with isolated db path
-    Jac.reset_machine(base_path=str(isolate_jac_context))
+    """Set up and tear down Jac runtime for each test."""
     Jac.attach_program(JacProgram())
     yield
-    Jac.reset_machine(base_path=str(isolate_jac_context))
 
 
 def test_sub_abilities(
@@ -367,7 +360,6 @@ def test_deep_imports_mods(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Parse micro jac file."""
-    Jac.reset_machine()
     targets = [
         "deep",
         "deep.deeper",
@@ -1054,7 +1046,6 @@ def test_list_methods(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Test list_modules, list_walkers, list_nodes, and list_edges."""
-    Jac.reset_machine()
     Jac.set_base_path(fixture_path("."))
     sys.modules.pop("foo", None)
     sys.modules.pop("bar", None)
@@ -1075,10 +1066,9 @@ def test_list_methods(
 def test_walker_dynamic_update(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
-    isolate_jac_context: Path,
+    fresh_jac_context: Path,
 ) -> None:
     """Test dynamic update of a walker during runtime."""
-    Jac.reset_machine(base_path=str(isolate_jac_context))
     sys.modules.pop("bar", None)
     bar_file_path = fixture_path("bar.jac")
     update_file_path = fixture_path("walker_update.jac")
@@ -1117,7 +1107,9 @@ def test_walker_dynamic_update(
 
     with capture_stdout() as captured_output:
         try:
-            Jac.reset_machine(base_path=str(isolate_jac_context))
+            # Reset state for dynamic update test
+            Jac.loaded_modules.clear()
+            Jac.attach_program(JacProgram())
             execution.run(
                 filename=update_file_path,
             )

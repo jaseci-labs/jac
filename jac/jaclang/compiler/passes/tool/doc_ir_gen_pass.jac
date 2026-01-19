@@ -124,6 +124,7 @@ obj DocIRGenPass(UniPass) {
     def exit_raise_stmt(<>node: uni.RaiseStmt) -> None;
     def exit_global_vars(<>node: uni.GlobalVars) -> None;
     def exit_client_block(<>node: uni.ClientBlock) -> None;
+    def exit_server_block(<>node: uni.ServerBlock) -> None;
     def exit_module_code(<>node: uni.ModuleCode) -> None;
     def exit_global_stmt(<>node: uni.GlobalStmt) -> None;
     def exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None;
@@ -168,7 +169,6 @@ obj DocIRGenPass(UniPass) {
     def exit_bool(<>node: uni.Bool) -> None;
     def exit_null(<>node: uni.Null) -> None;
     def exit_ellipsis(<>node: uni.Ellipsis) -> None;
-    def _jsx_attrs_need_multiline(<>node: uni.JsxElement) -> bool;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;

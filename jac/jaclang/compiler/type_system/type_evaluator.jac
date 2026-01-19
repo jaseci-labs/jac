@@ -140,6 +140,7 @@ obj TypeEvaluator {
 
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
+    def _is_symbol_property(symbol: uni.Symbol) -> bool;
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol

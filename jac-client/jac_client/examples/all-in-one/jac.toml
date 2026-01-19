@@ -15,7 +15,7 @@ base_route_app = "app"
 [plugins.client.app_meta_data]
 "title" = "all-in-one"
 "description" = "All-in-one Jac client application"
-"icon" = "/assets/burger.png"
+"icon" = "static/assets/burger.png"
 "viewport" = "width=device-width, initial-scale=1.0"
 
 [plugins.client.vite]
