@@ -124,3 +124,18 @@ walker process_complex_data {
         report result;
     }
 }
+
+# Re-export client components from the standalone client module
+cl {
+    import from .features_test_ui {
+        FeaturesTest as FeaturesTestUI,
+        TestButton as TestButtonUI,
+        TestCard as TestCardUI,
+        ResultDisplay as ResultDisplayUI
+    }
+
+    def:pub FeaturesTest -> any { return <FeaturesTestUI />; }
+    def:pub TestButton(text: str, onClick: any, variant: str) -> any { return <TestButtonUI text={text} onClick={onClick} variant={variant} />; }
+    def:pub TestCard(title: str, children: any, color: str) -> any { return <TestCardUI title={title} children={children} color={color} />; }
+    def:pub ResultDisplay(data: any, label: str) -> any { return <ResultDisplayUI data={data} label={label} />; }
+}

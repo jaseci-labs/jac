@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 # These are loaded on first access via __getattr__
 _LAZY_PASSES = {
     "CFGBuildPass": ".cfg_build_pass",
-    "JacImportDepsPass": ".import_pass",
     "PyastBuildPass": ".pyast_load_pass",
     "PyJacAstLinkPass": ".pyjac_ast_link_pass",
     "SemDefMatchPass": ".sem_def_match_pass",
@@ -24,7 +23,6 @@ _lazy_cache: dict[str, type] = {}
 
 if TYPE_CHECKING:
     from .cfg_build_pass import CFGBuildPass as CFGBuildPass
-    from .import_pass import JacImportDepsPass as JacImportDepsPass
     from .pyast_load_pass import PyastBuildPass as PyastBuildPass
     from .pyjac_ast_link_pass import PyJacAstLinkPass as PyJacAstLinkPass
     from .sem_def_match_pass import SemDefMatchPass as SemDefMatchPass
@@ -81,7 +79,6 @@ def __getattr__(name: str) -> type:
 
 __all__ = [
     "CFGBuildPass",
-    "JacImportDepsPass",
     "PyastBuildPass",
     "PyJacAstLinkPass",
     "SemDefMatchPass",

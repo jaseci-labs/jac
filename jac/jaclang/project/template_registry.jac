@@ -23,6 +23,9 @@ obj ProjectTemplate {
         gitignore_entries: list[str] = [],  # entries for .jac/.gitignore
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create: Callable | None = None;  # optional callback(project_path, project_name)
+
+    """Convert to dict for serialization (e.g., JSON bundling)."""
+    def to_dict -> dict[str, Any];
 }
 
 """Registry for plugin-provided project templates.

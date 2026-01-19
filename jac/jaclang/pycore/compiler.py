@@ -281,14 +281,12 @@ class JacCompiler:
         type_check: bool = False,
     ) -> uni.Module:
         """Build a Jac file with import dependency resolution."""
-        from jaclang.compiler.passes.main import JacImportDepsPass
 
         actual_program = self._resolve_program(file_path, target_program)
 
         mod_targ = self.compile(
             file_path, actual_program, use_str, type_check=type_check
         )
-        JacImportDepsPass(ir_in=mod_targ, prog=actual_program)
         SemanticAnalysisPass(ir_in=mod_targ, prog=actual_program)
         return mod_targ
 
