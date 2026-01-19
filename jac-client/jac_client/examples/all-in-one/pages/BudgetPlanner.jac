@@ -2,7 +2,7 @@
 # This file is intentionally kept empty to demonstrate the separation of concerns
 # where UI logic resides in .cl.jac files and backend walker logic in app.jac
 
-# All walker implementations for this feature are in src/app.jac
+# All walker implementations for this feature are in main.jac
 # This demonstrates that you can have separate .jac files for different purposes
 # Features Test - Backend Walkers
 # This file demonstrates walker functionality for testing various JAC features
@@ -123,4 +123,11 @@ walker process_complex_data {
 
         report result;
     }
+}
+
+# Re-export client components from the standalone client module
+cl {
+    import from .budget_planner_ui { BudgetPlanner as BudgetPlannerUI }
+
+    def:pub BudgetPlanner -> any { return <BudgetPlannerUI />; }
 }

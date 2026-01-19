@@ -1,8 +1,9 @@
 """Test pass module."""
 
 import io
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
+from pathlib import Path
 
 import pytest
 
@@ -13,13 +14,12 @@ from jaclang.pycore.program import JacProgram
 
 
 @pytest.fixture(autouse=True)
-def setup_jac_runtime(fixture_path: Callable[[str], str]):
+def setup_jac_runtime(
+    fixture_path: Callable[[str], str], fresh_jac_context: Path
+) -> Generator[None, None, None]:
     """Set up and tear down Jac runtime for each test."""
-    Jac.reset_machine()
-    Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(JacProgram())
     yield
-    Jac.reset_machine()
 
 
 def test_parameter_count_mismatch(fixture_path: Callable[[str], str]) -> None:

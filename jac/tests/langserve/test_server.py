@@ -4,11 +4,11 @@ import os
 import sys
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
+from pathlib import Path
 
 import lsprotocol.types as lspt
 import pytest
 
-from jaclang import JacRuntime as Jac
 from jaclang.langserve.engine import JacLangServer
 from jaclang.vendor.pygls import uris
 from jaclang.vendor.pygls.workspace import Workspace
@@ -34,10 +34,9 @@ _active_servers: list[JacLangServer] = []
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_machine() -> Generator[None, None, None]:
+def reset_jac_machine(fresh_jac_context: Path) -> Generator[None, None, None]:
     """Reset Jac machine before each test to avoid state pollution."""
     _clear_jac_modules()
-    Jac.reset_machine()
     _active_servers.clear()
     yield
     # Clear type system state from all servers created during the test
@@ -48,7 +47,6 @@ def reset_jac_machine() -> Generator[None, None, None]:
         server.clear_type_system(clear_hub=True)
     _active_servers.clear()
     _clear_jac_modules()
-    Jac.reset_machine()
 
 
 @pytest.fixture

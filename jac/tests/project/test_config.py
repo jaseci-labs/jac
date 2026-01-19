@@ -559,12 +559,20 @@ temperature = 0.5
         assert result == {}
 
     def test_create_default_toml(self) -> None:
-        """Test creating default TOML content."""
-        content = JacConfig.create_default_toml("my-awesome-project")
+        """Test creating default TOML content via template registry."""
+        from jaclang.project.template_registry import (
+            get_template_registry,
+            initialize_template_registry,
+        )
 
-        assert 'name = "my-awesome-project"' in content
-        assert "[project]" in content
-        assert "[dependencies]" in content
+        initialize_template_registry()
+        registry = get_template_registry()
+        template = registry.get_default()
+
+        # Verify default template has expected config structure
+        assert template is not None
+        assert "project" in template.config
+        assert "dependencies" in template.config
 
 
 class TestGlobalConfig:

@@ -158,3 +158,37 @@ cl def spawn_client() {
         )
 
         os.unlink(f.name)
+
+
+def test_client_import_local_jac_module_gets_relative_path() -> None:
+    """Test that absolute imports of local Jac modules get ./ prefix in JS."""
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as tmpdir:
+        # Create a local module file
+        local_module = Path(tmpdir) / "mymodule.jac"
+        local_module.write_text("cl def helper() { return 42; }")
+
+        # Create main file that imports it without dot prefix
+        main_file = Path(tmpdir) / "main.jac"
+        main_file.write_text("""
+cl {
+    import from mymodule { helper }
+
+    def:pub app() {
+        return helper();
+    }
+}
+""")
+
+        prog = JacProgram()
+        module = prog.compile(str(main_file))
+
+        js = module.gen.js
+        # Should have ./ prefix for local module, not bare "mymodule"
+        assert "./mymodule.js" in js, (
+            f"Local Jac module import should use ./mymodule.js, got: {js}"
+        )
+        assert 'from "mymodule"' not in js, (
+            "Should not have bare module name without ./ prefix"
+        )

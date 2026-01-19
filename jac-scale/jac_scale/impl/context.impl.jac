@@ -1,14 +1,14 @@
-"""Initialize JScaleExecutionContext."""
+"""Initialize JScaleExecutionContext.
 
-impl JScaleExecutionContext.init(
-    self: JScaleExecutionContext,
-    session: (str | None) = None,
-    <>root: (str | None) = None
-) -> None {
+Storage backend is configured via environment variables (e.g., MONGODB_URI),
+not per-context parameters.
+"""
+
+impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
     import from jaclang.pycore.constructs { Anchor, NodeAnchor, Root }
-    # Pass session to ScaleTieredMemory for proper storage isolation
-    self.mem = ScaleTieredMemory(session=session);
+    # ScaleTieredMemory gets storage config from environment variables
+    self.mem = ScaleTieredMemory();
     self.reports: list[Any] = [];
     self.custom: Any = MISSING;
     system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));
@@ -18,7 +18,7 @@ impl JScaleExecutionContext.init(
         self.mem.put(system_root_anchor);
     }
     self.system_root = system_root_anchor;
-    self.entry_node = self.root_state=self._get_anchor(<>root)
-    if <>root
-    else self.system_root;
+    # Default user_root and entry_node to system_root
+    self.user_root = self.system_root;
+    self.entry_node = self.system_root;
 }

@@ -1,35 +1,39 @@
-# all-in-one
+# all-in-one-new
 
-This example demonstrates a comprehensive Jac application combining:
+A Jac client-side application with React support.
 
-- **React Router** - Client-side routing
-- **CSS Styling** - Pure CSS with asset references
-- **Asset Serving** - Static assets (images, etc.)
-- **Nested Folder Imports** - Organizing Jac components
-- **TypeScript Components** - TypeScript component integration
+## Project Structure
 
-## Running Jac Code
-
-Make sure node modules are installed:
-
-```bash
-npm install
+```
+all-in-one-new/
+├── jac.toml              # Project configuration
+├── main.jac              # Main application entry
+├── components/           # Reusable components
+│   └── Button.cl.jac     # Example Jac component
+├── assets/               # Static assets (images, fonts, etc.)
+└── build/                # Build output (generated)
 ```
 
-To run your Jac code, use the Jac CLI:
+## Getting Started
+
+Start the development server:
 
 ```bash
-jac start app.jac
+jac start main.jac
 ```
 
-## TypeScript Support
+## Components
 
-This example includes TypeScript support with a `Card` component (`components/Card.tsx`). The TypeScript component is imported and used in the Jac code:
+Create Jac components in `components/` as `.cl.jac` files and import them:
 
 ```jac
-cl import from ".components/Card.tsx" { Card }
+cl import from .components.Button { Button }
 ```
 
-See the TypeScript component in action on the Home page!
+## Adding Dependencies
 
-Happy coding with Jac!
+Add npm packages with the --cl flag:
+
+```bash
+jac add --cl react-router-dom
+```

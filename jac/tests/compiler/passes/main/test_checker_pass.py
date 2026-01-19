@@ -1181,3 +1181,44 @@ def test_slice_type_checking(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[0].pretty_print(),
     )
+
+
+def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test that property access returns the property's return type, not FunctionType."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_property.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 4 errors:
+    # 1. wrong: str = foo.bar (int assigned to str)
+    # 2. wrong_name: int = foo.name (str assigned to int)
+    # 3. method: int = foo.regular_method (FunctionType assigned to int)
+    # 4. wrong_val: str = bar_obj.value (int assigned to str)
+    assert len(program.errors_had) == 4
+
+    _assert_error_pretty_found(
+        """
+        wrong: str = foo.bar;  # <-- Error (int assigned to str)
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+    _assert_error_pretty_found(
+        """
+        wrong_name: int = foo.name;  # <-- Error (str assigned to int)
+    """,
+        program.errors_had[1].pretty_print(),
+    )
+
+    _assert_error_pretty_found(
+        """
+        method: int = foo.regular_method;  # <-- Error (FunctionType assigned to int)
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+
+    _assert_error_pretty_found(
+        """
+        wrong_val: str = bar_obj.value;  # <-- Error (int assigned to str)
+    """,
+        program.errors_had[3].pretty_print(),
+    )

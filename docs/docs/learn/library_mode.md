@@ -394,7 +394,6 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 | `perm_revoke(archetype)` | Revoke public access | `archetype`: Target archetype |
 | `allow_root(archetype, root_id, level)` | Allow specific root access | `archetype`: Target<br>`root_id`: Root UUID<br>`level`: Access level |
 | `disallow_root(archetype, root_id, level)` | Disallow specific root access | Same as allow_root |
-| `elevate_root()` | Elevate context to system root | No parameters (uses context) |
 | `check_read_access(anchor)` | Check read permission | `anchor`: Target anchor |
 | `check_write_access(anchor)` | Check write permission | `anchor`: Target anchor |
 | `check_connect_access(anchor)` | Check connect permission | `anchor`: Target anchor |

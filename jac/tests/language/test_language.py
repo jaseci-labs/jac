@@ -21,13 +21,11 @@ from jaclang.runtimelib.utils import read_file_with_encoding
 @pytest.fixture(autouse=True)
 def setup_jac_runtime(
     fixture_path: Callable[[str], str],
+    fresh_jac_context: Path,  # Provides isolated Jac context
 ) -> Generator[None, None, None]:
     """Set up and tear down Jac runtime for each test."""
-    Jac.reset_machine()
-    Jac.set_base_path(fixture_path("./"))
     Jac.attach_program(JacProgram())
     yield
-    Jac.reset_machine()
 
 
 def test_sub_abilities(
@@ -362,7 +360,6 @@ def test_deep_imports_mods(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Parse micro jac file."""
-    Jac.reset_machine()
     targets = [
         "deep",
         "deep.deeper",
@@ -1049,7 +1046,6 @@ def test_list_methods(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Test list_modules, list_walkers, list_nodes, and list_edges."""
-    Jac.reset_machine()
     Jac.set_base_path(fixture_path("."))
     sys.modules.pop("foo", None)
     sys.modules.pop("bar", None)
@@ -1070,23 +1066,19 @@ def test_list_methods(
 def test_walker_dynamic_update(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+    fresh_jac_context: Path,
 ) -> None:
     """Test dynamic update of a walker during runtime."""
-    Jac.reset_machine()
-    Jac.set_base_path(fixture_path("."))
     sys.modules.pop("bar", None)
-    session = fixture_path("bar_walk.session")
     bar_file_path = fixture_path("bar.jac")
     update_file_path = fixture_path("walker_update.jac")
     with capture_stdout() as captured_output:
         execution.enter(
             filename=bar_file_path,
-            session=session,
             entrypoint="bar_walk",
             args=[],
         )
     stdout_value = captured_output.getvalue()
-    os.remove(session) if os.path.exists(session) else None
     expected_output = "Created 5 items."
     assert expected_output in stdout_value.split("\n")
     # Define the new behavior to be added (using entry since exits are deferred
@@ -1115,7 +1107,9 @@ def test_walker_dynamic_update(
 
     with capture_stdout() as captured_output:
         try:
-            Jac.reset_machine()
+            # Reset state for dynamic update test
+            Jac.loaded_modules.clear()
+            Jac.attach_program(JacProgram())
             execution.run(
                 filename=update_file_path,
             )

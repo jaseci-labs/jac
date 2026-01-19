@@ -1,6 +1,6 @@
 """Construct the call parameters and return self (factory pattern).
 
-Allows chaining like: `model(temperature=0.5).invoke(mtir)`.
+Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
 """
 impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
     self.call_params = kwargs;
@@ -17,8 +17,36 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
     }
+    max_iters = (
+        mt_run.call_params.get("max_react_iterations")
+        or self.call_params.get("max_react_iterations")
+        or _call_params_config.get("max_react_iterations")
+        or 0
+    );
+    iter_count = 0;
     # Invoke the LLM and handle tool calls (ReAct loop).
     while True {
+        iter_count += 1;
+        if int(max_iters) > 0 and iter_count > int(max_iters) {
+            # If streaming, reuse the existing streaming final-answer path
+            if mt_run.stream {
+                return self._stream_final_answer(mt_run);
+            }
+            # Non-streaming: disable tools and ask for final answer once
+            final_instruction = Message(
+                role=MessageRole.USER,
+                content="Based on the tool calls and their results above, provide only your final answer.",
+            );
+            mt_run.add_message(final_instruction);
+            original_tools = mt_run.tools;
+            mt_run.tools = [];
+            try {
+                final_resp = self.dispatch_no_streaming(mt_run);
+                return final_resp.output;
+            } finally {
+                mt_run.tools = original_tools;
+            }
+        }
         resp = self.dispatch_no_streaming(mt_run);
         if resp.tool_calls {
             for tool_call in resp.tool_calls {

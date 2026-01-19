@@ -227,20 +227,6 @@ impl JacConfig.is_valid -> bool {
     return self.toml_path is not None and self.toml_path.exists();
 }
 
-impl JacConfig.create_default_toml(project_name: str) -> str {
-    return f'''[project]
-name = "{project_name}"
-version = "0.1.0"
-description = "A Jac project"
-entry-point = "{project_name}.jac"
-
-[dependencies]
-
-[dev-dependencies]
-watchdog = ">=3.0.0"
-''';
-}
-
 impl JacConfig.save -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration") ;

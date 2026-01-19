@@ -10,16 +10,16 @@ Abstract Interfaces:
 Concrete Implementations:
 - VolatileMemory: Simple dict-based, no persistence (L1)
 - LocalCacheMemory: In-process cache with TTL support (L2)
-- ShelfMemory: File-based persistent memory using shelve (L3)
+- SqliteMemory: SQLite-based persistent memory with proper concurrency (L3)
 - TieredMemory: Composes L1 + L2 + L3 with write-through semantics
 
 jac-scale extends this to override L2 (Redis) and L3 (database).
 """
 
 import logging;
-import shelve;
+import sqlite3;
 import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps }
+import from pickle { dumps, loads }
 import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
@@ -31,7 +31,7 @@ glob logger = logging.getLogger(__name__),
          'PersistentMemory',
          'VolatileMemory',
          'LocalCacheMemory',
-         'ShelfMemory',
+         'SqliteMemory',
          'TieredMemory'
      ];
 
@@ -169,18 +169,20 @@ obj LocalCacheMemory(VolatileMemory, CacheMemory) {
     def invalidate(id: UUID) -> None;
 }
 
-"""Shelf-based Persistent Memory.
+"""SQLite-based Persistent Memory.
 
-Uses Python's shelve module for file-based durable storage.
-Maintains an in-memory cache for fast reads with write-through to shelf.
+Uses SQLite with WAL mode for concurrent reads and proper transaction support.
+Maintains an in-memory cache for fast reads with write-through to database.
 """
-obj ShelfMemory(PersistentMemory) {
+obj SqliteMemory(PersistentMemory) {
     has path: str,
         __mem__: dict[UUID, Anchor] = {},
         __gc__: set[Anchor] = {},
-        __shelf__: (shelve.Shelf | None) = None;
+        __conn__: (sqlite3.Connection | None) = None;
 
     def postinit -> None;
+    # Lazy connection initialization - DB only created when data is written
+    def _ensure_connection -> None;
     # Memory interface
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
@@ -219,14 +221,15 @@ This is the main memory abstraction used by ExecutionContext. It provides:
 - Fast reads via inherited L1 (VolatileMemory) with L2/L3 fallback and automatic promotion
 - Write-through to all tiers with access control
 - Configurable tiers (L2 and L3 are optional)
+- Automatic L3 initialization when base_path is provided
 
 TieredMemory IS the L1 tier (inherits __mem__, __gc__ from VolatileMemory).
 jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
-    has l2: (CacheMemory | None) = None,
+    has base_path: (str | None) = None,
+        l2: (CacheMemory | None) = None,
         l3: (PersistentMemory | None) = None,
-        session: (str | None) = None,
         use_cache: bool = False;
 
     def postinit -> None;

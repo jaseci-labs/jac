@@ -215,6 +215,7 @@ class KubernetesTarget(DeploymentTarget) {
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
+            commands.append('pip install -e ./jac-byllm');
             commands.append('cd ..');
         }
 
@@ -299,7 +300,7 @@ class KubernetesTarget(DeploymentTarget) {
             'command': [
                 'sh',
                 '-c',
-                f"mkdir -p {self.k8s_config.app_mount_path} && rm -rf {self.k8s_config.app_mount_path}/* && cp -r {self.k8s_config.workspace_path}/. {self.k8s_config.app_mount_path}/"
+                f"mkdir -p {self.k8s_config.app_mount_path} && rm -rf {self.k8s_config.app_mount_path}/* && rsync -av --exclude='.jac' {self.k8s_config.workspace_path}/ {self.k8s_config.app_mount_path}/"
             ],
             'volumeMounts': [
                 {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path},

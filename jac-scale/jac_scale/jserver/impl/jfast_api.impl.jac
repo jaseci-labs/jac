@@ -298,7 +298,7 @@ impl JFastApiServer._create_endpoint_function(
                 if required {
                     param_str = f"{param_name}: {type_name} = Header(..., description='{description}')";
                 } elif (default_value is None) {
-                    param_str = f"{param_name}: Optional[{type_name}] = Header(description='{description}')";
+                    param_str = f"{param_name}: Optional[{type_name}] = Header(default=None, description='{description}')";
                 } else {
                     param_str = f"{param_name}: Optional[{type_name}] = Header({repr(
                         default_value

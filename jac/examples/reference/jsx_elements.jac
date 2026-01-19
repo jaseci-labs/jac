@@ -3,11 +3,10 @@
 
 # Simple component function that returns JSX
 def Button(text: str, onclick: str) -> dict {
-    return <button
-        onclick={onclick}
-    >
-        {text}
-    </button>;
+    return
+        <button onclick={onclick}>
+            {text}
+        </button>;
 }
 
 # Component with multiple props
@@ -15,9 +14,7 @@ def Card(
     title: str, content: str, className: str
 ) -> dict {
     return (
-        <div
-            class={className}
-        >
+        <div class={className}>
             <h2>
                 {title}
             </h2>
@@ -38,10 +35,7 @@ with entry {
 }
 
 # 2. Element with attributes
-glob with_attrs = <div
-         class="container"
-         id="main"
-     >
+glob with_attrs = <div class="container" id="main">
          Content
      </div>;
 
@@ -78,10 +72,7 @@ with entry {
 # 5. Elements with expression attributes
 glob name = "user123",
      age = 25,
-     user_element = <div
-         id={name}
-         data-age={age}
-     >
+     user_element = <div id={name} data-age={age}>
          User Info
      </div>;
 
@@ -111,9 +102,7 @@ with entry {
 
 # 8. Spread attributes
 glob props = {"class": "btn", "type": "submit"},
-     with_spread = <button
-         {...props}
-     >
+     with_spread = <button {...props}>
          Submit
      </button>;
 
@@ -151,11 +140,7 @@ glob app = (
                  </nav>
              </header>
              <main>
-                 <Card
-                     title="Card 1"
-                     content="First card"
-                     className="card-primary"
-                 />
+                 <Card title="Card 1" content="First card" className="card-primary" />
                  <Card
                      title="Card 2"
                      content="Second card"
@@ -194,9 +179,7 @@ with entry {
 glob items = ["Apple", "Banana", "Cherry"],
      list_items = [
          (
-             <li
-                 key={i}
-             >
+             <li key={i}>
                  {item}
              </li>
          ) for (i, item) in enumerate(items)

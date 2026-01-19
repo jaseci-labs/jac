@@ -3,7 +3,8 @@
 import io
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from pathlib import Path
 
 import pytest
 
@@ -33,12 +34,9 @@ def fixture_abs_path() -> Callable[[str], str]:
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_machine():
-    """Reset Jac machine before each test."""
-    Jac.reset_machine()
+def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
+    """Provide fresh Jac context for each test."""
     yield
-    # Optional cleanup after test
-    Jac.reset_machine()
 
 
 def test_import_basic_python(fixture_abs_path: Callable[[str], str]) -> None:

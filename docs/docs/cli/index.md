@@ -23,6 +23,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
+| `jac jacpac` | Manage project templates (.jacpac files) |
 | `jac get_object` | Retrieve object by ID |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
@@ -69,12 +70,12 @@ jac run main.jac --no-cache
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--watch` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] filename
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] [filename]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Jac file to serve | Required |
+| `filename` | Jac file to serve | `main.jac` |
 | `-s, --session` | Session name | None |
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
@@ -88,28 +89,32 @@ jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port POR
 **Examples:**
 
 ```bash
-# Start on default port
-jac start main.jac
+# Start with default main.jac on default port
+jac start
 
 # Start on custom port
-jac start main.jac -p 3000
+jac start -p 3000
 
 # Start with session
-jac start main.jac -s prod_session
+jac start -s prod_session
 
 # Start with Hot Module Replacement (development)
-jac start main.jac --watch
+jac start --watch
 
 # HMR mode without client bundling (API only)
-jac start main.jac --watch --no-client
+jac start --watch --no-client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
-jac start main.jac --scale
+jac start --scale
 
 # Build and deploy to Kubernetes
-jac start main.jac --scale --build
+jac start --scale --build
 ```
 
+> **Note**:
+>
+> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
+>
 ---
 
 ### jac create
@@ -117,16 +122,15 @@ jac start main.jac --scale --build
 Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
 
 ```bash
-jac create [-h] [-f] [-c] [-s] [-v] [name]
+jac create [-h] [-f] [-u USE] [-l] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `name` | Project name (creates folder with this name) | `main` |
+| `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
-| `-c, --cl` | Include client-side setup | `False` |
-| `-s, --skip` | Skip package installation | `False` |
-| `-v, --verbose` | Verbose output | `False` |
+| `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
+| `-l, --list-jacpacs` | List available jacpac templates | `False` |
 
 **Examples:**
 
@@ -135,12 +139,29 @@ jac create [-h] [-f] [-c] [-s] [-v] [name]
 jac create myapp
 cd myapp
 
-# Create full-stack project with frontend
-jac create --cl myapp
+# Create full-stack project with client template
+jac create myapp --use client
+
+# Create from a local .jacpac file
+jac create myapp --use ./my-template.jacpac
+
+# Create from a local template directory
+jac create myapp --use ./my-template/
+
+# Create from a URL
+jac create myapp --use https://example.com/template.jacpac
+
+# List available jacpac templates
+jac create --list-jacpacs
 
 # Force overwrite existing
 jac create myapp --force
+
+# Create in current directory
+jac create
 ```
+
+**See Also:** Use `jac jacpac` to create and bundle custom templates.
 
 ---
 
@@ -491,8 +512,8 @@ jac config list -o toml
 Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
-jac start main.jac --scale           # Deploy without building
-jac start main.jac --scale --build   # Build and deploy
+jac start --scale           # Deploy without building
+jac start --scale --build   # Build and deploy
 ```
 
 ---
@@ -647,6 +668,85 @@ jac clean --all --force
 
 ---
 
+## Template Management
+
+### jac jacpac
+
+Manage project templates. Bundle template directories into distributable `.jacpac` files or list available templates.
+
+```bash
+jac jacpac [action] [path] [-o OUTPUT]
+```
+
+| Action | Description |
+|--------|-------------|
+| `pack` | Bundle a template directory into a `.jacpac` file |
+| `list` | List available templates (default) |
+| `info` | Show information about a template |
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `path` | Template directory (for pack) or `.jacpac` file (for info) | None |
+| `-o, --output` | Output file path for bundled template | `<name>.jacpac` |
+
+**Template Directory Structure:**
+
+A template directory should contain:
+
+- `jacpac.toml` - Template manifest with metadata and configuration
+- Template files (`.jac`, `.md`, etc.) with `{{name}}` placeholders
+
+**Example `jacpac.toml`:**
+
+```toml
+[template]
+name = "mytemplate"
+description = "My custom project template"
+jaclang = "0.9.0"
+
+[[template.plugins]]
+name = "jac-client"
+version = "0.1.0"
+
+[config]
+[config.project]
+name = "{{name}}"
+version = "0.1.0"
+entry-point = "main.jac"
+
+[options]
+directories = [".jac"]
+gitignore_entries = ["*"]
+root_gitignore_entries = [".jac/", "*.jir"]
+```
+
+**Examples:**
+
+```bash
+# List available templates
+jac jacpac list
+
+# Bundle a template directory
+jac jacpac pack ./my-template
+
+# Bundle with custom output path
+jac jacpac pack ./my-template -o custom-name.jacpac
+
+# Show template info
+jac jacpac info ./my-template
+jac jacpac info mytemplate.jacpac
+```
+
+**Using Templates with `jac create`:**
+
+Once a template is registered, use it with the `--use` flag:
+
+```bash
+jac create myproject --use mytemplate
+```
+
+---
+
 ### jac js
 
 Generate JavaScript output from Jac code (used for jac-client frontend compilation).
@@ -783,7 +883,7 @@ jac format . --fix
 
 ```bash
 # Start locally
-jac start main.jac -p 8000
+jac start -p 8000
 
 # Deploy to Kubernetes
 jac start main.jac --scale

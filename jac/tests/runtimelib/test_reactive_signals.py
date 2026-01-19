@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -10,11 +11,9 @@ from jaclang import JacRuntime as Jac
 
 
 @pytest.fixture(autouse=True)
-def reset_machine():
-    """Reset Jac machine before and after each test."""
-    Jac.reset_machine()
+def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
+    """Provide fresh Jac context for each test."""
     yield
-    Jac.reset_machine()
 
 
 def test_reactive_signals_compile():

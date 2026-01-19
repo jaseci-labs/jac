@@ -53,34 +53,38 @@ obj JacSerializer {
     static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
 }
 
-"""Manage users and their persistent roots."""
+"""Manage users and their persistent roots (SQLite-backed)."""
 obj UserManager {
-    has session_path: str,
-        _users: dict[(str, dict[(str, str)])] = {},
-        _tokens: dict[(str, str)] = {},
-        _db_path: str = "";
+    has base_path: str,
+        _db_path: str = "",
+        _conn: Any = None;
 
     def postinit -> None;
-    def _load_db -> None;
-    def _persist -> None;
+    def _ensure_connection -> None;
     def create_user(username: str, password: str) -> dict[str, str];
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def validate_token(token: str) -> (str | None);
     def get_root_id(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);
+    def user_exists(username: str) -> bool;
+    def update_username(current_username: str, new_username: str) -> dict[str, str];
+    def update_password(
+        username: str, current_password: str, new_password: str
+    ) -> dict[str, str];
+
     def close -> None;
 }
 
 """Manages execution contexts for user operations."""
 obj ExecutionManager {
-    has session_path: str,
+    has base_path: str,
         user_manager: UserManager;
 
     def execute_function(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
-    def spawn_walker(
+    async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 }
@@ -155,6 +159,15 @@ obj AuthHandler {
 
     def create_user(username: str, password: str) -> TransportResponse;
     def login(username: str, password: str) -> TransportResponse;
+    def update_username(
+        current_username: str, new_username: str, token: str
+    ) -> TransportResponse;
+
+    def update_password(
+        username: str, current_password: str, new_password: str, token: str
+    ) -> TransportResponse;
+
+    def get_user_info(token: str) -> TransportResponse;
 }
 
 """Handle introspection routes."""
@@ -179,7 +192,7 @@ obj ExecutionHandler {
         name: str, args: dict[(str, Any)], username: str
     ) -> TransportResponse;
 
-    def spawn_walker(
+    async def spawn_walker(
         name: str, fields: dict[(str, Any)], username: str
     ) -> TransportResponse;
 }
@@ -187,9 +200,8 @@ obj ExecutionHandler {
 """REST API Server for Jac programs."""
 obj JacAPIServer {
     has module_name: str,
-        session_path: str,
         port: int = 8000,
-        base_path: (str | None) = None;
+        base_path: str = "";
 
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
@@ -207,7 +219,7 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
-    def start -> None;
+    def start(watch: bool = False) -> None;
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""

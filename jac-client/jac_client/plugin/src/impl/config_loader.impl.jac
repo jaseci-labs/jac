@@ -27,6 +27,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
             'resolve': {}
         },
         'ts': {'compilerOptions': {}, 'include': [], 'exclude': []},
+        'configs': {},  # Generic config file generation: { "postcss": {...}, "tailwind": {...} }
         'package': {
             'name': '',
             'version': '1.0.0',
@@ -61,6 +62,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     user_config: dict[str, Any] = {
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
+        'configs': client_config.get('configs', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -89,6 +91,12 @@ impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, Any] {
 impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('ts', {});
+}
+
+"""Get generic config files to generate (postcss, tailwind, etc.)."""
+impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('configs', {});
 }
 
 """Save configuration back to jac.toml using core JacConfig."""

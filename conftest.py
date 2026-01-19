@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import glob
 import inspect
 import io
 import os
@@ -110,7 +112,7 @@ _AST_EXCLUDED = {
     "uni_node",
     "uni_scope_node",
     "uni_c_f_g_node",
-    "client_facing_node",
+    "context_aware_node",
     "program_module",
     "walker_stmt_only_node",
     "source",
@@ -176,3 +178,51 @@ def jaclang_root() -> Path:
 def project_root() -> Path:
     """Get the root directory of the project."""
     return _PROJECT_ROOT
+
+
+def _cleanup_db_files() -> None:
+    """Remove database files that may be created by tests or plugins."""
+    for pattern in [
+        # SQLite files (WAL mode creates -wal and -shm files)
+        "*.db",
+        "*.db-wal",
+        "*.db-shm",
+        # Legacy shelf files
+        "anchor_store.db.dat",
+        "anchor_store.db.bak",
+        "anchor_store.db.dir",
+    ]:
+        for file in glob.glob(pattern):
+            with contextlib.suppress(Exception):
+                Path(file).unlink()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_plugin_artifacts():
+    """Clean up files created by external plugins before and after each test."""
+    _cleanup_db_files()
+    yield
+    _cleanup_db_files()
+
+
+@pytest.fixture(autouse=True)
+def isolate_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
+    """Ensure each test has its own isolated Jac context.
+
+    Each test gets a unique temp directory to prevent parallel test
+    interference. Tests that call proc_file or set_base_path will
+    skip setting base_path if one is already set, so this provides
+    default isolation.
+    """
+    from jaclang.pycore.runtime import JacRuntime as Jac
+
+    original_base_path = Jac.base_path_dir
+    original_exec_ctx = Jac.exec_ctx
+    # Set base_path to unique temp directory for each test
+    # This ensures parallel tests don't share database files
+    Jac.set_base_path(str(tmp_path))
+    Jac.exec_ctx = None  # Force new context creation
+    yield tmp_path
+    # Restore original state
+    Jac.set_base_path(original_base_path)
+    Jac.exec_ctx = original_exec_ctx
