@@ -27,7 +27,7 @@ custom_extensions = [".py", ".js"]
 
 [dependencies.npm]
 antd = "^6.0.0"
-"jac-client-node" = "1.0.3"
+"jac-client-node" = "1.0.4"
 recharts = "latest"
 tailwindcss = "latest"
 
