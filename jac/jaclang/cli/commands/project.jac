@@ -227,3 +227,37 @@ def clean(
     packages: bool = False,
     force: bool = False
 ) -> int;
+
+"""Bundle a template directory into a distributable JSON file."""
+@registry.command(
+    name="template",
+    help="Manage project templates",
+    args=[
+        Arg.create(
+            "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
+        ),
+        Arg.create(
+            "path",
+            kind=ArgKind.POSITIONAL,
+            default="",
+            help="Template directory path (for pack) or JSON path (for info)"
+        ),
+        Arg.create(
+            "output",
+            default="",
+            help="Output file path for bundled template",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        (
+            "jac template pack ./my-template -o my-template.json",
+            "Bundle a template directory"
+        ),
+        ("jac template list", "List available templates"),
+
+    ],
+    group="project"
+)
+def template(action: str = "", path: str = "", output: str = "") -> int;
