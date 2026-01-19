@@ -20,7 +20,6 @@ from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.passes import (
     DeclImplMatchPass,
     JacAnnexPass,
-    MTIRGenPass,
     PyastGenPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
@@ -40,8 +39,7 @@ def get_symtab_ir_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
 
 def get_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     """Full IR generation schedule."""
-    from jaclang.compiler.passes.main import CFGBuildPass, SemDefMatchPass
-
+    from jaclang.compiler.passes.main import CFGBuildPass, SemDefMatchPass, MTIRGenPass
     return [
         SymTabBuildPass,
         DeclImplMatchPass,

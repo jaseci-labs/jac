@@ -38,19 +38,7 @@ def fetch_mtir(func: Callable) -> Info:
 
     module = resolve_module(func)
     qualname = func.__qualname__
-
-    ir = Jac.program.mod
-    if module == "__main__" and ir.main:
-        module = ir.main
-    else:
-        module = ir.hub.get(module)  # TODO Test external modules
-    scopes = qualname.split(".")
-    current_scope = module
-    for scope in scopes[:-1]:
-        lookup = current_scope.lookup(scope)
-        if lookup:
-            current_scope = lookup.symbol_table
-    current_scope = current_scope.lookup(scopes[-1]).symbol_table
+    current_scope = ".".join([module, qualname])
     ir_info = Jac.get_mtir_from_map(current_scope)
     return ir_info
 

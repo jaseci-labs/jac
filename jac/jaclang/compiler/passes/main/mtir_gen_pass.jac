@@ -1,70 +1,139 @@
 """Jac Semantic Analysis Pass."""
-import ast as ast3;
+
 import from collections.abc { Sequence }
 import jaclang.pycore.unitree as uni;
-import from jaclang.compiler.constant { Tokens as Tok }
-import from jaclang.pycore.passes { UniPass }
 import from jaclang { JacRuntime as Jac }
-import from jaclang.pycore.mtp { Info, VarInfo, FunctionInfo, MethodInfo, ClassInfo, FieldInfo, ParamInfo }
-import uuid;
-"""Information about a function parameter."""
-
-obj ParamInfo {
-    has    name: str;
-    has    type_annotation: (uni.Expr | None);
-    has    type_symbol: (uni.Symbol | None);
-    has    is_primitive: bool;
-    has    has_default: bool;
-}
-"""Information about a class field."""
-obj FieldInfo {
-    has    name: str;
-    has    type_annotation: (uni.Expr | None);
-    has    type_symbol: (uni.Symbol | None);
-    has    is_primitive: bool;
-    has    has_default: bool;
-    has    is_static: bool;
+import from jaclang.pycore.mtp {
+    ClassInfo,
+    FieldInfo,
+    FunctionInfo,
+    MethodInfo,
+    ParamInfo,
+    mk_dict,
+    mk_list,
+    mk_tuple,
+    type_to_str
 }
 
-"""Extracted information about a class/archetype."""
+import from jaclang.pycore.passes { UniPass }
 
-obj ClassInfo {
-    has    class_name: str;
-    has    fields: list[FieldInfo];
-    has    base_classes: list[str];
-    has    methods: list[str];
-    has    archetype_node: uni.Archetype;
-}
-"""Extracted information about a function/ability."""
-obj FunctionInfo {
-    has    function_name: str;
-    has    parameters: list[ParamInfo];
-    has    return_type_annotation: (uni.Expr | None);
-    has    return_type_symbol: (uni.Symbol | None);
-    has    return_is_primitive: bool;
-}
+glob PRIMITIVE_TYPES: list[str] = [
+        'int',
+        'float',
+        'str',
+        'bool',
+        'None',
+        'bytes',
+        'list',
+        'dict',
+        'set',
+        'tuple'
+    ];
 
 """Jac MTIR Generation Pass."""
 obj MTIRGenPass(UniPass) {
-    has PRIMITIVE_TYPES: list[str] = ['int','float','str','bool','None','bytes','list','dict','set','tuple'];
-
+    has ir_in: uni.Module, prog: Any, cancel_token: Any = None;
+    
+    def postinit {
+        super.init(self.ir_in, self.prog, self.cancel_token);
+    }
 
     """Check if a type expression represents a primitive type."""
-    def _is_primitive_type( type_expr: (uni.Expr | None)) -> bool {
+    def _is_primitive_type(type_expr: (uni.Expr | None)) -> bool {
         if (type_expr is None) {
             return False;
         }
         if isinstance(type_expr, uni.Name) {
-            return (type_expr.value in self.PRIMITIVE_TYPES);
+            return (type_expr.value in PRIMITIVE_TYPES);
         }
         if isinstance(type_expr, uni.BuiltinType) {
-            return (type_expr.value in self.PRIMITIVE_TYPES);
+            return (type_expr.value in PRIMITIVE_TYPES);
         }
         return False;
     }
+
+    """
+    Parse a unitree type expression into a primitive name, ClassInfo,
+    or tuple-based generic representation (using mk_list/mk_dict/mk_tuple).
+    """
+    def _parse_type_expr(
+        type_expr: (uni.Expr | None), scope: uni.UniScopeNode
+    ) -> (((ClassInfo | str) | tuple) | None) {
+        if (type_expr is None) {
+            return None;
+        }
+        if self._is_primitive_type(type_expr) {
+            if isinstance(type_expr, uni.Name) {
+                return type_expr.value;
+            }
+            return str(type_expr);
+        }
+        try {
+            if hasattr(type_expr, 'unparse') {
+                text = type_expr.unparse();
+            } else {
+                text = str(type_expr);
+            }
+            if (('[' in text) and (']' in text)) {
+                base = text.split('[', 1)[0].strip();
+                inner = text[(text.find('[') + 1):text.rfind(']')].strip();
+                parts = [
+                    p.strip()
+                    for p in inner.split(',')
+                    if p.strip()
+                ];
+                resolved_parts: list[object] = [];
+                for p in parts {
+                    try_sym = None;
+                    if (
+                        isinstance(scope, uni.UniScopeNode)
+                        and hasattr(scope, 'lookup')
+                    ) {
+                        try {
+                            try_sym = scope.lookup(p, deep=True);
+                        } except Exception {
+                            try_sym = None;
+                        }
+                    }
+                    if try_sym {
+                        nested = self._extract_class_info(try_sym);
+                        resolved_parts.append(nested if nested else p);
+                    } elif (p in PRIMITIVE_TYPES) {
+                        resolved_parts.append(p);
+                    } else {
+                        resolved_parts.append(p);
+                    }
+                }
+                if ((base == 'list') and (len(resolved_parts) == 1)) {
+                    return mk_list(resolved_parts[0]);
+                }
+                if ((base == 'dict') and (len(resolved_parts) == 2)) {
+                    return mk_dict(resolved_parts[0], resolved_parts[1]);
+                }
+                if ((base == 'tuple') and (len(resolved_parts) >= 1)) {
+                    return mk_tuple(*resolved_parts);
+                }
+                return tuple(([base] + resolved_parts));
+            }
+        } except Exception {
+            ;
+        }
+        sym = self._extract_type_symbol(type_expr, scope);
+        if sym {
+            nested = self._extract_class_info(sym);
+            if nested {
+                return nested;
+            }
+            if isinstance(type_expr, uni.Name) {
+                return type_expr.value;
+            }
+        }
+        return None;
+    }
+
     """Extract symbol from type expression if it's not a primitive type."""
     def _extract_type_symbol(
-         type_expr: (uni.Expr | None), scope: uni.UniScopeNode
+        type_expr: (uni.Expr | None), scope: uni.UniScopeNode
     ) -> (uni.Symbol | None) {
         if ((type_expr is None) or self._is_primitive_type(type_expr)) {
             return None;
@@ -77,31 +146,55 @@ obj MTIRGenPass(UniPass) {
         }
         return None;
     }
+
     """Extract class structure information from a symbol.
-
         Args:
-            symbol: Symbol representing a class/archetype
-
-        Returns:
-            ClassInfo object with class structure details, or None if not a class
-        """
+            symbol: Symbol representing a class/archetype"""
     def _extract_class_info(
         symbol: uni.Symbol
     ) -> (ClassInfo | None) {
+        if not hasattr(self, '_class_info_cache') {
+            self._class_info_cache = {};
+        }
+        cache_key = id(symbol);
+        if (cache_key in self._class_info_cache) {
+            return self._class_info_cache[cache_key];
+        }
         decl = symbol.decl;
         if not isinstance(decl.name_of, uni.Archetype) {
             return None;
         }
         arch_node = decl.name_of;
         class_name = arch_node.name.value;
-        base_classes: list[str] = [];
+        placeholder = ClassInfo(
+            name=class_name,
+            semstr=symbol.semstr
+            if symbol.semstr
+            else arch_node.doc.lit_value if arch_node.doc else None,
+            fields=[],
+            base_classes=[],
+            methods=[]
+        );
+        self._class_info_cache[cache_key] = placeholder;
+        base_classes: list[ClassInfo] = [];
         if arch_node.base_classes {
             for base in arch_node.base_classes {
-                if isinstance(base, uni.Name) {
-                    base_classes.append(base.value);
-                } elif isinstance(base, uni.AtomTrailer) {
-                    base_classes.append(base.unparse());
+                try_sym = self._extract_type_symbol(base, arch_node);
+                if try_sym {
+                    nested = self._extract_class_info(try_sym);
+                    if nested {
+                        base_classes.append(nested);
+                        continue;
+                    }
                 }
+                if isinstance(base, uni.Name) {
+                    base_name = base.value;
+                } elif isinstance(base, uni.AtomTrailer) {
+                    base_name = base.unparse();
+                } else {
+                    base_name = str(base);
+                }
+                base_classes.append(ClassInfo(name=base_name, semstr=None));
             }
         }
         fields: list[FieldInfo] = [];
@@ -109,127 +202,163 @@ obj MTIRGenPass(UniPass) {
             for stmt in arch_node.body {
                 if isinstance(stmt, uni.ArchHas) {
                     for var in stmt.vars {
-                        type_annotation = var.type_tag.tag if var.type_tag else None;
-                        is_primitive = self._is_primitive_type(type_annotation);
-                        type_symbol = self._extract_type_symbol(
-                            type_annotation, arch_node
-                        )
-                        if not is_primitive
+                        type_annotation = var.type_tag.tag
+                        if var.type_tag
                         else None;
+                        parsed_type = self._parse_type_expr(
+                            type_annotation, arch_node
+                        );
+                        type_symbol_obj = self._extract_type_symbol(
+                            type_annotation, arch_node
+                        );
+                        semstr_val = type_symbol_obj.semstr
+                        if type_symbol_obj
+                        else symbol.semstr;
                         field_info = FieldInfo(
                             name=var.name.value,
-                            type_annotation=type_annotation,
-                            type_symbol=type_symbol,
-                            is_primitive=is_primitive,
-                            has_default=(var.value is not None),
-                            is_static=stmt.is_static
+                            semstr=semstr_val,
+                            type_info=parsed_type
                         );
                         fields.append(field_info);
                     }
                 }
             }
         }
-        methods: list[str] = [];
+        methods: list[MethodInfo] = [];
         if (arch_node.body and isinstance(arch_node.body, Sequence)) {
             for stmt in arch_node.body {
-                if isinstance(stmt, uni.Ability) {
-                    methods.append(stmt.py_resolve_name());
+                if (isinstance(stmt, uni.Ability) and stmt.is_method) {
+                    methods.append(self._extract_method_info(stmt));
                 }
             }
         }
-        return ClassInfo(
-            class_name=class_name,
-            fields=fields,
-            base_classes=base_classes,
-            methods=methods,
-            archetype_node=arch_node
-        );
+        placeholder.fields = fields;
+        placeholder.base_classes = base_classes;
+        placeholder.methods = methods;
+        return placeholder;
     }
 
     """Extract comprehensive information from an Ability node."""
-    def _extract_function_info(<>node: uni.Ability) -> FunctionInfo {
-        function_name = <>node.py_resolve_name();
+    def _extract_function_info(node: uni.Ability) -> FunctionInfo {
+        function_name = node.py_resolve_name();
         parameters: list[ParamInfo] = [];
-        if (<>node.signature and isinstance(<>node.signature, uni.FuncSignature)) {
-            all_params = <>node.signature.get_parameters();
+        if (node.signature and isinstance(node.signature, uni.FuncSignature)) {
+            all_params = node.signature.get_parameters();
             for param in all_params {
                 type_annotation = param.type_tag.tag if param.type_tag else None;
-                is_primitive = self._is_primitive_type(type_annotation);
-                type_symbol = self._extract_type_symbol(type_annotation, <>node)
-                if not is_primitive
-                else None;
+                parsed_type = self._parse_type_expr(type_annotation, node);
+                type_symbol_obj = self._extract_type_symbol(
+                    type_annotation, node
+                );
+                semstr_val = None;
+                if type_symbol_obj {
+                    semstr_val = type_symbol_obj.semstr;
+                } elif (hasattr(param.name, 'sym') and param.name.sym) {
+                    semstr_val = param.name.sym.semstr;
+                }
                 param_info = ParamInfo(
-                    name=param.name.value,
-                    type_annotation=type_annotation,
-                    type_symbol=type_symbol,
-                    is_primitive=is_primitive,
-                    has_default=(param.value is not None)
+                    name=param.name.value, semstr=semstr_val, type_info=parsed_type
                 );
                 parameters.append(param_info);
             }
         }
-        return_type_annotation = None;
-        return_type_symbol = None;
-        return_is_primitive = False;
-        if (<>node.signature and isinstance(<>node.signature, uni.FuncSignature)) {
-            return_type_annotation = <>node.signature.return_type;
-            return_is_primitive = self._is_primitive_type(return_type_annotation);
-            return_type_symbol = self._extract_type_symbol(
-                return_type_annotation, <>node
-            )
-            if not return_is_primitive
-            else None;
+        return_type: (((str | ClassInfo) | tuple) | None) = None;
+        if (node.signature and isinstance(node.signature, uni.FuncSignature)) {
+            return_type_annotation = node.signature.return_type;
+            parsed_return = self._parse_type_expr(return_type_annotation, node);
+            return_type = parsed_return;
+        }
+        tools: list[FunctionInfo] = [];
+        if node.is_genai_ability {
+            if node.kid[-1].params {
+                for param in node.kid[-1].params {
+                    if isinstance(param, uni.KWPair) {
+                        if (param.key.value == 'tools') {
+                            for tool in param.value.values {
+                                tool_ability = node.lookup(tool.value, deep=True).symbol_table;
+                                if tool_ability.is_method {
+                                    tool_info = self._extract_method_info(
+                                        tool_ability
+                                    );
+                                } else {
+                                    tool_info = self._extract_function_info(
+                                        tool_ability
+                                    );
+                                }
+                                tools.append(tool_info);
+                            }
+                        }
+                    }
+                }
+            }
         }
         return FunctionInfo(
-            function_name=function_name,
-            parameters=parameters,
-            return_type_annotation=return_type_annotation,
-            return_type_symbol=return_type_symbol,
-            return_is_primitive=return_is_primitive
+            name=function_name,
+            semstr=node.sym.semstr
+            if (hasattr(node, 'sym') and node.sym)
+            else None,
+            params=parameters,
+            return_type=return_type,
+            tools=tools if tools else None
         );
     }
+
+    """Extract method information from an Ability node."""
+    def _extract_method_info(
+        node: uni.Ability, by_call: bool = False
+    ) -> MethodInfo {
+        func_info = self._extract_function_info(node=node);
+        parent_arch = node.find_parent_of_type(uni.Archetype);
+        parent_class_info = None;
+        if (
+            parent_arch
+            and hasattr(parent_arch.name, 'sym')
+            and parent_arch.name.sym
+            and by_call
+        ) {
+            parent_class_info = self._extract_class_info(parent_arch.name.sym);
+        }
+        return MethodInfo(
+            name=func_info.name,
+            semstr=func_info.semstr,
+            params=func_info.params,
+            return_type=func_info.return_type,
+            parent_class=parent_class_info
+        );
+    }
+
+    """Get a unique scope string for a given scope node."""
+    def _get_scope_str(node: uni.UniScopeNode) -> str {
+        self_name = node.scope_name;
+        if (node.parent_scope and isinstance(node.parent_scope, uni.UniScopeNode)) {
+            parent_scope_str = self._get_scope_str(node.parent_scope);
+            return f"{parent_scope_str}.{self_name}";
+        }
+        return self_name;
+    }
+
     """Handle entering an ability node for MTIR generation."""
-    def enter_ability(<>node: uni.Ability) -> None {
-        # print(f"MTIRGenPass: enter_ability: here");
-        if not <>node.is_genai_ability {
+    def enter_ability(node: uni.Ability) -> None {
+        if not node.is_genai_ability {
             return;
         }
-        func_info = self._extract_function_info(<>node);
-        <>node.genid = str(uuid.uuid4());
-        Jac.add_mtir_to_map(<>node, func_info);
-        # TODO: Use extracted information for MTIR generation
-        # For now, just demonstrate the extraction
-        print(f"\n{'='*60}");
-        print(f"Function: {func_info.function_name}");
-        # print(f"Parameters: {len(func_info.parameters)}")
-        # for param in func_info.parameters:
-        #     print(f"  - {param.name}: primitive={param.is_primitive}, has_symbol={param.type_symbol is not None}")
-
-        #     # If parameter has a custom type, extract its class structure
-        #     if param.type_symbol:
-        #         class_info = self._extract_class_info(param.type_symbol)
-        #         if class_info:
-        #             print(f"    Class: {class_info.class_name}")
-        #             print(f"    Fields: {len(class_info.fields)}")
-        #             for field in class_info.fields:
-        #                 print(f"      - {field.name}: {field.type_annotation.value if isinstance(field.type_annotation, uni.Name) else 'complex'} (primitive={field.is_primitive}, static={field.is_static})")
-
-        #                 # Recursively extract nested class info
-        #                 if field.type_symbol:
-        #                     nested_class = self._extract_class_info(field.type_symbol)
-        #                     if nested_class:
-        #                         print(f"        Nested class: {nested_class.class_name} with {len(nested_class.fields)} fields")
-
-        # print(f"Return: primitive={func_info.return_is_primitive}, has_symbol={func_info.return_type_symbol is not None}")
-
-        # # Extract return type class structure if it's a custom type
-        # if func_info.return_type_symbol:
-        #     class_info = self._extract_class_info(func_info.return_type_symbol)
-        #     if class_info:
-        #         print(f"  Return Class: {class_info.class_name}")
-        #         print(f"  Fields: {len(class_info.fields)}")
-        #         for field in class_info.fields:
-        #             print(f"    - {field.name}: {field.type_annotation.value if isinstance(field.type_annotation, uni.Name) else 'complex'} (primitive={field.is_primitive})")
-        # print(f"{'='*60}\n")
+        if node.is_method {
+            func_info = self._extract_method_info(node=node, by_call=True);
+            if (
+                isinstance(func_info.return_type, str)
+                and func_info.parent_class
+                and (func_info.return_type == func_info.parent_class.name)
+            ) {
+                func_info.return_type = func_info.parent_class;
+                parent_name = func_info.parent_class.name
+                if func_info.parent_class
+                else None;
+                ret_str = type_to_str(func_info.return_type);
+            }
+        } else {
+            func_info = self._extract_function_info(node=node);
+        }
+        scope = self._get_scope_str(node);
+        Jac.add_mtir_to_map(scope, func_info);
     }
 }

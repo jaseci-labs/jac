@@ -36,6 +36,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             "jaclang.compiler.passes.main.type_checker_pass",
             "jaclang.compiler.passes.main.def_impl_match_pass",
             "jaclang.compiler.passes.main.cfg_build_pass",
+            "jaclang.compiler.passes.main.mtir_gen_pass",
             "jaclang.compiler.passes.main.pyast_load_pass",
             "jaclang.compiler.passes.ecmascript.estree",
             "jaclang.compiler.passes.ecmascript.es_unparse",
