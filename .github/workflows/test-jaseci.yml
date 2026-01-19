@@ -68,7 +68,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      run: pytest -x -vv jac-client -n auto
+      run: pytest -q -x jac-client -n auto
 
   test-packages-and-docs:
     runs-on: ubuntu-latest
