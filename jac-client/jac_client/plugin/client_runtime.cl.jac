@@ -27,7 +27,7 @@ glob:pub useState = reactUseState,
      useNavigate = reactRouterUseNavigate,
      useLocation = reactRouterUseLocation,
      useParams = reactRouterUseParams,
-    JacClientErrorBoundary = ErrorBoundary;
+     JacClientErrorBoundary = ErrorBoundary;
 
 def:pub useRouter -> dict;
 def:pub navigate(path: str) -> None;
