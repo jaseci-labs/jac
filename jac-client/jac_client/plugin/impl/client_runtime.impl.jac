@@ -193,3 +193,69 @@ impl __removeLocalStorage(key: str) -> None {
         storage.removeItem(key);
     }
 }
+
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
+    return
+        <div
+            role="alert"
+            style={{
+                minHeight: "100vh",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                backgroundColor: "#f9fafb",
+                fontFamily: "system-ui, sans-serif",
+
+            }}
+        >
+            <div
+                role="alert"
+                style={{
+                    minHeight: "100vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    backgroundColor: "#f9fafb",
+                    fontFamily: "system-ui, sans-serif",
+
+                }}
+            >
+                <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
+                    🚨 Something went wrong
+                </h2>
+                <p style={{color: "#374151", marginBottom: "16px"}}>
+                    An unexpected error occurred. Please try again.
+                </p>
+                <pre
+                    style={{
+                        color: "#991b1b",
+                        background: "#fee2e2",
+                        padding: "12px",
+                        borderRadius: "8px",
+                        fontSize: "14px",
+                        overflowX: "auto",
+                        marginBottom: "16px",
+
+                    }}
+                >
+                    {error.error.message}
+                </pre>
+                <button
+                    onClick={lambda -> None { error.resetErrorBoundary();}}
+                    style={{
+                        backgroundColor: "#2563eb",
+                        color: "#fff",
+                        padding: "10px 16px",
+                        borderRadius: "8px",
+                        border: "none",
+                        cursor: "pointer",
+                        fontSize: "14px",
+
+                    }}
+                >
+                    🔄 Try again
+                </button>
+            </div>
+        </div>;
+}
