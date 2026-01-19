@@ -52,7 +52,7 @@ def get_env_with_npm() -> dict[str, str]:
 def wait_for_port(host: str, port: int, timeout: float = 60.0) -> None:
     """Block until a TCP port is accepting connections or timeout."""
     import time
-    
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
