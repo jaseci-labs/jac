@@ -95,6 +95,11 @@ cl {
         # -------------------------
         createTodo = useMutation({
             "mutationFn": create_todo,
+            # "mutationFn": lambda text:str -> any {
+            #    result = root spawn create_todo(text=text);
+
+            #     return result.reports[0][0];
+            # },
             "onSuccess": lambda -> None {
                 console.log("Todo created successfully");
                 qc.invalidateQueries({ "queryKey": ["todos"] });
