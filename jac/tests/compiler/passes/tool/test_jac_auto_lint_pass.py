@@ -618,6 +618,7 @@ class TestHasattrConversion:
         # Check that we don't have "instance.value if" (non-null-safe value with null-safe condition)
         assert "instance.value if instance?.value" not in formatted
         assert "instance.name if instance?.name" not in formatted
+        assert "instance?.name or None" not in formatted
 
         # Binary expressions with hasattr should be converted
         assert (
@@ -663,6 +664,10 @@ class TestTernaryToOrConversion:
         # Null-safe ternary should be converted
         assert 'instance?.name or "default"' in formatted
         assert 'instance?.name if instance?.name else "default"' not in formatted
+
+        # Null-safe ternary with None default should be converted
+        assert "instance?.value" in formatted
+        assert "instance?.value or None" not in formatted
 
         # Different value and condition should NOT be converted
         assert "if instance.name else" in formatted
