@@ -12,7 +12,7 @@ cl import from "@components/ui/card" {
 }
 
 cl {
-    def ShadcnExample() -> any {
+    def:pub ShadcnExample() -> any {
         has count: int = 0;
         
         def handleIncrement() {

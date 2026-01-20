@@ -306,13 +306,14 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     alias_entries.append(f'        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
     alias_entries.append(f'        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
     # User aliases - resolve relative paths using path.resolve
+    # Aliases point to compiled/ directory which is inside buildDir (.jac/client/)
     if isinstance(user_aliases, <>dict) and user_aliases {
         for (alias_key, alias_path) in user_aliases.items() {
-            # If path is relative, resolve it relative to projectRoot
+            # If path is relative, resolve it relative to buildDir/compiled/
             if isinstance(alias_path, str) {
                 # Remove leading ./ if present
                 clean_path = alias_path.lstrip('./');
-                alias_entries.append(f'        "{alias_key}": path.resolve(projectRoot, "compiled/{clean_path}"),');
+                alias_entries.append(f'        "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),');
             }
         }
     }
@@ -535,13 +536,14 @@ impl ViteBundler.create_dev_vite_config(
     alias_entries.append(f'      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
     alias_entries.append(f'      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
     # User aliases - resolve relative paths using path.resolve
+    # In dev mode, aliases also point to compiled/ directory which is inside buildDir
     if isinstance(user_aliases, <>dict) and user_aliases {
         for (alias_key, alias_path) in user_aliases.items() {
-            # If path is relative, resolve it relative to projectRoot
+            # If path is relative, resolve it relative to buildDir/compiled/
             if isinstance(alias_path, str) {
                 # Remove leading ./ if present
                 clean_path = alias_path.lstrip('./');
-                alias_entries.append(f'      "{alias_key}": path.resolve(projectRoot, "{clean_path}"),');
+                alias_entries.append(f'      "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),');
             }
         }
     }

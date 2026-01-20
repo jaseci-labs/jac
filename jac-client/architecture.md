@@ -12,34 +12,44 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 
 1. **Compilation Pipeline**
    - Compiles `.jac` files to JavaScript
-   - Copies local `.js` files to temp directory
+   - Copies local `.js`, `.ts`, `.tsx` files to temp directory
    - Preserves bare module specifiers (e.g., `"antd"`, `"react"`) for Vite to resolve
 
-2. **Dependency Processing** (`_compile_dependencies_recursively`)
-   - Recursively traverses import graphs
-   - Processes both `.jac` and `.js` imports
-   - Accumulates exports and globals across all modules
+2. **Source Discovery** (`discover_source_files`)
+   - Scans source directory recursively to find all files
+   - Categorizes files into: files to compile (`.jac`) and files to copy (`.js`, `.ts`, `.css`, etc.)
+   - Implements **companion detection** for Jac file types:
+     - `.jac` files: Always compiled
+     - `.cl.jac` files: Compiled only if standalone (no parent `.jac` exists)
+     - `.impl.jac`, `.test.jac`, `.sv.jac` files: Always skipped (companions or server-only)
+   - Excludes system directories (`__pycache__`, `node_modules`, `.jac`, `.git`, `__jac_gen__`,`jac.toml`)
+
+3. **Upfront Compilation** (`compile_all_source_files`)
+   - **Compiles ALL source files upfront** before Vite runs
+   - This ensures import aliases (e.g., `@components/ui/button`) work correctly because all files exist when Vite resolves them
+   - Replaces the old lazy/on-demand compilation approach
    - Writes compiled artifacts to `compiled/` directory
    - **Preserves nested folder structure** (see Nested Folder Handling below)
 
-3. **Import Handling** (`_process_imports`)
-   - **`.jac` imports**: Compiled and inlined
-   - **`.js` imports**: Copied and inlined
+4. **Import Handling**
+   - **`.jac` imports**: Compiled to JavaScript
+   - **`.js`/`.ts`/`.tsx` imports**: Copied as-is
    - **Bare specifiers**: Left as ES imports for Vite to bundle
+   - **Aliased imports** (e.g., `@components/...`): Resolved by Vite using configured aliases
 
-4. **Bundle Generation** (`_bundle_with_vite`)
-   - Creates React entry point (`main.js`) with:
+5. **Bundle Generation** (`compile_and_bundle`)
+   - Creates React entry point (`_entry.js`) with:
 
      ```javascript
      import React from "react";
      import { createRoot } from "react-dom/client";
-     import { app as App } from "./app.js";
+     import { app as App } from "./main.js";
      ```
 
-   - Runs `npm run compile` then copies assets (`_copy_asset_files`)
+   - Runs `npm run compile` (Babel) then copies assets
    - Runs `npm run build` to bundle with Vite
    - Generates hashed bundle file (`client.[hash].js`)
-   - Vite extracts CSS to `dist/main.css`
+   - Vite extracts CSS to `dist/styles.css`
    - Returns bundle code and SHA256 hash
 
 ### Build Flow
@@ -47,35 +57,68 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
 ![Build Pipeline](jac_client/docs/assets/pipe_line-v2.svg)
 
 ```
-1. Module compilation
-   ├── Compile root .jac file → JS
-   ├── Extract exports & globals from manifest
+1. Runtime compilation
    └── Generate client_runtime.js from client_runtime.cl.jac
 
-2. Recursive dependency resolution
-   ├── Traverse all .jac/.js imports
-   ├── Compile/copy each to compiled/ directory (preserving folder structure)
+2. Source discovery (NEW - upfront approach)
+   ├── Scan source directory recursively
+   ├── Categorize files: .jac (to compile) vs others (to copy)
+   ├── Apply companion detection rules for .cl.jac, .impl.jac, etc.
+   └── Load aliases from jac.toml configuration
+
+3. Upfront compilation (NEW - replaces lazy compilation)
+   ├── Compile ALL .jac files upfront (not on-demand)
+   ├── Copy ALL other files (.js, .ts, .tsx, .css, images)
+   ├── Preserve folder structure in compiled/ directory
    ├── Accumulate exports & globals
    └── Skip bare specifiers (handled by Vite)
 
-3. Babel compilation
+4. Copy root assets
+   ├── Copy assets/ folder to compiled/assets/
+   └── Copy custom asset types to build/assets/
+
+5. Create entry file
+   └── Generate _entry.js with React mounting code
+
+6. Babel compilation
    ├── Run npm run compile
    ├── Transpile JavaScript from compiled/ to build/
    └── Preserves CSS import statements
 
-4. Asset copying
+7. Asset copying
    ├── Copy CSS and other assets from compiled/ to build/
    └── Ensures Vite can resolve CSS imports during bundling
 
-5. Vite bundling
-   ├── Write entry point (main.js)
+8. Vite bundling
    ├── Run npm run build
-   ├── Process CSS imports and extract to dist/main.css
+   ├── Resolve all imports (including aliases like @components/...)
+   ├── Process CSS imports and extract to dist/styles.css
    ├── Locate generated bundle in dist/
    └── Return code + hash
+```
 
-6. Cleanup
-   └── Remove compiled/ directory
+#### Why Upfront Compilation?
+
+The previous **lazy/on-demand compilation** approach had a critical issue with **import aliases**:
+
+```
+Problem: Lazy compilation
+─────────────────────────
+Entry Module → Compile → Read Manifest → Find Imports → Compile Each Import
+                                              ↑
+                              Alias like @components/ui/button not resolved yet!
+                              File doesn't exist when Vite tries to find it.
+```
+
+The new **upfront compilation** approach solves this:
+
+```
+Solution: Upfront compilation
+─────────────────────────────
+1. Scan Source Directory → Find ALL .jac files
+2. Compile ALL files upfront → All JS files exist in compiled/
+3. Copy other files (js, ts, css, images)
+4. Run Babel & Vite → Aliases work because files already exist!
 ```
 
 ### Nested Folder Handling
@@ -123,17 +166,30 @@ compiled/
 
 #### Implementation Details
 
-The `_compile_dependencies_recursively` method:
+The `compile_all_source_files` method:
 
+- Uses `discover_source_files()` to scan and categorize all files
 - Tracks `source_root` as the parent directory of the root module
 - Calculates `relative_path = file_path.relative_to(source_root)` for each file
 - Creates parent directories as needed with `mkdir(parents=True, exist_ok=True)`
 - Handles edge cases where files might be outside `source_root` by falling back to filename-only
+- Uses `copy_file_to_compiled()` for unified file copying with `shutil.copy2()`
+
+The `_should_compile_jac_file` method implements companion detection:
+
+| File Type | Action |
+|-----------|--------|
+| `foo.jac` | ✅ Always compile |
+| `foo.cl.jac` (no `foo.jac` exists) | ✅ Compile (standalone) |
+| `foo.cl.jac` (has `foo.jac`) | ❌ Skip (companion - auto-embedded) |
+| `foo.impl.jac` | ❌ Always skip (companion) |
+| `foo.test.jac` | ❌ Skip (test file) |
+| `foo.sv.jac` | ❌ Skip (server-only) |
 
 This ensures that the folder structure is preserved for:
 
 - `.jac` files (compiled to `.js`)
-- `.js` files (copied as-is)
+- `.js`/`.ts`/`.tsx` files (copied as-is)
 - Other asset files (CSS, images, etc.)
 
 ### CSS Serving

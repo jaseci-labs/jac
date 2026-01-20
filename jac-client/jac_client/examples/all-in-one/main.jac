@@ -177,7 +177,7 @@ cl import from "@jac-client/utils" {
 cl import ".styles/styles.css";
 
 # Shadcn/ui components
-cl import from .components {ShadcnExample}
+cl import from .components.ShadcnExample {ShadcnExample}
  # Login Page
 cl import from .pages.loginPage { LoginPage }
 

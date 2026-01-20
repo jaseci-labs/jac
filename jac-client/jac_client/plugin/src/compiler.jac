@@ -1,5 +1,4 @@
 """Main compilation orchestration module."""
-import contextlib;
 import from collections.abc { Callable }
 import from pathlib { Path }
 import from types { ModuleType }
@@ -43,25 +42,36 @@ class ViteCompiler {
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
-    def compile_dependencies_recursively(
-        self: ViteCompiler,
-        module_path: Path,
-        visited: (set[Path] | None) = None,
-        collected_exports: (set[str] | None) = None,
-        collected_globals: (dict[(str, Any)] | None) = None,
-        source_root: (Path | None) = None
-    ) -> None;
-
     def _get_client_dir(self: ViteCompiler) -> Path;
-    def _copy_js_file(self: ViteCompiler, js_path: Path, source_root: Path) -> None;
-    def _copy_ts_file(self: ViteCompiler, ts_path: Path, source_root: Path) -> None;
-    def _copy_asset_file(
-        self: ViteCompiler, asset_path: Path, source_root: Path
-    ) -> None;
-
     def copy_root_assets(self: ViteCompiler) -> None;
     def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];
+
+    # Source Discovery
+    def discover_source_files(
+        self: ViteCompiler,
+        source_root: Path,
+        exclude_patterns: (list[str] | None) = None
+    ) -> tuple[list[Path], list[Path]];
+    def _is_jac_file(self: ViteCompiler, file_path: Path) -> bool;
+    def _should_compile_jac_file(
+        self: ViteCompiler, file_path: Path, all_jac_files: set[Path]
+    ) -> bool;
+
+    # Alias Resolution
+    def load_aliases(self: ViteCompiler, source_root: Path) -> dict[str, Path];
+
+    # Unified file copying
+    def copy_file_to_compiled(
+        self: ViteCompiler, source_path: Path, source_root: Path
+    ) -> None;
+
+    # Upfront compilation
+    def compile_all_source_files(
+        self: ViteCompiler,
+        module: ModuleType,
+        module_path: Path
+    ) -> tuple[set[str], dict[str, Any]];
 }

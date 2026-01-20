@@ -12,31 +12,42 @@ impl ViteCompiler._get_client_dir(self: ViteCompiler) -> Path {
     return self.project_dir / '.jac' / 'client';
 }
 
-"""Compile module and dependencies, then bundle with Vite."""
+"""Compile module and dependencies, then bundle with Vite.
+
+Uses upfront compilation: all source files are discovered and compiled
+before Vite runs, ensuring import aliases work correctly.
+"""
 impl ViteCompiler.compile_and_bundle(
     self: ViteCompiler, module: ModuleType, module_path: Path
 ) -> tuple[str, str, list[str], list[str]] {
+    # 1. Compile runtime utilities first
     self.compile_runtime_utils();
-    (module_js, mod, module_manifest) = self.jac_compiler.compile_module(module_path);
-    collected_exports: set[str] = set(
-        self.jac_compiler.extract_exports(module_manifest)
+
+    # 2. Compile all source files upfront (replaces lazy compilation)
+    (collected_exports, collected_globals) = self.compile_all_source_files(
+        module, module_path
     );
-    client_globals_map = self.jac_compiler.extract_globals(module_manifest, module);
-    collected_globals: dict[(str, Any)] = dict(client_globals_map);
-    self.compile_dependencies_recursively(
-        module_path,
-        collected_exports=collected_exports,
-        collected_globals=collected_globals
-    );
+
+    # 3. Copy root assets
     self.copy_root_assets();
+
+    # 4. Create entry file
     self.create_entry_file(module_path);
+
+    # 5. Run Babel transpilation
     self.babel_processor.compile();
+
+    # 6. Copy assets to build directory
     client_dir = self._get_client_dir();
     self.babel_processor.copy_assets_after_compile(
         self.compiled_dir, (client_dir / 'build'), self.asset_processor
     );
+
+    # 7. Run Vite bundler
     entry_file = client_dir / 'build' / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
+
+    # 8. Read and return bundle
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
     client_exports = sorted(collected_exports);
     client_globals = list(collected_globals.keys());
@@ -64,155 +75,6 @@ impl ViteCompiler.copy_root_assets(self: ViteCompiler) -> None {
     build_assets_dir = self._get_client_dir() / 'build' / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_custom_asset_types(root_assets_dir, build_assets_dir);
-    }
-}
-
-"""Copy an asset file to the compiled directory."""
-impl ViteCompiler._copy_asset_file(
-    self: ViteCompiler, asset_path: Path, source_root: Path
-) -> None {
-    if not asset_path.exists() {
-        return;
-    }
-    try {
-        relative_path = asset_path.relative_to(source_root);
-        output_path = self.compiled_dir / relative_path;
-    } except ValueError {
-        output_path = self.compiled_dir / asset_path.name;
-    }
-    output_path.parent.mkdir(parents=True, exist_ok=True);
-    with contextlib.suppress(FileNotFoundError, OSError) {
-        output_path.write_text(
-            asset_path.read_text(encoding='utf-8'), encoding='utf-8'
-        );
-    }
-}
-
-"""Copy a TypeScript file to the compiled directory."""
-impl ViteCompiler._copy_ts_file(
-    self: ViteCompiler, ts_path: Path, source_root: Path
-) -> None {
-    if not ts_path.exists() {
-        return;
-    }
-    try {
-        ts_code = ts_path.read_text(encoding='utf-8');
-        try {
-            relative_path = ts_path.relative_to(source_root);
-            output_path = self.compiled_dir / relative_path;
-        } except ValueError {
-            output_path = self.compiled_dir / ts_path.name;
-        }
-        output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(ts_code, encoding='utf-8');
-    } except (FileNotFoundError, OSError) { }
-}
-
-"""Copy a JavaScript file to the compiled directory."""
-impl ViteCompiler._copy_js_file(
-    self: ViteCompiler, js_path: Path, source_root: Path
-) -> None {
-    try {
-        js_code = js_path.read_text(encoding='utf-8');
-        try {
-            relative_path = js_path.relative_to(source_root);
-            output_path = self.compiled_dir / relative_path;
-        } except ValueError {
-            output_path = self.compiled_dir / js_path.name;
-        }
-        output_path.parent.mkdir(parents=True, exist_ok=True);
-        output_path.write_text(js_code, encoding='utf-8');
-    } except FileNotFoundError { }
-}
-
-"""Recursively compile/copy .jac/.js imports to temp, skipping bundling."""
-impl ViteCompiler.compile_dependencies_recursively(
-    self: ViteCompiler,
-    module_path: Path,
-    visited: (set[Path] | None) = None,
-    collected_exports: (set[str] | None) = None,
-    collected_globals: (dict[(str, Any)] | None) = None,
-    source_root: (Path | None) = None
-) -> None {
-    if (visited is None) {
-        visited = set();
-    }
-    if (collected_exports is None) {
-        collected_exports = set();
-    }
-    if (collected_globals is None) {
-        collected_globals = {};
-    }
-    module_path = module_path.resolve();
-    if (module_path in visited) {
-        return;
-    }
-    visited.add(module_path);
-    if (source_root is None) {
-        source_root = module_path.parent.resolve();
-    }
-    (module_js, mod, manifest) = self.jac_compiler.compile_module(module_path);
-    exports_list = self.jac_compiler.extract_exports(manifest);
-    collected_exports.update(exports_list);
-    non_root_globals: dict[(str, Any)] = {};
-    if manifest {
-        for name in manifest.globals {
-            non_root_globals[name] = manifest.globals_values.get(name);
-        }
-    }
-    collected_globals.update(non_root_globals);
-    combined_js = self.jac_compiler.add_runtime_imports(module_js);
-    try {
-        relative_path = module_path.relative_to(source_root);
-        # Handle compound extensions like .cl.jac, .impl.jac -> .js
-        rel_str = str(relative_path);
-        for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
-            if rel_str.endswith(compound_ext) {
-                rel_str = rel_str[:-len(compound_ext)] + '.js';
-                break;
-            }
-        } else {
-            rel_str = str(relative_path.with_suffix('.js'));
-        }
-        output_path = self.compiled_dir / rel_str;
-    } except ValueError {
-        # Handle compound extensions in filename
-        name = module_path.name;
-        for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
-            if name.endswith(compound_ext) {
-                name = name[:-len(compound_ext)] + '.js';
-                break;
-            }
-        } else {
-            name = module_path.stem + '.js';
-        }
-        output_path = self.compiled_dir / name;
-    }
-    output_path.parent.mkdir(parents=True, exist_ok=True);
-    output_path.write_text(combined_js, encoding='utf-8');
-    if (not manifest or not manifest.imports) {
-        return;
-    }
-    for (_name, import_path) in manifest.imports.items() {
-        path_obj = Path(import_path).resolve();
-        if (path_obj in visited) {
-            continue;
-        }
-        if (path_obj.suffix == '.jac') {
-            self.compile_dependencies_recursively(
-                path_obj,
-                visited,
-                collected_exports=collected_exports,
-                collected_globals=collected_globals,
-                source_root=source_root
-            );
-        } elif (path_obj.suffix == '.js') {
-            self._copy_js_file(path_obj, source_root);
-        } elif (path_obj.suffix in {'.ts','.tsx'}) {
-            self._copy_ts_file(path_obj, source_root);
-        } elif path_obj.is_file() {
-            self._copy_asset_file(path_obj, source_root);
-        }
     }
 }
 
@@ -285,4 +147,284 @@ impl ViteCompiler.init(
     self.asset_processor = AssetProcessor();
     self.babel_processor = BabelProcessor(self.project_dir);
     self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
+}
+
+# =============================================================================
+# Phase 1: Source Discovery
+# =============================================================================
+
+"""Jac file extensions that should not be copied as-is (they get compiled or skipped)."""
+glob JAC_EXTENSIONS: list[str] = ['.jac', '.cl.jac', '.impl.jac', '.test.jac', '.sv.jac'];
+
+"""Check if a file is any type of Jac file."""
+impl ViteCompiler._is_jac_file(self: ViteCompiler, file_path: Path) -> bool {
+    name = file_path.name;
+    return any(name.endswith(ext) for ext in JAC_EXTENSIONS);
+}
+
+"""Determine if a Jac file should be compiled based on companion detection rules."""
+impl ViteCompiler._should_compile_jac_file(
+    self: ViteCompiler, file_path: Path, all_jac_files: set[Path]
+) -> bool {
+    name = file_path.name;
+
+    # Always skip impl, test, and server-only files (always companions or non-client)
+    if (name.endswith('.impl.jac') or name.endswith('.test.jac') or name.endswith('.sv.jac')) {
+        return False;
+    }
+
+    # Always compile plain .jac files (not .cl.jac)
+    if (name.endswith('.jac') and not name.endswith('.cl.jac')) {
+        return True;
+    }
+
+    # For .cl.jac, check if parent .jac exists (companion detection)
+    if name.endswith('.cl.jac') {
+        parent_name = name.replace('.cl.jac', '.jac');
+        parent_path = file_path.parent / parent_name;
+        # Compile only if standalone (no parent .jac exists)
+        return parent_path.resolve() not in all_jac_files;
+    }
+
+    return False;
+}
+
+"""
+Discover all files in source directory.
+
+Returns a tuple of:
+- files_to_compile: List of Jac files that should be compiled
+- files_to_copy: List of non-Jac files that should be copied as-is
+"""
+impl ViteCompiler.discover_source_files(
+    self: ViteCompiler,
+    source_root: Path,
+    exclude_patterns: (list[str] | None) = None
+) -> tuple[list[Path], list[Path]] {
+    if exclude_patterns is None {
+        exclude_patterns = ['__pycache__', 'node_modules', '.jac', '.git', '__jac_gen__', 'jac.toml' ];
+    }
+
+    all_jac_files: set[Path] = set();
+    other_files: list[Path] = [];
+
+    # Walk the source directory recursively
+    for item in source_root.rglob('*') {
+        # Skip directories
+        if item.is_dir() {
+            continue;
+        }
+
+        # Check if any parent directory matches exclude patterns
+        rel_parts = item.relative_to(source_root).parts;
+        should_exclude = False;
+        for part in rel_parts[:-1] {  # Check all parent directories
+            if (part in exclude_patterns or part.startswith('.')) {
+                should_exclude = True;
+                break;
+            }
+        }
+        if should_exclude {
+            continue;
+        }
+
+        # Skip hidden files
+        if item.name.startswith('.') {
+            continue;
+        }
+
+        # Categorize the file
+        if self._is_jac_file(item) {
+            all_jac_files.add(item.resolve());
+        } else {
+            other_files.append(item);
+        }
+    }
+
+    # Filter Jac files to determine which to compile
+    files_to_compile = [
+        f for f in all_jac_files
+        if self._should_compile_jac_file(f, all_jac_files)
+    ];
+
+    return (sorted(files_to_compile), sorted(other_files));
+}
+
+# =============================================================================
+# Phase 2: Alias Resolution
+# =============================================================================
+
+"""
+Load aliases from jac.toml configuration.
+
+Returns a dictionary mapping alias prefixes to resolved absolute paths.
+Built-in aliases (@jac-client/utils, @jac-client/assets) are handled by Vite config.
+This method loads user-defined aliases from [plugins.client.vite.resolve.alias].
+"""
+impl ViteCompiler.load_aliases(self: ViteCompiler, source_root: Path) -> dict[str, Path] {
+    aliases: dict[str, Path] = {};
+
+    # Load user-defined aliases from vite config
+    vite_config = self.vite_bundler.config_loader.get_vite_config();
+    resolve_config = vite_config.get('resolve', {});
+    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, dict) else {};
+
+    for (alias_key, alias_path) in user_aliases.items() {
+        if isinstance(alias_path, str) {
+            # Remove leading ./ if present
+            clean_path = alias_path.lstrip('./');
+            # Resolve relative to source_root
+            resolved = (source_root / clean_path).resolve();
+            aliases[alias_key] = resolved;
+        }
+    }
+
+    return aliases;
+}
+
+# =============================================================================
+# Phase 3: Upfront Compilation
+# =============================================================================
+
+"""
+Compile all source files upfront before bundling.
+
+This replaces the lazy/on-demand compilation approach.
+All .jac files are discovered and compiled first, then all other files are copied.
+This ensures aliases work because all files exist when Vite runs.
+
+Returns:
+    tuple of (collected_exports, collected_globals)
+"""
+impl ViteCompiler.compile_all_source_files(
+    self: ViteCompiler,
+    module: ModuleType,
+    module_path: Path
+) -> tuple[set[str], dict[str, Any]] {
+    source_root = module_path.parent.resolve();
+
+    # Load aliases for reference (not used during compilation, but logged)
+    aliases = self.load_aliases(source_root);
+
+    # Discover all files in source directory
+    (files_to_compile, files_to_copy) = self.discover_source_files(source_root);
+
+    collected_exports: set[str] = set();
+    collected_globals: dict[str, Any] = {};
+
+    # First, compile the entry module to get its exports/globals
+    (entry_js, mod, entry_manifest) = self.jac_compiler.compile_module(module_path);
+    exports_list = self.jac_compiler.extract_exports(entry_manifest);
+    collected_exports.update(exports_list);
+    client_globals_map = self.jac_compiler.extract_globals(entry_manifest, module);
+    collected_globals.update(client_globals_map);
+
+    # Write entry module
+    combined_js = self.jac_compiler.add_runtime_imports(entry_js);
+    output_name = module_path.stem + '.js';
+    output_path = self.compiled_dir / output_name;
+    output_path.parent.mkdir(parents=True, exist_ok=True);
+    output_path.write_text(combined_js, encoding='utf-8');
+
+    # Track compiled files to avoid duplicates
+    compiled_files: set[Path] = {module_path.resolve()};
+
+    # Compile all discovered Jac files
+    for file_path in files_to_compile {
+        resolved_path = file_path.resolve();
+        if resolved_path in compiled_files {
+            continue;
+        }
+        compiled_files.add(resolved_path);
+
+        try {
+            (module_js, mod, manifest) = self.jac_compiler.compile_module(file_path);
+
+            # Collect exports
+            exports_list = self.jac_compiler.extract_exports(manifest);
+            collected_exports.update(exports_list);
+
+            # Collect globals (non-root modules)
+            if manifest {
+                for name in manifest.globals {
+                    collected_globals[name] = manifest.globals_values.get(name);
+                }
+            }
+
+            # Add runtime imports and write
+            combined_js = self.jac_compiler.add_runtime_imports(module_js);
+
+            # Determine output path preserving directory structure
+            try {
+                relative_path = file_path.relative_to(source_root);
+                # Handle compound extensions
+                rel_str = str(relative_path);
+                for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
+                    if rel_str.endswith(compound_ext) {
+                        rel_str = rel_str[:-len(compound_ext)] + '.js';
+                        break;
+                    }
+                } else {
+                    rel_str = str(relative_path.with_suffix('.js'));
+                }
+                output_path = self.compiled_dir / rel_str;
+            } except ValueError {
+                # File is outside source_root
+                name = file_path.name;
+                for compound_ext in ['.cl.jac', '.impl.jac', '.test.jac'] {
+                    if name.endswith(compound_ext) {
+                        name = name[:-len(compound_ext)] + '.js';
+                        break;
+                    }
+                } else {
+                    name = file_path.stem + '.js';
+                }
+                output_path = self.compiled_dir / name;
+            }
+
+            output_path.parent.mkdir(parents=True, exist_ok=True);
+            output_path.write_text(combined_js, encoding='utf-8');
+        } except Exception as e {
+            # Log but continue - some files may fail to compile
+            import logging;
+            logger = logging.getLogger(__name__);
+            logger.warning(f"Failed to compile {file_path}: {e}");
+        }
+    }
+
+    # Copy all non-Jac files (js, ts, css, images, etc.)
+    for file_path in files_to_copy {
+        self.copy_file_to_compiled(file_path, source_root);
+    }
+
+    return (collected_exports, collected_globals);
+}
+
+# =============================================================================
+# Phase 4: Unified File Copying
+# =============================================================================
+
+"""Copy any non-Jac file to the compiled directory, preserving relative path structure."""
+impl ViteCompiler.copy_file_to_compiled(
+    self: ViteCompiler, source_path: Path, source_root: Path
+) -> None {
+    import shutil;
+
+    if not source_path.exists() {
+        return;
+    }
+
+    try {
+        rel_path = source_path.relative_to(source_root);
+        dest_path = self.compiled_dir / rel_path;
+    } except ValueError {
+        # File is outside source_root, use just the filename
+        dest_path = self.compiled_dir / source_path.name;
+    }
+
+    # Ensure parent directory exists
+    dest_path.parent.mkdir(parents=True, exist_ok=True);
+
+    # Copy the file preserving metadata
+    shutil.copy2(source_path, dest_path);
 }
