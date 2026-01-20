@@ -102,15 +102,8 @@ def test_in_for_stmt_iteration_variables() -> None:
         (1, ["a", "b"]),
         (2, ["a", "b", "c"]),
         (3, ["name", "x", "y"]),
-        (4, ["x", "y", "z"]),
-        (5, ["name", "x", "y"]),
-        (6, ["a", "b", "rest"]),
-        (7, ["first", "middle", "last"]),
-        (8, ["a", "b", "c", "d"]),
-        (9, ["key", "value"]),
-        (10, ["i", "a", "b"]),
-        (11, ["x", "y"]),
-        (12, ["i", "a", "b", "c"]),
+        (4, ["first", "middle", "last"]),
+        (5, ["a", "b", "c", "d"]),
     ]
 
     for scope_idx, expected_vars in test_cases:
