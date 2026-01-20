@@ -284,7 +284,7 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     from jaclang.pycore.program import JacProgram
     from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
 
-    # Close existing context if any
+    # Close any existing context if any
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
@@ -310,3 +310,36 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
         if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
+
+
+# Flag to track if template registry has been initialized
+_template_registry_initialized = False
+
+
+@pytest.fixture
+def cli_test_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide a temporary directory for CLI tests with cwd switching.
+
+    This fixture:
+    - Initializes the template registry (once per session)
+    - Changes cwd to the temp directory
+    - Restores cwd after the test
+
+    Use this for tests that call CLI commands directly (e.g., project.create())
+    instead of spawning subprocesses for better performance.
+    """
+    global _template_registry_initialized
+
+    # Initialize template registry once
+    if not _template_registry_initialized:
+        from jaclang.project.template_registry import initialize_template_registry
+
+        initialize_template_registry()
+        _template_registry_initialized = True
+
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        yield tmp_path
+    finally:
+        os.chdir(original_cwd)

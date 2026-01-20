@@ -36,24 +36,9 @@ impl create(
         }
         return 0;
     }
-    # If no name specified and not listing templates, show usage error
+    # If no name specified, use "jactastic" as default with incrementing number if exists
     if not name {
-        print("Error: Project name is required.", file=sys.stderr);
-        print("\nUsage: jac create <name> [--use <template>]", file=sys.stderr);
-        print("\nExamples:", file=sys.stderr);
-        print(
-            "  jac create myproject              # Create with default template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create myapp --use client     # Create with 'client' template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create --list-jacpacks         # List available templates",
-            file=sys.stderr
-        );
-        return 1;
+        name = _generate_default_project_name(Path.cwd());
     }
     # Resolve template from --use (supports: registered names, file paths, URLs)
     tmpl = _resolve_template(use, registry);
@@ -154,6 +139,21 @@ impl create(
     console.print_next_steps(steps);
     console.print("\n🚀 Happy coding!\n", style="bold green");
     return 0;
+}
+
+"""Generate a default project name using 'jactastic' with incrementing number if needed."""
+def _generate_default_project_name(cwd: Path) -> str {
+    base_name = "jactastic";
+    # If jactastic doesn't exist, use it
+    if not (cwd / base_name).exists() {
+        return base_name;
+    }
+    # Otherwise, find the next available number
+    n = 1;
+    while (cwd / f"{base_name}{n}").exists() {
+        n += 1;
+    }
+    return f"{base_name}{n}";
 }
 
 """Resolve a template from a name, file path, or URL.
