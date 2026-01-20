@@ -78,18 +78,21 @@ jac add --cl react-router-dom
 This example is fully configured with shadcn/ui:
 
 ### Dependencies
+
 - `class-variance-authority` - For component variants
 - `clsx` - For conditional className
 - `tailwind-merge` - For merging Tailwind classes
 - `lucide-react` - Icon library
 
 ### Setup Files
+
 - `components.json` - shadcn/ui configuration file
 - `lib/utils.ts` - Provides the `cn()` utility function for merging class names
 - `components/ui/` - Directory containing shadcn UI components
 - `styles.css` - Includes shadcn/ui CSS variables for theming
 
 ### Example Components
+
 - `components/ui/button.tsx` - Button component with variants
 - `components/ui/card.tsx` - Card component with header, content, footer
 - `components/ShadcnExample.jac` - Example usage of shadcn UI components
@@ -124,6 +127,7 @@ cl {
 ### Adding More shadcn Components
 
 You can add more shadcn UI components by:
+
 1. Using the shadcn CLI: `npx shadcn@latest add [component-name]`
 2. Or manually copying components from [shadcn/ui](https://ui.shadcn.com/docs/components)
 

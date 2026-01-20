@@ -55,6 +55,7 @@ class ViteCompiler {
         source_root: Path,
         exclude_patterns: (list[str] | None) = None
     ) -> tuple[list[Path], list[Path]];
+
     def _is_jac_file(self: ViteCompiler, file_path: Path) -> bool;
     def _should_compile_jac_file(
         self: ViteCompiler, file_path: Path, all_jac_files: set[Path]
@@ -62,7 +63,6 @@ class ViteCompiler {
 
     # Alias Resolution
     def load_aliases(self: ViteCompiler, source_root: Path) -> dict[str, Path];
-
     # Unified file copying
     def copy_file_to_compiled(
         self: ViteCompiler, source_path: Path, source_root: Path
@@ -70,8 +70,6 @@ class ViteCompiler {
 
     # Upfront compilation
     def compile_all_source_files(
-        self: ViteCompiler,
-        module: ModuleType,
-        module_path: Path
+        self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[set[str], dict[str, Any]];
 }

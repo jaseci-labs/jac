@@ -22,31 +22,24 @@ impl ViteCompiler.compile_and_bundle(
 ) -> tuple[str, str, list[str], list[str]] {
     # 1. Compile runtime utilities first
     self.compile_runtime_utils();
-
     # 2. Compile all source files upfront (replaces lazy compilation)
     (collected_exports, collected_globals) = self.compile_all_source_files(
         module, module_path
     );
-
     # 3. Copy root assets
     self.copy_root_assets();
-
     # 4. Create entry file
     self.create_entry_file(module_path);
-
     # 5. Run Babel transpilation
     self.babel_processor.compile();
-
     # 6. Copy assets to build directory
     client_dir = self._get_client_dir();
     self.babel_processor.copy_assets_after_compile(
         self.compiled_dir, (client_dir / 'build'), self.asset_processor
     );
-
     # 7. Run Vite bundler
     entry_file = client_dir / 'build' / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
-
     # 8. Read and return bundle
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
     client_exports = sorted(collected_exports);
@@ -152,9 +145,14 @@ impl ViteCompiler.init(
 # =============================================================================
 # Phase 1: Source Discovery
 # =============================================================================
-
 """Jac file extensions that should not be copied as-is (they get compiled or skipped)."""
-glob JAC_EXTENSIONS: list[str] = ['.jac', '.cl.jac', '.impl.jac', '.test.jac', '.sv.jac'];
+glob JAC_EXTENSIONS: list[str] = [
+         '.jac',
+         '.cl.jac',
+         '.impl.jac',
+         '.test.jac',
+         '.sv.jac'
+     ];
 
 """Check if a file is any type of Jac file."""
 impl ViteCompiler._is_jac_file(self: ViteCompiler, file_path: Path) -> bool {
@@ -167,17 +165,18 @@ impl ViteCompiler._should_compile_jac_file(
     self: ViteCompiler, file_path: Path, all_jac_files: set[Path]
 ) -> bool {
     name = file_path.name;
-
     # Always skip impl, test, and server-only files (always companions or non-client)
-    if (name.endswith('.impl.jac') or name.endswith('.test.jac') or name.endswith('.sv.jac')) {
+    if (
+        name.endswith('.impl.jac')
+        or name.endswith('.test.jac')
+        or name.endswith('.sv.jac')
+    ) {
         return False;
     }
-
     # Always compile plain .jac files (not .cl.jac)
     if (name.endswith('.jac') and not name.endswith('.cl.jac')) {
         return True;
     }
-
     # For .cl.jac, check if parent .jac exists (companion detection)
     if name.endswith('.cl.jac') {
         parent_name = name.replace('.cl.jac', '.jac');
@@ -185,7 +184,6 @@ impl ViteCompiler._should_compile_jac_file(
         # Compile only if standalone (no parent .jac exists)
         return parent_path.resolve() not in all_jac_files;
     }
-
     return False;
 }
 
@@ -197,17 +195,20 @@ Returns a tuple of:
 - files_to_copy: List of non-Jac files that should be copied as-is
 """
 impl ViteCompiler.discover_source_files(
-    self: ViteCompiler,
-    source_root: Path,
-    exclude_patterns: (list[str] | None) = None
+    self: ViteCompiler, source_root: Path, exclude_patterns: (list[str] | None) = None
 ) -> tuple[list[Path], list[Path]] {
     if exclude_patterns is None {
-        exclude_patterns = ['__pycache__', 'node_modules', '.jac', '.git', '__jac_gen__', 'jac.toml' ];
+        exclude_patterns = [
+            '__pycache__',
+            'node_modules',
+            '.jac',
+            '.git',
+            '__jac_gen__',
+            'jac.toml'
+        ];
     }
-
     all_jac_files: set[Path] = set();
     other_files: list[Path] = [];
-
     # Walk the source directory recursively
     for item in source_root.rglob('*') {
         # Skip directories
@@ -219,6 +220,7 @@ impl ViteCompiler.discover_source_files(
         rel_parts = item.relative_to(source_root).parts;
         should_exclude = False;
         for part in rel_parts[:-1] {  # Check all parent directories
+
             if (part in exclude_patterns or part.startswith('.')) {
                 should_exclude = True;
                 break;
@@ -240,20 +242,18 @@ impl ViteCompiler.discover_source_files(
             other_files.append(item);
         }
     }
-
     # Filter Jac files to determine which to compile
     files_to_compile = [
-        f for f in all_jac_files
+        f
+        for f in all_jac_files
         if self._should_compile_jac_file(f, all_jac_files)
     ];
-
     return (sorted(files_to_compile), sorted(other_files));
 }
 
 # =============================================================================
 # Phase 2: Alias Resolution
 # =============================================================================
-
 """
 Load aliases from jac.toml configuration.
 
@@ -261,14 +261,16 @@ Returns a dictionary mapping alias prefixes to resolved absolute paths.
 Built-in aliases (@jac-client/utils, @jac-client/assets) are handled by Vite config.
 This method loads user-defined aliases from [plugins.client.vite.resolve.alias].
 """
-impl ViteCompiler.load_aliases(self: ViteCompiler, source_root: Path) -> dict[str, Path] {
+impl ViteCompiler.load_aliases(
+    self: ViteCompiler, source_root: Path
+) -> dict[str, Path] {
     aliases: dict[str, Path] = {};
-
     # Load user-defined aliases from vite config
     vite_config = self.vite_bundler.config_loader.get_vite_config();
     resolve_config = vite_config.get('resolve', {});
-    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, dict) else {};
-
+    user_aliases = resolve_config.get('alias', {})
+    if isinstance(resolve_config, dict)
+    else {};
     for (alias_key, alias_path) in user_aliases.items() {
         if isinstance(alias_path, str) {
             # Remove leading ./ if present
@@ -278,14 +280,12 @@ impl ViteCompiler.load_aliases(self: ViteCompiler, source_root: Path) -> dict[st
             aliases[alias_key] = resolved;
         }
     }
-
     return aliases;
 }
 
 # =============================================================================
 # Phase 3: Upfront Compilation
 # =============================================================================
-
 """
 Compile all source files upfront before bundling.
 
@@ -297,38 +297,29 @@ Returns:
     tuple of (collected_exports, collected_globals)
 """
 impl ViteCompiler.compile_all_source_files(
-    self: ViteCompiler,
-    module: ModuleType,
-    module_path: Path
+    self: ViteCompiler, module: ModuleType, module_path: Path
 ) -> tuple[set[str], dict[str, Any]] {
     source_root = module_path.parent.resolve();
-
     # Load aliases for reference (not used during compilation, but logged)
     aliases = self.load_aliases(source_root);
-
     # Discover all files in source directory
     (files_to_compile, files_to_copy) = self.discover_source_files(source_root);
-
     collected_exports: set[str] = set();
     collected_globals: dict[str, Any] = {};
-
     # First, compile the entry module to get its exports/globals
     (entry_js, mod, entry_manifest) = self.jac_compiler.compile_module(module_path);
     exports_list = self.jac_compiler.extract_exports(entry_manifest);
     collected_exports.update(exports_list);
     client_globals_map = self.jac_compiler.extract_globals(entry_manifest, module);
     collected_globals.update(client_globals_map);
-
     # Write entry module
     combined_js = self.jac_compiler.add_runtime_imports(entry_js);
     output_name = module_path.stem + '.js';
     output_path = self.compiled_dir / output_name;
     output_path.parent.mkdir(parents=True, exist_ok=True);
     output_path.write_text(combined_js, encoding='utf-8');
-
     # Track compiled files to avoid duplicates
     compiled_files: set[Path] = {module_path.resolve()};
-
     # Compile all discovered Jac files
     for file_path in files_to_compile {
         resolved_path = file_path.resolve();
@@ -391,29 +382,24 @@ impl ViteCompiler.compile_all_source_files(
             logger.warning(f"Failed to compile {file_path}: {e}");
         }
     }
-
     # Copy all non-Jac files (js, ts, css, images, etc.)
     for file_path in files_to_copy {
         self.copy_file_to_compiled(file_path, source_root);
     }
-
     return (collected_exports, collected_globals);
 }
 
 # =============================================================================
 # Phase 4: Unified File Copying
 # =============================================================================
-
 """Copy any non-Jac file to the compiled directory, preserving relative path structure."""
 impl ViteCompiler.copy_file_to_compiled(
     self: ViteCompiler, source_path: Path, source_root: Path
 ) -> None {
     import shutil;
-
     if not source_path.exists() {
         return;
     }
-
     try {
         rel_path = source_path.relative_to(source_root);
         dest_path = self.compiled_dir / rel_path;
@@ -421,10 +407,8 @@ impl ViteCompiler.copy_file_to_compiled(
         # File is outside source_root, use just the filename
         dest_path = self.compiled_dir / source_path.name;
     }
-
     # Ensure parent directory exists
     dest_path.parent.mkdir(parents=True, exist_ok=True);
-
     # Copy the file preserving metadata
     shutil.copy2(source_path, dest_path);
 }

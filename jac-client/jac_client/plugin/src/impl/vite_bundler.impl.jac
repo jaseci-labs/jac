@@ -294,17 +294,34 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     else '';
     resolve_config = vite_config_data.get('resolve', {});
     # Extract alias separately to merge with defaults
-    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, <>dict) else {};
+    user_aliases = resolve_config.get('alias', {})
+    if isinstance(resolve_config, <>dict)
+    else {};
     # Remove alias from resolve_config so we don't duplicate it
-    resolve_config_without_alias = {k: v for (k, v) in resolve_config.items() if k != 'alias'} if isinstance(resolve_config, <>dict) else {};
-    resolve_overrides_str = self._format_config_object(resolve_config_without_alias, indent=6)
-    if (isinstance(resolve_config_without_alias, <>dict) and resolve_config_without_alias)
+    resolve_config_without_alias = {
+        k: v
+        for (k, v) in resolve_config.items()
+        if k != 'alias'
+    }
+    if isinstance(resolve_config, <>dict)
+    else {};
+    resolve_overrides_str = self._format_config_object(
+        resolve_config_without_alias, indent=6
+    )
+    if (
+        isinstance(resolve_config_without_alias, <>dict)
+        and resolve_config_without_alias
+    )
     else '';
     # Build merged alias block with defaults + user aliases
     alias_entries = [];
     # Default aliases
-    alias_entries.append(f'        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
-    alias_entries.append(f'        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
+    alias_entries.append(
+        f'        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),'
+    );
+    alias_entries.append(
+        f'        "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),'
+    );
     # User aliases - resolve relative paths using path.resolve
     # Aliases point to compiled/ directory which is inside buildDir (.jac/client/)
     if isinstance(user_aliases, <>dict) and user_aliases {
@@ -313,7 +330,9 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
             if isinstance(alias_path, str) {
                 # Remove leading ./ if present
                 clean_path = alias_path.lstrip('./');
-                alias_entries.append(f'        "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),');
+                alias_entries.append(
+                    f'        "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),'
+                );
             }
         }
     }
@@ -529,12 +548,18 @@ impl ViteBundler.create_dev_vite_config(
     # Get user aliases from config
     vite_config_data = self.config_loader.get_vite_config();
     resolve_config = vite_config_data.get('resolve', {});
-    user_aliases = resolve_config.get('alias', {}) if isinstance(resolve_config, <>dict) else {};
+    user_aliases = resolve_config.get('alias', {})
+    if isinstance(resolve_config, <>dict)
+    else {};
     # Build merged alias block with defaults + user aliases
     alias_entries = [];
     # Default aliases
-    alias_entries.append(f'      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),');
-    alias_entries.append(f'      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),');
+    alias_entries.append(
+        f'      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),'
+    );
+    alias_entries.append(
+        f'      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),'
+    );
     # User aliases - resolve relative paths using path.resolve
     # In dev mode, aliases also point to compiled/ directory which is inside buildDir
     if isinstance(user_aliases, <>dict) and user_aliases {
@@ -543,7 +568,9 @@ impl ViteBundler.create_dev_vite_config(
             if isinstance(alias_path, str) {
                 # Remove leading ./ if present
                 clean_path = alias_path.lstrip('./');
-                alias_entries.append(f'      "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),');
+                alias_entries.append(
+                    f'      "{alias_key}": path.resolve(buildDir, "compiled/{clean_path}"),'
+                );
             }
         }
     }

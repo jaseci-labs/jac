@@ -14,15 +14,15 @@ cl import from "@components/ui/card" {
 cl {
     def:pub ShadcnExample() -> any {
         has count: int = 0;
-        
+
         def handleIncrement() {
             count = count + 1;
         }
-        
+
         def handleDecrement() {
             count = count - 1;
         }
-        
+
         return <div style={{"padding": "2rem", "maxWidth": "600px", "margin": "0 auto"}}>
             <Card>
                 <CardHeader>
@@ -58,4 +58,3 @@ cl {
         </div>;
     }
 }
-

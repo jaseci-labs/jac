@@ -168,6 +168,7 @@ npx shadcn@latest add dialog
 ```
 
 The CLI will automatically:
+
 - Copy the component to `components/ui/`
 - Update imports to use your configured aliases
 - Install any required dependencies
@@ -200,11 +201,11 @@ cl import from "@components/ui/card" {
 cl {
     def MyComponent() -> any {
         has count: int = 0;
-        
+
         def handleIncrement() {
             count = count + 1;
         }
-        
+
         return <Card>
             <CardHeader>
                 <CardTitle>Counter</CardTitle>
@@ -317,6 +318,7 @@ cl {
 shadcn/ui provides a comprehensive set of components:
 
 ### Form Components
+
 - Button
 - Input
 - Textarea
@@ -329,6 +331,7 @@ shadcn/ui provides a comprehensive set of components:
 - Form
 
 ### Layout Components
+
 - Card
 - Separator
 - Aspect Ratio
@@ -336,6 +339,7 @@ shadcn/ui provides a comprehensive set of components:
 - Grid
 
 ### Overlay Components
+
 - Dialog
 - Alert Dialog
 - Sheet
@@ -346,6 +350,7 @@ shadcn/ui provides a comprehensive set of components:
 - Dropdown Menu
 
 ### Data Display
+
 - Table
 - Data Table
 - Avatar
@@ -357,12 +362,14 @@ shadcn/ui provides a comprehensive set of components:
 - Carousel
 
 ### Navigation
+
 - Navigation Menu
 - Breadcrumb
 - Pagination
 - Menubar
 
 ### Feedback
+
 - Alert
 - Toast
 - Sonner
@@ -511,6 +518,7 @@ npx shadcn@latest add button --overwrite
 **Problem**: Import errors for shadcn/ui components.
 
 **Solution**:
+
 1. Verify path aliases in `jac.toml` match `components.json`
 2. Ensure components are in `components/ui/` directory
 3. Check that TypeScript can resolve the paths
@@ -520,6 +528,7 @@ npx shadcn@latest add button --overwrite
 **Problem**: Components render but styles are missing.
 
 **Solution**:
+
 1. Ensure Tailwind CSS is configured and imported
 2. Verify CSS variables are in `styles.css`
 3. Check that `@import "tailwindcss"` is in your CSS file
@@ -529,6 +538,7 @@ npx shadcn@latest add button --overwrite
 **Problem**: TypeScript errors when using components.
 
 **Solution**:
+
 1. Ensure `tsconfig.json` includes the component paths
 2. Verify imports use the correct path aliases
 3. Check that component files have proper TypeScript types
@@ -547,4 +557,3 @@ npx shadcn@latest add button --overwrite
 - [Configuration System](../advance/configuration-overview.md) - Project configuration
 - [Path Aliases](../advance/custom-config.md) - Custom path configuration
 - [TypeScript Support](../working-with-ts.md) - TypeScript in Jac
-
