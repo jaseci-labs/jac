@@ -235,11 +235,12 @@ impl ViteCompiler.discover_source_files(
             continue;
         }
 
-        # Categorize the file
-        if self._is_jac_file(item) {
-            all_jac_files.add(item.resolve());
+        # Categorize the file (resolve paths for consistency)
+        resolved_item = item.resolve();
+        if self._is_jac_file(resolved_item) {
+            all_jac_files.add(resolved_item);
         } else {
-            other_files.append(item);
+            other_files.append(resolved_item);
         }
     }
     # Filter Jac files to determine which to compile
@@ -299,7 +300,9 @@ Returns:
 impl ViteCompiler.compile_all_source_files(
     self: ViteCompiler, module: ModuleType, module_path: Path
 ) -> tuple[set[str], dict[str, Any]] {
-    source_root = module_path.parent.resolve();
+    # Resolve module_path to absolute first, then get parent
+    resolved_module_path = module_path.resolve();
+    source_root = resolved_module_path.parent;
     # Load aliases for reference (not used during compilation, but logged)
     aliases = self.load_aliases(source_root);
     # Discover all files in source directory
@@ -312,14 +315,21 @@ impl ViteCompiler.compile_all_source_files(
     collected_exports.update(exports_list);
     client_globals_map = self.jac_compiler.extract_globals(entry_manifest, module);
     collected_globals.update(client_globals_map);
-    # Write entry module
+    # Write entry module (preserve directory structure like other files)
     combined_js = self.jac_compiler.add_runtime_imports(entry_js);
-    output_name = module_path.stem + '.js';
-    output_path = self.compiled_dir / output_name;
+    try {
+        relative_path = resolved_module_path.relative_to(source_root);
+        rel_str = str(relative_path.with_suffix('.js'));
+        output_path = self.compiled_dir / rel_str;
+    } except ValueError {
+        # Entry module is outside source_root (shouldn't happen, but handle gracefully)
+        output_name = resolved_module_path.stem + '.js';
+        output_path = self.compiled_dir / output_name;
+    }
     output_path.parent.mkdir(parents=True, exist_ok=True);
     output_path.write_text(combined_js, encoding='utf-8');
-    # Track compiled files to avoid duplicates
-    compiled_files: set[Path] = {module_path.resolve()};
+    # Track compiled files to avoid duplicates (use resolved path)
+    compiled_files: set[Path] = {resolved_module_path};
     # Compile all discovered Jac files
     for file_path in files_to_compile {
         resolved_path = file_path.resolve();
