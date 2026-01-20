@@ -398,7 +398,7 @@ class SymTabBuildPass(UniPass):
             or self.find_parent_of_type(node, uni.DictCompr)
             or self.find_parent_of_type(node, uni.GenCompr)
         )
-          
+
         if parent_compr:
             self._def_insert_unpacking(node.target, parent_compr.sym_tab)
         else:
