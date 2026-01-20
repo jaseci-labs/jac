@@ -42,7 +42,10 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac create", "Create new jactastic/ directory (or jactastic1/, jactastic2/, etc.)"),
+        (
+            "jac create",
+            "Create new jactastic/ directory (or jactastic1/, jactastic2/, etc.)"
+        ),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create myapp --use client", "Create with client jacpack template"),

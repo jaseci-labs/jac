@@ -10,8 +10,8 @@ import sys
 import tempfile
 import traceback
 from collections.abc import Callable
-from pathlib import Path
 from contextlib import AbstractContextManager
+from pathlib import Path
 
 import pytest
 
