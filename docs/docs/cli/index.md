@@ -11,7 +11,6 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac run` | Execute a Jac file |
 | `jac start` | Start REST API server (use `--scale` for K8s deployment) |
 | `jac create` | Create new project |
-| `jac build` | Compile to bytecode |
 | `jac check` | Type check code |
 | `jac test` | Run tests |
 | `jac format` | Format code |
@@ -164,31 +163,6 @@ jac create
 ```
 
 **See Also:** Use `jac jacpack` to create and bundle custom templates.
-
----
-
-### jac build
-
-Compile Jac code to bytecode.
-
-```bash
-jac build [-h] [-t] [-nt] filename
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `filename` | Jac file to build | Required |
-| `-t, --typecheck` | Enable type checking | `False` |
-
-**Examples:**
-
-```bash
-# Build without type checking
-jac build main.jac
-
-# Build with type checking
-jac build main.jac -t
-```
 
 ---
 
@@ -733,7 +707,7 @@ version = "0.1.0"
 [jacpack.options]
 directories = [".jac"]
 gitignore_entries = ["*"]
-root_gitignore_entries = [".jac/", "*.jir"]
+root_gitignore_entries = [".jac/"]
 ```
 
 **Examples:**
