@@ -52,4 +52,6 @@ obj HotReloader {
 
     """Convert a .jac file path to a .js filename."""
     def _get_js_filename(file_path: str) -> str;
+
+    def _emit_client_error_overlay(file_path: str, errors: str) -> None;
 }
