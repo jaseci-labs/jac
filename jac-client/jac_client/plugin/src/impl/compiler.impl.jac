@@ -301,8 +301,9 @@ impl ViteCompiler.compile_all_source_files(
     self: ViteCompiler, module: ModuleType, module_path: Path
 ) -> tuple[set[str], dict[str, Any]] {
     # Resolve module_path to absolute first, then get parent
+    # Ensure source_root is also resolved for consistent path handling
     resolved_module_path = module_path.resolve();
-    source_root = resolved_module_path.parent;
+    source_root = resolved_module_path.parent.resolve();
     # Load aliases for reference (not used during compilation, but logged)
     aliases = self.load_aliases(source_root);
     # Discover all files in source directory
@@ -407,15 +408,18 @@ impl ViteCompiler.copy_file_to_compiled(
     self: ViteCompiler, source_path: Path, source_root: Path
 ) -> None {
     import shutil;
-    if not source_path.exists() {
+    # Resolve both paths to ensure consistent relative path calculation
+    resolved_source_path = source_path.resolve();
+    resolved_source_root = source_root.resolve();
+    if not resolved_source_path.exists() {
         return;
     }
     try {
-        rel_path = source_path.relative_to(source_root);
+        rel_path = resolved_source_path.relative_to(resolved_source_root);
         dest_path = self.compiled_dir / rel_path;
     } except ValueError {
         # File is outside source_root, use just the filename
-        dest_path = self.compiled_dir / source_path.name;
+        dest_path = self.compiled_dir / resolved_source_path.name;
     }
     # Ensure parent directory exists
     dest_path.parent.mkdir(parents=True, exist_ok=True);
