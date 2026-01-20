@@ -366,7 +366,9 @@ def test_http_client_with_system_prompt_override(
     """Test byLLM prompt override and direct HTTP model calling."""
     captured_output = io.StringIO()
     sys.stdout = captured_output
-    jac_import("direct_http_model_call", base_path=fixture_path("./system_prompt_override/"))
+    jac_import(
+        "direct_http_model_call", base_path=fixture_path("./system_prompt_override/")
+    )
     sys.stdout = sys.__stdout__
     stdout_value = captured_output.getvalue()
     assert "Hello, Alice! It's great to meet you." in stdout_value

@@ -71,9 +71,11 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     global _byllm_config_instance;
     # If project_dir is provided and differs from cached instance, recreate
-    if (_byllm_config_instance is not None 
-        and project_dir is not None 
-        and _byllm_config_instance.project_dir != project_dir) {
+    if (
+        _byllm_config_instance is not None
+        and project_dir is not None
+        and _byllm_config_instance.project_dir != project_dir
+    ) {
         _byllm_config_instance = None;
     }
     if _byllm_config_instance is None {
