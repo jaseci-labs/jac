@@ -331,6 +331,8 @@ class SymTabBuildPass(UniPass):
 
     def enter_except(self, node: uni.Except) -> None:
         self.push_scope_and_link(node)
+        if node.name:
+            node.sym_tab.def_insert(node.name, single_decl="local var")
 
     def exit_except(self, node: uni.Except) -> None:
         self.pop_scope()
