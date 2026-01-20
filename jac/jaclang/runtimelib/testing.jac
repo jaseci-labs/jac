@@ -88,6 +88,13 @@ obj JacTestClient {
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
+    """Make a PUT request with JSON body."""
+    def put(
+        path: str,
+        json: (dict[str, Any] | None) = None,
+        headers: (dict[str, str] | None) = None
+    ) -> TestResponse;
+
     """Make a request with specified method."""
     def request(
         method: str,

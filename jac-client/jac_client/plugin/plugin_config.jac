@@ -5,11 +5,13 @@ configuration system, registering:
 - Plugin metadata (name, version)
 - Config schema for [plugins.client] section
 - npm dependency type for [dependencies.npm] section
+- Project templates (client, fullstack)
 """
 
 import os;
 import subprocess;
 import sys;
+import json;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.runtime { hookimpl }
@@ -69,6 +71,11 @@ class JacClientPluginConfig {
                     "type": "dict",
                     "default": {},
                     "description": "TypeScript configuration overrides"
+                },
+                "configs": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Generate config files for npm packages. Keys are config names (e.g., 'postcss', 'tailwind'), values are the config objects to export."
                 }
             }
         };
@@ -88,192 +95,112 @@ class JacClientPluginConfig {
         };
     }
 
-    """Register the client project template."""
+    """Register the client and fullstack project templates."""
     @hookimpl
-    static def register_project_template -> dict[str, Any] {
-        return {
-            "name": "client",
-            "description": "Jac project with frontend client setup",
-            "config": {
-                "project": {
-                    "name": "{{name}}",
-                    "version": "1.0.0",
-                    "description": "Jac client application: {{name}}",
-                    "entry-point": "main.jac"
-                },
-                "dependencies": {},
-                "dependencies.npm": {"jac-client-node": "1.0.3"},
-                "dependencies.npm.dev": {"@jac-client/dev-deps": "1.0.0"},
-                "dev-dependencies": {"watchdog": ">=3.0.0"},
-                "serve": {"base_route_app": "app"},
-                "plugins.client": {}
-            },
-            "files": {
-                "main.jac": _CLIENT_MAIN_JAC,
-                "components/Button.cl.jac": _CLIENT_BUTTON_JAC,
-                "README.md": _CLIENT_README
-            },
-            "directories": ["components", "assets", ".jac/client"],
-            "gitignore_entries": [
-                "# Ignore all build artifacts in .jac directory",
-                "*"
-            ],
-            "root_gitignore_entries": [
-                "# Jac project",
-                "packages/",
-                "*.jbc",
-                "*.jir",
-                "",
-                "# Python",
-                "__pycache__/",
-                "*.py[cod]",
-                ".venv/",
-                "venv/",
-                "",
-                "# IDE",
-                ".idea/",
-                ".vscode/",
-                "*.swp",
-                "",
-                "# Node.js",
-                "node_modules/",
-                "",
-                "# Build artifacts",
-                ".jac/",
-                "*.session",
-                "*.session.*"
-            ],
-            "post_create": _post_create_client
-        };
-    }
-}
+    static def register_project_template -> list[dict[str, Any]] {
+        templates: list[dict[str, Any]] = [];
 
-# ===============================================================================
-# Client Template Content
-# ===============================================================================
-glob _CLIENT_MAIN_JAC:
-         str = '''"""Main entry point for the Jac client application."""
-
-# Client-side imports (useState is auto-injected when using `has` variables)
-cl import from react { useEffect }
-cl import from .components.Button { Button }
-
-# Client-side component
-cl {
-    def:pub app() -> any {
-        has count: int = 0;
-
-        useEffect(lambda -> None {
-            console.log("Count updated:", count);
-        }, [count]);
-
-        return <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
-            <h1>Hello, World!</h1>
-            <p>Count: {count}</p>
-            <div style={{display: "flex", gap: "1rem", marginTop: "1rem"}}>
-                <Button
-                    label="Increment"
-                    onClick={lambda -> None { count = count + 1; }}
-                    variant="primary"
-                />
-                <Button
-                    label="Reset"
-                    onClick={lambda -> None { count = 0; }}
-                    variant="secondary"
-                />
-            </div>
-        </div>;
-    }
-}
-''',
-     _CLIENT_BUTTON_JAC: str = '''"""Button component for the Jac client application."""
-
-def:pub Button(label: str, onClick: any, variant: str = "primary", disabled: bool = False) -> any {
-    base_styles = {
-        "padding": "0.75rem 1.5rem",
-        "fontSize": "1rem",
-        "fontWeight": "600",
-        "borderRadius": "0.5rem",
-        "border": "none",
-        "cursor": "not-allowed" if disabled else "pointer",
-        "transition": "all 0.2s ease"
-    };
-
-    variant_styles = {
-        "primary": {
-            "backgroundColor": "#9ca3af" if disabled else "#3b82f6",
-            "color": "#ffffff"
-        },
-        "secondary": {
-            "backgroundColor": "#e5e7eb" if disabled else "#6b7280",
-            "color": "#ffffff"
+        # Load templates from bundled JSON files
+        for template_name in ["client", "fullstack"] {
+            template = _load_template(template_name);
+            if template {
+                templates.append(template);
+            }
         }
-    };
 
-    return <button
-        style={{**base_styles, **variant_styles[variant]}}
-        onClick={onClick}
-        disabled={disabled}
-    >
-        {label}
-    </button>;
+        return templates;
+    }
 }
-''',
-     _CLIENT_README: str = '''# {{name}}
 
-A Jac client-side application with React support.
+# ===============================================================================
+# Template Loader
+# ===============================================================================
+"""Load a template from bundled JSON file."""
+def _load_template(template_name: str) -> dict[str, Any] | None {
+    # Find the template JSON file relative to this module
+    # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
+    module_dir = Path(__file__).parent.parent;  # jac_client directory
+    template_path = module_dir / "templates" / f"{template_name}.jacpack";
 
-## Project Structure
+    if not template_path.exists() {
+        # Fallback: look in installed package location
+        import from importlib.resources { files }
+        try {
+            package_files = files("jac_client");
+            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
+        } except Exception {
+            return None;
+        }
+    }
 
-```
-{{name}}/
-├── jac.toml              # Project configuration
-├── main.jac              # Main application entry
-├── components/           # Reusable components
-│   └── Button.cl.jac     # Example Jac component
-├── assets/               # Static assets (images, fonts, etc.)
-└── build/                # Build output (generated)
-```
+    if not template_path.exists() {
+        return None;
+    }
 
-## Getting Started
+    try {
+        with open(template_path, "r") as f {
+            data = json.load(f);
+        }
 
-Start the development server:
+        # Attach the post_create hook
+        data["post_create"] = _post_create_client;
 
-```bash
-jac start main.jac
-```
-
-## Components
-
-Create Jac components in `components/` as `.cl.jac` files and import them:
-
-```jac
-cl import from .components.Button { Button }
-```
-
-## Adding Dependencies
-
-Add npm packages with the --cl flag:
-
-```bash
-jac add --cl react-router-dom
-```
-''';
+        return data;
+    } except Exception as e {
+        print(
+            f"Warning: Could not load {template_name} template: {e}", file=sys.stderr
+        );
+        return None;
+    }
+}
 
 # ===============================================================================
 # Post-create Hook for Client Template
 # ===============================================================================
-"""Post-create hook to install npm packages after project creation."""
+"""Post-create hook to ensure Node.js is installed and optionally install npm packages."""
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jac_client.plugin.utils.node_installer { NodeInstaller }
+    import from jaclang.cli.console { console }
     import shutil;
 
-    # Check if npm installation should be skipped
-    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
+    # First, ensure Node.js is installed
+    console.print();
+    with console.status(
+        "[cyan]Checking Node.js installation...[/cyan]", spinner="dots"
+    ) as status {
+        node_result = NodeInstaller.ensure_node_installed(interactive=True);
+        node_installed = node_result[0];
+        message = node_result[1];
+        was_just_installed = node_result[2];
+    }
+
+    if not node_installed {
+        console.warning(f"Node.js is required for client development");
+        console.print(f"\n  {message}", file=sys.stderr);
+        console.print(
+            "  After installing Node.js, run: jac add --cl\n",
+            style="muted",
+            file=sys.stderr
+        );
         return;
     }
 
-    print("\nInstalling default npm packages...");
+    console.print(f"  ✔ {message}", style="success");
+
+    # Check if npm package installation should be skipped
+    if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
+        console.print(
+            "\n  ⏭ Skipping npm package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
+            style="muted"
+        );
+        console.print(
+            "  Run 'jac add --cl' when ready to install packages.\n", style="muted"
+        );
+        return;
+    }
+
+    console.print();
 
     try {
         # Verify jac.toml exists
@@ -310,15 +237,15 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         shutil.copy2(configs_package_json, build_package_json);
 
-        # Run npm install
+        # Run npm install using NodeInstaller to handle NVM environment
         try {
-            subprocess.run(
-                ['npm', 'install'],
-                cwd=client_dir,
-                check=True,
-                capture_output=True,
-                text=True
-            );
+            with console.status(
+                "[cyan]Installing npm packages...[/cyan]", spinner="dots"
+            ) as status {
+                NodeInstaller.run_npm_with_nvm(
+                    ['install'], cwd=client_dir, timeout=300
+                );
+            }
 
             # Move package-lock.json to configs/ if it was created
             build_package_lock = client_dir / 'package-lock.json';
@@ -330,16 +257,21 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
                 shutil.move(str(build_package_lock), str(configs_package_lock));
             }
 
-            print("Default packages installed successfully");
+            console.print("  ✔ npm packages installed", style="success");
         } except subprocess.CalledProcessError as e {
-            print(f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr);
-            print("You can install packages later with: jac add --cl", file=sys.stderr);
-        } except FileNotFoundError {
-            print(
-                "Warning: npm command not found. Install Node.js and npm to install packages.",
-                file=sys.stderr
+            console.warning(f"Failed to install packages: {e.stderr}");
+            console.print(
+                "  💡 You can install packages later with: jac add --cl\n",
+                style="muted"
             );
-            print("You can install packages later with: jac add --cl", file=sys.stderr);
+        } except FileNotFoundError {
+            console.warning(
+                "npm command not found. This may require reloading your shell."
+            );
+            console.print(
+                "  💡 You can install packages later with: jac add --cl\n",
+                style="muted"
+            );
         } finally {
             # Clean up temporary package.json
             if build_package_json.exists() {
@@ -347,8 +279,23 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             }
         }
     } except Exception as e {
-        print(f"Warning: Could not install default packages: {e}", file=sys.stderr);
-        print("You can install packages later with: jac add --cl", file=sys.stderr);
+        console.warning(f"Could not install default packages: {e}");
+        console.print(
+            "  💡 You can install packages later with: jac add --cl\n", style="muted"
+        );
+    }
+
+    # If Node.js was just installed, offer to restart terminal for full integration
+    if was_just_installed {
+        console.print();
+        console.info("Node.js was just installed via NVM");
+        console.print(
+            "\n  For Node.js to be available in your current shell:", style="muted"
+        );
+        console.print("    1. Run: source ~/.nvm/nvm.sh", style="muted");
+        console.print("    2. Or restart your terminal", style="muted");
+        console.print("\n  💡 npm commands from jac work immediately", style="info");
+        console.print();
     }
 }
 
@@ -412,7 +359,27 @@ def _npm_remove_handler(
 """Regenerate package.json from jac.toml and run npm install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jac_client.plugin.utils.node_installer { NodeInstaller }
     import shutil;
+
+    # Ensure Node.js is installed before proceeding
+    node_result = NodeInstaller.ensure_node_installed(interactive=True);
+    node_installed = node_result[0];
+    message = node_result[1];
+    was_just_installed = node_result[2];
+
+    if not node_installed {
+        raise RuntimeError(
+            f"Node.js installation required:\n{message}\n" + "Please install Node.js and try again."
+        ) ;
+    }
+
+    # Inform user if Node.js was just installed
+    if was_just_installed {
+        print(
+            "\nNote: Node.js was just installed. npm commands will work via NVM sourcing."
+        );
+    }
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
@@ -429,18 +396,13 @@ def _regenerate_and_install(project_dir: Path) -> None {
     }
 
     try {
-        subprocess.run(
-            ["npm", "install"],
-            cwd=client_dir,
-            check=True,
-            capture_output=True,
-            text=True
-        );
+        # Use NodeInstaller.run_npm_with_nvm to handle NVM environment
+        NodeInstaller.run_npm_with_nvm(["install"], cwd=client_dir, timeout=300);
     } except subprocess.CalledProcessError as e {
         raise RuntimeError(f"Failed to install npm packages: {e.stderr}") from e ;
     } except FileNotFoundError {
         raise RuntimeError(
-            "npm command not found. Ensure Node.js and npm are installed."
+            "npm command not found. This may require reloading your shell after Node.js installation."
         ) from None ;
     } finally {
         # Clean up temporary package.json

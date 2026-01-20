@@ -124,6 +124,7 @@ obj DocIRGenPass(UniPass) {
     def exit_raise_stmt(<>node: uni.RaiseStmt) -> None;
     def exit_global_vars(<>node: uni.GlobalVars) -> None;
     def exit_client_block(<>node: uni.ClientBlock) -> None;
+    def exit_server_block(<>node: uni.ServerBlock) -> None;
     def exit_module_code(<>node: uni.ModuleCode) -> None;
     def exit_global_stmt(<>node: uni.GlobalStmt) -> None;
     def exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None;

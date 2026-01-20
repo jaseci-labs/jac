@@ -59,6 +59,7 @@ from jaclang.vendor import pluggy
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
 
+    from jaclang.cli.console import JacConsole as ConsoleImpl
     from jaclang.pycore.compiler import JacCompiler
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
@@ -1408,6 +1409,11 @@ class JacBasics:
             ctx.reports.append(expr)
 
     @staticmethod
+    def log_report_yield(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
+        """Jac's async report stmt feature."""
+        pass
+
+    @staticmethod
     def refs(
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
     ) -> (
@@ -1666,6 +1672,21 @@ class JacClientBundle:
         """Build a client bundle for the supplied module."""
         builder = JacRuntimeInterface.get_client_bundle_builder()
         return builder.build(module, force=force)
+
+
+class JacConsole:
+    """Jac Console Operations - Generic interface for console output."""
+
+    @staticmethod
+    def get_console() -> ConsoleImpl:
+        """Get the console instance to use for CLI output.
+
+        Plugins can override this hook to provide their own console implementation.
+        The returned instance should be compatible with the JacConsole interface.
+        """
+        from jaclang.cli.console import JacConsole
+
+        return JacConsole()
 
 
 class JacAPIServer:
@@ -2224,7 +2245,7 @@ class JacPluginConfig:
         """Register a project template for jac create.
 
         Allows plugins to provide custom project templates that can be
-        selected via `jac create --template <name>`.
+        selected via `jac create --use <name>`.
 
         Returns:
             dict with keys:
@@ -2249,6 +2270,7 @@ class JacRuntimeInterface(
     JacCmd,
     JacBasics,
     JacClientBundle,
+    JacConsole,
     JacAPIServer,
     JacByLLM,
     JacResponseBuilder,

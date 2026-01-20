@@ -67,6 +67,11 @@ obj UserManager {
     def get_root_id(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);
     def user_exists(username: str) -> bool;
+    def update_username(current_username: str, new_username: str) -> dict[str, str];
+    def update_password(
+        username: str, current_password: str, new_password: str
+    ) -> dict[str, str];
+
     def close -> None;
 }
 
@@ -79,7 +84,7 @@ obj ExecutionManager {
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
-    def spawn_walker(
+    async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 }
@@ -154,6 +159,15 @@ obj AuthHandler {
 
     def create_user(username: str, password: str) -> TransportResponse;
     def login(username: str, password: str) -> TransportResponse;
+    def update_username(
+        current_username: str, new_username: str, token: str
+    ) -> TransportResponse;
+
+    def update_password(
+        username: str, current_password: str, new_password: str, token: str
+    ) -> TransportResponse;
+
+    def get_user_info(token: str) -> TransportResponse;
 }
 
 """Handle introspection routes."""
@@ -178,7 +192,7 @@ obj ExecutionHandler {
         name: str, args: dict[(str, Any)], username: str
     ) -> TransportResponse;
 
-    def spawn_walker(
+    async def spawn_walker(
         name: str, fields: dict[(str, Any)], username: str
     ) -> TransportResponse;
 }

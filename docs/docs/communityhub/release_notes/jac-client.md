@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.9 (Unreleased)
 
+- **Generic Config File Generation from jac.toml**: Added support for generating JavaScript config files (e.g., `postcss.config.js`, `tailwind.config.js`) directly from `jac.toml` configuration. Define configs under `[plugins.client.configs.<name>]` and they are automatically converted to `<name>.config.js` files in `.jac/client/configs/`. This eliminates the need for standalone JavaScript config files in the project root for tools like PostCSS, Tailwind (v3), ESLint, and other npm packages that use the `*.config.js` convention.
+- **Error Handling with JacClientErrorBoundary**: Introduced  error boundary handling in Jac Client apps. The new `JacClientErrorBoundary` component allows you to wrap specific parts of your component tree to catch and display errors gracefully, without affecting the entire application.
+
 ## jac-client 0.2.8 (Latest Release)
 
 - **Vite Dev Server Integration for HMR**: Added support for Hot Module Replacement during development. When using `jac start --watch`, the Vite dev server runs alongside the Jac API server with automatic proxy configuration for `/walker`, `/function`, `/user`, and `/introspect` routes. This enables instant frontend updates without full page reloads while maintaining seamless backend communication.

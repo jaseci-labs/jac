@@ -164,6 +164,61 @@ impl UserManager.user_exists(username: str) -> bool {
     return cursor.fetchone() is not None;
 }
 
+"""Update user's username."""
+impl UserManager.update_username(
+    current_username: str, new_username: str
+) -> dict[str, str] {
+    import hashlib;
+    self._ensure_connection();
+    # Check if new username already exists
+    cursor = self._conn.execute(
+        "SELECT 1 FROM users WHERE username = ? ", (new_username, )
+    );
+    if cursor.fetchone() {
+        return {'error': 'Username already taken'};
+    }
+    # Update username
+    cursor = self._conn.execute(
+        "UPDATE users SET username = ? WHERE username = ?",
+        (new_username, current_username)
+    );
+    self._conn.commit();
+    if cursor.rowcount == 0 {
+        return {'error': 'User not found'};
+    }
+    # Get updated user data
+    cursor = self._conn.execute(
+        "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
+    );
+    row = cursor.fetchone();
+    return {'username': new_username, 'token': row[0], 'root_id': row[1]};
+}
+
+"""Update user's password."""
+impl UserManager.update_password(
+    username: str, current_password: str, new_password: str
+) -> dict[str, str] {
+    import hashlib;
+    self._ensure_connection();
+    # Verify current password
+    current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
+    cursor = self._conn.execute(
+        "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
+        (username, current_password_hash)
+    );
+    if not cursor.fetchone() {
+        return {'error': 'Current password is incorrect'};
+    }
+    # Update password
+    new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
+    cursor = self._conn.execute(
+        "UPDATE users SET password_hash = ? WHERE username = ?",
+        (new_password_hash, username)
+    );
+    self._conn.commit();
+    return {'username': username, 'message': 'Password updated successfully'};
+}
+
 """Close SQLite connection."""
 impl UserManager.close -> None {
     if self._conn {
@@ -201,6 +256,7 @@ impl ExecutionManager.spawn_walker(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     import from jaclang.pycore.constructs { NodeArchetype }
+    import from inspect { iscoroutine }
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
@@ -220,7 +276,11 @@ impl ExecutionManager.spawn_walker(
         } else {
             target_node = ctx.get_root();
         }
-        Jac.spawn(<>walker, target_node);
+        spawn_result = Jac.spawn(<>walker, target_node);
+        # Handle async walkers - await the coroutine if spawn returns one
+        if iscoroutine(spawn_result) {
+            await spawn_result;
+        }
         Jac.commit();  # Persist changes
         return {
             'result': JacSerializer.serialize(<>walker),
@@ -293,6 +353,10 @@ Access level logic:
 - Explicitly marked with `pub`: no authentication required (stores False)
 - Explicitly marked with `protect` or `priv`: authentication required (stores True)
 - No access modifier specified: authentication required (stores True) - secure by default
+
+This method handles both directly defined and imported walkers/functions by:
+1. Processing the main module's AST for direct definitions
+2. Looking up the source module AST for imported walker classes
 """
 impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
@@ -303,36 +367,96 @@ impl ModuleIntrospector._extract_access_levels -> None {
     import from jaclang.pycore.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
+    # Helper to check if an archetype AST node is explicitly public
+    def is_archetype_public(arch_ast: uni.Archetype) -> bool {
+        return arch_ast.access is not None and arch_ast.access.tag.name == Tok.KW_PUB;
+    }
+    # Helper to find walker access level from a module AST
+    def find_walker_access_in_ast(
+        mod_ast: uni.Module, walker_name: str
+    ) -> (bool | None) {
+        for item in mod_ast.body {
+            if isinstance(item, uni.Archetype) and item.name.sym_name == walker_name {
+                return not is_archetype_public(item);  # True = auth required, False = public
+
+            }
+        }
+        return None;
+    }
+    # Helper to get AST for a module path
+    def get_module_ast(mod_path: str) -> (uni.Module | None) {
+        ast = Jac.program.mod.hub.get(mod_path);
+        if not ast {
+            ast = Jac.program.compile(mod_path);
+        }
+        return ast;
+    }
+    # Get main module AST
     mod_path = getattr(self._module, '__file__', None);
     if not mod_path {
         return;
     }
-    mod_ast = Jac.program.mod.hub.get(mod_path);
-    # If module not in hub, compile it to get the AST
-    if not mod_ast {
-        mod_ast = Jac.program.compile(mod_path);
-    }
+    mod_ast = get_module_ast(mod_path);
     if not mod_ast {
         return;
     }
+    # Process direct definitions in main module
     for item in mod_ast.body {
-        if (isinstance(item, uni.Ability) and (item.name_ref is not None)) {
+        if isinstance(item, uni.Ability) and item.name_ref is not None {
             func_name = item.name_ref.sym_name;
-            # Only explicitly `pub` marked functions are public (no auth required)
-            # No modifier or protect/priv = requires auth (secure by default)
-            is_explicitly_public = item.access and (item.access.tag.name == Tok.KW_PUB);
+            is_explicitly_public = item.access and item.access.tag.name == Tok.KW_PUB;
             self._function_access[func_name] = not is_explicitly_public;
         } elif isinstance(item, uni.Archetype) {
             arch_name = item.name.sym_name;
             if hasattr(self._module, arch_name) {
                 cls = getattr(self._module, arch_name);
-                if (isinstance(cls, <>type) and issubclass(cls, WalkerArchetype)) {
-                    # Only explicitly `pub` marked walkers are public (no auth required)
-                    # No modifier or protect/priv = requires auth (secure by default)
-                    is_explicitly_public = item.access
-                    and (item.access.tag.name == Tok.KW_PUB);
-                    self._walker_access[arch_name] = not is_explicitly_public;
+                if isinstance(cls, <>type) and issubclass(cls, WalkerArchetype) {
+                    self._walker_access[arch_name] = not is_archetype_public(item);
                 }
+            }
+        }
+    }
+    # Process imported walkers - look up their source module's AST
+    for (name, cls) in inspect.getmembers(self._module) {
+        if (
+            isinstance(cls, <>type)
+            and issubclass(cls, WalkerArchetype)
+            and cls is not WalkerArchetype
+            and name not in self._walker_access  # Not already processed as direct definition
+        ) {
+            # Get the source file where this walker class is defined
+            try {
+                source_file = inspect.getfile(cls);
+            } except (TypeError, OSError) {
+                # Can't determine source file, default to requiring auth
+                self._walker_access[name] = True;
+                continue;
+            }
+            # Convert Python file path to Jac file path if needed
+            # Generated Python files are in __jac_gen__ directory
+            jac_source_file = source_file;
+            if "__jac_gen__" in source_file and source_file.endswith(".py") {
+                jac_source_file = source_file.replace("__jac_gen__", "").replace(
+                    ".py", ".jac"
+                );
+            }
+            # Try to get the AST from the source module
+            source_ast = get_module_ast(jac_source_file);
+            if not source_ast {
+                # Try the original path as fallback
+                source_ast = get_module_ast(source_file);
+            }
+            if source_ast {
+                access_level = find_walker_access_in_ast(source_ast, name);
+                if access_level is not None {
+                    self._walker_access[name] = access_level;
+                } else {
+                    # Walker not found in AST, default to requiring auth (secure by default)
+                    self._walker_access[name] = True;
+                }
+            } else {
+                # Can't get AST, default to requiring auth (secure by default)
+                self._walker_access[name] = True;
             }
         }
     }
@@ -635,7 +759,7 @@ impl ResponseBuilder.send_css(handler: BaseHTTPRequestHandler, css: str) -> None
 """Add CORS headers to response."""
 impl ResponseBuilder._add_cors_headers(handler: BaseHTTPRequestHandler) -> None {
     handler.send_header('Access-Control-Allow-Origin', '*');
-    handler.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    handler.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
     handler.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
@@ -693,6 +817,124 @@ impl AuthHandler.login(username: str, password: str) -> TransportResponse {
     }
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Update user's username."""
+impl AuthHandler.update_username(
+    current_username: str, new_username: str, token: str
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    # Validate token
+    token_username = self.user_manager.validate_token(token);
+    if not token_username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Ensure user is updating their own username
+    if (token_username != current_username) {
+        return TransportResponse.fail(
+            code='FORBIDDEN',
+            message='Cannot update another user\'s username',
+            meta=Meta(extra={'http_status': 403})
+        );
+    }
+    if (not new_username) {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='New username is required',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    result = self.user_manager.update_username(current_username, new_username);
+    if ('error' in result) {
+        return TransportResponse.fail(
+            code='UPDATE_FAILED',
+            message=result.get('error', 'Username update failed'),
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Update user's password."""
+impl AuthHandler.update_password(
+    username: str, current_password: str, new_password: str, token: str
+) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    # Validate token
+    token_username = self.user_manager.validate_token(token);
+    if not token_username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Ensure user is updating their own password
+    if (token_username != username) {
+        return TransportResponse.fail(
+            code='FORBIDDEN',
+            message='Cannot update another user\'s password',
+            meta=Meta(extra={'http_status': 403})
+        );
+    }
+    if (not current_password or not new_password) {
+        return TransportResponse.fail(
+            code='VALIDATION_ERROR',
+            message='Current password and new password are required',
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    result = self.user_manager.update_password(
+        username, current_password, new_password
+    );
+    if ('error' in result) {
+        return TransportResponse.fail(
+            code='UPDATE_FAILED',
+            message=result.get('error', 'Password update failed'),
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 200})
+    );
+}
+
+"""Get authenticated user's information."""
+impl AuthHandler.get_user_info(token: str) -> TransportResponse {
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    # Validate token
+    username = self.user_manager.validate_token(token);
+    if not username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Invalid or expired token',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Get user information
+    user_data = self.user_manager.get_user(username);
+    if not user_data {
+        return TransportResponse.fail(
+            code='NOT_FOUND',
+            message='User not found',
+            meta=Meta(extra={'http_status': 404})
+        );
+    }
+    # Return user info (note: get_user returns 'email' as key, but it's actually username)
+    return TransportResponse.success(
+        data={
+            'username': username,
+            'root_id': user_data['root_id'],
+            'token': user_data['token']
+        },
+        meta=Meta(extra={'http_status': 200})
     );
 }
 
@@ -781,7 +1023,7 @@ impl ExecutionHandler.spawn_walker(
             meta=Meta(extra={'http_status': 404})
         );
     }
-    result = self.execution_manager.spawn_walker(walkers[name], fields, username);
+    result = await self.execution_manager.spawn_walker(walkers[name], fields, username);
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );
@@ -1035,6 +1277,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         'endpoints': {
                             'POST /user/register': 'Create a new user',
                             'POST /user/login': 'Authenticate and get token',
+                            'GET /user/info': 'Get user information (auth required)',
                             'GET /functions': 'List all available functions',
                             'GET /walkers': 'List all available walkers',
                             'GET /function/<name>': 'Get function signature',
@@ -1105,6 +1348,22 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                 }
                 self._send_response(server.introspection_handler.get_walker_info(name));
+                return;
+            } elif (path == '/user/info') {
+                username = self._authenticate();
+                if not username {
+                    self._send_response(
+                        TransportResponse.fail(
+                            code='UNAUTHORIZED',
+                            message='Unauthorized - Authentication required',
+                            meta=Meta(extra={'http_status': 401})
+                        )
+                    );
+                    return;
+                }
+                token = self._get_auth_token();
+                response = server.auth_handler.get_user_info(token);
+                self._send_response(response);
                 return;
             } elif (path == '/protected') {
                 username = self._authenticate();
@@ -1194,13 +1453,57 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                 }
                 fields = data | {'_jac_spawn_node': node_id};
-                response = server.execution_handler.spawn_walker(
-                    name, fields, username
+                import asyncio;
+                response = asyncio.run(
+                    server.execution_handler.spawn_walker(name, fields, username)
                 );
                 self._send_response(response);
             } else {
                 Jac.send_json(self, 404, {'error': 'Not found'});
             }
+        }
+
+        """Handle PUT requests for user updates."""
+        def do_PUT(self: JacRequestHandler) -> None {
+            parsed_path = urlparse(self.path);
+            path = parsed_path.path;
+
+            try {
+                data = self._read_json();
+            } except json.JSONDecodeError {
+                Jac.send_json(self, 400, {'error': 'Invalid JSON'});
+                return;
+            }
+
+            # Require authentication for all PUT requests
+            token = self._get_auth_token();
+            if not token {
+                Jac.send_json(self, 401, {'error': 'Authentication required'});
+                return;
+            }
+
+            if (path == '/user/username') {
+                response = server.auth_handler.update_username(
+                    data.get('current_username', ''),
+                    data.get('new_username', ''),
+                    token
+                );
+                self._send_response(response);
+                return;
+            }
+
+            if (path == '/user/password') {
+                response = server.auth_handler.update_password(
+                    data.get('username', ''),
+                    data.get('current_password', ''),
+                    data.get('new_password', ''),
+                    token
+                );
+                self._send_response(response);
+                return;
+            }
+
+            Jac.send_json(self, 404, {'error': 'Not found'});
         }
 
         """Log HTTP requests."""
@@ -1270,16 +1573,24 @@ impl JacAPIServer.start(watch: bool = False) -> None {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
-            print("Building client bundle...", flush=True);
+            import from jaclang.cli.console { console }
             start_time = time.time();
             try {
-                self.introspector.ensure_bundle();
+                with console.status(
+                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                ) as status {
+                    self.introspector.ensure_bundle();
+                }
                 elapsed = time.time() - start_time;
-                print(f"Client bundle ready ({elapsed:.1f}s).");
+                console.print(
+                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                );
             } except Exception as e {
                 import sys;
-                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-                print(f"{e}", file=sys.stderr);
+                import traceback;
+                console.warning(f"Failed to build client bundle: {e}");
+                console.print("\n  Full traceback:", style="muted", file=sys.stderr);
+                traceback.print_exc(file=sys.stderr);
                 print(
                     f"\nClient pages will not be available until this is fixed.\n",
                     file=sys.stderr
@@ -1296,6 +1607,9 @@ impl JacAPIServer.start(watch: bool = False) -> None {
         print('\nAvailable endpoints:');
         print('  POST /user/register - Create a new user');
         print('  POST /user/login - Login and get auth token');
+        print('  GET  /user/info - Get current user information (auth required)');
+        print('  PUT  /user/username - Update username (auth required)');
+        print('  PUT  /user/password - Update password (auth required)');
         print('  GET /functions - List all functions');
         print('  GET /walkers - List all walkers');
         print('  GET /function/<name> - Get function signature');
@@ -1356,6 +1670,12 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
         '/user/login',
         'Authenticate and get token',
         'Body: { "username": str, "password": str }'
+    );
+    endpoint(
+        'GET',
+        '/user/info',
+        'Get authenticated user information',
+        'Requires:  Authorization header with Bearer token'
     );
     section('INTROSPECTION', 'Authenticated');
     endpoint('GET', '/functions', 'List all functions → string[]');

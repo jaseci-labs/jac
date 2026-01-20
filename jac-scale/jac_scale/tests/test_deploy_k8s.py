@@ -58,27 +58,29 @@ def _request_with_retry(
     return response
 
 
-def test_deploy_todo_app():
+def test_deploy_all_in_one():
     """
     Test deployment using the new factory-based architecture.
-    Deploys the todo app against a live Kubernetes cluster.
+    Deploys the all-in-one app found in jac client examples against a live Kubernetes cluster.
     Validates deployment, services, sends HTTP request, and tests cleanup.
-    Use only in a test namespace.
     """
+
     # Load kubeconfig and initialize client
     config.load_kube_config()
     apps_v1 = client.AppsV1Api()
     core_v1 = client.CoreV1Api()
 
-    namespace = "todo-app"
-    app_name = "todo-app"
+    namespace = "all-in-one"
+    app_name = namespace
 
     # Set environment
     os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace})
 
     # Resolve the absolute path to the todo app folder
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    todo_app_path = os.path.join(test_dir, "../../examples/todo/src")
+    todo_app_path = os.path.join(
+        test_dir, "../../../jac-client/jac_client/examples/all-in-one"
+    )
 
     # Get configuration
     scale_config = get_scale_config()
@@ -155,24 +157,18 @@ def test_deploy_todo_app():
     )
 
     # Send POST request to create a todo (with retry for 503)
-    try:
-        url = f"http://localhost:{node_port}/walker/create_todo"
-        payload = {"text": "first-task"}
-        response = _request_with_retry("POST", url, json=payload, timeout=10)
-        assert response.status_code == 200
-        print(f"✓ Successfully created todo at {url}")
-        print(f"  Response: {response.json()}")
-    except requests.exceptions.RequestException as e:
-        print(f"Warning: Could not reach POST {url}: {e}")
+    url = f"http://localhost:{node_port}/walker/create_todo"
+    payload = {"text": "first-task"}
+    response = _request_with_retry("POST", url, json=payload, timeout=10)
+    assert response.status_code == 200
+    print(f"✓ Successfully created todo at {url}")
+    print(f"  Response: {response.json()}")
 
-    # Send GET request to retrieve the clientpage of todo app (with retry for 503)
-    try:
-        url = f"http://localhost:{node_port}/cl/app"
-        response = _request_with_retry("GET", url, timeout=10)
-        assert response.status_code == 200
-        print(f"✓ Successfully reached app page at {url}")
-    except requests.exceptions.RequestException as e:
-        print(f"Warning: Could not reach GET {url}: {e}")
+    url = f"http://localhost:{node_port}/cl/app"
+    response = _request_with_retry("GET", url, timeout=100)
+    print(f"Response status code for app page: {response.status_code}")
+    assert response.status_code == 200
+    print(f"✓ Successfully reached app page at {url}")
 
     # Cleanup using new architecture
     deployment_target.destroy(app_name)

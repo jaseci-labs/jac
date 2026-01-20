@@ -77,6 +77,137 @@ class TestServerClientMigrated:
 
         assert not fail_response.ok or "error" in fail_response.json()
 
+    def test_get_user_info_success(self, client: JacTestClient) -> None:
+        """Test successfully getting user info after registration."""
+        # Register a new user
+        register_response = client.register_user("testuser", "testpass123")
+
+        assert register_response.ok
+        assert register_response.status_code == 201
+        register_data = register_response.data
+        assert "username" in register_data
+        assert "token" in register_data
+        assert "root_id" in register_data
+        assert register_data["username"] == "testuser"
+
+        # Store the expected values
+        expected_username = register_data["username"]
+        expected_token = register_data["token"]
+        expected_root_id = register_data["root_id"]
+
+        # Get user info (token should be auto-set by register_user)
+        info_response = client.get("/user/info")
+
+        assert info_response.ok
+        assert info_response.status_code == 200
+        info_data = info_response.data
+
+        # Verify all fields match
+        assert "username" in info_data
+        assert "token" in info_data
+        assert "root_id" in info_data
+        assert info_data["username"] == expected_username
+        assert info_data["token"] == expected_token
+        assert info_data["root_id"] == expected_root_id
+
+    def test_get_user_info_after_login(self, client: JacTestClient) -> None:
+        """Test getting user info after login (not just registration)."""
+        # Register a user using helper method
+        register_response = client.register_user("loginuser", "loginpass456")
+
+        assert register_response.ok
+        register_data = register_response.data
+        expected_username = register_data["username"]
+        expected_root_id = register_data["root_id"]
+
+        # Clear auth and login again using helper method
+        client.clear_auth()
+        login_response = client.login("loginuser", "loginpass456")
+
+        assert login_response.ok
+        login_data = login_response.data
+
+        # Get user info with the login token
+        info_response = client.get("/user/info")
+
+        assert info_response.ok
+        assert info_response.status_code == 200
+        info_data = info_response.data
+
+        # Verify the info matches both registration and login data
+        assert info_data["username"] == expected_username
+        assert info_data["username"] == login_data["username"]
+        assert info_data["root_id"] == expected_root_id
+        assert info_data["root_id"] == login_data["root_id"]
+        assert info_data["token"] == login_data["token"]
+
+    def test_get_user_info_requires_auth(self, client: JacTestClient) -> None:
+        """Test that user info endpoint requires authentication."""
+        # Try to get user info without authentication
+        client.clear_auth()
+        response = client.get("/user/info")
+
+        assert not response.ok
+        assert response.status_code == 401
+        # Check response data if available, otherwise check text
+        if response.data:
+            assert "error" in response.data or "message" in response.data
+        else:
+            assert (
+                "error" in response.text.lower()
+                or "unauthorized" in response.text.lower()
+            )
+
+    def test_get_user_info_invalid_token(self, client: JacTestClient) -> None:
+        """Test that user info endpoint rejects invalid token."""
+        # Set invalid token
+        client.set_auth_token("invalid_token_12345")
+        response = client.get("/user/info")
+
+        assert not response.ok
+        assert response.status_code == 401
+        # Check response data if available, otherwise check text
+        if response.data:
+            assert "error" in response.data or "message" in response.data
+        else:
+            assert (
+                "error" in response.text.lower()
+                or "unauthorized" in response.text.lower()
+            )
+
+    def test_get_user_info_different_users(self, client: JacTestClient) -> None:
+        """Test that different users get their own info correctly."""
+        # Register first user using helper method
+        client.register_user("user1", "pass1")
+        user1_info_response = client.get("/user/info")
+        assert user1_info_response.ok
+        user1_info = user1_info_response.data
+        user1_token = user1_info["token"]
+
+        # Register second user (this clears first user's auth)
+        client.clear_auth()
+        client.register_user("user2", "pass2")
+        user2_info_response = client.get("/user/info")
+        assert user2_info_response.ok
+        user2_info = user2_info_response.data
+
+        # Verify they are different users
+        assert user1_info["username"] == "user1"
+        assert user2_info["username"] == "user2"
+        assert user1_info["root_id"] != user2_info["root_id"]
+        assert user1_info["token"] != user2_info["token"]
+
+        # Switch back to user1's token
+        client.set_auth_token(user1_token)
+        user1_info_again_response = client.get("/user/info")
+        assert user1_info_again_response.ok
+        user1_info_again = user1_info_again_response.data
+
+        # Verify we get user1's info again
+        assert user1_info_again["username"] == "user1"
+        assert user1_info_again["root_id"] == user1_info["root_id"]
+        assert user1_info_again["token"] == user1_info["token"]
+
     def test_authentication_required(self, client: JacTestClient) -> None:
         """Test that protected endpoints require authentication (migrated)."""
         response = client.get("/protected")
@@ -300,8 +431,220 @@ class TestServerClientMigrated:
         assert "message" in data
         assert "endpoints" in data
         assert "POST /user/register" in data["endpoints"]
+        assert "POST /user/login" in data["endpoints"]
+        assert "GET /user/info" in data["endpoints"]
         assert "GET /functions" in data["endpoints"]
         assert "GET /walkers" in data["endpoints"]
+
+    def test_update_username(self, client: JacTestClient) -> None:
+        """Test update username endpoint."""
+        # Create user
+        create_response = client.post(
+            "/user/register",
+            json={"username": "olduser", "password": "pass123"},
+        )
+        assert create_response.ok
+        token = create_response.data["token"]
+        original_root_id = create_response.data["root_id"]
+
+        # Update username
+        client.set_auth_token(token)
+        update_response = client.put(
+            "/user/username",
+            json={"current_username": "olduser", "new_username": "newuser"},
+        )
+        assert update_response.ok
+        assert update_response.data["username"] == "newuser"
+        assert update_response.data["root_id"] == original_root_id
+        assert "token" in update_response.data
+
+        # Login with new username should work
+        client.clear_auth()
+        login_response = client.login("newuser", "pass123")
+        assert login_response.ok
+        assert login_response.data["username"] == "newuser"
+
+        # Login with old username should fail
+        client.clear_auth()
+        old_login_response = client.login("olduser", "pass123")
+        assert not old_login_response.ok
+
+    def test_update_username_requires_auth(self, client: JacTestClient) -> None:
+        """Test that update username requires authentication."""
+        # Create user
+        client.post(
+            "/user/register",
+            json={"username": "authtest", "password": "pass123"},
+        )
+
+        # Clear auth and try to update without token
+        client.clear_auth()
+        response = client.put(
+            "/user/username",
+            json={"current_username": "authtest", "new_username": "newname"},
+        )
+        assert not response.ok
+        assert response.status_code == 401
+
+    def test_update_username_cannot_update_other_users(
+        self, client: JacTestClient
+    ) -> None:
+        """Test that users cannot update other users' usernames."""
+        # Create two users
+        user1_response = client.post(
+            "/user/register",
+            json={"username": "user1", "password": "pass1"},
+        )
+        user1_token = user1_response.data["token"]
+
+        client.clear_auth()
+        client.post(
+            "/user/register",
+            json={"username": "user2", "password": "pass2"},
+        )
+
+        # User1 tries to update user2's username
+        client.set_auth_token(user1_token)
+        response = client.put(
+            "/user/username",
+            json={"current_username": "user2", "new_username": "hacked"},
+        )
+        assert not response.ok
+        assert response.status_code == 403
+
+    def test_update_username_already_exists(self, client: JacTestClient) -> None:
+        """Test that updating to an existing username fails."""
+        # Create first user and save token
+        response1 = client.post(
+            "/user/register",
+            json={"username": "user_a", "password": "pass1"},
+        )
+        token = response1.data["token"]
+
+        # Create second user
+        client.clear_auth()
+        client.post(
+            "/user/register",
+            json={"username": "user_b", "password": "pass2"},
+        )
+
+        # Try to update user_a to user_b (already exists) - MUST set token explicitly
+        client.set_auth_token(token)
+        response = client.put(
+            "/user/username",
+            json={"current_username": "user_a", "new_username": "user_b"},
+        )
+
+        # Should fail because user_b already exists
+        assert not response.ok
+        assert response.status_code == 400
+
+    def test_update_password(self, client: JacTestClient) -> None:
+        """Test update password endpoint."""
+        # Create user
+        create_response = client.post(
+            "/user/register",
+            json={"username": "passuser", "password": "oldpass"},
+        )
+        assert create_response.ok
+        token = create_response.data["token"]
+
+        # Update password
+        client.set_auth_token(token)
+        update_response = client.put(
+            "/user/password",
+            json={
+                "username": "passuser",
+                "current_password": "oldpass",
+                "new_password": "newpass",
+            },
+        )
+        assert update_response.ok
+        assert update_response.data["username"] == "passuser"
+        assert "message" in update_response.data
+
+        # Login with new password should work
+        client.clear_auth()
+        login_response = client.login("passuser", "newpass")
+        assert login_response.ok
+
+        # Login with old password should fail
+        client.clear_auth()
+        old_login_response = client.login("passuser", "oldpass")
+        assert not old_login_response.ok
+
+    def test_update_password_requires_auth(self, client: JacTestClient) -> None:
+        """Test that update password requires authentication."""
+        # Create user
+        client.post(
+            "/user/register",
+            json={"username": "noauthpass", "password": "pass123"},
+        )
+
+        # Try to update without token
+        client.clear_auth()
+        response = client.put(
+            "/user/password",
+            json={
+                "username": "noauthpass",
+                "current_password": "pass123",
+                "new_password": "newpass",
+            },
+        )
+        assert not response.ok
+        assert response.status_code == 401
+
+    def test_update_password_wrong_current(self, client: JacTestClient) -> None:
+        """Test that update password fails with wrong current password."""
+        # Create user
+        create_response = client.post(
+            "/user/register",
+            json={"username": "wrongpass", "password": "correctpass"},
+        )
+        token = create_response.data["token"]
+
+        # Try to update with wrong current password
+        client.set_auth_token(token)
+        response = client.put(
+            "/user/password",
+            json={
+                "username": "wrongpass",
+                "current_password": "wrongpassword",
+                "new_password": "newpass",
+            },
+        )
+        assert not response.ok
+        assert response.status_code == 400
+
+    def test_update_password_cannot_update_other_users(
+        self, client: JacTestClient
+    ) -> None:
+        """Test that users cannot update other users' passwords."""
+        # Create two users
+        user1_response = client.post(
+            "/user/register",
+            json={"username": "pass_user1", "password": "pass1"},
+        )
+        user1_token = user1_response.data["token"]
+
+        client.clear_auth()
+        client.post(
+            "/user/register",
+            json={"username": "pass_user2", "password": "pass2"},
+        )
+
+        # User1 tries to update user2's password
+        client.set_auth_token(user1_token)
+        response = client.put(
+            "/user/password",
+            json={
+                "username": "pass_user2",
+                "current_password": "pass2",
+                "new_password": "hacked",
+            },
+        )
+        assert not response.ok
+        assert response.status_code == 403
 
 
 @pytest.fixture
@@ -711,3 +1054,197 @@ class TestClientRendering:
 
         # Should get error response (404 or error message)
         assert not response.ok or "error" in response.text.lower()
+
+
+# =============================================================================
+# Imported Walker Access Level Tests (GitHub Issue #4145)
+# =============================================================================
+
+
+@pytest.fixture
+def imported_access_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for serve_api_with_access_imports.jac.
+
+    This tests that :pub access modifier is recognized on imported walkers.
+    """
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("serve_api_with_access_imports.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestImportedWalkerAccessLevels:
+    """Tests for access level control on imported walkers (GitHub Issue #4145).
+
+    This tests the fix for the bug where :pub access modifier was not
+    recognized on walkers imported from other modules.
+    """
+
+    def test_imported_public_walker_without_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported public walkers can be spawned without authentication.
+
+        This is the core test for GitHub Issue #4145 - walkers marked with :pub
+        in their source module should be accessible without authentication even
+        when imported into another module.
+        """
+        # Spawn imported public walker without authentication
+        response = imported_access_client.post(
+            "/walker/PublicImportedWalker",
+            json={"message": "test from imported public walker"},
+        )
+
+        assert response.ok, f"Expected success but got: {response.data}"
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_imported_protected_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported protected walkers require authentication."""
+        # Try to spawn imported protected walker without authentication
+        response = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_imported_protected_walker_with_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported protected walkers work with authentication."""
+        # Create user and get token
+        imported_access_client.register_user("importuser", "pass123")
+
+        # Spawn imported protected walker with authentication
+        response = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "authenticated data"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_imported_default_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported walkers without access modifier require auth.
+
+        Walkers without explicit :pub, :protect, or :priv should default
+        to requiring authentication (secure by default).
+        """
+        # Try to spawn imported default walker without authentication
+        response = imported_access_client.post(
+            "/walker/DefaultImportedWalker",
+            json={"value": 100},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_local_public_walker_without_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that local public walkers still work (baseline test)."""
+        # Spawn local public walker without authentication
+        response = imported_access_client.post(
+            "/walker/LocalPublicWalker",
+            json={"msg": "local test"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_local_default_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that local default walkers require auth (baseline test)."""
+        # Try to spawn local default walker without authentication
+        response = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_mixed_local_and_imported_access(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test server with mix of local and imported walkers with different access levels."""
+        # Create authenticated user
+        imported_access_client.register_user("mixeduser", "mixedpass")
+        token = imported_access_client._auth_token
+
+        # Imported public walker without auth - should work
+        imported_access_client.clear_auth()
+        result1 = imported_access_client.post(
+            "/walker/PublicImportedWalker",
+            json={"message": "public test"},
+        )
+        assert result1.ok, (
+            f"Imported public walker should work without auth: {result1.data}"
+        )
+
+        # Local public walker without auth - should work
+        result2 = imported_access_client.post(
+            "/walker/LocalPublicWalker",
+            json={"msg": "local public test"},
+        )
+        assert result2.ok, (
+            f"Local public walker should work without auth: {result2.data}"
+        )
+
+        # Imported protected walker without auth - should fail
+        result3 = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "test"},
+        )
+        assert not result3.ok, "Imported protected walker should require auth"
+
+        # Local default walker without auth - should fail
+        result4 = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "test"},
+        )
+        assert not result4.ok, "Local default walker should require auth"
+
+        # With auth, all walkers should work
+        imported_access_client.set_auth_token(token)
+
+        result5 = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "auth test"},
+        )
+        assert result5.ok, (
+            f"Imported protected walker should work with auth: {result5.data}"
+        )
+
+        result6 = imported_access_client.post(
+            "/walker/DefaultImportedWalker",
+            json={"value": 42},
+        )
+        assert result6.ok, (
+            f"Imported default walker should work with auth: {result6.data}"
+        )
+
+        result7 = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "auth test"},
+        )
+        assert result7.ok, f"Local default walker should work with auth: {result7.data}"

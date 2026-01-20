@@ -23,7 +23,7 @@ source jac-env/bin/activate  # Linux/Mac
 # jac-env\Scripts\activate   # Windows
 
 # Install Jac
-pip install jaclang
+pip install jaclang jac-client jac-byllm jac-scale
 
 # Verify installation
 jac --version

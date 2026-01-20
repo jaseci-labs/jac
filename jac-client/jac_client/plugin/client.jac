@@ -18,6 +18,31 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
 
+"""Builds HTML head content from meta data."""
+obj HeaderBuilder {
+    has meta_data: dict,
+        function_name: str,
+        DEFAULTS: dict = {
+            "charset": "UTF-8",
+            "viewport": "width=device-width,initial-scale=1"
+        },
+        standard_tags: list = [
+            "description",
+            "keywords",
+            "author",
+            "robots",
+            "theme_color"
+        ];
+
+    def build_head -> str;
+    def _get_value(key: str) -> str;
+    def _build_special_tags -> list[str];
+    def _build_meta_tags -> list[str];
+    def _build_og_tags -> list[str];
+    def _build_link_tags -> list[str];
+    def _build_generic_meta_tags -> list[str];
+}
+
 """Jac Client."""
 class JacClient {
     @hookimpl

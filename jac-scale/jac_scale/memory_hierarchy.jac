@@ -111,6 +111,15 @@ obj MongoBackend(PersistentMemory) {
 }
 
 """
+Persistence backend type for ScaleTieredMemory.
+"""
+enum PersistenceType {
+    NONE,
+    MONGODB,
+    SQLITE
+}
+
+"""
 Scalable Tiered Memory - extends TieredMemory with distributed backends.
 
 Swaps the default implementations:
@@ -122,7 +131,7 @@ Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
-        _persistence_type: str = 'none';
+        _persistence_type: PersistenceType = PersistenceType.NONE;
 
     def init(use_cache: bool = True) -> None;
     def close -> None;

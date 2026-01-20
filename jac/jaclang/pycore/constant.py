@@ -100,6 +100,27 @@ class Constants(StrEnum):
         return self.value
 
 
+class CodeContext(Enum):
+    """Code execution context for client/server separation."""
+
+    SERVER = "server"  # Default: runs on server (Python)
+    CLIENT = "client"  # Runs on client (JavaScript/browser)
+
+    def __str__(self) -> str:
+        """Return the string representation of the context."""
+        return self.value
+
+    @property
+    def is_server(self) -> bool:
+        """Check if this is server context."""
+        return self == CodeContext.SERVER
+
+    @property
+    def is_client(self) -> bool:
+        """Check if this is client context."""
+        return self == CodeContext.CLIENT
+
+
 class EdgeDir(Enum):
     """Edge direction indicator."""
 
@@ -242,6 +263,7 @@ class Tokens(str, Enum):
     KW_CASE = "KW_CASE"
     KW_DEFAULT = "KW_DEFAULT"
     KW_CLIENT = "KW_CLIENT"
+    KW_SERVER = "KW_SERVER"
     PLUS = "PLUS"
     MINUS = "MINUS"
     STAR_MUL = "STAR_MUL"
