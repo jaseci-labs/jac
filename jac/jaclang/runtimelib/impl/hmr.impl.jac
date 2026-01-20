@@ -267,19 +267,19 @@ impl HotReloader._path_to_module(file_path: str) -> str {
 
 """Emit a client-side error overlay for compilation errors."""
 impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
-            overlay_code = f"""// HMR Compilation Error Overlay
+    overlay_code = f"""// HMR Compilation Error Overlay
     export function app() {{
-        return null; 
+        return null;
     }}
     (function() {{
     const overlayId = 'jac-hmr-error-overlay';
-    
+
     // Remove existing overlay if present
     const existingOverlay = document.getElementById(overlayId);
     if (existingOverlay) {{
         existingOverlay.remove();
     }}
-    
+
     // Create error overlay
     const overlay = document.createElement('div');
     overlay.id = overlayId;
@@ -298,7 +298,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
         padding: 20px;
         box-sizing: border-box;
     `;
-    
+
     overlay.innerHTML = `
         <div style="max-width: 1200px; margin: 0 auto;">
         <div style="background: #d32f2f; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
@@ -322,7 +322,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
         </div>
         </div>
     `;
-    
+
     // Add ESC key handler
     const escHandler = (e) => {{
         if (e.key === 'Escape') {{
@@ -331,10 +331,10 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
         }}
     }};
     document.addEventListener('keydown', escHandler);
-    
+
     // Add to DOM
     document.body.appendChild(overlay);
-    
+
     // Log to console as well
     console.error('[HMR] Compilation error in {file_path}:');
     console.error('{errors}');
@@ -343,15 +343,13 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     // Export empty object to prevent import errors
     export default {{}};
     """;
-            output_base = Path(self.base_path) / self._client_output_dir;
-            output_dir = output_base;
-            output_dir.mkdir(parents=True, exist_ok=True);
-
-            js_filename = "main.js";
-            output_path = output_dir / js_filename;
-
-            # Write the Overlay code
-            output_path.write_text(overlay_code, encoding='utf-8');
-            print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
-            return;
+    output_base = Path(self.base_path) / self._client_output_dir;
+    output_dir = output_base;
+    output_dir.mkdir(parents=True, exist_ok=True);
+    js_filename = "main.js";
+    output_path = output_dir / js_filename;
+    # Write the Overlay code
+    output_path.write_text(overlay_code, encoding='utf-8');
+    print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
+    return;
 }
