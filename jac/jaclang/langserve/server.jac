@@ -18,22 +18,44 @@ import lsprotocol.types as lspt;
 
 def debug(msg: str) -> None;
 
-"""Check syntax on change."""
+"""Handle file open - track file and schedule initial analysis."""
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
-    ls.type_check(params.text_document.uri);
+    uri = params.text_document.uri;
+    source = params.text_document.text;
+    ls.on_file_opened(uri);
+    ls.on_file_focused(uri);
+    ls.schedule_analysis(uri, source);
 }
 
-"""Check syntax on change."""
+"""Handle file save."""
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
     ls.type_check(params.text_document.uri);
 }
 
-"""Check syntax on change with debouncing."""
+"""Handle file change - schedule reanalysis with debouncing."""
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    debug("Did change: Type checking started...");
-    ls.type_check(params.text_document.uri);
+    uri = params.text_document.uri;
+    # Get the full text from content changes
+    source = None;
+    for change in params.content_changes {
+        if change?.text {
+            source = change.text;
+        }
+    }
+    if source is not None {
+        debug("Did change: Scheduling analysis...");
+        ls.schedule_analysis(uri, source);
+    } else {
+        debug("Did change: No source, falling back to type_check");
+        ls.type_check(uri);
+    }
+}
+
+"""Handle file close - stop tracking file."""
+async def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None {
+    ls.on_file_closed(params.text_document.uri);
 }
 
 def formatting(

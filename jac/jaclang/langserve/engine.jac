@@ -30,6 +30,8 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
+import from .scheduler { AnalysisScheduler, SchedulerConfig }
+import from .snapshot { SnapshotManager, ProgramSnapshot }
 
 obj Task {
     has file_uri: str,
@@ -48,7 +50,11 @@ obj JacLangServer(JacProgram, LanguageServer) {
         queue: Queue = Queue(),
         worker_future: Future | None = None,
         last_task: Task | None = None,
-        _shutdown_called: bool = False;
+        _shutdown_called: bool = False,
+        # New scheduler-based analysis (Phase 5)
+        _scheduler: AnalysisScheduler | None = None,
+        _snapshot_manager: SnapshotManager | None = None,
+        _use_scheduler: bool = False;
 
     def postinit -> None;
     def dispatcher -> None;
@@ -108,4 +114,12 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def log_info(message: str) -> None;
     def log_py(message: str) -> None;
     def shutdown -> None;
+    # Scheduler integration methods
+    def enable_scheduler -> None;
+    def disable_scheduler -> None;
+    def schedule_analysis(file_uri: str, source: str) -> None;
+    def on_file_opened(file_uri: str) -> None;
+    def on_file_closed(file_uri: str) -> None;
+    def on_file_focused(file_uri: str) -> None;
+    def _on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None;
 }

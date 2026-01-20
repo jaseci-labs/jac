@@ -556,3 +556,81 @@ impl Task.postinit -> None {
     self.cancel_token = threading.Event();
     Task._task_id += 1;
 }
+
+"""Enable the new scheduler-based analysis."""
+impl JacLangServer.enable_scheduler -> None {
+    if self._scheduler is not None {
+        return;
+    }
+    self.debug("Enabling scheduler-based analysis");
+    # Create snapshot manager
+    self._snapshot_manager = SnapshotManager();
+    # Create scheduler with default config
+    config = SchedulerConfig.default();
+    self._scheduler = AnalysisScheduler(
+        _config=config, _snapshot_manager=self._snapshot_manager
+    );
+    # Set up diagnostics callback
+    self._scheduler.set_diagnostics_callback(self._on_scheduler_diagnostics);
+    # Start scheduler
+    self._scheduler.start();
+    self._use_scheduler = True;
+    self.debug("Scheduler enabled");
+}
+
+"""Disable the scheduler and revert to queue-based analysis."""
+impl JacLangServer.disable_scheduler -> None {
+    if self._scheduler is None {
+        return;
+    }
+    self.debug("Disabling scheduler-based analysis");
+    self._scheduler.stop();
+    self._scheduler = None;
+    self._use_scheduler = False;
+    self.debug("Scheduler disabled");
+}
+
+"""Schedule a file for analysis (used by didChange)."""
+impl JacLangServer.schedule_analysis(file_uri: str, source: str) -> None {
+    if self._use_scheduler and self._scheduler is not None {
+        self._scheduler.schedule_file(file_uri, source);
+    } else {
+        # Fall back to existing queue-based approach
+        self.type_check(file_uri);
+    }
+}
+
+"""Called when a file is opened in the editor."""
+impl JacLangServer.on_file_opened(file_uri: str) -> None {
+    if self._scheduler is not None {
+        self._scheduler.mark_file_open(file_uri);
+    }
+}
+
+"""Called when a file is closed in the editor."""
+impl JacLangServer.on_file_closed(file_uri: str) -> None {
+    if self._scheduler is not None {
+        self._scheduler.mark_file_closed(file_uri);
+    }
+}
+
+"""Called when a file gains focus in the editor."""
+impl JacLangServer.on_file_focused(file_uri: str) -> None {
+    if self._scheduler is not None {
+        self._scheduler.set_focused_file(file_uri);
+    }
+}
+
+"""Handle diagnostics from the scheduler."""
+impl JacLangServer._on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None {
+    # Publish diagnostics for all files in the snapshot
+    for file_path in snapshot.hub.keys() {
+        uri = uris.from_fs_path(file_path);
+        diagnostics = utils.gen_diagnostics(
+            file_path, snapshot.errors, snapshot.warnings
+        );
+        self.publish_diagnostics(uri, diagnostics);
+    }
+    # Refresh semantic tokens
+    self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+}
