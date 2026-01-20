@@ -1,3 +1,4 @@
+import logging;
 import mimetypes;
 import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
@@ -29,7 +30,8 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_SECRET = _jwt_config['secret'],
      JWT_ALGORITHM = _jwt_config['algorithm'],
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
-     SSO_HOST = _sso_config['host'];
+     SSO_HOST = _sso_config['host'],
+     logger = logging.getLogger(__name__);
 
 class Platforms(StrEnum) {
     has GOOGLE: str = 'google';

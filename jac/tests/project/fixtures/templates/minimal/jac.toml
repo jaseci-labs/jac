@@ -1,0 +1,25 @@
+# Minimal Test Template
+# Used for testing template bundling infrastructure
+
+[project]
+name = "{{name}}"
+version = "0.1.0"
+description = "Project created from minimal template"
+entry-point = "main.jac"
+
+[dependencies]
+
+# Jacpac metadata - used when packing, stripped from created projects
+[jacpack]
+name = "minimal"
+description = "A minimal test template"
+jaclang = "0.9.0"
+
+[[jacpack.plugins]]
+name = "test-plugin"
+version = "1.0.0"
+
+[jacpack.options]
+directories = [".jac"]
+gitignore_entries = ["*"]
+root_gitignore_entries = [".jac/"]

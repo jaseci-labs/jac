@@ -5,7 +5,6 @@ Direct implementations - no delegation to cli.jac.
 
 import marshal;
 import os;
-import pickle;
 import sys;
 import types;
 import from typing { Any }
@@ -31,15 +30,12 @@ def _proc_file(filename: str) -> tuple {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
-    if (filename.endswith('.jac') or filename.endswith('.jir')) {
+    if filename.endswith('.jac') {
         mod = mod[:-4];
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     } else {
-        print(
-            'Not a valid file!\nOnly supports `.jac`, `.jir`, and `.py`',
-            file=sys.stderr
-        );
+        print('Not a valid file!\nOnly supports `.jac` and `.py`', file=sys.stderr);
         <>exit(1);
     }
     # Only set base path if not already set (allows tests to override)
@@ -59,24 +55,12 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
-        if filename.endswith(('.jac', '.py')) {
-            Jac.jac_import(
-                target=mod,
-                base_path=base,
-                override_name='__main__' if main else None,
-                lng=lng
-            );
-        } elif filename.endswith('.jir') {
-            with open(filename, 'rb') as f {
-                Jac.attach_program(pickle.load(f));
-                Jac.jac_import(
-                    target=mod,
-                    base_path=base,
-                    override_name='__main__' if main else None,
-                    lng=lng
-                );
-            }
-        }
+        Jac.jac_import(
+            target=mod,
+            base_path=base,
+            override_name='__main__' if main else None,
+            lng=lng
+        );
     } except Exception as e {
         import from jaclang.pycore.helpers { dump_traceback }
         print(dump_traceback(e), file=sys.stderr);
@@ -108,16 +92,9 @@ impl enter(
         ret_module = Jac.jac_import(
             target=mod, base_path=base, override_name='__main__' if main else None
         );
-    } elif filename.endswith('.jir') {
-        with open(filename, 'rb') as f {
-            Jac.attach_program(pickle.load(f));
-            ret_module = Jac.jac_import(
-                target=mod, base_path=base, override_name='__main__' if main else None
-            );
-        }
     } else {
         mach.close();
-        print('Not a valid file!\nOnly supports `.jac` and `.jir`', file=sys.stderr);
+        print('Not a valid file!\nOnly supports `.jac`', file=sys.stderr);
         return 1;
     }
     if ret_module {
@@ -175,14 +152,7 @@ impl start(
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
-        if filename.endswith(('.jac', '.py')) {
-            Jac.jac_import(target=mod, base_path=base, lng=lng);
-        } elif filename.endswith('.jir') {
-            with open(filename, 'rb') as f {
-                Jac.attach_program(pickle.load(f));
-                Jac.jac_import(target=mod, base_path=base, lng=lng);
-            }
-        }
+        Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
             for error in Jac.program.errors_had {
                 print(f"Error: {error}", file=sys.stderr);
@@ -279,7 +249,7 @@ impl start(
         }
     }
     # Print startup message
-    _print_startup_message(watch, no_client, port, actual_api_port);
+    _print_startup_message(watch, no_client, port, actual_api_port, base);
     try {
         server.start(watch=watch);
         return 0;
@@ -347,31 +317,101 @@ def _check_watchdog_available -> bool {
     }
 }
 
+"""Get local network IP addresses."""
+def _get_network_ips -> list[str] {
+    import socket;
+    ips = [];
+    try {
+        # Get hostname and all IP addresses
+        hostname = socket.gethostname();
+        addrs = socket.getaddrinfo(hostname, None);
+        for addr in addrs {
+            ip = addr[4][0];
+            # Filter out localhost and IPv6
+            if not ip.startswith('127.') and ':' not in ip {
+                if ip not in ips {
+                    ips.append(ip);
+                }
+            }
+        }
+    } except Exception {
+        pass;
+    }
+    return ips;
+}
+
+"""Count .jac files in directory and subdirectories."""
+def _count_jac_files(directory: str) -> int {
+    import from pathlib { Path }
+    try {
+        path = Path(directory);
+        return len(list(path.rglob('*.jac')));
+    } except Exception {
+        return 0;
+    }
+}
+
 """Print startup message based on mode."""
 def _print_startup_message(
-    watch: bool, no_client: bool, port: int, api_port: int
+    watch: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
 ) -> None {
-    import sys;
-    if watch and not no_client {
-        print(
-            f"\n[Vite] Dev server: http://localhost:{port}  <- Open this", flush=True
-        );
-        print(
-            f"[API]  REST server: http://localhost:{api_port} (proxied via Vite)",
-            flush=True
-        );
-        print(f"[HMR]  Watching *.jac for changes...\n", flush=True);
-    } elif watch and no_client {
-        print(f"\n[API]  REST server: http://localhost:{api_port}", flush=True);
-        print(f"[HMR]  Watching *.jac for changes (API only)...\n", flush=True);
-    } elif no_client {
-        print(
-            f"\n[API]  REST server: http://localhost:{api_port} (no client)\n",
-            flush=True
-        );
-    } else {
-        print(f"\n[Server] Running on http://localhost:{api_port}\n", flush=True);
+    import from jaclang.cli.console { console }
+    import from importlib.metadata { version as pkg_version }
+
+    # Print header
+    try {
+        version = pkg_version('jaclang');
+        console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
+    } except Exception {
+        console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
     }
+
+    # Build URLs list as list of tuples to allow duplicate "Network" labels (like Vite)
+    urls = [];
+    urls.append(("Local", f"http://localhost:{api_port}/"));
+
+    # Add network IPs (each as "Network" entry, just like Vite)
+    network_ips = _get_network_ips();
+    for ip in network_ips {
+        urls.append(("Network", f"http://{ip}:{api_port}/"));
+    }
+
+    # Print URLs with arrows
+    console.print_urls(urls);
+
+    console.print();
+
+    # Print mode information
+    if watch and not no_client {
+        console.print("  🚀 Server ready", style="bold green");
+        console.print();
+        console.print("  Mode: Development (with HMR)", style="muted");
+        console.print(f"    Vite:  http://localhost:{port}/", style="muted");
+        console.print(f"    API:   http://localhost:{api_port}/", style="muted");
+        console.print();
+        # Count and show watching files
+        file_count = _count_jac_files(base_path);
+        if file_count > 0 {
+            console.print_watching("**/*.jac", file_count);
+        } else {
+            console.print("  👀 Watching for changes...", style="info");
+        }
+    } elif watch and no_client {
+        console.print("  🚀 Server ready (API only)", style="bold green");
+        console.print();
+        file_count = _count_jac_files(base_path);
+        if file_count > 0 {
+            console.print_watching("**/*.jac", file_count);
+        } else {
+            console.print("  👀 Watching for changes...", style="info");
+        }
+    } elif no_client {
+        console.print("  🚀 Server ready (no client)", style="bold green");
+    } else {
+        console.print("  🚀 Server ready", style="bold green");
+    }
+
+    console.print();
 }
 
 """Start Vite dev server for HMR mode."""

@@ -1,10 +1,13 @@
 """File system watcher implementation using watchdog library."""
 
 import fnmatch;
+import logging;
 import threading;
 import time;
 import from pathlib { Path }
 import from typing { Any }
+
+glob logger = logging.getLogger(__name__);
 
 """Start watching for file changes."""
 impl JacFileWatcher.start -> None {
@@ -55,7 +58,7 @@ impl JacFileWatcher.start -> None {
     }
     flush_thread = threading.Thread(target=flush_loop, daemon=True);
     flush_thread.start();
-    print(f"[HMR] Watching for changes in: {self.watch_paths}", flush=True);
+    logger.debug(f"Watching for changes in: {self.watch_paths}");
 }
 
 """Stop watching for file changes."""
@@ -69,7 +72,7 @@ impl JacFileWatcher.stop -> None {
         self._observer.join(timeout=2.0);
         self._observer = None;
     }
-    print("[HMR] File watcher stopped", flush=True);
+    logger.debug("File watcher stopped");
 }
 
 """Add a callback to be invoked on file changes."""
