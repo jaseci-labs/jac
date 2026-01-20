@@ -640,7 +640,6 @@ JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/pycore/passes/pybc_gen_pass.py",
     "jaclang/pycore/passes/semantic_analysis_pass.py",
     "jaclang/pycore/passes/sym_tab_build_pass.py",
-    "jaclang/pycore/passes/sym_tab_link_pass.py",
     "jaclang/pycore/passes/transform.py",
     "jaclang/pycore/passes/uni_pass.py",
     "jaclang/pycore/program.py",
