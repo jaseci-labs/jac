@@ -4,6 +4,7 @@ import json;
 import from types { MethodType }
 import from typing { Callable, get_type_hints }
 import from byllm.schema { json_to_instance, type_to_schema }
+import from byllm.config_loader { get_byllm_config }
 import from byllm.types {
     LiteLLMMessage,
     Media,

@@ -19,13 +19,7 @@ glob llm: MockLLM = MockLLM(
     }
 );
 
-# Now byLLM gives the ability to override byLLM system prompts.
-# But not recommended. This is only for special use cases.
-def say_hello(name: str) -> str by llm(
-    stream = False,
-    _allow_system_override = True,
-    _system_prompt_override = "You are a friendly assistant. Greet the person warmly and briefly.",
-);
+def say_hello(name: str) -> str by llm();
 
 with entry {
     result = say_hello("Alice");

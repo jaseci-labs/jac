@@ -92,6 +92,11 @@ class JacByllmPluginConfig {
                             "description": "Drop unsupported parameters for different providers"
                         }
                     }
+                },
+                "system_prompt": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
                 }
             }
         };
