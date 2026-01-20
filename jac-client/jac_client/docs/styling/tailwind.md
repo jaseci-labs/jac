@@ -17,36 +17,47 @@ See the complete working example: [`examples/css-styling/tailwind-example/`](../
 
 ## Quick Start
 
-### 1. Install Tailwind CSS
+There are two approaches to configuring Tailwind CSS in Jac projects:
 
-Install Tailwind CSS and its Vite plugin using npm:
+### Option A: Tailwind v4 (Vite Plugin)
+
+For Tailwind CSS v4, use the native Vite plugin approach:
 
 ```bash
-npm install tailwindcss @tailwindcss/vite
+jac add --cl -d tailwindcss @tailwindcss/vite
 ```
 
-### 2. Configure Tailwind in config.json
+Configure in `jac.toml`:
 
-Add Tailwind configuration to your `config.json` file. For new projects created with `jac create_jac_app`, `config.json` is automatically created. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config`.
-
-Edit your `config.json` to add Tailwind:
-
-```json
-{
-  "vite": {
-    "plugins": [
-      "tailwindcss()"
-    ],
-    "lib_imports": [
-      "import tailwindcss from '@tailwindcss/vite'"
-    ]
-  }
-}
+```toml
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 ```
 
-**Note**: For new projects, `config.json` is automatically created when you run `jac create_jac_app`. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config` or create it manually.
+### Option B: Tailwind v3 (PostCSS - Recommended for most projects)
 
-The `vite.config.js` will be automatically generated with Tailwind support. No manual editing needed!
+For Tailwind CSS v3, use the PostCSS approach with `[plugins.client.configs]`:
+
+```bash
+jac add --cl -d tailwindcss autoprefixer postcss
+```
+
+Configure in `jac.toml`:
+
+```toml
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
+
+[plugins.client.configs.tailwind.theme.extend.fontFamily]
+sans = ["Inter", "system-ui", "-apple-system", "sans-serif"]
+```
+
+This generates `postcss.config.js` and `tailwind.config.js` automatically in `.jac/client/configs/`. No standalone config files needed in your project root!
 
 ### 3. Add Tailwind Directives
 
@@ -212,52 +223,54 @@ For custom values:
 
 ## Configuration
 
-### Vite Configuration (config.json)
+### jac.toml Configuration
 
-Tailwind is configured through `config.json` in your project root.
+Tailwind is configured through `jac.toml` in your project root.
 
-**To create the config file:**
+#### For Tailwind v4 (Vite Plugin)
 
-```bash
-jac generate_client_config
+```toml
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[dependencies.npm.dev]
+tailwindcss = "^4.0.0"
+"@tailwindcss/vite" = "^4.0.0"
 ```
 
-This creates a default `config.json` with the proper structure. Then add Tailwind configuration:
+#### For Tailwind v3 (PostCSS)
 
-```json
-{
-  "vite": {
-    "plugins": [
-      "tailwindcss()"
-    ],
-    "lib_imports": [
-      "import tailwindcss from '@tailwindcss/vite'"
-    ]
-  }
-}
+```toml
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
+
+[dependencies.npm.dev]
+tailwindcss = "^3.4.0"
+autoprefixer = "^10.4.0"
+postcss = "^8.4.0"
 ```
 
-**Note**: For new projects, `config.json` is automatically created when you run `jac create_jac_app`. For legacy projects (pre-0.2.4), you can create it using `jac generate_client_config` or create it manually.
+The config files are automatically generated in `.jac/client/configs/`. You don't need to create or edit them manually.
 
-The `vite.config.js` is automatically generated from this configuration. You don't need to edit it manually.
+### Tailwind Theme Customization
 
-### Tailwind Configuration (tailwind.config.js)
+Customize Tailwind's theme directly in `jac.toml`:
 
-Customize Tailwind's theme and settings in `tailwind.config.js`:
+```toml
+[plugins.client.configs.tailwind.theme.extend.colors]
+brand = "#your-color"
+primary = "#3490dc"
 
-```javascript
-export default {
-  theme: {
-    extend: {
-      colors: {
-        'brand': '#your-color',
-      },
-      spacing: {
-        '128': '32rem',
-      },
-    },
-  },
-}
+[plugins.client.configs.tailwind.theme.extend.spacing]
+"128" = "32rem"
+
+[plugins.client.configs.tailwind.theme.extend.fontFamily]
+sans = ["Inter", "system-ui", "sans-serif"]
 ```
 
 ## Advantages
@@ -296,31 +309,20 @@ Tailwind automatically removes unused classes in production builds, keeping bund
 
 ### Custom Colors
 
-```javascript
-// tailwind.config.js
-export default {
-  theme: {
-    extend: {
-      colors: {
-        'brand-blue': '#1e40af',
-        'brand-purple': '#7c3aed',
-      },
-    },
-  },
-}
+```toml
+# jac.toml
+[plugins.client.configs.tailwind.theme.extend.colors]
+brand-blue = "#1e40af"
+brand-purple = "#7c3aed"
 ```
 
 ### Custom Spacing
 
-```javascript
-theme: {
-  extend: {
-    spacing: {
-      '18': '4.5rem',
-      '88': '22rem',
-    },
-  },
-}
+```toml
+# jac.toml
+[plugins.client.configs.tailwind.theme.extend.spacing]
+"18" = "4.5rem"
+"88" = "22rem"
 ```
 
 ## Next Steps

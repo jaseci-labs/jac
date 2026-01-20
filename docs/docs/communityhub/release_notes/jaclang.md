@@ -4,6 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.9 (Unreleased)
 
+### Breaking Changes
+
+- **Removed `jac build` Command and JIR File Support**: The `jac build` command and `.jir` (Jac Intermediate Representation) file format have been removed. Users should run `.jac` files directly with `jac run`. The bytecode cache (`.jbc` files in `.jac/cache/`) continues to provide compilation caching automatically. If you have existing `.jir` files, simply delete them and run the `.jac` source files directly.
+
+### Features and Improvements
+
+- **Console Plugin Architecture**: Refactored console system to use a plugin-based architecture, removing the `rich` dependency from core jaclang. The base `JacConsole` now uses pure Python `print()` for all output, keeping jaclang dependency-free. Plugins (like `jac-super`) can override the console implementation via the `get_console()` hook to provide Rich-enhanced output with themes, panels, tables, and spinners. This maintains backward compatibility while allowing optional aesthetic enhancements through plugins.
+
 - **Report Yield Support**: The `report` statement now supports yield expressions (e.g., `report yield "Hello, World!";`), laying the groundwork for streaming response support in walkers.
 
 - **User Management Endpoints**:  Added new user management endpoints to the `jac start` API server:
@@ -16,11 +24,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Improved JSX Formatter**: The JSX formatter now uses soft line breaks with automatic line-length detection instead of forcing multiline formatting. Attributes stay on the same line when they fit within the line width limit (88 characters), producing more compact and readable output. For example, `<button id="submit" disabled />` now stays on one line instead of breaking each attribute onto separate lines.
 
-- **Template Bundling Infrastructure**: Added `jac jacpac pack` command to bundle project templates into distributable `.jacpac` files. Templates are defined using a `jacpac.toml` manifest with metadata, config, and options, alongside template source files with `{{name}}` placeholders. The bundled JSON format embeds all file contents for easy distribution, and templates can be loaded from either directories or `.jacpac` files for use with `jac create --template`.
+- **Template Bundling Infrastructure**: Added `jac jacpack pack` command to bundle project templates into distributable `.jacpack` files. Templates are defined by adding a `[jacpack]` section to `jac.toml` with metadata and options, alongside template source files with `{{name}}` placeholders. The bundled JSON format embeds all file contents for easy distribution, and templates can be loaded from either directories or `.jacpack` files for use with `jac create --use`.
 
 - **Secure by Default API Endpoints**: Walkers and functions exposed as API endpoints via `jac start` now **require authentication by default**. Previously, endpoints without an explicit access modifier were treated as public. Now, only endpoints explicitly marked with `: pub` are publicly accessible without authentication. This "secure by default" approach prevents accidental exposure of sensitive endpoints. Use `: pub` to make endpoints public (e.g., `walker : pub MyPublicWalker { ... }`).
 
 - **Default `main.jac` for `jac start`**: The `jac start` command now defaults to `main.jac` when no filename is provided, making it easier to start applications in standard project structures. You can still specify a different file explicitly (e.g., `jac start app.jac`), and the command provides helpful error messages if `main.jac` is not found.
+
+- **Renamed Template Flags for `jac create`**: The `--template`/`-t` flag has been renamed to `--use`/`-u`, and `--list-templates`/`-l` has been renamed to `--list-jacpacks`/`-l`. This aligns the CLI with jacpack terminology for clearer naming (e.g., `jac create myapp --use client`, `jac create --list-jacpacks`).
+
+- **Flexible Template Sources for `jac create`**: The `--use` flag now supports local file paths to `.jacpack` files, template directories, and URLs for downloading remote templates (e.g., `jac create --use ./my.jacpack` or `jac create --use https://example.com/template.jacpack`).
 
 ## jaclang 0.9.8 (Latest Release)
 

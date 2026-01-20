@@ -1054,3 +1054,197 @@ class TestClientRendering:
 
         # Should get error response (404 or error message)
         assert not response.ok or "error" in response.text.lower()
+
+
+# =============================================================================
+# Imported Walker Access Level Tests (GitHub Issue #4145)
+# =============================================================================
+
+
+@pytest.fixture
+def imported_access_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for serve_api_with_access_imports.jac.
+
+    This tests that :pub access modifier is recognized on imported walkers.
+    """
+    from jaclang.runtimelib.testing import JacTestClient
+
+    client = JacTestClient.from_file(
+        fixture_abs_path("serve_api_with_access_imports.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestImportedWalkerAccessLevels:
+    """Tests for access level control on imported walkers (GitHub Issue #4145).
+
+    This tests the fix for the bug where :pub access modifier was not
+    recognized on walkers imported from other modules.
+    """
+
+    def test_imported_public_walker_without_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported public walkers can be spawned without authentication.
+
+        This is the core test for GitHub Issue #4145 - walkers marked with :pub
+        in their source module should be accessible without authentication even
+        when imported into another module.
+        """
+        # Spawn imported public walker without authentication
+        response = imported_access_client.post(
+            "/walker/PublicImportedWalker",
+            json={"message": "test from imported public walker"},
+        )
+
+        assert response.ok, f"Expected success but got: {response.data}"
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_imported_protected_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported protected walkers require authentication."""
+        # Try to spawn imported protected walker without authentication
+        response = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_imported_protected_walker_with_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported protected walkers work with authentication."""
+        # Create user and get token
+        imported_access_client.register_user("importuser", "pass123")
+
+        # Spawn imported protected walker with authentication
+        response = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "authenticated data"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_imported_default_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that imported walkers without access modifier require auth.
+
+        Walkers without explicit :pub, :protect, or :priv should default
+        to requiring authentication (secure by default).
+        """
+        # Try to spawn imported default walker without authentication
+        response = imported_access_client.post(
+            "/walker/DefaultImportedWalker",
+            json={"value": 100},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_local_public_walker_without_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that local public walkers still work (baseline test)."""
+        # Spawn local public walker without authentication
+        response = imported_access_client.post(
+            "/walker/LocalPublicWalker",
+            json={"msg": "local test"},
+        )
+
+        assert response.ok
+        data = response.data
+        assert "result" in data or "reports" in data
+
+    def test_local_default_walker_requires_auth(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test that local default walkers require auth (baseline test)."""
+        # Try to spawn local default walker without authentication
+        response = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "test"},
+        )
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data
+        assert "Unauthorized" in data["error"]
+
+    def test_mixed_local_and_imported_access(
+        self, imported_access_client: JacTestClient
+    ) -> None:
+        """Test server with mix of local and imported walkers with different access levels."""
+        # Create authenticated user
+        imported_access_client.register_user("mixeduser", "mixedpass")
+        token = imported_access_client._auth_token
+
+        # Imported public walker without auth - should work
+        imported_access_client.clear_auth()
+        result1 = imported_access_client.post(
+            "/walker/PublicImportedWalker",
+            json={"message": "public test"},
+        )
+        assert result1.ok, (
+            f"Imported public walker should work without auth: {result1.data}"
+        )
+
+        # Local public walker without auth - should work
+        result2 = imported_access_client.post(
+            "/walker/LocalPublicWalker",
+            json={"msg": "local public test"},
+        )
+        assert result2.ok, (
+            f"Local public walker should work without auth: {result2.data}"
+        )
+
+        # Imported protected walker without auth - should fail
+        result3 = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "test"},
+        )
+        assert not result3.ok, "Imported protected walker should require auth"
+
+        # Local default walker without auth - should fail
+        result4 = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "test"},
+        )
+        assert not result4.ok, "Local default walker should require auth"
+
+        # With auth, all walkers should work
+        imported_access_client.set_auth_token(token)
+
+        result5 = imported_access_client.post(
+            "/walker/ProtectedImportedWalker",
+            json={"data": "auth test"},
+        )
+        assert result5.ok, (
+            f"Imported protected walker should work with auth: {result5.data}"
+        )
+
+        result6 = imported_access_client.post(
+            "/walker/DefaultImportedWalker",
+            json={"value": 42},
+        )
+        assert result6.ok, (
+            f"Imported default walker should work with auth: {result6.data}"
+        )
+
+        result7 = imported_access_client.post(
+            "/walker/LocalDefaultWalker",
+            json={"msg": "auth test"},
+        )
+        assert result7.ok, f"Local default walker should work with auth: {result7.data}"

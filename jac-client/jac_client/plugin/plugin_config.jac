@@ -71,6 +71,11 @@ class JacClientPluginConfig {
                     "type": "dict",
                     "default": {},
                     "description": "TypeScript configuration overrides"
+                },
+                "configs": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Generate config files for npm packages. Keys are config names (e.g., 'postcss', 'tailwind'), values are the config objects to export."
                 }
             }
         };
@@ -115,14 +120,14 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
     # Find the template JSON file relative to this module
     # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
     module_dir = Path(__file__).parent.parent;  # jac_client directory
-    template_path = module_dir / "templates" / f"{template_name}.jacpac";
+    template_path = module_dir / "templates" / f"{template_name}.jacpack";
 
     if not template_path.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
             package_files = files("jac_client");
-            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpac";
+            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
         } except Exception {
             return None;
         }
@@ -156,36 +161,46 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils.node_installer { NodeInstaller }
+    import from jaclang.cli.console { console }
     import shutil;
 
     # First, ensure Node.js is installed
-    print("\nChecking Node.js installation...");
-    node_result = NodeInstaller.ensure_node_installed(interactive=True);
-    node_installed = node_result[0];
-    message = node_result[1];
-    was_just_installed = node_result[2];
+    console.print();
+    with console.status(
+        "[cyan]Checking Node.js installation...[/cyan]", spinner="dots"
+    ) as status {
+        node_result = NodeInstaller.ensure_node_installed(interactive=True);
+        node_installed = node_result[0];
+        message = node_result[1];
+        was_just_installed = node_result[2];
+    }
 
     if not node_installed {
-        print(f"\n{message}", file=sys.stderr);
-        print(
-            "\nProject created successfully, but Node.js is required for client development."
+        console.warning(f"Node.js is required for client development");
+        console.print(f"\n  {message}", file=sys.stderr);
+        console.print(
+            "  After installing Node.js, run: jac add --cl\n",
+            style="muted",
+            file=sys.stderr
         );
-        print("After installing Node.js, run: jac add --cl", file=sys.stderr);
         return;
     }
 
-    print(f"{message}");
+    console.print(f"  ✔ {message}", style="success");
 
     # Check if npm package installation should be skipped
     if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
-        print(
-            "\nSkipping npm package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)."
+        console.print(
+            "\n  ⏭ Skipping npm package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
+            style="muted"
         );
-        print("Run 'jac add --cl' when you're ready to install packages.");
+        console.print(
+            "  Run 'jac add --cl' when ready to install packages.\n", style="muted"
+        );
         return;
     }
 
-    print("\nInstalling default npm packages...");
+    console.print();
 
     try {
         # Verify jac.toml exists
@@ -224,7 +239,13 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         # Run npm install using NodeInstaller to handle NVM environment
         try {
-            NodeInstaller.run_npm_with_nvm(['install'], cwd=client_dir, timeout=300);
+            with console.status(
+                "[cyan]Installing npm packages...[/cyan]", spinner="dots"
+            ) as status {
+                NodeInstaller.run_npm_with_nvm(
+                    ['install'], cwd=client_dir, timeout=300
+                );
+            }
 
             # Move package-lock.json to configs/ if it was created
             build_package_lock = client_dir / 'package-lock.json';
@@ -236,16 +257,21 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
                 shutil.move(str(build_package_lock), str(configs_package_lock));
             }
 
-            print("Default packages installed successfully");
+            console.print("  ✔ npm packages installed", style="success");
         } except subprocess.CalledProcessError as e {
-            print(f"Warning: Failed to install packages: {e.stderr}", file=sys.stderr);
-            print("You can install packages later with: jac add --cl", file=sys.stderr);
-        } except FileNotFoundError {
-            print(
-                "Warning: npm command not found. This may require reloading your shell.",
-                file=sys.stderr
+            console.warning(f"Failed to install packages: {e.stderr}");
+            console.print(
+                "  💡 You can install packages later with: jac add --cl\n",
+                style="muted"
             );
-            print("You can install packages later with: jac add --cl", file=sys.stderr);
+        } except FileNotFoundError {
+            console.warning(
+                "npm command not found. This may require reloading your shell."
+            );
+            console.print(
+                "  💡 You can install packages later with: jac add --cl\n",
+                style="muted"
+            );
         } finally {
             # Clean up temporary package.json
             if build_package_json.exists() {
@@ -253,22 +279,23 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             }
         }
     } except Exception as e {
-        print(f"Warning: Could not install default packages: {e}", file=sys.stderr);
-        print("You can install packages later with: jac add --cl", file=sys.stderr);
+        console.warning(f"Could not install default packages: {e}");
+        console.print(
+            "  💡 You can install packages later with: jac add --cl\n", style="muted"
+        );
     }
 
     # If Node.js was just installed, offer to restart terminal for full integration
     if was_just_installed {
-        print("\n" + "=" * 70);
-        print("IMPORTANT: Node.js was just installed via NVM");
-        print("=" * 70);
-        print("\nFor Node.js to be available in your current shell, you need to:");
-        print("  1. Run: source ~/.nvm/nvm.sh");
-        print("  2. Or restart your terminal");
-        print("\nNote: npm commands from jac will work immediately, but if you want");
-        print("to use 'node' or 'npm' directly in this terminal, please reload your");
-        print("shell configuration.");
-        print("=" * 70 + "\n");
+        console.print();
+        console.info("Node.js was just installed via NVM");
+        console.print(
+            "\n  For Node.js to be available in your current shell:", style="muted"
+        );
+        console.print("    1. Run: source ~/.nvm/nvm.sh", style="muted");
+        console.print("    2. Or restart your terminal", style="muted");
+        console.print("\n  💡 npm commands from jac work immediately", style="info");
+        console.print();
     }
 }
 

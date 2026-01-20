@@ -43,6 +43,7 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
 - **`[plugins.client.vite]`**: Vite-specific configuration (plugins, build options, server, resolve)
 - **`[plugins.client.ts]`**: TypeScript compiler options for `tsconfig.json`
+- **`[plugins.client.configs]`**: Generic config file generation (postcss, tailwind, eslint, etc.)
 - **`[dependencies.npm]`**: npm runtime dependencies
 - **`[dependencies.npm.dev]`**: npm dev dependencies
 
@@ -182,6 +183,86 @@ noUnusedParameters = false
 [plugins.client.ts]
 include = ["components/**/*", "lib/**/*", "types/**/*"]
 ```
+
+### Generic Config Files
+
+#### `[plugins.client.configs]`
+
+Generate JavaScript config files for npm packages directly from `jac.toml`. Each key under `[plugins.client.configs]` becomes a `<name>.config.js` file in `.jac/client/configs/`.
+
+This is useful for tools that expect a `*.config.js` file, such as:
+
+- PostCSS (`postcss.config.js`)
+- Tailwind CSS v3 (`tailwind.config.js`)
+- ESLint (`eslint.config.js`)
+- Prettier (`prettier.config.js`)
+- Any npm package using the `*.config.js` convention
+
+#### Example: PostCSS + Tailwind v3
+
+```toml
+[plugins.client.configs.postcss]
+plugins = ["tailwindcss", "autoprefixer"]
+
+[plugins.client.configs.tailwind]
+content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
+plugins = []
+
+[plugins.client.configs.tailwind.theme.extend.fontFamily]
+sans = ["Inter", "system-ui", "-apple-system", "sans-serif"]
+
+[plugins.client.configs.tailwind.theme.extend.colors]
+primary = "#3490dc"
+```
+
+This generates:
+
+**`.jac/client/configs/postcss.config.js`**:
+
+```javascript
+module.exports = {
+  "plugins": ["tailwindcss", "autoprefixer"]
+};
+```
+
+**`.jac/client/configs/tailwind.config.js`**:
+
+```javascript
+module.exports = {
+  "content": ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"],
+  "plugins": [],
+  "theme": {
+    "extend": {
+      "fontFamily": {
+        "sans": ["Inter", "system-ui", "-apple-system", "sans-serif"]
+      },
+      "colors": {
+        "primary": "#3490dc"
+      }
+    }
+  }
+};
+```
+
+#### How It Works
+
+1. TOML config under `[plugins.client.configs.<name>]` is parsed
+2. The config data is converted to JSON format
+3. A `<name>.config.js` file is generated with `module.exports = <json>`
+4. Generated files are placed in `.jac/client/configs/`
+
+#### When to Use
+
+Use `[plugins.client.configs]` for:
+
+- **PostCSS plugins** (Tailwind v3, autoprefixer, etc.)
+- **Tailwind v3** configuration (for projects not using Tailwind v4's native Vite plugin)
+- **Any npm tool** that uses `*.config.js` files
+
+Use `[plugins.client.vite]` for:
+
+- **Vite plugins** that integrate directly with the Vite build process
+- **Tailwind v4** via `@tailwindcss/vite` plugin
 
 ### Response Configuration
 

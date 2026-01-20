@@ -11,12 +11,14 @@ import tempfile
 import traceback
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from pathlib import Path
 
 import pytest
 
 from jaclang.cli.commands import (  # type: ignore[attr-defined]
     analysis,  # type: ignore[attr-defined]
     execution,  # type: ignore[attr-defined]
+    project,  # type: ignore[attr-defined]
     tools,  # type: ignore[attr-defined]
     transform,  # type: ignore[attr-defined]
 )
@@ -276,22 +278,6 @@ def test_del_clean(
 
     stdout_value = output.getvalue()
     assert "0 errors, 0 warnings" in stdout_value
-
-
-def test_build_and_run(
-    fixture_path: Callable[[str], str],
-    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
-) -> None:
-    """Testing for print AstTool."""
-    if os.path.exists(f"{fixture_path('needs_import.jir')}"):
-        os.remove(f"{fixture_path('needs_import.jir')}")
-    with capture_stdout() as output:
-        analysis.build(f"{fixture_path('needs_import.jac')}")
-        execution.run(f"{fixture_path('needs_import.jir')}")
-
-    stdout_value = output.getvalue()
-    assert "Errors: 0, Warnings: 0" in stdout_value
-    assert "<module 'pyfunc' from" in stdout_value
 
 
 def test_run_test(fixture_path: Callable[[str], str]) -> None:
@@ -570,18 +556,6 @@ def test_cli_error_exit_codes(fixture_path: Callable[[str], str]) -> None:
     )
     assert "Error" in stderr
 
-    # Test build command with syntax error
-    process = subprocess.Popen(
-        ["jac", "build", fixture_path("err2.jac")],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    stdout, stderr = process.communicate()
-    assert process.returncode == 1, (
-        "build command should exit with code 1 on compilation error"
-    )
-
     # Test check command with syntax error
     process = subprocess.Popen(
         ["jac", "check", fixture_path("err2.jac")],
@@ -669,7 +643,8 @@ def test_positional_args_with_defaults() -> None:
     assert process.returncode == 0, (
         f"'jac plugins' should work without action argument, got: {stderr}"
     )
-    assert "Installed Jac plugins" in stdout, (
+    # Check for plugins list output (case-insensitive, handles Rich formatting)
+    assert "installed jac plugin" in stdout.lower(), (
         "Output should show installed plugins list"
     )
 
@@ -710,8 +685,10 @@ def test_format_tracks_changed_files() -> None:
 
         # Exit code 1 indicates files were changed (useful for pre-commit hooks)
         assert process.returncode == 1
-        assert "2/2" in stderr
-        assert "(1 changed)" in stderr
+        # Output may go to stdout or stderr depending on console implementation
+        combined_output = stdout + stderr
+        assert "2/2" in combined_output
+        assert "(1 changed)" in combined_output
 
 
 def test_jac_create_and_run_no_root_files() -> None:
@@ -763,6 +740,21 @@ def test_jac_create_and_run_no_root_files() -> None:
             f"jac run created unexpected files in project root: {new_files}. "
             "All runtime files should be in .jac/ directory."
         )
+
+
+def test_jac_create_default_name_jactastic(cli_test_dir: Path) -> None:
+    """Test that jac create without a name defaults to 'jactastic' with incrementing numbers."""
+    # First create should use 'jactastic'
+    assert project.create() == 0
+    assert (cli_test_dir / "jactastic").is_dir()
+
+    # Second create should use 'jactastic1'
+    assert project.create() == 0
+    assert (cli_test_dir / "jactastic1").is_dir()
+
+    # Third create should use 'jactastic2'
+    assert project.create() == 0
+    assert (cli_test_dir / "jactastic2").is_dir()
 
 
 class TestConfigCommand:
