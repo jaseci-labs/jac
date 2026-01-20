@@ -390,12 +390,15 @@ class SymTabBuildPass(UniPass):
         self.pop_scope()
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
-        parent_compr: uni.ListCompr | uni.SetCompr | uni.DictCompr | None = (
+        parent_compr: (
+            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
+        ) = (
             self.find_parent_of_type(node, uni.ListCompr)
             or self.find_parent_of_type(node, uni.SetCompr)
             or self.find_parent_of_type(node, uni.DictCompr)
+            or self.find_parent_of_type(node, uni.GenCompr)
         )
-
+          
         if parent_compr:
             self._def_insert_unpacking(node.target, parent_compr.sym_tab)
         else:
@@ -403,10 +406,13 @@ class SymTabBuildPass(UniPass):
             self._def_insert_unpacking(node.target, node.sym_tab)
 
     def exit_inner_compr(self, node: uni.InnerCompr) -> None:
-        parent_compr: uni.ListCompr | uni.SetCompr | uni.DictCompr | None = (
+        parent_compr: (
+            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
+        ) = (
             self.find_parent_of_type(node, uni.ListCompr)
             or self.find_parent_of_type(node, uni.SetCompr)
             or self.find_parent_of_type(node, uni.DictCompr)
+            or self.find_parent_of_type(node, uni.GenCompr)
         )
         if not parent_compr:
             self.pop_scope()
