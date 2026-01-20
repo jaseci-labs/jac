@@ -26,7 +26,7 @@ import from typing { Any, TypeVar, cast }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import jaclang.pycore.unitree as uni;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
-import from jaclang.pycore.constant { SymbolType }
+import from jaclang.pycore.constant { CodeContext, SymbolType }
 import from jaclang.pycore.constant { Tokens as Tok }
 import from jaclang.pycore.passes.ast_gen { BaseAstGenPass }
 import from jaclang.pycore.passes.ast_gen.jsx_processor { EsJsxProcessor }

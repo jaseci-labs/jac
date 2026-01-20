@@ -1,0 +1,72 @@
+{
+  "name": "client",
+  "description": "Jac project with frontend client setup",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: {{name}}",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {},
+    "dependencies.npm": {
+      "jac-client-node": "1.0.4"
+    },
+    "dependencies.npm.dev": {
+      "@jac-client/dev-deps": "1.0.0"
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins.client": {}
+  },
+  "files": {
+    "main.jac": "\"\"\"Main entry point for {{name}}.\"\"\"\n\n# Client-side imports (useState is auto-injected when using `has` variables)\ncl import from react { useEffect }\ncl import from .components.Button { Button }\n\n# Client-side component\ncl {\n    def:pub app() -> any {\n        has count: int = 0;\n\n        useEffect(lambda -> None {\n            console.log(\"Count updated:\", count);\n        }, [count]);\n\n        return <div style={{padding: \"2rem\", fontFamily: \"Arial, sans-serif\"}}>\n            <h1>Hello, World!</h1>\n            <p>Count: {count}</p>\n            <div style={{display: \"flex\", gap: \"1rem\", marginTop: \"1rem\"}}>\n                <Button\n                    label=\"Increment\"\n                    onClick={lambda -> None { count = count + 1; }}\n                    variant=\"primary\"\n                />\n                <Button\n                    label=\"Reset\"\n                    onClick={lambda -> None { count = 0; }}\n                    variant=\"secondary\"\n                />\n            </div>\n        </div>;\n    }\n}\n",
+    "components/Button.cl.jac": "\"\"\"Button component for the Jac client application.\"\"\"\n\ndef:pub Button(label: str, onClick: any, variant: str = \"primary\", disabled: bool = False) -> any {\n    base_styles = {\n        \"padding\": \"0.75rem 1.5rem\",\n        \"fontSize\": \"1rem\",\n        \"fontWeight\": \"600\",\n        \"borderRadius\": \"0.5rem\",\n        \"border\": \"none\",\n        \"cursor\": \"not-allowed\" if disabled else \"pointer\",\n        \"transition\": \"all 0.2s ease\"\n    };\n\n    variant_styles = {\n        \"primary\": {\n            \"backgroundColor\": \"#9ca3af\" if disabled else \"#3b82f6\",\n            \"color\": \"#ffffff\"\n        },\n        \"secondary\": {\n            \"backgroundColor\": \"#e5e7eb\" if disabled else \"#6b7280\",\n            \"color\": \"#ffffff\"\n        }\n    };\n\n    return <button\n        style={{**base_styles, **variant_styles[variant]}}\n        onClick={onClick}\n        disabled={disabled}\n    >\n        {label}\n    </button>;\n}\n",
+    "README.md": "# {{name}}\n\nA Jac client-side application with React support.\n\n## Project Structure\n\n```\n{{name}}/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 components/           # Reusable components\n\u2502   \u2514\u2500\u2500 Button.cl.jac     # Example Jac component\n\u251c\u2500\u2500 assets/               # Static assets (images, fonts, etc.)\n\u2514\u2500\u2500 build/                # Build output (generated)\n```\n\n## Getting Started\n\nStart the development server:\n\n```bash\njac start main.jac\n```\n\n## Components\n\nCreate Jac components in `components/` as `.cl.jac` files and import them:\n\n```jac\ncl import from .components.Button { Button }\n```\n\n## Adding Dependencies\n\nAdd npm packages with the --cl flag:\n\n```bash\njac add --cl react-router-dom\n```\n"
+  },
+  "directories": [
+    "components",
+    "assets",
+    ".jac/client"
+  ],
+  "gitignore_entries": [
+    "# Ignore all build artifacts in .jac directory",
+    "*"
+  ],
+  "root_gitignore_entries": [
+    "# Jac project",
+    "packages/",
+    "*.jbc",
+    "*.jir",
+    "",
+    "# Python",
+    "__pycache__/",
+    "*.py[cod]",
+    ".venv/",
+    "venv/",
+    "",
+    "# IDE",
+    ".idea/",
+    ".vscode/",
+    "*.swp",
+    "",
+    "# Node.js",
+    "node_modules/",
+    "",
+    "# Build artifacts",
+    ".jac/",
+    "*.session",
+    "*.session.*"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    {
+      "name": "jac-client",
+      "version": "0.2.8"
+    }
+  ]
+}

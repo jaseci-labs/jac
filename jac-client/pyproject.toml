@@ -41,6 +41,7 @@ include = ["jac_client*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
+"jac_client" = ["templates/*.jacpac"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

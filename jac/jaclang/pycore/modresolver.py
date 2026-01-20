@@ -49,6 +49,8 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
             return os.path.join(candidate, "__init__.py"), "py"
     if os.path.isfile(candidate + ".jac"):
         return candidate + ".jac", "jac"
+    if os.path.isfile(candidate + ".sv.jac"):
+        return candidate + ".sv.jac", "jac"
     if os.path.isfile(candidate + ".cl.jac"):
         return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):

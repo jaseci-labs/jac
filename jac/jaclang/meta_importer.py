@@ -77,6 +77,14 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         loader=self,
                         submodule_search_locations=[candidate_path],
                     )
+                init_sv_file = os.path.join(candidate_path, "__init__.sv.jac")
+                if os.path.isfile(init_sv_file):
+                    return importlib.util.spec_from_file_location(
+                        fullname,
+                        init_sv_file,
+                        loader=self,
+                        submodule_search_locations=[candidate_path],
+                    )
                 init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
                 if os.path.isfile(init_cl_file):
                     return importlib.util.spec_from_file_location(
@@ -91,6 +99,13 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 return importlib.util.spec_from_file_location(
                     fullname, jac_file, loader=self
                 )
+            # Check for .sv.jac file (server-side explicit)
+            sv_jac_file = candidate_path + ".sv.jac"
+            if os.path.isfile(sv_jac_file):
+                return importlib.util.spec_from_file_location(
+                    fullname, sv_jac_file, loader=self
+                )
+            # Check for .cl.jac file (client-side)
             cl_jac_file = candidate_path + ".cl.jac"
             if os.path.isfile(cl_jac_file):
                 return importlib.util.spec_from_file_location(

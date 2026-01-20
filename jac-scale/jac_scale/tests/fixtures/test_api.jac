@@ -88,3 +88,22 @@ walker : pub PublicInfo {
         report {"message": "This is a public endpoint", "auth_required": False} ;
     }
 }
+
+# Async Walker Test
+import asyncio;
+
+"""Async walker that creates a task with simulated async delay."""
+async walker AsyncCreateTask {
+    has title: str;
+    has delay_ms: int = 100;
+
+    async can create with `root entry {
+        report {"status": "started", "title": self.title};
+        # Simulate async operation (e.g., external API call, DB operation)
+        delay_seconds = float(self.delay_ms) / 1000.0;
+        await asyncio.sleep(delay_seconds);
+        report {"status": "after_async_wait"};
+        new_task = here ++> Task(title=self.title, priority=1);
+        report {"status": "completed", "task": new_task};
+    }
+}

@@ -49,7 +49,7 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     entry_file = self.compiled_dir / '_entry.js';
     # Derive the app module filename from the entry point (e.g., main.jac -> main.js, app.jac -> app.js)
     app_module_name = module_path.stem;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{app_module_name}.js";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(React.createElement(App, null));\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{app_module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
     entry_file.write_text(entry_content, encoding='utf-8');
 }
 

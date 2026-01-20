@@ -2,7 +2,7 @@
 
 This module extends the core `create` command to add the --cl flag for
 client-side (frontend) project setup. When --cl is used, it delegates to
-the core create command with template="client".
+the core create command with use="client".
 """
 
 import os;
@@ -27,7 +27,7 @@ class JacCmd {
                     "cl",
                     typ=bool,
                     default=False,
-                    help="Use the client template (shorthand for --template client)",
+                    help="Use the client template (shorthand for --use client)",
                     short="c"
                 ),
                 Arg.create(
@@ -54,14 +54,14 @@ def _handle_client_create(ctx: HookContext) -> None {
         return;
     }
 
-    # Check if template is already set to something other than default
-    template = ctx.get_arg("template", "default");
-    if template != "default" {
-        # User explicitly set --template, respect that over --cl
+    # Check if use is already set to something other than default
+    use = ctx.get_arg("use", "default");
+    if use != "default" {
+        # User explicitly set --use, respect that over --cl
         return;
     }
 
-    # --cl is set, delegate to core create with template="client"
+    # --cl is set, delegate to core create with use="client"
     # Use Python's importlib to import the compiled Jac module
     import importlib;
     project_module = importlib.import_module("jaclang.cli.commands.project");
@@ -69,7 +69,7 @@ def _handle_client_create(ctx: HookContext) -> None {
 
     name = ctx.get_arg("name", "");
     force = ctx.get_arg("force", False);
-    list_templates = ctx.get_arg("list_templates", False);
+    list_jacpacs = ctx.get_arg("list_jacpacs", False);
     skip_install = ctx.get_arg("skip", False);
 
     # Set environment variable to signal post_create hook to skip npm install
@@ -79,7 +79,7 @@ def _handle_client_create(ctx: HookContext) -> None {
 
     try {
         result = create_fn(
-            name=name, force=force, template="client", list_templates=list_templates
+            name=name, force=force, use="client", list_jacpacs=list_jacpacs
         );
         # Cancel core handler since we called create ourselves
         ctx.set_data("cancel_execution", True);

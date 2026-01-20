@@ -1,12 +1,15 @@
 """Vite bundling module."""
 import hashlib;
 import json;
+import logging;
 import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Any, Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
+
+glob logger = logging.getLogger(__name__);
 """Handles Vite bundling operations."""
 class ViteBundler {
     def init(
@@ -34,6 +37,9 @@ class ViteBundler {
     ) -> Path;
 
     def create_tsconfig(self: ViteBundler) -> Path;
+    """Create config files from jac.toml [plugins.client.configs]."""
+    def create_config_files(self: ViteBundler) -> list[Path];
+
     """Create a dev-mode vite config with API proxy for HMR."""
     def create_dev_vite_config(
         self: ViteBundler, entry_file: Path, api_port: int = 8000

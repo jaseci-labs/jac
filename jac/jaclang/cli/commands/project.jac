@@ -17,7 +17,7 @@ glob registry = get_registry();
             "name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Project name (uses current directory if empty)"
+            help="Project name (required to create a project)"
         ),
         Arg.create(
             "force",
@@ -27,26 +27,27 @@ glob registry = get_registry();
             short="f"
         ),
         Arg.create(
-            "template",
+            "use",
             default="default",
-            help="Template to use (default, client, etc.)",
-            short="t"
+            help="Jacpac template: name, file path, or URL",
+            short="u"
         ),
         Arg.create(
-            "list_templates",
+            "list_jacpacs",
             typ=bool,
             default=False,
-            help="List available templates",
+            help="List available jacpac templates",
             short="l"
         ),
 
     ],
     examples=[
-        ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
-        ("jac create myapp --template client", "Create with client template"),
-        ("jac create --list-templates", "List available templates"),
+        ("jac create myapp --use client", "Create with client jacpac template"),
+        ("jac create --use ./my.jacpac", "Create from local .jacpac file"),
+        ("jac create --use https://example.com/t.jacpac", "Create from URL"),
+        ("jac create --list-jacpacs", "List available jacpac templates"),
 
     ],
     group="project"
@@ -54,8 +55,8 @@ glob registry = get_registry();
 def create(
     name: str = "",
     force: bool = False,
-    template: str = "default",
-    list_templates: bool = False
+    use: str = "default",
+    list_jacpacs: bool = False
 ) -> int;
 
 """Install all dependencies from jac.toml."""
@@ -227,3 +228,37 @@ def clean(
     packages: bool = False,
     force: bool = False
 ) -> int;
+
+"""Bundle a template directory into a distributable .jacpac file."""
+@registry.command(
+    name="jacpac",
+    help="Manage project templates (.jacpac files)",
+    args=[
+        Arg.create(
+            "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
+        ),
+        Arg.create(
+            "path",
+            kind=ArgKind.POSITIONAL,
+            default="",
+            help="Template directory path (for pack) or .jacpac path (for info)"
+        ),
+        Arg.create(
+            "output",
+            default="",
+            help="Output file path for bundled template",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        (
+            "jac jacpac pack ./my-template -o my-template.jacpac",
+            "Bundle a template directory"
+        ),
+        ("jac jacpac list", "List available templates"),
+
+    ],
+    group="project"
+)
+def jacpac(action: str = "", path: str = "", output: str = "") -> int;

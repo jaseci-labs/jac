@@ -1440,3 +1440,43 @@ class TestJacScaleServeWatchMode:
         )
 
         assert response.status_code == 401
+
+    # Async Walker Test
+    def test_async_walker_basic_execution(self) -> None:
+        """Test that async walkers execute correctly with await."""
+        # Create user
+        username = f"asyncuser_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        token = self._extract_data(register_response.json())["token"]
+
+        # Spawn async walker
+        response = requests.post(
+            f"{self.base_url}/walker/AsyncCreateTask",
+            json={"title": "Async Test Task", "delay_ms": 50},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = self._extract_data(response.json())
+
+        # Verify reports show the async execution flow
+        assert "reports" in data, f"Expected 'reports' in response: {data}"
+        reports = data["reports"]
+
+        # Should have 3 reports: started, after_async_wait, completed
+        assert len(reports) >= 3, f"Expected at least 3 reports, got {len(reports)}"
+
+        # Check the execution order
+        assert reports[0]["status"] == "started"
+        assert reports[0]["title"] == "Async Test Task"
+        assert reports[1]["status"] == "after_async_wait"
+        assert reports[2]["status"] == "completed"
+        assert "task" in reports[2]

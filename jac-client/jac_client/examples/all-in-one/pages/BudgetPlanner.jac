@@ -124,3 +124,10 @@ walker process_complex_data {
         report result;
     }
 }
+
+# Re-export client components from the standalone client module
+cl {
+    import from .budget_planner_ui { BudgetPlanner as BudgetPlannerUI }
+
+    def:pub BudgetPlanner -> any { return <BudgetPlannerUI />; }
+}
