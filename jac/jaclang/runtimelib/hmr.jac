@@ -23,7 +23,8 @@ obj HotReloader {
         module_name: str,
         watcher: Any,  # JacFileWatcher - using Any to avoid circular import
         _client_output_dir: str = ".jac/client/compiled",
-        _running: bool = False;
+        _running: bool = False,
+        _overlay_entry: bool = False;
 
     """Start the hot reloader and begin watching for changes."""
     def start -> None;

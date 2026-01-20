@@ -105,10 +105,12 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     } except ImportError as e {
         # Import error (missing dependency, etc.)
         print(f"[HMR] Import error reloading {file_path}: {e}", flush=True);
+        self._emit_client_error_overlay(file_path, str(e));
     } except Exception as e {
         # Other errors
         error_type = type(e).__name__;
         print(f"[HMR] {error_type} reloading {file_path}: {e}", flush=True);
+        self._emit_client_error_overlay(file_path, str(e));
     }
 }
 
@@ -127,10 +129,25 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Compile the file (this generates JS as part of the compilation)
         mod = Jac.program.compile(source_key);
 
+        # If there were previous errors, we need to update the entry point
+        if self._overlay_entry {
+            output_base = Path(self.base_path) / self._client_output_dir;
+            output_dir = output_base;
+            output_dir.mkdir(parents=True, exist_ok=True);
+            js_filename = "_entry.js";
+            output_path = output_dir / js_filename;
+            entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+            output_path.write_text(entry_content, encoding='utf-8');
+            print(f"[HMR] Update entry: {output_path}", flush=True);
+            self._overlay_entry = False;
+        }
+
+        # Check for compilation errors
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
             print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
             self._emit_client_error_overlay(file_path, errors);
+            self._overlay_entry = True;
             Jac.program.errors_had.clear();
             return;
         }
@@ -270,89 +287,14 @@ impl HotReloader._path_to_module(file_path: str) -> str {
 
 """Emit a client-side error overlay for compilation errors."""
 impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
-    overlay_code = f"""// HMR Compilation Error Overlay
-    export function app() {{
-        return null;
-    }}
-    (function() {{
-    const overlayId = 'jac-hmr-error-overlay';
-
-    // Remove existing overlay if present
-    const existingOverlay = document.getElementById(overlayId);
-    if (existingOverlay) {{
-        existingOverlay.remove();
-    }}
-
-    // Create error overlay
-    const overlay = document.createElement('div');
-    overlay.id = overlayId;
-    overlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.85);
-        color: #fff;
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-        font-size: 14px;
-        z-index: 999999;
-        overflow: auto;
-        padding: 20px;
-        box-sizing: border-box;
-    `;
-
-    overlay.innerHTML = `
-        <div style="max-width: 1200px; margin: 0 auto;">
-        <div style="background: #d32f2f; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
-            <span>⚠️ Compilation Error</span>
-            <button onclick="document.getElementById('{{overlayId}}').remove()" style="background: none; border: 2px solid white; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">
-            Close (ESC)
-            </button>
-        </div>
-        <div style="background: #1e1e1e; padding: 24px; border-radius: 0 0 8px 8px;">
-            <div style="margin-bottom: 16px;">
-            <div style="color: #888; margin-bottom: 8px;">File:</div>
-            <div style="color: #64b5f6; font-weight: bold;">{file_path}</div>
-            </div>
-            <div>
-            <div style="color: #888; margin-bottom: 8px;">Error:</div>
-            <pre style="background: #2d2d2d; padding: 16px; border-radius: 4px; overflow-x: auto; margin: 0; border-left: 4px solid #d32f2f; line-height: 1.6; color: #ff6b6b;">{errors}</pre>
-            </div>
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #444; color: #888; font-size: 13px;">
-            💡 Fix the error and save the file to continue development.
-            </div>
-        </div>
-        </div>
-    `;
-
-    // Add ESC key handler
-    const escHandler = (e) => {{
-        if (e.key === 'Escape') {{
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-        }}
-    }};
-    document.addEventListener('keydown', escHandler);
-
-    // Add to DOM
-    document.body.appendChild(overlay);
-
-    // Log to console as well
-    console.error('[HMR] Compilation error in {file_path}:');
-    console.error('{errors}');
-    }})();
-
-    // Export empty object to prevent import errors
-    export default {{}};
-    """;
     output_base = Path(self.base_path) / self._client_output_dir;
     output_dir = output_base;
     output_dir.mkdir(parents=True, exist_ok=True);
-    js_filename = "main.js";
+    js_filename = "_entry.js";
     output_path = output_dir / js_filename;
-    # Write the Overlay code
-    output_path.write_text(overlay_code, encoding='utf-8');
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", " {errors}"), null);\n';
+    # Update the entry point to show the error overlay
+    output_path.write_text(entry_content, encoding='utf-8');
     print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
     return;
 }
