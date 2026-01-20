@@ -18,7 +18,7 @@ glob result1 = instance.value if hasattr(instance, "value") else 0;
 # hasattr with different attribute
 glob result2 = instance.name if hasattr(instance, "name") else "default";
 
-#hasattr with None as else value
+# hasattr with None as else value
 glob result3 = instance.name if hasattr(instance, "name") else None;
 
 # hasattr in binary expression (and)
