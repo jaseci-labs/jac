@@ -122,6 +122,186 @@ curl -X POST http://localhost:8000/user/login \
   -d '{"username": "alice", "password": "secret123"}'
 ```
 
+#### GET /user/info
+
+Get information about the currently authenticated user.
+
+**Headers:**
+
+```
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+
+**Response:**
+
+```json
+{
+  "username": "alice",
+  "token": "abc123...",
+  "root_id": "uuid-of-root-node"
+}
+```
+
+**Example:**
+
+```bash
+curl http://localhost:8000/user/info \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Error Responses:**
+
+- **401 Unauthorized**: Invalid or missing authentication token
+
+```json
+{
+  "ok": false,
+  "error":  {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or expired token"
+  }
+}
+```
+
+#### PUT /user/username
+
+Update the current user's username.  Requires authentication.
+
+**Headers:**
+
+```
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+
+**Request Body:**
+
+```json
+{
+  "current_username": "alice",
+  "new_username": "alice_2024"
+}
+```
+
+**Response:**
+
+```json
+{
+  "username": "alice_2024",
+  "token": "abc123.. .",
+  "root_id":  "uuid-of-root-node"
+}
+```
+
+**Example:**
+
+```bash
+curl -X PUT http://localhost:8000/user/username \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"current_username": "alice", "new_username": "alice_2024"}'
+```
+
+**Error Responses:**
+
+- **400 Bad Request**:  New username already taken or validation error
+- **401 Unauthorized**: Invalid authentication token
+- **403 Forbidden**:  Attempting to update another user's username
+
+#### PUT /user/password
+
+Update the current user's password. Requires authentication.
+
+**Headers:**
+
+```
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+
+**Request Body:**
+
+```json
+{
+  "username": "alice",
+  "current_password": "secret123",
+  "new_password": "newsecret456"
+}
+```
+
+**Response:**
+
+```json
+{
+  "username": "alice",
+  "message": "Password updated successfully"
+}
+```
+
+**Example:**
+
+```bash
+curl -X PUT http://localhost:8000/user/password \
+  -H "Authorization:  Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice",
+    "current_password": "secret123",
+    "new_password": "newsecret456"
+  }'
+```
+
+**Error Responses:**
+
+- **400 Bad Request**: Current password incorrect or validation error
+- **401 Unauthorized**: Invalid authentication token
+- **403 Forbidden**: Attempting to update another user's password
+
+## User Management Endpoints
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/user/register` | POST | No | Create new user account |
+| `/user/login` | POST | No | Authenticate and get token |
+| `/user/info` | GET | Yes | Get current user information |
+| `/user/username` | PUT | Yes | Update username |
+| `/user/password` | PUT | Yes | Update password |
+
+**Security Features:**
+
+- Token-based authentication using Bearer tokens
+- Passwords are hashed using SHA-256
+- Users can only modify their own account information
+- Tokens are validated on every authenticated request
+
+**Example Workflow:**
+
+```bash
+# 1. Register a new user
+TOKEN=$(curl -s -X POST http://localhost:8000/user/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "secret123"}' \
+  | jq -r '. token')
+
+# 2. Get user info
+curl http://localhost:8000/user/info \
+  -H "Authorization: Bearer $TOKEN"
+
+# 3. Update username
+curl -X PUT http://localhost:8000/user/username \
+  -H "Authorization:  Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"current_username": "alice", "new_username": "alice_updated"}'
+
+# 4. Update password
+curl -X PUT http://localhost:8000/user/password \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "alice_updated",
+    "current_password": "secret123",
+    "new_password":  "newsecret456"
+  }'
+```
+
 ### Protected Endpoints (Authentication Required)
 
 All protected endpoints require an `Authorization` header with a Bearer token:

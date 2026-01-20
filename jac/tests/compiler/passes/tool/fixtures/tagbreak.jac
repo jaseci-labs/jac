@@ -374,45 +374,59 @@ cl {
 
     # UI Components - Render a single tweet card
     def TweetCard(tweet: ClientTweet) -> any {
-        return <div
-            class="tweet-card"
-            style={{
-                "border": "1px solid #e1e8ed",
-                "padding": "15px",
-                "margin": "10px 0",
-                "borderRadius": "8px"
-            }}
-        >
+        return
             <div
-                class="tweet-header"
-                style={{"fontWeight": "bold", "marginBottom": "8px"}}
+                class="tweet-card"
+                style={{
+                    "border": "1px solid #e1e8ed",
+                    "padding": "15px",
+                    "margin": "10px 0",
+                    "borderRadius": "8px"
+                }}
             >
-                @{tweet.username}
-            </div>
-            # Random comment
-            <div
-                class="tweet-content"
-                style={{"marginBottom": "12px"}}
-            >
-                {tweet.content} # Another andom comment
-            </div>
-            <div
-                class="tweet-actions"
-                style={{"display": "flex", "gap": "15px"}}
-            >
-                <button
-                    onclick={like_tweet_action(tweet.id)}
-                    style={{"padding": "5px 10px", "cursor": "pointer"}}
+                <div
+                    class="tweet-header"
+                    style={{"fontWeight": "bold", "marginBottom": "8px"}}
                 >
-                    Like ({tweet.likes.length})
+                    @{tweet.username}
+                </div>
+                # Random comment
+                <div class="tweet-content" style={{"marginBottom": "12px"}}>
+                    {tweet.content} # Another andom comment
+                </div>
+                <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                    <button
+                        onclick={like_tweet_action(tweet.id)}
+                        style={{"padding": "5px 10px", "cursor": "pointer"}}
+                    >
+                        Like ({tweet.likes.length})
+                    </button>
+                    <button style={{"padding": "5px 10px"}}>
+                        Comment ({tweet.comments.length})
+                    </button>
+                </div>
+            </div>;
+    }
+
+    # UI Components - Render a single tweet card
+    def TweetCard2(tweet: ClientTweet) -> any {
+        return
+            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                <button style={{"padding": "5px 10px"}}>
+                    Comment ({tweet.comments.length})
                 </button>
-                <button
-                    style={{"padding": "5px 10px"}}
-                >
+            </div>;
+    }
+
+    # UI Components - Render a single tweet card
+    def TweetCard3(tweet: ClientTweet) -> any {
+        return (
+            <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
+                <button style={{"padding": "5px 10px"}}>
                     Comment ({tweet.comments.length})
                 </button>
             </div>
-        </div>;
+        );
     }
 
     # Handle liking a tweet - calls server walker directly

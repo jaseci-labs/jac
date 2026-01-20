@@ -191,7 +191,9 @@ impl start(
             return 1;
         }
     } except Exception as e {
+        import from jaclang.pycore.helpers { dump_traceback }
         print(f"Error loading {filename}: {e}", file=sys.stderr);
+        print(dump_traceback(e), file=sys.stderr);
         mach.close();
         return 1;
     }
@@ -211,7 +213,9 @@ impl start(
         try {
             server.print_endpoint_docs();
         } except Exception as e {
+            import from jaclang.pycore.helpers { dump_traceback }
             print(f"Error generating endpoint documentation: {e}", file=sys.stderr);
+            print(dump_traceback(e), file=sys.stderr);
             mach.close();
             return 1;
         } finally {
@@ -251,6 +255,10 @@ impl start(
                 base_path=base, module_name=mod, watcher=watcher
             );
             hot_reloader.start();
+            # Connect the hot reloader to the server for HMR support
+            if server?.enable_hmr {
+                server.enable_hmr(hot_reloader);
+            }
         } except ImportError as e {
             print(f"Error: Could not initialize HMR: {e}", file=sys.stderr, flush=True);
             print(
@@ -273,7 +281,7 @@ impl start(
     # Print startup message
     _print_startup_message(watch, no_client, port, actual_api_port);
     try {
-        server.start();
+        server.start(watch=watch);
         return 0;
     } except KeyboardInterrupt {
         print('\nShutting down...');
@@ -287,7 +295,9 @@ impl start(
         mach.close();
         return 0;
     } except Exception as e {
+        import from jaclang.pycore.helpers { dump_traceback }
         print(f"Server error: {e}", file=sys.stderr);
+        print(dump_traceback(e), file=sys.stderr);
         if hot_reloader {
             hot_reloader.stop();
         }

@@ -23,7 +23,7 @@ source jac-env/bin/activate  # Linux/Mac
 # jac-env\Scripts\activate   # Windows
 
 # Install Jac
-pip install jaclang
+pip install jaclang jac-client jac-byllm jac-scale
 
 # Verify installation
 jac --version
@@ -35,7 +35,7 @@ For the best development experience with syntax highlighting, autocomplete, erro
 
 **VS Code:** Open Extensions (`Ctrl+Shift+X`), search "Jac", and install the [official Jac extension](https://marketplace.visualstudio.com/items?itemName=jaseci-labs.jaclang-extension).
 
-**Cursor:** Download the latest `.vsix` from [GitHub releases](https://github.com/Jaseci-Labs/jaseci/releases/latest), then use `Ctrl+Shift+P` → "Install from VSIX".
+**Cursor:** Download the latest `.vsix` from [GitHub releases](https://github.com/Jaseci-Labs/jac-vscode/releases/latest), then use `Ctrl+Shift+P` → "Install from VSIX".
 
 ### 3. Hello World
 

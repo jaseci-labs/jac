@@ -34,13 +34,9 @@ def fixture_abs_path() -> Callable[[str], str]:
 
 
 @pytest.fixture(autouse=True)
-def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
-    """Reset Jac machine before each test."""
-    # Use tmp_path for session isolation in parallel tests
-    Jac.reset_machine(base_path=str(tmp_path))
+def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
+    """Provide fresh Jac context for each test."""
     yield
-    # Optional cleanup after test
-    Jac.reset_machine(base_path=str(tmp_path))
 
 
 def test_import_basic_python(fixture_abs_path: Callable[[str], str]) -> None:

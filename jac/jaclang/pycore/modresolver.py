@@ -49,6 +49,8 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
             return os.path.join(candidate, "__init__.py"), "py"
     if os.path.isfile(candidate + ".jac"):
         return candidate + ".jac", "jac"
+    if os.path.isfile(candidate + ".sv.jac"):
+        return candidate + ".sv.jac", "jac"
     if os.path.isfile(candidate + ".cl.jac"):
         return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):
@@ -62,7 +64,7 @@ def resolve_module(target: str, base_path: str) -> tuple[str, str]:
     """Resolve module path and infer language."""
     base_dir = os.path.dirname(base_path)
     if target.startswith("."):
-        other_target = os.path.join(base_dir, target.lstrip("."))
+        other_target = os.path.join(base_dir, convert_to_js_import_path(target))
     else:
         other_target = os.path.join(base_dir, target)
     if os.path.exists(other_target) and os.path.isfile(other_target):

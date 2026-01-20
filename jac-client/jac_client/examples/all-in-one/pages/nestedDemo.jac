@@ -1,5 +1,5 @@
 # Nested folder imports (same pattern as nested-basic/)
-cl import from ..components.button {
+cl import from ..components.nestedDemo.CustomButton.tsx {
     CustomButton
 }
 cl import from ..button { CustomButtonRoot }

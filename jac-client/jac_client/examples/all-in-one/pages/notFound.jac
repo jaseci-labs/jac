@@ -1,15 +1,10 @@
 cl import from "@jac-client/utils" {
     Link
 }
+cl import "..styles/notFoundPage/NotFoundstyle.css";
 cl {
     def:pub NotFound -> any {
-    return <div
-        style={{
-            "padding": "2rem",
-            "textAlign": "center",
-            "fontFamily": "system-ui, -apple-system, sans-serif"
-        }}
-    >
+    return <div className="not-found-container">
         <h1>
             🔍 404 - Page Not Found
         </h1>

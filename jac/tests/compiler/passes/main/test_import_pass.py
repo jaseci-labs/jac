@@ -9,6 +9,7 @@ import pytest
 
 import jaclang.pycore.unitree as uni
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
+from jaclang.pycore.constant import CodeContext
 from jaclang.pycore.program import JacProgram
 
 
@@ -89,7 +90,7 @@ def test_cl_annex_marked_client(fixture_path: Callable[[str], str]) -> None:
     abilities = cl_mod.get_all_sub_nodes(uni.Ability)
     assert abilities, "Expected abilities in .cl annex module"
     for ability in abilities:
-        assert ability.is_client_decl, (
+        assert ability.code_context == CodeContext.CLIENT, (
             "All client annex abilities should be marked as client declarations"
         )
 
