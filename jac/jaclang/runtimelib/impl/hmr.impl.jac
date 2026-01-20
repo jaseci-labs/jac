@@ -292,7 +292,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     output_dir.mkdir(parents=True, exist_ok=True);
     js_filename = "_entry.js";
     output_path = output_dir / js_filename;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", " {errors}"), null);\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
     # Update the entry point to show the error overlay
     output_path.write_text(entry_content, encoding='utf-8');
     print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
