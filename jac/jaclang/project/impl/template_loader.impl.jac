@@ -1,15 +1,15 @@
 """Implementation of template loader functions.
 
-Templates are now defined using a single jac.toml file with an optional [jacpac]
-section. This eliminates the need for a separate jacpac.toml manifest file.
+Templates are now defined using a single jac.toml file with an optional [jacpackk]
+section. This eliminates the need for a separate manifest file.
 
-The [jacpac] section contains:
+The [jacpackk] section contains:
 - name: Template name (required)
 - description: Template description (required)
 - jaclang: Minimum jaclang version (optional)
 - plugins: List of required plugins (optional)
 
-The [jacpac.options] section contains:
+The [jacpackk.options] section contains:
 - directories: Extra directories to create
 - files: Glob patterns for files to include (auto-discovers if not specified)
 - gitignore_entries: Entries for .jac/.gitignore
@@ -27,7 +27,7 @@ import importlib;
 # ===============================================================================
 # Load Template from Directory
 # ===============================================================================
-"""Load a template from a directory containing jac.toml with [jacpac] section."""
+"""Load a template from a directory containing jac.toml with [jacpackk] section."""
 impl load_template_from_directory(
     template_dir: Path, post_create_hook: Callable | None = None
 ) -> ProjectTemplate {
@@ -43,28 +43,30 @@ impl load_template_from_directory(
     with open(jac_toml_path, "rb") as f {
         jac_config = tomllib.load(f);
     }
-    # Extract template metadata from [jacpac] section
-    jacpac_section = jac_config.get("jacpac", {});
-    if not jacpac_section {
-        raise ValueError(f"jac.toml must have [jacpac] section to be packable") ;
+    # Extract template metadata from [jacpack] section
+    jacpackk_section = jac_config.get("jacpack", {});
+    if not jacpackk_section {
+        raise ValueError(f"jac.toml must have [jacpack] section to be packable") ;
     }
-    name = jacpac_section.get("name");
+    name = jacpackk_section.get("name");
     if not name {
-        raise ValueError("jac.toml [jacpac] must have name field") ;
+        raise ValueError("jac.toml [jacpack] must have name field") ;
     }
-    description = jacpac_section.get("description", "");
+    description = jacpackk_section.get("description", "");
     if not description {
-        raise ValueError(f"jac.toml [jacpac] for '{name}' must have description field") ;
+        raise ValueError(
+            f"jac.toml [jacpack] for '{name}' must have description field"
+        ) ;
     }
-    # Build config from jac.toml (everything except [jacpac] section)
+    # Build config from jac.toml (everything except [jacpack] section)
     config: dict[str, Any] = {};
     for (key, value) in jac_config.items() {
-        if key != "jacpac" {
+        if key != "jacpack" {
             config[key] = value;
         }
     }
     # Get options from [template.options]
-    options = jacpac_section.get("options", {});
+    options = jacpackk_section.get("options", {});
     directories = options.get("directories", []);
     gitignore_entries = options.get(
         "gitignore_entries", ["# Ignore all build artifacts in .jac directory", "*"]
@@ -132,23 +134,23 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     with open(jac_toml_path, "rb") as f {
         jac_config = tomllib.load(f);
     }
-    jacpac_section = jac_config.get("jacpac", {});
-    if not jacpac_section {
-        raise ValueError(f"jac.toml must have [jacpac] section to be packable") ;
+    jacpackk_section = jac_config.get("jacpack", {});
+    if not jacpackk_section {
+        raise ValueError(f"jac.toml must have [jacpack] section to be packable") ;
     }
     # Load template (without resolving hook - we'll store it as string)
     template = load_template_from_directory(template_dir, post_create_hook=None);
     # Convert to dict for JSON serialization
     template_data = template.to_dict();
-    # Add version metadata from [jacpac] section
-    if "jaclang" in jacpac_section {
-        template_data["jaclang"] = jacpac_section["jaclang"];
+    # Add version metadata from [jacpack] section
+    if "jaclang" in jacpackk_section {
+        template_data["jaclang"] = jacpackk_section["jaclang"];
     }
-    if "plugins" in jacpac_section {
-        template_data["plugins"] = jacpac_section["plugins"];
+    if "plugins" in jacpackk_section {
+        template_data["plugins"] = jacpackk_section["plugins"];
     }
     # Store hook path as string instead of callable
-    options = jacpac_section.get("options", {});
+    options = jacpackk_section.get("options", {});
     if "post_create_hook" in options {
         template_data["post_create_hook"] = options["post_create_hook"];
     }

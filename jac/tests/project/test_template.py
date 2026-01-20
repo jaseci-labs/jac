@@ -10,16 +10,16 @@ import pytest
 
 
 class TestBundleTemplate:
-    """Tests for bundling templates from directory to .jacpac."""
+    """Tests for bundling templates from directory to .jacpack."""
 
     def test_bundle_creates_jacpac_file(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundle_template creates a .jacpac file."""
+        """Test that bundle_template creates a .jacpack file."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -29,11 +29,11 @@ class TestBundleTemplate:
     def test_bundle_contains_required_fields(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac contains all required fields."""
+        """Test that bundled .jacpack contains all required fields."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -50,11 +50,11 @@ class TestBundleTemplate:
     def test_bundle_includes_version_metadata(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac includes jaclang and plugin versions."""
+        """Test that bundled .jacpack includes jaclang and plugin versions."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -70,11 +70,11 @@ class TestBundleTemplate:
     def test_bundle_embeds_file_contents(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac embeds file contents correctly."""
+        """Test that bundled .jacpack embeds file contents correctly."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -90,7 +90,7 @@ class TestBundleTemplate:
         from jaclang.project.template_loader import bundle_template
 
         with pytest.raises(ValueError, match="Template directory not found"):
-            bundle_template(temp_dir / "nonexistent", temp_dir / "out.jacpac")
+            bundle_template(temp_dir / "nonexistent", temp_dir / "out.jacpack")
 
     def test_bundle_missing_manifest_raises(self, temp_dir: Path) -> None:
         """Test that bundling without jac.toml raises ValueError."""
@@ -100,11 +100,11 @@ class TestBundleTemplate:
         empty_dir.mkdir()
 
         with pytest.raises(ValueError, match="No jac.toml found"):
-            bundle_template(empty_dir, temp_dir / "out.jacpac")
+            bundle_template(empty_dir, temp_dir / "out.jacpack")
 
 
 class TestLoadTemplateFromJson:
-    """Tests for loading templates from bundled .jacpac files."""
+    """Tests for loading templates from bundled .jacpack files."""
 
     def test_load_returns_project_template(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
@@ -117,10 +117,10 @@ class TestLoadTemplateFromJson:
         from jaclang.project.template_registry import ProjectTemplate
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
-        bundle_template(template_dir, jacpac_path)
+        jacpack_path = temp_dir / "minimal.jacpack"
+        bundle_template(template_dir, jacpack_path)
 
-        template = load_template_from_json(jacpac_path)
+        template = load_template_from_json(jacpack_path)
 
         assert isinstance(template, ProjectTemplate)
         assert template.name == "minimal"
@@ -136,20 +136,20 @@ class TestLoadTemplateFromJson:
         )
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
-        bundle_template(template_dir, jacpac_path)
+        jacpack_path = temp_dir / "minimal.jacpack"
+        bundle_template(template_dir, jacpack_path)
 
-        template = load_template_from_json(jacpac_path)
+        template = load_template_from_json(jacpack_path)
 
         assert "main.jac" in template.files
         assert "README.md" in template.files
 
     def test_load_missing_file_raises(self, temp_dir: Path) -> None:
-        """Test that loading missing .jacpac raises ValueError."""
+        """Test that loading missing .jacpack raises ValueError."""
         from jaclang.project.template_loader import load_template_from_json
 
         with pytest.raises(ValueError, match="Template JSON not found"):
-            load_template_from_json(temp_dir / "nonexistent.jacpac")
+            load_template_from_json(temp_dir / "nonexistent.jacpack")
 
 
 class TestLoadTemplateFromDirectory:
@@ -192,14 +192,14 @@ class TestRoundTrip:
         )
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
+        jacpack_path = temp_dir / "minimal.jacpack"
 
         # Load directly
         original = load_template_from_directory(template_dir)
 
         # Bundle and reload
-        bundle_template(template_dir, jacpac_path)
-        loaded = load_template_from_json(jacpac_path)
+        bundle_template(template_dir, jacpack_path)
+        loaded = load_template_from_json(jacpack_path)
 
         # Compare
         assert original.name == loaded.name
