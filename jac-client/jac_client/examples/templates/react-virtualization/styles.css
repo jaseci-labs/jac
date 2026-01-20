@@ -1,0 +1,422 @@
+/* Monochromatic Design System */
+:root {
+  --color-black: #000000;
+  --color-gray-900: #1a1a1a;
+  --color-gray-800: #2d2d2d;
+  --color-gray-700: #404040;
+  --color-gray-600: #666666;
+  --color-gray-500: #808080;
+  --color-gray-400: #999999;
+  --color-gray-300: #cccccc;
+  --color-gray-200: #e5e5e5;
+  --color-gray-100: #f5f5f5;
+  --color-white: #ffffff;
+
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 32px;
+  --spacing-xl: 48px;
+  --spacing-2xl: 64px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+html {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-white);
+  color: var(--color-gray-900);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Layout */
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--spacing-2xl) var(--spacing-lg);
+}
+
+.app-header {
+  margin-bottom: var(--spacing-2xl);
+  padding-bottom: var(--spacing-xl);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.app-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-black);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.app-description {
+  font-size: 1.1rem;
+  color: var(--color-gray-600);
+  margin: 0;
+  max-width: 800px;
+  line-height: 1.8;
+}
+
+/* Tabs */
+.tabs-container {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-gray-200);
+}
+
+.tab-button {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: none;
+  background-color: transparent;
+  color: var(--color-gray-600);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tab-button:hover {
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-900);
+}
+
+.tab-button.active {
+  background-color: var(--color-black);
+  color: var(--color-white);
+}
+
+/* Section */
+.section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.section-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-black);
+  margin: 0 0 var(--spacing-sm) 0;
+  letter-spacing: -0.01em;
+}
+
+.section-description {
+  color: var(--color-gray-600);
+  margin: 0 0 var(--spacing-lg) 0;
+  font-size: 1rem;
+}
+
+/* List Container */
+.list-container {
+  height: 450px;
+  overflow: auto;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-white);
+}
+
+.list-inner {
+  position: relative;
+}
+
+/* List Item */
+.list-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.15s ease;
+}
+
+.list-item:hover {
+  background-color: var(--color-gray-100);
+}
+
+.list-item.even {
+  background-color: var(--color-white);
+}
+
+.list-item.odd {
+  background-color: var(--color-gray-50);
+}
+
+.list-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.list-item-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--color-black);
+}
+
+.list-item-email {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+}
+
+.list-item-right {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.list-item-department {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.list-item-salary {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-black);
+}
+
+/* Table */
+.table-container {
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: var(--color-white);
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 100px 240px 200px 160px 160px;
+  background-color: var(--color-black);
+  color: var(--color-white);
+  font-weight: 700;
+  padding: var(--spacing-md) var(--spacing-lg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+}
+
+.table-header-cell {
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.table-header-cell:hover {
+  opacity: 0.8;
+}
+
+.table-body {
+  height: 450px;
+  overflow: auto;
+}
+
+.table-body-inner {
+  position: relative;
+}
+
+.table-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 100px 240px 200px 160px 160px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-gray-100);
+  align-items: center;
+  transition: background-color 0.15s ease;
+}
+
+.table-row:hover {
+  background-color: var(--color-gray-100);
+}
+
+.table-row.even {
+  background-color: var(--color-white);
+}
+
+.table-row.odd {
+  background-color: var(--color-gray-50);
+}
+
+.table-cell-id {
+  color: var(--color-gray-600);
+  font-size: 0.875rem;
+}
+
+.table-cell-name {
+  font-weight: 600;
+  color: var(--color-black);
+}
+
+.table-cell-badge {
+  display: inline-block;
+  background-color: var(--color-gray-200);
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  color: var(--color-gray-900);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table-cell-salary {
+  font-weight: 700;
+  color: var(--color-black);
+  font-size: 1rem;
+}
+
+.table-cell-date {
+  font-size: 0.875rem;
+  color: var(--color-gray-600);
+}
+
+/* Grid */
+.grid-container {
+  height: 550px;
+  overflow: auto;
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-white);
+}
+
+.grid-inner {
+  position: relative;
+}
+
+.grid-header-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 48px;
+  background-color: var(--color-black);
+  color: var(--color-white);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  border-right: 1px solid var(--color-gray-700);
+  z-index: 2;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.grid-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-right: 1px solid var(--color-gray-200);
+  border-bottom: 1px solid var(--color-gray-100);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.grid-cell:hover {
+  background-color: var(--color-gray-100);
+}
+
+.grid-cell.even {
+  background-color: var(--color-white);
+}
+
+.grid-cell.odd {
+  background-color: var(--color-gray-50);
+}
+
+/* Info Box */
+.info-box {
+  margin-top: var(--spacing-2xl);
+  padding: var(--spacing-xl);
+  background-color: var(--color-gray-900);
+  color: var(--color-white);
+  border-radius: var(--radius-lg);
+}
+
+.info-box-title {
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-white);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.info-box-list {
+  line-height: 2;
+  color: var(--color-gray-300);
+  margin: 0;
+  padding-left: var(--spacing-lg);
+}
+
+.info-box-list li {
+  margin-bottom: var(--spacing-sm);
+}
+
+.info-box-list strong {
+  color: var(--color-white);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-gray-100);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-400);
+  border-radius: 6px;
+  border: 2px solid var(--color-gray-100);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-600);
+}
+
+/* Utilities */
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
