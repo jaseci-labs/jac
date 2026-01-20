@@ -17,8 +17,9 @@ The example shows basic collection literals:
 
 - Line 5: `lst = [1, 2, 3]` creates a list
 - Line 6: `tpl = (1, 2, 3)` creates a tuple
-- Line 7: `dct = {"a": 1, "b": 2}` creates a dictionary with string keys
-- Line 8: `st = {1, 2, 3}` creates a set
+- `pairs`, `nested`, `star_vals` show more complex data structures for unpacking
+- `dct = {"a": 1, "b": 2}` creates a dictionary with string keys
+- `st = {1, 2, 3}` creates a set
 
 **Empty Collections (Lines 10-13)**
 
@@ -115,6 +116,23 @@ Line 36: `merged = {**dct, "c": 3}`
 - Adds additional key `"c": 3`
 - If `dct = {"a": 1, "b": 2}`, result is `{"a": 1, "b": 2, "c": 3}`
 - Later values override earlier ones for duplicate keys
+
+**Unpacking in Comprehensions**
+
+Jac supports powerful unpacking patterns within comprehensions:
+
+1. **Tuple Unpacking**:
+   `sums = [a + b for (a, b) in pairs]`
+   Automatically unpacks tuples from the iterable.
+
+2. **Deeply Nested Unpacking**:
+   `names = [name for (name, (x, y)) in nested]`
+   Can unpack complex nested structures.
+
+3. **Star Unpacking**:
+   `heads = [a for (a, b, *rest) in star_vals]`
+   Captures remaining items in a list using the `*` operator.
+
 
 **Comprehension Performance Characteristics**
 

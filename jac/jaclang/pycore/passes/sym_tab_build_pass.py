@@ -331,6 +331,8 @@ class SymTabBuildPass(UniPass):
 
     def enter_except(self, node: uni.Except) -> None:
         self.push_scope_and_link(node)
+        if node.name:
+            node.sym_tab.def_insert(node.name, single_decl="local var")
 
     def exit_except(self, node: uni.Except) -> None:
         self.pop_scope()
@@ -388,11 +390,49 @@ class SymTabBuildPass(UniPass):
         self.pop_scope()
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
-        self.push_scope_and_link(node)
-        if isinstance(node.target, uni.Name):
-            node.sym_tab.def_insert(node.target, single_decl="iterator")
+        parent_compr: (
+            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
+        ) = (
+            node.find_parent_of_type(uni.ListCompr)
+            or node.find_parent_of_type(uni.SetCompr)
+            or node.find_parent_of_type(uni.DictCompr)
+            or node.find_parent_of_type(uni.GenCompr)
+        )
+
+        if parent_compr:
+            self._def_insert_unpacking(node.target, parent_compr.sym_tab)
+        else:
+            self.push_scope_and_link(node)
+            self._def_insert_unpacking(node.target, node.sym_tab)
 
     def exit_inner_compr(self, node: uni.InnerCompr) -> None:
+        parent_compr: (
+            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
+        ) = (
+            node.find_parent_of_type(uni.ListCompr)
+            or node.find_parent_of_type(uni.SetCompr)
+            or node.find_parent_of_type(uni.DictCompr)
+            or node.find_parent_of_type(uni.GenCompr)
+        )
+        if not parent_compr:
+            self.pop_scope()
+
+    def enter_list_compr(self, node: uni.ListCompr) -> None:
+        self.push_scope_and_link(node)
+
+    def exit_list_compr(self, node: uni.ListCompr) -> None:
+        self.pop_scope()
+
+    def enter_set_compr(self, node: uni.SetCompr) -> None:
+        self.push_scope_and_link(node)
+
+    def exit_set_compr(self, node: uni.SetCompr) -> None:
+        self.pop_scope()
+
+    def enter_gen_compr(self, node: uni.GenCompr) -> None:
+        self.push_scope_and_link(node)
+
+    def exit_gen_compr(self, node: uni.GenCompr) -> None:
         self.pop_scope()
 
     def enter_dict_compr(self, node: uni.DictCompr) -> None:
