@@ -178,11 +178,11 @@ The interface is defined in a `.jac` file, while the implementation is placed in
 
     * Parses import statements to determine modules.
     * Searches for modules in the caller directory, `JAC_PATH`, and Python's `sys.path`.
-    * Compiles `.jac` files to bytecode (`.jir`) if necessary.
+    * Compiles `.jac` files to bytecode if necessary.
     * Executes bytecode to populate module namespaces.
-    * Caches modules to improve performance.
+    * Caches compiled bytecode (`.jbc` files) to improve performance.
 
-    Common issues include missing bytecode, syntax errors, and circular dependencies.
+    Common issues include syntax errors and circular dependencies.
 
 ## File Operations and External Integration
 

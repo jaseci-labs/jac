@@ -88,6 +88,8 @@ obj UnboundType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unbound;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a type that is not known or cannot be determined."""
@@ -95,6 +97,8 @@ obj UnknownType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a type that can never occur."""
@@ -102,6 +106,8 @@ obj NeverType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Never;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a type that can be anything."""
@@ -109,6 +115,8 @@ obj AnyType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a module type."""
@@ -120,6 +128,8 @@ obj ModuleType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a type variable."""
@@ -127,6 +137,8 @@ obj TypeVarType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.TypeVar;
     }
+
+    def __str__ -> str;
 }
 
 """Represents a class type."""
@@ -220,6 +232,7 @@ obj FunctionType(TypeBase) {
     }
 
     def postinit -> None;
+    def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
 }
@@ -233,6 +246,7 @@ obj OverloadedType(TypeBase) {
     }
 
     def postinit -> None;
+    def __str__ -> str;
 }
 
 """Represents a union type."""
@@ -244,4 +258,5 @@ obj UnionType(TypeBase) {
     }
 
     def postinit -> None;
+    def __str__ -> str;
 }

@@ -84,7 +84,7 @@ This is the fastest way to get started with building applications.
 If you plan to contribute to Jaseci, install it in editable mode from a cloned repository:
 
 ```bash
-git clone https://github.com/Jaseci-Labs/jaseci.git
+git clone --recurse --depth 1 --single-branch https://github.com/jaseci-labs/jaseci
 cd jaseci
 ```
 
