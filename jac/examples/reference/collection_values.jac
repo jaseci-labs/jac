@@ -32,6 +32,7 @@ glob lst = [1, 2, 3],
      names = [name for (name, (x, y)) in nested],
      heads = [a for (a, b, *rest) in star_vals],
      merged = {** dct, 'c': 3};
+
 with entry {
     print(
         lst,

@@ -9,7 +9,7 @@ glob star_items = [(1, 2, 3, 4), (5, 6, 7, 8)],
 glob deep_items = [(1, (2, (3, 4))), (5, (6, (7, 8)))],
      deep_result = [a for (a, (b, (c, d))) in deep_items];
 
-# 4. Set comprehension with unpacking   
+# 4. Set comprehension with unpacking
 glob set_items = [(1, 2), (3, 4)],
      set_result = {a + b for (a, b) in set_items};
 
@@ -17,7 +17,7 @@ glob set_items = [(1, 2), (3, 4)],
 glob dict_items = [(1, 2), (3, 4)],
      dict_result = {k: v for (k, v) in dict_items};
 
-# 6. Generator expression with unpacking    
+# 6. Generator expression with unpacking
 glob gen_items = [(1, 2), (3, 4)],
      gen_result = (a + b for (a, b) in gen_items);
 

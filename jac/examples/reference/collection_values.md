@@ -133,7 +133,6 @@ Jac supports powerful unpacking patterns within comprehensions:
    `heads = [a for (a, b, *rest) in star_vals]`
    Captures remaining items in a list using the `*` operator.
 
-
 **Comprehension Performance Characteristics**
 
 | Type | Memory | Use Case |

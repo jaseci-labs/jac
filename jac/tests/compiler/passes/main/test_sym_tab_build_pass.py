@@ -2,8 +2,8 @@
 
 import os
 
-from jaclang.pycore.program import JacProgram
 import jaclang.pycore.unitree as uni
+from jaclang.pycore.program import JacProgram
 
 
 def test_no_dupl_symbols() -> None:
@@ -46,6 +46,7 @@ def test_package() -> None:
     prog.compile(file_path)
     assert prog.errors_had == []
     assert prog.warnings_had == []
+
 
 def test_expr_as_item_alias_variable() -> None:
     """Test that alias variables in 'as' clauses are registered in symbol table."""
@@ -92,6 +93,7 @@ def test_in_for_stmt_iteration_variables() -> None:
         for_loop_scope = mod.sym_tab.kid_scope[scope_idx]
         for var_name in expected_vars:
             assert var_name in for_loop_scope.names_in_scope
+
 
 def test_compr_unpacking_variables() -> None:
     """Test that unpacking variables in comprehensions are in container scope."""
