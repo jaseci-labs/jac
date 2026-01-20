@@ -16,7 +16,7 @@ cl {
         first_names = ["John", "Jane", "Mike", "Sarah", "David", "Emily", "Chris", "Anna", "Tom", "Lisa"];
         last_names = ["Smith", "Johnson", "Brown", "Taylor", "Anderson", "Thomas", "Jackson", "White", "Harris", "Martin"];
         departments = ["Engineering", "Sales", "Marketing", "HR", "Finance", "Operations", "IT", "Legal"];
-        
+
         for i=0 to i<count by i+=1 {
             user = {
                 "id": i + 1,
@@ -38,14 +38,14 @@ cl {
     def SimpleListVirtualizer() -> any {
         parentRef = useRef(None);
         items = generate_users(10000);
-        
+
         rowVirtualizer = useVirtualizer({
             "count": (items.length),
             "getScrollElement": lambda -> any { return parentRef.current; },
             "estimateSize": lambda -> int { return 60; },
             "overscan": 10,
         });
-        
+
         return <div className="section">
             <h2 className="section-title">Simple List (10,000 Users)</h2>
             <p className="section-description">
@@ -86,11 +86,11 @@ cl {
          allUsers = generate_users(50000);
          sortField = "id";
          sortDirection = "asc";
-        
+
         # Sort data based on current sort state
         sortedUsers = useMemo(lambda -> list {
             sorted_list = allUsers.slice();  # Create a copy
-            
+
             if sortField == "name" {
                 sorted_list.sort(lambda a: dict, b: dict -> int {
                     nameA = f"{a['firstName']} {a['lastName']}";
@@ -126,17 +126,17 @@ cl {
                     }
                 });
             }
-            
+
             return sorted_list;
         }, [allUsers, sortField, sortDirection]);
-        
+
         rowVirtualizer = useVirtualizer({
             "count": (sortedUsers.length),
             "getScrollElement": lambda -> any { return parentRef.current; },
             "estimateSize": lambda -> int { return 45; },
             "overscan": 15,
         });
-        
+
         def handle_sort(field: str) -> None {
             if sortField == field {
                 sortDirection = "desc" if sortDirection == "asc" else "asc";
@@ -145,14 +145,14 @@ cl {
                 sortDirection = "asc";
             }
         }
-        
+
         def get_sort_indicator(field: str) -> str {
             if sortField == field {
                 return " ↓" if sortDirection == "desc" else " ↑";
             }
             return "";
         }
-        
+
         return <div className="section">
             <h2 className="section-title">Data Table (50,000 Users)</h2>
             <p className="section-description">
@@ -174,7 +174,7 @@ cl {
                     </div>
                     <div>Join Date</div>
                 </div>
-                
+
                 <div ref={parentRef} className="table-body">
                     <div className="table-body-inner" style={{"height": f"{rowVirtualizer.getTotalSize()}px"}}>
                         {
@@ -208,7 +208,7 @@ cl {
     def GridVirtualizerFixed() -> any {
         parentRef = useRef(None);
          data = generate_users(5000);
-        
+
         rowVirtualizer = useVirtualizer({
             "count": (data.length),
             "getScrollElement": lambda -> any { return parentRef.current; },
@@ -223,9 +223,9 @@ cl {
             "estimateSize": lambda index: int -> int { return 150 if index == 2 else 120; },  # Email column wider
             "overscan": 3,
         });
-        
+
         columns = ["ID", "First Name", "Email", "Last Name", "Dept", "Salary", "Age", "Join Date"];
-        
+
         def get_cell_value(user: dict, col_index: int) -> str {
             if col_index == 0 {
                 return (user['id']);
@@ -252,8 +252,8 @@ cl {
                 2D virtualization - efficient for spreadsheet-like data with many columns
             </p>
             <div ref={parentRef} className="grid-container">
-                <div 
-                    className="grid-inner" 
+                <div
+                    className="grid-inner"
                     style={{
                         "height": f"{rowVirtualizer.getTotalSize()}px",
                         "width": f"{columnVirtualizer.getTotalSize()}px"
@@ -273,7 +273,7 @@ cl {
                             </div>;
                         })
                     }
-                    
+
                     {
                         rowVirtualizer.getVirtualItems().map(lambda virtualRow: any, rowIdx: int -> any {
                             user = data[virtualRow.index];
@@ -303,7 +303,7 @@ cl {
 
     def:pub app() -> any {
         [activeTab, setActiveTab ]= useState("list");
-        
+
         return <div className="app-container">
             <div className="app-header">
                 <h1 className="app-title">React Virtualization Examples</h1>
@@ -312,7 +312,7 @@ cl {
                     Virtualization only renders visible items, dramatically improving performance.
                 </p>
             </div>
-            
+
             <div className="tabs-container">
                 <button
                     onClick={lambda -> None { return setActiveTab("list"); }}
@@ -333,13 +333,13 @@ cl {
                     Grid
                 </button>
             </div>
-            
+
             <div>
                 {activeTab == "list" and <SimpleListVirtualizer />}
                 {activeTab == "table" and <DataTableVirtualizer />}
                 {activeTab == "grid" and <GridVirtualizerFixed />}
             </div>
-            
+
             <div className="info-box">
                 <h3 className="info-box-title">Why Virtualization?</h3>
                 <ul className="info-box-list">
