@@ -51,6 +51,24 @@ $ pip install jaclang
 $ jac --version
 ```
 
+#### Optional: Enhanced Console Output
+
+For a more beautiful terminal experience with Rich-enhanced formatting, colors, and spinners, you can optionally install `jac-super`:
+
+```bash
+# Install jac-super for enhanced console output
+$ pip install jac-super
+```
+
+Once installed, all Jac CLI commands will automatically use Rich-enhanced output with:
+
+- Colorful, themed messages (success in green, errors in red, etc.)
+- Beautiful panels and tables
+- Animated spinners for long operations
+- Clickable URLs in terminal output
+
+The plugin is completely optional--Jac works perfectly fine without it, using simple text output.
+
 <br />
 
 ### VS Code Extension

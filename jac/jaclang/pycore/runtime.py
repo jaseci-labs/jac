@@ -59,6 +59,7 @@ from jaclang.vendor import pluggy
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler
 
+    from jaclang.cli.console import JacConsole as ConsoleImpl
     from jaclang.pycore.compiler import JacCompiler
     from jaclang.pycore.program import JacProgram
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
@@ -1673,6 +1674,21 @@ class JacClientBundle:
         return builder.build(module, force=force)
 
 
+class JacConsole:
+    """Jac Console Operations - Generic interface for console output."""
+
+    @staticmethod
+    def get_console() -> ConsoleImpl:
+        """Get the console instance to use for CLI output.
+
+        Plugins can override this hook to provide their own console implementation.
+        The returned instance should be compatible with the JacConsole interface.
+        """
+        from jaclang.cli.console import JacConsole
+
+        return JacConsole()
+
+
 class JacAPIServer:
     """Jac API Server Operations - Generic interface for API server."""
 
@@ -2254,6 +2270,7 @@ class JacRuntimeInterface(
     JacCmd,
     JacBasics,
     JacClientBundle,
+    JacConsole,
     JacAPIServer,
     JacByLLM,
     JacResponseBuilder,

@@ -8,6 +8,14 @@ Firstly make sure that Python 3.12 or higher is installed in your environment, t
 python -m pip install -U jaclang jac-client
 ```
 
+> **Tip**: For enhanced terminal output with colors, panels, and spinners, optionally install `jac-super`:
+>
+> ```bash
+> pip install jac-super
+> ```
+>
+> This plugin automatically enhances all Jac CLI command output with Rich formatting.
+
 Once you've got Jaclang installed, just give the Jac CLI a try to make sure everything's up and running smoothly.
 
 - Start the Jac CLI:

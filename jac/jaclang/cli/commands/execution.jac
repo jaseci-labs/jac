@@ -8,13 +8,13 @@ import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run the specified .jac, .jir, or .py file."""
+"""Run the specified .jac or .py file."""
 @registry.command(
     name="run",
     help="Run a Jac program",
     args=[
         Arg.create(
-            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac, .jir, or .py file"
+            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .py file"
         ),
         Arg.create(
             "main", typ=bool, default=True, help="Treat module as __main__", short="m"
@@ -38,9 +38,7 @@ def run(filename: str, main: bool = True, cache: bool = True) -> int;
     name="enter",
     help="Run a specific entrypoint in a Jac program",
     args=[
-        Arg.create(
-            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .jir file"
-        ),
+        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
         Arg.create(
             "entrypoint", kind=ArgKind.POSITIONAL, help="Function/walker to invoke"
         ),

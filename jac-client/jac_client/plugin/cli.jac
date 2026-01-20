@@ -69,7 +69,7 @@ def _handle_client_create(ctx: HookContext) -> None {
 
     name = ctx.get_arg("name", "");
     force = ctx.get_arg("force", False);
-    list_jacpacs = ctx.get_arg("list_jacpacs", False);
+    list_jacpacks = ctx.get_arg("list_jacpacks", False);
     skip_install = ctx.get_arg("skip", False);
 
     # Set environment variable to signal post_create hook to skip npm install
@@ -79,7 +79,7 @@ def _handle_client_create(ctx: HookContext) -> None {
 
     try {
         result = create_fn(
-            name=name, force=force, use="client", list_jacpacs=list_jacpacs
+            name=name, force=force, use="client", list_jacpacks=list_jacpacks
         );
         # Cancel core handler since we called create ourselves
         ctx.set_data("cancel_execution", True);
