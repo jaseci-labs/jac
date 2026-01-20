@@ -14,6 +14,17 @@ import from ..utils.helpers { generateId, calculatePercentage, sumBy }
 # # Import from other JAC files
 import from ..utils.formatters { formatCurrency }
 
+# Import walkers from server module
+sv import from .FeaturesTest {
+    create_test_data,
+    read_test_data,
+    update_test_data,
+    delete_test_data,
+    test_string_methods,
+    test_list_operations,
+    process_complex_data
+}
+
 # ============================================================================
 # REUSABLE COMPONENTS WITH PROPS
 # ============================================================================

@@ -423,6 +423,24 @@ jac destroy app.jac
 - Removes persistent volumes and claims
 - Cleans up the namespace (if custom namespace was used)
 
+## Async Walkers
+
+JAC Scale supports async walkers for non-blocking operations like external API calls, database queries, and file I/O.
+
+```
+import asyncio;
+
+async walker FetchData {
+    has url: str;
+
+    async can fetch with `root entry {
+        report {"status": "fetching"};
+        await asyncio.sleep(0.1);  # Simulate API call
+        report {"status": "completed", "data": "result"};
+    }
+}
+```
+
 ## Configuration Options
 
 ### Optional Environment Variables

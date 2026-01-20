@@ -13,6 +13,7 @@ import from 'react-router-dom' {
     useLocation as reactRouterUseLocation,
     useParams as reactRouterUseParams
 }
+import from 'react-error-boundary' { ErrorBoundary }
 
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
 
@@ -25,7 +26,8 @@ glob:pub useState = reactUseState,
      Navigate = ReactRouterNavigate,
      useNavigate = reactRouterUseNavigate,
      useLocation = reactRouterUseLocation,
-     useParams = reactRouterUseParams;
+     useParams = reactRouterUseParams,
+     JacClientErrorBoundary = ErrorBoundary;
 
 def:pub useRouter -> dict;
 def:pub navigate(path: str) -> None;
@@ -39,4 +41,5 @@ def:pub jacIsLoggedIn -> bool;
 def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
+def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> any;
 # React Router components

@@ -14,6 +14,7 @@ impl start_cli -> None {
     import from jaclang.cli.registry { get_registry }
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
+    import from jaclang.cli.console { console }
     # Auto-discover and load jac.toml project configuration
     _load_project_config();
     # Load plugins which may register additional commands
@@ -34,8 +35,8 @@ impl start_cli -> None {
     args = parser.parse_args();
     # Handle --version flag
     if args.version {
-        print(f"Jac version {pkg_version('jaclang')}");
-        print('Jac path:', __file__);
+        import from jaclang.cli.banners { print_version_banner }
+        print_version_banner(pkg_version('jaclang'));
         return;
     }
     # Handle no command specified
@@ -45,13 +46,13 @@ impl start_cli -> None {
         help_text = formatter.format_main_help(
             registry.get_all(), prog="jac", version=pkg_version('jaclang')
         );
-        print(help_text);
+        console.print(help_text);
         return;
     }
     # Get the command specification
     command_spec = registry.get(args.command);
     if not command_spec {
-        print(f"Unknown command: {args.command}", file=sys.stderr);
+        console.error(f"Unknown command: {args.command}");
         parser.print_help();
         return;
     }
@@ -66,7 +67,7 @@ impl start_cli -> None {
     result = executor.execute(command_spec, args_dict);
     # Exit with the command's return code
     if result.error {
-        print(f"Error: {result.error}", file=sys.stderr);
+        console.error(f"{result.error}");
     }
     if result.return_code != 0 {
         sys.exit(result.return_code);

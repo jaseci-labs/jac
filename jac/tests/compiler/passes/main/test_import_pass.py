@@ -9,7 +9,6 @@ import pytest
 
 import jaclang.pycore.unitree as uni
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
-from jaclang.pycore.constant import CodeContext
 from jaclang.pycore.program import JacProgram
 
 
@@ -26,12 +25,11 @@ def test_import_auto_impl(fixture_path: Callable[[str], str]) -> None:
     (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
     num_modules = len(list(prog.mod.hub.values())[0].impl_mod)
     mod_names = [i.name for i in list(prog.mod.hub.values())[0].impl_mod]
-    assert num_modules == 6
+    assert num_modules == 5
     assert "getme.impl" in mod_names
     assert "autoimpl.impl" in mod_names
     assert "autoimpl.something.else.impl" in mod_names
     assert "autoimpl.shared.impl" in mod_names  # shared folder impl
-    assert "autoimpl.cl" in mod_names
 
 
 def test_import_include_auto_impl(fixture_path: Callable[[str], str]) -> None:
@@ -39,14 +37,13 @@ def test_import_include_auto_impl(fixture_path: Callable[[str], str]) -> None:
     (prog := JacProgram()).compile(fixture_path("incautoimpl.jac"))
     num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1
     mod_names = [i.name for i in list(prog.mod.hub.values())[1].impl_mod]
-    assert num_modules == 7
+    assert num_modules == 6
     assert list(prog.mod.hub.values())[0].name == "incautoimpl"
     assert list(prog.mod.hub.values())[1].name == "autoimpl"
     assert "getme.impl" in mod_names
     assert "autoimpl.impl" in mod_names
     assert "autoimpl.something.else.impl" in mod_names
     assert "autoimpl.shared.impl" in mod_names  # shared folder impl
-    assert "autoimpl.cl" in mod_names
 
 
 def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
@@ -54,17 +51,16 @@ def test_annexalbe_by_discovery(fixture_path: Callable[[str], str]) -> None:
     (prog := JacProgram()).compile(fixture_path("incautoimpl.jac"))
     count = 0
     all_mods = prog.mod.hub.values()
-    # Annex modules
+    # Annex modules (.impl.jac and .test.jac files only, .cl.jac are standalone)
     # ["incautoimpl", "autoimpl", "autoimpl.something.else.impl",
-    #  "autoimpl.impl", "autoimpl.empty.impl", "autoimpl.cl",
-    #  "getme.impl"]
-    assert len(all_mods) == 8
+    #  "autoimpl.impl", "autoimpl.empty.impl", "getme.impl", "autoimpl.shared.impl"]
+    assert len(all_mods) == 7
     for main_mod in all_mods:
         for i in main_mod.impl_mod:
             if i.name not in ["autoimpl", "incautoimpl"]:
                 count += 1
                 assert i.annexable_by == fixture_path("autoimpl.jac")
-    assert count == 6
+    assert count == 5
 
 
 def test_annexable_by_shared_folder(fixture_path: Callable[[str], str]) -> None:
@@ -78,21 +74,6 @@ def test_annexable_by_shared_folder(fixture_path: Callable[[str], str]) -> None:
     )
     assert shared_impl is not None, "Expected shared folder impl to be loaded"
     assert shared_impl.annexable_by == fixture_path("autoimpl.jac")
-
-
-def test_cl_annex_marked_client(fixture_path: Callable[[str], str]) -> None:
-    """Ensure .cl.jac annex files are autoloaded and marked client."""
-
-    (prog := JacProgram()).compile(fixture_path("autoimpl.jac"))
-    main_mod = list(prog.mod.hub.values())[0]
-    cl_mod = next((mod for mod in main_mod.impl_mod if mod.name.endswith(".cl")), None)
-    assert cl_mod is not None, "Expected .cl annex module to be loaded"
-    abilities = cl_mod.get_all_sub_nodes(uni.Ability)
-    assert abilities, "Expected abilities in .cl annex module"
-    for ability in abilities:
-        assert ability.code_context == CodeContext.CLIENT, (
-            "All client annex abilities should be marked as client declarations"
-        )
 
 
 @pytest.mark.skip(reason="TODO: Fix when we have the type checker")

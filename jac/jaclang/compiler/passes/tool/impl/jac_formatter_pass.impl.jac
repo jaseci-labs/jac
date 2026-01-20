@@ -112,7 +112,7 @@ impl JacFormatPass.transform(ir_in: uni.Module) -> uni.Module {
         lines.pop();
     }
     ir_in.gen.jac = ('\n'.join(lines) + '\n') if lines else '';
-    # Process impl modules (includes .impl.jac and .cl.jac files)
+    # Process impl modules (.impl.jac files)
     # Only do this for the main module (not annex modules themselves)
     if ir_in.annexable_by is None {
         for impl_mod in ir_in.impl_mod {

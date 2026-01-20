@@ -1,5 +1,5 @@
 site_name: The Jac Programming Language and Jaseci Stack
-site_url: https://jac-lang.org
+site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true

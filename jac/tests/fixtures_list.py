@@ -337,7 +337,6 @@ MICRO_JAC_FILES: list[str] = [
     "tests/compiler/passes/main/fixtures/access_modifier.jac",
     "tests/compiler/passes/main/fixtures/atest.impl.jac",
     "tests/compiler/passes/main/fixtures/atest.jac",
-    "tests/compiler/passes/main/fixtures/autoimpl.cl.jac",
     "tests/compiler/passes/main/fixtures/autoimpl.empty.impl.jac",
     "tests/compiler/passes/main/fixtures/autoimpl.impl.jac",
     "tests/compiler/passes/main/fixtures/autoimpl.impl/getme.impl.jac",

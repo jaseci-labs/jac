@@ -2143,7 +2143,7 @@ impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
         first_kid = False;
     }
     <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
-    # Traverse impl modules (includes .impl.jac and .cl.jac files)
+    # Traverse impl modules (.impl.jac files)
     # Only do this for the main module (not annex modules themselves)
     if <>node.annexable_by is None {
         for impl_mod in <>node.impl_mod {

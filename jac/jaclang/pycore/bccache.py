@@ -22,21 +22,21 @@ if TYPE_CHECKING:
 
 
 def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[str]:
-    """Discover annex files (.impl.jac, .test.jac, .cl.jac) for a source .jac file.
+    """Discover annex files (.impl.jac, .test.jac) for a source .jac or .cl.jac file.
 
-    Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/, test/, cl/).
-    Also handles .cl.jac files looking for their .impl.jac annexes.
+    Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/, test/).
     """
     src = Path(source_path).resolve()
     # Skip non-.jac files and files that are the same annex type as requested
     if not src.name.endswith(".jac") or src.name.endswith(suffix):
         return []
 
-    # Get base name, handling .cl.jac files specially (foo.cl.jac -> foo)
-    base = src.name[:-7] if src.name.endswith(".cl.jac") else src.stem
-
-    mod_folder = src.parent / (base + suffix[:-4])  # foo.impl/, foo.test/, foo.cl/
-    shared_folder = suffix[1:-4]  # Extract "impl", "test", or "cl"
+    # Handle .cl.jac files: extract base name (e.g., foo.cl.jac -> foo)
+    base = src.stem
+    if base.endswith(".cl"):
+        base = base[:-3]
+    mod_folder = src.parent / (base + suffix[:-4])  # foo.impl/, foo.test/
+    shared_folder = suffix[1:-4]  # Extract "impl" or "test"
     dirs = [src.parent, mod_folder, src.parent / shared_folder]
     return [
         str(f)
@@ -50,13 +50,13 @@ def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[st
 
 
 def discover_base_file(annex_path: str) -> str | None:
-    """Discover the base .jac file for an annex file (.impl.jac, .test.jac, .cl.jac).
+    """Discover the base .jac or .cl.jac file for an annex file (.impl.jac, .test.jac).
 
     Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/).
     For multi-part names like "foo.bar.impl.jac", only the first component is used.
     """
     src = Path(annex_path).resolve()
-    annex_types = {".impl.jac": ".impl", ".test.jac": ".test", ".cl.jac": ".cl"}
+    annex_types = {".impl.jac": ".impl", ".test.jac": ".test"}
 
     # Find matching annex type and extract base name
     for suffix, folder_suffix in annex_types.items():
@@ -67,9 +67,9 @@ def discover_base_file(annex_path: str) -> str | None:
             candidates = [(src.parent, base_name)]
             if parent.endswith(folder_suffix):  # Module-specific folder
                 candidates.append((src.parent.parent, parent[: -len(folder_suffix)]))
-            if parent in {"impl", "test", "cl"}:  # Shared folder
+            if parent in {"impl", "test"}:  # Shared folder
                 candidates.append((src.parent.parent, base_name))
-            # Search for base file
+            # Search for base file (both .jac and .cl.jac can have annexes)
             for directory, name in candidates:
                 for ext in (".jac", ".cl.jac"):
                     path = directory / f"{name}{ext}"

@@ -33,6 +33,13 @@ import from jaclang.project.dependencies {
     is_packages_in_path,
     remove_packages_from_path
 }
+import from jaclang.project.template_registry { ProjectTemplate }
+import from jaclang.project.template_loader {
+    load_template_from_directory,
+    load_template_from_json,
+    bundle_template,
+    resolve_post_create_hook
+}
 
 glob __all__ = [
          'JacConfig',
@@ -57,5 +64,10 @@ glob __all__ = [
          'ResolvedDependency',
          'add_packages_to_path',
          'remove_packages_from_path',
-         'is_packages_in_path'
+         'is_packages_in_path',
+         'ProjectTemplate',
+         'load_template_from_directory',
+         'load_template_from_json',
+         'bundle_template',
+         'resolve_post_create_hook'
      ];

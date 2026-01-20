@@ -1035,7 +1035,7 @@ class Module(AstDocNode, UniScopeNode):
         """Get the base module path that this annex file belongs to.
 
         Uses discover_base_file to find the base .jac file for annex files
-        (.impl.jac, .test.jac, .cl.jac). Handles all discovery scenarios:
+        (.impl.jac, .test.jac). Handles all discovery scenarios:
         - Same directory: foo.impl.jac -> foo.jac
         - Module-specific folder: foo.impl/bar.impl.jac -> foo.jac
         - Shared folder: impl/foo.impl.jac -> foo.jac
