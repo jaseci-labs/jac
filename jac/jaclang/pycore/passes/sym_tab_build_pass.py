@@ -389,7 +389,7 @@ class SymTabBuildPass(UniPass):
 
     def enter_inner_compr(self, node: uni.InnerCompr) -> None:
         parent_compr = node.parent_of_type((uni.ListCompr, uni.SetCompr, uni.DictCompr))
-        
+
         if parent_compr:
             self._def_insert_unpacking(node.target, parent_compr.sym_tab)
         else:

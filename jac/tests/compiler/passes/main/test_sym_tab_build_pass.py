@@ -76,6 +76,7 @@ def test_compr_unpacking_variables() -> None:
             f"Scope {scope_idx}: expected {expected_vars}, got {actual_vars}"
         )
 
+
 def test_expr_as_item_alias_variable() -> None:
     """Test that alias variables in 'as' clauses are registered in symbol table."""
 
