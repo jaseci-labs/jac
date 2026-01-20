@@ -278,22 +278,6 @@ def test_del_clean(
     assert "0 errors, 0 warnings" in stdout_value
 
 
-def test_build_and_run(
-    fixture_path: Callable[[str], str],
-    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
-) -> None:
-    """Testing for print AstTool."""
-    if os.path.exists(f"{fixture_path('needs_import.jir')}"):
-        os.remove(f"{fixture_path('needs_import.jir')}")
-    with capture_stdout() as output:
-        analysis.build(f"{fixture_path('needs_import.jac')}")
-        execution.run(f"{fixture_path('needs_import.jir')}")
-
-    stdout_value = output.getvalue()
-    assert "Errors: 0, Warnings: 0" in stdout_value
-    assert "<module 'pyfunc' from" in stdout_value
-
-
 def test_run_test(fixture_path: Callable[[str], str]) -> None:
     """Basic test for pass."""
     process = subprocess.Popen(
@@ -569,18 +553,6 @@ def test_cli_error_exit_codes(fixture_path: Callable[[str], str]) -> None:
         "run command should exit with code 1 on syntax error"
     )
     assert "Error" in stderr
-
-    # Test build command with syntax error
-    process = subprocess.Popen(
-        ["jac", "build", fixture_path("err2.jac")],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    stdout, stderr = process.communicate()
-    assert process.returncode == 1, (
-        "build command should exit with code 1 on compilation error"
-    )
 
     # Test check command with syntax error
     process = subprocess.Popen(

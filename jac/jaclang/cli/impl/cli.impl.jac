@@ -27,7 +27,7 @@ impl start_cli -> None {
     if (
         raw_argv
         and not raw_argv[0].startswith('-')
-        and raw_argv[0].lower().endswith(('.jac', '.jir', '.py'))
+        and raw_argv[0].lower().endswith(('.jac', '.py'))
     ) {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
     }

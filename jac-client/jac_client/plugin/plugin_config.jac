@@ -120,14 +120,14 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
     # Find the template JSON file relative to this module
     # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
     module_dir = Path(__file__).parent.parent;  # jac_client directory
-    template_path = module_dir / "templates" / f"{template_name}.jacpac";
+    template_path = module_dir / "templates" / f"{template_name}.jacpack";
 
     if not template_path.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
             package_files = files("jac_client");
-            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpac";
+            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
         } except Exception {
             return None;
         }

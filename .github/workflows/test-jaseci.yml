@@ -170,32 +170,40 @@ jobs:
         with:
           filters: |
             k8s:
-              - 'jac-scale/jac_scale/kubernetes/**'
+              - 'jac-scale/**'
+              - 'jac-client/**'
 
-      - name: Install Kind (Kubernetes in Docker)
+      - name: Install MicroK8s
         if: steps.k8s-changes.outputs.k8s == 'true'
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          kind version
+          set +e
+          sudo snap install microk8s --classic
+          sleep 20
+          set -e
 
-      - name: Create Kubernetes cluster with Kind
+      - name: Initialize MicroK8s
         if: steps.k8s-changes.outputs.k8s == 'true'
         run: |
-          kind create cluster --name jaseci-test --wait 60s
-          kubectl cluster-info
-          kubectl get nodes
+          sudo microk8s status --wait-ready
+          sudo microk8s enable dns storage
+
+      - name: Configure kubectl
+        if: steps.k8s-changes.outputs.k8s == 'true'
+        run: |
+          mkdir -p ~/.kube
+          sudo microk8s config > ~/.kube/config
+
 
       - name: Run K8 tests
         if: steps.k8s-changes.outputs.k8s == 'true'
         run: |
-          pytest -v jac-scale/jac_scale/tests/test_deploy_k8s.py
+          pytest -vv -s jac-scale/jac_scale/tests/test_deploy_k8s.py
           pytest -v jac-scale/jac_scale/tests/test_k8s_utils.py
 
-      - name: Delete Kind cluster
+      - name: Reset microk8s cluster
         if: always() && steps.k8s-changes.outputs.k8s == 'true'
-        run: kind delete cluster --name jaseci-test
+        run: |
+          sudo microk8s reset
 
   test-pypi-build:
     runs-on: ubuntu-latest
