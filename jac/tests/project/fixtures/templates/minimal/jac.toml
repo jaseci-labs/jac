@@ -10,16 +10,16 @@ entry-point = "main.jac"
 [dependencies]
 
 # Jacpac metadata - used when packing, stripped from created projects
-[jacpac]
+[jacpack]
 name = "minimal"
 description = "A minimal test template"
 jaclang = "0.9.0"
 
-[[jacpac.plugins]]
+[[jacpack.plugins]]
 name = "test-plugin"
 version = "1.0.0"
 
-[jacpac.options]
+[jacpack.options]
 directories = [".jac"]
 gitignore_entries = ["*"]
 root_gitignore_entries = [".jac/", "*.jir"]

@@ -25,7 +25,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
-| `jac jacpac` | Manage project templates (.jacpac files) |
+| `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac get_object` | Retrieve object by ID |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
@@ -132,7 +132,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
-| `-l, --list-jacpacs` | List available jacpac templates | `False` |
+| `-l, --list-jacpacks` | List available jacpack templates | `False` |
 
 **Examples:**
 
@@ -144,17 +144,17 @@ cd myapp
 # Create full-stack project with client template
 jac create myapp --use client
 
-# Create from a local .jacpac file
-jac create myapp --use ./my-template.jacpac
+# Create from a local .jacpack file
+jac create myapp --use ./my-template.jacpack
 
 # Create from a local template directory
 jac create myapp --use ./my-template/
 
 # Create from a URL
-jac create myapp --use https://example.com/template.jacpac
+jac create myapp --use https://example.com/template.jacpack
 
-# List available jacpac templates
-jac create --list-jacpacs
+# List available jacpack templates
+jac create --list-jacpacks
 
 # Force overwrite existing
 jac create myapp --force
@@ -163,7 +163,7 @@ jac create myapp --force
 jac create
 ```
 
-**See Also:** Use `jac jacpac` to create and bundle custom templates.
+**See Also:** Use `jac jacpack` to create and bundle custom templates.
 
 ---
 
@@ -681,33 +681,33 @@ jac clean --all --force
 
 ## Template Management
 
-### jac jacpac
+### jac jacpack
 
-Manage project templates. Bundle template directories into distributable `.jacpac` files or list available templates.
+Manage project templates. Bundle template directories into distributable `.jacpack` files or list available templates.
 
 ```bash
-jac jacpac [action] [path] [-o OUTPUT]
+jac jacpack [action] [path] [-o OUTPUT]
 ```
 
 | Action | Description |
 |--------|-------------|
-| `pack` | Bundle a template directory into a `.jacpac` file |
+| `pack` | Bundle a template directory into a `.jacpack` file |
 | `list` | List available templates (default) |
 | `info` | Show information about a template |
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `path` | Template directory (for pack) or `.jacpac` file (for info) | None |
-| `-o, --output` | Output file path for bundled template | `<name>.jacpac` |
+| `path` | Template directory (for pack) or `.jacpack` file (for info) | None |
+| `-o, --output` | Output file path for bundled template | `<name>.jacpack` |
 
 **Template Directory Structure:**
 
 A template directory should contain:
 
-- `jac.toml` - Project config with a `[jacpac]` section for metadata
+- `jac.toml` - Project config with a `[jacpack]` section for metadata
 - Template files (`.jac`, `.md`, etc.) with `{{name}}` placeholders
 
-To make any Jac project packable as a template, simply add a `[jacpac]` section to your `jac.toml`. All other sections become the config for created projects.
+To make any Jac project packable as a template, simply add a `[jacpack]` section to your `jac.toml`. All other sections become the config for created projects.
 
 **Example `jac.toml` for a template:**
 
@@ -721,16 +721,16 @@ entry-point = "main.jac"
 [dependencies]
 
 # Jacpac metadata - used when packing, stripped from created projects
-[jacpac]
+[jacpack]
 name = "mytemplate"
 description = "My custom project template"
 jaclang = "0.9.0"
 
-[[jacpac.plugins]]
+[[jacpack.plugins]]
 name = "jac-client"
 version = "0.1.0"
 
-[jacpac.options]
+[jacpack.options]
 directories = [".jac"]
 gitignore_entries = ["*"]
 root_gitignore_entries = [".jac/", "*.jir"]
@@ -740,17 +740,17 @@ root_gitignore_entries = [".jac/", "*.jir"]
 
 ```bash
 # List available templates
-jac jacpac list
+jac jacpack list
 
 # Bundle a template directory
-jac jacpac pack ./my-template
+jac jacpack pack ./my-template
 
 # Bundle with custom output path
-jac jacpac pack ./my-template -o custom-name.jacpac
+jac jacpack pack ./my-template -o custom-name.jacpack
 
 # Show template info
-jac jacpac info ./my-template
-jac jacpac info mytemplate.jacpac
+jac jacpack info ./my-template
+jac jacpack info mytemplate.jacpack
 ```
 
 **Using Templates with `jac create`:**
