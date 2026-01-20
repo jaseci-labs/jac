@@ -43,3 +43,33 @@ for s in ["a", "b"]:
     while j < 2:
         print(f"{s}{j}")
         j += 1
+pairs = [(1, 2), (3, 4), (5, 6)]
+for a, b in pairs:
+    print(f"a={a}, b={b}")
+matrix = [[1, 2, 3], [4, 5, 6]]
+for x, y, z in matrix:
+    print(f"x={x}, y={y}, z={z}")
+nested = [("alice", (10, 20)), ("bob", (30, 40))]
+for name, (x, y) in nested:
+    print(f"{name}: x={x}, y={y}")
+items = [(1, 2, 3, 4), (5, 6, 7, 8)]
+for first, *rest in items:
+    print(f"first={first}, rest={rest}")
+sequences = [(1, 2, 3, 4, 5), (6, 7, 8, 9, 10)]
+for first, *middle, last in sequences:
+    print(f"first={first}, middle={middle}, last={last}")
+data = {"name": "Alice", "age": 30, "city": "NYC"}
+for key, value in data.items():
+    print(f"{key}: {value}")
+coords = [(10, 20), (30, 40), (50, 60)]
+for i, (x, y) in enumerate(coords):
+    print(f"Point {i}: ({x}, {y})")
+xs = [1, 2, 3]
+ys = [10, 20, 30]
+for x, y in zip(xs, ys):
+    print(f"x={x}, y={y}")
+as_ = [1, 2, 3]
+bs = [4, 5, 6]
+cs = [7, 8, 9]
+for i, (a, b, c) in enumerate(zip(as_, bs, cs)):
+    print(f"Index {i}: a={a}, b={b}, c={c}")

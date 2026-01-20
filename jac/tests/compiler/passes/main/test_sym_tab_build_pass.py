@@ -84,3 +84,29 @@ def test_expr_as_item_alias_variable() -> None:
     )
 
     assert str(with_names["f"].sym_type) == "variable"
+
+
+def test_in_for_stmt_iteration_variables() -> None:
+    """Test that iteration variables in for loops are registered in symbol table."""
+
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "symtab_build_tests",
+        "for_loop_unpacking.jac",
+    )
+    mod = JacProgram().compile(file_path)
+
+    test_cases = [
+        (0, ["x"]),
+        (1, ["a", "b"]),
+        (2, ["a", "b", "c"]),
+        (3, ["name", "x", "y"]),
+        (4, ["first", "middle", "last"]),
+        (5, ["a", "b", "c", "d"]),
+    ]
+
+    for scope_idx, expected_vars in test_cases:
+        for_loop_scope = mod.sym_tab.kid_scope[scope_idx]
+        for var_name in expected_vars:
+            assert var_name in for_loop_scope.names_in_scope

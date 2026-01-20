@@ -1572,18 +1572,13 @@ impl JacAPIServer.start(watch: bool = False) -> None {
     if not watch {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
-            import time;
             import from jaclang.cli.console { console }
-            start_time = time.time();
             try {
-                with console.status(
-                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
-                ) as status {
-                    self.introspector.ensure_bundle();
-                }
-                elapsed = time.time() - start_time;
-                console.print(
-                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                # ViteBundler.build() handles its own progress messages
+                self.introspector.ensure_bundle();
+                print(
+                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n",
+                    flush=True
                 );
             } except Exception as e {
                 import sys;

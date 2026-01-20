@@ -58,6 +58,54 @@ Lines 67-70 show that iterating a dictionary yields its keys. Use `.values()` fo
 
 Lines 73-77 demonstrate combining different loop styles. The outer loop uses `for-in` while the inner uses `for-to-by`.
 
+**Unpacking in For Loops**
+
+Jac supports Python-style unpacking to destructure elements during iteration.
+
+*Tuple/List Unpacking:*
+
+```jac
+for (a, b) in pairs {
+    print(f"a={a}, b={b}");
+}
+```
+
+*Nested Unpacking:*
+
+```jac
+for (name, (x, y)) in nested {
+    print(f"{name}: x={x}, y={y}");
+}
+```
+
+*Star Unpacking:*
+
+```jac
+for (first, *rest) in items {
+    print(f"first={first}, rest={rest}");
+}
+
+for (first, *middle, last) in sequences {
+    print(f"first={first}, middle={middle}, last={last}");
+}
+```
+
+*With Built-in Functions:*
+
+```jac
+for (key, value) in data.items() {
+    print(f"{key}: {value}");
+}
+
+for (i, (x, y)) in enumerate(coords) {
+    print(f"Point {i}: ({x}, {y})");
+}
+
+for (x, y) in zip(xs, ys) {
+    print(f"x={x}, y={y}");
+}
+```
+
 **Loop Control Flow Summary**
 
 | Statement | Effect | Else Clause Behavior |
@@ -73,6 +121,19 @@ Lines 73-77 demonstrate combining different loop styles. The outer loop uses `fo
 | for-in | `for var in iterable` | Iterate collections |
 | for-to-by | `for i=start to cond by step` | Explicit counter control |
 | for-else | `for ... { } else { }` | Detect uninterrupted completion |
+| unpacking | `for (a, b) in pairs` | Destructure elements |
+
+**Unpacking Patterns**
+
+| Pattern | Example |
+|---------|---------|
+| Simple | `for (a, b) in pairs` |
+| Nested | `for (a, (b, c)) in data` |
+| Star (end) | `for (first, *rest) in items` |
+| Star (middle) | `for (a, *mid, z) in items` |
+| Dict items | `for (k, v) in d.items()` |
+| Enumerate | `for (i, val) in enumerate(lst)` |
+| Zip | `for (x, y) in zip(xs, ys)` |
 
 **Loop Flow Visualization**
 
@@ -96,9 +157,45 @@ flowchart TD
 
 Filtering during iteration:
 
+```jac
+for x in items {
+    if x > 10 {
+        print(x);
+    }
+}
+```
+
 Aggregating values:
 
+```jac
+glob total = 0;
+with entry {
+    for x in [1, 2, 3, 4, 5] {
+        total += x;
+    }
+}
+```
+
 Finding with for-else:
+
+```jac
+for item in items {
+    if item == target {
+        print("Found!");
+        break;
+    }
+} else {
+    print("Not found");
+}
+```
+
+Processing paired data:
+
+```jac
+for (name, score) in students {
+    print(f"{name}: {score}");
+}
+```
 
 **Key Differences from Python**
 
@@ -106,3 +203,4 @@ Finding with for-else:
 2. **Semicolons required**: Each statement ends with `;`
 3. **For-to-by syntax**: Unique to Jac, provides C-style explicit control
 4. **Same else clause**: Works identically to Python
+5. **Same unpacking**: Tuple, list, and star unpacking work like Python
