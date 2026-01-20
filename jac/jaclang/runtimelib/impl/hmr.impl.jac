@@ -130,7 +130,9 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
          
             output_base = Path(self.base_path) / self._client_output_dir;
             overlay_code = f"""// HMR Compilation Error Overlay
-    export const app = null;
+    export function app() {{
+        return null; 
+    }}
     (function() {{
     const overlayId = 'jac-hmr-error-overlay';
     
