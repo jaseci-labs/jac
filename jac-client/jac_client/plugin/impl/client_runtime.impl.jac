@@ -277,9 +277,10 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                 overflow: "auto",
                 padding: 20,
                 boxSizing: "border-box",
+
             }}
         >
-            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+            <div style={{maxWidth: 1200, margin: "0 auto"}}>
                 <div
                     style={{
                         background: "#d32f2f",
@@ -288,6 +289,7 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                         borderRadius: "8px 8px 0 0",
                         fontSize: 18,
                         fontWeight: "bold",
+
                     }}
                 >
                     ⚠️ Compilation Error
@@ -297,16 +299,21 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                         background: "#1e1e1e",
                         padding: 24,
                         borderRadius: "0 0 8px 8px",
+
                     }}
                 >
-                    <div style={{ marginBottom: 16 }}>
-                        <div style={{ color: "#888", marginBottom: 8 }}>File:</div>
-                        <div style={{ color: "#64b5f6", fontWeight: "bold" }}>
+                    <div style={{marginBottom: 16}}>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            File:
+                        </div>
+                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
                             {filePath}
                         </div>
                     </div>
                     <div>
-                        <div style={{ color: "#888", marginBottom: 8 }}>Error:</div>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            Error:
+                        </div>
                         <pre
                             style={{
                                 background: "#2d2d2d",
@@ -317,6 +324,7 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                                 borderLeft: "4px solid #d32f2f",
                                 lineHeight: 1.6,
                                 color: "#ff6b6b",
+
                             }}
                         >
                             {errors}
@@ -329,6 +337,7 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                             borderTop: "1px solid #444",
                             color: "#888",
                             fontSize: 13,
+
                         }}
                     >
                         💡 Fix the error and save the file to continue development.
