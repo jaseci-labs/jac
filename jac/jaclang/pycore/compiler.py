@@ -144,6 +144,31 @@ class JacCompiler:
             return self.internal_program
         return target_program
 
+    def _load_mtir_cache(self, cache_key: CacheKey, program: JacProgram) -> None:
+        """Load MTIR map from cache if available."""
+        try:
+            from jaclang.pycore.bccache import DiskBytecodeCache
+
+            if isinstance(self._bytecode_cache, DiskBytecodeCache):
+                cached_mtir = self._bytecode_cache.get_mtir(cache_key)
+                if cached_mtir is not None:
+                    # Merge cached MTIR into program's mtir_map
+                    program.mtir_map.update(cached_mtir)
+        except Exception:
+            # Silently ignore MTIR cache loading failures
+            pass
+
+    def _save_mtir_cache(self, cache_key: CacheKey, program: JacProgram) -> None:
+        """Save MTIR map to cache if available."""
+        try:
+            from jaclang.pycore.bccache import DiskBytecodeCache
+
+            if isinstance(self._bytecode_cache, DiskBytecodeCache) and program.mtir_map:
+                self._bytecode_cache.put_mtir(cache_key, program.mtir_map)
+        except Exception:
+            # Silently ignore MTIR cache saving failures
+            pass
+
     def get_bytecode(
         self, full_target: str, target_program: JacProgram, minimal: bool = False
     ) -> types.CodeType | None:
@@ -162,6 +187,9 @@ class JacCompiler:
         cache_key = CacheKey.for_source(full_target, minimal)
         cached_code = self._bytecode_cache.get(cache_key)
         if cached_code is not None:
+            # Also load MTIR cache if available (only for non-minimal mode)
+            if not minimal and isinstance(self._bytecode_cache, BytecodeCache):
+                self._load_mtir_cache(cache_key, actual_program)
             return cached_code
 
         # Tier 3: Compile
@@ -170,6 +198,9 @@ class JacCompiler:
         )
         if result.gen.py_bytecode:
             self._bytecode_cache.put(cache_key, result.gen.py_bytecode)
+            # Cache MTIR map if available (only for non-minimal mode)
+            if not minimal:
+                self._save_mtir_cache(cache_key, actual_program)
             return marshal.loads(result.gen.py_bytecode)
         return None
 
