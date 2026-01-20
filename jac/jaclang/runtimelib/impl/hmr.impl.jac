@@ -127,95 +127,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
             print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
-         
-            output_base = Path(self.base_path) / self._client_output_dir;
-            overlay_code = f"""// HMR Compilation Error Overlay
-    export function app() {{
-        return null; 
-    }}
-    (function() {{
-    const overlayId = 'jac-hmr-error-overlay';
-    
-    // Remove existing overlay if present
-    const existingOverlay = document.getElementById(overlayId);
-    if (existingOverlay) {{
-        existingOverlay.remove();
-    }}
-    
-    // Create error overlay
-    const overlay = document.createElement('div');
-    overlay.id = overlayId;
-    overlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.85);
-        color: #fff;
-        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-        font-size: 14px;
-        z-index: 999999;
-        overflow: auto;
-        padding: 20px;
-        box-sizing: border-box;
-    `;
-    
-    overlay.innerHTML = `
-        <div style="max-width: 1200px; margin: 0 auto;">
-        <div style="background: #d32f2f; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
-            <span>⚠️ Compilation Error</span>
-            <button onclick="document.getElementById('{{overlayId}}').remove()" style="background: none; border: 2px solid white; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">
-            Close (ESC)
-            </button>
-        </div>
-        <div style="background: #1e1e1e; padding: 24px; border-radius: 0 0 8px 8px;">
-            <div style="margin-bottom: 16px;">
-            <div style="color: #888; margin-bottom: 8px;">File:</div>
-            <div style="color: #64b5f6; font-weight: bold;">{file_path}</div>
-            </div>
-            <div>
-            <div style="color: #888; margin-bottom: 8px;">Error:</div>
-            <pre style="background: #2d2d2d; padding: 16px; border-radius: 4px; overflow-x: auto; margin: 0; border-left: 4px solid #d32f2f; line-height: 1.6; color: #ff6b6b;">{errors}</pre>
-            </div>
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #444; color: #888; font-size: 13px;">
-            💡 Fix the error and save the file to continue development.
-            </div>
-        </div>
-        </div>
-    `;
-    
-    // Add ESC key handler
-    const escHandler = (e) => {{
-        if (e.key === 'Escape') {{
-        overlay.remove();
-        document.removeEventListener('keydown', escHandler);
-        }}
-    }};
-    document.addEventListener('keydown', escHandler);
-    
-    // Add to DOM
-    document.body.appendChild(overlay);
-    
-    // Log to console as well
-    console.error('[HMR] Compilation error in {file_path}:');
-    console.error('{errors}');
-    }})();
-
-    // Export empty object to prevent import errors
-    export default {{}};
-    """;
-            output_dir = output_base;
-            output_dir.mkdir(parents=True, exist_ok=True);
-
-            # Generate output filename (foo.jac -> foo.js, foo.cl.jac -> foo.js)
-            js_filename = "main.js";
-            output_path = output_dir / js_filename;
-
-            # Write the JS code
-            output_path.write_text(overlay_code, encoding='utf-8');
-            print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
-
+            self._emit_client_error_overlay(file_path, errors);
             Jac.program.errors_had.clear();
             return;
         }
@@ -353,18 +265,95 @@ impl HotReloader._path_to_module(file_path: str) -> str {
     return ".".join(module_parts);
 }
 
-impl _emit_client_error_overlay(file_path: str, errors: str) -> None {
-    output_base = Path(self.base_path) / self._client_output_dir;
-    overlay_code = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\n\nconst FILE_PATH = "{file_path}";\nconst ERROR_MESSAGE = `{errors}`;\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\t"div",\n\t\t{{\n\t\t\tstyle: {{\n\t\t\t\tposition: "fixed",\n\t\t\t\tinset: 0,\n\t\t\t\tbackgroundColor: "#1e1e1e",\n\t\t\t\tcolor: "#fff",\n\t\t\t\tfontFamily: \'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace\',\n\t\t\t\tzIndex: 9999,\n\t\t\t\tpaddingTop: "40px"\n\t\t\t}}\n\t\t}},\n\t\tReact.createElement(\n\t\t\t"div",\n\t\t\t{{\n\t\t\t\tstyle: {{\n\t\t\t\t\twidth: "80%",\n\t\t\t\t\tmaxWidth: "1000px",\n\t\t\t\t\tmargin: "0 auto",\n\t\t\t\t\tbackgroundColor: "#111",\n\t\t\t\t\tborderRadius: "6px",\n\t\t\t\t\toverflow: "hidden"\n\t\t\t\t}}\n\t\t\t}},\n\t\t\tReact.createElement(\n\t\t\t\t"div",\n\t\t\t\t{{ style: {{ backgroundColor: "#d32f2f", padding: "14px 18px", fontWeight: "bold" }} }},\n\t\t\t\t"⚠ Compilation Error"\n\t\t\t),\n\t\t\tReact.createElement(\n\t\t\t\t"div",\n\t\t\t\t{{ style: {{ padding: "20px" }} }},\n\t\t\t\tReact.createElement("div", {{ style: {{ opacity: 0.7 }} }}, "File:"),\n\t\t\t\tReact.createElement("div", {{ style: {{ color: "#64b5f6", marginBottom: "16px" }} }}, FILE_PATH.split("/").pop()),\n\t\t\t\tReact.createElement("div", {{ style: {{ opacity: 0.7 }} }}, "Error:"),\n\t\t\t\tReact.createElement(\n\t\t\t\t\t"div",\n\t\t\t\t\t{{ style: {{ backgroundColor: "#2b2b2b", borderLeft: "4px solid #f44336", padding: "14px", color: "#ff8a80", whiteSpace: "pre-wrap" }} }},\n\t\t\t\t\t`${{FILE_PATH}}, ${{ERROR_MESSAGE}}`\n\t\t\t\t),\n\t\t\t\tReact.createElement("div", {{ style: {{ marginTop: "16px", color: "#aaa", fontSize: "13px" }} }}, "💡 Fix the error and save the file to continue development.")\n\t\t\t)\n\t\t)\n\t)\n);\n';
-    output_dir = output_base;
-    output_dir.mkdir(parents=True, exist_ok=True);
+impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
 
-    # Generate output filename (foo.jac -> foo.js, foo.cl.jac -> foo.js)
-    js_filename = "main.js";
-    output_path = output_dir / js_filename;
 
-    # Write the JS code
-    output_path.write_text(overlay_code, encoding='utf-8');
-    print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
-    return;
+            
+            overlay_code = f"""// HMR Compilation Error Overlay
+    export function app() {{
+        return null; 
+    }}
+    (function() {{
+    const overlayId = 'jac-hmr-error-overlay';
+    
+    // Remove existing overlay if present
+    const existingOverlay = document.getElementById(overlayId);
+    if (existingOverlay) {{
+        existingOverlay.remove();
+    }}
+    
+    // Create error overlay
+    const overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        color: #fff;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 14px;
+        z-index: 999999;
+        overflow: auto;
+        padding: 20px;
+        box-sizing: border-box;
+    `;
+    
+    overlay.innerHTML = `
+        <div style="max-width: 1200px; margin: 0 auto;">
+        <div style="background: #d32f2f; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+            <span>⚠️ Compilation Error</span>
+            <button onclick="document.getElementById('{{overlayId}}').remove()" style="background: none; border: 2px solid white; color: white; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;">
+            Close (ESC)
+            </button>
+        </div>
+        <div style="background: #1e1e1e; padding: 24px; border-radius: 0 0 8px 8px;">
+            <div style="margin-bottom: 16px;">
+            <div style="color: #888; margin-bottom: 8px;">File:</div>
+            <div style="color: #64b5f6; font-weight: bold;">{file_path}</div>
+            </div>
+            <div>
+            <div style="color: #888; margin-bottom: 8px;">Error:</div>
+            <pre style="background: #2d2d2d; padding: 16px; border-radius: 4px; overflow-x: auto; margin: 0; border-left: 4px solid #d32f2f; line-height: 1.6; color: #ff6b6b;">{errors}</pre>
+            </div>
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #444; color: #888; font-size: 13px;">
+            💡 Fix the error and save the file to continue development.
+            </div>
+        </div>
+        </div>
+    `;
+    
+    // Add ESC key handler
+    const escHandler = (e) => {{
+        if (e.key === 'Escape') {{
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+        }}
+    }};
+    document.addEventListener('keydown', escHandler);
+    
+    // Add to DOM
+    document.body.appendChild(overlay);
+    
+    // Log to console as well
+    console.error('[HMR] Compilation error in {file_path}:');
+    console.error('{errors}');
+    }})();
+
+    // Export empty object to prevent import errors
+    export default {{}};
+    """;
+            output_base = Path(self.base_path) / self._client_output_dir;
+            output_dir = output_base;
+            output_dir.mkdir(parents=True, exist_ok=True);
+
+            js_filename = "main.js";
+            output_path = output_dir / js_filename;
+
+            # Write the Overlay code
+            output_path.write_text(overlay_code, encoding='utf-8');
+            print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
+            return;
 }
