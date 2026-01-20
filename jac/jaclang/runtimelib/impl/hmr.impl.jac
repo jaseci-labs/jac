@@ -265,10 +265,8 @@ impl HotReloader._path_to_module(file_path: str) -> str {
     return ".".join(module_parts);
 }
 
+"""Emit a client-side error overlay for compilation errors."""
 impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
-
-
-            
             overlay_code = f"""// HMR Compilation Error Overlay
     export function app() {{
         return null; 
