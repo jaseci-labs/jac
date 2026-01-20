@@ -47,23 +47,34 @@ def test_package() -> None:
     assert prog.warnings_had == []
 
 
-def test_inner_compr_iteration_variable() -> None:
-    """Test that iteration variables in comprehensions are registered in symbol table."""
+def test_compr_unpacking_variables() -> None:
+    """Test that unpacking variables in comprehensions are in container scope."""
     file_path = os.path.join(
         os.path.dirname(__file__),
         "fixtures",
         "symtab_build_tests",
-        "list_comprehension.jac",
+        "comprehension_patterns.jac",
     )
     mod = JacProgram().compile(file_path)
 
-    compr_names = mod.sym_tab.kid_scope[0].names_in_scope
+    test_cases = [
+        (0, {"x"}),
+        (1, {"a", "b"}),
+        (2, {"name", "x", "y"}),
+        (3, {"a", "b", "rest"}),
+        (4, {"a", "b", "c", "d"}),
+        (5, {"a", "b"}),
+        (6, {"k", "v"}),
+        (7, {"a", "b"}),
+        (8, {"row", "name", "val"}),
+    ]
 
-    # The iteration variable 'x' should be in the InnerCompr's symbol table
-    assert "x" in compr_names, (
-        "Iteration variable 'x' should be registered in InnerCompr symbol table"
-    )
-
+    for scope_idx, expected_vars in test_cases:
+        scope = mod.sym_tab.kid_scope[scope_idx]
+        actual_vars = set(scope.names_in_scope.keys())
+        assert actual_vars == expected_vars, (
+            f"Scope {scope_idx}: expected {expected_vars}, got {actual_vars}"
+        )
 
 def test_expr_as_item_alias_variable() -> None:
     """Test that alias variables in 'as' clauses are registered in symbol table."""
