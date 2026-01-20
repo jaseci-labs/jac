@@ -669,7 +669,8 @@ def test_positional_args_with_defaults() -> None:
     assert process.returncode == 0, (
         f"'jac plugins' should work without action argument, got: {stderr}"
     )
-    assert "Installed Jac plugins" in stdout, (
+    # Check for plugins list output (case-insensitive, handles Rich formatting)
+    assert "installed jac plugin" in stdout.lower(), (
         "Output should show installed plugins list"
     )
 
@@ -710,8 +711,10 @@ def test_format_tracks_changed_files() -> None:
 
         # Exit code 1 indicates files were changed (useful for pre-commit hooks)
         assert process.returncode == 1
-        assert "2/2" in stderr
-        assert "(1 changed)" in stderr
+        # Output may go to stdout or stderr depending on console implementation
+        combined_output = stdout + stderr
+        assert "2/2" in combined_output
+        assert "(1 changed)" in combined_output
 
 
 def test_jac_create_and_run_no_root_files() -> None:

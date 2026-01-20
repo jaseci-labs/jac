@@ -17,7 +17,7 @@ glob registry = get_registry();
             "name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Project name (uses current directory if empty)"
+            help="Project name (required to create a project)"
         ),
         Arg.create(
             "force",
@@ -42,7 +42,6 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac create", "Create project in current directory"),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create myapp --use client", "Create with client jacpac template"),

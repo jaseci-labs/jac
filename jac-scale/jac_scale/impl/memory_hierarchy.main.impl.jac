@@ -28,11 +28,21 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
         self.l3 = mongo_backend;
         self._persistence_type = PersistenceType.MONGODB;
         logger.debug("MongoDB persistence backend initialized");
+        # Show subtle message (optional - uncomment to enable)
+        try {
+            import from jaclang.cli.console { console }
+            console.print("  ✔ Using MongoDB for persistence", style="muted");
+        } except Exception { }
     } else {
         # Fall back to jaclang's SqliteMemory using configured path
         self.l3 = SqliteMemory(path=_db_config['shelf_db_path']);
         self._persistence_type = PersistenceType.SQLITE;
         logger.debug("MongoDB not available, using SqliteMemory for persistence");
+        # Show subtle message
+        try {
+            import from jaclang.cli.console { console }
+            console.print("  ✔ Using SQLite for persistence", style="muted");
+        } except Exception { }
     }
 }
 

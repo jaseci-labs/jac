@@ -93,13 +93,13 @@ class TestBundleTemplate:
             bundle_template(temp_dir / "nonexistent", temp_dir / "out.jacpac")
 
     def test_bundle_missing_manifest_raises(self, temp_dir: Path) -> None:
-        """Test that bundling without jacpac.toml raises ValueError."""
+        """Test that bundling without jac.toml raises ValueError."""
         from jaclang.project.template_loader import bundle_template
 
         empty_dir = temp_dir / "empty"
         empty_dir.mkdir()
 
-        with pytest.raises(ValueError, match="No jacpac.toml found"):
+        with pytest.raises(ValueError, match="No jac.toml found"):
             bundle_template(empty_dir, temp_dir / "out.jacpac")
 
 

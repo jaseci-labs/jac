@@ -1,4 +1,21 @@
-"""Implementation of template loader functions."""
+"""Implementation of template loader functions.
+
+Templates are now defined using a single jac.toml file with an optional [jacpac]
+section. This eliminates the need for a separate jacpac.toml manifest file.
+
+The [jacpac] section contains:
+- name: Template name (required)
+- description: Template description (required)
+- jaclang: Minimum jaclang version (optional)
+- plugins: List of required plugins (optional)
+
+The [jacpac.options] section contains:
+- directories: Extra directories to create
+- files: Glob patterns for files to include (auto-discovers if not specified)
+- gitignore_entries: Entries for .jac/.gitignore
+- root_gitignore_entries: Entries for project root .gitignore
+- post_create_hook: Module path to post-create hook function
+"""
 
 import from typing { Any, Callable }
 import from pathlib { Path }
@@ -10,7 +27,7 @@ import importlib;
 # ===============================================================================
 # Load Template from Directory
 # ===============================================================================
-"""Load a template from a directory containing jacpac.toml and source files."""
+"""Load a template from a directory containing jac.toml with [jacpac] section."""
 impl load_template_from_directory(
     template_dir: Path, post_create_hook: Callable | None = None
 ) -> ProjectTemplate {
@@ -18,34 +35,42 @@ impl load_template_from_directory(
     if not template_dir.is_dir() {
         raise ValueError(f"Template directory not found: {template_dir}") ;
     }
-    # Load the manifest
-    manifest_path = template_dir / "jacpac.toml";
-    if not manifest_path.exists() {
-        raise ValueError(f"No jacpac.toml found in {template_dir}") ;
+    # Load jac.toml
+    jac_toml_path = template_dir / "jac.toml";
+    if not jac_toml_path.exists() {
+        raise ValueError(f"No jac.toml found in {template_dir}") ;
     }
-    with open(manifest_path, "rb") as f {
-        manifest = tomllib.load(f);
+    with open(jac_toml_path, "rb") as f {
+        jac_config = tomllib.load(f);
     }
-    # Extract template metadata
-    template_section = manifest.get("template", {});
-    name = template_section.get("name");
+    # Extract template metadata from [jacpac] section
+    jacpac_section = jac_config.get("jacpac", {});
+    if not jacpac_section {
+        raise ValueError(f"jac.toml must have [jacpac] section to be packable") ;
+    }
+    name = jacpac_section.get("name");
     if not name {
-        raise ValueError("jacpac.toml must have [template] name field") ;
+        raise ValueError("jac.toml [jacpac] must have name field") ;
     }
-    description = template_section.get("description", "");
+    description = jacpac_section.get("description", "");
     if not description {
-        raise ValueError(f"jacpac.toml for '{name}' must have description field") ;
+        raise ValueError(f"jac.toml [jacpac] for '{name}' must have description field") ;
     }
-    # Build config from manifest (everything under [config])
-    config = manifest.get("config", {});
-    # Get options
-    options = manifest.get("options", {});
+    # Build config from jac.toml (everything except [jacpac] section)
+    config: dict[str, Any] = {};
+    for (key, value) in jac_config.items() {
+        if key != "jacpac" {
+            config[key] = value;
+        }
+    }
+    # Get options from [template.options]
+    options = jacpac_section.get("options", {});
     directories = options.get("directories", []);
     gitignore_entries = options.get(
         "gitignore_entries", ["# Ignore all build artifacts in .jac directory", "*"]
     );
     root_gitignore_entries = options.get("root_gitignore_entries", []);
-    # Resolve post_create hook if specified in manifest
+    # Resolve post_create hook if specified
     hook = post_create_hook;
     if hook is None and "post_create_hook" in options {
         hook = resolve_post_create_hook(options["post_create_hook"]);
@@ -57,19 +82,19 @@ impl load_template_from_directory(
         # Explicit file list provided
         for pattern in file_patterns {
             for file_path in template_dir.glob(pattern) {
-                if file_path.is_file() and file_path.name != "jacpac.toml" {
+                if file_path.is_file() and file_path.name != "jac.toml" {
                     relative_path = str(file_path.relative_to(template_dir));
                     files[relative_path] = file_path.read_text();
                 }
             }
         }
     } else {
-        # Auto-discover files (excluding jacpac.toml and hidden files)
+        # Auto-discover files (excluding jac.toml and hidden files)
         for file_path in template_dir.rglob("*") {
             if file_path.is_file() {
                 relative_path = str(file_path.relative_to(template_dir));
-                # Skip manifest and hidden files
-                if relative_path != "jacpac.toml"
+                # Skip config and hidden files
+                if relative_path != "jac.toml"
                 and not relative_path.startswith(".")
                 and "/." not in relative_path {
                     files[relative_path] = file_path.read_text();
@@ -99,30 +124,31 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     if not template_dir.is_dir() {
         raise ValueError(f"Template directory not found: {template_dir}") ;
     }
-    # Load manifest to get hook path if present
-    manifest_path = template_dir / "jacpac.toml";
-    if not manifest_path.exists() {
-        raise ValueError(f"No jacpac.toml found in {template_dir}") ;
+    # Load jac.toml to get template metadata
+    jac_toml_path = template_dir / "jac.toml";
+    if not jac_toml_path.exists() {
+        raise ValueError(f"No jac.toml found in {template_dir}") ;
     }
-    with open(manifest_path, "rb") as f {
-        manifest = tomllib.load(f);
+    with open(jac_toml_path, "rb") as f {
+        jac_config = tomllib.load(f);
+    }
+    jacpac_section = jac_config.get("jacpac", {});
+    if not jacpac_section {
+        raise ValueError(f"jac.toml must have [jacpac] section to be packable") ;
     }
     # Load template (without resolving hook - we'll store it as string)
     template = load_template_from_directory(template_dir, post_create_hook=None);
     # Convert to dict for JSON serialization
     template_data = template.to_dict();
-    # Add version metadata from manifest
-    template_section = manifest.get("template", {});
-    # Add jaclang version if present
-    if "jaclang" in template_section {
-        template_data["jaclang"] = template_section["jaclang"];
+    # Add version metadata from [jacpac] section
+    if "jaclang" in jacpac_section {
+        template_data["jaclang"] = jacpac_section["jaclang"];
     }
-    # Add plugins array if present
-    if "plugins" in template_section {
-        template_data["plugins"] = template_section["plugins"];
+    if "plugins" in jacpac_section {
+        template_data["plugins"] = jacpac_section["plugins"];
     }
     # Store hook path as string instead of callable
-    options = manifest.get("options", {});
+    options = jacpac_section.get("options", {});
     if "post_create_hook" in options {
         template_data["post_create_hook"] = options["post_create_hook"];
     }

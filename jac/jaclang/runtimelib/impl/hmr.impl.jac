@@ -3,12 +3,15 @@
 Handles file change events and coordinates module reloading.
 """
 
+import logging;
 import os;
 import sys;
 import time;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.constant { CodeContext }
+
+glob logger = logging.getLogger(__name__);
 
 """Start the hot reloader and begin watching for changes."""
 impl HotReloader.start -> None {
@@ -20,7 +23,7 @@ impl HotReloader.start -> None {
     # Start watching
     self.watcher.start();
     self._running = True;
-    print(f"[HMR] Hot reloader started for module: {self.module_name}", flush=True);
+    logger.debug(f"Hot reloader started for module: {self.module_name}");
 }
 
 """Stop the hot reloader and file watcher."""
@@ -31,7 +34,7 @@ impl HotReloader.stop -> None {
     self._running = False;
     # Stop the watcher
     self.watcher.stop();
-    print("[HMR] Hot reloader stopped", flush=True);
+    logger.debug("Hot reloader stopped");
 }
 
 """Callback for file change events from the watcher."""

@@ -2,6 +2,7 @@
 
 import sys;
 import traceback;
+import from jaclang.cli.console { console }
 
 # ===============================================================================
 # CommandExecutor Implementation
@@ -32,7 +33,7 @@ impl CommandExecutor.execute(
         error = e;
         return_code = 1;
         # Print error for user visibility
-        print(f"Error executing '{spec.name}': {e}", file=sys.stderr);
+        console.error(f"Error executing '{spec.name}': {e}");
         if sys?.exc_info {
             traceback.print_exc();
         }
@@ -53,7 +54,7 @@ impl CommandExecutor.run_pre_hooks(spec: CommandSpec, context: HookContext) -> b
                 return False;
             }
         } except Exception as e {
-            print(f"Warning: Pre-hook from '{source}' failed: {e}", file=sys.stderr);
+            console.warning(f"Pre-hook from '{source}' failed: {e}");
             # Continue with other hooks unless it's critical
             if context.get_data("cancel_on_hook_error", False) {
                 return False;
@@ -77,7 +78,7 @@ impl CommandExecutor.run_post_hooks(
                 current_code = new_code;
             }
         } except Exception as e {
-            print(f"Warning: Post-hook from '{source}' failed: {e}", file=sys.stderr);
+            console.warning(f"Post-hook from '{source}' failed: {e}");
             # Don't change return code on hook failure
         }
     }
@@ -89,9 +90,7 @@ impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, Any]) -> int
     import inspect;
     import from jaclang.cli.command { CommandSpec }
     if spec.handler is None {
-        print(
-            f"Error: No handler registered for command '{spec.name}'", file=sys.stderr
-        );
+        console.error(f"No handler registered for command '{spec.name}'");
         return 1;
     }
     # Filter args to only include those the handler accepts

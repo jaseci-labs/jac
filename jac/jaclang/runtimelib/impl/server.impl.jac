@@ -1573,18 +1573,23 @@ impl JacAPIServer.start(watch: bool = False) -> None {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
-            print("Building client bundle...", flush=True);
+            import from jaclang.cli.console { console }
             start_time = time.time();
             try {
-                self.introspector.ensure_bundle();
+                with console.status(
+                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                ) as status {
+                    self.introspector.ensure_bundle();
+                }
                 elapsed = time.time() - start_time;
-                print(f"Client bundle ready ({elapsed:.1f}s).");
+                console.print(
+                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                );
             } except Exception as e {
                 import sys;
                 import traceback;
-                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-                print(f"{e}", file=sys.stderr);
-                print("\nFull traceback:", file=sys.stderr);
+                console.warning(f"Failed to build client bundle: {e}");
+                console.print("\n  Full traceback:", style="muted", file=sys.stderr);
                 traceback.print_exc(file=sys.stderr);
                 print(
                     f"\nClient pages will not be available until this is fixed.\n",
