@@ -11,8 +11,8 @@ from threading import Event
 from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.mtp import Info
 from jaclang.pycore.bccache import BytecodeCache, get_bytecode_cache
+from jaclang.pycore.mtp import Info
 from jaclang.pycore.passes import Alert
 
 if TYPE_CHECKING:
