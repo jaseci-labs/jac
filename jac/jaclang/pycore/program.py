@@ -11,6 +11,7 @@ from threading import Event
 from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
+from jaclang.pycore.mtp import Info
 from jaclang.pycore.bccache import BytecodeCache, get_bytecode_cache
 from jaclang.pycore.passes import Alert
 
@@ -47,7 +48,7 @@ class JacProgram:
         """
         self.mod: uni.ProgramModule = main_mod if main_mod else uni.ProgramModule()
         self.py_raise_map: dict[str, str] = {}
-        self.mtir_map: dict[uni.UniNode, any] = {}
+        self.mtir_map: dict[str, Info] = {}
         self.errors_had: list[Alert] = []
         self.warnings_had: list[Alert] = []
         self.type_evaluator: TypeEvaluator | None = None
