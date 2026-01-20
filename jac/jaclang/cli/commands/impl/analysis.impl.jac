@@ -1,4 +1,4 @@
-"""Implementation of analysis commands.
+"""Implementation of analysis commands (check, format, test, gen_parser).
 
 Direct implementations - no delegation to cli.jac.
 """
@@ -96,34 +96,6 @@ impl check(
     }
     if (total_errors > 0 and not warnonly) {
         return 1;
-    }
-    return 0;
-}
-
-"""Build the specified .jac file."""
-impl build(filename: str, typecheck: bool = False) -> int {
-    import pickle;
-    import from jaclang.pycore.program { JacProgram }
-    if not filename.endswith('.jac') {
-        console.error('Not a .jac file.');
-        return 1;
-    }
-    (out := JacProgram()).compile(file_path=filename, type_check=typecheck);
-    errs = len(out.errors_had);
-    warnings = len(out.warnings_had);
-    if errs > 0 {
-        console.error(f"Errors: {errs}, Warnings: {warnings}");
-    } else {
-        console.success(f"Errors: {errs}, Warnings: {warnings}");
-    }
-    for alrt in (out.errors_had + out.warnings_had) {
-        console.error(alrt.pretty_print());
-    }
-    if (errs > 0) {
-        return 1;
-    }
-    with open((filename[:-4] + '.jir'), 'wb') as f {
-        pickle.dump(out, f);
     }
     return 0;
 }

@@ -125,21 +125,6 @@ impl create(
     if tmpl.root_gitignore_entries {
         _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
     }
-    # Pre-generate compiler cache if main.jac exists
-    main_jac = project_path / "main.jac";
-    if main_jac.exists() {
-        try {
-            result = subprocess.run(
-                [sys.executable, "-m", "jaclang", "build", str(main_jac)],
-                capture_output=True,
-                text=True,
-                cwd=str(project_path)
-            );
-            if result.returncode == 0 {
-                console.print("  ✔ Pre-generated compiler cache", style="muted");
-            }
-        } except Exception { }
-    }
     # Run post-create hook if defined
     if tmpl.post_create is not None {
         try {

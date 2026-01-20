@@ -154,7 +154,6 @@ class TestJacConfigLoad:
 
         assert "test" in config.scripts
         assert config.scripts["test"] == "jac test"
-        assert config.scripts["build"] == "jac build main.jac"
 
     def test_load_nonexistent_file(self, temp_dir: Path) -> None:
         """Test loading nonexistent file raises error."""

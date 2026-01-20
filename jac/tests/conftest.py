@@ -8,7 +8,6 @@ import contextlib
 import inspect
 import io
 import os
-import pickle
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
@@ -100,19 +99,19 @@ def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, An
     Database path is computed from base_path via TieredMemory.
 
     Args:
-        filename: Path to .jac, .jir, or .py file
+        filename: Path to .jac or .py file
         user_root: User root ID for permission boundary (None for system context)
     """
     from jaclang.pycore.runtime import JacRuntime as Jac
 
     base, mod = os.path.split(filename)
     base = base or "./"
-    if filename.endswith(".jac") or filename.endswith(".jir"):
+    if filename.endswith(".jac"):
         mod = mod[:-4]
     elif filename.endswith(".py"):
         mod = mod[:-3]
     else:
-        raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
+        raise ValueError("Not a valid file! Only supports `.jac` and `.py`")
 
     # Only set base path if not already set (allows tests to override via jac_temp_dir fixture)
     if not Jac.base_path_dir:
@@ -133,7 +132,7 @@ def proc_file_sess(
     The database path is computed from base_path by TieredMemory.
 
     Args:
-        filename: Path to .jac, .jir, or .py file
+        filename: Path to .jac or .py file
         base_path: Base directory for database storage
         user_root: User root ID for permission boundary (None for system context)
     """
@@ -141,12 +140,12 @@ def proc_file_sess(
 
     base, mod = os.path.split(filename)
     base = base or "./"
-    if filename.endswith(".jac") or filename.endswith(".jir"):
+    if filename.endswith(".jac"):
         mod = mod[:-4]
     elif filename.endswith(".py"):
         mod = mod[:-3]
     else:
-        raise ValueError("Not a valid file! Only supports `.jac`, `.jir`, and `.py`")
+        raise ValueError("Not a valid file! Only supports `.jac` and `.py`")
 
     # Set base path explicitly for isolated storage
     Jac.set_base_path(base_path)
@@ -164,7 +163,7 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
     Session is auto-generated based on base_path.
 
     Args:
-        filename: Path to the .jac or .jir file
+        filename: Path to the .jac file
         id: Object ID to retrieve
         main: Treat the module as __main__ (default: True)
 
@@ -179,15 +178,9 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
         Jac.jac_import(
             target=mod, base_path=base, override_name="__main__" if main else None
         )
-    elif filename.endswith(".jir"):
-        with open(filename, "rb") as f:
-            Jac.attach_program(pickle.load(f))
-            Jac.jac_import(
-                target=mod, base_path=base, override_name="__main__" if main else None
-            )
     else:
         mach.close()
-        raise ValueError("Not a valid file! Only supports `.jac` and `.jir`")
+        raise ValueError("Not a valid file! Only supports `.jac`")
 
     obj = Jac.get_object(id)
     if obj:

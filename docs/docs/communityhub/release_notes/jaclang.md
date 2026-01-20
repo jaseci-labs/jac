@@ -4,6 +4,12 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.9 (Unreleased)
 
+### Breaking Changes
+
+- **Removed `jac build` Command and JIR File Support**: The `jac build` command and `.jir` (Jac Intermediate Representation) file format have been removed. Users should run `.jac` files directly with `jac run`. The bytecode cache (`.jbc` files in `.jac/cache/`) continues to provide compilation caching automatically. If you have existing `.jir` files, simply delete them and run the `.jac` source files directly.
+
+### Features and Improvements
+
 - **Console Plugin Architecture**: Refactored console system to use a plugin-based architecture, removing the `rich` dependency from core jaclang. The base `JacConsole` now uses pure Python `print()` for all output, keeping jaclang dependency-free. Plugins (like `jac-super`) can override the console implementation via the `get_console()` hook to provide Rich-enhanced output with themes, panels, tables, and spinners. This maintains backward compatibility while allowing optional aesthetic enhancements through plugins.
 
 - **Report Yield Support**: The `report` statement now supports yield expressions (e.g., `report yield "Hello, World!";`), laying the groundwork for streaming response support in walkers.
