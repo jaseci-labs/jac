@@ -662,7 +662,7 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
         ) ;
     }
     config_rel = dev_config.relative_to(build_dir);
-    print(f"[Vite] Starting dev server on port {port}...");
+    logger.debug(f"Starting Vite dev server on port {port}");
     # Start Vite in dev mode (let output go to terminal for HMR visibility)
     process = subprocess.Popen(
         ['npx', 'vite', '--config', str(config_rel), '--port', str(port)],

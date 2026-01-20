@@ -1,12 +1,15 @@
 """Vite bundling module."""
 import hashlib;
 import json;
+import logging;
 import shutil;
 import subprocess;
 import from pathlib { Path }
 import from typing { Any, Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
+
+glob logger = logging.getLogger(__name__);
 """Handles Vite bundling operations."""
 class ViteBundler {
     def init(

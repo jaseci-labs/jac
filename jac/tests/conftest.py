@@ -20,6 +20,22 @@ import pytest
 import jaclang
 
 # =============================================================================
+# Console Output Normalization - Disable Rich styling during tests
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def disable_rich_console_formatting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable Rich console formatting for consistent test output.
+
+    Sets NO_COLOR and NO_EMOJI environment variables to ensure tests
+    get plain text output without ANSI codes or emoji prefixes.
+    """
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("NO_EMOJI", "1")
+
+
+# =============================================================================
 # Plugin Management - Core Jac Tests Only
 # =============================================================================
 

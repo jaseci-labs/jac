@@ -25,6 +25,22 @@ from jaclang.pycore.program import JacProgram
 from jaclang.pycore.runtime import JacRuntime as Jac
 from jaclang.pycore.runtime import JacRuntimeImpl, JacRuntimeInterface, plugin_manager
 
+# =============================================================================
+# Console Output Normalization - Disable Rich styling during tests
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def disable_rich_console_formatting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable Rich console formatting for consistent test output.
+
+    Sets NO_COLOR and NO_EMOJI environment variables to ensure tests
+    get plain text output without ANSI codes or emoji prefixes.
+    """
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("NO_EMOJI", "1")
+
+
 # Store unregistered plugins globally for session-level management
 _external_plugins: list = []
 
