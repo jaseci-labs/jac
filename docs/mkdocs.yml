@@ -145,7 +145,18 @@ nav:
       - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
       - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
       - EmailBuddy: "learn/examples/EmailBuddy/tutorial.md"
-  - Jac Language Reference: "learn/jac_language_reference.md"
+  - Jac Language Reference:
+    - Overview: "learn/jac-ref/index.md"
+    - "Part I: Foundation": "learn/jac-ref/foundation.md"
+    - "Part II: Functions & Objects": "learn/jac-ref/functions-objects.md"
+    - "Part III: OSP": "learn/jac-ref/osp.md"
+    - "Part IV: Full-Stack": "learn/jac-ref/full-stack.md"
+    - "Part V: AI Integration": "learn/jac-ref/ai-integration.md"
+    - "Part VI: Concurrency": "learn/jac-ref/concurrency.md"
+    - "Part VII: Advanced": "learn/jac-ref/advanced.md"
+    - "Part VIII: Ecosystem": "learn/jac-ref/ecosystem.md"
+    - "Part IX: Deployment": "learn/jac-ref/deployment.md"
+    - Appendices: "learn/jac-ref/appendices.md"
 
   - Contributor Hub:
     - Contributing: "internals/contrib.md"
@@ -191,7 +202,6 @@ theme:
     # - navigation.expand
     # - navigation.sections
     - navigation.top
-    - toc.follow
   icon:
     admonition:
       note: octicons/tag-16
@@ -242,7 +252,6 @@ markdown_extensions:
 
   - toc:
         permalink: "#"
-        toc_depth: 3
 
 
 extra_css:
@@ -271,7 +280,6 @@ extra_javascript:
   - js/run-code.js
   - js/feedback.js
   - js/logo.js
-  - js/full-toc.js
 
 plugins:
   - search
