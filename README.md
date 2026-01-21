@@ -63,6 +63,8 @@ Jac is an innovative programming language that extends both Python and TypeScrip
 
 - **Cloud-Native:** Deploy your application as a production-ready API server with a single `jac start` command. Scale automatically to Kubernetes with `jac start --scale`, zero code changes required.
 
+- **Designed for Humans and AI Models to Use:** A language built to maximize readability, architectural clarity, and coding joy for human developers while enabling AI models to generate high-quality code at scale. Features like `has` declarations for clean attribute definitions and `impl` separation (interfaces separate from implementations) create a structure that both humans can easily reason about and models can reliably produce.
+
 ---
 
 ## Installation & Setup

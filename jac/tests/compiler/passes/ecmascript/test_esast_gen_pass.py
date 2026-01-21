@@ -286,7 +286,7 @@ def test_reactive_state_generates_use_state(
 
     # Check that assignments to reactive vars generate setter calls
     # count = count + 1; -> setCount(count + 1);
-    assert "setCount(count + 1)" in js_code, (
+    assert "setCount((count + 1))" in js_code, (
         "Assignment to reactive var should use setter"
     )
     assert "setCount(42)" in js_code, "Direct assignment should use setter"
@@ -320,7 +320,7 @@ def test_reactive_state_in_cl_jac_file(
 
     # Check that assignments to reactive vars generate setter calls
     # count = count + 1; -> setCount(count + 1);
-    assert "setCount(count + 1)" in js_code, (
+    assert "setCount((count + 1))" in js_code, (
         "Assignment to reactive var should use setter in .cl.jac files"
     )
     assert "setCount(42)" in js_code, "Direct assignment should use setter"

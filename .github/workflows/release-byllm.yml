@@ -2,32 +2,72 @@ name: Release jac-byllm to PYPI
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.4.15)'
+        required: true
+        type: string
 
 jobs:
   release-byllm:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: jac-byllm
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           submodules: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.12'
+
+      - name: Update version in pyproject.toml
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' jac-byllm/pyproject.toml
+
+      - name: Update jaclang dependency version
+        run: |
+          # Get jaclang version from jac/pyproject.toml
+          JACLANG_VERSION=$(grep '^version = ' jac/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Using jaclang version: $JACLANG_VERSION"
+          # Update jaclang dependency in jac-byllm/pyproject.toml
+          sed -i "s/\"jaclang>=.*\"/\"jaclang>=$JACLANG_VERSION\"/" jac-byllm/pyproject.toml
+
+      - name: Update release notes
+        run: |
+          RELEASE_NOTES="docs/docs/communityhub/release_notes/byllm.md"
+          VERSION="${{ inputs.version }}"
+
+          # Calculate next patch version for unreleased
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          NEXT_VERSION="$major.$minor.$((patch + 1))"
+
+          # Remove (Latest Release) from any existing version
+          sed -i 's/ (Latest Release)//g' "$RELEASE_NOTES"
+
+          # Update the unreleased version to the new version with (Latest Release)
+          sed -i "s/## byllm .* (Unreleased)/## byllm $VERSION (Latest Release)/" "$RELEASE_NOTES"
+
+          # Add new unreleased section at the top (after the intro paragraph)
+          sed -i "/^## byllm $VERSION (Latest Release)/i ## byllm $NEXT_VERSION (Unreleased)\n" "$RELEASE_NOTES"
+
+      - name: Commit version updates
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add jac-byllm/pyproject.toml docs/docs/communityhub/release_notes/byllm.md
+          git commit -m "chore: bump byllm version to ${{ inputs.version }}"
+          git push
+
       - name: Install build tools
         run: |
           pip install build twine
-      - name: Build package
-        run: python -m build
-      - name: Publish package
+
+      - name: Build and publish package
+        working-directory: jac-byllm
         run: |
+          python -m build
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
-        continue-on-error: true
-      # - run: pip install githubrelease markdown-to-json
-      # - run: python scripts/gh_release.py
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

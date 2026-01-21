@@ -388,13 +388,13 @@ def test_graph(
 ) -> None:
     """Test for graph CLI cmd."""
     with capture_stdout() as output:
-        tools.dot(f"{examples_path('reference/connect_expressions_(osp).jac')}")
+        tools.dot(f"{examples_path('micro/simple_walk.jac')}")
 
     stdout_value = output.getvalue()
-    if os.path.exists("connect_expressions_(osp).dot"):
-        os.remove("connect_expressions_(osp).dot")
+    if os.path.exists("simple_walk.dot"):
+        os.remove("simple_walk.dot")
     assert ">>> Graph content saved to" in stdout_value
-    assert "connect_expressions_(osp).dot\n" in stdout_value
+    assert "simple_walk.dot\n" in stdout_value
 
 
 def test_py_to_jac(

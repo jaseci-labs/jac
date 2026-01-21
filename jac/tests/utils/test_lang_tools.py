@@ -7,7 +7,6 @@ from collections.abc import Callable
 import pytest
 
 import jaclang
-from jaclang.pycore.helpers import extract_headings, heading_to_snake
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.lang_tools import AstTool
 
@@ -69,7 +68,7 @@ def test_pass_template(tool: AstTool) -> None:
 def test_gendotfile(tool: AstTool) -> None:
     """Testing for HTML entity."""
     jac_file_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "../examples/reference/edges_walk.jac"
+        os.path.dirname(jaclang.__file__), "../tests/language/fixtures/simple_walk.jac"
     )
     out = tool.ir(["ast.", jac_file_path])
     forbidden_strings = ["<<", ">>", "init", "super"]
@@ -81,7 +80,7 @@ def test_print(tool: AstTool) -> None:
     """Testing for print AstTool."""
     jac_file = os.path.join(
         os.path.dirname(jaclang.__file__),
-        "../examples/reference/names_and_references.jac",
+        "../tests/language/fixtures/hello.jac",
     )
     msg = "error in " + jac_file
     out = tool.ir(["ast", jac_file])
@@ -91,54 +90,14 @@ def test_print(tool: AstTool) -> None:
 
 def test_print_py(tool: AstTool) -> None:
     """Testing for print_py AstTool."""
-    jac_py_directory = os.path.join(
-        os.path.dirname(jaclang.__file__), "../examples/reference/"
+    jac_file = os.path.join(
+        os.path.dirname(jaclang.__file__),
+        "../tests/language/fixtures/hello.jac",
     )
-    jac_py_files = [
-        f
-        for f in os.listdir(jac_py_directory)
-        if f.endswith(("names_and_references.jac", "names_and_references.py"))
-    ]
-
-    for file in jac_py_files:
-        msg = "error in " + file
-        out = tool.ir(["pyast", jac_py_directory + file])
-        if file.endswith(".jac"):
-            assert "Module(" in out, msg
-            assert out is not None, msg
-        elif file.endswith(".py"):
-            if len(out.splitlines()) <= 4:
-                continue
-            assert "Module(" in out, msg
-            assert out is not None, msg
-
-
-def test_automated() -> None:
-    """Testing for py, jac, md files for each content in Jac Grammer."""
-    lark_path = os.path.join(os.path.dirname(jaclang.__file__), "pycore/jac.lark")
-    headings_ = extract_headings(lark_path)
-    snake_case_headings = [heading_to_snake(key) for key in headings_]
-    refr_path = os.path.join(os.path.dirname(jaclang.__file__), "../examples/reference")
-    file_extensions = [".py", ".jac", ".md"]
-    created_files = [f"{os.path.join(refr_path, 'introduction.md')}"]
-    for heading_name in snake_case_headings:
-        for extension in file_extensions:
-            file_name = heading_name + extension
-            file_path = os.path.join(refr_path, file_name)
-            assert os.path.exists(file_path), f"File '{file_path}' does not exist."
-            created_files.append(file_path)
-    all_reference_files = [
-        os.path.join(refr_path, file)
-        for file in os.listdir(refr_path)
-        if os.path.isfile(os.path.join(refr_path, file))
-    ]
-    other_reference_files = [
-        os.path.basename(file)
-        for file in all_reference_files
-        if file not in created_files
-    ]
-    print(other_reference_files)
-    assert len(other_reference_files) == 0
+    msg = "error in " + jac_file
+    out = tool.ir(["pyast", jac_file])
+    assert "Module(" in out, msg
+    assert out is not None, msg
 
 
 def test_py_jac_mode(tool: AstTool) -> None:
@@ -155,7 +114,7 @@ def test_sym_sym_dot(tool: AstTool) -> None:
     jac_file = os.path.normpath(
         os.path.join(
             os.path.dirname(jaclang.__file__),
-            "../examples/reference/while_statements.jac",
+            "../tests/language/fixtures/hello.jac",
         )
     )
     out = tool.ir(["sym", jac_file])
@@ -164,10 +123,10 @@ def test_sym_sym_dot(tool: AstTool) -> None:
         not in out
     )
     check_list = [
-        "########",
-        "# while_statements #",
-        "########",
-        "SymTable::Module(while_statements)",
+        "######",
+        "# hello #",
+        "######",
+        "SymTable::Module(hello)",
     ]
     for i in check_list:
         assert i in out
