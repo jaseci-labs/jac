@@ -1,6 +1,10 @@
 # Part VII: Advanced Features
 
+This part covers error handling, testing, and advanced operators like comprehensions and pipes. These features work the same as in Python with minor syntax differences (braces instead of colons, semicolons to end statements).
+
 ## 32. Error Handling
+
+Jac uses Python's exception model with `try/except/finally` blocks. The syntax uses braces but the semantics are identical -- catch specific exceptions, optionally capture them with `as`, and use `finally` for cleanup that always runs.
 
 ### 32.1 Try/Except/Finally
 

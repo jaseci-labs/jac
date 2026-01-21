@@ -1,6 +1,10 @@
 # Part IX: Deployment and Scaling
 
+Jac applications can be deployed to production with the `jac-scale` plugin. It transforms your Jac code into a scalable backend with automatic API generation, database persistence, and Kubernetes orchestration. This "scale-native" approach means you develop locally and deploy to production without rewriting code.
+
 ## 41. jac-scale Plugin
+
+The `jac-scale` plugin is Jac's production deployment system. It wraps your code with FastAPI for HTTP handling, Redis for caching, and MongoDB for persistence. Walkers automatically become API endpoints, and graph state persists across requests.
 
 ### 41.1 Overview
 

@@ -207,18 +207,22 @@ has <class>: str;  # Uses 'class' as field name
 
 ### 3.7 Entry Point Variants
 
+Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
+
 ```jac
-# Default entry - always runs
+# Default entry - always runs when this module loads
 with entry {
     print("Always runs");
 }
 
-# Main entry - only when file is the main module
+# Main entry - only runs when this file is executed directly
+# Similar to Python's if __name__ == "__main__"
 with entry:__main__ {
     print("Only when this file is main");
 }
 
-# Named entry - run with: jac enter file.jac setup
+# Named entry - invoke with: jac enter file.jac setup
+# Useful for CLI tools with multiple commands
 with entry:setup {
     print("Named entry point");
 }
@@ -227,6 +231,8 @@ with entry:setup {
 ---
 
 ## 4. Types and Values
+
+Jac is statically typed -- all variables, fields, and function signatures require type annotations. This enables better tooling, clearer APIs, and catches errors at compile time rather than runtime. The type system is compatible with Python's typing module.
 
 ### 4.1 Builtin Types
 
@@ -280,7 +286,7 @@ def process(data: list[int] | dict[str, int]) -> None {
 
 ### 4.5 Type References (Backtick)
 
-The backtick creates a type reference:
+The backtick operator creates a reference to a type itself, rather than an instance of that type. This is essential for OSP operations like filtering graph traversals by node type, or for metaprogramming. Think of it as "the type called X" rather than "a value of type X".
 
 ```jac
 `TypeName       # Reference to TypeName type
@@ -448,6 +454,8 @@ empty_list = [];
 
 ## 5. Variables and Scope
 
+Jac distinguishes between local variables (within functions), instance variables (`has` declarations in objects), and global variables (`glob`). Unlike Python where you assign `self.x = value` in `__init__`, Jac uses declarative `has` statements that make your data model explicit and visible at a glance.
+
 ### 5.1 Local Variables
 
 ```jac
@@ -462,7 +470,7 @@ items: list[str] = [];
 
 ### 5.2 Instance Variables (has)
 
-The `has` keyword declares instance variables:
+The `has` keyword declares instance variables in a clean, declarative style. Unlike Python's `self.x = value` pattern scattered throughout `__init__`, `has` statements appear at the top of your class definition, making the data model immediately visible. This design improves readability for both humans and AI code generators.
 
 ```jac
 obj Person {
@@ -613,6 +621,8 @@ user and user.is_active and process(user);
 ---
 
 ## 6. Operators
+
+Jac includes all standard Python operators plus several unique operators for graph manipulation (`++>`, `-->`, etc.), null-safe access (`?.`, `?[]`), piping (`|>`, `:>`), and LLM delegation (`by`). These Jac-specific operators are covered in sections 6.6-6.9.
 
 ### 6.1 Arithmetic Operators
 
@@ -854,6 +864,8 @@ valid_items = items(?value > 0);  # Filter where value > 0
 
 ### 6.7 Graph Operators (OSP)
 
+Graph operators are fundamental to Object-Spatial Programming. They let you create connections between nodes (`++>`) and traverse the graph (`-->`). Unlike traditional object references, graph connections are first-class entities that can have their own types and attributes. Use these operators whenever you're building or navigating graph structures.
+
 **Connection Operators:**
 
 ```jac
@@ -888,7 +900,7 @@ alice +>: Friend(since=2020) :+> bob;
 
 ### 6.8 Pipe Operators
 
-Jac provides multiple pipe operators for functional-style data flow:
+Pipe operators enable functional-style data transformation by passing results from one operation to the next. Instead of deeply nested function calls like `format(filter(transform(data)))`, you write `data |> transform |> filter |> format` -- reading naturally from left to right. Jac offers three pipe variants: standard pipes for functions, atomic pipes for controlling walker traversal order, and dot pipes for method chaining.
 
 **Standard Pipes (`|>`, `<|`):**
 
@@ -959,7 +971,7 @@ result = numbers
 
 ### 6.9 The `by` Operator
 
-The `by` operator is a general-purpose right-associative operator. At the syntax level, it connects two expressions. The semantics depend on how plugins interpret it.
+The `by` operator is Jac's mechanism for delegation -- handing off work to an external system. Its most powerful use is with the `byllm` plugin, where `by llm` delegates function implementation to a language model. This enables "Meaning Typed Programming" where you declare *what* a function should do, and the LLM provides *how*. The operator is intentionally generic, allowing plugins to define custom delegation targets.
 
 **General Syntax:**
 
@@ -1068,6 +1080,8 @@ safe = obj and obj.method();       # Only call if obj exists
 
 ## 7. Control Flow
 
+Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0 to i < 10 by i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
+
 ### 7.1 Conditional Statements
 
 ```jac
@@ -1100,8 +1114,10 @@ while condition {
 
 ### 7.3 For Loops
 
+Jac supports Python-style iteration and also adds C-style for loops with explicit initialization, condition, and update expressions. The C-style syntax uses `to` for the condition and `by` for the update step -- useful when you need precise control over loop variables.
+
 ```jac
-# Iterate over collection
+# Iterate over collection (Python-style)
 for item in items {
     print(item);
 }
@@ -1111,7 +1127,7 @@ for (i, item) in enumerate(items) {
     print(f"{i}: {item}");
 }
 
-# C-style for loop
+# C-style for loop: for INIT to CONDITION by UPDATE
 for i = 0 to i < 10 by i += 1 {
     print(i);
 }
@@ -1127,6 +1143,8 @@ for item in items {
 ```
 
 ### 7.4 Pattern Matching
+
+Pattern matching lets you destructure and test complex data in a single construct. Unlike a chain of `if/elif` statements, `match` can extract values from lists, dicts, and objects while testing their structure. Use it when handling multiple data shapes or implementing state machines.
 
 ```jac
 match value {

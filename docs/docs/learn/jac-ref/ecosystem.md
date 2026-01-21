@@ -1,6 +1,10 @@
 # Part VIII: Ecosystem
 
+The Jac ecosystem includes the `jac` CLI tool, a plugin system for extending functionality, and seamless interoperability with Python and JavaScript. This part covers the practical tools you'll use daily when developing with Jac.
+
 ## 36. CLI Reference
+
+The `jac` command is your primary interface to the Jac toolchain. It handles execution, compilation, testing, formatting, and project management. Most commands work on `.jac` files directly.
 
 ### 36.1 Execution Commands
 

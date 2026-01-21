@@ -1,6 +1,10 @@
 # Part IV: Full-Stack Development
 
+Jac enables true full-stack development: backend APIs, frontend UI, and AI logic in a single language. The `jac-client` plugin compiles Jac to JavaScript/React for the browser, while `jac-scale` handles server deployment. This part covers modules, server/client separation, and the JSX-like syntax for building UIs.
+
 ## 19. Module System
+
+Jac's module system bridges Python and JavaScript ecosystems. You can import from PyPI packages on the server and npm packages on the client using familiar syntax. The `include` statement (like C's `#include`) merges code directly, which is useful for splitting large files.
 
 ### 19.1 Import Statements
 

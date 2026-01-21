@@ -1,6 +1,10 @@
 # Part II: Functions and Objects
 
+This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for standalone functions and `can` for methods (called "abilities") on objects. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
+
 ## 8. Functions and Abilities
+
+Functions in Jac use familiar `def` syntax with mandatory type annotations. Jac also introduces "abilities" (`can`) for methods attached to objects, nodes, edges, and walkers. Abilities can be triggered automatically based on context (like when a walker visits a node) rather than being called explicitly.
 
 ### 8.1 Function Declaration
 
@@ -230,7 +234,11 @@ def:protect _protected_func -> None { }
 
 ## 9. Object-Oriented Programming
 
+Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, methods use `can` instead of `def`, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
+
 ### 9.1 Objects (Classes)
+
+Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
 
 ```jac
 obj Person {
@@ -360,9 +368,11 @@ obj Account {
 
 ## 10. Implementations and Forward Declarations
 
+Jac separates *interface* (what an object has and can do) from *implementation* (how it does it). This separation enables cleaner architecture, easier testing, and better organization of large codebases. You declare the interface in one place and implement abilities in `impl` blocks -- even in separate files.
+
 ### 10.1 Forward Declarations
 
-Declare types before defining them to handle circular references:
+Forward declarations let you reference a type before it's fully defined. This is essential for circular references (like User referencing Post and Post referencing User) and for organizing code across multiple files.
 
 ```jac
 # Forward declarations
@@ -383,7 +393,7 @@ obj Post {
 
 ### 10.2 Implementation Blocks
 
-Separate interface from implementation:
+The `impl` keyword attaches method bodies to declared abilities. This pattern keeps your interface clean and readable while moving implementation details elsewhere. It's particularly useful for large classes, for providing multiple implementations (like mock versions for testing), or for organizing abilities that span many lines.
 
 ```jac
 # Interface (declaration)

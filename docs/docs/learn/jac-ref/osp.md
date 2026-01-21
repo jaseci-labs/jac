@@ -71,6 +71,8 @@ with entry {
 
 ## 12. Nodes
 
+Nodes are the vertices of your graph -- they hold data and can have abilities that execute when walkers visit them. Think of nodes as "smart objects" that know when they're being visited and can react accordingly. Unlike regular objects, nodes can be connected via edges and participate in graph traversals.
+
 ### 12.1 Node Declaration
 
 ```jac
@@ -160,6 +162,8 @@ node User(Entity) {
 
 ## 13. Edges
 
+Edges are first-class connections between nodes. Unlike simple object references, edges can carry their own data (like relationship strength or timestamps) and have their own types. This lets you model rich relationships -- "Alice *knows* Bob *since 2020*" becomes natural to express. Use typed edges when the relationship itself has meaningful attributes.
+
 ### 13.1 Edge Declaration
 
 ```jac
@@ -206,6 +210,8 @@ a <++> b;         # Undirected: a ↔ b (creates edges both ways)
 
 ## 14. Walkers
 
+Walkers are mobile agents that traverse the graph, executing abilities at each node they visit. Unlike functions that you call, walkers *go to* data. They maintain state throughout their journey, making them ideal for tasks like collecting information across a graph, implementing AI agents that navigate knowledge structures, or processing pipelines where context accumulates. Spawn a walker with `root spawn MyWalker()` to begin traversal.
+
 ### 14.1 Walker Declaration
 
 ```jac
@@ -250,7 +256,7 @@ with entry {
 
 ### 14.3 The `visit` Statement
 
-The `visit` statement queues nodes for the walker to visit next.
+The `visit` statement tells the walker where to go next. It doesn't immediately move -- it queues nodes for the next step of traversal. This queue-based approach lets you control breadth-first vs depth-first traversal and handle cases where there's nowhere to go (using the `else` clause).
 
 **Basic Syntax:**
 
@@ -307,7 +313,7 @@ with entry {
 
 ### 14.5 The `disengage` Statement
 
-Stop walker traversal immediately:
+The `disengage` statement immediately terminates a walker's traversal. Use it when the walker has found what it was looking for (like a search hitting its target) or when a condition means further traversal would be pointless. It's the walker equivalent of `return` from a recursive function.
 
 ```jac
 walker Searcher {

@@ -1,5 +1,7 @@
 # Part V: AI Integration
 
+Jac's AI integration goes beyond simple API calls. With "Meaning Typed Programming," you write function signatures that describe *what* you want, and the LLM figures out *how* to do it. This inverts the traditional programming model: instead of writing algorithms, you declare intent and let AI provide the implementation. The `by llm` operator makes this seamless.
+
 > **Prerequisites:**
 >
 > - [The `by` Operator](foundation.md#69-the-by-operator) - Basic syntax
@@ -8,6 +10,8 @@
 > **Required Plugin:** `pip install byllm`
 
 ## 26. Meaning Typed Programming
+
+Meaning Typed Programming (MTP) is Jac's core AI paradigm. Your function signature -- the name, parameter names, and types -- becomes the specification. The LLM reads this "meaning" and generates appropriate behavior. This works because well-named functions already describe their intent; MTP just makes that intent executable.
 
 ### 26.1 The Concept
 
@@ -45,6 +49,8 @@ def classify(text: str) -> str by llm;
 ---
 
 ## 27. Semantic Strings
+
+When function names alone don't provide enough context, use `sem` (semantic) declarations to add detailed descriptions. The LLM reads these descriptions as part of its prompt, giving you precise control over behavior. Think of `sem` as documentation that actually affects execution.
 
 ### 27.1 The `sem` Keyword
 
