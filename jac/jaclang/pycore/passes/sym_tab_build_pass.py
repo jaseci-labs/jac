@@ -270,7 +270,11 @@ class SymTabBuildPass(UniPass):
         elif (
             (impl_def := node.find_parent_of_type(uni.ImplDef))
             and impl_def.parent_scope
-            and (archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name))
+            and (
+                archetype_sym := impl_def.parent_scope.lookup(
+                    impl_def.target[0].sym_name
+                )
+            )
         ):
             name_of = archetype_sym.decl.name_of
             archetype = name_of if isinstance(name_of, uni.Archetype) else None
