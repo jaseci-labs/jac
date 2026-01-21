@@ -3,6 +3,7 @@
 import sys;
 import traceback;
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
 # ===============================================================================
 # CommandExecutor Implementation
@@ -29,6 +30,10 @@ impl CommandExecutor.execute(
     error: Exception | None = None;
     try {
         return_code = self.run_handler(spec, args);
+    } except ClientBundleError as e {
+        error = e;
+        return_code = 1;
+        print(str(e), file=sys.stderr);
     } except Exception as e {
         error = e;
         return_code = 1;

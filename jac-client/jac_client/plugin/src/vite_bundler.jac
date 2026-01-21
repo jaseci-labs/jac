@@ -8,6 +8,7 @@ import from pathlib { Path }
 import from typing { Any, Optional }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
+import from jac_client.plugin.utils.error_reporter { BundleErrorReporter }
 
 glob logger = logging.getLogger(__name__);
 """Handles Vite bundling operations."""

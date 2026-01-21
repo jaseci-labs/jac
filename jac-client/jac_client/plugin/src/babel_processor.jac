@@ -4,6 +4,7 @@ import from pathlib { Path }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .asset_processor { AssetProcessor }
 import from .vite_bundler { ViteBundler }
+import from jac_client.plugin.utils.error_reporter { BundleErrorReporter }
 
 """Handles Babel compilation of JavaScript files."""
 class BabelProcessor {

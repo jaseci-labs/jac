@@ -1567,32 +1567,30 @@ impl JacAPIServer.print_endpoint_docs -> None {
 
 """Start the HTTP server."""
 impl JacAPIServer.start(watch: bool = False) -> None {
+    import sys;
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
+
+    # Build client bundle if there are client exports (skip in watch mode)
+    # Store error to display after endpoint list
+    bundle_error_msg: (str | None) = None;
+    bundle_success = False;
+
     if not watch {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
-            import from jaclang.cli.console { console }
+            import from jaclang.runtimelib.client_bundle { ClientBundleError }
             try {
-                # ViteBundler.build() handles its own progress messages
                 self.introspector.ensure_bundle();
-                print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n",
-                    flush=True
-                );
+                bundle_success = True;
+            } except ClientBundleError as e {
+                bundle_error_msg = str(e);
             } except Exception as e {
-                import sys;
                 import traceback;
-                console.warning(f"Failed to build client bundle: {e}");
-                console.print("\n  Full traceback:", style="muted", file=sys.stderr);
-                traceback.print_exc(file=sys.stderr);
-                print(
-                    f"\nClient pages will not be available until this is fixed.\n",
-                    file=sys.stderr
-                );
+                bundle_error_msg = f"Unexpected error: {e}\n{traceback.format_exc()}";
             }
         }
     }
+
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
@@ -1617,7 +1615,22 @@ impl JacAPIServer.start(watch: bool = False) -> None {
         if base_route_app {
             print(f'\nBase route (/) configured to serve: {base_route_app}');
         }
-        print('\nPress Ctrl+C to stop the server');
+
+        if bundle_error_msg {
+            # Red color for error visibility
+            RED = "\033[91m";
+            BOLD = "\033[1m";
+            RESET = "\033[0m";
+            print(f"\n{RED}{BOLD}{bundle_error_msg}{RESET}", file=sys.stderr);
+            print(
+                f"{RED}Client pages will not be available until this is fixed.{RESET}\n",
+                file=sys.stderr
+            );
+        } elif bundle_success {
+            print(f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n");
+        }
+
+        print('Press Ctrl+C to stop the server');
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {

@@ -13,6 +13,8 @@ impl BabelProcessor.copy_assets_after_compile(
 """Run Babel compilation (npm run compile)."""
 impl BabelProcessor.compile(self: BabelProcessor) -> None {
     bundler = ViteBundler(self.project_dir);
+    error_reporter = BundleErrorReporter(self.project_dir);
+
     # Ensure root package.json exists temporarily for npm commands
     bundler._ensure_root_package_json();
     try {
@@ -37,12 +39,11 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
                     text=True
                 );
             } except subprocess.CalledProcessError as e {
-                raise ClientBundleError(
-                    f'Failed to install npm dependencies: {e.stderr}'
-                ) from e ;
+                formatted_error = error_reporter.report_error(e.stderr or str(e));
+                raise ClientBundleError(formatted_error) from None ;
             } except FileNotFoundError {
                 raise ClientBundleError(
-                    'npm command not found. Ensure Node.js and npm are installed.'
+                    'npm not found. Install Node.js and npm to use client bundling.'
                 ) from None ;
             }
         }
@@ -59,9 +60,10 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
             command, cwd=client_dir, capture_output=True, text=True
         );
         if result.returncode != 0 {
-            # Show the actual error from npm/babel
-            error_output = result.stderr or result.stdout or "Unknown error";
-            raise RuntimeError(f"Client bundle compilation failed:\n{error_output}") ;
+            # Parse and format the error
+            raw_error = result.stderr or result.stdout or "Unknown compilation error";
+            formatted_error = error_reporter.report_error(raw_error);
+            raise ClientBundleError(formatted_error) from None ;
         }
     } finally {
         # Clean up temporary package.json in .jac/client/
