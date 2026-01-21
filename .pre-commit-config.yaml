@@ -119,8 +119,6 @@ repos:
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
-              ^jac-streamlit/assets/interactive\ view\.png$|
-              ^jac-streamlit/assets/static\ view\.png$|
               ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
               ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
               ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$

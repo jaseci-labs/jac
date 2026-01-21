@@ -17,7 +17,7 @@ Build complete web applications using Jac for both frontend and backend. Jac Cli
 
 ```bash
 # Create a new full-stack project
-jac create --cl myapp
+jac create --use client myapp
 cd myapp
 jac start
 ```
@@ -406,14 +406,14 @@ cl {
 
 ```bash
 # Add npm packages
-jac add --cl lodash
-jac add --cl --dev @types/react
+jac add --npm lodash
+jac add --npm --dev @types/react
 
 # Remove packages
-jac remove --cl lodash
+jac remove --npm lodash
 
 # Install all dependencies
-jac add --cl
+jac add --npm
 ```
 
 Or in `jac.toml`:
@@ -508,7 +508,7 @@ jac start  # Uses [project].entry-point
 
 ## Hot Module Replacement (HMR)
 
-For faster development, use `--watch` mode to enable Hot Module Replacement. Changes to `.jac` files are automatically detected and reloaded without restarting the server.
+For faster development, use `--dev` mode to enable Hot Module Replacement. Changes to `.jac` files are automatically detected and reloaded without restarting the server.
 
 ### Setup
 
@@ -529,7 +529,7 @@ jac install --dev
 
 ```bash
 # Start with HMR enabled (uses main.jac by default)
-jac start --watch
+jac start --dev
 ```
 
 This starts:
@@ -549,7 +549,7 @@ When you edit a `.jac` file:
 
 | Option | Description |
 |--------|-------------|
-| `--watch, -w` | Enable HMR mode |
+| `--dev, -d` | Enable HMR mode |
 | `--api-port PORT` | Custom API port (default: main port + 1) |
 | `--no-client` | API-only mode (skip Vite/frontend) |
 
@@ -557,13 +557,13 @@ When you edit a `.jac` file:
 
 ```bash
 # Full-stack HMR (frontend + backend, uses main.jac by default)
-jac start --watch
+jac start --dev
 
 # API-only HMR (no frontend bundling)
-jac start --watch --no-client
+jac start --dev --no-client
 
 # Custom ports
-jac start --watch -p 3000 --api-port 3001
+jac start --dev -p 3000 --api-port 3001
 ```
 
 ### Troubleshooting
@@ -571,7 +571,7 @@ jac start --watch -p 3000 --api-port 3001
 If you see an error about watchdog not being installed:
 
 ```
-Error: --watch requires 'watchdog' package to be installed.
+Error: --dev requires 'watchdog' package to be installed.
 
 Install it by running:
     jac install --dev

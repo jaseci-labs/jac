@@ -202,7 +202,7 @@ Version numbers are managed in `pyproject.toml` files for each package. The vers
 **Packages that require version updates:**
 
 - `jac/pyproject.toml` (jaclang)
-- `jac-client/pyproject.toml` (jac-cloud)
+- `jac-client/pyproject.toml` (jac-client)
 - `jac-byllm/pyproject.toml` (byllm)
 - `jaseci-package/pyproject.toml` (jaseci meta-package)
 
@@ -334,15 +334,50 @@ This is how we run the docs.
 --8<-- "scripts/build_vsce.sh"
 ```
 
-## Release Flow (for the empowered)
+## Release Flow (Automated)
 
-- Version bump jac, jac-cloud, byllm
-  - Remember to version bump requirement of jaclang in jac-cloud and byllm
-- Update release notes (unreleased becomes released)
-- Push to main
-- Go to GitHub, run `Release jaclang to PYPI` action manually
-- After success
-  - Run `Release jac-cloud to PYPI` action manually
-  - Run `Release jac-byllm to PYPI` action manually
-  - Run `RElease jac-mtllm to PYPI` action manually, for deprecated library
-- If All success, W for you!!
+The release process is fully automated via GitHub Actions. Each package (jaclang, jac-client, byllm) has its own release workflow that handles version updates, release notes, and PyPI publishing automatically.
+
+### Release Order
+
+Packages must be released in this specific order due to dependencies:
+
+1. **jaclang** (core package - no dependencies on other Jac packages)
+2. **jac-client** (depends on jaclang)
+3. **byllm** (depends on jaclang)
+
+### How to Release
+
+#### Step 1: Release jaclang
+
+1. Go to **GitHub Actions** → **Release jaclang to PYPI**
+2. Click **Run workflow**
+3. Enter the version to release (e.g., `0.9.9`)
+4. Click **Run workflow**
+
+**What happens automatically:**
+
+- Updates `version` in `jac/pyproject.toml` to the specified version
+- Updates `docs/docs/communityhub/release_notes/jaclang.md`:
+  - Removes `(Latest Release)` from the previous latest version
+  - Changes `(Unreleased)` to `(Latest Release)` for the new version
+  - Adds a new `(Unreleased)` section with the next patch version
+- Commits and pushes the changes
+- Builds and publishes the package to PyPI
+
+#### Step 2: Release jac-client and byllm
+
+For each package (jac-client and byllm):
+
+1. Go to **GitHub Actions** → **Release jac-client to PYPI** or **Release jac-byllm to PYPI**
+2. Click **Run workflow**
+3. Enter the version to release (e.g., `0.2.9` for jac-client, `0.4.14` for byllm)
+4. Click **Run workflow**
+
+**What happens automatically:**
+
+- Updates `version` in the package's `pyproject.toml`
+- Reads jaclang version from `jac/pyproject.toml` and updates the jaclang dependency
+- Updates the corresponding release notes file (same pattern as jaclang)
+- Commits and pushes the changes
+- Builds and publishes the package to PyPI

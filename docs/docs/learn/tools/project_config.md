@@ -16,9 +16,7 @@ cd my-project
 The `jac create` command supports several options:
 
 - `-f, --force`: Overwrite existing `jac.toml` if present
-- `-c, --cl`: Include client-side (frontend) setup with Vite bundling
-- `-s, --skip`: Skip installing default packages (only for `--cl` projects)
-- `-v, --verbose`: Show detailed output during package installation
+- `-u, --use`: Jacpac template: registered name, file path, or URL
 
 Examples:
 
@@ -26,8 +24,8 @@ Examples:
 # Create a basic project
 jac create myapp
 
-# Create with frontend support
-jac create --cl myapp
+# Create with frontend support (requires jac-client plugin)
+jac create myapp --use client
 
 # Create in current directory (overwrites existing jac.toml)
 jac create --force
@@ -45,7 +43,7 @@ entry-point = "main.jac"
 [dependencies]
 
 [dev-dependencies]
-watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
+watchdog = ">=3.0.0"  # Required for HMR (jac start --dev)
 
 [run]
 main = true
@@ -135,7 +133,7 @@ Development-only dependencies (not installed in production):
 
 ```toml
 [dev-dependencies]
-watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
+watchdog = ">=3.0.0"  # Required for HMR (jac start --dev)
 pytest = ">=8.2.1"
 mypy = ">=1.0.0"
 black = ">=23.0.0"

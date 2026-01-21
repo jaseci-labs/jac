@@ -27,6 +27,13 @@
 
 ### 5. Support for public private endpoints with JWT authentication
 
+### 6. File Upload Support
+
+- **Automatic Form-Data Handling**: Walkers with `UploadFile` fields automatically accept multipart/form-data
+- **Single File per Key**: Each form-data key supports uploading a single file. Multiple files must be sent using multiple keys.
+- **Mixed Form Fields**: Combine file uploads with regular form fields seamlessly
+- See [File Upload Documentation](file-upload.md) for details
+
 ## Supported jac commands
 
 - `jac start`: Start Jac application with FastAPI backend

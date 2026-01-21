@@ -1,9 +1,3 @@
-"""Automate the reference guide generation."""
-
-impl AstTool.automate_ref -> str {
-    return auto_generate_refs();
-}
-
 """Generate mermaid markdown doc for uninodes."""
 impl AstTool.autodoc_uninode -> str {
     output = '';

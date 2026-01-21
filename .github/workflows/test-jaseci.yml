@@ -88,7 +88,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e jac
         pip install -e jac-byllm
-        pip install -e jac-streamlit
         pip install pytest
         pip install pytest-xdist
 
@@ -97,7 +96,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-byllm jac-streamlit
+      run: pytest -x jac-byllm
 
     - name: Run documentation validation tests
       run: pytest -q -x docs/tests/test_validate_md_files.py
@@ -229,12 +228,10 @@ jobs:
         python -m build jac-client --wheel
         python -m build jac-scale --wheel
         python -m build jac-byllm --wheel
-        python -m build jac-streamlit --wheel
         pip install jac/dist/jaclang-*.whl
         pip install jac-client/dist/jac_client-*.whl
         pip install jac-scale/dist/jac_scale-*.whl
         pip install jac-byllm/dist/byllm-*.whl
-        pip install jac-streamlit/dist/jac_streamlit-*.whl
         pip install pytest
         pip install pytest-asyncio
 

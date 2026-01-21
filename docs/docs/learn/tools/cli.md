@@ -13,7 +13,7 @@ jac tool <jac_tool> <args>
 Parameters to execute the tool command:
 
 - `jac_tool`: The name of the language tool to execute.
-  - `ir`, `pass_template`, `py_uni_nodes`,  `md_doc`, `automate_ref` are the jac_tools used to handle (Usage instruction is below)
+  - `ir`, `pass_template`, `py_uni_nodes`, `md_doc` are the jac_tools used to handle (Usage instruction is below)
 - `args`: Optional arguments for the specific language tool.
 
 > 1.1. jac_tool `ir`:
@@ -72,13 +72,6 @@ jac tool py_uni_nodes
 
 ```bash
 jac tool md_doc
-```
-
-> jac_tool `automate_ref`:
-  `automate_ref` tool automates the reference guide generation.
-
-```bash
-jac tool automate_ref
 ```
 
 ## `jac run`

@@ -98,7 +98,6 @@ def install(dev: bool = False, verbose: bool = False) -> int;
             "dev", typ=bool, default=False, help="Add as dev dependency", short="d"
         ),
         Arg.create("git", default="", help="Git repository URL", short="g"),
-        Arg.create("cl", typ=bool, default=False, help="Add as client-side dependency"),
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
@@ -114,11 +113,7 @@ def install(dev: bool = False, verbose: bool = False) -> int;
     group="project"
 )
 def add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = "",
-    cl: bool = False,
-    verbose: bool = False
+    packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
 ) -> int;
 
 """Remove dependencies from the project."""
@@ -136,7 +131,6 @@ def add(
             help="Remove from dev dependencies",
             short="d"
         ),
-        Arg.create("cl", typ=bool, default=False, help="Remove client-side dependency"),
 
     ],
     examples=[
@@ -146,7 +140,7 @@ def add(
     ],
     group="project"
 )
-def remove(packages: list = [], dev: bool = False, cl: bool = False) -> int;
+def remove(packages: list = [], dev: bool = False) -> int;
 
 """Run custom scripts defined in jac.toml."""
 @registry.command(

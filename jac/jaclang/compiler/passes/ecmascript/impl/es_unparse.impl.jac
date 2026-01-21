@@ -19,7 +19,7 @@ impl JSCodeGenerator.gen_export_all_declaration(<>node: es.ExportAllDeclaration)
 impl JSCodeGenerator.gen_export_default_declaration(
     <>node: es.ExportDefaultDeclaration
 ) -> str {
-    return f"{self.indent()}export default {self.generate(node.declaration)};";
+    return f"{self.indent()}export default {self.generate(<>node.declaration)}";
 }
 
 """Generate export specifier."""
@@ -37,7 +37,7 @@ impl JSCodeGenerator.gen_export_named_declaration(
     <>node: es.ExportNamedDeclaration
 ) -> str {
     if <>node.declaration {
-        return f"{self.indent()}export {self.generate(node.declaration).lstrip()}";
+        return f"{self.indent()}export {self.generate(<>node.declaration).lstrip()}";
     }
     specs = ', '.join(self.generate(s) for s in <>node.specifiers);
     if <>node.source {
@@ -51,7 +51,7 @@ impl JSCodeGenerator.gen_export_named_declaration(
 impl JSCodeGenerator.gen_import_namespace_specifier(
     <>node: es.ImportNamespaceSpecifier
 ) -> str {
-    return f"* as {self.generate(node.local)}";
+    return f"* as {self.generate(<>node.local)}";
 }
 
 """Generate import default specifier."""
@@ -105,7 +105,7 @@ impl JSCodeGenerator.gen_import_declaration(<>node: es.ImportDeclaration) -> str
 
 """Generate rest element."""
 impl JSCodeGenerator.gen_rest_element(<>node: es.RestElement) -> str {
-    return f"...{self.generate(node.argument)}";
+    return f"...{self.generate(<>node.argument)}";
 }
 
 """Generate assignment pattern."""
@@ -141,7 +141,7 @@ impl JSCodeGenerator.gen_super(<>node: es.Super) -> str {
 
 """Generate spread element."""
 impl JSCodeGenerator.gen_spread_element(<>node: es.SpreadElement) -> str {
-    return f"...{self.generate(node.argument)}";
+    return f"...{self.generate(<>node.argument)}";
 }
 
 """Generate tagged template expression."""
@@ -165,7 +165,7 @@ impl JSCodeGenerator.gen_template_literal(<>node: es.TemplateLiteral) -> str {
     for (idx, quasi) in enumerate(<>node.quasis) {
         parts.append(self.generate(quasi));
         if (idx < len(<>node.expressions)) {
-            parts.append(f"${{{self.generate(node.expressions[idx])}}}");
+            parts.append(f"${{{self.generate(<>node.expressions[idx])}}}");
         }
     }
     return f"`{''.join(parts)}`";
@@ -173,14 +173,14 @@ impl JSCodeGenerator.gen_template_literal(<>node: es.TemplateLiteral) -> str {
 
 """Generate await expression."""
 impl JSCodeGenerator.gen_await_expression(<>node: es.AwaitExpression) -> str {
-    return f"await {self.generate(node.argument)}";
+    return f"await {self.generate(<>node.argument)}";
 }
 
 """Generate yield expression."""
 impl JSCodeGenerator.gen_yield_expression(<>node: es.YieldExpression) -> str {
     delegate = '*' if <>node.delegate else '';
     if <>node.argument {
-        return f"yield{delegate} {self.generate(node.argument)}";
+        return f"yield{delegate} {self.generate(<>node.argument)}";
     }
     return f"yield{delegate}";
 }
@@ -232,7 +232,7 @@ impl JSCodeGenerator.gen_conditional_expression(
     <>test = self.generate(<>node.test);
     consequent = self.generate(<>node.consequent);
     alternate = self.generate(<>node.alternate);
-    return f"{test} ? {consequent} : {alternate}";
+    return f"({test} ? {consequent} : {alternate})";
 }
 
 """Generate member expression."""
@@ -241,13 +241,13 @@ impl JSCodeGenerator.gen_member_expression(<>node: es.MemberExpression) -> str {
     optional = '?.' if <>node.optional else '';
     if <>node.computed {
         prop = self.generate(<>node.property);
-        return f"{obj}{optional}[{prop}]";
+        return f"{<>obj}{optional}[{prop}]";
     } else {
         prop = self.generate(<>node.property);
         if optional {
-            return f"{obj}{optional}{prop}";
+            return f"{<>obj}{optional}{prop}";
         }
-        return f"{obj}.{prop}";
+        return f"{<>obj}.{prop}";
     }
 }
 
@@ -255,14 +255,14 @@ impl JSCodeGenerator.gen_member_expression(<>node: es.MemberExpression) -> str {
 impl JSCodeGenerator.gen_assignment_expression(<>node: es.AssignmentExpression) -> str {
     left = self.generate(<>node.left);
     right = self.generate(<>node.right);
-    return f"{left} {node.operator} {right}";
+    return f"{left} {<>node.operator} {right}";
 }
 
 """Generate logical expression."""
 impl JSCodeGenerator.gen_logical_expression(<>node: es.LogicalExpression) -> str {
     left = self.generate(<>node.left);
     right = self.generate(<>node.right);
-    return f"{left} {node.operator} {right}";
+    return f"({left} {<>node.operator} {right})";
 }
 
 """Generate binary expression."""
@@ -275,16 +275,16 @@ impl JSCodeGenerator.gen_binary_expression(<>node: es.BinaryExpression) -> str {
     if isinstance(<>node.right, es.AssignmentExpression) {
         right = f"({right})";
     }
-    return f"{left} {node.operator} {right}";
+    return f"({left} {<>node.operator} {right})";
 }
 
 """Generate update expression."""
 impl JSCodeGenerator.gen_update_expression(<>node: es.UpdateExpression) -> str {
     arg = self.generate(<>node.argument);
     if <>node.prefix {
-        return f"{node.operator}{arg}";
+        return f"{<>node.operator}{arg}";
     } else {
-        return f"{arg}{node.operator}";
+        return f"{arg}{<>node.operator}";
     }
 }
 
@@ -293,11 +293,11 @@ impl JSCodeGenerator.gen_unary_expression(<>node: es.UnaryExpression) -> str {
     arg = self.generate(<>node.argument);
     if <>node.prefix {
         if (<>node.operator in ('typeof', 'void', 'delete')) {
-            return f"{node.operator} {arg}";
+            return f"{<>node.operator} {arg}";
         }
-        return f"{node.operator}{arg}";
+        return f"{<>node.operator}{arg}";
     } else {
-        return f"{arg}{node.operator}";
+        return f"{arg}{<>node.operator}";
     }
 }
 
@@ -372,7 +372,7 @@ impl JSCodeGenerator.gen_literal(<>node: es.Literal) -> str {
         return <>node.raw;
     }
     if isinstance(<>node.value, str) {
-        return f'"{node.value}"';
+        return f'"{<>node.value}"';
     } elif (<>node.value is None) {
         return 'null';
     } elif isinstance(<>node.value, bool) {
@@ -384,7 +384,7 @@ impl JSCodeGenerator.gen_literal(<>node: es.Literal) -> str {
 
 """Generate private identifier."""
 impl JSCodeGenerator.gen_private_identifier(<>node: es.PrivateIdentifier) -> str {
-    return f"\#{node.name}";
+    return f"\#{<>node.name}";
 }
 
 """Generate identifier."""
@@ -405,7 +405,7 @@ impl JSCodeGenerator.gen_property_definition(<>node: es.PropertyDefinition) -> s
     if <>node.computed {
         key = f"[{key}]";
     }
-    value = f" = {self.generate(node.value)}" if <>node.value else '';
+    value = f" = {self.generate(<>node.value)}" if <>node.value else '';
     return f"{self.indent()}{static_str}{key}{value};";
 }
 
@@ -445,7 +445,9 @@ impl JSCodeGenerator.gen_class_body(<>node: es.ClassBody) -> str {
 """Generate class expression."""
 impl JSCodeGenerator.gen_class_expression(<>node: es.ClassExpression) -> str {
     name = self.generate(<>node.id) if <>node.id else '';
-    extends = f" extends {self.generate(node.superClass)}" if <>node.superClass else '';
+    extends = f" extends {self.generate(<>node.superClass)}"
+    if <>node.superClass
+    else '';
     body = self.generate(<>node.body);
     return f"class {name}{extends} {body}";
 }
@@ -453,7 +455,9 @@ impl JSCodeGenerator.gen_class_expression(<>node: es.ClassExpression) -> str {
 """Generate class declaration."""
 impl JSCodeGenerator.gen_class_declaration(<>node: es.ClassDeclaration) -> str {
     name = self.generate(<>node.id) if <>node.id else '';
-    extends = f" extends {self.generate(node.superClass)}" if <>node.superClass else '';
+    extends = f" extends {self.generate(<>node.superClass)}"
+    if <>node.superClass
+    else '';
     body = self.generate(<>node.body);
     return f"{self.indent()}class {name}{extends} {body}";
 }
@@ -462,7 +466,7 @@ impl JSCodeGenerator.gen_class_declaration(<>node: es.ClassDeclaration) -> str {
 impl JSCodeGenerator.gen_variable_declarator(<>node: es.VariableDeclarator) -> str {
     id_str = self.generate(<>node.id);
     if <>node.<>init {
-        return f"{id_str} = {self.generate(node.<>init)}";
+        return f"{id_str} = {self.generate(<>node.<>init)}";
     }
     return id_str;
 }
@@ -470,7 +474,7 @@ impl JSCodeGenerator.gen_variable_declarator(<>node: es.VariableDeclarator) -> s
 """Generate variable declaration."""
 impl JSCodeGenerator.gen_variable_declaration(<>node: es.VariableDeclaration) -> str {
     declarators = ', '.join(self.generate(d) for d in <>node.declarations);
-    return f"{self.indent()}{node.kind} {declarators};";
+    return f"{self.indent()}{<>node.kind} {declarators};";
 }
 
 """Generate function declaration."""
@@ -485,7 +489,7 @@ impl JSCodeGenerator.gen_function_declaration(<>node: es.FunctionDeclaration) ->
 
 """Generate switch case."""
 impl JSCodeGenerator.gen_switch_case(<>node: es.SwitchCase) -> str {
-    result = f"{self.indent()}case {self.generate(node.test)}:\\n"
+    result = f"{self.indent()}case {self.generate(<>node.test)}:\\n"
     if <>node.test
     else f"{self.indent()}default:\\n";
     self.indent_level += 1;
@@ -508,32 +512,32 @@ impl JSCodeGenerator.gen_switch_statement(<>node: es.SwitchStatement) -> str {
 """Generate catch clause."""
 impl JSCodeGenerator.gen_catch_clause(<>node: es.CatchClause) -> str {
     if <>node.param {
-        return f"catch ({self.generate(node.param)}) {self.generate(node.body)}";
+        return f"catch ({self.generate(<>node.param)}) {self.generate(<>node.body)}";
     }
-    return f"catch {self.generate(node.body)}";
+    return f"catch {self.generate(<>node.body)}";
 }
 
 """Generate try statement."""
 impl JSCodeGenerator.gen_try_statement(<>node: es.TryStatement) -> str {
-    result = f"{self.indent()}try {self.generate(node.block)}";
+    result = f"{self.indent()}try {self.generate(<>node.block)}";
     if <>node.handler {
-        result += f" {self.generate(node.handler)}";
+        result += f" {self.generate(<>node.handler)}";
     }
     if <>node.finalizer {
-        result += f" finally {self.generate(node.finalizer)}";
+        result += f" finally {self.generate(<>node.finalizer)}";
     }
     return result;
 }
 
 """Generate throw statement."""
 impl JSCodeGenerator.gen_throw_statement(<>node: es.ThrowStatement) -> str {
-    return f"{self.indent()}throw {self.generate(node.argument)};";
+    return f"{self.indent()}throw {self.generate(<>node.argument)};";
 }
 
 """Generate continue statement."""
 impl JSCodeGenerator.gen_continue_statement(<>node: es.ContinueStatement) -> str {
     if <>node.label {
-        return f"{self.indent()}continue {self.generate(node.label)};";
+        return f"{self.indent()}continue {self.generate(<>node.label)};";
     }
     return f"{self.indent()}continue;";
 }
@@ -541,7 +545,7 @@ impl JSCodeGenerator.gen_continue_statement(<>node: es.ContinueStatement) -> str
 """Generate break statement."""
 impl JSCodeGenerator.gen_break_statement(<>node: es.BreakStatement) -> str {
     if <>node.label {
-        return f"{self.indent()}break {self.generate(node.label)};";
+        return f"{self.indent()}break {self.generate(<>node.label)};";
     }
     return f"{self.indent()}break;";
 }
@@ -553,7 +557,7 @@ impl JSCodeGenerator.gen_for_of_statement(<>node: es.ForOfStatement) -> str {
         declarators = ', '.join(
             self.generate(decl) for decl in <>node.left.declarations
         );
-        left = f"{node.left.kind} {declarators}";
+        left = f"{<>node.left.kind} {declarators}";
     } else {
         left = self.generate(<>node.left);
     }
@@ -607,9 +611,9 @@ impl JSCodeGenerator.gen_if_statement(<>node: es.IfStatement) -> str {
     result = f"{self.indent()}if ({test}) {consequent}";
     if <>node.alternate {
         if isinstance(<>node.alternate, es.IfStatement) {
-            result += f" else {self.generate(node.alternate).lstrip()}";
+            result += f" else {self.generate(<>node.alternate).lstrip()}";
         } else {
-            result += f" else {self.generate(node.alternate)}";
+            result += f" else {self.generate(<>node.alternate)}";
         }
     }
     return result;
@@ -618,7 +622,7 @@ impl JSCodeGenerator.gen_if_statement(<>node: es.IfStatement) -> str {
 """Generate return statement."""
 impl JSCodeGenerator.gen_return_statement(<>node: es.ReturnStatement) -> str {
     if <>node.argument {
-        return f"{self.indent()}return {self.generate(node.argument)};";
+        return f"{self.indent()}return {self.generate(<>node.argument)};";
     }
     return f"{self.indent()}return;";
 }
@@ -641,7 +645,7 @@ impl JSCodeGenerator.gen_block_statement(<>node: es.BlockStatement) -> str {
 
 """Generate expression statement."""
 impl JSCodeGenerator.gen_expression_statement(<>node: es.ExpressionStatement) -> str {
-    return f"{self.indent()}{self.generate(node.expression)};";
+    return f"{self.indent()}{self.generate(<>node.expression)};";
 }
 
 """Generate program."""
@@ -655,12 +659,12 @@ impl JSCodeGenerator.generate(<>node: (es.Node | None)) -> str {
     if (<>node is None) {
         return '';
     }
-    method_name = f"gen_{pascal_to_snake(node.type)}";
+    method_name = f"gen_{pascal_to_snake(<>node.type)}";
     method = getattr(self, method_name, None);
     if method {
         return method(<>node);
     } else {
-        return f"/* Unsupported node type: {node.type} */";
+        return f"/* Unsupported node type: {<>node.type} */";
     }
 }
 

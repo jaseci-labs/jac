@@ -289,10 +289,10 @@ The `package.json` file is dynamically generated from `config.json` by `ViteBund
 
 #### Package Installation Workflow
 
-The `jac install --cl` command manages npm packages through `config.json`:
+The `jac add --npm` command manages npm packages through `config.json`:
 
 ```
-1. Developer runs: jac install --cl lodash
+1. Developer runs: jac add --npm lodash
    ↓
 2. PackageInstaller updates config.json (adds lodash to dependencies)
    ↓
@@ -324,31 +324,31 @@ The `jac install --cl` command manages npm packages through `config.json`:
 
 #### CLI Commands
 
-**Install Package:**
+**Add Package:**
 
 ```bash
-jac install --cl lodash              # Add to dependencies
-jac install --cl -D @types/react     # Add to devDependencies
-jac install --cl lodash@^4.17.21     # Install with specific version
+jac add --npm lodash              # Add to dependencies
+jac add --npm -d @types/react     # Add to devDependencies
+jac add --npm lodash@^4.17.21     # Add with specific version
 ```
 
 **Install All Packages:**
 
 ```bash
-jac install --cl                     # Install all packages from config.json
+jac add --npm                     # Install all packages from jac.toml
 ```
 
-**Uninstall Package:**
+**Remove Package:**
 
 ```bash
-jac uninstall --cl lodash            # Remove from dependencies
-jac uninstall --cl -D @types/react  # Remove from devDependencies
+jac remove --npm lodash            # Remove from dependencies
+jac remove --npm -d @types/react   # Remove from devDependencies
 ```
 
 **Project Creation:**
 
 ```bash
-jac create --cl my-app            # Creates jac.toml with organized folder structure
+jac create --use client my-app            # Creates jac.toml with organized folder structure
 ```
 
 #### Benefits
@@ -575,11 +575,11 @@ export default defineConfig({
 **Package Management Workflow**:
 
 ```
-1. Developer runs: jac install --cl lodash
+1. Developer runs: jac add --npm lodash
    ↓
-2. PackageInstaller updates config.json (package.dependencies)
+2. PackageInstaller updates jac.toml (dependencies.npm)
    ↓
-3. ViteBundler generates package.json from config.json
+3. ViteBundler generates package.json from jac.toml
    ↓
 4. npm install runs (installs packages)
    ↓
@@ -588,14 +588,14 @@ export default defineConfig({
 6. Root package.json removed (keeps only .jac/client/configs/)
 ```
 
-**Uninstall Workflow**:
+**Remove Workflow**:
 
 ```
-1. Developer runs: jac uninstall --cl lodash
+1. Developer runs: jac remove --npm lodash
    ↓
-2. PackageInstaller removes package from config.json
+2. PackageInstaller removes package from jac.toml
    ↓
-3. ViteBundler regenerates package.json from updated config.json
+3. ViteBundler regenerates package.json from updated jac.toml
    ↓
 4. npm install runs (removes package from node_modules)
    ↓

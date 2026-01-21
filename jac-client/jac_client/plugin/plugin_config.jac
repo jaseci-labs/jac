@@ -87,7 +87,7 @@ class JacClientPluginConfig {
         return {
             "name": "npm",
             "dev_name": "npm.dev",
-            "cli_flag": "--cl",
+            "cli_flag": "--npm",
             "install_dir": ".jac/client/configs",
             "install_handler": _npm_install_handler,
             "install_all_handler": _npm_install_all_handler,
@@ -195,7 +195,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             style="muted"
         );
         console.print(
-            "  Run 'jac add --cl' when ready to install packages.\n", style="muted"
+            "  Run 'jac add --npm' when ready to install packages.\n", style="muted"
         );
         return;
     }
@@ -239,6 +239,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         # Run npm install using NodeInstaller to handle NVM environment
         try {
+            console.print("  Installing npm packages...", style="cyan");
             with console.status(
                 "[cyan]Installing npm packages...[/cyan]", spinner="dots"
             ) as status {

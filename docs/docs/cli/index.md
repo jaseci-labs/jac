@@ -68,10 +68,10 @@ jac run main.jac --no-cache
 
 ### jac start
 
-Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--watch` for Hot Module Replacement (HMR) during development.
+Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port PORT] [--no-client] [--scale] [--build] [filename]
+jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-d] [--api-port PORT] [--no-client] [--scale] [--build] [filename]
 ```
 
 | Option | Description | Default |
@@ -81,7 +81,7 @@ jac start [-h] [-s SESSION] [-p PORT] [-m] [-nm] [-f] [-nf] [-w] [--api-port POR
 | `-p, --port` | Port number | `8000` |
 | `-m, --main` | Run main entry point | `True` |
 | `-f, --faux` | Faux mode (mock) | `False` |
-| `-w, --watch` | Enable HMR (Hot Module Replacement) mode | `False` |
+| `-d, --dev` | Enable HMR (Hot Module Replacement) mode | `False` |
 | `--api-port` | Separate API port for HMR mode (0=same as port) | `0` |
 | `--no-client` | Skip client bundling/serving (API only) | `False` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
@@ -100,10 +100,10 @@ jac start -p 3000
 jac start -s prod_session
 
 # Start with Hot Module Replacement (development)
-jac start --watch
+jac start --dev
 
 # HMR mode without client bundling (API only)
-jac start --watch --no-client
+jac start --dev --no-client
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
@@ -140,7 +140,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 jac create myapp
 cd myapp
 
-# Create full-stack project with client template
+# Create full-stack project with client template (requires jac-client)
 jac create myapp --use client
 
 # Create from a local .jacpack file
@@ -530,7 +530,7 @@ jac destroy main.jac
 Add packages to your project's dependencies.
 
 ```bash
-jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
+jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 ```
 
 | Option | Description | Default |
@@ -538,8 +538,13 @@ jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
 | `packages` | Package names to add | None |
 | `-d, --dev` | Add as dev dependency | `False` |
 | `-g, --git` | Git repository URL | None |
-| `-c, --cl` | Add as client (frontend) package | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--npm` | Add as client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -556,8 +561,8 @@ jac add pytest --dev
 # Add from git repository
 jac add --git https://github.com/user/package.git
 
-# Add client-side (npm) package
-jac add react --cl
+# Add npm package (requires jac-client)
+jac add react --npm
 ```
 
 ---
@@ -595,12 +600,19 @@ jac install -v
 Remove packages from your project's dependencies.
 
 ```bash
-jac remove [-h] [packages ...]
+jac remove [-h] [-d] [packages ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `packages` | Package names to remove | None |
+| `-d, --dev` | Remove from dev dependencies | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--npm` | Remove client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -610,6 +622,12 @@ jac remove requests
 
 # Remove multiple packages
 jac remove numpy pandas
+
+# Remove dev dependency
+jac remove pytest --dev
+
+# Remove npm package (requires jac-client)
+jac remove react --npm
 ```
 
 ---
