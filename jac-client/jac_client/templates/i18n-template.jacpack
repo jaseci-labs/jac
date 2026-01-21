@@ -1,0 +1,55 @@
+{
+  "name": "i18n-template",
+  "description": "Jac client application: i18n-template",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: i18n-template",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {
+      "npm": {
+        "jac-client-node": "1.0.3",
+        "i18next": "latest",
+        "react-i18next": "latest",
+        "i18next-browser-languagedetector": "latest",
+        "i18next-http-backend": "latest",
+        "dev": {
+          "@jac-client/dev-deps": "1.0.0"
+        }
+      }
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins": {
+      "client": {}
+    }
+  },
+  "files": {
+    "main.jac": "\"\"\"Main entry point for i18n-template.\"\"\"\n\n\ncl import from .pages.home { Home }\n\n\n\n# Client-side component\ncl {\n    def:pub app() -> any {\n      \n\n        return <div style={{padding: \"2rem\", fontFamily: \"Arial, sans-serif\"}}>\n        <Home />\n        </div>;\n    }\n}\n",
+    "README.md": "# i18n-template\n\nA Jac client-side application with React support.\n\n## Project Structure\n\n```\ni18n-template/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 components/           # Reusable components\n\u2502   \u2514\u2500\u2500 Button.cl.jac     # Example Jac component\n\u251c\u2500\u2500 assets/               # Static assets (images, fonts, etc.)\n\u2514\u2500\u2500 build/                # Build output (generated)\n```\n\n## Getting Started\n\nStart the development server:\n\n```bash\njac start main.jac\n```\n\n## Components\n\nCreate Jac components in `components/` as `.cl.jac` files and import them:\n\n```jac\ncl import from .components.Button { Button }\n```\n\n## Adding Dependencies\n\nAdd npm packages with the --cl flag:\n\n```bash\njac add --cl react-router-dom\n```\n",
+    "components/Button.cl.jac": "\"\"\"Button component for the Jac client application.\"\"\"\n\ndef:pub Button(label: str, onClick: any, variant: str = \"primary\", disabled: bool = False) -> any {\n    base_styles = {\n        \"padding\": \"0.75rem 1.5rem\",\n        \"fontSize\": \"1rem\",\n        \"fontWeight\": \"600\",\n        \"borderRadius\": \"0.5rem\",\n        \"border\": \"none\",\n        \"cursor\": \"not-allowed\" if disabled else \"pointer\",\n        \"transition\": \"all 0.2s ease\"\n    };\n\n    variant_styles = {\n        \"primary\": {\n            \"backgroundColor\": \"#9ca3af\" if disabled else \"#3b82f6\",\n            \"color\": \"#ffffff\"\n        },\n        \"secondary\": {\n            \"backgroundColor\": \"#e5e7eb\" if disabled else \"#6b7280\",\n            \"color\": \"#ffffff\"\n        }\n    };\n\n    return <button\n        style={{**base_styles, **variant_styles[variant]}}\n        onClick={onClick}\n        disabled={disabled}\n    >\n        {label}\n    </button>;\n}\n",
+    "pages/home.cl.jac": "\n\nimport from \"i18next\"  {default as i18n}\nimport from \"react-i18next\" { initReactI18next, useTranslation, I18nextProvider }\n\nglob i18nInstance = <>i18n.<>use(initReactI18next).<>init({\n    \"debug\": true,\n    \"fallbackLng\": \"en\",\n    \"resources\": {\n        \"en\": {\n            \"translation\": {\n                \"Welcome_to_React\": \"Welcome to React and react-i18next\",\n                \"localization_testing\": \"This is a localization test.\"\n            }\n        },\n        \"tr\": {\n            \"translation\": {\n                \"Welcome_to_React\": \"React ve react-i18next'e ho\u015f geldiniz\",\n                \"localization_testing\": \"Bu bir yerelle\u015ftirme testidir.\"\n            }\n        }\n    },\n    \"interpolation\": {\n        \"escapeValue\": false,\n    },\n    \"react\": {\n        \"useSuspense\": false,\n    },\n});\n\ndef:pub Home() -> any {\n     interference = useTranslation();\n\n    def changeLanguage(lng: str) -> None {\n        interference.i18n.changeLanguage(lng);\n    }\n\n    if (interference.ready) {\n        return <I18nextProvider i18n={i18nInstance} defaultNS={\"translation\"}>\n            <div className=\"Home-header\">\n                <h2>{interference.t(\"Welcome_to_React\")}</h2>\n                <button onClick={lambda -> None {changeLanguage(\"tr\");}}>tr</button>\n                <button onClick={lambda -> None {changeLanguage(\"en\");}}>en</button>\n                <div>{interference.t(\"localization_testing\")}</div>\n            </div>\n        </I18nextProvider>;\n    }\n    return <span>Loading...</span>;\n}"
+  },
+  "directories": [
+    ".jac"
+  ],
+  "gitignore_entries": [
+    "*"
+  ],
+  "root_gitignore_entries": [
+    ".jac/"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    {
+      "name": "jac-client",
+      "version": "0.1.0"
+    }
+  ]
+}

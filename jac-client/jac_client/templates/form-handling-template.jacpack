@@ -1,0 +1,56 @@
+{
+  "name": "form-handling-template",
+  "description": "Jac client application: form-handling-template",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: form-handling-template",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {
+      "npm": {
+        "jac-client-node": "1.0.3",
+        "@hookform/resolvers": "^5.2.2",
+        "react-hook-form": "^7.66.1",
+        "zod": "^4.1.12",
+        "zustand": "^5.0.8",
+        "dev": {
+          "@jac-client/dev-deps": "1.0.0"
+        }
+      }
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins": {
+      "client": {}
+    }
+  },
+  "files": {
+    "main.jac": "\n\"\"\"Main entry point for the Jac client application.\"\"\"\n\ncl import  from .components.LoginForm { LoginForm }\n\n\n# Client-side component\ncl {\n    def:pub app() -> any {\n\n\n        return <div style={{fontFamily: \"Arial, sans-serif\", backgroundColor: \"#f3f4f6\", minHeight: \"100vh\", display: \"flex\", justifyContent: \"center\", alignItems: \"center\", padding: \"20px\"}}>\n            <div style={{maxWidth: \"400px\", width : \"100%\"}}>\n                <LoginForm />\n            </div>\n        </div>;\n    }\n}\n",
+    "README.md": "\n# Jac Form Handling Template\n\nA minimal **Jac client-side template** demonstrating a clean and reusable **form handling pattern** inspired by modern React practices (React Hook Form\u2013style architecture).\n\nThis template focuses on:\n\n- Component-driven UI\n- Schema-based validation\n- Centralized form state management\n\nIt is intended as a **starter template**, not a full application.\n\n---\n\n## What This Template Demonstrates\n\n- Form component isolation\n- Validation logic separated into schemas\n- Shared form state via a store\n- Clear, minimal project structure\n\nThis pattern can be reused for:\n\n- Login forms\n- Registration forms\n- Settings forms\n- Any structured user input flow\n\n---\n\n## Project Structure\n\n```\n\njac-form-handling-template/\n\u251c\u2500\u2500 jac.toml                    # Project configuration\n\u251c\u2500\u2500 main.jac                    # Application entry point\n\u251c\u2500\u2500 components/\n\u2502   \u2514\u2500\u2500 LoginForm.cl.jac        # Form UI component\n\u251c\u2500\u2500 schema/\n\u2502   \u2514\u2500\u2500 loginSchema.cl.jac      # Form validation schema\n\u251c\u2500\u2500 store/\n\u2502   \u2514\u2500\u2500 useFormStore.cl.jac     # Centralized form state\n\u251c\u2500\u2500 assets/                     # Static assets\n\u2514\u2500\u2500 README.md\n\n````\n\n---\n\n## Architecture Overview\n\n**Component**\n\n- Handles UI rendering\n- Reads and updates form state\n\n**Schema**\n\n- Defines validation rules\n- Keeps business logic out of UI\n\n**Store**\n\n- Manages form values and errors\n- Allows reuse across multiple components\n\nThis separation keeps the codebase:\n\n- Easy to reason about\n- Easy to extend\n- Easy to reuse as a template\n\n---\n\n## Getting Started\n\nRun the template locally:\n\n```bash\njac start main.jac\n````\n\n---\n\n## Reusing This Template\n\nTo adapt this template for a new form:\n\n1. Create a new schema in `schema/`\n2. Create a new form component in `components/`\n3. Reuse or extend the form store\n4. Import the component in `main.jac`\n\nNo structural changes are required.\n\n---\n\n## \ud83c\udfaf Purpose\n\nThis template is designed to:\n\n- Serve as a reference implementation\n- Provide a consistent form-handling pattern\n- Act as a starting point for Jac-based frontend projects\n\nIt intentionally avoids overengineering to remain clear and instructional.\n",
+    "store/useFormStore.cl.jac": "# Form data store - manages submitted form data and user state\nimport from zustand { create }\n\n\nglob formStore = create(lambda setState: any, getState: any -> dict {\n    return {\n        # User data\n        \"users\": [],\n        \"currentUser\": None,\n        \"isLoggedIn\": False,\n\n        # Actions\n        \"loginUser\": lambda credentials: dict -> None {\n            setState(lambda state: any -> dict {\n                user = state.users.find(lambda u: any -> bool {\n                    return u.username == credentials.username;\n                });\n\n                if user {\n                    return {\n                        **state,\n                        \"currentUser\": user,\n                        \"isLoggedIn\": True\n                    };\n                }\n                return {**state};\n            });\n        },\n\n        \"logoutUser\": lambda -> None {\n            setState(lambda state: any -> dict {\n                return {\n                    **state,\n                    \"currentUser\": None,\n                    \"isLoggedIn\": False\n                };\n            });\n        },\n\n\n\n        \"clearAllData\": lambda -> None {\n            setState(lambda state: any -> dict {\n                return {\n                    **state,\n                    \"users\": [],\n                    \"currentUser\": None,\n                    \"isLoggedIn\": False,\n                };\n            });\n        }\n    };\n});\n\ndef:pub useFormStore(selector: any = None) -> any {\n    if selector {\n        return formStore(selector);\n    }\n    return formStore();\n}\n",
+    "schema/loginSchema.cl.jac": "import from zod { z}\n\n# Login Schema\nglob schema = z.object({\n    \"username\": z\n            .string()\n            .min(1, \"Username is required\"),\n    \"password\": z.string().min(6, \"Password must be at least 6 characters long\"),\n\n});\n\n\ndef:pub loginSchema()-> any{\n    return schema;\n}\n",
+    "components/LoginForm.cl.jac": "\n# React Hook Form + Zod + Zustand Example\nimport from react { useState }\nimport from \"react-hook-form\" { useForm }\nimport from \"@hookform/resolvers/zod\" { zodResolver }\nimport from ..schema.loginSchema {\n    loginSchema\n}\nimport from ..store.useFormStore { useFormStore }\n\n\n\n# Login Form Component\ndef:pub LoginForm() -> any {\n    loginUser = useFormStore(lambda state: any -> any { return state.loginUser; });\n    isLoggedIn = useFormStore(lambda state: any -> any { return state.isLoggedIn; });\n    currentUser = useFormStore(lambda state: any -> any { return state.currentUser; });\n    logoutUser = useFormStore(lambda state: any -> any { return state.logoutUser; });\n\n    form = useForm({\n        \"resolver\": zodResolver(loginSchema()),\n        \"defaultValues\": {\n            \"username\": \"\",\n            \"password\": \"\",\n\n        }\n    });\n\n    register = form.register;\n    usernameField = register(\"username\");\n    passwordField = register(\"password\");\n    handleSubmit = form.handleSubmit;\n    errors = form.formState.errors;\n\n    onSubmit = lambda data: any -> None {\n        console.log(\"Login Data:\", data);\n        loginUser(data);\n    };\n\n\n    if isLoggedIn {\n        return <div style={{border: \"2px solid #10b981\", borderRadius: \"12px\", padding: \"24px\", backgroundColor: \"#d1fae5\"}}>\n            <h2 style={{margin: \"0 0 20px\", color: \"#065f46\"}}> Logged In</h2>\n            <p style={{margin: \"0 0 16px\", color: \"#065f46\"}}>\n                Welcome, {currentUser.username}!\n            </p>\n            <button\n                onClick={lambda e: any -> None { logoutUser(); }}\n                style={{padding: \"10px 20px\", backgroundColor: \"#dc2626\", color: \"white\", border: \"none\", borderRadius: \"6px\", cursor: \"pointer\"}}\n            >\n                Logout\n            </button>\n        </div>;\n    }\n\n    return <div style={{border: \"2px solid #8b5cf6\", borderRadius: \"12px\", padding: \"24px\", backgroundColor: \"white\"}}>\n        <h2 style={{margin: \"0 0 20px\", color: \"#6d28d9\"}}>Login Form</h2>\n\n        <form onSubmit={handleSubmit(onSubmit)}>\n            # Email\n            <div style={{marginBottom: \"16px\"}}>\n                <label style={{display: \"block\", marginBottom: \"6px\", fontWeight: \"600\", color: \"#374151\"}}>\n                    Email *\n                </label>\n                <input\n                    name={usernameField.name}\n                    onChange={usernameField.onChange}\n                    onBlur={usernameField.onBlur}\n                    ref={usernameField.ref}\n                    type=\"text\"\n                    placeholder=\"yourusername\"\n                    style={{width: \"100%\", padding: \"10px\", border: \"1px solid #d1d5db\", borderRadius: \"6px\", fontSize: \"14px\"}}\n                />\n                {errors.username && (\n                    <p style={{margin: \"4px 0 0\", color: \"#dc2626\", fontSize: \"12px\"}}>\n                        {errors.username.message}\n                    </p>\n                )}\n            </div>\n\n            # Password\n            <div style={{marginBottom: \"16px\"}}>\n                <label style={{display: \"block\", marginBottom: \"6px\", fontWeight: \"600\", color: \"#374151\"}}>\n                    Password *\n                </label>\n                <input\n                    name={passwordField.name}\n                    onChange={passwordField.onChange}\n                    onBlur={passwordField.onBlur}\n                    ref={passwordField.ref}\n                    type=\"password\"\n                    placeholder=\"Enter your password\"\n                    style={{width: \"100%\", padding: \"10px\", border: \"1px solid #d1d5db\", borderRadius: \"6px\", fontSize: \"14px\"}}\n                />\n                {errors.password && (\n                    <p style={{margin: \"4px 0 0\", color: \"#dc2626\", fontSize: \"12px\"}}>\n                        {errors.password.message}\n                    </p>\n                )}\n            </div>\n\n\n\n            <button\n                type=\"submit\"\n                style={{width: \"100%\", padding: \"12px\", backgroundColor: \"#8b5cf6\", color: \"white\", border: \"none\", borderRadius: \"6px\", fontSize: \"16px\", fontWeight: \"600\", cursor: \"pointer\"}}\n            >\n                Login\n            </button>\n        </form>\n\n\n    </div>;\n}\n"
+  },
+  "directories": [
+    ".jac"
+  ],
+  "gitignore_entries": [
+    "*"
+  ],
+  "root_gitignore_entries": [
+    ".jac/"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    {
+      "name": "jac-client",
+      "version": "0.1.0"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "name": "framer-motion-template",
+  "description": "Jac client application: framer-motion-template",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: framer-motion-template",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {
+      "npm": {
+        "jac-client-node": "1.0.4",
+        "motion": "latest",
+        "react-icons": "^5.0.0",
+        "dev": {
+          "@jac-client/dev-deps": "1.0.0",
+          "react-icons": "latest"
+        }
+      }
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins": {
+      "client": {}
+    }
+  },
+  "files": {
+    "main.jac": "\"\"\"Main entry point for the Jac client application.\"\"\"\n\n# Client-side imports (useState is auto-injected when using `has` variables)\ncl import from react { useEffect }\ncl import from \"motion/react\" { motion }\ncl import from .components.scroll { ScrollTriggered }\n\n# Client-side component\ncl {\n    def:pub app() -> any {\n\n\n        return <div style={{padding: \"2rem\", fontFamily: \"Arial, sans-serif\"}}>\n\n      \n            <ScrollTriggered />\n                  <motion.div\n            style={{width: 100, height: 100, backgroundColor: \"#3498db\", borderRadius: 10}}\n            animate={{ rotate: 360 }}\n            transition={{ duration: 1 }}\n            />\n            <motion.div\n                whileHover={{ scale: 1.2 }}\n                whileTap={{ scale: 0.8 }}\n                style={{width: 100, height: 100, backgroundColor: \"#e74c3c\", borderRadius: 10}}\n            />\n            </div>;\n\n    }\n}\n",
+    "README.md": "# framer-motion-template\n\nA Jac client-side application with React support.\n\n## Project Structure\n\n```\nframer-motion-template/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 components/           # Reusable components\n\u2502   \u2514\u2500\u2500 Button.cl.jac     # Example Jac component\n\u251c\u2500\u2500 assets/               # Static assets (images, fonts, etc.)\n\u2514\u2500\u2500 build/                # Build output (generated)\n```\n\n## Getting Started\n\nStart the development server:\n\n```bash\njac start main.jac\n```\n\n## Components\n\nCreate Jac components in `components/` as `.cl.jac` files and import them:\n\n```jac\ncl import from .components.Button { Button }\n```\n\n## Adding Dependencies\n\nAdd npm packages with the --cl flag:\n\n```bash\njac add --cl react-router-dom\n```\n",
+    "components/scroll.cl.jac": "\ncl import from \"motion/react\" { motion }\ncl import from \"react-icons/gi\" { GiTomato, GiOrange, GiLemon, GiPear, GiAppleSeeds , GiEggEye, GiBerryBush}\n\n\n# ==============   Data   ================\nglob food: list = [\n    [<GiTomato />, 340, 10],\n    [<GiOrange />, 20, 40],\n    [<GiLemon />, 60, 90],\n    [<GiPear />, 80, 120],\n    [<GiAppleSeeds />, 100, 140],\n    [<GiBerryBush />, 205, 245],\n    [<GiEggEye />, 260, 290],\n    [<GiAppleSeeds />, 290, 320]\n];\n\n# ==============   Styles   ================\nglob container: dict = {\n    \"margin\": \"100px auto\",\n    \"maxWidth\": 500,\n    \"paddingBottom\": 100,\n    \"width\": \"100%\"\n};\n\nglob cardContainer: dict = {\n    \"overflow\": \"hidden\",\n    \"display\": \"flex\",\n    \"justifyContent\": \"center\",\n    \"alignItems\": \"center\",\n    \"position\": \"relative\",\n    \"paddingTop\": 20,\n    \"marginBottom\": -120\n};\n\nglob splash: dict = {\n    \"position\": \"absolute\",\n    \"top\": 0,\n    \"left\": 0,\n    \"right\": 0,\n    \"bottom\": 0,\n    \"clipPath\": 'path(\"M 0 303.5 C 0 292.454 8.995 285.101 20 283.5 L 460 219.5 C 470.085 218.033 480 228.454 480 239.5 L 500 430 C 500 441.046 491.046 450 480 450 L 20 450 C 8.954 450 0 441.046 0 430 Z\")'\n};\n\nglob card: dict = {\n    \"fontSize\": 164,\n    \"width\": 300,\n    \"height\": 430,\n    \"display\": \"flex\",\n    \"justifyContent\": \"center\",\n    \"alignItems\": \"center\",\n    \"borderRadius\": 20,\n    \"background\": \"#f5f5f5\",\n    \"boxShadow\": \"0 0 1px hsl(0deg 0% 0% / 0.075), 0 0 2px hsl(0deg 0% 0% / 0.075), 0 0 4px hsl(0deg 0% 0% / 0.075), 0 0 8px hsl(0deg 0% 0% / 0.075), 0 0 16px hsl(0deg 0% 0% / 0.075)\",\n    \"transformOrigin\": \"10% 60%\"\n};\n\n# ==============   Variants   ================\nglob cardVariants: dict = {\n    \"offscreen\": {\n        \"y\": 300\n    },\n    \"onscreen\": {\n        \"y\": 50,\n        \"rotate\": -10,\n        \"transition\": {\n            \"type\": \"spring\",\n            \"bounce\": 0.4,\n            \"duration\": 0.8\n        }\n    }\n};\n\n# ==============   Helper Functions   ================\ndef hue(h: int) -> str {\n    return f\"hsl({h}, 100%, 50%)\";\n}\n\n# ==============   Components   ================\n\n# Card Component\n# Props: icon (component), hueA (int), hueB (int), i (int)\ndef Card(props: dict) -> any {\n    icon = props[\"icon\"];\n    hueA = props[\"hueA\"];\n    hueB = props[\"hueB\"];\n    i = props[\"i\"];\n\n    background = f\"linear-gradient(306deg, {hue(hueA)}, {hue(hueB)})\";\n\n    # Merge splash style with background\n    splashStyle = {**splash, \"background\": background};\n\n    MotionDiv = motion.div;\n\n    return <MotionDiv\n        className={f\"card-container-{i}\"}\n        style={cardContainer}\n        initial=\"offscreen\"\n        whileInView=\"onscreen\"\n        viewport={{\"amount\": 0.8}}\n    >\n        <div style={splashStyle} />\n        <MotionDiv style={card} variants={cardVariants} className=\"card\">\n            <div style={{\"fontSize\": \"164px\", \"display\": \"flex\", \"alignItems\": \"center\", \"justifyContent\": \"center\"}}>\n                {icon}\n            </div>\n        </MotionDiv>\n    </MotionDiv>;\n}\n\n# Main ScrollTriggered Component\ndef:pub ScrollTriggered() -> any {\n    return <div style={container}>\n\n\n        {\n            food.map(lambda item:any, i:int -> any {\n                icon = item[0];\n                hueA = item[1];\n                hueB = item[2];\n                return <Card\n                    key={i}\n                    i={i}\n                    icon={icon}\n                    hueA={hueA}\n                    hueB={hueB}\n                />;\n            })\n        }\n    </div>;\n}\n"
+  },
+  "directories": [
+    ".jac"
+  ],
+  "gitignore_entries": [
+    "*"
+  ],
+  "root_gitignore_entries": [
+    ".jac/"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    "{'name': 'jac-client', 'version': '0.1.0'}"
+  ]
+}

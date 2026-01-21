@@ -1,0 +1,58 @@
+{
+  "name": "react-flow-template",
+  "description": "Jac client application: react-flow-template",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac client application: react-flow-template",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {
+      "npm": {
+        "jac-client-node": "1.0.3",
+        "reactflow": "latest",
+        "@xyflow/react": "latest",
+        "dev": {
+          "@jac-client/dev-deps": "1.0.0"
+        }
+      }
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins": {
+      "client": {}
+    }
+  },
+  "files": {
+    "main.jac": "cl import from \".components.GraphCanvas\" { GraphCanvas }\ncl import '.style.css';\n\ncl {\n    def:pub app() -> any {\n        return <div style={{ \"width\": \"100vw\", \"height\": \"100vh\" }}>\n            <GraphCanvas />\n        </div>;\n    }\n}\n",
+    "README.md": "# react-flow-template\n\nA Jac client-side application with React support.\n\n## Project Structure\n\n```\nreact-flow-template/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 components/           # Reusable components\n\u2502   \u2514\u2500\u2500 Button.cl.jac     # Example Jac component\n\u251c\u2500\u2500 assets/               # Static assets (images, fonts, etc.)\n\u2514\u2500\u2500 build/                # Build output (generated)\n```\n\n## Getting Started\n\nStart the development server:\n\n```bash\njac start main.jac\n```\n\n## Components\n\nCreate Jac components in `components/` as `.cl.jac` files and import them:\n\n```jac\ncl import from .components.Button { Button }\n```\n\n## Adding Dependencies\n\nAdd npm packages with the --cl flag:\n\n```bash\njac add --cl react-router-dom\n```\n",
+    "style.css": "",
+    "graph/initial_edges.cl.jac": "glob:pub edges = [];\n",
+    "graph/initial_nodes.cl.jac": "\n    glob:pub nodes = [\n    {\n        \"id\": \"1\",\n        \"position\": { \"x\": 100, \"y\": 100 },\n        \"data\": { \"label\": \"Start Node\" },\n        \"type\": \"default\"\n    }\n];\n",
+    "components/CustomNode.cl.jac": "",
+    "components/NodeToolbar.cl.jac": "",
+    "components/Button.cl.jac": "\"\"\"Button component for the Jac client application.\"\"\"\n\ndef:pub Button(label: str, onClick: any, variant: str = \"primary\", disabled: bool = False) -> any {\n    base_styles = {\n        \"padding\": \"0.75rem 1.5rem\",\n        \"fontSize\": \"1rem\",\n        \"fontWeight\": \"600\",\n        \"borderRadius\": \"0.5rem\",\n        \"border\": \"none\",\n        \"cursor\": \"not-allowed\" if disabled else \"pointer\",\n        \"transition\": \"all 0.2s ease\"\n    };\n\n    variant_styles = {\n        \"primary\": {\n            \"backgroundColor\": \"#9ca3af\" if disabled else \"#3b82f6\",\n            \"color\": \"#ffffff\"\n        },\n        \"secondary\": {\n            \"backgroundColor\": \"#e5e7eb\" if disabled else \"#6b7280\",\n            \"color\": \"#ffffff\"\n        }\n    };\n\n    return <button\n        style={{**base_styles, **variant_styles[variant]}}\n        onClick={onClick}\n        disabled={disabled}\n    >\n        {label}\n    </button>;\n}\n",
+    "components/GraphCanvas.cl.jac": "cl import from react { useState, useCallback }\ncl import from \"@xyflow/react\" {\n    ReactFlow,\n    Background,\n    Controls,\n    addEdge,\n    applyNodeChanges,\n    applyEdgeChanges\n}\n\n\ncl import from \"..graph.initial_nodes\" { nodes as initialNodes }\ncl import from \"..graph.initial_edges\" { edges as initialEdges }\n\ncl import \"@xyflow/react/dist/style.css\";\n\ncl {\n    def:pub GraphCanvas() -> any {\n\n        [nodes, setNodes] = useState(initialNodes);\n        [edges, setEdges] = useState(initialEdges);\n\n        # Handle node drag / resize / delete\n        onNodesChange = useCallback(\n            lambda changes:any -> None {\n                setNodes(lambda prev:any -> None {\n                    return applyNodeChanges(changes, prev);\n                });\n            },\n            []\n        );\n\n        # Handle edge updates\n        onEdgesChange = useCallback(\n            lambda changes:any -> None {\n                setEdges(lambda prev:any -> None {\n                    return applyEdgeChanges(changes, prev);\n                });\n            },\n            []\n        );\n\n        # Handle new connections\n        onConnect = useCallback(\n            lambda connection:any -> None {\n                setEdges(lambda prev:any -> None {\n                    return addEdge(connection, prev);\n                });\n            },\n            []\n        );\n\n        return <ReactFlow\n            nodes={nodes}\n            edges={edges}\n            onNodesChange={onNodesChange}\n            onEdgesChange={onEdgesChange}\n            onConnect={onConnect}\n            fitView\n        >\n            <Background />\n            <Controls />\n        </ReactFlow>;\n    }\n}\n"
+  },
+  "directories": [
+    ".jac"
+  ],
+  "gitignore_entries": [
+    "*"
+  ],
+  "root_gitignore_entries": [
+    ".jac/"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    {
+      "name": "jac-client",
+      "version": "0.1.0"
+    }
+  ]
+}
