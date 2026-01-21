@@ -58,7 +58,6 @@ def _convert_transport_response_to_json_response(
 """Custom logging handler that routes logs to jac-super console."""
 class ConsoleLogHandler(logging.Handler) {
     """A logging handler that forwards log messages to jac-super's console."""
-
     def emit(self: ConsoleLogHandler, record: logging.LogRecord) -> None {
         import from jaclang.cli.console { console }
         message = self.format(record);
@@ -81,16 +80,32 @@ impl JFastApiServer.run_server(
         "formatters": {
             "default": {"format": "%(message)s"},
             "access": {"format": "%(message)s"},
+
         },
         "handlers": {
-            "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stderr"},
-            "access": {"()": lambda: console_handler},
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr"
+            },
+            "access": {"()": lambda : console_handler },
+
         },
         "loggers": {
-            "uvicorn": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+            "uvicorn": {
+                "handlers": ["default"],
+                "level": "WARNING",
+                "propagate": False
+            },
             "uvicorn.error": {"level": "WARNING", "propagate": False},
-            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+            "uvicorn.access": {
+                "handlers": ["access"],
+                "level": "INFO",
+                "propagate": False
+            },
+
         },
+
     };
     uvicorn.run(app, host=host, port=port, log_config=log_config);
 }
