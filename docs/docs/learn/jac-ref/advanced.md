@@ -1,12 +1,21 @@
 # Part VII: Advanced Features
 
+**In this part:**
+
+- [Error Handling](#error-handling) - Try/except/finally, raising exceptions
+- [Testing](#testing) - Test blocks, JacTestClient
+- [Filter and Assign Comprehensions](#filter-and-assign-comprehensions) - List/dict comprehensions, typed filters
+- [Pipe Operators](#pipe-operators) - Forward/backward pipes
+
+---
+
 This part covers error handling, testing, and advanced operators like comprehensions and pipes. These features work the same as in Python with minor syntax differences (braces instead of colons, semicolons to end statements).
 
-## 32. Error Handling
+## Error Handling
 
 Jac uses Python's exception model with `try/except/finally` blocks. The syntax uses braces but the semantics are identical -- catch specific exceptions, optionally capture them with `as`, and use `finally` for cleanup that always runs.
 
-### 32.1 Try/Except/Finally
+### 1 Try/Except/Finally
 
 ```jac
 try {
@@ -22,7 +31,7 @@ try {
 }
 ```
 
-### 32.2 Raising Exceptions
+### 2 Raising Exceptions
 
 ```jac
 def validate(value: int) -> None {
@@ -40,7 +49,7 @@ def process(data: dict) -> None {
 }
 ```
 
-### 32.3 Assertions
+### 3 Assertions
 
 ```jac
 assert condition;
@@ -50,9 +59,9 @@ assert data is not None, f"Data was None for id {id}";
 
 ---
 
-## 33. Testing
+## Testing
 
-### 33.1 Test Blocks
+### 1 Test Blocks
 
 ```jac
 test addition_works {
@@ -68,7 +77,7 @@ test string_operations {
 }
 ```
 
-### 33.2 Testing Walkers
+### 2 Testing Walkers
 
 ```jac
 test walker_collects_data {
@@ -86,7 +95,7 @@ test walker_collects_data {
 }
 ```
 
-### 33.3 Float Comparison
+### 3 Float Comparison
 
 ```jac
 test float_comparison {
@@ -95,7 +104,7 @@ test float_comparison {
 }
 ```
 
-### 33.4 JacTestClient
+### 4 JacTestClient
 
 For API testing without starting a server:
 
@@ -116,7 +125,7 @@ test api_endpoints {
 }
 ```
 
-### 33.5 Running Tests
+### 5 Running Tests
 
 ```bash
 # Run all tests
@@ -134,9 +143,9 @@ jac test --verbose
 
 ---
 
-## 34. Filter and Assign Comprehensions
+## Filter and Assign Comprehensions
 
-### 34.1 Standard Comprehensions
+### 1 Standard Comprehensions
 
 ```jac
 # List comprehension
@@ -155,7 +164,7 @@ unique_lengths = {len(s) for s in strings};
 gen = (x ** 2 for x in range(1000000));
 ```
 
-### 34.2 Filter Comprehension Syntax
+### 2 Filter Comprehension Syntax
 
 Filter collections with `?condition`:
 
@@ -170,7 +179,18 @@ qualified = employees(?salary > 50000, experience >= 5);
 friends = [-->](?status == "active");
 ```
 
-### 34.3 Assign Comprehension Syntax
+### 3 Typed Filter Comprehensions
+
+Filter by type with backtick syntax:
+
+```jac
+dogs = animals(`?Dog);                    # By type only
+indoor_cats = animals(`?Cat:indoor==True); # Type with condition
+people = [-->](`?Person);                 # On graph traversal
+adults = [-->](`?Person:age > 21);        # Traversal with condition
+```
+
+### 4 Assign Comprehension Syntax
 
 Modify all items with `=attr=value`:
 
@@ -187,9 +207,9 @@ items(=status="processed", processed_at=now());
 
 ---
 
-## 35. Pipe Operators
+## Pipe Operators
 
-### 35.1 Forward Pipe
+### 1 Forward Pipe
 
 ```jac
 # Traditional
@@ -206,14 +226,14 @@ cleaned = raw_data
     |> transform;
 ```
 
-### 35.2 Backward Pipe
+### 2 Backward Pipe
 
 ```jac
 # Right to left
 result = output <| filter <| transform <| input;
 ```
 
-### 35.3 Atomic Pipes (Graph Operations)
+### 3 Atomic Pipes (Graph Operations)
 
 ```jac
 # Depth-first traversal

@@ -1,5 +1,16 @@
 # Appendices
 
+**In this part:**
+
+- [Appendix A: Complete Keyword Reference](#appendix-a-complete-keyword-reference) - All keywords
+- [Appendix B: Operator Quick Reference](#appendix-b-operator-quick-reference) - Operators by category
+- [Appendix C: Grammar Summary](#appendix-c-grammar-summary) - Simplified grammar
+- [Appendix D: Common Gotchas](#appendix-d-common-gotchas) - Pitfalls to avoid
+- [Appendix E: Migration from Python](#appendix-e-migration-from-python) - Conversion guide
+- [Appendix F: LLM Provider Reference](#appendix-f-llm-provider-reference) - Model configuration
+
+---
+
 ## Appendix A: Complete Keyword Reference
 
 | Keyword | Category | Description |
@@ -147,23 +158,36 @@
 ## Appendix C: Grammar Summary
 
 ```
-module        : element*
-element       : import | archetype | ability | impl | test | entry
+module        : STRING? element*              # Optional module docstring
+element       : STRING? toplevel_stmt         # Optional statement docstring
+toplevel_stmt : import | archetype | ability | impl | test | entry
+              | (cl | sv) toplevel_stmt       # Client/server prefix
+              | (cl | sv) "{" toplevel_stmt* "}"  # Client/server block
 
-archetype     : (obj | node | edge | walker | enum) NAME inheritance? body
+archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"
 body          : "{" member* "}"
 
 member        : has_stmt | ability | impl
 has_stmt      : "has" (modifier)? NAME ":" type ("=" expr)? ";"
-ability       : "can" NAME params? ("->" type)? (body | ";")
+ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";")
+event_clause  : "with" type_expr? (entry | exit)
 
-import        : "import" (module | "from" module "{" names "}")
+import        : "import" (module | "from" import_path "{" names "}")
+import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
 test          : "test" NAME body
 impl          : "impl" NAME "." NAME params body
 
+visit_stmt    : "visit" (":" expr ":")? expr ("else" block)?  # Optional index selector
+edge_ref      : "[" (edge | node)? edge_op filter? "]"
+
 expr          : ... (standard expressions plus graph operators)
+
+# Pattern matching
+match_stmt    : "match" expr "{" case_clause* "}"
+case_clause   : "case" pattern ":" stmt*
+pattern       : literal | capture | sequence | mapping | class | as | or | star
 ```
 
 ---
