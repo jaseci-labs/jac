@@ -17,7 +17,7 @@ Build complete web applications using Jac for both frontend and backend. Jac Cli
 
 ```bash
 # Create a new full-stack project
-jac create --cl myapp
+jac create --use client myapp
 cd myapp
 jac start
 ```
@@ -406,14 +406,14 @@ cl {
 
 ```bash
 # Add npm packages
-jac add --cl lodash
-jac add --cl --dev @types/react
+jac add --npm lodash
+jac add --npm --dev @types/react
 
 # Remove packages
-jac remove --cl lodash
+jac remove --npm lodash
 
 # Install all dependencies
-jac add --cl
+jac add --npm
 ```
 
 Or in `jac.toml`:
