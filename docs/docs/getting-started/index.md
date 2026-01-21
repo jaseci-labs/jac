@@ -65,7 +65,7 @@ Create a full-stack project with frontend and backend:
 
 ```bash
 # Create a new project with client-side support
-jac create --cl myapp
+jac create --use client myapp
 cd myapp
 
 # Start the development server (uses main.jac by default)
@@ -108,7 +108,7 @@ jac run myapp.jac
 
 ```bash
 # Create a full-stack project
-jac create --cl myapp
+jac create --use client myapp
 cd myapp
 
 # Start development server with hot reload

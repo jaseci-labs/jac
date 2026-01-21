@@ -7,7 +7,7 @@ from subprocess import PIPE, Popen, run
 
 
 def test_create_jac_app() -> None:
-    """Test jac create --cl command."""
+    """Test jac create --use client command."""
     test_project_name = "test-jac-app"
 
     # Create a temporary directory for testing
@@ -17,9 +17,9 @@ def test_create_jac_app() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl command
+            # Run jac create --use client command
             process = Popen(
-                ["jac", "create", "--cl", test_project_name],
+                ["jac", "create", "--use", "client", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -108,7 +108,7 @@ def test_create_jac_app() -> None:
 
 
 def test_create_jac_app_invalid_name() -> None:
-    """Test jac create --cl command with project names containing spaces.
+    """Test jac create --use client command with project names containing spaces.
 
     Note: The current implementation allows names with spaces. This test
     verifies that such projects are created successfully.
@@ -120,7 +120,7 @@ def test_create_jac_app_invalid_name() -> None:
 
             # Test with name containing spaces (currently allowed)
             result = run(
-                ["jac", "create", "--cl", "--skip", "name with spaces"],
+                ["jac", "create", "--use", "client", "--skip", "name with spaces"],
                 capture_output=True,
                 text=True,
             )
@@ -138,7 +138,7 @@ def test_create_jac_app_invalid_name() -> None:
 
 
 def test_create_jac_app_existing_directory() -> None:
-    """Test jac create --cl command when directory already exists."""
+    """Test jac create --use client command when directory already exists."""
     test_project_name = "existing-test-app"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -151,7 +151,7 @@ def test_create_jac_app_existing_directory() -> None:
 
             # Try to create app with same name
             process = Popen(
-                ["jac", "create", "--cl", test_project_name],
+                ["jac", "create", "--use", "client", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -169,7 +169,7 @@ def test_create_jac_app_existing_directory() -> None:
 
 
 def test_create_jac_app_with_button_component() -> None:
-    """Test jac create --cl command creates Button.cl.jac component."""
+    """Test jac create --use client command creates Button.cl.jac component."""
     test_project_name = "test-jac-app-component"
 
     # Create a temporary directory for testing
@@ -179,9 +179,9 @@ def test_create_jac_app_with_button_component() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl command
+            # Run jac create --use client command
             process = Popen(
-                ["jac", "create", "--cl", test_project_name],
+                ["jac", "create", "--use", "client", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -272,7 +272,7 @@ def test_create_jac_app_with_button_component() -> None:
 
 
 def test_create_jac_app_with_skip_flag() -> None:
-    """Test jac create --cl --skip command skips package installation."""
+    """Test jac create --use client --skip command skips package installation."""
     test_project_name = "test-jac-app-skip"
 
     # Create a temporary directory for testing
@@ -282,9 +282,9 @@ def test_create_jac_app_with_skip_flag() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl --skip command
+            # Run jac create --use client --skip command
             process = Popen(
-                ["jac", "create", "--cl", "--skip", test_project_name],
+                ["jac", "create", "--use", "client", "--skip", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -320,7 +320,7 @@ def test_create_jac_app_with_skip_flag() -> None:
 
 
 def test_create_jac_app_installs_default_packages() -> None:
-    """Test jac create --cl command attempts to install default packages."""
+    """Test jac create --use client command attempts to install default packages."""
     test_project_name = "test-jac-app-install"
 
     # Create a temporary directory for testing
@@ -330,9 +330,9 @@ def test_create_jac_app_installs_default_packages() -> None:
             # Change to temp directory
             os.chdir(temp_dir)
 
-            # Run jac create --cl command
+            # Run jac create --use client command
             process = Popen(
-                ["jac", "create", "--cl", test_project_name],
+                ["jac", "create", "--use", "client", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -448,13 +448,13 @@ entry-point = "app.jac"
 
 
 def test_install_without_cl_flag() -> None:
-    """Test add command without --cl flag should skip silently when no jac.toml exists."""
+    """Test add command without --npm flag should skip silently when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run add command without --cl flag and without jac.toml
+            # Run add command without --npm flag and without jac.toml
             result = run(
                 ["jac", "add", "lodash"],
                 capture_output=True,
@@ -472,7 +472,7 @@ def test_install_without_cl_flag() -> None:
 
 
 def test_install_all_packages() -> None:
-    """Test add --cl command installs all packages from jac.toml."""
+    """Test add --npm command installs all packages from jac.toml."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -481,9 +481,9 @@ def test_install_all_packages() -> None:
             # Create jac.toml with some dependencies
             _create_jac_toml(temp_dir, deps='lodash = "^4.17.21"')
 
-            # Run add --cl command without package name
+            # Run add --npm command without package name
             result = run(
-                ["jac", "add", "--cl"],
+                ["jac", "add", "--npm"],
                 capture_output=True,
                 text=True,
             )
@@ -505,7 +505,7 @@ def test_install_all_packages() -> None:
 
 
 def test_install_package_to_dependencies() -> None:
-    """Test add --cl command adds package to dependencies."""
+    """Test add --npm command adds package to dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -514,9 +514,9 @@ def test_install_package_to_dependencies() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --cl command with package name
+            # Run add --npm command with package name
             result = run(
-                ["jac", "add", "--cl", "lodash"],
+                ["jac", "add", "--npm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -545,7 +545,7 @@ def test_install_package_to_dependencies() -> None:
 
 
 def test_install_package_with_version() -> None:
-    """Test add --cl command with specific version."""
+    """Test add --npm command with specific version."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -554,9 +554,9 @@ def test_install_package_with_version() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --cl command with package and version
+            # Run add --npm command with package and version
             result = run(
-                ["jac", "add", "--cl", "lodash@^4.17.21"],
+                ["jac", "add", "--npm", "lodash@^4.17.21"],
                 capture_output=True,
                 text=True,
             )
@@ -585,7 +585,7 @@ def test_install_package_with_version() -> None:
 
 
 def test_install_package_to_devdependencies() -> None:
-    """Test add --cl -d command adds package to dev-dependencies."""
+    """Test add --npm -d command adds package to dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -594,9 +594,9 @@ def test_install_package_to_devdependencies() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --cl -d command
+            # Run add --npm -d command
             run(
-                ["jac", "add", "--cl", "-d", "@types/react"],
+                ["jac", "add", "--npm", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -616,15 +616,15 @@ def test_install_package_to_devdependencies() -> None:
 
 
 def test_install_without_config_json() -> None:
-    """Test add --cl command when jac.toml doesn't exist."""
+    """Test add --npm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run add --cl command without jac.toml
+            # Run add --npm command without jac.toml
             result = run(
-                ["jac", "add", "--cl", "lodash"],
+                ["jac", "add", "--npm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -638,13 +638,13 @@ def test_install_without_config_json() -> None:
 
 
 def test_uninstall_without_cl_flag() -> None:
-    """Test remove command without --cl flag should fail when no jac.toml exists."""
+    """Test remove command without --npm flag should fail when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run remove command without --cl flag and without jac.toml
+            # Run remove command without --npm flag and without jac.toml
             result = run(
                 ["jac", "remove", "lodash"],
                 capture_output=True,
@@ -660,7 +660,7 @@ def test_uninstall_without_cl_flag() -> None:
 
 
 def test_uninstall_without_package_name() -> None:
-    """Test remove --cl command without package name should fail."""
+    """Test remove --npm command without package name should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -669,9 +669,9 @@ def test_uninstall_without_package_name() -> None:
             # Create jac.toml
             _create_jac_toml(temp_dir)
 
-            # Run remove --cl command without package name
+            # Run remove --npm command without package name
             result = run(
-                ["jac", "remove", "--cl"],
+                ["jac", "remove", "--npm"],
                 capture_output=True,
                 text=True,
             )
@@ -685,7 +685,7 @@ def test_uninstall_without_package_name() -> None:
 
 
 def test_uninstall_package_from_dependencies() -> None:
-    """Test remove --cl command removes package from dependencies."""
+    """Test remove --npm command removes package from dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -694,9 +694,9 @@ def test_uninstall_package_from_dependencies() -> None:
             # Create jac.toml with a package
             config_path = _create_jac_toml(temp_dir, deps='lodash = "^4.17.21"')
 
-            # Run remove --cl command
+            # Run remove --npm command
             result = run(
-                ["jac", "remove", "--cl", "lodash"],
+                ["jac", "remove", "--npm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -719,7 +719,7 @@ def test_uninstall_package_from_dependencies() -> None:
 
 
 def test_uninstall_package_from_devdependencies() -> None:
-    """Test remove --cl -d command removes package from dev-dependencies."""
+    """Test remove --npm -d command removes package from dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -730,9 +730,9 @@ def test_uninstall_package_from_devdependencies() -> None:
                 temp_dir, dev_deps='"@types/react" = "^18.0.0"'
             )
 
-            # Run remove --cl -d command
+            # Run remove --npm -d command
             result = run(
-                ["jac", "remove", "--cl", "-d", "@types/react"],
+                ["jac", "remove", "--npm", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -754,7 +754,7 @@ def test_uninstall_package_from_devdependencies() -> None:
 
 
 def test_uninstall_nonexistent_package() -> None:
-    """Test remove --cl command with non-existent package should fail."""
+    """Test remove --npm command with non-existent package should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -763,9 +763,9 @@ def test_uninstall_nonexistent_package() -> None:
             # Create jac.toml without the package
             _create_jac_toml(temp_dir)
 
-            # Run remove --cl command with non-existent package
+            # Run remove --npm command with non-existent package
             result = run(
-                ["jac", "remove", "--cl", "nonexistent-package"],
+                ["jac", "remove", "--npm", "nonexistent-package"],
                 capture_output=True,
                 text=True,
             )
@@ -779,15 +779,15 @@ def test_uninstall_nonexistent_package() -> None:
 
 
 def test_uninstall_without_config_toml() -> None:
-    """Test remove --cl command when jac.toml doesn't exist."""
+    """Test remove --npm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run remove --cl command without jac.toml
+            # Run remove --npm command without jac.toml
             result = run(
-                ["jac", "remove", "--cl", "lodash"],
+                ["jac", "remove", "--npm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -867,7 +867,7 @@ colors = { primary = "#3490dc" }
 
 
 def test_create_cl_and_run_no_root_files() -> None:
-    """Test that jac create --cl + jac run doesn't create files outside .jac/ directory."""
+    """Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
     test_project_name = "test-cl-no-root-files"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -875,16 +875,16 @@ def test_create_cl_and_run_no_root_files() -> None:
         try:
             os.chdir(temp_dir)
 
-            # Run jac create --cl command
+            # Run jac create --use client command
             process = Popen(
-                ["jac", "create", "--cl", test_project_name],
+                ["jac", "create", "--use", "client", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             )
             stdout, stderr = process.communicate()
-            assert process.returncode == 0, f"jac create --cl failed: {stderr}"
+            assert process.returncode == 0, f"jac create --use client failed: {stderr}"
 
             project_path = os.path.join(temp_dir, test_project_name)
 

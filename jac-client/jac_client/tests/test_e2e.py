@@ -45,7 +45,7 @@ def running_server():
         try:
             os.chdir(temp_dir)
             process = Popen(
-                [*jac_cmd, "create", "--cl", app_name],
+                [*jac_cmd, "create", "--use", "client", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -54,7 +54,7 @@ def running_server():
             )
             stdout, stderr = process.communicate()
             if process.returncode != 0:
-                pytest.fail(f"jac create --cl failed: {stderr}")
+                pytest.fail(f"jac create --use client failed: {stderr}")
 
             project_path = os.path.join(temp_dir, app_name)
 
@@ -69,14 +69,14 @@ def running_server():
                     shutil.copy2(src, dst)
 
             jac_add_result = run(
-                [*jac_cmd, "add", "--cl"],
+                [*jac_cmd, "add", "--npm"],
                 cwd=project_path,
                 capture_output=True,
                 text=True,
                 env=env,
             )
             if jac_add_result.returncode != 0:
-                pytest.fail(f"jac add --cl failed: {jac_add_result.stderr}")
+                pytest.fail(f"jac add --npm failed: {jac_add_result.stderr}")
 
             server_port = get_free_port()
             server = Popen(

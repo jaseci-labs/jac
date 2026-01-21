@@ -13,7 +13,7 @@ In this first step, you'll create your Jac project and understand the basic file
 Open your terminal and run:
 
 ```bash
-jac create --cl todo-app
+jac create --use client todo-app
 ```
 
 This creates a new directory called `todo-app` with an organized project structure.

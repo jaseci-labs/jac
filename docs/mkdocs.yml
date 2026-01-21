@@ -134,7 +134,6 @@ nav:
       - Project Configuration (jac.toml): "learn/tools/project_config.md"
       - "learn/tools/cli.md"
       - "learn/tools/jac_serve.md"
-      - "learn/tools/streamlit.md"
       - LLMDocs: "learn/tools/llmdocs.md"
     - Examples:
       - Overview: "learn/examples/index.md"
@@ -344,11 +343,6 @@ plugins:
   - redirects:
       redirect_maps:
         index.md: getting-started/index.md
-        # jac-cloud redirects to production docs
-        learn/jac-cloud/introduction.md: production/index.md
-        learn/jac-cloud/quickstart.md: production/index.md
-        learn/jac-cloud/permission.md: production/index.md
-        learn/jac-cloud/deployment.md: production/index.md
 
 hooks:
   - scripts/handle_jac_compile_data.py
