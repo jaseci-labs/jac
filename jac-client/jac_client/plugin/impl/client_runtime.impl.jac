@@ -277,6 +277,7 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                 overflow: "auto",
                 padding: 20,
                 boxSizing: "border-box",
+
             }}
         >
             <div style={{maxWidth: 1200, margin: "0 auto"}}>
@@ -288,6 +289,7 @@ impl errorOverlay(filePath: str, errors: str) -> any {
                         borderRadius: "8px 8px 0 0",
                         fontSize: 18,
                         fontWeight: "bold",
+
                     }}
                 >
                     ⚠️ Compilation Error
