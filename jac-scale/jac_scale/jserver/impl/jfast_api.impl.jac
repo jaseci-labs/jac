@@ -58,8 +58,25 @@ impl JFastApiServer.run_server(
     self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
 ) -> None {
     app = self.create_server();
-    # Suppress INFO logs to avoid duplicate server messages (we show our own JAC DEV SERVER banner)
-    uvicorn.run(app, host=host, port=port, log_level="warning");
+    # Suppress startup logs but keep access logs
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(message)s"},
+            "access": {"format": "  %(message)s"},
+        },
+        "handlers": {
+            "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stderr"},
+            "access": {"formatter": "access", "class": "logging.StreamHandler", "stream": "ext://sys.stdout"},
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "WARNING"},
+            "uvicorn.error": {"level": "WARNING"},
+            "uvicorn.access": {"handlers": ["access"], "level": "INFO"},
+        },
+    };
+    uvicorn.run(app, host=host, port=port, log_config=log_config);
 }
 
 """Get the underlying FastAPI application instance."""
