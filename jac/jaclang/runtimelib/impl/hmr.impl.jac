@@ -133,8 +133,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
             print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
-            self._emit_client_error_overlay(file_path, errors);
-            self._overlay_entry = True;
+            self._emit_client_error_overlay(file_path, errors);            
             Jac.program.errors_had.clear();
             return;
         }
@@ -295,6 +294,8 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
     # Update the entry point to show the error overlay
     output_path.write_text(entry_content, encoding='utf-8');
+    # Mark that have an overlay entry
+    self._overlay_entry = True;
     print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
     return;
 }
