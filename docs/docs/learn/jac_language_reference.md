@@ -54,8 +54,8 @@ This is a single-page reference for the Jac programming language. Use browser se
 2. [Server-Side Development](#20-server-side-development)
 3. [Client-Side Development (JSX)](#21-client-side-development-jsx)
 4. [Server-Client Communication](#22-server-client-communication)
-5. [Authentication & Users](#23-authentication--users)
-6. [Memory & Persistence](#24-memory--persistence)
+5. [Authentication & Users](#23-authentication-users)
+6. [Memory & Persistence](#24-memory-persistence)
 7. [Development Tools](#25-development-tools)
 
 **[Part V: AI Integration](#part-v-ai-integration)**
@@ -2943,7 +2943,7 @@ jac start main.jac --port 8000
 
 ---
 
-## 23. Authentication & Users
+## 23. Authentication & Users {#23-authentication-users}
 
 ### 23.1 Built-in Auth Functions
 
@@ -3022,7 +3022,7 @@ client_secret = "your-google-client-secret"
 
 ---
 
-## 24. Memory & Persistence
+## 24. Memory & Persistence {#24-memory-persistence}
 
 ### 24.1 Memory Hierarchy
 

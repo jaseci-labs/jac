@@ -923,3 +923,88 @@ body[data-domain="https://www.jac-lang.org/"] .feedback-container {
 .youtube-video-link:hover::before {
     transform: translate(-40%, -50%) scale(1.1);
 }
+
+/* ============================================
+   Full TOC Styling for Long Documents
+   ============================================ */
+
+/* Make the right sidebar TOC scrollable */
+.md-sidebar--secondary {
+    height: calc(100vh - 4rem);
+    position: sticky;
+    top: 3.5rem;
+}
+
+.md-sidebar--secondary .md-sidebar__scrollwrap {
+    overflow-y: auto;
+    max-height: calc(100vh - 6rem);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar {
+    width: 4px;
+}
+
+.md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.md-sidebar--secondary .md-sidebar__scrollwrap::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+}
+
+/* Full TOC enabled styling */
+.full-toc-enabled .md-nav__list {
+    max-height: none !important;
+    overflow: visible !important;
+}
+
+.full-toc-enabled .md-nav__item {
+    display: block !important;
+}
+
+/* Compact styling for full TOC items */
+.full-toc-enabled .md-nav__link {
+    font-size: 0.7rem;
+    padding: 0.35em 0.6em;
+    line-height: 1.35;
+    border-left: 2px solid transparent;
+    transition: all 0.15s ease;
+}
+
+.full-toc-enabled .md-nav__link:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-left-color: rgba(255, 165, 0, 0.3);
+}
+
+/* Active link styling */
+.full-toc-enabled .md-nav__link--active {
+    font-weight: 600;
+    color: var(--md-accent-fg-color, #ff9800);
+    border-left-color: var(--md-accent-fg-color, #ff9800);
+    background: rgba(255, 165, 0, 0.08);
+}
+
+/* Section number styling - make Part numbers stand out */
+.full-toc-enabled .md-nav__link .md-ellipsis {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Smooth scroll behavior for TOC clicks */
+html {
+    scroll-behavior: smooth;
+}
+
+/* TOC title styling */
+.md-nav--secondary > .md-nav__title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 0.5em;
+}

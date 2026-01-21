@@ -191,6 +191,7 @@ theme:
     # - navigation.expand
     # - navigation.sections
     - navigation.top
+    - toc.follow
   icon:
     admonition:
       note: octicons/tag-16
@@ -241,6 +242,7 @@ markdown_extensions:
 
   - toc:
         permalink: "#"
+        toc_depth: 3
 
 
 extra_css:
@@ -269,6 +271,7 @@ extra_javascript:
   - js/run-code.js
   - js/feedback.js
   - js/logo.js
+  - js/full-toc.js
 
 plugins:
   - search
