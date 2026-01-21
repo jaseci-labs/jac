@@ -119,8 +119,6 @@ Line 36: `merged = {**dct, "c": 3}`
 
 **Unpacking in Comprehensions**
 
-Jac supports powerful unpacking patterns within comprehensions:
-
 1. **Tuple Unpacking**:
    `sums = [a + b for (a, b) in pairs]`
    Automatically unpacks tuples from the iterable.

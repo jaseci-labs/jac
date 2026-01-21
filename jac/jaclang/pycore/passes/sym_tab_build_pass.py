@@ -389,54 +389,34 @@ class SymTabBuildPass(UniPass):
     def exit_lambda_expr(self, node: uni.LambdaExpr) -> None:
         self.pop_scope()
 
-    def enter_inner_compr(self, node: uni.InnerCompr) -> None:
-        parent_compr: (
-            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
-        ) = (
-            node.find_parent_of_type(uni.ListCompr)
-            or node.find_parent_of_type(uni.SetCompr)
-            or node.find_parent_of_type(uni.DictCompr)
-            or node.find_parent_of_type(uni.GenCompr)
-        )
-
-        if parent_compr:
-            self._def_insert_unpacking(node.target, parent_compr.sym_tab)
-        else:
-            self.push_scope_and_link(node)
-            self._def_insert_unpacking(node.target, node.sym_tab)
-
-    def exit_inner_compr(self, node: uni.InnerCompr) -> None:
-        parent_compr: (
-            uni.ListCompr | uni.SetCompr | uni.DictCompr | uni.GenCompr | None
-        ) = (
-            node.find_parent_of_type(uni.ListCompr)
-            or node.find_parent_of_type(uni.SetCompr)
-            or node.find_parent_of_type(uni.DictCompr)
-            or node.find_parent_of_type(uni.GenCompr)
-        )
-        if not parent_compr:
-            self.pop_scope()
-
     def enter_list_compr(self, node: uni.ListCompr) -> None:
         self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
     def exit_list_compr(self, node: uni.ListCompr) -> None:
         self.pop_scope()
 
     def enter_set_compr(self, node: uni.SetCompr) -> None:
         self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
     def exit_set_compr(self, node: uni.SetCompr) -> None:
         self.pop_scope()
 
     def enter_gen_compr(self, node: uni.GenCompr) -> None:
         self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
     def exit_gen_compr(self, node: uni.GenCompr) -> None:
         self.pop_scope()
 
     def enter_dict_compr(self, node: uni.DictCompr) -> None:
         self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
     def exit_dict_compr(self, node: uni.DictCompr) -> None:
         self.pop_scope()
