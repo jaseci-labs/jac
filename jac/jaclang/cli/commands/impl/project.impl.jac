@@ -871,10 +871,10 @@ impl pip_install(
             if e.strip()
         ];
     }
-    # Include dev dependencies if --dev flag is set
-    if dev and "dev" not in extra_groups {
-        extra_groups.append("dev");
-    }
+    # Determine if this is an extras-only install or full editable install
+    # - If --dev or -e is specified without full install, only install those extras
+    # - If no flags, do full editable install with all dependencies
+    install_deps = not (dev or extra_groups);  # Full install if no extras specified
     # Create installer and run installation
     installer = JacPipInstaller(
         config=config, project_path=project_path, verbose=verbose
@@ -884,11 +884,16 @@ impl pip_install(
         style="bold"
     );
     console.print(f"  Project root: {project_path}", style="muted");
+    if dev {
+        console.print("  Dev dependencies: Yes", style="muted");
+    }
     if extra_groups {
         console.print(f"  Extras: {', '.join(extra_groups)}", style="muted");
     }
     console.print();
-    success = installer.install_editable(extras=extra_groups);
+    success = installer.install_editable(
+        deps=install_deps, include_dev=dev, extras=extra_groups
+    );
     if success {
         console.success(f"Installed '{config.project.name}' in editable mode");
         console.print(

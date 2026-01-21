@@ -50,15 +50,31 @@ impl DependencyInstaller._run_pip(
     }
 }
 
-impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
+impl DependencyInstaller.install_all(
+    deps: bool = True, include_dev: bool = False, extras: list[str] = []
+) -> bool {
     import sys;
     self.ensure_packages_dir();
     all_success = True;
-    for (name, version) in self.config.dependencies.items() {
-        if not self.install_package(name, version) {
-            all_success = False;
+    # Install regular dependencies
+    if deps {
+        for (name, version) in self.config.dependencies.items() {
+            if not self.install_package(name, version) {
+                all_success = False;
+            }
+        }
+        # Also install git dependencies when deps=True
+        for (name, git_info) in self.config.git_dependencies.items() {
+            if isinstance(git_info, dict) {
+                git_url = git_info.get("git", "");
+                branch = git_info.get("branch", "");
+                if not self.install_git_package(name, git_url, branch) {
+                    all_success = False;
+                }
+            }
         }
     }
+    # Install dev dependencies
     if include_dev {
         for (name, version) in self.config.dev_dependencies.items() {
             if not self.install_package(name, version) {
@@ -66,13 +82,16 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
             }
         }
     }
-    for (name, git_info) in self.config.git_dependencies.items() {
-        if isinstance(git_info, dict) {
-            git_url = git_info.get("git", "");
-            branch = git_info.get("branch", "");
-            if not self.install_git_package(name, git_url, branch) {
-                all_success = False;
+    # Install optional dependencies from extras list
+    for extra in extras {
+        if extra in self.config.optional_dependencies {
+            for (name, version) in self.config.optional_dependencies[extra].items() {
+                if not self.install_package(name, version) {
+                    all_success = False;
+                }
             }
+        } else {
+            print(f"Warning: Unknown optional group '{extra}'", file=sys.stderr);
         }
     }
     return all_success;
@@ -92,7 +111,8 @@ impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     }
     print(f"Installing {spec}...");
     (returncode, stdout, stderr) = self._run_pip(
-        ["install", "--target", str(self.packages_dir), "--upgrade", spec]
+        ["install", "--target", str(self.packages_dir), "--upgrade", spec],
+        stream_output=True
     );
     if returncode == 0 {
         print(f"  {name} installed successfully");
@@ -301,6 +321,7 @@ impl add_packages_to_path(
     if config is None {
         return;
     }
+    print("Adding packages directory to sys.path...");
     packages_dir = config.get_packages_dir();
     packages_str = str(packages_dir);
     if packages_dir.exists() and packages_str not in sys.path {

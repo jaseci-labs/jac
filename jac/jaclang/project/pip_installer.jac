@@ -25,7 +25,10 @@ obj JacPipInstaller {
         verbose: bool = False;
 
     def postinit -> None;
-    def install_editable(extras: list[str] = []) -> bool;
+    def install_editable(
+        deps: bool = True, include_dev: bool = False, extras: list[str] = []
+    ) -> bool;
+
     def _setup_editable_install -> bool;
 }
 

@@ -35,7 +35,10 @@ obj DependencyInstaller {
         stream_output: bool = False
     ) -> tuple[int, str, str];
 
-    def install_all(include_dev: bool = False) -> bool;
+    def install_all(
+        deps: bool = True, include_dev: bool = False, extras: list[str] = []
+    ) -> bool;
+
     def install_package(name: str, version: str = "") -> bool;
     def install_git_package(name: str, git_url: str, branch: str = "") -> bool;
     def uninstall_package(name: str) -> bool;

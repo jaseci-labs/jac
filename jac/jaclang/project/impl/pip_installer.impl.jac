@@ -29,34 +29,18 @@ impl JacPipInstaller.postinit -> None {
     }
 }
 
-impl JacPipInstaller.install_editable(extras: list[str] = []) -> bool {
-    if extras {
-        # Install extras directly to the Python environment (no --target)
-        packages: list[str] = [];
-        for extra in extras {
-            if extra == "dev" {
-                for (name, version) in self.config.dev_dependencies.items() {
-                    packages.append(_format_dep_spec(name, version));
-                }
-            } elif extra in self.config.optional_dependencies {
-                for (name, version) in self.config.optional_dependencies[extra].items() {
-                    packages.append(_format_dep_spec(name, version));
-                }
-            } else {
-                print(f"Warning: Unknown optional group '{extra}'", file=sys.stderr);
-            }
-        }
-        if not packages {
-            print("No packages to install for the specified extras.");
-            return True;
-        }
-        (returncode, _, _) = DependencyInstaller(
+impl JacPipInstaller.install_editable(
+    deps: bool = True, include_dev: bool = False, extras: list[str] = []
+) -> bool {
+    # If only installing dev/optional dependencies (not full editable install)
+    if not deps and (include_dev or extras) {
+        return DependencyInstaller(
             config=self.config, verbose=self.verbose, stream_output=True
-        )._run_pip(
-            ["install"] + packages, verbose=self.verbose, stream_output=True
+        ).install_all(
+            deps=False, include_dev=include_dev, extras=extras
         );
-        return returncode == 0;
     }
+    # Full editable install (with optional dev/extras)
     return self._setup_editable_install();
 }
 
