@@ -125,6 +125,7 @@ def test_compr_unpacking_variables() -> None:
             f"Scope {scope_idx}: expected type {expected_type}, got {type(scope)}"
         )
 
+
 def test_except_variable_registration() -> None:
     """Test that exception variables (as clause) are registered in except block symbol table."""
     file_path = os.path.join(
