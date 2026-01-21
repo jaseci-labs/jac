@@ -39,7 +39,7 @@ Jac supports importing and using TypeScript (`.ts`, `.tsx`) components alongside
 TypeScript is automatically supported by default. Simply create a new project:
 
 ```bash
-jac create --cl my-app
+jac create --use client my-app
 ```
 
 TypeScript is ready to use immediately. A sample Button component is included in `src/components/Button.tsx`!

@@ -3,7 +3,7 @@
 ## Scope
 
 - Work exclusively in `jac/jaclang/compiler/type_system/` and related compiler passes.
-- Do not modify other packages (`jac-byllm/`, `jac-scale/`, `jac-streamlit/`, `jac-client/`).
+- Do not modify other packages (`jac-byllm/`, `jac-scale/`, `jac-client/`).
 - Goal: add/adjust type checking rules; do not alter grammar.
 
 ## Key Components

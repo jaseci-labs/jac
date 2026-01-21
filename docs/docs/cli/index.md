@@ -140,7 +140,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 jac create myapp
 cd myapp
 
-# Create full-stack project with client template
+# Create full-stack project with client template (requires jac-client)
 jac create myapp --use client
 
 # Create from a local .jacpack file
@@ -530,7 +530,7 @@ jac destroy main.jac
 Add packages to your project's dependencies.
 
 ```bash
-jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
+jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 ```
 
 | Option | Description | Default |
@@ -538,8 +538,13 @@ jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
 | `packages` | Package names to add | None |
 | `-d, --dev` | Add as dev dependency | `False` |
 | `-g, --git` | Git repository URL | None |
-| `-c, --cl` | Add as client (frontend) package | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--npm` | Add as client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -556,8 +561,8 @@ jac add pytest --dev
 # Add from git repository
 jac add --git https://github.com/user/package.git
 
-# Add client-side (npm) package
-jac add react --cl
+# Add npm package (requires jac-client)
+jac add react --npm
 ```
 
 ---
@@ -595,12 +600,19 @@ jac install -v
 Remove packages from your project's dependencies.
 
 ```bash
-jac remove [-h] [packages ...]
+jac remove [-h] [-d] [packages ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `packages` | Package names to remove | None |
+| `-d, --dev` | Remove from dev dependencies | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--npm` | Remove client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -610,6 +622,12 @@ jac remove requests
 
 # Remove multiple packages
 jac remove numpy pandas
+
+# Remove dev dependency
+jac remove pytest --dev
+
+# Remove npm package (requires jac-client)
+jac remove react --npm
 ```
 
 ---
