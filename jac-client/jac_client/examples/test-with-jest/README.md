@@ -26,17 +26,17 @@ main.jac            # App entry point
 
 ## What Is Tested
 
-✅ Variant normalization  
-✅ Disabled / interactive logic  
-✅ Style computation  
-✅ Guard conditions  
+✅ Variant normalization
+✅ Disabled / interactive logic
+✅ Style computation
+✅ Guard conditions
 
 ## What Is NOT Tested
 
-❌ JSX structure  
-❌ DOM behavior  
-❌ Click events  
-❌ Hooks / `has` state  
+❌ JSX structure
+❌ DOM behavior
+❌ Click events
+❌ Hooks / `has` state
 
 This is intentional and aligns with Jac’s deterministic testing model.
 
@@ -48,10 +48,10 @@ jac test
 
 ## Why This Pattern Works
 
-* Tests are fast and deterministic
-* UI remains flexible
-* Refactoring JSX does not break tests
-* Logic bugs are caught early
+- Tests are fast and deterministic
+- UI remains flexible
+- Refactoring JSX does not break tests
+- Logic bugs are caught early
 
 ## Recommendation
 
@@ -64,22 +64,22 @@ For every component:
 
 This scales cleanly for large Jac applications.
 
-
 ---
 
 # Final takeaway (important)
 
 You now have:
+
 - ✅ **Real components**
 - ✅ **Real tests**
 - ✅ **Correct Jac testing model**
 - ✅ **Scalable architecture**
 
 If you want next, we can:
+
 - Add **Todo app logic tests**
 - Test **filtering / sorting logic**
 - Apply this pattern to **walkers**
 - Design a **component library structure**
 
 Say the word.
-
