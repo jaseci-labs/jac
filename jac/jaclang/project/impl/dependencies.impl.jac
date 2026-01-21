@@ -66,9 +66,65 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     return all_success;
 }
 
+"""Remove old package files and metadata to prevent version conflicts.
+
+When using pip install --target, old versions can accumulate. This function
+removes all traces of a package before reinstalling to ensure a clean state.
+"""
+impl DependencyInstaller._cleanup_old_package(name: str) -> None {
+    import shutil;
+    if not self.packages_dir or not self.packages_dir.exists() {
+        return;
+    }
+    # Normalize package name (pip uses underscores internally)
+    normalized_name = name.lower().replace("-", "_");
+    # Patterns to match for removal:
+    # - package_name/ (the actual package directory)
+    # - package_name-version.dist-info/ (pip metadata)
+    # - package_name-version.egg-info/ (setuptools metadata)
+    # - package_name-version.data/ (data files)
+    to_remove: list[Path] = [];
+    for item in self.packages_dir.iterdir() {
+        if not item.is_dir() {
+            continue;
+        }
+        item_name_lower = item.name.lower();
+        item_stem_lower = item.stem.lower();
+
+        # Check for exact package directory match
+        if item_name_lower == normalized_name or item_name_lower == name.lower() {
+            to_remove.append(item);
+            continue;
+        }
+
+        # Check for versioned metadata directories (.dist-info, .egg-info, .data)
+        if item.suffix in (".dist-info", ".egg-info", ".data") {
+            # Format: package_name-version.suffix
+            if item_stem_lower.startswith(f"{normalized_name}-") {
+                to_remove.append(item);
+            }
+        }
+    }
+    # Remove all matching directories
+    for item in to_remove {
+        try {
+            shutil.rmtree(item);
+            if self.verbose {
+                print(f"  Cleaned up: {item.name}");
+            }
+        } except Exception as e {
+            if self.verbose {
+                print(f"  Warning: Could not remove {item.name}: {e}");
+            }
+        }
+    }
+}
+
 impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     import sys;
     self.ensure_packages_dir();
+    # Clean up old package files before installing to prevent version conflicts
+    self._cleanup_old_package(name);
     if version {
         if version.startswith(("=", ">", "<", "~", "!")) {
             spec = f"{name}{version}";
@@ -96,6 +152,8 @@ impl DependencyInstaller.install_git_package(
 ) -> bool {
     import sys;
     self.ensure_packages_dir();
+    # Clean up old package files before installing to prevent version conflicts
+    self._cleanup_old_package(name);
     if branch {
         spec = f"git+{git_url}@{branch}";
     } else {
