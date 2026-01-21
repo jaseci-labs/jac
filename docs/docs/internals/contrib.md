@@ -202,7 +202,7 @@ Version numbers are managed in `pyproject.toml` files for each package. The vers
 **Packages that require version updates:**
 
 - `jac/pyproject.toml` (jaclang)
-- `jac-client/pyproject.toml` (jac-cloud)
+- `jac-client/pyproject.toml` (jac-client)
 - `jac-byllm/pyproject.toml` (byllm)
 - `jaseci-package/pyproject.toml` (jaseci meta-package)
 
@@ -336,13 +336,12 @@ This is how we run the docs.
 
 ## Release Flow (for the empowered)
 
-- Version bump jac, jac-cloud, byllm
-  - Remember to version bump requirement of jaclang in jac-cloud and byllm
+- Version bump jac, jac-client, byllm
+  - Remember to version bump requirement of jaclang in jac-client and byllm
 - Update release notes (unreleased becomes released)
 - Push to main
 - Go to GitHub, run `Release jaclang to PYPI` action manually
 - After success
-  - Run `Release jac-cloud to PYPI` action manually
+  - Run `Release jac-client to PYPI` action manually
   - Run `Release jac-byllm to PYPI` action manually
-  - Run `RElease jac-mtllm to PYPI` action manually, for deprecated library
 - If All success, W for you!!

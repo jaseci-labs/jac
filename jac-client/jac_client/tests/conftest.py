@@ -164,11 +164,11 @@ def npm_cache_dir() -> Generator[Path, None, None]:
     jac_toml = cache_dir / "jac.toml"
     jac_toml.write_text(_get_minimal_jac_toml())
 
-    # Run jac add --cl to install packages
+    # Run jac add --npm to install packages
     jac_cmd = _get_jac_command()
     env = _get_env_with_npm()
     result = subprocess.run(
-        [*jac_cmd, "add", "--cl"],
+        [*jac_cmd, "add", "--npm"],
         cwd=cache_dir,
         capture_output=True,
         text=True,
@@ -254,7 +254,7 @@ antd = "^6.0.0"
     jac_cmd = _get_jac_command()
     env = _get_env_with_npm()
     result = subprocess.run(
-        [*jac_cmd, "add", "--cl"],
+        [*jac_cmd, "add", "--npm"],
         cwd=tmp_path,
         capture_output=True,
         text=True,

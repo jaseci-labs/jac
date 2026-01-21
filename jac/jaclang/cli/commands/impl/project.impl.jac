@@ -386,81 +386,14 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
 
 """Add dependencies to the project."""
 impl add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = '',
-    cl: bool = False,
-    verbose: bool = False
+    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
-        # If --cl flag is used, we need jac.toml to exist
-        if cl {
-            console.error(
-                "No jac.toml found", hint="Run 'jac create' to create a project."
-            );
-            return 1;
-        }
         # Skip silently if jac.toml doesn't exist (for regular Python deps)
-        return 0;
-    }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error(
-                "--cl flag requires jac-client plugin",
-                hint="Install with: pip install jac-client"
-            );
-            return 1;
-        }
-        if not packages {
-            if dep_type.install_all_handler is None {
-                console.error(f"No install_all handler registered for {dep_type.name}");
-                return 1;
-            }
-            try {
-                console.print(
-                    f"\n📦 Installing all {dep_type.name} packages from jac.toml",
-                    style="bold"
-                );
-                with console.status(
-                    f"[cyan]Installing {dep_type.name} packages...[/cyan]",
-                    spinner="dots"
-                ) as status {
-                    dep_type.install_all_handler(config);
-                }
-                console.success(f"Installed all {dep_type.name} packages");
-            } except Exception as e {
-                console.error(f"Failed to install packages: {e}");
-                return 1;
-            }
-            return 0;
-        }
-        try {
-            resolver = DependencyResolver(config=config);
-            console.print(
-                f"\n📦 Adding {len(packages)} {dep_type.name} package(s)", style="bold"
-            );
-            for pkg_spec in packages {
-                (name, version) = resolver.parse_spec(pkg_spec);
-                with console.status(
-                    f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-                ) as status {
-                    dep_type.install_handler(config, name, version, dev);
-                }
-                console.print(f"  ✔ {name}", style="success");
-            }
-            section = f"dependencies.{dep_type.dev_name if dev else dep_type.name}";
-            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
-        } except Exception as e {
-            console.error(f"Failed to install packages: {e}");
-            return 1;
-        }
         return 0;
     }
     # If no packages specified and not git, install all Python dependencies
@@ -535,7 +468,7 @@ impl add(
 }
 
 """Remove dependencies from the project."""
-impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
+impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.cli.console { console }
@@ -547,27 +480,6 @@ impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
     if not packages {
         console.error("No packages specified.");
         return 1;
-    }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error("--cl flag requires jac-client plugin to be installed.");
-            console.print("Install with: pip install jac-client", style="muted");
-            return 1;
-        }
-        try {
-            for name in packages {
-                console.info(f"Removing {name} ({dep_type.name})...");
-                dep_type.remove_handler(config, name, dev);
-            }
-            console.success(f"Removed {len(packages)} package(s)");
-        } except Exception as e {
-            console.error(f"Error removing packages: {e}");
-            return 1;
-        }
-        return 0;
     }
     installer = DependencyInstaller(config=config);
     for name in packages {

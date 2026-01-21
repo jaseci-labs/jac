@@ -377,6 +377,8 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
 
 """Run Vite build with generated config in .jac/client/configs/."""
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
+    import sys;
+    import time;
     self.output_dir.mkdir(parents=True, exist_ok=True);
     generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
     if not generated_package_json.exists() {
@@ -397,18 +399,31 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 shutil.copy2(configs_package_json, build_package_json);
             }
             try {
-                # Install to .jac/client/node_modules
-                subprocess.run(
-                    ['npm', 'install'],
+                # Install to .jac/client/node_modules with progress feedback
+                print(
+                    "  ⏳ Installing npm dependencies (this may take a minute)...",
+                    flush=True
+                );
+                start_time = time.time();
+                result = subprocess.run(
+                    ['npm', 'install', '--progress'],
                     cwd=build_dir,
-                    check=True,
+                    check=False,
                     capture_output=True,
                     text=True
                 );
-            } except subprocess.CalledProcessError as e {
-                raise e from ClientBundleError(
-                    f"Failed to install npm dependencies: {e.stderr}"
-                ) ;
+                elapsed = time.time() - start_time;
+                if result.returncode != 0 {
+                    print(
+                        f"\n  ✖ npm install failed after {elapsed:.1f}s",
+                        file=sys.stderr
+                    );
+                    raise ClientBundleError(
+                        f"Failed to install npm dependencies: {result.stderr
+                        or result.stdout}"
+                    ) ;
+                }
+                print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
                 raise None from ClientBundleError(
                     'npm command not found. Ensure Node.js and npm are installed.'
@@ -433,15 +448,20 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             command = ['npm', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
+        print("  ⏳ Building client bundle...", flush=True);
+        start_time = time.time();
         result = subprocess.run(
             command, cwd=build_dir, check=False, capture_output=True, text=True
         );
+        elapsed = time.time() - start_time;
         if result.returncode != 0 {
+            print(f"\n  ✖ Vite build failed after {elapsed:.1f}s", file=sys.stderr);
             error_msg = result.stderr or result.stdout or 'Unknown error';
             raise ClientBundleError(
                 f"Vite build failed:\n{error_msg}\nCommand: {' '.join(command)}"
             ) from None ;
         }
+        print(f"  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
     } finally {
         # Clean up temporary package.json in client build dir
         build_package_json = build_dir / 'package.json';
@@ -606,6 +626,8 @@ def _toml_config_to_js(config_name: str, config_data: dict) -> str {
 
 """Start Vite dev server as a subprocess."""
 impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
+    import sys;
+    import time;
     build_dir = self._get_client_dir();
     node_modules = build_dir / 'node_modules';
     # Create/update index.html for dev server (load from compiled/ for HMR)
@@ -636,17 +658,30 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             shutil.copy2(generated_package_json, build_package_json);
         }
         try {
-            print("[Vite] Installing dependencies...");
-            subprocess.run(
-                ['npm', 'install'],
+            print(
+                "  ⏳ Installing npm dependencies (this may take a minute)...",
+                flush=True
+            );
+            start_time = time.time();
+            result = subprocess.run(
+                ['npm', 'install', '--progress'],
                 cwd=build_dir,
-                check=True,
+                check=False,
                 capture_output=True,
                 text=True
             );
-        } except subprocess.CalledProcessError as e {
-            print(f"[Vite] Error installing dependencies: {e.stderr}");
-            raise ;
+            elapsed = time.time() - start_time;
+            if result.returncode != 0 {
+                print(
+                    f"\n  ✖ npm install failed after {elapsed:.1f}s", file=sys.stderr
+                );
+                print(f"  Error: {result.stderr or result.stdout}", file=sys.stderr);
+                raise ClientBundleError(
+                    f"Failed to install npm dependencies: {result.stderr
+                    or result.stdout}"
+                ) ;
+            }
+            print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
         } finally {
             # Clean up temp package.json
             if build_package_json.exists() {

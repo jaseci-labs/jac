@@ -43,15 +43,23 @@ impl JacConsole._should_use_color -> bool {
     return True;
 }
 
-"""Print to stdout."""
+"""Print to stdout, stripping Rich markup when Rich isn't available."""
 impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
+    import re;
     # Remove style and other Rich-specific kwargs
     filtered_kwargs = {
         k: v
         for (k, v) in kwargs.items()
         if k not in ['style', 'file']
     };
-    print(*args, **filtered_kwargs);
+    # Strip Rich markup tags like [cyan], [/cyan], [bold], [dim], etc.
+    # Pattern matches [tag], [/tag], and [tag attr=value] style markers
+    markup_pattern = re.compile(r'\[/?[a-zA-Z_][a-zA-Z0-9_\- =."\']*\]');
+    stripped_args = tuple(
+        markup_pattern.sub('', str(arg)) if isinstance(arg, str) else arg
+        for arg in args
+    );
+    print(*stripped_args, **filtered_kwargs);
 }
 
 """Context manager for status during long operations (basic implementation)."""

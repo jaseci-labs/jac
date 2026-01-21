@@ -18,19 +18,19 @@ Jac Client integrates with the core Jac package management system:
 Add a package to your project:
 
 ```bash
-jac add --cl lodash
+jac add --npm lodash
 ```
 
 Add a package with a specific version:
 
 ```bash
-jac add --cl lodash@^4.17.21
+jac add --npm lodash@^4.17.21
 ```
 
 Add a dev dependency:
 
 ```bash
-jac add --cl --dev @types/react
+jac add --npm --dev @types/react
 ```
 
 ### Removing a Package
@@ -38,13 +38,13 @@ jac add --cl --dev @types/react
 Remove a package from dependencies:
 
 ```bash
-jac remove --cl lodash
+jac remove --npm lodash
 ```
 
 Remove a package from devDependencies:
 
 ```bash
-jac remove --cl --dev @types/react
+jac remove --npm --dev @types/react
 ```
 
 ### Installing All Packages
@@ -52,10 +52,10 @@ jac remove --cl --dev @types/react
 Install all packages listed in `jac.toml`:
 
 ```bash
-jac add --cl
+jac add --npm
 ```
 
-> **Note**: When you run `jac add --cl` without specifying a package name, it installs all packages listed in the `[dependencies.npm]` and `[dependencies.npm.dev]` sections of your `jac.toml`.
+> **Note**: When you run `jac add --npm` without specifying a package name, it installs all packages listed in the `[dependencies.npm]` and `[dependencies.npm.dev]` sections of your `jac.toml`.
 
 ## Configuration in jac.toml
 
@@ -138,7 +138,7 @@ The system automatically generates `package.json` in `.jac/client/configs/` dire
 
 ## CLI Commands
 
-### `jac add --cl [package]`
+### `jac add --npm [package]`
 
 Add a package to your project.
 
@@ -146,21 +146,21 @@ Add a package to your project.
 
 ```bash
 # Add to dependencies (default)
-jac add --cl lodash
+jac add --npm lodash
 
 # Add to devDependencies
-jac add --cl --dev @types/react
+jac add --npm --dev @types/react
 
 # Add with specific version
-jac add --cl lodash@^4.17.21
+jac add --npm lodash@^4.17.21
 
 # Install all packages from jac.toml
-jac add --cl
+jac add --npm
 ```
 
 #### Flags
 
-- `--cl`: Required flag indicating client-side (npm) package
+- `--npm`: Required flag indicating client-side (npm) package
 - `--dev` or `-d`: Add to dev dependencies
 
 #### Package Name Formats
@@ -168,35 +168,35 @@ jac add --cl
 **Regular packages:**
 
 ```bash
-jac add --cl lodash              # Latest version
-jac add --cl lodash@^4.17.21     # Specific version
-jac add --cl react@18.0.0        # Exact version
+jac add --npm lodash              # Latest version
+jac add --npm lodash@^4.17.21     # Specific version
+jac add --npm react@18.0.0        # Exact version
 ```
 
 **Scoped packages:**
 
 ```bash
-jac add --cl @types/react                    # Latest version
-jac add --cl @types/react@^18.0.0            # Specific version
-jac add --cl @vitejs/plugin-react@^4.0.0    # Scoped with version
+jac add --npm @types/react                    # Latest version
+jac add --npm @types/react@^18.0.0            # Specific version
+jac add --npm @vitejs/plugin-react@^4.0.0    # Scoped with version
 ```
 
 #### What Happens
 
-**When adding a specific package** (`jac add --cl <package>`):
+**When adding a specific package** (`jac add --npm <package>`):
 
 1. Package is added to `jac.toml` (`[dependencies.npm]` or `[dependencies.npm.dev]`)
 2. `jac.toml` is saved
 3. `package.json` is regenerated from `jac.toml`
 4. `npm install` is run to install the package
 
-**When installing all packages** (`jac add --cl` without package name):
+**When installing all packages** (`jac add --npm` without package name):
 
 1. Reads all packages from `jac.toml`
 2. `package.json` is regenerated
 3. `npm install` is run to install all packages
 
-### `jac remove --cl <package>`
+### `jac remove --npm <package>`
 
 Remove a package from your project.
 
@@ -204,10 +204,10 @@ Remove a package from your project.
 
 ```bash
 # Remove from dependencies
-jac remove --cl lodash
+jac remove --npm lodash
 
 # Remove from devDependencies
-jac remove --cl --dev @types/react
+jac remove --npm --dev @types/react
 ```
 
 #### What Happens
@@ -236,7 +236,7 @@ latest = "latest"            # Latest version
 If no version is specified, the package is added with `"latest"`:
 
 ```bash
-jac add --cl lodash
+jac add --npm lodash
 # Adds: lodash = "latest" to [dependencies.npm]
 ```
 
@@ -246,9 +246,9 @@ jac add --cl lodash
 
 The build system automatically regenerates `package.json` from `jac.toml`:
 
-1. **During `jac add --cl <package>`**: Regenerates and installs the specific package
-2. **During `jac add --cl`** (no package): Regenerates and installs all packages
-3. **During `jac remove --cl`**: Regenerates after removal
+1. **During `jac add --npm <package>`**: Regenerates and installs the specific package
+2. **During `jac add --npm`** (no package): Regenerates and installs all packages
+3. **During `jac remove --npm`**: Regenerates after removal
 4. **During `jac start`**: Regenerates if jac.toml changed
 5. **During `jac build`**: Regenerates before building
 
@@ -277,10 +277,10 @@ Prefer CLI commands over manual editing:
 
 ```bash
 # Good: Use CLI
-jac add --cl lodash
+jac add --npm lodash
 
 # Less ideal: Manual edit (but works)
-# Edit jac.toml, then run: jac add --cl
+# Edit jac.toml, then run: jac add --npm
 ```
 
 ### 2. Commit jac.toml, Not package.json
@@ -341,7 +341,7 @@ sass = "^1.77.8"
 
 **Solution**:
 
-- Run `jac add --cl` to regenerate and install
+- Run `jac add --npm` to regenerate and install
 - Check TOML syntax is valid
 - Verify package names are correct
 
@@ -351,8 +351,8 @@ sass = "^1.77.8"
 
 ```bash
 # Add Tailwind packages
-jac add --cl --dev @tailwindcss/vite
-jac add --cl --dev tailwindcss
+jac add --npm --dev @tailwindcss/vite
+jac add --npm --dev tailwindcss
 ```
 
 Then update `jac.toml` for Vite plugin:
@@ -367,13 +367,13 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
 ```bash
 # Create project
-jac create --cl my-app
+jac create --use client my-app
 cd my-app
 
 # Add custom dependencies
-jac add --cl lodash@^4.17.21
-jac add --cl --dev @types/lodash
-jac add --cl --dev sass
+jac add --npm lodash@^4.17.21
+jac add --npm --dev @types/lodash
+jac add --npm --dev sass
 
 # Build/serve
 jac start main.jac

@@ -6,6 +6,45 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### `--cl` Flag Replaced with `--npm` and `--use client`
+
+The `--cl` flag has been removed from jac-client CLI commands and replaced with more descriptive alternatives.
+
+**Before:**
+
+```bash
+# Create a client project
+jac create myapp --cl
+
+# Add npm dependencies
+jac add tailwind --cl
+jac add typescript --cl --dev
+
+# Remove npm dependencies
+jac remove lodash --cl
+```
+
+**After:**
+
+```bash
+# Create a client project (use --use client instead of --cl)
+jac create myapp --use client
+
+# Add npm dependencies (use --npm instead of --cl)
+jac add tailwind --npm
+jac add typescript --npm --dev
+
+# Remove npm dependencies (use --npm instead of --cl)
+jac remove lodash --npm
+```
+
+**Key Changes:**
+
+- `jac create --cl` → `jac create --use client`
+- `jac add --cl` → `jac add --npm`
+- `jac remove --cl` → `jac remove --npm`
+- The `--skip` flag remains available for `jac create --use client --skip` to skip npm package installation
+
 ### `.cl.jac` Files No Longer Auto-Imported as Annexes
 
 Client module files (`.cl.jac`) are now treated as **standalone modules only**. Previously, `.cl.jac` files were automatically annexed to their corresponding `.jac` files (similar to `.impl.jac` files). This dual behavior has been removed to simplify the module system.

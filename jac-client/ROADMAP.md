@@ -18,7 +18,7 @@
 - **Backend**: `jacSpawn` for walker communication
 - **Auth**: Built-in helpers (jacLogin, jacSignup, jacLogout)
 - **Bundler**: Vite + Babel
-- **CLI**: `jac create --cl`, `jac start`
+- **CLI**: `jac create --use client`, `jac start`
 
 ---
 
@@ -74,7 +74,7 @@
 
 ### CLI
 
-- `jac create --cl <name>` - Project scaffolding with organized folder structure
+- `jac create --use client <name>` - Project scaffolding with organized folder structure
 - `jac start <file.jac>` - Dev server
 - Automatic bundling
 - ⏳ HMR (Hot Module Replacement) - Planned
