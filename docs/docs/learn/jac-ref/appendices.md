@@ -364,7 +364,7 @@ Examples:
 Version: 3.1
 Last Updated: January 2026
 
-**Validation Status:** Validated against `jac/jaclang/pycore/jac.lark` and `jac/examples/reference/`
+**Validation Status:** Validated against `jac/jaclang/pycore/jac.lark`
 
 **Resources:**
 
