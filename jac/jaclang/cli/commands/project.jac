@@ -289,13 +289,6 @@ making the package available for import while allowing live code changes.
             short="e"
         ),
         Arg.create(
-            "no_deps",
-            typ=bool,
-            default=False,
-            help="Skip installing dependencies",
-            short="n"
-        ),
-        Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
 
@@ -310,9 +303,5 @@ making the package available for import while allowing live code changes.
     group="project"
 )
 def pip_install(
-    path: str = ".",
-    dev: bool = False,
-    extras: str = "",
-    no_deps: bool = False,
-    verbose: bool = False
+    path: str = ".", dev: bool = False, extras: str = "", verbose: bool = False
 ) -> int;

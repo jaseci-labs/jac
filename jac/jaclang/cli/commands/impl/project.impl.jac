@@ -829,11 +829,7 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
 
 """Install the current Jac project in editable/development mode."""
 impl pip_install(
-    path: str = ".",
-    dev: bool = False,
-    extras: str = "",
-    no_deps: bool = False,
-    verbose: bool = False
+    path: str = ".", dev: bool = False, extras: str = "", verbose: bool = False
 ) -> int {
     import from jaclang.project.config { JacConfig, get_config }
     import from jaclang.project.pip_installer { JacPipInstaller }
