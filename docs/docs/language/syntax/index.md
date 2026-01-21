@@ -518,4 +518,4 @@ with entry {
 | Functions & Control Flow | [Chapter 3: Functions & Control](../../jac_book/chapter_3.md) |
 | Import System | [Import Basics](../../learn/imports/basics.md) |
 | Complete Reference | [Syntax Quick Reference](../../learn/syntax_quick_reference.md) |
-| Full Specification | [Jac Language Reference](../../learn/jac_ref.md) |
+| Full Specification | [Jac Language Reference](../../learn/jac-ref/index.md) |

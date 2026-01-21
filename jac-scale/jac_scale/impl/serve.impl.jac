@@ -57,10 +57,10 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
+impl JacAPIServer.start(self: JacAPIServer, dev: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
-    if not watch {
+    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
@@ -97,7 +97,7 @@ impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.register_update_username_endpoint();
     self.register_update_password_endpoint();
     # Use dynamic routing for HMR support, static routing for production
-    if watch {
+    if dev {
         self.register_dynamic_walker_endpoint();
         self.register_dynamic_function_endpoint();
         self.register_dynamic_introspection_endpoints();
@@ -525,14 +525,22 @@ impl JacAPIServer.create_function_parameters(
         self.get_functions()[func_name]
     )['parameters'];
     for field_name in func_fields {
+        field_type = func_fields[field_name]['type'];
+        # Determine parameter type based on field type
+        if ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
+            # Support UploadFile type for file uploads
+            param_type = ParameterType.FILE;
+        } else {
+            param_type = ParameterType.BODY;
+        }
         parameters.append(
             APIParameter(
                 name=field_name,
-                data_type=func_fields[field_name]['type'],
+                data_type=field_type,
                 required=func_fields[field_name]['required'],
                 default=func_fields[field_name]['default'],
                 description=f"Field {field_name} for function {func_name}",
-                type=ParameterType.BODY
+                type=param_type
             )
         );
     }
@@ -640,16 +648,24 @@ impl JacAPIServer.create_walker_parameters(
         if ((field_name == '_jac_spawn_node') and invoke_on_root) {
             continue;
         }
+        field_type = walker_fields[field_name]['type'];
+        # Determine parameter type based on field type
+        if (field_name == '_jac_spawn_node') {
+            param_type = ParameterType.PATH;
+        } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
+            # Support UploadFile type for file uploads
+            param_type = ParameterType.FILE;
+        } else {
+            param_type = ParameterType.BODY;
+        }
         parameters.append(
             APIParameter(
                 name='node' if (field_name == '_jac_spawn_node') else field_name,
-                data_type=walker_fields[field_name]['type'],
+                data_type=field_type,
                 required=walker_fields[field_name]['required'],
                 default=walker_fields[field_name]['default'],
                 description=f"Field {field_name} for walker {walker_name}",
-                type=ParameterType.BODY
-                if (field_name != '_jac_spawn_node')
-                else ParameterType.PATH
+                type=param_type
             )
         );
     }

@@ -14,7 +14,7 @@ import from jaclang.compiler.passes.main.cfg_build_pass { cfg_dot_from_file }
 import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
 import from jaclang.pycore.unitree { UniScopeNode }
 import from jaclang.pycore.program { JacProgram }
-import from jaclang.pycore.helpers { auto_generate_refs, pascal_to_snake }
+import from jaclang.pycore.helpers { pascal_to_snake }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 """Information about a kid."""
 obj AstKidInfo {
@@ -42,5 +42,4 @@ obj AstTool {
     def py_uni_nodes -> str;
     def ir(args: list[str]) -> str;
     def autodoc_uninode -> str;
-    def automate_ref -> str;
 }

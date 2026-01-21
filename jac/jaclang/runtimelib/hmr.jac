@@ -23,7 +23,8 @@ obj HotReloader {
         module_name: str,
         watcher: Any,  # JacFileWatcher - using Any to avoid circular import
         _client_output_dir: str = ".jac/client/compiled",
-        _running: bool = False;
+        _running: bool = False,
+        _overlay_entry: bool = False;
 
     """Start the hot reloader and begin watching for changes."""
     def start -> None;
@@ -52,4 +53,7 @@ obj HotReloader {
 
     """Convert a .jac file path to a .js filename."""
     def _get_js_filename(file_path: str) -> str;
+
+    """Emit a client-side error overlay for compilation errors."""
+    def _emit_client_error_overlay(file_path: str, errors: str) -> None;
 }

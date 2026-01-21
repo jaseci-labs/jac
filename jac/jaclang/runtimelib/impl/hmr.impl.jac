@@ -105,10 +105,12 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     } except ImportError as e {
         # Import error (missing dependency, etc.)
         print(f"[HMR] Import error reloading {file_path}: {e}", flush=True);
+        self._emit_client_error_overlay(file_path, str(e));
     } except Exception as e {
         # Other errors
         error_type = type(e).__name__;
         print(f"[HMR] {error_type} reloading {file_path}: {e}", flush=True);
+        self._emit_client_error_overlay(file_path, str(e));
     }
 }
 
@@ -127,11 +129,26 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Compile the file (this generates JS as part of the compilation)
         mod = Jac.program.compile(source_key);
 
+        # Check for compilation errors
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
             print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
+            self._emit_client_error_overlay(file_path, errors);
             Jac.program.errors_had.clear();
             return;
+        }
+
+        # If there were previous errors, we need to update the entry point
+        if self._overlay_entry {
+            output_base = Path(self.base_path) / self._client_output_dir;
+            output_dir = output_base;
+            output_dir.mkdir(parents=True, exist_ok=True);
+            js_filename = "_entry.js";
+            output_path = output_dir / js_filename;
+            entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+            output_path.write_text(entry_content, encoding='utf-8');
+            print(f"[HMR] Update entry: {output_path}", flush=True);
+            self._overlay_entry = False;
         }
 
         # Get the generated JS code
@@ -265,4 +282,20 @@ impl HotReloader._path_to_module(file_path: str) -> str {
         }
     }
     return ".".join(module_parts);
+}
+
+"""Emit a client-side error overlay for compilation errors."""
+impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
+    output_base = Path(self.base_path) / self._client_output_dir;
+    output_dir = output_base;
+    output_dir.mkdir(parents=True, exist_ok=True);
+    js_filename = "_entry.js";
+    output_path = output_dir / js_filename;
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
+    # Update the entry point to show the error overlay
+    output_path.write_text(entry_content, encoding='utf-8');
+    # Mark that have an overlay entry
+    self._overlay_entry = True;
+    print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
+    return;
 }

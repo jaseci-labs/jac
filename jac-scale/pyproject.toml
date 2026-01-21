@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn>=0.38.0,<0.39.0",
     "pyjwt",
     "fastapi-sso>=0.18.0,<1.0.0",
+    "python-multipart>=0.0.21,<1.0.0",
 ]
 
 [project.entry-points."jac"]

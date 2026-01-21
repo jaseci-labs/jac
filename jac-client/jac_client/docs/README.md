@@ -126,10 +126,10 @@ You can access your app at `http://localhost:8000`
 
 ### Hot Module Replacement (HMR)
 
-For faster development with live reloading, use `--watch` mode:
+For faster development with live reloading, use `--dev` mode:
 
 ```bash
-jac start main.jac --watch
+jac start main.jac --dev
 ```
 
 This enables Hot Module Replacement, which automatically reloads your code when you make changes:

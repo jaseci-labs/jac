@@ -14,7 +14,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-cloud 0.2.5
 
-- **Jac Cloud Hot Reload**: Introduced the ability to enable development mode like uvicorn by adding `--reload` in `jac serve`. This supports targetting specific directories by using `--watch path/to/dir1,path/to/dir2` (comma separated).
+- **Jac Cloud Hot Reload**: Introduced the ability to enable development mode like uvicorn by adding `--reload` in `jac serve`. This supports targetting specific directories by using `--dev path/to/dir1,path/to/dir2` (comma separated).
 - **Dynamic Runtime Walker Endpoint**: Fixes auto-generated endpoints for walkers created at runtime.
 - **Jac Clouds Traverse API**: Introduced the ability to traverse graph. This API support control of the following:
   - source - Starting node/edge. Defaults to root
