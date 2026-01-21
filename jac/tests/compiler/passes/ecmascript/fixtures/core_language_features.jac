@@ -28,6 +28,24 @@ cl {
         return fibonacci(n - 1) + fibonacci(n - 2);
     }
 
+    def addItem() -> None {
+        newItem = { "id": Date.now(), "text": "Item " + (items.length + 1), "done": False };
+        newItems = items.concat([newItem]);
+        setItems(newItems);
+    }
+
+    def formatCompact(num: float) -> str {
+        if num >= 1000000 {
+            divided = num / 1000000;
+            return (Math.round(divided * 10) / 10).toString().concat("M");
+        }
+        if num >= 1000 {
+            divided = num / 1000;
+            return (Math.round(divided * 10) / 10).toString().concat("K");
+        }
+        return Math.round(num).toString();
+    }
+
     def loop_examples(limit: int) -> int {
         total = 0;
         array = [1, 2, 3, 4, 5];

@@ -259,3 +259,91 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
             </div>
         </div>;
 }
+
+impl errorOverlay(filePath: str, errors: str) -> any {
+    return (
+        <div
+            style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: "rgba(0, 0, 0, 0.85)",
+                color: "#fff",
+                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+                fontSize: 14,
+                zIndex: 999999,
+                overflow: "auto",
+                padding: 20,
+                boxSizing: "border-box",
+
+            }}
+        >
+            <div style={{maxWidth: 1200, margin: "0 auto"}}>
+                <div
+                    style={{
+                        background: "#d32f2f",
+                        color: "white",
+                        padding: "16px 24px",
+                        borderRadius: "8px 8px 0 0",
+                        fontSize: 18,
+                        fontWeight: "bold",
+
+                    }}
+                >
+                    ⚠️ Compilation Error
+                </div>
+                <div
+                    style={{
+                        background: "#1e1e1e",
+                        padding: 24,
+                        borderRadius: "0 0 8px 8px",
+
+                    }}
+                >
+                    <div style={{marginBottom: 16}}>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            File:
+                        </div>
+                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
+                            {filePath}
+                        </div>
+                    </div>
+                    <div>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            Error:
+                        </div>
+                        <pre
+                            style={{
+                                background: "#2d2d2d",
+                                padding: 16,
+                                borderRadius: 4,
+                                overflowX: "auto",
+                                margin: 0,
+                                borderLeft: "4px solid #d32f2f",
+                                lineHeight: 1.6,
+                                color: "#ff6b6b",
+
+                            }}
+                        >
+                            {errors}
+                        </pre>
+                    </div>
+                    <div
+                        style={{
+                            marginTop: 24,
+                            paddingTop: 16,
+                            borderTop: "1px solid #444",
+                            color: "#888",
+                            fontSize: 13,
+
+                        }}
+                    >
+                        💡 Fix the error and save the file to continue development.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}

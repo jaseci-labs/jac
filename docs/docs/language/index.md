@@ -36,6 +36,6 @@ Jac's enhancements to OOP:
 | Topic | Location |
 |-------|----------|
 | Syntax Quick Reference | [Reference Card](../learn/syntax_quick_reference.md) |
-| Full Specification | [Jac Specification](../learn/jac_ref.md) |
+| Full Specification | [Jac Language Reference](../learn/jac-ref/index.md) |
 | Keywords | [Keyword Reference](../learn/keywords.md) |
 | The Jac Book | [Complete Learning Guide](../jac_book/index.md) |

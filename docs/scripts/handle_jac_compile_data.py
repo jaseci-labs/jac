@@ -15,7 +15,6 @@ EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
 UNIIR_NODE_DOC = "docs/internals/uniir_node.md"
-LANG_REF_DOC = "docs/learn/jac_ref.md"
 TOP_CONTRIBUTORS_DOC = "docs/communityhub/top_contributors.md"
 AST_TOOL = AstTool()
 EXAMPLE_SOURCE_FOLDER = "../jac/examples"
@@ -39,12 +38,6 @@ def pre_build_hook(**kwargs: dict) -> None:
             f.write(AST_TOOL.autodoc_uninode())
     else:
         print(f"File is recent: {UNIIR_NODE_DOC}. Skipping creation.")
-
-    if is_file_older_than_minutes(LANG_REF_DOC, 5):
-        with open(LANG_REF_DOC, "w") as f:
-            f.write(AST_TOOL.automate_ref())
-    else:
-        print(f"File is recent: {LANG_REF_DOC}. Skipping creation.")
 
     with open(TOP_CONTRIBUTORS_DOC, "w") as f:
         f.write(get_top_contributors())
