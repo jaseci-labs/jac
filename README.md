@@ -38,12 +38,14 @@ Jaseci serves as the implementation stack for the Jac programming language. As a
 
 The project brings together a set of components that work seamlessly together:
 
-- **[`jaclang`](jac/):** The Jac programming language, a drop‑in replacement for and superset of both Python and Typescript/Javascript.
-- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept.
-- **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem.
-- **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration.
-- **[`jac-super`](jac-super/):** Plugin for Jac providing enhanced console output with Rich formatting.
+- **[`jaclang`](jac/):** The Jac programming language, a drop‑in replacement for and superset of both Python and Typescript/Javascript. (`pip install jaclang`)
+- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
+- **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
+- **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
+- **[`jac-super`](jac-super/):** Plugin for Jac providing enhanced console output with Rich formatting. (`pip install jac-super`)
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
+
+All of these components are bundled together as the [**Jaseci**](jaseci-package/) stack, which can be installed with a simple `pip install jaseci`.
 
 ---
 
