@@ -20,6 +20,22 @@ class JacCmd {
         """Extend core commands to add --npm flag for npm package management.""";
         registry = get_registry();
 
+        # Extend the core 'create' command with --skip flag for client template
+        registry.extend_command(
+            command_name="create",
+            args=[
+                Arg.create(
+                    "skip",
+                    typ=bool,
+                    default=False,
+                    help="Skip npm package installation (for --use client)"
+                ),
+
+            ],
+            pre_hook=_handle_create_skip,
+            source="jac-client"
+        );
+
         # Extend the core 'add' command with --npm flag
         registry.extend_command(
             command_name="add",
@@ -52,6 +68,19 @@ class JacCmd {
             source="jac-client"
         );
     }
+}
+
+"""Pre-hook to handle --skip flag for create command."""
+def _handle_create_skip(ctx: HookContext) -> None {
+    import:py os;
+
+    # Check if --skip flag is set
+    skip_flag = ctx.get_arg("skip", False);
+    if skip_flag {
+        # Set environment variable to skip npm installation
+        os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
+    }
+    # Let core create command run normally
 }
 
 """Pre-hook to handle --npm flag for adding npm dependencies."""
