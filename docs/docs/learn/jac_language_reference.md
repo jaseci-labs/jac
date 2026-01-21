@@ -420,6 +420,123 @@ multiline = """
 """;
 ```
 
+### 4.7 F-String Format Specifications
+
+F-strings support powerful formatting with the syntax `{expression:format_spec}`.
+
+**Basic formatting:**
+
+```jac
+name = "Alice";
+age = 30;
+
+# Simple interpolation
+greeting = f"Hello, {name}!";
+
+# With expressions
+message = f"In 5 years: {age + 5}";
+```
+
+**Width and alignment:**
+
+```jac
+# Width specification
+f"{name:10}";           # "Alice     " (10 chars, left-aligned)
+f"{name:>10}";          # "     Alice" (right-aligned)
+f"{name:^10}";          # "  Alice   " (centered)
+f"{name:<10}";          # "Alice     " (left-aligned, explicit)
+
+# Fill character
+f"{name:*>10}";         # "*****Alice" (fill with *)
+f"{name:-^10}";         # "--Alice---" (centered with -)
+```
+
+**Number formatting:**
+
+```jac
+n = 42;
+pi = 3.14159265;
+
+# Integer formats
+f"{n:d}";               # "42" (decimal)
+f"{n:b}";               # "101010" (binary)
+f"{n:o}";               # "52" (octal)
+f"{n:x}";               # "2a" (hex lowercase)
+f"{n:X}";               # "2A" (hex uppercase)
+f"{n:05d}";             # "00042" (zero-padded, width 5)
+
+# Float formats
+f"{pi:f}";              # "3.141593" (fixed-point, 6 decimals default)
+f"{pi:.2f}";            # "3.14" (2 decimal places)
+f"{pi:10.2f}";          # "      3.14" (width 10, 2 decimals)
+f"{pi:e}";              # "3.141593e+00" (scientific notation)
+f"{pi:.2e}";            # "3.14e+00" (scientific, 2 decimals)
+f"{pi:g}";              # "3.14159" (general format)
+
+# Percentage
+ratio = 0.756;
+f"{ratio:.1%}";         # "75.6%"
+
+# Thousands separator
+big = 1234567;
+f"{big:,}";             # "1,234,567"
+f"{big:_}";             # "1_234_567" (underscore separator)
+```
+
+**Sign and padding:**
+
+```jac
+x = 42;
+y = -42;
+
+f"{x:+d}";              # "+42" (always show sign)
+f"{y:+d}";              # "-42"
+f"{x: d}";              # " 42" (space for positive)
+f"{x:=+5d}";            # "+  42" (pad after sign)
+```
+
+**Conversions (`!r`, `!s`, `!a`):**
+
+```jac
+text = "hello\nworld";
+
+f"{text}";              # "hello
+                        #  world" (default str())
+f"{text!s}";            # "hello
+                        #  world" (explicit str())
+f"{text!r}";            # "'hello\\nworld'" (repr())
+f"{text!a}";            # "'hello\\nworld'" (ascii())
+```
+
+**Nested expressions:**
+
+```jac
+width = 10;
+precision = 2;
+
+# Dynamic width and precision
+f"{pi:{width}.{precision}f}";   # "      3.14"
+
+# Expression in format spec
+f"{value:{'>10' if right else '<10'}}";
+```
+
+**Format specification grammar:**
+
+```
+[[fill]align][sign][#][0][width][grouping][.precision][type]
+
+fill      : any character
+align     : '<' (left) | '>' (right) | '^' (center) | '=' (pad after sign)
+sign      : '+' | '-' | ' '
+#         : alternate form (0x for hex, etc.)
+0         : zero-pad
+width     : minimum width
+grouping  : ',' or '_' for thousands
+precision : digits after decimal
+type      : 's' 'd' 'f' 'e' 'g' 'b' 'o' 'x' 'X' '%'
+```
+
 **Collections:**
 
 ```jac
@@ -490,27 +607,111 @@ with entry {
 
 ### 5.4 Scope Rules
 
-- **Block scope**: Variables in `{}` are local to that block
-- **Function scope**: Parameters and locals visible within function
-- **Module scope**: Top-level definitions visible throughout module
-- **global/nonlocal**: Access outer scopes explicitly
+**Scope Resolution Order (LEGB):**
+
+When Jac looks up a name, it searches in this order:
+
+1. **L**ocal: Names in the current function/block
+2. **E**nclosing: Names in enclosing functions (for nested functions)
+3. **G**lobal: Names at module level (`glob` declarations)
+4. **B**uilt-in: Pre-defined names (`print`, `len`, `range`, etc.)
+
+```jac
+glob x = "global";
+
+def outer -> None {
+    x = "enclosing";
+
+    def inner -> None {
+        x = "local";
+        print(x);  # "local" - found in Local scope
+    }
+
+    inner();
+    print(x);  # "enclosing" - found in Enclosing scope
+}
+```
+
+**Modifying outer scope variables:**
 
 ```jac
 glob counter: int = 0;
 
 def increment -> None {
-    global counter;
+    global counter;    # Declares intent to modify global
     counter += 1;
 }
 
 def outer -> None {
     x = 10;
     def inner -> None {
-        nonlocal x;
+        nonlocal x;    # Declares intent to modify enclosing
         x += 1;
     }
     inner();
+    print(x);  # 11
 }
+```
+
+**Block scope behavior:**
+
+```jac
+if True {
+    block_var = 42;    # Created in block
+}
+# block_var is still accessible here in Jac (unlike some languages)
+
+for i in range(3) {
+    loop_var = i;
+}
+# loop_var and i are accessible here
+```
+
+### 5.5 Truthiness
+
+Values are evaluated as boolean in conditions. The following are **falsy** (evaluate to `False`):
+
+| Type | Falsy Values |
+|------|--------------|
+| `bool` | `False` |
+| `None` | `None` |
+| `int` | `0` |
+| `float` | `0.0` |
+| `str` | `""` (empty string) |
+| `list` | `[]` (empty list) |
+| `tuple` | `()` (empty tuple) |
+| `dict` | `{}` (empty dict) |
+| `set` | `set()` (empty set) |
+
+All other values are **truthy**.
+
+**Examples:**
+
+```jac
+# Falsy values
+if not 0 { print("0 is falsy"); }
+if not "" { print("empty string is falsy"); }
+if not [] { print("empty list is falsy"); }
+if not None { print("None is falsy"); }
+
+# Truthy values
+if 1 { print("non-zero is truthy"); }
+if "hello" { print("non-empty string is truthy"); }
+if [1, 2] { print("non-empty list is truthy"); }
+
+# Common patterns
+items = get_items();
+if items {
+    process(items);
+} else {
+    print("No items to process");
+}
+
+# Default value pattern
+name = user_input or "Anonymous";
+
+# Guard pattern
+user and user.is_active and process(user);
 ```
 
 ---
@@ -560,46 +761,200 @@ result = a || b;
 
 ### 6.4 Bitwise Operators
 
-| Operator | Description |
-|----------|-------------|
-| `&` | AND |
-| `\|` | OR |
-| `^` | XOR |
-| `~` | NOT |
-| `<<` | Left shift |
-| `>>` | Right shift |
+| Operator | Name | Description |
+|----------|------|-------------|
+| `&` | AND | 1 if both bits are 1 |
+| `\|` | OR | 1 if either bit is 1 |
+| `^` | XOR | 1 if bits are different |
+| `~` | NOT | Inverts all bits |
+| `<<` | Left shift | Shifts bits left, fills with 0 |
+| `>>` | Right shift | Shifts bits right |
+
+**Examples:**
+
+```jac
+# Bitwise AND - check if bit is set
+has_flag = (flags & FLAG_MASK) != 0;
+
+# Bitwise OR - set a bit
+flags = flags | NEW_FLAG;
+
+# Bitwise XOR - toggle a bit
+flags = flags ^ TOGGLE_FLAG;
+
+# Bitwise NOT - invert all bits
+inverted = ~value;
+
+# Left shift - multiply by 2^n
+doubled = value << 1;      # value * 2
+quadrupled = value << 2;   # value * 4
+
+# Right shift - divide by 2^n
+halved = value >> 1;       # value // 2
+quartered = value >> 2;    # value // 4
+```
+
+**Common bit manipulation patterns:**
+
+```jac
+# Check if nth bit is set
+def is_bit_set(value: int, n: int) -> bool {
+    return (value & (1 << n)) != 0;
+}
+
+# Set nth bit
+def set_bit(value: int, n: int) -> int {
+    return value | (1 << n);
+}
+
+# Clear nth bit
+def clear_bit(value: int, n: int) -> int {
+    return value & ~(1 << n);
+}
+
+# Toggle nth bit
+def toggle_bit(value: int, n: int) -> int {
+    return value ^ (1 << n);
+}
+
+# Check if power of 2
+def is_power_of_two(n: int) -> bool {
+    return n > 0 and (n & (n - 1)) == 0;
+}
+```
 
 ### 6.5 Assignment Operators
 
+**Simple Assignment:**
+
 ```jac
-x = 5;      # Simple assignment
-x := 5;     # Walrus (inline assignment in expressions)
-x += 1;     # Augmented assignment
-x -= 1;
-x *= 2;
-x /= 2;
-x //= 2;
-x %= 3;
-x **= 2;
-x &= mask;
-x |= flags;
-x ^= bits;
-x <<= 1;
-x >>= 1;
+x = 5;
+name = "Alice";
+a = b = c = 0;  # Chained assignment
+```
+
+**Walrus Operator (`:=`):**
+
+The walrus operator assigns a value and returns it in a single expression:
+
+```jac
+# In conditionals - assign and test
+if (n := len(items)) > 10 {
+    print(f"List has {n} items, too many!");
+}
+
+# In while loops - assign and check
+while (line := file.readline()) {
+    process(line);
+}
+
+# In comprehensions - avoid redundant computation
+results = [y for x in data if (y := expensive(x)) > threshold];
+
+# In function calls
+print(f"Length: {(n := len(text))}, doubled: {n * 2}");
+```
+
+**Augmented Assignment Operators:**
+
+All augmented assignments modify the variable in place:
+
+| Operator | Equivalent | Description |
+|----------|------------|-------------|
+| `x += y` | `x = x + y` | Add and assign |
+| `x -= y` | `x = x - y` | Subtract and assign |
+| `x *= y` | `x = x * y` | Multiply and assign |
+| `x /= y` | `x = x / y` | Divide and assign |
+| `x //= y` | `x = x // y` | Floor divide and assign |
+| `x %= y` | `x = x % y` | Modulo and assign |
+| `x **= y` | `x = x ** y` | Exponentiate and assign |
+| `x @= y` | `x = x @ y` | Matrix multiply and assign |
+| `x &= y` | `x = x & y` | Bitwise AND and assign |
+| `x \|= y` | `x = x \| y` | Bitwise OR and assign |
+| `x ^= y` | `x = x ^ y` | Bitwise XOR and assign |
+| `x <<= y` | `x = x << y` | Left shift and assign |
+| `x >>= y` | `x = x >> y` | Right shift and assign |
+
+```jac
+# Numeric augmented assignment
+count += 1;
+total *= tax_rate;
+value **= 2;
+
+# Bitwise augmented assignment
+flags |= NEW_FLAG;      # Set a flag
+flags &= ~OLD_FLAG;     # Clear a flag
+bits ^= mask;           # Toggle bits
+register <<= 4;         # Shift left
 ```
 
 ### 6.6 Null-Safe Operators
 
+The `?` operator provides safe access to potentially null values, returning `None` instead of raising an error.
+
+**Safe attribute access (`?.`):**
+
 ```jac
-# Safe attribute access
-value = obj?.field?.nested;
+# Without null-safe: raises AttributeError if obj is None
+value = obj.field;
 
-# Safe index access
-item = list?[0];
+# With null-safe: returns None if obj is None
+value = obj?.field;
 
-# Chained safe access
-result = data?.items?[0]?.name;
+# Chained - stops at first None
+result = user?.profile?.settings?.theme;
 ```
+
+**Safe index access (`?[]`):**
+
+```jac
+# Without null-safe: raises TypeError if list is None
+item = my_list[0];
+
+# With null-safe: returns None if list is None
+item = my_list?[0];
+
+# Works with dictionaries too
+value = config?["key"];
+```
+
+**Safe method calls:**
+
+```jac
+# Returns None if obj is None, doesn't call method
+result = obj?.method();
+
+# Chained with arguments
+output = data?.transform(param)?.format();
+```
+
+**Combining with default values:**
+
+```jac
+# Null-safe with fallback using or
+name = user?.name or "Anonymous";
+
+# In conditionals
+if user?.is_active {
+    process(user);
+}
+```
+
+**In filter comprehensions:**
+
+```jac
+# The ? in filter comprehensions
+valid_items = items(?value > 0);  # Filter where value > 0
+```
+
+**Behavior summary:**
+
+| Expression | When `obj` is `None` | When `obj` is valid |
+|------------|---------------------|---------------------|
+| `obj?.attr` | `None` | `obj.attr` |
+| `obj?[key]` | `None` | `obj[key]` |
+| `obj?.method()` | `None` | `obj.method()` |
+| `obj?.a?.b` | `None` | `obj.a.b` (or `None` if `a` is `None`) |
 
 ### 6.7 Graph Operators (OSP)
 
@@ -637,17 +992,74 @@ alice +>: Friend(since=2020) :+> bob;
 
 ### 6.8 Pipe Operators
 
-```jac
-# Forward pipe
-result = data |> transform |> filter |> output;
+Jac provides multiple pipe operators for functional-style data flow:
 
-# Backward pipe
+**Standard Pipes (`|>`, `<|`):**
+
+```jac
+# Forward pipe - data flows left to right
+result = data |> transform |> filter |> format;
+
+# Equivalent to:
+result = format(filter(transform(data)));
+
+# Backward pipe - data flows right to left
 result = output <| filter <| transform <| data;
 
-# Atomic pipes (for graph operations)
-node spawn :> Walker;    # Depth-first
-node spawn |> Walker;    # Breadth-first
+# Equivalent to:
+result = output(filter(transform(data)));
 ```
+
+**Atomic Pipes (`:>`, `<:`):**
+
+Atomic pipes are used with spawn operations and affect traversal order:
+
+```jac
+# Atomic pipe forward - depth-first traversal
+result = node spawn :> Walker();
+
+# Atomic pipe backward
+result = Walker() <: spawn node;
+
+# Standard pipe with spawn - breadth-first traversal
+result = node spawn |> Walker();
+```
+
+**Dot Pipes (`.>`, `<.`):**
+
+Dot pipes chain method calls:
+
+```jac
+# Dot forward pipe
+result = data .> method1 .> method2 .> method3;
+
+# Equivalent to:
+result = data.method1().method2().method3();
+
+# Dot backward pipe
+result = method3 <. method2 <. method1 <. data;
+```
+
+**Pipe with lambdas:**
+
+```jac
+# Using lambdas in pipe chains
+result = numbers
+    |> (lambda x: list : [i * 2 for i in x])
+    |> (lambda x: list : [i for i in x if i > 10])
+    |> sum;
+```
+
+**Comparison of pipe operators:**
+
+| Operator | Name | Direction | Use Case |
+|----------|------|-----------|----------|
+| `\|>` | Forward pipe | Left to right | Function composition |
+| `<\|` | Backward pipe | Right to left | Reverse composition |
+| `:>` | Atomic forward | Left to right | Depth-first spawn |
+| `<:` | Atomic backward | Right to left | Reverse atomic |
+| `.>` | Dot forward | Left to right | Method chaining |
+| `<.` | Dot backward | Right to left | Reverse method chain |
 
 ### 6.9 The `by` Operator
 
@@ -685,24 +1097,76 @@ See [Part V: AI Integration](#part-v-ai-integration) for detailed LLM usage.
 
 ### 6.10 Operator Precedence
 
-From lowest to highest:
+Complete precedence table from **lowest** (evaluated last) to **highest** (evaluated first):
 
-1. `lambda`
-2. `if else` (ternary)
-3. `or`, `||`
-4. `and`, `&&`
-5. `not`
-6. `in`, `not in`, `is`, `is not`, `<`, `<=`, `>`, `>=`, `!=`, `==`
-7. `|`
-8. `^`
-9. `&`
-10. `<<`, `>>`
-11. `+`, `-`
-12. `*`, `/`, `//`, `%`, `@`
-13. `+x`, `-x`, `~x` (unary)
-14. `**`
-15. `await`
-16. Subscript, call, attribute access
+| Precedence | Operators | Associativity | Description |
+|------------|-----------|---------------|-------------|
+| 1 (lowest) | `lambda` | - | Lambda expression |
+| 2 | `if else` | Right | Ternary conditional |
+| 3 | `by` | Right | By operator (LLM delegation) |
+| 4 | `:=` | Right | Walrus operator |
+| 5 | `or`, `\|\|` | Left | Logical OR |
+| 6 | `and`, `&&` | Left | Logical AND |
+| 7 | `not` | - | Logical NOT (unary) |
+| 8 | `in`, `not in`, `is`, `is not`, `<`, `<=`, `>`, `>=`, `!=`, `==` | Left | Comparison/membership |
+| 9 | `\|` | Left | Bitwise OR |
+| 10 | `^` | Left | Bitwise XOR |
+| 11 | `&` | Left | Bitwise AND |
+| 12 | `<<`, `>>` | Left | Bit shifts |
+| 13 | `\|>`, `<\|` | Left | Pipe operators |
+| 14 | `+`, `-` | Left | Addition, subtraction |
+| 15 | `*`, `/`, `//`, `%`, `@` | Left | Multiplication, division, modulo, matmul |
+| 16 | `+x`, `-x`, `~` | - | Unary plus, minus, bitwise NOT |
+| 17 | `**` | Right | Exponentiation |
+| 18 | `await` | - | Await expression |
+| 19 | `spawn` | Left | Walker spawn |
+| 20 | `:>`, `<:` | Left | Atomic pipes |
+| 21 | `++>`, `<++`, connection ops | Left | Graph connection |
+| 22 (highest) | `x[i]`, `x.attr`, `x()`, `x?.attr` | Left | Subscript, attribute, call |
+
+**Examples showing precedence:**
+
+```jac
+# Ternary binds loosely
+x = a if cond else b + 1;   # x = a if cond else (b + 1)
+
+# Logical operators
+x = a or b and c;           # x = a or (b and c)
+x = not a and b;            # x = (not a) and b
+
+# Comparison chaining
+valid = 0 < x < 10;         # (0 < x) and (x < 10)
+
+# Arithmetic
+x = a + b * c;              # x = a + (b * c)
+x = a ** b ** c;            # x = a ** (b ** c)  (right associative)
+
+# Bitwise
+x = a | b & c;              # x = a | (b & c)
+x = a << 2 + 1;             # x = a << (2 + 1)
+
+# Pipe operators
+result = a |> f |> g;       # result = g(f(a))
+
+# Walrus in condition
+if (n := len(x)) > 10 { }   # Assignment happens first
+```
+
+**Short-circuit evaluation:**
+
+`and` and `or` use short-circuit evaluation:
+
+```jac
+# 'and' stops at first falsy value
+result = a and b and c;  # Returns first falsy, or last value
+
+# 'or' stops at first truthy value
+result = a or b or c;    # Returns first truthy, or last value
+
+# Common patterns
+value = user_input or default;     # Use default if input is falsy
+safe = obj and obj.method();       # Only call if obj exists
+```
 
 ---
 
@@ -843,6 +1307,185 @@ async with acquire_lock() as lock {
 }
 ```
 
+### 7.8 Exception Handling
+
+**Basic try/except:**
+
+```jac
+try {
+    result = risky_operation();
+} except ValueError {
+    print("Value error occurred");
+}
+```
+
+**Capturing the exception:**
+
+```jac
+try {
+    data = parse_json(input);
+} except ValueError as e {
+    print(f"Parse error: {e}");
+} except KeyError as e {
+    print(f"Missing key: {e}");
+}
+```
+
+**Multiple exception types:**
+
+```jac
+try {
+    process(data);
+} except (TypeError, ValueError) as e {
+    print(f"Type or value error: {e}");
+}
+```
+
+**Full try/except/else/finally:**
+
+```jac
+try {
+    file = open("data.txt");
+    data = file.read();
+} except FileNotFoundError {
+    print("File not found");
+    data = default_data;
+} except PermissionError as e {
+    print(f"Permission denied: {e}");
+    raise;  # Re-raise the exception
+} else {
+    # Executes only if no exception occurred
+    print(f"Read {len(data)} bytes");
+} finally {
+    # Always executes (cleanup)
+    if file {
+        file.close();
+    }
+}
+```
+
+**Raising exceptions:**
+
+```jac
+# Raise an exception
+raise ValueError("Invalid input");
+
+# Raise with a message
+raise RuntimeError(f"Failed to process: {item}");
+
+# Re-raise current exception
+except SomeError {
+    log_error();
+    raise;
+}
+
+# Exception chaining (raise from)
+try {
+    low_level_operation();
+} except LowLevelError as e {
+    raise HighLevelError("Operation failed") from e;
+}
+```
+
+**Custom exceptions:**
+
+```jac
+obj ValidationError(Exception) {
+    has field: str;
+    has message: str;
+}
+
+def validate(data: dict) -> None {
+    if "name" not in data {
+        raise ValidationError(field="name", message="Name is required");
+    }
+}
+```
+
+### 7.9 Assertions
+
+Assertions verify conditions during development:
+
+```jac
+# Basic assertion
+assert condition;
+
+# Assertion with message
+assert len(items) > 0, "Items list cannot be empty";
+
+# Type checking
+assert isinstance(value, int), f"Expected int, got {type(value)}";
+
+# Invariant checking
+def withdraw(amount: float) -> None {
+    assert amount > 0, "Withdrawal amount must be positive";
+    assert amount <= self.balance, "Insufficient funds";
+    self.balance -= amount;
+}
+```
+
+**Note:** Assertions can be disabled in production with optimization flags. Use exceptions for validation that must always run.
+
+### 7.10 Generator Functions
+
+Generators produce values lazily using `yield`:
+
+**Basic generator:**
+
+```jac
+def count_up(n: int) -> int {
+    for i in range(n) {
+        yield i;
+    }
+}
+
+# Usage
+for num in count_up(5) {
+    print(num);  # 0, 1, 2, 3, 4
+}
+```
+
+**Generator with state:**
+
+```jac
+def fibonacci(limit: int) -> int {
+    a = 0;
+    b = 1;
+    while a < limit {
+        yield a;
+        (a, b) = (b, a + b);
+    }
+}
+```
+
+**yield from (delegation):**
+
+```jac
+def flatten(nested: list) -> any {
+    for item in nested {
+        if isinstance(item, list) {
+            yield from flatten(item);  # Delegate to sub-generator
+        } else {
+            yield item;
+        }
+    }
+}
+
+# Usage
+nested = [[1, 2], [3, [4, 5]], 6];
+flat = list(flatten(nested));  # [1, 2, 3, 4, 5, 6]
+```
+
+**Generator expressions:**
+
+```jac
+# Generator expression (lazy)
+squares = (x ** 2 for x in range(1000000));
+
+# List comprehension (eager)
+squares_list = [x ** 2 for x in range(100)];
+```
+
 ---
 
 # Part II: Functions and Objects
@@ -866,25 +1509,106 @@ def log(message: str) -> None {
 }
 ```
 
-### 8.2 Parameter Types
+### 8.2 Parameter Types and Ordering
+
+**Parameter Categories:**
+
+| Category | Syntax | Description |
+|----------|--------|-------------|
+| Positional-only | Before `/` | Must be passed by position |
+| Positional-or-keyword | Normal params | Can be passed either way |
+| Variadic positional | `*args` | Collects extra positional args |
+| Keyword-only | After `*` or `*args` | Must be passed by keyword |
+| Variadic keyword | `**kwargs` | Collects extra keyword args |
+
+**Required Parameter Order:**
 
 ```jac
-# Positional and keyword arguments
-def func(pos1: int, pos2: str, kwarg1: int = 0, kwarg2: str = "") -> None {
+def complete_example(
+    pos_only1: int,           # 1. Positional-only parameters
+    pos_only2: str,
+    /,                         # 2. Positional-only marker
+    pos_or_kw: float,          # 3. Normal (positional-or-keyword)
+    with_default: int = 10,    # 4. Parameters with defaults
+    *args: int,                # 5. Variadic positional
+    kw_only: str,              # 6. Keyword-only (after * or *args)
+    kw_default: bool = True,   # 7. Keyword-only with default
+    **kwargs: any              # 8. Variadic keyword (must be last)
+) -> None {
     pass;
 }
+```
 
-# Variable arguments
-def sum_all(*args: int) -> int {
-    return sum(args);
+**Positional-only parameters (`/`):**
+
+```jac
+def greet(name: str, /) -> str {
+    return f"Hello, {name}!";
 }
 
-# Keyword arguments
-def configure(**kwargs: any) -> None {
-    for (key, value) in kwargs.items() {
-        print(f"{key} = {value}");
-    }
+greet("Alice");      # OK
+greet(name="Alice"); # Error: positional-only
+```
+
+**Keyword-only parameters (after `*`):**
+
+```jac
+def configure(*, host: str, port: int = 8080) -> None {
+    print(f"Connecting to {host}:{port}");
 }
+
+configure(host="localhost");           # OK
+configure("localhost", 8080);          # Error: keyword-only
+configure(host="localhost", port=443); # OK
+```
+
+**Variadic parameters:**
+
+```jac
+# *args collects extra positional arguments
+def sum_all(*values: int) -> int {
+    return sum(values);
+}
+
+sum_all(1, 2, 3, 4, 5);  # 15
+
+# **kwargs collects extra keyword arguments
+def build_config(**options: any) -> dict {
+    return dict(options);
+}
+
+build_config(debug=True, verbose=False);  # {"debug": True, "verbose": False}
+
+# Combined
+def flexible(required: int, *args: int, **kwargs: any) -> None {
+    print(f"Required: {required}");
+    print(f"Extra positional: {args}");
+    print(f"Extra keyword: {kwargs}");
+}
+
+flexible(1, 2, 3, name="test");
+# Required: 1
+# Extra positional: (2, 3)
+# Extra keyword: {"name": "test"}
+```
+
+**Unpacking arguments:**
+
+```jac
+def add(a: int, b: int, c: int) -> int {
+    return a + b + c;
+}
+
+# Unpack list/tuple into positional args
+values = [1, 2, 3];
+result = add(*values);  # add(1, 2, 3)
+
+# Unpack dict into keyword args
+params = {"a": 1, "b": 2, "c": 3};
+result = add(**params);  # add(a=1, b=2, c=3)
+
+# Combined unpacking
+result = add(*[1, 2], **{"c": 3});  # add(1, 2, c=3)
 ```
 
 ### 8.3 Abilities (Methods)
@@ -1210,6 +1934,13 @@ impl Calculator.multiply(x: float) -> float {
 ---
 
 # Part III: Object-Spatial Programming (OSP)
+
+> **Related Sections:**
+>
+> - [Graph Operators](#67-graph-operators-osp) - Connection and edge reference syntax
+> - [Pipe Operators](#68-pipe-operators) - Spawn traversal modes
+> - [Data Spatial Queries](#17-data-spatial-queries) - Filtering and querying
+> - [Typed Context Blocks](#18-typed-context-blocks) - Type-based dispatch
 
 ## 11. Introduction to OSP
 
@@ -1565,33 +2296,61 @@ walker DetailedVisitor(BaseVisitor) {
 
 ### 14.8 Special References
 
-| Reference | Context | Description |
-|-----------|---------|-------------|
-| `self` | Any | Current instance |
-| `here` | Walker ability | Current node location |
-| `visitor` | Node ability | The visiting walker |
-| `root` | Anywhere | Root node of graph |
-| `super` | Subclass | Parent class |
+These keywords have special meaning in specific contexts:
+
+| Reference | Valid Context | Description | See Also |
+|-----------|---------------|-------------|----------|
+| `self` | Any method/ability | Current instance (walker, node, object) | [Section 9](#9-object-oriented-programming) |
+| `here` | Walker ability | Current node the walker is visiting | [Section 14.1](#141-walker-declaration) |
+| `visitor` | Node ability | The walker that triggered this ability | [Section 12.2](#122-node-entryexit-abilities) |
+| `root` | Anywhere | Root node of the current graph | [Section 15](#15-graph-construction) |
+| `super` | Subclass method | Parent class reference | [Section 9.2](#92-inheritance) |
+| `init` | Object body | Constructor method name | [Section 9.1](#91-objects-classes) |
+| `postinit` | Object body | Post-constructor hook | [Section 5.2](#52-instance-variables-has) |
+| `props` | JSX context | Component props reference | [Section 21](#21-client-side-development-jsx) |
+
+**Usage examples:**
 
 ```jac
 node SecureRoom {
     has required_level: int;
 
+    # 'visitor' refers to the walker visiting this node
+    # 'self' refers to this node instance
     can check with Inspector entry {
         if visitor.clearance >= self.required_level {
-            print("Access granted");
+            print("Access granted to " + visitor.name);
         }
     }
 }
 
 walker Inspector {
     has clearance: int;
+    has name: str;
 
+    # 'here' refers to the current node being visited
+    # 'self' refers to this walker instance
     can inspect with SecureRoom entry {
-        print(f"Inspecting room at {here}");
+        print(f"{self.name} inspecting room at {here}");
+        print(f"Room requires level {here.required_level}");
+    }
+
+    can start with `root entry {
+        # 'root' is always the graph root
+        print(f"Starting from root: {root}");
+        visit [-->];
     }
 }
 ```
+
+**When each reference is valid:**
+
+| Context | `self` | `here` | `visitor` | `root` |
+|---------|--------|--------|-----------|--------|
+| Walker ability | Walker instance | Current node | N/A | Graph root |
+| Node ability | Node instance | N/A | Visiting walker | Graph root |
+| Object method | Object instance | N/A | N/A | Graph root |
+| Free code | N/A | N/A | N/A | Graph root |
 
 ---
 
@@ -2334,6 +3093,13 @@ Provides:
 ---
 
 # Part V: AI Integration
+
+> **Prerequisites:**
+>
+> - [The `by` Operator](#69-the-by-operator) - Basic syntax
+> - [Function Declaration](#81-function-declaration) - Function signatures
+>
+> **Required Plugin:** `pip install byllm`
 
 ## 26. Meaning Typed Programming
 
