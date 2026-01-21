@@ -43,7 +43,7 @@ entry-point = "main.jac"
 [dependencies]
 
 [dev-dependencies]
-watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
+watchdog = ">=3.0.0"  # Required for HMR (jac start --dev)
 
 [run]
 main = true
@@ -133,7 +133,7 @@ Development-only dependencies (not installed in production):
 
 ```toml
 [dev-dependencies]
-watchdog = ">=3.0.0"  # Required for HMR (jac start --watch)
+watchdog = ">=3.0.0"  # Required for HMR (jac start --dev)
 pytest = ">=8.2.1"
 mypy = ">=1.0.0"
 black = ">=23.0.0"

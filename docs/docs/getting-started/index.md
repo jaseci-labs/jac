@@ -69,13 +69,13 @@ jac create --use client myapp
 cd myapp
 
 # Start the development server (uses main.jac by default)
-# If main.jac doesn't exist, specify your entry file: jac start app.jac --watch
-jac start --watch
+# If main.jac doesn't exist, specify your entry file: jac start app.jac --dev
+jac start --dev
 ```
 
-Open `http://localhost:8000` to see your app running. The `--watch` flag enables Hot Module Replacement - edit your code and see changes instantly!
+Open `http://localhost:8000` to see your app running. The `--dev` flag enables Hot Module Replacement - edit your code and see changes instantly!
 
-> **Note**: If your project uses a different entry file (e.g., `app.jac`), you can specify it: `jac start app.jac --watch`.
+> **Note**: If your project uses a different entry file (e.g., `app.jac`), you can specify it: `jac start app.jac --dev`.
 
 Your project includes:
 
@@ -112,7 +112,7 @@ jac create --use client myapp
 cd myapp
 
 # Start development server with hot reload
-jac start --watch
+jac start --dev
 ```
 
 Open `http://localhost:8000` to see your app. Edit `main.jac` and watch it update instantly!

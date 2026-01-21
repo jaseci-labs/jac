@@ -85,11 +85,11 @@ def enter(
             short="f"
         ),
         Arg.create(
-            "watch",
+            "dev",
             typ=bool,
             default=False,
             help="Enable HMR (Hot Module Replacement) mode",
-            short="w"
+            short="d"
         ),
         Arg.create(
             "api_port",
@@ -110,8 +110,8 @@ def enter(
         ("jac start app.jac", "Start server with specific file"),
         ("jac start --port 3000", "Start main.jac on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start --watch", "Start with hot module replacement"),
-        ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
+        ("jac start --dev", "Start with hot module replacement"),
+        ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
 
     ],
     group="execution"
@@ -121,7 +121,7 @@ def start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    watch: bool = False,
+    dev: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int;
