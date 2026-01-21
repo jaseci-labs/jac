@@ -14,7 +14,6 @@ impl BabelProcessor.copy_assets_after_compile(
 impl BabelProcessor.compile(self: BabelProcessor) -> None {
     bundler = ViteBundler(self.project_dir);
     error_reporter = BundleErrorReporter(self.project_dir);
-
     # Ensure root package.json exists temporarily for npm commands
     bundler._ensure_root_package_json();
     try {

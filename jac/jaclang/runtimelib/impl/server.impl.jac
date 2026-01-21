@@ -1586,12 +1586,10 @@ impl JacAPIServer.print_endpoint_docs -> None {
 impl JacAPIServer.start(dev: bool = False) -> None {
     import sys;
     self.introspector.load();
-
     # Build client bundle if there are client exports (skip in watch mode)
     # Store error to display after endpoint list
     bundle_error_msg: (str | None) = None;
     bundle_success = False;
-
     # Eagerly build client bundle if there are client exports (skip in dev mode)
     if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
@@ -1608,7 +1606,6 @@ impl JacAPIServer.start(dev: bool = False) -> None {
             }
         }
     }
-
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
@@ -1633,7 +1630,6 @@ impl JacAPIServer.start(dev: bool = False) -> None {
         if base_route_app {
             print(f'\nBase route (/) configured to serve: {base_route_app}');
         }
-
         if bundle_error_msg {
             # Red color for error visibility
             RED = "\033[91m";
@@ -1647,7 +1643,6 @@ impl JacAPIServer.start(dev: bool = False) -> None {
         } elif bundle_success {
             print(f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n");
         }
-
         print('Press Ctrl+C to stop the server');
         try {
             httpd.serve_forever();
