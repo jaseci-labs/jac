@@ -9,7 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.8 (Latest Release)
 
-- **Vite Dev Server Integration for HMR**: Added support for Hot Module Replacement during development. When using `jac start --watch`, the Vite dev server runs alongside the Jac API server with automatic proxy configuration for `/walker`, `/function`, `/user`, and `/introspect` routes. This enables instant frontend updates without full page reloads while maintaining seamless backend communication.
+- **Vite Dev Server Integration for HMR**: Added support for Hot Module Replacement during development. When using `jac start --dev`, the Vite dev server runs alongside the Jac API server with automatic proxy configuration for `/walker`, `/function`, `/user`, and `/introspect` routes. This enables instant frontend updates without full page reloads while maintaining seamless backend communication.
 
 ## jac-client 0.2.7
 

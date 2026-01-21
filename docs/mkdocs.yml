@@ -127,6 +127,7 @@ nav:
       - Getting Started: "jac-scale/README.md"
       - Quickstart: "jac-scale/quickstart.md"
       - Configuration: "jac-scale/configuration.md"
+      - File Upload: "jac-scale/file-upload.md"
       - Roadmap: "jac-scale/roadmap.md"
     - Tooling:
       - Jac Debugger: "learn/debugger.md"
