@@ -359,9 +359,9 @@ Packages must be released in this specific order due to dependencies:
 
 - Updates `version` in `jac/pyproject.toml` to the specified version
 - Updates `docs/docs/communityhub/release_notes/jaclang.md`:
-    - Removes `(Latest Release)` from the previous latest version
-    - Changes `(Unreleased)` to `(Latest Release)` for the new version
-    - Adds a new `(Unreleased)` section with the next patch version
+  - Removes `(Latest Release)` from the previous latest version
+  - Changes `(Unreleased)` to `(Latest Release)` for the new version
+  - Adds a new `(Unreleased)` section with the next patch version
 - Commits and pushes the changes
 - Builds and publishes the package to PyPI
 
