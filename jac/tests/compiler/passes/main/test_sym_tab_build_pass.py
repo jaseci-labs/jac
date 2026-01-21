@@ -123,6 +123,7 @@ def test_impl_self_assignment() -> None:
     mod = JacProgram().compile(file_path)
 
     someobj_sym = mod.sym_tab.names_in_scope.get("SomeObj")
+    assert someobj_sym is not None, "SomeObj symbol should exist"
     someobj_archetype = someobj_sym.decl.name_of
     archetype_members = someobj_archetype.sym_tab.names_in_scope
 
