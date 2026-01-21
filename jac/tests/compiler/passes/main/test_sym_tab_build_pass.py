@@ -110,3 +110,23 @@ def test_in_for_stmt_iteration_variables() -> None:
         for_loop_scope = mod.sym_tab.kid_scope[scope_idx]
         for var_name in expected_vars:
             assert var_name in for_loop_scope.names_in_scope
+
+
+def test_impl_self_assignment() -> None:
+    """Test that self.attr assignments in impl blocks register in archetype symbol table."""
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "symtab_build_tests",
+        "impl_self_assignment.jac",
+    )
+    mod = JacProgram().compile(file_path)
+
+    someobj_sym = mod.sym_tab.names_in_scope.get("SomeObj")
+    someobj_archetype = someobj_sym.decl.name_of
+    archetype_members = someobj_archetype.sym_tab.names_in_scope
+
+    assert "b" in archetype_members, (
+        "self.b assigned in impl block should be registered in SomeObj symbol table"
+    )
+
