@@ -60,10 +60,10 @@ pip install jac-client
 
 ### Create a New Jac App
 
-Use the `jac create --cl` command to scaffold a new client-side application. You can name your app however you want (here we're using `todo-app`):
+Use the `jac create --use client` command to scaffold a new client-side application. You can name your app however you want (here we're using `todo-app`):
 
 ```bash
-jac create --cl todo-app
+jac create --use client todo-app
 ```
 
 This command will:
@@ -79,7 +79,7 @@ This command will:
 If you want to skip the automatic installation of default packages, use the `--skip` flag:
 
 ```bash
-jac create --cl --skip todo-app
+jac create --use client --skip todo-app
 ```
 
 **When to use `--skip`:**
@@ -91,7 +91,7 @@ jac create --cl --skip todo-app
 **Note:** If you use `--skip`, you'll need to install packages manually later using:
 
 ```bash
-jac add --cl <package-name>
+jac add --npm <package-name>
 ```
 
 Or you can manually run `npm install` in the `.jac/client/configs/` directory after the project is created.

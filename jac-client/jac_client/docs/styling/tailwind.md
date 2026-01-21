@@ -24,7 +24,7 @@ There are two approaches to configuring Tailwind CSS in Jac projects:
 For Tailwind CSS v4, use the native Vite plugin approach:
 
 ```bash
-jac add --cl -d tailwindcss @tailwindcss/vite
+jac add --npm -d tailwindcss @tailwindcss/vite
 ```
 
 Configure in `jac.toml`:
@@ -40,7 +40,7 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 For Tailwind CSS v3, use the PostCSS approach with `[plugins.client.configs]`:
 
 ```bash
-jac add --cl -d tailwindcss autoprefixer postcss
+jac add --npm -d tailwindcss autoprefixer postcss
 ```
 
 Configure in `jac.toml`:

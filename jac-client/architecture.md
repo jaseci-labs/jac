@@ -289,10 +289,10 @@ The `package.json` file is dynamically generated from `config.json` by `ViteBund
 
 #### Package Installation Workflow
 
-The `jac add --cl` command manages npm packages through `config.json`:
+The `jac add --npm` command manages npm packages through `config.json`:
 
 ```
-1. Developer runs: jac add --cl lodash
+1. Developer runs: jac add --npm lodash
    ↓
 2. PackageInstaller updates config.json (adds lodash to dependencies)
    ↓
@@ -327,28 +327,28 @@ The `jac add --cl` command manages npm packages through `config.json`:
 **Add Package:**
 
 ```bash
-jac add --cl lodash              # Add to dependencies
-jac add --cl -d @types/react     # Add to devDependencies
-jac add --cl lodash@^4.17.21     # Add with specific version
+jac add --npm lodash              # Add to dependencies
+jac add --npm -d @types/react     # Add to devDependencies
+jac add --npm lodash@^4.17.21     # Add with specific version
 ```
 
 **Install All Packages:**
 
 ```bash
-jac add --cl                     # Install all packages from jac.toml
+jac add --npm                     # Install all packages from jac.toml
 ```
 
 **Remove Package:**
 
 ```bash
-jac remove --cl lodash            # Remove from dependencies
-jac remove --cl -d @types/react   # Remove from devDependencies
+jac remove --npm lodash            # Remove from dependencies
+jac remove --npm -d @types/react   # Remove from devDependencies
 ```
 
 **Project Creation:**
 
 ```bash
-jac create --cl my-app            # Creates jac.toml with organized folder structure
+jac create --use client my-app            # Creates jac.toml with organized folder structure
 ```
 
 #### Benefits
@@ -575,7 +575,7 @@ export default defineConfig({
 **Package Management Workflow**:
 
 ```
-1. Developer runs: jac add --cl lodash
+1. Developer runs: jac add --npm lodash
    ↓
 2. PackageInstaller updates jac.toml (dependencies.npm)
    ↓
@@ -591,7 +591,7 @@ export default defineConfig({
 **Remove Workflow**:
 
 ```
-1. Developer runs: jac remove --cl lodash
+1. Developer runs: jac remove --npm lodash
    ↓
 2. PackageInstaller removes package from jac.toml
    ↓

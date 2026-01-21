@@ -412,7 +412,7 @@ jac start main.jac
 
 **Solution**:
 
-- Verify the plugin is installed: `jac add --cl --dev <plugin-package>`
+- Verify the plugin is installed: `jac add --npm --dev <plugin-package>`
 - Check that the import statement matches the plugin package name
 - Check the generated `vite.config.js` in `.jac/client/configs/`
 

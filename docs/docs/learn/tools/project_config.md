@@ -18,19 +18,14 @@ The `jac create` command supports several options:
 - `-f, --force`: Overwrite existing `jac.toml` if present
 - `-u, --use`: Jacpac template: registered name, file path, or URL
 
-**With jac-client plugin:**
-
-- `-c, --cl`: Include client-side (frontend) setup with Vite bundling (shorthand for `--use client`)
-- `-s, --skip`: Skip installing default packages (only for `--cl` projects)
-
 Examples:
 
 ```bash
 # Create a basic project
 jac create myapp
 
-# Create with frontend support
-jac create --cl myapp
+# Create with frontend support (requires jac-client plugin)
+jac create myapp --use client
 
 # Create in current directory (overwrites existing jac.toml)
 jac create --force

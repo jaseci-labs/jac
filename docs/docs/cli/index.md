@@ -133,13 +133,6 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
 | `-l, --list-jacpacks` | List available jacpack templates | `False` |
 
-**With jac-client plugin:**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-c, --cl` | Use client template (shorthand for `--use client`) | `False` |
-| `-s, --skip` | Skip npm package installation after creation | `False` |
-
 **Examples:**
 
 ```bash
@@ -147,11 +140,8 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 jac create myapp
 cd myapp
 
-# Create full-stack project with client template
+# Create full-stack project with client template (requires jac-client)
 jac create myapp --use client
-
-# Create client project (shorthand, requires jac-client)
-jac create myapp --cl
 
 # Create from a local .jacpack file
 jac create myapp --use ./my-template.jacpack
@@ -554,7 +544,7 @@ jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--cl` | Add as client-side (npm) package | `False` |
+| `--npm` | Add as client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -571,8 +561,8 @@ jac add pytest --dev
 # Add from git repository
 jac add --git https://github.com/user/package.git
 
-# Add client-side (npm) package (requires jac-client)
-jac add react --cl
+# Add npm package (requires jac-client)
+jac add react --npm
 ```
 
 ---
@@ -622,7 +612,7 @@ jac remove [-h] [-d] [packages ...]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--cl` | Remove client-side (npm) package | `False` |
+| `--npm` | Remove client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -636,8 +626,8 @@ jac remove numpy pandas
 # Remove dev dependency
 jac remove pytest --dev
 
-# Remove client-side package (requires jac-client)
-jac remove react --cl
+# Remove npm package (requires jac-client)
+jac remove react --npm
 ```
 
 ---

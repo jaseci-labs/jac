@@ -107,7 +107,7 @@ The `jac` CLI is your primary interface for interacting with the Jaseci ecosyste
 | **`jac run <file.jac>`** | Executes a Jac file, much like `python3`. |
 | **`jac start <file.jac>`** | Starts a REST API server for a Jac program. |
 | **`jac start <file.jac> --scale`** | Deploys to Kubernetes with Redis and MongoDB auto-provisioning. |
-| **`jac create --cl <name>`** | Creates a new full-stack Jac project with frontend support. |
+| **`jac create --use client <name>`** | Creates a new full-stack Jac project with frontend support. |
 | **`jac plugins`** | Manages Jac plugins (enable/disable jac-scale, jac-client, etc.). |
 
 ---
