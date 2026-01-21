@@ -129,4 +129,3 @@ def test_impl_self_assignment() -> None:
     assert "b" in archetype_members, (
         "self.b assigned in impl block should be registered in SomeObj symbol table"
     )
-

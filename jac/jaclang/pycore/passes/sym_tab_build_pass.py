@@ -268,8 +268,14 @@ class SymTabBuildPass(UniPass):
         if parent := node.find_parent_of_type((uni.Ability, uni.ImplDef)):
             if isinstance(parent, uni.Ability):
                 archetype = parent.method_owner
-            elif isinstance(parent, uni.ImplDef) and parent.target and parent.parent_scope:
-                if archetype_sym := parent.parent_scope.lookup(parent.target[0].sym_name):
+            elif (
+                isinstance(parent, uni.ImplDef)
+                and parent.target
+                and parent.parent_scope
+            ):
+                if archetype_sym := parent.parent_scope.lookup(
+                    parent.target[0].sym_name
+                ):
                     name_of = archetype_sym.decl.name_of
                     archetype = name_of if isinstance(name_of, uni.Archetype) else None
 
