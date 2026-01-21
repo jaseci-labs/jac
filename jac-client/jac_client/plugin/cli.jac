@@ -11,6 +11,7 @@ For creating client projects, use: `jac create --use client`
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, HookContext }
 import from jaclang.pycore.runtime { hookimpl }
+import os;
 
 """Jac CLI extensions for client-side development."""
 class JacCmd {
@@ -72,8 +73,6 @@ class JacCmd {
 
 """Pre-hook to handle --skip flag for create command."""
 def _handle_create_skip(ctx: HookContext) -> None {
-    import:py os;
-
     # Check if --skip flag is set
     skip_flag = ctx.get_arg("skip", False);
     if skip_flag {
