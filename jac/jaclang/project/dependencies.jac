@@ -23,11 +23,18 @@ obj ResolvedDependency {
 obj DependencyInstaller {
     has config: JacConfig | None = None,
         packages_dir: Path | None = None,
-        verbose: bool = False;
+        verbose: bool = False,
+        stream_output: bool = False;
 
     def postinit -> None;
     def ensure_packages_dir -> None;
-    def _run_pip(args: list[str]) -> tuple[int, str, str];
+    def _run_pip(
+        args: list[str],
+        cwd: Path | None = None,
+        verbose: bool = False,
+        stream_output: bool = False
+    ) -> tuple[int, str, str];
+
     def install_all(include_dev: bool = False) -> bool;
     def install_package(name: str, version: str = "") -> bool;
     def install_git_package(name: str, git_url: str, branch: str = "") -> bool;

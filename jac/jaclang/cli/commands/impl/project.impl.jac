@@ -826,3 +826,81 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     print("Available actions: list, pack, info");
     return 1;
 }
+
+"""Install the current Jac project in editable/development mode."""
+impl pip_install(
+    path: str = ".",
+    dev: bool = False,
+    extras: str = "",
+    no_deps: bool = False,
+    verbose: bool = False
+) -> int {
+    import from jaclang.project.config { JacConfig, get_config }
+    import from jaclang.project.pip_installer { JacPipInstaller }
+    import from jaclang.cli.console { console }
+    # Get config - use get_config() for current dir, or discover for custom path
+    if path == "." {
+        config = get_config();
+        if config is None {
+            console.error(
+                "No jac.toml found", hint="Run 'jac create' to create a project."
+            );
+            return 1;
+        }
+        project_path = config.project_root;
+    } else {
+        project_path = Path(path).resolve();
+        if not project_path.exists() {
+            console.error(f"Path does not exist: {project_path}");
+            return 1;
+        }
+        if project_path.is_file() {
+            project_path = project_path.parent;
+        }
+        config = JacConfig.discover(project_path);
+        if config is None {
+            console.error(
+                f"No jac.toml found in {project_path}",
+                hint="Run 'jac create' to initialize a new project."
+            );
+            return 1;
+        }
+    }
+    # Parse extras
+    extra_groups: list[str] = [];
+    if extras {
+        extra_groups = [
+            e.strip()
+            for e in extras.split(",")
+            if e.strip()
+        ];
+    }
+    # Include dev dependencies if --dev flag is set
+    if dev and "dev" not in extra_groups {
+        extra_groups.append("dev");
+    }
+    # Create installer and run installation
+    installer = JacPipInstaller(
+        config=config, project_path=project_path, verbose=verbose
+    );
+    console.print(
+        f"\n📦 Installing [cyan]{config.project.name}[/cyan] v{config.project.version} in editable mode",
+        style="bold"
+    );
+    console.print(f"  Project root: {project_path}", style="muted");
+    if extra_groups {
+        console.print(f"  Extras: {', '.join(extra_groups)}", style="muted");
+    }
+    console.print();
+    success = installer.install_editable(extras=extra_groups);
+    if success {
+        console.success(f"Installed '{config.project.name}' in editable mode");
+        console.print(
+            "\nChanges to source files will be reflected immediately.", style="muted"
+        );
+        return 0;
+    } else {
+        console.error("Installation failed");
+        return 1;
+    }
+}

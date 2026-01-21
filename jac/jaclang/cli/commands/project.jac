@@ -262,3 +262,57 @@ def clean(
     group="project"
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
+
+"""Install the current Jac project in editable/development mode.
+
+This command works similar to 'pip install -e .' but uses jac.toml
+configuration. It installs the project and all its dependencies,
+making the package available for import while allowing live code changes.
+"""
+@registry.command(
+    name="pip-install",
+    help="Install Jac project in editable mode (like pip install -e .)",
+    args=[
+        Arg.create(
+            "path",
+            kind=ArgKind.POSITIONAL,
+            default=".",
+            help="Path to project directory (default: current directory)"
+        ),
+        Arg.create(
+            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+        ),
+        Arg.create(
+            "extras",
+            default="",
+            help="Comma-separated optional dependency groups to install",
+            short="e"
+        ),
+        Arg.create(
+            "no_deps",
+            typ=bool,
+            default=False,
+            help="Skip installing dependencies",
+            short="n"
+        ),
+        Arg.create(
+            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac pip-install", "Install current project in editable mode"),
+        ("jac pip-install ./my-project", "Install project from path"),
+        ("jac pip-install --dev", "Include dev dependencies"),
+        ("jac pip-install -e tools,video", "Install with optional groups"),
+
+    ],
+    group="project"
+)
+def pip_install(
+    path: str = ".",
+    dev: bool = False,
+    extras: str = "",
+    no_deps: bool = False,
+    verbose: bool = False
+) -> int;

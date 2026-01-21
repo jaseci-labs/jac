@@ -23,16 +23,28 @@ impl DependencyInstaller.ensure_packages_dir -> None {
     }
 }
 
-impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
-    import subprocess;
-    import sys;
+impl DependencyInstaller._run_pip(
+    args: list[str],
+    cwd: Path | None = None,
+    verbose: bool = False,
+    stream_output: bool = False
+) -> tuple[int, str, str] {
     cmd = [sys.executable, "-m", "pip"] + args;
-    if self.verbose {
-        print(f"Running: {' '.join(cmd)}");
+    if verbose {
+        print(f"  Running: {' '.join(cmd)}");
     }
     try {
-        result = subprocess.run(cmd, capture_output=True, text=True);
-        return (result.returncode, result.stdout, result.stderr);
+        if stream_output {
+            # Stream output live to terminal (like native pip install)
+            result = subprocess.run(cmd, cwd=str(cwd) if cwd else None);
+            return (result.returncode, "", "");
+        } else {
+            # Capture output for programmatic use
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, cwd=str(cwd) if cwd else None
+            );
+            return (result.returncode, result.stdout, result.stderr);
+        }
     } except Exception as e {
         return (1, "", str(e));
     }
