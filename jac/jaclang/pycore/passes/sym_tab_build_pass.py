@@ -267,12 +267,13 @@ class SymTabBuildPass(UniPass):
 
         if ability := node.find_parent_of_type(uni.Ability):
             archetype = ability.method_owner
-        elif impl_def := node.find_parent_of_type(uni.ImplDef):
-            if archetype_sym := impl_def.parent_scope.lookup(
-                impl_def.target[0].sym_name
-            ):
-                name_of = archetype_sym.decl.name_of
-                archetype = name_of if isinstance(name_of, uni.Archetype) else None
+        elif (
+            (impl_def := node.find_parent_of_type(uni.ImplDef))
+            and impl_def.parent_scope
+            and (archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name))
+        ):
+            name_of = archetype_sym.decl.name_of
+            archetype = name_of if isinstance(name_of, uni.Archetype) else None
 
         if archetype and isinstance(archetype, uni.Archetype):
             archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
