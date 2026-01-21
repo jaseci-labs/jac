@@ -1566,10 +1566,10 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(watch: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
-    if not watch {
+    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import from jaclang.cli.console { console }

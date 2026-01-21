@@ -1559,8 +1559,8 @@ class TestJacScaleServe:
         assert old_password_response.status_code == 401
 
 
-class TestJacScaleServeWatchMode:
-    """Test jac-scale serve with --watch mode (dynamic routing).
+class TestJacScaleServeDevMode:
+    """Test jac-scale serve with --dev mode (dynamic routing).
 
     This tests that the dynamic routing endpoints correctly parse request body
     parameters, which is essential for HMR support.
@@ -1586,7 +1586,7 @@ class TestJacScaleServeWatchMode:
 
         cls._cleanup_db_files()
         cls.server_process = None
-        cls._start_server_watch_mode()
+        cls._start_server_dev_mode()
 
     @classmethod
     def teardown_class(cls) -> None:
@@ -1604,17 +1604,17 @@ class TestJacScaleServeWatchMode:
         cls._cleanup_db_files()
 
     @classmethod
-    def _start_server_watch_mode(cls) -> None:
-        """Start the jac-scale server in watch mode (dynamic routing).
+    def _start_server_dev_mode(cls) -> None:
+        """Start the jac-scale server in dev mode (dynamic routing).
 
-        In watch mode, the REST API runs on port+1 while Vite runs on port.
+        In dev mode, the REST API runs on port+1 while Vite runs on port.
         We connect directly to the REST API port to avoid Vite dependency issues.
         """
         import sys
 
         jac_executable = Path(sys.executable).parent / "jac"
         # Use --api-only to skip Vite dev server (if supported), otherwise use base port
-        # The REST API in watch mode runs on base_port + 1
+        # The REST API in dev mode runs on base_port + 1
         vite_port = cls.port
         api_port = cls.port + 1
         cls.base_url = f"http://localhost:{api_port}"
@@ -1625,7 +1625,7 @@ class TestJacScaleServeWatchMode:
             str(cls.test_file),
             "--port",
             str(vite_port),
-            "--watch",  # Enable watch mode for dynamic routing
+            "--dev",  # Enable dev mode for dynamic routing
         ]
 
         cls.server_process = subprocess.Popen(
@@ -1651,7 +1651,7 @@ class TestJacScaleServeWatchMode:
                 response = requests.get(f"{cls.base_url}/docs", timeout=2)
                 if response.status_code in (200, 404):
                     print(
-                        f"Watch mode server started successfully on API port {api_port}"
+                        f"Dev mode server started successfully on API port {api_port}"
                     )
                     server_ready = True
                     break
@@ -1667,7 +1667,7 @@ class TestJacScaleServeWatchMode:
                 stdout, stderr = cls.server_process.communicate()
 
             raise RuntimeError(
-                f"Server failed to start in watch mode after {max_attempts} attempts.\n"
+                f"Server failed to start in dev mode after {max_attempts} attempts.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
             )
 
@@ -1709,8 +1709,8 @@ class TestJacScaleServeWatchMode:
                 return {"error": error_info.get("message", "Unknown error")}
         return json_response
 
-    def test_watch_mode_walker_body_parsing(self) -> None:
-        """Test that walkers in watch mode correctly parse request body parameters.
+    def test_dev_mode_walker_body_parsing(self) -> None:
+        """Test that walkers in dev mode correctly parse request body parameters.
 
         This is a regression test for the fix where dynamic routing endpoints
         weren't parsing JSON body content into walker fields.
@@ -1718,7 +1718,7 @@ class TestJacScaleServeWatchMode:
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1740,12 +1740,12 @@ class TestJacScaleServeWatchMode:
         # Verify the walker received and processed the body parameters
         assert "result" in data or "reports" in data, f"Unexpected response: {data}"
 
-    def test_watch_mode_function_body_parsing(self) -> None:
-        """Test that functions in watch mode correctly parse request body parameters."""
+    def test_dev_mode_function_body_parsing(self) -> None:
+        """Test that functions in dev mode correctly parse request body parameters."""
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1768,8 +1768,8 @@ class TestJacScaleServeWatchMode:
         assert "result" in data, f"Expected 'result' in response: {data}"
         assert data["result"] == 100, f"Expected 100, got {data['result']}"
 
-    def test_watch_mode_public_walker_no_auth(self) -> None:
-        """Test that public walkers work without auth in watch mode."""
+    def test_dev_mode_public_walker_no_auth(self) -> None:
+        """Test that public walkers work without auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PublicInfo",
             json={},
@@ -1781,8 +1781,8 @@ class TestJacScaleServeWatchMode:
         assert "reports" in data
         assert data["reports"][0]["message"] == "This is a public endpoint"
 
-    def test_watch_mode_private_walker_requires_auth(self) -> None:
-        """Test that private walkers require auth in watch mode."""
+    def test_dev_mode_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},

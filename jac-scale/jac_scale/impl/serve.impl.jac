@@ -57,10 +57,10 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
+impl JacAPIServer.start(self: JacAPIServer, dev: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
-    if not watch {
+    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
@@ -97,7 +97,7 @@ impl JacAPIServer.start(self: JacAPIServer, watch: bool = False) -> None {
     self.register_update_username_endpoint();
     self.register_update_password_endpoint();
     # Use dynamic routing for HMR support, static routing for production
-    if watch {
+    if dev {
         self.register_dynamic_walker_endpoint();
         self.register_dynamic_function_endpoint();
         self.register_dynamic_introspection_endpoints();
