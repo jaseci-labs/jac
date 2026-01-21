@@ -133,7 +133,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
             print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
-            self._emit_client_error_overlay(file_path, errors);            
+            self._emit_client_error_overlay(file_path, errors);
             Jac.program.errors_had.clear();
             return;
         }
