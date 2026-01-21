@@ -129,6 +129,16 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Compile the file (this generates JS as part of the compilation)
         mod = Jac.program.compile(source_key);
 
+        # Check for compilation errors
+        if Jac.program.errors_had {
+            errors = '\n'.join(str(err) for err in Jac.program.errors_had);
+            print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
+            self._emit_client_error_overlay(file_path, errors);
+            self._overlay_entry = True;
+            Jac.program.errors_had.clear();
+            return;
+        }
+
         # If there were previous errors, we need to update the entry point
         if self._overlay_entry {
             output_base = Path(self.base_path) / self._client_output_dir;
@@ -140,16 +150,6 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
             output_path.write_text(entry_content, encoding='utf-8');
             print(f"[HMR] Update entry: {output_path}", flush=True);
             self._overlay_entry = False;
-        }
-
-        # Check for compilation errors
-        if Jac.program.errors_had {
-            errors = '\n'.join(str(err) for err in Jac.program.errors_had);
-            print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
-            self._emit_client_error_overlay(file_path, errors);
-            self._overlay_entry = True;
-            Jac.program.errors_had.clear();
-            return;
         }
 
         # Get the generated JS code
