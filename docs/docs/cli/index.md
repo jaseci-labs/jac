@@ -133,6 +133,13 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
 | `-l, --list-jacpacks` | List available jacpack templates | `False` |
 
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-c, --cl` | Use client template (shorthand for `--use client`) | `False` |
+| `-s, --skip` | Skip npm package installation after creation | `False` |
+
 **Examples:**
 
 ```bash
@@ -142,6 +149,9 @@ cd myapp
 
 # Create full-stack project with client template
 jac create myapp --use client
+
+# Create client project (shorthand, requires jac-client)
+jac create myapp --cl
 
 # Create from a local .jacpack file
 jac create myapp --use ./my-template.jacpack
@@ -530,7 +540,7 @@ jac destroy main.jac
 Add packages to your project's dependencies.
 
 ```bash
-jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
+jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 ```
 
 | Option | Description | Default |
@@ -538,8 +548,13 @@ jac add [-h] [-d] [-g GIT] [-c] [-v] [packages ...]
 | `packages` | Package names to add | None |
 | `-d, --dev` | Add as dev dependency | `False` |
 | `-g, --git` | Git repository URL | None |
-| `-c, --cl` | Add as client (frontend) package | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--cl` | Add as client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -556,7 +571,7 @@ jac add pytest --dev
 # Add from git repository
 jac add --git https://github.com/user/package.git
 
-# Add client-side (npm) package
+# Add client-side (npm) package (requires jac-client)
 jac add react --cl
 ```
 
@@ -595,12 +610,19 @@ jac install -v
 Remove packages from your project's dependencies.
 
 ```bash
-jac remove [-h] [packages ...]
+jac remove [-h] [-d] [packages ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `packages` | Package names to remove | None |
+| `-d, --dev` | Remove from dev dependencies | `False` |
+
+**With jac-client plugin:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--cl` | Remove client-side (npm) package | `False` |
 
 **Examples:**
 
@@ -610,6 +632,12 @@ jac remove requests
 
 # Remove multiple packages
 jac remove numpy pandas
+
+# Remove dev dependency
+jac remove pytest --dev
+
+# Remove client-side package (requires jac-client)
+jac remove react --cl
 ```
 
 ---

@@ -16,9 +16,12 @@ cd my-project
 The `jac create` command supports several options:
 
 - `-f, --force`: Overwrite existing `jac.toml` if present
-- `-c, --cl`: Include client-side (frontend) setup with Vite bundling
+- `-u, --use`: Jacpac template: registered name, file path, or URL
+
+**With jac-client plugin:**
+
+- `-c, --cl`: Include client-side (frontend) setup with Vite bundling (shorthand for `--use client`)
 - `-s, --skip`: Skip installing default packages (only for `--cl` projects)
-- `-v, --verbose`: Show detailed output during package installation
 
 Examples:
 
