@@ -124,3 +124,20 @@ def test_compr_unpacking_variables() -> None:
         assert isinstance(scope, expected_type), (
             f"Scope {scope_idx}: expected type {expected_type}, got {type(scope)}"
         )
+
+def test_except_variable_registration() -> None:
+    """Test that exception variables (as clause) are registered in except block symbol table."""
+    file_path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "symtab_build_tests",
+        "symtab_features.jac",
+    )
+    mod = JacProgram().compile(file_path)
+
+    try_stmt = mod.sym_tab.kid_scope[0]
+    except_clause = try_stmt.kid_scope[0]
+
+    assert "e" in except_clause.names_in_scope, (
+        "Exception variable 'e' should be registered in except block symbol table"
+    )
