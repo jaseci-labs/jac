@@ -1,28 +1,94 @@
 name: Release jac-client to PYPI
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.5)'
+        required: true
+        type: string
 
 jobs:
   release-client:
-    name: Release
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: jac-client
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           submodules: true
+          token: ${{ secrets.PAT_TOKEN }}
+
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.12'
-      - name: Install build tools
+
+      - name: Install tools
         run: |
-          pip install build twine
+          pip install build twine tomlkit
+
+      - name: Get jaclang version and update pyproject.toml
+        run: |
+          python << 'EOF'
+          import tomlkit
+
+          # Read jaclang version
+          with open('jac/pyproject.toml', 'r') as f:
+              jac_data = tomlkit.load(f)
+          jaclang_version = jac_data['project']['version']
+          print(f"Found jaclang version: {jaclang_version}")
+
+          # Update jac-client pyproject.toml
+          with open('jac-client/pyproject.toml', 'r') as f:
+              data = tomlkit.load(f)
+
+          data['project']['version'] = '${{ inputs.version }}'
+
+          # Update jaclang dependency
+          dependencies = data['project']['dependencies']
+          for i, dep in enumerate(dependencies):
+              if dep.startswith('jaclang'):
+                  dependencies[i] = f'jaclang~={jaclang_version}'
+                  print(f"Updated jaclang dependency to ~={jaclang_version}")
+                  break
+
+          with open('jac-client/pyproject.toml', 'w') as f:
+              tomlkit.dump(data, f)
+
+          print(f"Updated jac-client version to ${{ inputs.version }}")
+          EOF
+
+      - name: Update release notes
+        run: |
+          RELEASE_NOTES="docs/docs/communityhub/release_notes/jac-client.md"
+          VERSION="${{ inputs.version }}"
+
+          # Calculate next version for unreleased section
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          NEXT_VERSION="$major.$minor.$((patch + 1))"
+
+          # Remove (Latest Release) from any existing version
+          sed -i 's/ (Latest Release)//g' "$RELEASE_NOTES"
+
+          # Update the unreleased version to the new version with (Latest Release)
+          sed -i "s/## Jac-Client .* (Unreleased)/## Jac-Client $VERSION (Latest Release)/" "$RELEASE_NOTES"
+
+          # Add new unreleased section at the top
+          sed -i "/^## Jac-Client $VERSION (Latest Release)/i ## Jac-Client $NEXT_VERSION (Unreleased)\n" "$RELEASE_NOTES"
+
+          echo "Updated release notes for version $VERSION"
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add jac-client/pyproject.toml docs/docs/communityhub/release_notes/jac-client.md
+          git commit -m "chore: bump jac-client version to ${{ inputs.version }}"
+          git push
+
       - name: Build and publish package
+        working-directory: jac-client
         run: |
           python -m build
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
