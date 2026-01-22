@@ -482,22 +482,25 @@ def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundl
         config = json.load(f);
     }
     
-    # Calculate relative path from tauri_dir to web bundle
+    # Calculate relative path from tauri_dir to dist directory (not the bundle file)
+    # web_bundle_path is the JS file, but frontendDist needs the directory containing index.html
+    dist_dir = web_bundle_path.parent;
+    
     try {
-        # Web bundle is typically in .jac/client/dist
+        # Dist directory is typically in .jac/client/dist
         # Relative to src-tauri, that's ../.jac/client/dist
-        dist_relative = web_bundle_path.relative_to(project_dir);
+        dist_relative = dist_dir.relative_to(project_dir);
         dist_relative_str = "../" + str(dist_relative.as_posix());
     } except ValueError {
         # If paths don't share a common root, use absolute path
-        dist_relative_str = str(web_bundle_path.as_posix());
+        dist_relative_str = str(dist_dir.as_posix());
     }
     
     # Update build config (Tauri v2 structure)
     if "build" not in config {
         config["build"] = {};
     }
-    # Tauri v2 uses 'frontendDist' instead of 'distDir'
+    # Tauri v2 uses 'frontendDist' to point to the directory containing index.html
     config["build"]["frontendDist"] = dist_relative_str;
     # Remove devUrl and other invalid properties
     if "devUrl" in config["build"] {
