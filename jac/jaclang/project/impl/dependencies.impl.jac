@@ -72,52 +72,11 @@ When using pip install --target, old versions can accumulate. This function
 removes all traces of a package before reinstalling to ensure a clean state.
 """
 impl DependencyInstaller._cleanup_old_package(name: str) -> None {
-    import shutil;
-    if not self.packages_dir or not self.packages_dir.exists() {
-        return;
-    }
-    # Normalize package name (pip uses underscores internally)
-    normalized_name = name.lower().replace("-", "_");
-    # Patterns to match for removal:
-    # - package_name/ (the actual package directory)
-    # - package_name-version.dist-info/ (pip metadata)
-    # - package_name-version.egg-info/ (setuptools metadata)
-    # - package_name-version.data/ (data files)
-    to_remove: list[Path] = [];
-    for item in self.packages_dir.iterdir() {
-        if not item.is_dir() {
-            continue;
-        }
-        item_name_lower = item.name.lower();
-        item_stem_lower = item.stem.lower();
-
-        # Check for exact package directory match
-        if item_name_lower == normalized_name or item_name_lower == name.lower() {
-            to_remove.append(item);
-            continue;
-        }
-
-        # Check for versioned metadata directories (.dist-info, .egg-info, .data)
-        if item.suffix in (".dist-info", ".egg-info", ".data") {
-            # Format: package_name-version.suffix
-            if item_stem_lower.startswith(f"{normalized_name}-") {
-                to_remove.append(item);
-            }
-        }
-    }
-    # Remove all matching directories
-    for item in to_remove {
-        try {
-            shutil.rmtree(item);
-            if self.verbose {
-                print(f"  Cleaned up: {item.name}");
-            }
-        } except Exception as e {
-            if self.verbose {
-                print(f"  Warning: Could not remove {item.name}: {e}");
-            }
-        }
-    }
+    # Temporarily disable verbose to avoid duplicate messages
+    old_verbose = self.verbose;
+    self.verbose = False;
+    self.uninstall_package(name);
+    self.verbose = old_verbose;
 }
 
 impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
@@ -175,45 +134,48 @@ impl DependencyInstaller.install_git_package(
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
     import shutil;
     import sys;
-    package_dir = self.packages_dir / name;
-    package_info_dir = None;
-    for item in self.packages_dir.iterdir() {
-        if item.name.lower() == name.lower().replace("-", "_") {
-            package_dir = item;
-            break;
-        }
-        if (
-            item.name.lower().startswith(f"{name.lower().replace('-', '_')}-")
-            and item.suffix == ".dist-info"
-        ) {
-            package_info_dir = item;
-        }
-    }
-    removed = False;
-    if package_dir.exists() {
-        print(f"Removing {name}...");
-        try {
-            shutil.rmtree(package_dir);
-            removed = True;
-        } except Exception as e {
-            print(f"  Failed to remove {name}: {e}", file=sys.stderr);
-        }
-    }
-    if package_info_dir and package_info_dir.exists() {
-        try {
-            shutil.rmtree(package_info_dir);
-            removed = True;
-        } except Exception as e {
-            print(f"  Failed to remove {name} metadata: {e}", file=sys.stderr);
-        }
-    }
-    if removed {
-        print(f"  {name} removed successfully");
-        return True;
-    } else {
+    if not self.packages_dir or not self.packages_dir.exists() {
         print(f"  Package {name} not found in packages directory", file=sys.stderr);
         return False;
     }
+    normalized_name = name.lower().replace("-", "_");
+    to_remove: list[Path] = [];
+    for item in self.packages_dir.iterdir() {
+        if not item.is_dir() {
+            continue;
+        }
+        item_name_lower = item.name.lower().replace("-", "_");
+        # Check for exact package directory match
+        if item_name_lower == normalized_name {
+            to_remove.append(item);
+            continue;
+        }
+        # Check for versioned metadata directories (.dist-info, .egg-info, .data)
+        if item.suffix in (".dist-info", ".egg-info", ".data") {
+            # Normalize stem: replace - with _ for package name comparison
+            item_stem_lower = item.stem.lower().replace("-", "_");
+            if item_stem_lower.startswith(f"{normalized_name}_") {
+                to_remove.append(item);
+            }
+        }
+    }
+    if not to_remove {
+        print(f"  Package {name} not found in packages directory", file=sys.stderr);
+        return False;
+    }
+    print(f"Removing {name}...");
+    for item in to_remove {
+        try {
+            shutil.rmtree(item);
+            if self.verbose {
+                print(f"  Removed: {item.name}");
+            }
+        } except Exception as e {
+            print(f"  Failed to remove {item.name}: {e}", file=sys.stderr);
+        }
+    }
+    print(f"  {name} removed successfully");
+    return True;
 }
 
 impl DependencyInstaller.is_installed(name: str) -> bool {
