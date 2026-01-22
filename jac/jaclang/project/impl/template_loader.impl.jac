@@ -23,6 +23,22 @@ import from jaclang.project.template_registry { ProjectTemplate }
 import json;
 import tomllib;
 import importlib;
+import base64;
+
+# ===============================================================================
+# Helper: Read file content (text or binary)
+# ===============================================================================
+"""Read a file's content, returning text or base64-encoded binary."""
+def _read_file_content(file_path: Path) -> str {
+    try {
+        return file_path.read_text();
+    } except UnicodeDecodeError {
+        # Binary file - read as bytes and base64 encode
+        binary_content = file_path.read_bytes();
+        encoded = base64.b64encode(binary_content).decode("ascii");
+        return "base64:" + encoded;
+    }
+}
 
 # ===============================================================================
 # Load Template from Directory
@@ -86,7 +102,7 @@ impl load_template_from_directory(
             for file_path in template_dir.glob(pattern) {
                 if file_path.is_file() and file_path.name != "jac.toml" {
                     relative_path = str(file_path.relative_to(template_dir));
-                    files[relative_path] = file_path.read_text();
+                    files[relative_path] = _read_file_content(file_path);
                 }
             }
         }
@@ -99,7 +115,7 @@ impl load_template_from_directory(
                 if relative_path != "jac.toml"
                 and not relative_path.startswith(".")
                 and "/." not in relative_path {
-                    files[relative_path] = file_path.read_text();
+                    files[relative_path] = _read_file_content(file_path);
                 }
             }
         }
