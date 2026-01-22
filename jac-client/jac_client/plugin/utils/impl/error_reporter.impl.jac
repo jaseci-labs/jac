@@ -19,7 +19,9 @@ impl BundleErrorReporter._resolve_jac_source(compiled_path: str) -> (str | None)
     return None;
 }
 
-impl BundleErrorReporter._extract_identifier(raw_error: str, error_type: str) -> (str | None) {
+impl BundleErrorReporter._extract_identifier(
+    raw_error: str, error_type: str
+) -> (str | None) {
     # Generic: find first quoted string (single or double quotes)
     m = re.search(r'["\']([^"\']+)["\']', raw_error);
     return m.group(1) if m else None;
@@ -36,7 +38,8 @@ impl BundleErrorReporter._classify_error(raw_error: str) -> str {
     if 'module not found' in error_lower or 'cannot find module' in error_lower {
         return 'ModuleNotFound';
     }
-    if 'not exported' in error_lower or ('export' in error_lower and 'not found' in error_lower) {
+    if 'not exported' in error_lower
+    or ('export' in error_lower and 'not found' in error_lower) {
         return 'ExportNotFound';
     }
     if 'unexpected token' in error_lower or 'syntaxerror' in error_lower {
@@ -45,7 +48,9 @@ impl BundleErrorReporter._classify_error(raw_error: str) -> str {
     return 'CompilationError';
 }
 
-impl BundleErrorReporter._get_suggestion(error_type: str, identifier: (str | None)) -> (str | None) {
+impl BundleErrorReporter._get_suggestion(
+    error_type: str, identifier: (str | None)
+) -> (str | None) {
     id_str = f"'{identifier}'" if identifier else "the symbol";
     suggestions = {
         'DuplicateImport': f"Remove duplicate 'cl import' of {id_str} in your .jac file.",
@@ -77,7 +82,11 @@ impl BundleErrorReporter._extract_file_info(raw_error: str) -> tuple {
         return (m.group(1), int(m.group(2)), int(m.group(3)));
     }
     # Pattern 2: Vite JSON - "file": "path", "line": N, "column": N
-    m = re.search(r'"file":\s*"([^"]+)".*?"line":\s*(\d+).*?"column":\s*(\d+)', raw_error, re.DOTALL);
+    m = re.search(
+        r'"file":\s*"([^"]+)".*?"line":\s*(\d+).*?"column":\s*(\d+)',
+        raw_error,
+        re.DOTALL
+    );
     if m {
         return (m.group(1), int(m.group(2)), int(m.group(3)));
     }
@@ -101,9 +110,21 @@ impl BundleErrorReporter._extract_message(raw_error: str) -> str {
             continue;
         }
         # Found a real error line
-        if any(kw in line.lower() for kw in ['could not', 'cannot', 'error', 'failed', 'not found', 'unexpected']) {
+        if any(
+            kw in line.lower()
+            for kw in [
+                'could not',
+                'cannot',
+                'error',
+                'failed',
+                'not found',
+                'unexpected'
+            ]
+        ) {
             msg = re.sub(r'\x1b\[[0-9;]*m', '', line);  # Strip ANSI
-            msg = re.sub(r'^(error:|npm error|npm ERR!)\s*', '', msg, flags=re.IGNORECASE);
+            msg = re.sub(
+                r'^(error:|npm error|npm ERR!)\s*', '', msg, flags=re.IGNORECASE
+            );
             return msg.strip();
         }
     }
@@ -114,13 +135,11 @@ impl BundleErrorReporter.parse_error(raw_error: str) -> BundleError {
     error_type = self._classify_error(raw_error);
     message = self._extract_message(raw_error);
     (compiled_path, line, column) = self._extract_file_info(raw_error);
-
     file_path = None;
     if compiled_path {
         jac_source = self._resolve_jac_source(compiled_path);
         file_path = jac_source or compiled_path;
     }
-
     identifier = self._extract_identifier(raw_error, error_type);
     return BundleError(
         error_type=error_type,
