@@ -23,7 +23,7 @@ Jac is a programming language that extends Python with powerful capabilities for
 ### Step 1: Install
 
 ```bash
-pip install jaclang[all]
+pip install jaseci
 ```
 
 ### Step 2: Create Your First Program

@@ -28,7 +28,9 @@ Jac is a programming language that extends Python with powerful capabilities for
 ## Quick Install
 
 ```bash
-pip install jaclang[all]
+pip install jaseci
 ```
+
+This meta-package bundles the Jac language with all plugins (`byllm`, `jac-client`, `jac-scale`, `jac-super`).
 
 [Get started now](quick-guide/index.md){ .md-button .md-button--primary }

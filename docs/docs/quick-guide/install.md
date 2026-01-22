@@ -14,10 +14,10 @@ Get Jac installed and ready to use in under 2 minutes.
 ## Quick Install
 
 ```bash
-pip install jaclang[all]
+pip install jaseci
 ```
 
-This installs:
+The `jaseci` package is a meta-package that bundles all Jac ecosystem packages together. This installs:
 
 - `jaclang` - The Jac language and compiler
 - `byllm` - AI/LLM integration
@@ -71,7 +71,7 @@ source jac-env/bin/activate   # Linux/Mac
 jac-env\Scripts\activate      # Windows
 
 # Install Jac
-pip install jaclang[all]
+pip install jaseci
 ```
 
 ---
@@ -166,7 +166,7 @@ export PATH="$PATH:$(python -c 'import site; print(site.USER_BASE)')/bin"
 Use `--user` flag:
 
 ```bash
-pip install --user jaclang[all]
+pip install --user jaseci
 ```
 
 ### Conflicting Packages

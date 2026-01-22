@@ -9,7 +9,7 @@ Create a Jac project with frontend and backend in one codebase.
 ## Prerequisites
 
 ```bash
-pip install jaclang[all]  # Includes jac-client
+pip install jaseci  # Includes jac-client
 ```
 
 ---

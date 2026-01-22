@@ -77,7 +77,7 @@ Complete applications to study and learn from.
 
 Before starting tutorials, ensure you have:
 
-- [x] Jac installed (`pip install jaclang[all]`)
+- [x] Jac installed (`pip install jaseci`)
 - [x] Completed the [Quick Guide](../quick-guide/index.md)
 - [x] A code editor (VS Code with Jac extension recommended)
 

@@ -16,13 +16,13 @@ Jac extends its capabilities through a plugin ecosystem. These plugins provide A
 
 ## Quick Installation
 
-Install all plugins:
+Install all plugins via the `jaseci` meta-package:
 
 ```bash
-pip install jaclang[all]
+pip install jaseci
 ```
 
-Or individually:
+This bundles `jaclang` with all official plugins. Or install individually:
 
 ```bash
 pip install byllm        # AI integration
