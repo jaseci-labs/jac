@@ -121,6 +121,7 @@ def test_except_variable_registration() -> None:
         "Exception variable 'e' should be registered in except block symbol table"
     )
 
+
 def test_impl_self_assignment() -> None:
     """Test that self.attr assignments in impl blocks register in archetype symbol table."""
     file_path = get_fixture_path("impl_self_assignment.jac")
