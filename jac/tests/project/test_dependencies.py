@@ -188,6 +188,37 @@ class TestDependencyInstaller:
         assert "requests" in installed
         assert "numpy" in installed
 
+    def test_get_installed_version(self, temp_project: Path) -> None:
+        """Test getting installed package version."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        # Create fake dist-info directories with version info
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
+        (packages_dir / "requests-2.28.0.dist-info").mkdir()
+        (packages_dir / "numpy-1.24.0.dist-info").mkdir()
+        (packages_dir / "my-package-3.2.1.dist-info").mkdir()
+
+        # Test getting versions
+        assert installer.get_installed_version("requests") == "2.28.0"
+        assert installer.get_installed_version("numpy") == "1.24.0"
+        assert installer.get_installed_version("my-package") == "3.2.1"
+        
+        # Test package not installed
+        assert installer.get_installed_version("nonexistent") == ""
+
+    def test_get_installed_version_with_hyphens(self, temp_project: Path) -> None:
+        """Test getting version for packages with hyphens in name."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
+        (packages_dir / "my-cool-package-1.2.3.dist-info").mkdir()
+
+        assert installer.get_installed_version("my-cool-package") == "1.2.3"
+
 
 class TestDependencyResolver:
     """Tests for the DependencyResolver class."""

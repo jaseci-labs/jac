@@ -456,11 +456,24 @@ impl add(
     console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
     for pkg_spec in packages {
         (name, version) = resolver.parse_spec(pkg_spec);
-        version_str = version or ">=0.0.0";
         with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
             pkg_success = installer.install_package(name, version);
         }
         if pkg_success {
+            # Determine version to save in jac.toml
+            if version {
+                # User specified a version constraint, use it
+                version_str = version;
+            } else {
+                # No version specified, get the actual installed version
+                installed_version = installer.get_installed_version(name);
+                if installed_version {
+                    version_str = f"=={installed_version}";
+                } else {
+                    # Fallback if we can't determine the version
+                    version_str = ">=0.0.0";
+                }
+            }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
             console.print(f"  ✔ {name}", style="success");
         } else {
