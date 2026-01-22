@@ -74,6 +74,22 @@ impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
         raise RuntimeError(f"Failed to generate icons: {e}");
     }
     
+    # Update tauri.conf.json to include icons
+    try {
+        config_path = tauri_dir / "tauri.conf.json";
+        if config_path.exists() {
+            with open(config_path, "r") as f {
+                config = json.load(f);
+            }
+            _populate_icon_array(tauri_dir, config);
+            with open(config_path, "w") as f {
+                json.dump(config, f, indent=2);
+            }
+        }
+    } except Exception as e {
+        console.warning(f"  Failed to update icon array in tauri.conf.json: {e}");
+    }
+    
     # Generate main.rs
     try {
         _generate_main_rs(tauri_dir);
@@ -242,33 +258,102 @@ def _generate_default_icons(tauri_dir: Path) -> None {
     icons_dir = tauri_dir / "icons";
     icons_dir.mkdir(exist_ok=True);
     
-    # Create a minimal 1x1 PNG icon as placeholder
-    # This is a base64-encoded minimal PNG (1x1 transparent pixel)
-    # PNG header + minimal IHDR + IEND chunks
-    minimal_png = bytes([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-        0x00, 0x00, 0x00, 0x0D,  # IHDR chunk length
-        0x49, 0x48, 0x44, 0x52,  # IHDR
-        0x00, 0x00, 0x00, 0x01,  # width = 1
-        0x00, 0x00, 0x00, 0x01,  # height = 1
-        0x08, 0x06, 0x00, 0x00, 0x00,  # bit depth, color type, etc.
-        0x1F, 0x15, 0xC4, 0x89,  # CRC
-        0x00, 0x00, 0x00, 0x0A,  # IDAT chunk length
-        0x49, 0x44, 0x41, 0x54,  # IDAT
-        0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,  # minimal zlib data
-        0x0D, 0x0A, 0x2D, 0xB4,  # CRC
-        0x00, 0x00, 0x00, 0x00,  # IEND chunk length
-        0x49, 0x45, 0x4E, 0x44,  # IEND
-        0xAE, 0x42, 0x60, 0x82   # CRC
-    ]);
-    
-    # Write icon.png (Tauri will use this and generate other sizes if needed)
+    # Create a 1024x1024 PNG icon as placeholder (AppImage requires square icons, 1024x1024 recommended)
+    # Try using PIL/Pillow first (most common), then fallback to subprocess with ImageMagick/convert,
+    # finally use a simple Python-based PNG generator
     icon_path = icons_dir / "icon.png";
-    with open(icon_path, "wb") as f {
-        f.write(minimal_png);
+    
+    # Method 1: Try using Python with PIL to generate icon
+    try {
+        import subprocess;
+        # Use Python to create a 1024x1024 PNG using PIL if available
+        python_code = '''
+import sys
+try:
+    from PIL import Image, ImageDraw
+    size = 1024
+    img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([20, 20, size-20, size-20], outline=(255, 255, 255, 255), width=10)
+    img.save(sys.argv[1], "PNG")
+    sys.exit(0)
+except ImportError:
+    sys.exit(1)
+''';
+        result = subprocess.run(
+            ["python3", "-c", python_code, str(icon_path)],
+            capture_output=True,
+            check=True,
+            timeout=5
+        );
+        console.print("  ✔ Generated default icon (1024x1024)", style="success");
+        console.warning("  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)");
+        return;
+    } except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) {
+        # PIL not available, try next method
     }
     
-    console.print("  ✔ Generated default icons", style="success");
+    # Method 2: Try ImageMagick convert command
+    try {
+        import subprocess;
+        # Create a 1024x1024 solid blue PNG with alpha channel using ImageMagick
+        result = subprocess.run(
+            ["convert", "-size", "1024x1024", "xc:#428BCA", "-alpha", "set", "-channel", "RGBA", str(icon_path)],
+            capture_output=True,
+            check=True,
+            timeout=5
+        );
+        console.print("  ✔ Generated default icon (1024x1024)", style="success");
+        console.warning("  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)");
+        return;
+    } except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) {
+        # ImageMagick not available, try next method
+    }
+    
+    # Method 3: Fallback - create a minimal but valid 1024x1024 PNG using Python
+    # This creates a simple solid color PNG
+    import struct;
+    import zlib;
+    
+    width = 1024;
+    height = 1024;
+    
+    # PNG signature
+    png = bytearray([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    
+    # IHDR chunk - RGBA, 8-bit per channel (color type 6 = RGBA)
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0);
+    ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data) & 0xffffffff;
+    png.extend(struct.pack(">I", 13));
+    png.extend(b"IHDR");
+    png.extend(ihdr_data);
+    png.extend(struct.pack(">I", ihdr_crc));
+    
+    # IDAT chunk - solid blue color with alpha (RGBA: 66, 139, 202, 255 = #428BCA)
+    # PNG scanlines: each row is prefixed with filter byte (0 = none)
+    row_size = width * 4;  # RGBA = 4 bytes per pixel
+    scanline = bytes([0]) + bytes([66, 139, 202, 255]) * width;  # Filter byte + RGBA data
+    image_data = scanline * height;
+    
+    # Compress
+    compressed = zlib.compress(image_data, level=9);
+    idat_crc = zlib.crc32(b"IDAT" + compressed) & 0xffffffff;
+    png.extend(struct.pack(">I", len(compressed)));
+    png.extend(b"IDAT");
+    png.extend(compressed);
+    png.extend(struct.pack(">I", idat_crc));
+    
+    # IEND chunk
+    png.extend(struct.pack(">I", 0));
+    png.extend(b"IEND");
+    png.extend(struct.pack(">I", 0xAE426082));
+    
+    # Write icon.png
+    with open(icon_path, "wb") as f {
+        f.write(png);
+    }
+    
+    console.print("  ✔ Generated default icon (1024x1024)", style="success");
     console.warning("  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)");
 }
 
@@ -455,6 +540,50 @@ impl DesktopTarget.build(
     web_bundle_path = web_target.build(entry_file, project_dir, platform);
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
     
+    # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
+    icon_path = tauri_dir / "icons" / "icon.png";
+    if icon_path.exists() {
+        try {
+            # Try to check icon size and squareness using PIL
+            import subprocess;
+            check_code = '''
+import sys
+from PIL import Image
+try:
+    img = Image.open(sys.argv[1])
+    # AppImage requires square icons, and 1024x1024 is recommended
+    if img.width != img.height or img.width < 512:
+        sys.exit(1)  # Not square or too small
+    # Verify it's RGBA format
+    if img.mode != "RGBA":
+        sys.exit(1)  # Not RGBA
+    sys.exit(0)  # Icon OK
+except:
+    sys.exit(1)  # Error or invalid
+''';
+            result = subprocess.run(
+                ["python3", "-c", check_code, str(icon_path)],
+                capture_output=True,
+                timeout=5
+            );
+            if result.returncode != 0 {
+                console.warning("  Icon is invalid or too small for AppImage, regenerating...");
+                # Delete old icon before regenerating
+                if icon_path.exists() {
+                    icon_path.unlink();
+                }
+                _generate_default_icons(tauri_dir);
+            }
+        } except Exception {
+            # If check fails, try to regenerate anyway
+            console.warning("  Could not verify icon, regenerating...");
+            _generate_default_icons(tauri_dir);
+        }
+    } else {
+        # Icon doesn't exist, generate it
+        _generate_default_icons(tauri_dir);
+    }
+    
     # Step 2: Update tauri.conf.json to point to web bundle
     console.print("  Step 2: Updating Tauri configuration...", style="muted");
     _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
@@ -466,6 +595,35 @@ impl DesktopTarget.build(
     console.success(f"Desktop app built successfully!");
     console.print(f"  Output: {bundle_path}", style="muted");
     return bundle_path;
+}
+
+"""Populate icon array in tauri.conf.json from icons directory."""
+def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
+    # Populate icon array if empty or missing
+    if "bundle" not in config {
+        config["bundle"] = {};
+    }
+    if "icon" not in config["bundle"] or not config["bundle"]["icon"] or len(config["bundle"]["icon"]) == 0 {
+        # Scan icons directory for PNG files
+        icons_dir = tauri_dir / "icons";
+        icon_files = [];
+        if icons_dir.exists() {
+            for icon_file in icons_dir.iterdir() {
+                if icon_file.is_file() and icon_file.suffix.lower() == ".png" {
+                    # Path relative to tauri.conf.json (which is in tauri_dir)
+                    # So icons/icon.png is the correct relative path
+                    icon_rel_path = icon_file.relative_to(tauri_dir);
+                    icon_files.append(str(icon_rel_path.as_posix()));
+                }
+            }
+        }
+        # Sort to ensure consistent ordering (icon.png first if it exists)
+        icon_files.sort();
+        config["bundle"]["icon"] = icon_files;
+        if icon_files {
+            console.print(f"  ✔ Populated icon array with {len(icon_files)} icon(s)", style="success");
+        }
+    }
 }
 
 """Update tauri.conf.json to point to the built web bundle."""
@@ -519,6 +677,9 @@ def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundl
     if "beforeBuildCommand" in config["build"] and config["build"]["beforeBuildCommand"] is None {
         del config["build"]["beforeBuildCommand"];
     }
+    
+    # Populate icon array if empty or missing
+    _populate_icon_array(tauri_dir, config);
     
     # Write updated config
     with open(config_path, "w") as f {
@@ -732,6 +893,9 @@ def _update_tauri_config_for_dev(tauri_dir: Path) -> None {
     if "beforeBuildCommand" in config["build"] and config["build"]["beforeBuildCommand"] is None {
         del config["build"]["beforeBuildCommand"];
     }
+    
+    # Populate icon array if empty or missing
+    _populate_icon_array(tauri_dir, config);
     
     # Write updated config
     with open(config_path, "w") as f {
