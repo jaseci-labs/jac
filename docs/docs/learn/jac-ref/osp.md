@@ -1,26 +1,37 @@
 # Part III: Object-Spatial Programming (OSP)
 
+**In this part:**
+
+- [Introduction to OSP](#introduction-to-osp) - Concepts, motivation, core example
+- [Nodes](#nodes) - Node declaration, entry/exit abilities
+- [Edges](#edges) - Edge declaration, typed connections
+- [Walkers](#walkers) - Walker declaration, visit, report, disengage
+- [Graph Construction](#graph-construction) - Creating and connecting nodes
+- [Graph Traversal](#graph-traversal) - Filtered traversal, entry/exit events
+- [Data Spatial Queries](#data-spatial-queries) - Edge references, attribute filtering
+- [Typed Context Blocks](#typed-context-blocks) - Type-based dispatch
+
+---
+
 > **Related Sections:**
 >
-> - [Graph Operators](foundation.md#67-graph-operators-osp) - Connection and edge reference syntax
-> - [Pipe Operators](foundation.md#68-pipe-operators) - Spawn traversal modes
-> - [Data Spatial Queries](#17-data-spatial-queries) - Filtering and querying
-> - [Typed Context Blocks](#18-typed-context-blocks) - Type-based dispatch
+> - [Graph Operators](foundation.md#7-graph-operators-osp) - Connection and edge reference syntax
+> - [Pipe Operators](foundation.md#8-pipe-operators) - Spawn traversal modes
 
-## 11. Introduction to OSP
+## Introduction to OSP
 
-### 11.1 What is OSP?
+### 1 What is OSP?
 
 Object-Spatial Programming models data as graphs and computation as mobile agents (walkers) that traverse the graph. Instead of calling functions on objects, walkers visit nodes and perform operations based on location.
 
-### 11.2 Why OSP?
+### 2 Why OSP?
 
 - **Natural graph modeling**: Social networks, knowledge graphs, state machines
 - **AI agent architecture**: Walkers are natural representations of AI agents
 - **Separation of concerns**: Data (nodes/edges) separate from behavior (walkers)
 - **Spatial context**: `here`, `visitor` provide natural context
 
-### 11.3 Core Concepts
+### 3 Core Concepts
 
 | Concept | Description | Keyword |
 |---------|-------------|---------|
@@ -31,7 +42,7 @@ Object-Spatial Programming models data as graphs and computation as mobile agent
 | **Here** | Walker's current location | `here` |
 | **Visitor** | Reference to visiting walker | `visitor` |
 
-### 11.4 Complete Example
+### 4 Complete Example
 
 ```jac
 node Person {
@@ -69,11 +80,11 @@ with entry {
 
 ---
 
-## 12. Nodes
+## Nodes
 
 Nodes are the vertices of your graph -- they hold data and can have abilities that execute when walkers visit them. Think of nodes as "smart objects" that know when they're being visited and can react accordingly. Unlike regular objects, nodes can be connected via edges and participate in graph traversals.
 
-### 12.1 Node Declaration
+### 1 Node Declaration
 
 ```jac
 node Person {
@@ -89,7 +100,7 @@ node Person {
 node Waypoint { }
 ```
 
-### 12.2 Node Entry/Exit Abilities
+### 2 Node Entry/Exit Abilities
 
 Abilities triggered when walkers enter or exit. The event clause syntax is:
 
@@ -144,7 +155,7 @@ node SecureRoom {
 | `with exit` | Any walker exits |
 | `with TypeName exit` | Walker of TypeName exits |
 
-### 12.3 Node Inheritance
+### 3 Node Inheritance
 
 ```jac
 node Entity {
@@ -160,11 +171,11 @@ node User(Entity) {
 
 ---
 
-## 13. Edges
+## Edges
 
 Edges are first-class connections between nodes. Unlike simple object references, edges can carry their own data (like relationship strength or timestamps) and have their own types. This lets you model rich relationships -- "Alice *knows* Bob *since 2020*" becomes natural to express. Use typed edges when the relationship itself has meaningful attributes.
 
-### 13.1 Edge Declaration
+### 1 Edge Declaration
 
 ```jac
 edge Friend {
@@ -183,7 +194,7 @@ edge Weighted {
 }
 ```
 
-### 13.2 Edge Entry/Exit
+### 2 Edge Entry/Exit
 
 Walkers can trigger abilities on edges during traversal:
 
@@ -197,7 +208,7 @@ edge Road {
 }
 ```
 
-### 13.3 Directed vs Undirected
+### 3 Directed vs Undirected
 
 Edge direction is determined by connection operators:
 
@@ -208,11 +219,11 @@ a <++> b;         # Undirected: a ↔ b (creates edges both ways)
 
 ---
 
-## 14. Walkers
+## Walkers
 
 Walkers are mobile agents that traverse the graph, executing abilities at each node they visit. Unlike functions that you call, walkers *go to* data. They maintain state throughout their journey, making them ideal for tasks like collecting information across a graph, implementing AI agents that navigate knowledge structures, or processing pipelines where context accumulates. Spawn a walker with `root spawn MyWalker()` to begin traversal.
 
-### 14.1 Walker Declaration
+### 1 Walker Declaration
 
 ```jac
 walker Collector {
@@ -233,7 +244,7 @@ walker Collector {
 }
 ```
 
-### 14.2 Walker State
+### 2 Walker State
 
 Walkers maintain state throughout their traversal:
 
@@ -254,7 +265,7 @@ with entry {
 }
 ```
 
-### 14.3 The `visit` Statement
+### 3 The `visit` Statement
 
 The `visit` statement tells the walker where to go next. It doesn't immediately move -- it queues nodes for the next step of traversal. This queue-based approach lets you control breadth-first vs depth-first traversal and handle cases where there's nowhere to go (using the `else` clause).
 
@@ -289,11 +300,17 @@ visit target_node;              # Visit a specific node directly
 visit self.target;              # Visit node stored in walker field
 ```
 
-**Grammar:** `visit (COLON expression COLON)? expression (else_stmt | SEMI)`
+**Indexed Visit:**
 
-The optional `COLON expression COLON` syntax (e.g., `visit :limit: [-->]`) may be used for limiting visits, but verify with current implementation.
+```jac
+visit : 0 : [-->];              # Visit first outgoing node only
+visit : -1 : [-->];             # Visit last outgoing node only
+visit : 2 : [-->];              # Visit third node (0-indexed)
+```
 
-### 14.4 The `report` Statement
+Out-of-bounds indices result in no visit.
+
+### 4 The `report` Statement
 
 Send data back without stopping:
 
@@ -311,7 +328,7 @@ with entry {
 }
 ```
 
-### 14.5 The `disengage` Statement
+### 5 The `disengage` Statement
 
 The `disengage` statement immediately terminates a walker's traversal. Use it when the walker has found what it was looking for (like a search hitting its target) or when a condition means further traversal would be pointless. It's the walker equivalent of `return` from a recursive function.
 
@@ -329,7 +346,7 @@ walker Searcher {
 }
 ```
 
-### 14.6 Spawning Walkers
+### 6 Spawning Walkers
 
 ```jac
 # Basic spawn
@@ -349,7 +366,7 @@ result = MyWalker() spawn root;
 results = MyWalker() spawn [node1, node2, node3];
 ```
 
-### 14.7 Walker Inheritance
+### 7 Walker Inheritance
 
 ```jac
 walker BaseVisitor {
@@ -365,20 +382,20 @@ walker DetailedVisitor(BaseVisitor) {
 }
 ```
 
-### 14.8 Special References
+### 8 Special References
 
 These keywords have special meaning in specific contexts:
 
 | Reference | Valid Context | Description | See Also |
 |-----------|---------------|-------------|----------|
-| `self` | Any method/ability | Current instance (walker, node, object) | [Part II: Functions](functions-objects.md#9-object-oriented-programming) |
-| `here` | Walker ability | Current node the walker is visiting | [Section 14.1](#141-walker-declaration) |
-| `visitor` | Node ability | The walker that triggered this ability | [Section 12.2](#122-node-entryexit-abilities) |
-| `root` | Anywhere | Root node of the current graph | [Section 15](#15-graph-construction) |
-| `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#92-inheritance) |
-| `init` | Object body | Constructor method name | [Part II](functions-objects.md#91-objects-classes) |
-| `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#52-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](full-stack.md#21-client-side-development-jsx) |
+| `self` | Any method/ability | Current instance (walker, node, object) | [Part II: Functions](functions-objects.md#object-oriented-programming) |
+| `here` | Walker ability | Current node the walker is visiting | [Walkers](#walkers) |
+| `visitor` | Node ability | The walker that triggered this ability | [Nodes](#nodes) |
+| `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
+| `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#2-inheritance) |
+| `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
+| `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
+| `props` | JSX context | Component props reference | [Part IV: Full-Stack](full-stack.md#client-side-development-jsx) |
 
 **Usage examples:**
 
@@ -425,9 +442,9 @@ walker Inspector {
 
 ---
 
-## 15. Graph Construction
+## Graph Construction
 
-### 15.1 Creating Nodes
+### 1 Creating Nodes
 
 ```jac
 # Create and assign
@@ -438,7 +455,7 @@ bob = Person(name="Bob", age=25);
 root ++> Person(name="Charlie", age=35);
 ```
 
-### 15.2 Creating Edges
+### 2 Creating Edges
 
 ```jac
 # Untyped (generic edge)
@@ -451,7 +468,7 @@ alice +>: Friend(since=2020) :+> bob;
 alice <+: Colleague(department="Engineering") :+> bob;
 ```
 
-### 15.3 Chained Construction
+### 3 Chained Construction
 
 ```jac
 # Build chains in one expression
@@ -461,7 +478,7 @@ root ++> a ++> b ++> c ++> d;
 root +>: Start :+> a +>: Next :+> b +>: Next :+> c +>: End :+> d;
 ```
 
-### 15.4 Deleting Nodes and Edges
+### 4 Deleting Nodes and Edges
 
 ```jac
 # Delete node
@@ -474,7 +491,7 @@ alice del --> bob;
 alice del ->:Friend:-> bob;
 ```
 
-### 15.5 Built-in Graph Functions
+### 5 Built-in Graph Functions
 
 | Function | Description |
 |----------|-------------|
@@ -499,9 +516,9 @@ with entry {
 
 ---
 
-## 16. Graph Traversal
+## Graph Traversal
 
-### 16.1 Basic Traversal
+### 1 Basic Traversal
 
 Walker traversal is queue-based (BFS-like by default):
 
@@ -514,7 +531,7 @@ walker BFSWalker {
 }
 ```
 
-### 16.2 Filtered Traversal
+### 2 Filtered Traversal
 
 ```jac
 walker FilteredWalker {
@@ -534,7 +551,7 @@ walker FilteredWalker {
 }
 ```
 
-### 16.3 Entry and Exit Events
+### 3 Entry and Exit Events
 
 ```jac
 node Room {
@@ -550,9 +567,9 @@ node Room {
 
 ---
 
-## 17. Data Spatial Queries
+## Data Spatial Queries
 
-### 17.1 Edge Reference Syntax
+### 1 Edge Reference Syntax
 
 ```jac
 # Basic forms
@@ -573,11 +590,14 @@ node Room {
 [-->(`?NodeType)]             # Filter result nodes by type
 
 # Get edges vs nodes
-[edge -->]                     # Get edge objects
-[node -->]                     # Get node objects (explicit)
+[edge -->]                     # Get edge objects (not destination nodes)
+[node -->]                     # Get node objects (explicit, default)
+[edge ->:Friend:->]           # Typed edge objects
 ```
 
-### 17.2 Attribute Filtering
+Use `[edge -->]` when you need to access edge attributes or visit edges directly.
+
+### 2 Attribute Filtering
 
 ```jac
 # Filter by node attributes (after traversal)
@@ -589,7 +609,7 @@ recent_friends = [->:Friend:since > 2020:->];
 strong_connections = [->:Link:weight > 0.8:->];
 ```
 
-### 17.3 Complex Queries
+### 3 Complex Queries
 
 ```jac
 # Chained traversal (multi-hop)
@@ -604,9 +624,9 @@ target = [->:Friend:since < 2020:->(`?Person)](?age > 30);
 
 ---
 
-## 18. Typed Context Blocks
+## Typed Context Blocks
 
-### 18.1 What are Typed Context Blocks?
+### 1 What are Typed Context Blocks?
 
 Handle different types with specialized code paths. The syntax uses `->Type{code}` with no space between the arrow and type name:
 
@@ -632,7 +652,7 @@ walker AnimalVisitor {
 - Code typically on same line with closing brace
 - Use `->_` for default/catch-all case
 
-### 18.2 Tuple-Based Dispatch
+### 2 Tuple-Based Dispatch
 
 ```jac
 walker Processor {
@@ -642,7 +662,7 @@ walker Processor {
 }
 ```
 
-### 18.3 Context Blocks in Nodes
+### 3 Context Blocks in Nodes
 
 Nodes reacting to different walker types:
 
@@ -661,7 +681,7 @@ node DataNode {
 }
 ```
 
-### 18.4 Complex Typed Context Example
+### 4 Complex Typed Context Example
 
 From the reference examples, showing inheritance-based dispatch:
 

@@ -432,20 +432,8 @@ impl ModuleIntrospector._extract_access_levels -> None {
                 self._walker_access[name] = True;
                 continue;
             }
-            # Convert Python file path to Jac file path if needed
-            # Generated Python files are in __jac_gen__ directory
-            jac_source_file = source_file;
-            if "__jac_gen__" in source_file and source_file.endswith(".py") {
-                jac_source_file = source_file.replace("__jac_gen__", "").replace(
-                    ".py", ".jac"
-                );
-            }
             # Try to get the AST from the source module
-            source_ast = get_module_ast(jac_source_file);
-            if not source_ast {
-                # Try the original path as fallback
-                source_ast = get_module_ast(source_file);
-            }
+            source_ast = get_module_ast(source_file);
             if source_ast {
                 access_level = find_walker_access_in_ast(source_ast, name);
                 if access_level is not None {
