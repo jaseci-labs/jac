@@ -157,6 +157,13 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
             if item_stem_lower.startswith(f"{normalized_name}_") {
                 to_remove.append(item);
             }
+            # Also check original name with hyphens (legacy installations)
+            elif name.lower() != normalized_name {
+                item_stem_original = item.stem.lower();
+                if item_stem_original.startswith(f"{name.lower()}-") {
+                    to_remove.append(item);
+                }
+            }
         }
     }
     if not to_remove {
