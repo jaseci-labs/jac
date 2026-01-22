@@ -1,6 +1,6 @@
 [project]
 name = "jaclang"
-version = "0.9.8"
+version = "0.9.9"
 description = "Jac is a unique and powerful programming language that extends Python, offering an unprecedented level of awesomenss."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
