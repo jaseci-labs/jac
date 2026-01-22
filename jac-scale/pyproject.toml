@@ -6,7 +6,7 @@ authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.9.7",
+    "jaclang>=0.9.9",
     "python-dotenv>=1.2.1,<2.0.0",
     "docker>=7.1.0,<8.0.0",
     "kubernetes>=34.1.0,<35.0.0",

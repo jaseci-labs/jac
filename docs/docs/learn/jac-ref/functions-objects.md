@@ -1,12 +1,20 @@
 # Part II: Functions and Objects
 
+**In this part:**
+
+- [Functions and Abilities](#functions-and-abilities) - Function declaration, parameters, abilities
+- [Object-Oriented Programming](#object-oriented-programming) - Objects, inheritance, enums
+- [Implementations and Forward Declarations](#implementations-and-forward-declarations) - Impl blocks, separation of interface
+
+---
+
 This part covers Jac's approach to functions and object-oriented programming. Jac uses `def` for standalone functions and `can` for methods (called "abilities") on objects. The key difference from Python: `has` declarations make your data model explicit, and `impl` blocks let you separate interface from implementation.
 
-## 8. Functions and Abilities
+## Functions and Abilities
 
 Functions in Jac use familiar `def` syntax with mandatory type annotations. Jac also introduces "abilities" (`can`) for methods attached to objects, nodes, edges, and walkers. Abilities can be triggered automatically based on context (like when a walker visits a node) rather than being called explicitly.
 
-### 8.1 Function Declaration
+### 1 Function Declaration
 
 ```jac
 def add(a: int, b: int) -> int {
@@ -23,7 +31,25 @@ def log(message: str) -> None {
 }
 ```
 
-### 8.2 Parameter Types and Ordering
+### 2 Docstrings
+
+Docstrings appear *before* declarations (not inside like Python):
+
+```jac
+"""Module-level docstring."""
+
+"Function docstring."
+def add(a: int, b: int) -> int {
+    return a + b;
+}
+
+"Object docstring."
+obj Person {
+    has name: str;
+}
+```
+
+### 3 Parameter Types and Ordering
 
 **Parameter Categories:**
 
@@ -125,7 +151,7 @@ result = add(**params);  # add(a=1, b=2, c=3)
 result = add(*[1, 2], **{"c": 3});  # add(1, 2, c=3)
 ```
 
-### 8.3 Abilities (Methods)
+### 4 Abilities (Methods)
 
 The `can` keyword declares abilities (methods) on archetypes:
 
@@ -147,7 +173,7 @@ obj Calculator {
 }
 ```
 
-### 8.4 Static and Class Methods
+### 5 Static and Class Methods
 
 ```jac
 obj Counter {
@@ -165,7 +191,7 @@ obj Counter {
 }
 ```
 
-### 8.5 Lambda Expressions
+### 6 Lambda Expressions
 
 ```jac
 # Simple lambda (note spacing around type annotations)
@@ -197,13 +223,13 @@ glob make_adder = lambda x: int : (lambda y: int : x + y);
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
-### 8.6 Immediately Invoked Function Expressions (IIFE)
+### 7 Immediately Invoked Function Expressions (IIFE)
 
 ```jac
 result = (lambda x: int -> int: x * 2)(5);  # result = 10
 ```
 
-### 8.7 Decorators
+### 8 Decorators
 
 ```jac
 @decorator
@@ -217,7 +243,7 @@ def another_function -> None {
 }
 ```
 
-### 8.8 Access Modifiers
+### 9 Access Modifiers
 
 ```jac
 # Public (default, accessible everywhere)
@@ -232,11 +258,11 @@ def:protect _protected_func -> None { }
 
 ---
 
-## 9. Object-Oriented Programming
+## Object-Oriented Programming
 
 Jac uses `obj` instead of `class` to define types (though `class` is also supported for Python compatibility). The key differences from Python: fields are declared with `has` at the top of the definition, methods use `can` instead of `def`, and there's no explicit `__init__` -- the constructor is generated automatically from `has` declarations.
 
-### 9.1 Objects (Classes)
+### 1 Objects (Classes)
 
 Objects are Jac's basic unit of data and behavior. Use `obj` for general-purpose types. For graph-based programming, use `node`, `edge`, or `walker` instead (see Part III: OSP).
 
@@ -265,7 +291,7 @@ person = Person(name="Alice", age=30);
 print(person.greet());
 ```
 
-### 9.2 Inheritance
+### 2 Inheritance
 
 ```jac
 obj Animal {
@@ -294,7 +320,7 @@ obj Pet(Animal, Trackable) {
 }
 ```
 
-### 9.3 Enumerations
+### 3 Enumerations
 
 ```jac
 enum Color {
@@ -328,7 +354,7 @@ if status.is_success() {
 }
 ```
 
-### 9.4 Enums with Inline Python
+### 4 Enums with Inline Python
 
 ```jac
 enum HttpStatus {
@@ -346,7 +372,7 @@ enum HttpStatus {
 }
 ```
 
-### 9.5 Properties and Encapsulation
+### 5 Properties and Encapsulation
 
 ```jac
 obj Account {
@@ -366,11 +392,11 @@ obj Account {
 
 ---
 
-## 10. Implementations and Forward Declarations
+## Implementations and Forward Declarations
 
 Jac separates *interface* (what an object has and can do) from *implementation* (how it does it). This separation enables cleaner architecture, easier testing, and better organization of large codebases. You declare the interface in one place and implement abilities in `impl` blocks -- even in separate files.
 
-### 10.1 Forward Declarations
+### 1 Forward Declarations
 
 Forward declarations let you reference a type before it's fully defined. This is essential for circular references (like User referencing Post and Post referencing User) and for organizing code across multiple files.
 
@@ -391,7 +417,7 @@ obj Post {
 }
 ```
 
-### 10.2 Implementation Blocks
+### 2 Implementation Blocks
 
 The `impl` keyword attaches method bodies to declared abilities. This pattern keeps your interface clean and readable while moving implementation details elsewhere. It's particularly useful for large classes, for providing multiple implementations (like mock versions for testing), or for organizing abilities that span many lines.
 
@@ -416,7 +442,7 @@ impl Calculator.multiply(x: float) -> float {
 }
 ```
 
-### 10.3 Separate Implementation Files
+### 3 Separate Implementation Files
 
 Convention: Use `.impl.jac` files for implementations.
 
@@ -444,7 +470,7 @@ impl Calculator.multiply(x: float) -> float {
 }
 ```
 
-### 10.4 When to Use Implementations
+### 4 When to Use Implementations
 
 - **Circular dependencies**: Forward declare to break cycles
 - **Code organization**: Keep interfaces clean

@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking_changes.md) page.
 
-## jaclang 0.9.9 (Unreleased)
+## jaclang 0.9.10 (Unreleased)
+
+## jaclang 0.9.9 (Latest Release)
 
 ### Breaking Changes
 
@@ -34,7 +36,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Flexible Template Sources for `jac create`**: The `--use` flag now supports local file paths to `.jacpack` files, template directories, and URLs for downloading remote templates (e.g., `jac create --use ./my.jacpack` or `jac create --use https://example.com/template.jacpack`).
 
-## jaclang 0.9.8 (Latest Release)
+## jaclang 0.9.8
 
 - **Recursive DFS Walker Traversal with Deferred Exits**: Walker traversal semantics have been fundamentally changed to use recursive post-order exit execution. Entry abilities now execute when entering a node, while exit abilities are deferred until all descendants are visited. This means exits execute in LIFO order (last visited node exits first), similar to function call stack unwinding. The `walker.path` field is now actively populated during traversal, tracking visited nodes in order.
 - **Imported Functions and Walkers as API Endpoints**: The `jac start` command now automatically convert imported functions and walkers to API endpoints, in addition to locally defined ones. Previously, only functions and walkers defined directly in the target file were exposed as endpoints. Now, any function or walker explicitly imported into the file will also be available as an API endpoint.

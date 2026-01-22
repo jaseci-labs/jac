@@ -16,7 +16,7 @@ keywords = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.9.8",
+    "jaclang>=0.9.9",
     "rich>=13.0.0",
 ]
 

@@ -1,12 +1,19 @@
 # Part VI: Concurrency
 
+**In this part:**
+
+- [Async/Await](#asyncawait) - Async functions, async walkers, async for
+- [Concurrent Expressions](#concurrent-expressions) - flow/wait for parallel tasks
+
+---
+
 Jac supports Python-style `async/await` for concurrent I/O operations, plus a unique `flow/wait` syntax for launching and collecting parallel tasks. Use async when you need non-blocking I/O (like HTTP requests), and `flow` when you want to run multiple independent operations concurrently.
 
-## 30. Async/Await
+## Async/Await
 
 The `async/await` syntax works like Python's -- `async` marks a function as a coroutine, and `await` suspends execution until the awaited operation completes. Walkers can also be async, enabling non-blocking graph traversal with I/O at each node.
 
-### 30.1 Async Functions
+### 1 Async Functions
 
 ```jac
 async def fetch_data(url: str) -> dict {
@@ -24,7 +31,7 @@ async def process_multiple(urls: list[str]) -> list[dict] {
 }
 ```
 
-### 30.2 Async Walkers
+### 2 Async Walkers
 
 ```jac
 async walker DataFetcher {
@@ -37,7 +44,9 @@ async walker DataFetcher {
 }
 ```
 
-### 30.3 Async For Loops
+Use `async walker` for non-blocking I/O during traversal.
+
+### 3 Async For Loops
 
 ```jac
 async def process_stream(stream: AsyncIterator) -> None {
@@ -49,11 +58,11 @@ async def process_stream(stream: AsyncIterator) -> None {
 
 ---
 
-## 31. Concurrent Expressions
+## Concurrent Expressions
 
 The `flow/wait` pattern provides explicit concurrency control. `flow` launches a task and immediately returns a future (without blocking), while `wait` retrieves the result (blocking if necessary). This is more explicit than async/await -- you decide exactly when to start parallel work and when to synchronize.
 
-### 31.1 flow Keyword
+### 1 flow Keyword
 
 The `flow` keyword launches a function call as a background task and returns a future immediately. Use it when you have independent operations that can run in parallel.
 
@@ -67,7 +76,7 @@ other_result = do_something_else();
 result = wait future;
 ```
 
-### 31.2 Parallel Operations
+### 2 Parallel Operations
 
 ```jac
 # Launch multiple operations in parallel
@@ -84,7 +93,7 @@ orders = wait future2;
 inventory = wait future3;
 ```
 
-### 31.3 flow vs async
+### 3 flow vs async
 
 | Feature | async/await | flow/wait |
 |---------|-------------|-----------|

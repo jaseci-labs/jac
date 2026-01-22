@@ -71,19 +71,7 @@ def dump_traceback(e: Exception) -> str:
     # Utility function to check if a file is a compiled Jac file and get the original .jac source
     def get_jac_source_info(py_filename: str) -> tuple[str | None, str | None]:
         """Return (jac_filename, jac_source) if available, else (None, None)."""
-        # Check if this is a generated Python file from Jac compilation
-        # Generated Python files are stored in __jac_gen__ directory
-        if "__jac_gen__" in py_filename and py_filename.endswith(".py"):
-            # Try to find the corresponding .jac file
-            # The generated .py file typically mirrors the original .jac structure
-            jac_filename = py_filename.replace("__jac_gen__", "").replace(".py", ".jac")
-            if os.path.exists(jac_filename):
-                try:
-                    with open(jac_filename) as f:
-                        jac_source = f.read()
-                    return jac_filename, jac_source
-                except Exception:
-                    pass
+        # Currently no mapping from Python to Jac source files is available
         return None, None
 
     tb = TracebackException(type(e), e, e.__traceback__, limit=None, compact=True)

@@ -1,12 +1,20 @@
 # Part IX: Deployment and Scaling
 
+**In this part:**
+
+- [jac-scale Plugin](#jac-scale-plugin) - Production deployment, APIs, persistence
+- [Kubernetes Deployment](#kubernetes-deployment) - Helm charts, scaling
+- [Production Architecture](#production-architecture) - Multi-tier, security, monitoring
+
+---
+
 Jac applications can be deployed to production with the `jac-scale` plugin. It transforms your Jac code into a scalable backend with automatic API generation, database persistence, and Kubernetes orchestration. This "scale-native" approach means you develop locally and deploy to production without rewriting code.
 
-## 41. jac-scale Plugin
+## jac-scale Plugin
 
 The `jac-scale` plugin is Jac's production deployment system. It wraps your code with FastAPI for HTTP handling, Redis for caching, and MongoDB for persistence. Walkers automatically become API endpoints, and graph state persists across requests.
 
-### 41.1 Overview
+### 1 Overview
 
 jac-scale provides production-ready deployment with:
 
@@ -15,14 +23,14 @@ jac-scale provides production-ready deployment with:
 - MongoDB persistence
 - Kubernetes orchestration
 
-### 41.2 Installation
+### 2 Installation
 
 ```bash
 pip install jac-scale
 jac plugins enable scale
 ```
 
-### 41.3 Basic Deployment
+### 3 Basic Deployment
 
 ```bash
 # Development
@@ -32,7 +40,7 @@ jac start main.jac --port 8000
 jac start --scale
 ```
 
-### 41.4 Environment Configuration
+### 4 Environment Configuration
 
 | Variable | Description |
 |----------|-------------|
@@ -43,7 +51,7 @@ jac start --scale
 | `K8S_NAMESPACE` | Kubernetes namespace |
 | `K8S_REPLICAS` | Number of replicas |
 
-### 41.5 CORS Configuration
+### 5 CORS Configuration
 
 ```toml
 [plugins.scale.cors]
@@ -54,9 +62,9 @@ allow_headers = ["*"]
 
 ---
 
-## 42. Kubernetes Deployment
+## Kubernetes Deployment
 
-### 42.1 Auto-Scaling
+### 1 Auto-Scaling
 
 ```bash
 jac start --scale
@@ -69,7 +77,7 @@ Automatically provisions:
 - ConfigMap for configuration
 - StatefulSets for Redis/MongoDB
 
-### 42.2 Generated Resources
+### 2 Generated Resources
 
 ```yaml
 # Example generated deployment
@@ -84,7 +92,7 @@ spec:
       app: jac-app
 ```
 
-### 42.3 Health Checks
+### 3 Health Checks
 
 Built-in endpoints:
 
@@ -93,9 +101,9 @@ Built-in endpoints:
 
 ---
 
-## 43. Production Architecture
+## Production Architecture
 
-### 43.1 Multi-Layer Memory
+### 1 Multi-Layer Memory
 
 ```
 ┌─────────────────┐
@@ -109,7 +117,7 @@ Built-in endpoints:
 └─────────────────┘
 ```
 
-### 43.2 FastAPI Integration
+### 2 FastAPI Integration
 
 Public walkers become OpenAPI endpoints:
 
@@ -118,7 +126,7 @@ Public walkers become OpenAPI endpoints:
 http://localhost:8000/docs
 ```
 
-### 43.3 Service Discovery
+### 3 Service Discovery
 
 Kubernetes service mesh integration for:
 

@@ -1,19 +1,28 @@
 # Part V: AI Integration
 
+**In this part:**
+
+- [Meaning Typed Programming](#meaning-typed-programming) - Intent as specification
+- [Semantic Strings](#semantic-strings) - The `sem` keyword for descriptions
+- [The `by` Operator and LLM Delegation](#the-by-operator-and-llm-delegation) - Model config, tools, streaming
+- [Agentic AI Patterns](#agentic-ai-patterns) - AI walkers, multi-agent systems
+
+---
+
 Jac's AI integration goes beyond simple API calls. With "Meaning Typed Programming," you write function signatures that describe *what* you want, and the LLM figures out *how* to do it. This inverts the traditional programming model: instead of writing algorithms, you declare intent and let AI provide the implementation. The `by llm` operator makes this seamless.
 
 > **Prerequisites:**
 >
-> - [The `by` Operator](foundation.md#69-the-by-operator) - Basic syntax
-> - [Function Declaration](functions-objects.md#81-function-declaration) - Function signatures
+> - [The `by` Operator](foundation.md#9-the-by-operator) - Basic syntax
+> - [Function Declaration](functions-objects.md#1-function-declaration) - Function signatures
 >
 > **Required Plugin:** `pip install byllm`
 
-## 26. Meaning Typed Programming
+## Meaning Typed Programming
 
 Meaning Typed Programming (MTP) is Jac's core AI paradigm. Your function signature -- the name, parameter names, and types -- becomes the specification. The LLM reads this "meaning" and generates appropriate behavior. This works because well-named functions already describe their intent; MTP just makes that intent executable.
 
-### 26.1 The Concept
+### 1 The Concept
 
 Meaning Typed Programming treats semantic intent as a first-class type. You declare *what* you want, and AI provides *how*:
 
@@ -26,7 +35,7 @@ result = classify_sentiment("I love this product!");
 # result = "positive"
 ```
 
-### 26.2 Implicit vs Explicit Semantics
+### 2 Implicit vs Explicit Semantics
 
 **Implicit** -- derived from function/parameter names:
 
@@ -48,11 +57,11 @@ def classify(text: str) -> str by llm;
 
 ---
 
-## 27. Semantic Strings
+## Semantic Strings
 
 When function names alone don't provide enough context, use `sem` (semantic) declarations to add detailed descriptions. The LLM reads these descriptions as part of its prompt, giving you precise control over behavior. Think of `sem` as documentation that actually affects execution.
 
-### 27.1 The `sem` Keyword
+### 1 The `sem` Keyword
 
 ```jac
 sem classify_sentiment = """
@@ -64,7 +73,7 @@ Consider nuance, sarcasm, and context.
 def classify_sentiment(text: str) -> str by llm;
 ```
 
-### 27.2 Parameter Semantics
+### 2 Parameter Semantics
 
 ```jac
 sem analyze_code.code = "The source code to analyze";
@@ -74,7 +83,7 @@ sem analyze_code.return = "A structured analysis with issues and suggestions";
 def analyze_code(code: str, language: str) -> dict by llm;
 ```
 
-### 27.3 Complex Semantic Types
+### 3 Complex Semantic Types
 
 ```jac
 obj CodeAnalysis {
@@ -97,9 +106,9 @@ def analyze(code: str) -> CodeAnalysis by llm;
 
 ---
 
-## 28. The `by` Operator and LLM Delegation
+## The `by` Operator and LLM Delegation
 
-### 28.1 Basic Usage
+### 1 Basic Usage
 
 ```jac
 # Inline expression
@@ -113,7 +122,7 @@ def summarize(article: str) -> str by llm;
 def extract_entities(text: str) -> list[str] by llm;
 ```
 
-### 28.2 Chained Transformations
+### 2 Chained Transformations
 
 ```jac
 result = text
@@ -122,7 +131,7 @@ result = text
     |> (lambda t: str -> str: t by llm("Translate to Spanish"));
 ```
 
-### 28.3 Model Configuration
+### 3 Model Configuration
 
 ```jac
 def summarize(text: str) -> str by llm(
@@ -149,7 +158,7 @@ def creative_story(prompt: str) -> str by llm(
 | `method` | str | ReAct, Reason, Chain-of-Thoughts |
 | `context` | list[str] | Additional system instructions |
 
-### 28.4 Tool Calling (ReAct)
+### 4 Tool Calling (ReAct)
 
 ```jac
 def get_weather(city: str) -> str {
@@ -171,7 +180,7 @@ def answer_question(question: str) -> str by llm(
 result = answer_question("What's the weather in Paris?");
 ```
 
-### 28.5 Streaming Responses
+### 5 Streaming Responses
 
 ```jac
 def stream_story(prompt: str) -> str by llm(stream=True);
@@ -182,7 +191,7 @@ for chunk in stream_story("Tell me a story") {
 }
 ```
 
-### 28.6 Multimodal Input
+### 6 Multimodal Input
 
 ```jac
 import from byllm { Image, Video }
@@ -195,7 +204,7 @@ description = describe_image(Image("photo.jpg"));
 description = describe_image(Image("https://example.com/image.png"));
 ```
 
-### 28.7 Reasoning Methods
+### 7 Reasoning Methods
 
 | Method | Description |
 |--------|-------------|
@@ -208,7 +217,7 @@ def solve_math(problem: str) -> str by llm(method="Chain-of-Thoughts");
 def complex_task(query: str) -> str by llm(method="ReAct", tools=[...]);
 ```
 
-### 28.8 Testing with MockLLM
+### 8 Testing with MockLLM
 
 ```jac
 def classify(text: str) -> str by llm(
@@ -222,7 +231,7 @@ test classification_test {
 }
 ```
 
-### 28.9 Configuration via jac.toml
+### 9 Configuration via jac.toml
 
 ```toml
 [plugins.byllm.model]
@@ -236,7 +245,7 @@ max_tokens = 1000
 api_base = "http://localhost:4000"
 ```
 
-### 28.10 Python Library Mode
+### 10 Python Library Mode
 
 Use `by` in pure Python with decorators:
 
@@ -253,9 +262,9 @@ result = summarize("Long article text...")
 
 ---
 
-## 29. Agentic AI Patterns
+## Agentic AI Patterns
 
-### 29.1 AI Agents as Walkers
+### 1 AI Agents as Walkers
 
 ```jac
 walker AIAgent {
@@ -272,7 +281,7 @@ walker AIAgent {
 }
 ```
 
-### 29.2 Tool-Using Agents
+### 2 Tool-Using Agents
 
 ```jac
 walker ResearchAgent {
@@ -293,7 +302,7 @@ walker ResearchAgent {
 }
 ```
 
-### 29.3 Multi-Agent Systems
+### 3 Multi-Agent Systems
 
 ```jac
 walker Coordinator {
