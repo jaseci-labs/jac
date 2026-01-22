@@ -19,11 +19,8 @@ def _clear_jac_modules() -> None:
     jac_modules_to_clear = [
         k
         for k in list(sys.modules.keys())
-        if k.startswith("__jac_gen__")
-        or (
-            not k.startswith(("jaclang", "test", "_"))
-            and hasattr(sys.modules.get(k), "__jac_mod__")
-        )
+        if not k.startswith(("jaclang", "test", "_"))
+        and hasattr(sys.modules.get(k), "__jac_mod__")
     ]
     for mod in jac_modules_to_clear:
         sys.modules.pop(mod, None)

@@ -1,12 +1,22 @@
 # Part VIII: Ecosystem
 
+**In this part:**
+
+- [CLI Reference](#cli-reference) - Execution, compilation, testing commands
+- [Plugin System](#plugin-system) - Installing and managing plugins
+- [Project Configuration](#project-configuration) - jac.toml settings
+- [Python Interoperability](#python-interoperability) - Using Python from Jac
+- [JavaScript/TypeScript Interoperability](#javascripttypescript-interoperability) - Using JS from Jac
+
+---
+
 The Jac ecosystem includes the `jac` CLI tool, a plugin system for extending functionality, and seamless interoperability with Python and JavaScript. This part covers the practical tools you'll use daily when developing with Jac.
 
-## 36. CLI Reference
+## CLI Reference
 
 The `jac` command is your primary interface to the Jac toolchain. It handles execution, compilation, testing, formatting, and project management. Most commands work on `.jac` files directly.
 
-### 36.1 Execution Commands
+### 1 Execution Commands
 
 | Command | Description |
 |---------|-------------|
@@ -15,7 +25,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac start [file]` | Start web server |
 | `jac debug <file>` | Run in debug mode |
 
-### 36.2 Analysis Commands
+### 2 Analysis Commands
 
 | Command | Description |
 |---------|-------------|
@@ -23,7 +33,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac format` | Format source files |
 | `jac test` | Run test suite |
 
-### 36.3 Transform Commands
+### 3 Transform Commands
 
 | Command | Description |
 |---------|-------------|
@@ -31,7 +41,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac jac2py <file>` | Convert Jac to Python |
 | `jac js <file>` | Compile to JavaScript |
 
-### 36.4 Project Commands
+### 4 Project Commands
 
 | Command | Description |
 |---------|-------------|
@@ -42,7 +52,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac clean` | Clean build artifacts |
 | `jac script <name>` | Run project script |
 
-### 36.5 Tool Commands
+### 5 Tool Commands
 
 | Command | Description |
 |---------|-------------|
@@ -53,9 +63,9 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 
 ---
 
-## 37. Plugin System
+## Plugin System
 
-### 37.1 Available Plugins
+### 1 Available Plugins
 
 | Plugin | Package | Description |
 |--------|---------|-------------|
@@ -64,7 +74,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | jac-scale | `pip install jac-scale` | Production deployment |
 | jac-super | `pip install jac-super` | Enhanced console output |
 
-### 37.2 Managing Plugins
+### 2 Managing Plugins
 
 ```bash
 # List plugins
@@ -80,7 +90,7 @@ jac plugins disable byllm
 jac plugins info byllm
 ```
 
-### 37.3 Plugin Configuration
+### 3 Plugin Configuration
 
 In `jac.toml`:
 
@@ -99,9 +109,9 @@ replicas = 3
 
 ---
 
-## 38. Project Configuration
+## Project Configuration
 
-### 38.1 jac.toml Structure
+### 1 jac.toml Structure
 
 ```toml
 [project]
@@ -136,7 +146,7 @@ build = "jac build"
 OPENAI_API_KEY = "${OPENAI_API_KEY}"
 ```
 
-### 38.2 Running Scripts
+### 2 Running Scripts
 
 ```bash
 jac script dev
@@ -144,7 +154,7 @@ jac script test
 jac script build
 ```
 
-### 38.3 Environment Profiles
+### 3 Environment Profiles
 
 ```bash
 # Set environment
@@ -154,7 +164,7 @@ export JAC_ENV=production
 JAC_ENV=staging jac start main.jac
 ```
 
-### 38.4 Environment Variables
+### 4 Environment Variables
 
 **Server-side:**
 
@@ -183,9 +193,9 @@ cl {
 
 ---
 
-## 39. Python Interoperability
+## Python Interoperability
 
-### 39.1 Using Python Libraries
+### 1 Using Python Libraries
 
 ```jac
 import numpy as np;
@@ -206,7 +216,7 @@ with entry {
 }
 ```
 
-### 39.2 Inline Python Blocks
+### 2 Inline Python Blocks
 
 ```jac
 ::py::
@@ -235,7 +245,7 @@ with entry {
 - Simple imports (use `import` instead)
 - New code that could use Jac features
 
-### 39.3 Type Compatibility
+### 3 Type Compatibility
 
 | Jac Type | Python Type |
 |----------|-------------|
@@ -249,7 +259,7 @@ with entry {
 | `set` | `set` |
 | `None` | `None` |
 
-### 39.4 Using Jac from Python
+### 4 Using Jac from Python
 
 ```python
 from jaclang import jac_import
@@ -264,9 +274,9 @@ instance = my_module.MyClass()
 
 ---
 
-## 40. JavaScript/TypeScript Interoperability
+## JavaScript/TypeScript Interoperability
 
-### 40.1 npm Packages
+### 1 npm Packages
 
 ```jac
 cl {
@@ -277,7 +287,7 @@ cl {
 }
 ```
 
-### 40.2 TypeScript Support
+### 2 TypeScript Support
 
 Enable in `jac.toml`:
 
@@ -286,7 +296,7 @@ Enable in `jac.toml`:
 typescript = true
 ```
 
-### 40.3 Browser APIs
+### 3 Browser APIs
 
 ```jac
 cl {

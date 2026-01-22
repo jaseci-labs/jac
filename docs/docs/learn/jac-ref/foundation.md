@@ -1,8 +1,20 @@
 # Part I: Foundation
 
-## 1. Introduction
+**In this part:**
 
-### 1.1 What is Jac?
+- [Introduction](#introduction) - What is Jac, principles, comparison to Python
+- [Getting Started](#getting-started) - Installation, first program, CLI basics
+- [Language Basics](#language-basics) - Syntax, comments, code structure
+- [Types and Values](#types-and-values) - Type system, generics, literals
+- [Variables and Scope](#variables-and-scope) - Local, instance, global variables
+- [Operators](#operators) - Arithmetic, comparison, logical, graph operators
+- [Control Flow](#control-flow) - Conditionals, loops, pattern matching
+
+---
+
+## Introduction
+
+### 1 What is Jac?
 
 Jac is an AI-native full-stack programming language that extends Python with Object-Spatial Programming (OSP). It provides a unified language for backend, frontend, and AI development.
 
@@ -12,7 +24,7 @@ with entry {
 }
 ```
 
-### 1.2 The Six Principles
+### 2 The Six Principles
 
 | Principle | Description |
 |-----------|-------------|
@@ -23,7 +35,7 @@ with entry {
 | **Cloud-Native** | One-command deployment with automatic scaling |
 | **Human & AI Friendly** | Readable structure for both humans and AI models |
 
-### 1.3 Designed for Humans and AI
+### 3 Designed for Humans and AI
 
 Jac is built for clarity and architectural transparency:
 
@@ -31,7 +43,7 @@ Jac is built for clarity and architectural transparency:
 - `impl` separation keeps interfaces distinct from implementations
 - Structure that humans can reason about AND models can reliably generate
 
-### 1.4 When to Use Jac
+### 4 When to Use Jac
 
 Jac excels at:
 
@@ -41,7 +53,7 @@ Jac excels at:
 - Agentic AI systems
 - Rapid prototyping
 
-### 1.5 Jac vs Python
+### 5 Jac vs Python
 
 ```jac
 obj Person {
@@ -66,9 +78,9 @@ obj Person {
 
 ---
 
-## 2. Getting Started
+## Getting Started
 
-### 2.1 Installation
+### 1 Installation
 
 ```bash
 # Full installation with all plugins
@@ -83,7 +95,7 @@ pip install jac-client   # Full-stack web
 pip install jac-scale    # Production deployment
 ```
 
-### 2.2 Your First Program
+### 2 Your First Program
 
 Create a file `hello.jac`:
 
@@ -103,7 +115,7 @@ Run it:
 jac run hello.jac
 ```
 
-### 2.3 Project Structure
+### 3 Project Structure
 
 ```
 my_project/
@@ -126,7 +138,7 @@ my_project/
 | `.cl.jac` | Client-side only |
 | `.impl.jac` | Implementation file |
 
-### 2.4 Editor Setup
+### 4 Editor Setup
 
 Install the VS Code extension for Jac language support:
 
@@ -137,13 +149,13 @@ jac lsp
 
 ---
 
-## 3. Language Basics
+## Language Basics
 
-### 3.1 Source Code Encoding
+### 1 Source Code Encoding
 
 Jac source files are UTF-8 encoded. Unicode is fully supported in strings and comments.
 
-### 3.2 Comments
+### 2 Comments
 
 ```jac
 # Single-line comment
@@ -154,7 +166,7 @@ Jac source files are UTF-8 encoded. Unicode is fully supported in strings and co
 """Docstring for modules, classes, and functions"""
 ```
 
-### 3.3 Statements and Expressions
+### 3 Statements and Expressions
 
 All statements end with semicolons:
 
@@ -164,7 +176,7 @@ print(x);
 result = compute(x) + 10;
 ```
 
-### 3.4 Code Blocks
+### 4 Code Blocks
 
 Code blocks use braces:
 
@@ -175,7 +187,7 @@ if condition {
 }
 ```
 
-### 3.5 Keywords
+### 5 Keywords
 
 Jac keywords are reserved and cannot be used as identifiers:
 
@@ -195,7 +207,7 @@ Jac keywords are reserved and cannot be used as identifiers:
 
 **Note:** The abstract modifier keyword is `abs`, not `abstract`.
 
-### 3.6 Identifiers
+### 6 Identifiers
 
 Valid identifiers start with a letter or underscore, followed by letters, digits, or underscores.
 
@@ -205,7 +217,7 @@ To use a reserved keyword as an identifier, escape it with angle brackets:
 has <class>: str;  # Uses 'class' as field name
 ```
 
-### 3.7 Entry Point Variants
+### 7 Entry Point Variants
 
 Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
 
@@ -230,11 +242,11 @@ with entry:setup {
 
 ---
 
-## 4. Types and Values
+## Types and Values
 
 Jac is statically typed -- all variables, fields, and function signatures require type annotations. This enables better tooling, clearer APIs, and catches errors at compile time rather than runtime. The type system is compatible with Python's typing module.
 
-### 4.1 Builtin Types
+### 1 Builtin Types
 
 | Type | Description | Example |
 |------|-------------|---------|
@@ -251,7 +263,7 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
 
-### 4.2 Type Annotations
+### 2 Type Annotations
 
 Type annotations are required for fields and function signatures:
 
@@ -262,7 +274,7 @@ has items: list[str] = [];
 has mapping: dict[str, int] = {};
 ```
 
-### 4.3 Generic Types
+### 3 Generic Types
 
 ```jac
 def first[T](items: list[T]) -> T {
@@ -274,7 +286,7 @@ obj Container[T] {
 }
 ```
 
-### 4.4 Union Types
+### 4 Union Types
 
 ```jac
 has value: int | str | None;
@@ -284,7 +296,7 @@ def process(data: list[int] | dict[str, int]) -> None {
 }
 ```
 
-### 4.5 Type References (Backtick)
+### 5 Type References (Backtick)
 
 The backtick operator creates a reference to a type itself, rather than an instance of that type. This is essential for OSP operations like filtering graph traversals by node type, or for metaprogramming. Think of it as "the type called X" rather than "a value of type X".
 
@@ -296,7 +308,7 @@ The backtick operator creates a reference to a type itself, rather than an insta
 [-->(`?Person)]  # Filter nodes by Person type
 ```
 
-### 4.6 Literals
+### 6 Literals
 
 **Numbers:**
 
@@ -307,6 +319,10 @@ octal = 0o52;
 binary = 0b101010;
 floating = 3.14159;
 scientific = 1.5e-10;
+
+# Underscore separators (for readability)
+million = 1_000_000;
+hex_word = 0xFF_FF;
 ```
 
 **Strings:**
@@ -322,7 +338,7 @@ multiline = """
 """;
 ```
 
-### 4.7 F-String Format Specifications
+### 7 F-String Format Specifications
 
 F-strings support powerful formatting with the syntax `{expression:format_spec}`.
 
@@ -452,11 +468,11 @@ empty_list = [];
 
 ---
 
-## 5. Variables and Scope
+## Variables and Scope
 
 Jac distinguishes between local variables (within functions), instance variables (`has` declarations in objects), and global variables (`glob`). Unlike Python where you assign `self.x = value` in `__init__`, Jac uses declarative `has` statements that make your data model explicit and visible at a glance.
 
-### 5.1 Local Variables
+### 1 Local Variables
 
 ```jac
 # Type inferred
@@ -468,7 +484,7 @@ count: int = 0;
 items: list[str] = [];
 ```
 
-### 5.2 Instance Variables (has)
+### 2 Instance Variables (has)
 
 The `has` keyword declares instance variables in a clean, declarative style. Unlike Python's `self.x = value` pattern scattered throughout `__init__`, `has` statements appear at the top of your class definition, making the data model immediately visible. This design improves readability for both humans and AI code generators.
 
@@ -497,7 +513,7 @@ obj Rectangle {
 }
 ```
 
-### 5.3 Global Variables (glob)
+### 3 Global Variables (glob)
 
 ```jac
 glob PI: float = 3.14159;
@@ -509,7 +525,7 @@ with entry {
 }
 ```
 
-### 5.4 Scope Rules
+### 4 Scope Rules
 
 **Scope Resolution Order (LEGB):**
 
@@ -571,7 +587,7 @@ for i in range(3) {
 # loop_var and i are accessible here
 ```
 
-### 5.5 Truthiness
+### 5 Truthiness
 
 Values are evaluated as boolean in conditions. The following are **falsy** (evaluate to `False`):
 
@@ -620,11 +636,11 @@ user and user.is_active and process(user);
 
 ---
 
-## 6. Operators
+## Operators
 
 Jac includes all standard Python operators plus several unique operators for graph manipulation (`++>`, `-->`, etc.), null-safe access (`?.`, `?[]`), piping (`|>`, `:>`), and LLM delegation (`by`). These Jac-specific operators are covered in sections 6.6-6.9.
 
-### 6.1 Arithmetic Operators
+### 1 Arithmetic Operators
 
 | Operator | Description | Example |
 |----------|-------------|---------|
@@ -637,7 +653,7 @@ Jac includes all standard Python operators plus several unique operators for gra
 | `**` | Exponentiation | `a ** b` |
 | `@` | Matrix multiplication | `a @ b` |
 
-### 6.2 Comparison Operators
+### 2 Comparison Operators
 
 | Operator | Description |
 |----------|-------------|
@@ -652,7 +668,7 @@ Jac includes all standard Python operators plus several unique operators for gra
 | `in` | Membership |
 | `not in` | Not membership |
 
-### 6.3 Logical Operators
+### 3 Logical Operators
 
 ```jac
 # Word form (preferred)
@@ -665,7 +681,7 @@ result = a && b;
 result = a || b;
 ```
 
-### 6.4 Bitwise Operators
+### 4 Bitwise Operators
 
 | Operator | Name | Description |
 |----------|------|-------------|
@@ -729,7 +745,7 @@ def is_power_of_two(n: int) -> bool {
 }
 ```
 
-### 6.5 Assignment Operators
+### 5 Assignment Operators
 
 **Simple Assignment:**
 
@@ -794,7 +810,7 @@ bits ^= mask;           # Toggle bits
 register <<= 4;         # Shift left
 ```
 
-### 6.6 Null-Safe Operators
+### 6 Null-Safe Operators
 
 The `?` operator provides safe access to potentially null values, returning `None` instead of raising an error.
 
@@ -862,7 +878,7 @@ valid_items = items(?value > 0);  # Filter where value > 0
 | `obj?.method()` | `None` | `obj.method()` |
 | `obj?.a?.b` | `None` | `obj.a.b` (or `None` if `a` is `None`) |
 
-### 6.7 Graph Operators (OSP)
+### 7 Graph Operators (OSP)
 
 Graph operators are fundamental to Object-Spatial Programming. They let you create connections between nodes (`++>`) and traverse the graph (`-->`). Unlike traditional object references, graph connections are first-class entities that can have their own types and attributes. Use these operators whenever you're building or navigating graph structures.
 
@@ -898,7 +914,7 @@ alice +>: Friend(since=2020) :+> bob;
 [-->(`?NodeType)]        # Filtered by node type
 ```
 
-### 6.8 Pipe Operators
+### 8 Pipe Operators
 
 Pipe operators enable functional-style data transformation by passing results from one operation to the next. Instead of deeply nested function calls like `format(filter(transform(data)))`, you write `data |> transform |> filter |> format` -- reading naturally from left to right. Jac offers three pipe variants: standard pipes for functions, atomic pipes for controlling walker traversal order, and dot pipes for method chaining.
 
@@ -969,7 +985,7 @@ result = numbers
 | `.>` | Dot forward | Left to right | Method chaining |
 | `<.` | Dot backward | Right to left | Reverse method chain |
 
-### 6.9 The `by` Operator
+### 9 The `by` Operator
 
 The `by` operator is Jac's mechanism for delegation -- handing off work to an external system. Its most powerful use is with the `byllm` plugin, where `by llm` delegates function implementation to a language model. This enables "Meaning Typed Programming" where you declare *what* a function should do, and the LLM provides *how*. The operator is intentionally generic, allowing plugins to define custom delegation targets.
 
@@ -1003,7 +1019,7 @@ def translate(text: str) -> str by llm(model_name="gpt-4");
 
 See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
 
-### 6.10 Operator Precedence
+### 10 Operator Precedence
 
 Complete precedence table from **lowest** (evaluated last) to **highest** (evaluated first):
 
@@ -1078,11 +1094,11 @@ safe = obj and obj.method();       # Only call if obj exists
 
 ---
 
-## 7. Control Flow
+## Control Flow
 
 Jac's control flow is familiar to Python developers with a few enhancements: braces instead of indentation, semicolons to end statements, and additional constructs like C-style for loops (`for i = 0 to i < 10 by i += 1`) and `switch` statements. Jac also supports Python's pattern matching (`match/case`) for destructuring complex data.
 
-### 7.1 Conditional Statements
+### 1 Conditional Statements
 
 ```jac
 if condition {
@@ -1097,7 +1113,7 @@ if condition {
 result = value_if_true if condition else value_if_false;
 ```
 
-### 7.2 While Loops
+### 2 While Loops
 
 ```jac
 while condition {
@@ -1112,7 +1128,7 @@ while condition {
 }
 ```
 
-### 7.3 For Loops
+### 3 For Loops
 
 Jac supports Python-style iteration and also adds C-style for loops with explicit initialization, condition, and update expressions. The C-style syntax uses `to` for the condition and `by` for the update step -- useful when you need precise control over loop variables.
 
@@ -1142,34 +1158,68 @@ for item in items {
 }
 ```
 
-### 7.4 Pattern Matching
+### 4 Pattern Matching
 
 Pattern matching lets you destructure and test complex data in a single construct. Unlike a chain of `if/elif` statements, `match` can extract values from lists, dicts, and objects while testing their structure. Use it when handling multiple data shapes or implementing state machines.
 
+**Basic Patterns:**
+
 ```jac
 match value {
-    case 0 {
+    case 0:
         print("zero");
-    }
-    case 1 | 2 | 3 {
+
+    case 1 | 2 | 3:
         print("small");
-    }
-    case [x, y] {
+
+    case [x, y]:
         print(f"pair: {x}, {y}");
-    }
-    case {"key": v} {
+
+    case {"key": v}:
         print(f"dict with key: {v}");
-    }
-    case Point(x=x, y=y) {
+
+    case Point(x=x, y=y):
         print(f"point at {x}, {y}");
-    }
-    case _ {
+
+    case _:
         print("default");
-    }
 }
 ```
 
-### 7.5 Switch Statement
+**Advanced Patterns:**
+
+```jac
+match data {
+    case [1, *middle, 5]:              # Spread: capture remainder
+        print(f"Middle: {middle}");
+
+    case {"key1": 1, **rest}:          # Dict spread
+        print(f"Rest: {rest}");
+
+    case [1, 2, last as captured]:     # As: bind to name
+        print(f"Captured: {captured}");
+
+    case [1, 2] | [3, 4]:              # Or: match either
+        print("Matched");
+}
+```
+
+**Pattern Types:**
+
+| Pattern | Example | Description |
+|---------|---------|-------------|
+| Literal | `case 42:` | Match exact value |
+| Capture | `case x:` | Capture into variable |
+| Wildcard | `case _:` | Match anything, don't capture |
+| Sequence | `case [a, b]:` | Match list/tuple structure |
+| Mapping | `case {"k": v}:` | Match dict structure |
+| Class | `case Point(x, y):` | Match class instance |
+| Or | `case 1 \| 2:` | Match any option |
+| As | `case x as name:` | Capture with alias |
+| Star | `case [first, *rest]:` | Capture sequence remainder |
+| Double-star | `case {**rest}:` | Capture dict remainder |
+
+### 5 Switch Statement
 
 ```jac
 switch value {
@@ -1187,7 +1237,7 @@ switch value {
 
 Note: Unlike C, there is no fall-through between cases.
 
-### 7.6 Loop Control
+### 6 Loop Control
 
 ```jac
 for item in items {
@@ -1203,7 +1253,7 @@ for item in items {
 }
 ```
 
-### 7.7 Context Managers
+### 7 Context Managers
 
 ```jac
 with open("file.txt") as f {
@@ -1221,7 +1271,7 @@ async with acquire_lock() as lock {
 }
 ```
 
-### 7.8 Exception Handling
+### 8 Exception Handling
 
 **Basic try/except:**
 
@@ -1316,7 +1366,7 @@ def validate(data: dict) -> None {
 }
 ```
 
-### 7.9 Assertions
+### 9 Assertions
 
 Assertions verify conditions during development:
 
@@ -1340,7 +1390,7 @@ def withdraw(amount: float) -> None {
 
 **Note:** Assertions can be disabled in production with optimization flags. Use exceptions for validation that must always run.
 
-### 7.10 Generator Functions
+### 10 Generator Functions
 
 Generators produce values lazily using `yield`:
 

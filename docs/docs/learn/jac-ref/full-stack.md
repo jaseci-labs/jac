@@ -1,12 +1,24 @@
 # Part IV: Full-Stack Development
 
+**In this part:**
+
+- [Module System](#module-system) - Imports, includes, exports
+- [Server-Side Development](#server-side-development) - Server blocks, REST APIs
+- [Client-Side Development (JSX)](#client-side-development-jsx) - Client blocks, JSX syntax, state
+- [Server-Client Communication](#server-client-communication) - Calling walkers from client
+- [Authentication & Users](#23-authentication-users) - Login, SSO, user management
+- [Memory & Persistence](#24-memory-persistence) - Storage tiers, anchors
+- [Development Tools](#development-tools) - HMR, debugging
+
+---
+
 Jac enables true full-stack development: backend APIs, frontend UI, and AI logic in a single language. The `jac-client` plugin compiles Jac to JavaScript/React for the browser, while `jac-scale` handles server deployment. This part covers modules, server/client separation, and the JSX-like syntax for building UIs.
 
-## 19. Module System
+## Module System
 
 Jac's module system bridges Python and JavaScript ecosystems. You can import from PyPI packages on the server and npm packages on the client using familiar syntax. The `include` statement (like C's `#include`) merges code directly, which is useful for splitting large files.
 
-### 19.1 Import Statements
+### 1 Import Statements
 
 ```jac
 # Simple import
@@ -28,9 +40,12 @@ import from .utils { helper_function }
 # npm package imports (client-side)
 import from react { useState, useEffect }
 import from "@mui/material" { Button, TextField }
+
+# Named prefix imports (jac: for runtime modules)
+import from jac:client_runtime { renderJsxTree, jacLogin }
 ```
 
-### 19.2 Include Statements
+### 2 Include Statements
 
 Include merges code directly (like C's `#include`):
 
@@ -38,14 +53,14 @@ Include merges code directly (like C's `#include`):
 include utils;  # Merges utils.jac into current scope
 ```
 
-### 19.3 CSS and Asset Imports
+### 3 CSS and Asset Imports
 
 ```jac
 import "./styles.css";
 import "./global.css";
 ```
 
-### 19.4 Export and Visibility
+### 4 Export and Visibility
 
 ```jac
 # Public by default
@@ -66,31 +81,25 @@ walker:priv InternalProcess { }
 
 ---
 
-## 20. Server-Side Development
+## Server-Side Development
 
-### 20.1 Server Code Blocks
+### 1 Server Code Blocks
 
 ```jac
 sv {
-    # Server-only code
+    # Server-only block
     node User {
         has id: str;
         has email: str;
     }
-
-    walker:pub CreateUser {
-        has email: str;
-
-        can create with `root entry {
-            user = User(id=uuid4(), email=self.email);
-            root ++> user;
-            report user;
-        }
-    }
 }
+
+# Single-statement form (no braces)
+sv import from .database { connect_db }
+sv node SecretData { has value: str; }
 ```
 
-### 20.2 REST API with jac start
+### 2 REST API with jac start
 
 Public walkers automatically become REST endpoints:
 
@@ -111,7 +120,7 @@ Start the server:
 jac start main.jac --port 8000
 ```
 
-### 20.3 Module Introspection
+### 3 Module Introspection
 
 ```jac
 # List all walkers in module
@@ -121,7 +130,7 @@ walkers = get_module_walkers();
 functions = get_module_functions();
 ```
 
-### 20.4 Transport Layer
+### 4 Transport Layer
 
 The transport layer handles HTTP request/response:
 
@@ -132,9 +141,9 @@ import from jaclang.transport { BaseTransport, HTTPTransport }
 
 ---
 
-## 21. Client-Side Development (JSX)
+## Client-Side Development (JSX)
 
-### 21.1 Client Code Blocks
+### 1 Client Code Blocks
 
 ```jac
 cl {
@@ -142,20 +151,16 @@ cl {
 
     def:pub App -> any {
         has count: int = 0;
-
-        return (
-            <div>
-                <h1>Counter: {count}</h1>
-                <button onclick={lambda: self.count += 1}>
-                    Increment
-                </button>
-            </div>
-        );
+        return <div><h1>Counter: {count}</h1></div>;
     }
 }
+
+# Single-statement form
+cl import from react { useState }
+cl glob THEME: str = "dark";
 ```
 
-### 21.2 State Management with `has`
+### 2 State Management with `has`
 
 In client components, `has` creates reactive state:
 
@@ -186,7 +191,7 @@ def:pub TodoApp -> any {
 }
 ```
 
-### 21.3 Effects and Lifecycle
+### 3 Effects and Lifecycle
 
 ```jac
 def:pub DataLoader -> any {
@@ -211,7 +216,7 @@ def:pub DataLoader -> any {
 }
 ```
 
-### 21.4 JSX Syntax
+### 4 JSX Syntax
 
 ```jac
 # Elements
@@ -234,9 +239,13 @@ def:pub DataLoader -> any {
     <Child1 />
     <Child2 />
 </>
+
+# Spread attributes
+<button {...props}>Click</button>
+<div {...baseStyle} {...additionalProps} />
 ```
 
-### 21.5 Styling Patterns
+### 5 Styling Patterns
 
 ```jac
 import from "@jac-client/utils" { cn }
@@ -256,7 +265,7 @@ className = cn(
 <div className={className}>Dynamic</div>
 ```
 
-### 21.6 Routing
+### 6 Routing
 
 ```jac
 import from react-router-dom { BrowserRouter, Routes, Route, Link }
@@ -277,7 +286,7 @@ def:pub App -> any {
 }
 ```
 
-### 21.7 Client Bundle System
+### 7 Client Bundle System
 
 The client is bundled using Vite:
 
@@ -290,9 +299,9 @@ typescript = false
 
 ---
 
-## 22. Server-Client Communication
+## Server-Client Communication
 
-### 22.1 Calling Server Walkers
+### 1 Calling Server Walkers
 
 From client code, call server walkers:
 
@@ -306,7 +315,7 @@ cl {
 }
 ```
 
-### 22.2 jacSpawn() Function
+### 2 jacSpawn() Function
 
 Client-side walker invocation:
 
@@ -321,7 +330,7 @@ cl {
 }
 ```
 
-### 22.3 Starting Full-Stack Server
+### 3 Starting Full-Stack Server
 
 ```bash
 # Development with hot reload
@@ -333,9 +342,9 @@ jac start main.jac --port 8000
 
 ---
 
-## 23. Authentication & Users {#23-authentication-users}
+## Authentication & Users {#23-authentication-users}
 
-### 23.1 Built-in Auth Functions
+### 1 Built-in Auth Functions
 
 ```jac
 import from "@jac-client/utils" {
@@ -367,7 +376,7 @@ cl {
 }
 ```
 
-### 23.2 User Management
+### 2 User Management
 
 | Operation | Function/Endpoint | Description |
 |-----------|-------------------|-------------|
@@ -378,7 +387,7 @@ cl {
 | Update Password | API endpoint | Change password |
 | Guest Access | `__guest__` account | Anonymous user support |
 
-### 23.3 Per-User Graph Isolation
+### 3 Per-User Graph Isolation
 
 Each authenticated user gets an isolated root node:
 
@@ -392,7 +401,7 @@ walker:pub GetMyData {
 }
 ```
 
-### 23.4 Single Sign-On (SSO)
+### 4 Single Sign-On (SSO)
 
 Configure in `jac.toml`:
 
@@ -412,9 +421,9 @@ client_secret = "your-google-client-secret"
 
 ---
 
-## 24. Memory & Persistence {#24-memory-persistence}
+## Memory & Persistence {#24-memory-persistence}
 
-### 24.1 Memory Hierarchy
+### 1 Memory Hierarchy
 
 | Tier | Type | Implementation |
 |------|------|----------------|
@@ -422,7 +431,7 @@ client_secret = "your-google-client-secret"
 | L2 | Cache | LocalCacheMemory (TTL-based) |
 | L3 | Persistent | SqliteMemory (default) |
 
-### 24.2 TieredMemory
+### 2 TieredMemory
 
 Automatic read-through caching and write-through persistence:
 
@@ -437,7 +446,7 @@ save(user_node);
 commit();
 ```
 
-### 24.3 ExecutionContext
+### 3 ExecutionContext
 
 Manages runtime context:
 
@@ -446,15 +455,15 @@ Manages runtime context:
 - `entry_node` -- Current entry point
 - `Memory` -- Storage backend
 
-### 24.4 Anchor Management
+### 4 Anchor Management
 
 Anchors provide persistent object references across sessions.
 
 ---
 
-## 25. Development Tools
+## Development Tools
 
-### 25.1 Hot Module Replacement (HMR)
+### 1 Hot Module Replacement (HMR)
 
 ```bash
 # Enable with --watch flag
@@ -463,11 +472,11 @@ jac start main.jac --watch
 
 Changes to `.jac` files automatically reload without restart.
 
-### 25.2 File System Watcher
+### 2 File System Watcher
 
 The JacFileWatcher monitors for changes with debouncing to prevent rapid reloads.
 
-### 25.3 Debug Mode
+### 3 Debug Mode
 
 ```bash
 jac debug main.jac

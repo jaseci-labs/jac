@@ -6,6 +6,7 @@ Direct implementations - no delegation.
 import subprocess;
 import shlex;
 import sys;
+import base64;
 import from pathlib { Path }
 
 """Initialize a new Jac project."""
@@ -93,12 +94,22 @@ impl create(
     console.print(f"  ✔ jac.toml", style="success");
     # Generate files from template
     for (file_path, content) in tmpl.files.items() {
-        rendered = content.replace("{{name}}", project_name);
         full_path = project_path / file_path;
         full_path.parent.mkdir(parents=True, exist_ok=True);
         if not full_path.exists() or force {
-            with open(full_path, "w") as f {
-                f.write(rendered);
+            # Check if content is base64-encoded binary (prefixed with "base64:")
+            if content.startswith("base64:") {
+                # Decode binary content and write as bytes
+                binary_data = base64.b64decode(content[7:]);
+                with open(full_path, "wb") as f {
+                    f.write(binary_data);
+                }
+            } else {
+                # Text file - apply template substitution and write as text
+                rendered = content.replace("{{name}}", project_name);
+                with open(full_path, "w") as f {
+                    f.write(rendered);
+                }
             }
             console.print(f"  ✔ {file_path}", style="success");
         }
