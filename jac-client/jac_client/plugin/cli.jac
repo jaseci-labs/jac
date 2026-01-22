@@ -67,6 +67,28 @@ def build(
     return 0;
 }
 
+"""Register 'setup' command at module level."""
+@registry.command(
+    name="setup",
+    help="Setup a build target (one-time initialization)",
+    args=[
+        Arg.create(
+            "target",
+            kind=ArgKind.POSITIONAL,
+            help="Target to setup (e.g., desktop)"
+        ),
+    ],
+    examples=[
+        ("jac setup desktop", "Setup desktop target (Tauri)"),
+    ],
+    group="project",
+    source="jac-client"
+)
+def setup(target: str) -> int {
+    # This will be handled by the pre_hook
+    return 0;
+}
+
 """Jac CLI extensions for client-side development."""
 class JacCmd {
     """Create Jac CLI cmds."""
@@ -127,6 +149,13 @@ class JacCmd {
         registry.extend_command(
             command_name="build",
             pre_hook=_handle_build_target,
+            source="jac-client"
+        );
+
+        # Add pre-hook to setup command (command is registered at module level)
+        registry.extend_command(
+            command_name="setup",
+            pre_hook=_handle_setup_target,
             source="jac-client"
         );
 
@@ -357,6 +386,73 @@ def _handle_start_target(ctx: HookContext) -> None {
     
     # Web target: let existing start command handle it
     # (no cancellation, let it run normally)
+}
+
+"""Pre-hook to handle setup command."""
+def _handle_setup_target(ctx: HookContext) -> None {
+    import from jaclang.cli.console { console }
+    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    
+    target_name = ctx.get_arg("target", None);
+    if not target_name {
+        console.error("No target specified. Use: jac setup <target>");
+        console.print("Available targets: desktop", style="muted");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    
+    registry = get_target_registry();
+    target = registry.get(target_name);
+    
+    if not target {
+        console.error(f"Unknown target: {target_name}");
+        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    
+    # Setup using target's setup method
+    try {
+        config = get_config();
+        if not config {
+            console.error("No jac.toml found. Run 'jac create' to create a project.");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        project_dir = config.project_root or Path.cwd();
+        console.print(f"Setting up target '{target_name}' in: {project_dir}", style="muted");
+        target.setup(project_dir);
+        
+        # Verify setup completed successfully
+        tauri_dir = project_dir / "src-tauri";
+        if not tauri_dir.exists() {
+            console.error(f"Setup completed but src-tauri directory not found at: {tauri_dir}");
+            console.print("This may indicate the setup function failed silently.", style="muted");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        console.success(f"Target '{target_name}' setup complete!");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0);
+    } except NotImplementedError as e {
+        console.error(f"Target '{target_name}' setup is not yet implemented.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    } except Exception as e {
+        import traceback;
+        console.error(f"Setup failed: {e}");
+        console.print(traceback.format_exc(), style="muted");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    }
 }
 
 """Pre-hook to handle --npm flag for removing npm dependencies."""

@@ -16,20 +16,16 @@ class DesktopTarget(Target) {
         self.output_dir = Path("src-tauri/target/release/bundle");
     }
 
-    """Setup desktop target (to be implemented in Phase 2)."""
-    override def setup(self: DesktopTarget, project_dir: Path) -> None {
-        raise NotImplementedError("Desktop target setup not yet implemented");
-    }
+    """Setup desktop target - scaffold Tauri project structure."""
+    override def setup(self: DesktopTarget, project_dir: Path) -> None;
 
-    """Build desktop app (to be implemented in Phase 2)."""
+    """Build desktop app - build web bundle first, then wrap with Tauri."""
     override def build(
         self: DesktopTarget,
         entry_file: Path,
         project_dir: Path,
         platform: Optional[str] = None
-    ) -> Path {
-        raise NotImplementedError("Desktop target build not yet implemented");
-    }
+    ) -> Path;
 
     """Start desktop dev server (to be implemented in Phase 2)."""
     override def dev(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None {
