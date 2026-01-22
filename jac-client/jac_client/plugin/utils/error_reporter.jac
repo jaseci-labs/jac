@@ -9,14 +9,14 @@ import from pathlib { Path }
 
 """Structured representation of a bundling error."""
 obj BundleError {
-    has error_type: str,             # Error category (e.g., "DuplicateImport", "SyntaxError")
-        message: str,                # Error message
-        file_path: (str | None),     # File where error occurred
-        line: (int | None),          # Line number
-        column: (int | None),        # Column number
-        identifier: (str | None),    # Related identifier (e.g., duplicate import name)
+    has error_type: str,  # Error category (e.g., "DuplicateImport", "SyntaxError")
+        message: str,  # Error message
+        file_path: (str | None),  # File where error occurred
+        line: (int | None),  # Line number
+        column: (int | None),  # Column number
+        identifier: (str | None),  # Related identifier (e.g., duplicate import name)
         code_context: (str | None),  # Code snippet showing error location
-        suggestion: (str | None);    # Actionable fix suggestion
+        suggestion: (str | None);  # Actionable fix suggestion
 }
 
 """Parser and formatter for Babel/Vite bundling errors."""
