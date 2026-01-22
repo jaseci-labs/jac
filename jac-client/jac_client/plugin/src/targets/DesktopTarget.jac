@@ -27,9 +27,10 @@ class DesktopTarget(Target) {
         platform: Optional[str] = None
     ) -> Path;
 
-    """Start desktop dev server (to be implemented in Phase 2)."""
-    override def dev(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None {
-        raise NotImplementedError("Desktop target dev not yet implemented");
-    }
+    """Start desktop dev server - start web dev server and launch tauri dev."""
+    override def dev(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None;
+
+    """Start desktop app - build web bundle and launch Tauri with built bundle."""
+    override def start(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None;
 }
 

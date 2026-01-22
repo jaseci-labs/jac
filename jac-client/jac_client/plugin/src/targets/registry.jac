@@ -26,6 +26,9 @@ class Target {
 
     """Start dev server for the target."""
     def dev(self: Target, entry_file: Path, project_dir: Path) -> None abs;
+
+    """Start the target (production mode - build and run)."""
+    def start(self: Target, entry_file: Path, project_dir: Path) -> None abs;
 }
 
 """Central registry for build targets.

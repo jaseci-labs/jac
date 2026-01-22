@@ -51,5 +51,11 @@ class WebTarget(Target) {
         # Web dev is handled by existing jac start command
         # This is a placeholder - actual dev server logic is in the CLI
     }
+
+    """Start web target (no-op for web, handled by jac start)."""
+    override def start(self: WebTarget, entry_file: Path, project_dir: Path) -> None {
+        # Web start is handled by existing jac start command
+        # This is a placeholder
+    }
 }
 

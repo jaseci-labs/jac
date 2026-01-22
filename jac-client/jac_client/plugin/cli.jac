@@ -159,24 +159,25 @@ class JacCmd {
             source="jac-client"
         );
 
-        # Extend 'start' command with --target flag
-        # Note: jac-scale also uses --target, but for deployment targets
-        # We use it for build targets, so we need to handle both cases
-        registry.extend_command(
-            command_name="start",
-            args=[
-                Arg.create(
-                    "build_target",  # Use different name to avoid conflict with jac-scale's --target
-                    typ=str,
-                    default="web",
-                    help="Build target for dev server (web, desktop)",
-                    choices=["web", "desktop"],
-                    short=""  # Disable auto-generated short flag
-                ),
-            ],
-            pre_hook=_handle_start_target,
-            source="jac-client"
-        );
+        # Extend 'start' command with --cl-target flag
+        # Note: jac-scale also uses --target, so we use --cl-target to avoid conflict
+        if registry.has_command("start") {
+            registry.extend_command(
+                command_name="start",
+                args=[
+                    Arg.create(
+                        "cl_target",  # Use cl_target to avoid conflict with jac-scale's --target
+                        typ=str,
+                        default="web",
+                        help="Client build target for dev server (web, desktop)",
+                        choices=["web", "desktop"],
+                        short=""  # Disable auto-generated short flag
+                    ),
+                ],
+                pre_hook=_handle_start_target,
+                source="jac-client"
+            );
+        }
     }
 }
 
@@ -355,12 +356,12 @@ def _handle_build_target(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --build-target flag for start command."""
+"""Pre-hook to handle --cl-target flag for start command."""
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jac_client.plugin.src.targets.registry { get_target_registry }
     
-    target_name = ctx.get_arg("build_target", "web");
+    target_name = ctx.get_arg("cl_target", "web");
     
     registry = get_target_registry();
     target = registry.get(target_name);
@@ -376,11 +377,64 @@ def _handle_start_target(ctx: HookContext) -> None {
     # Store target info in context
     ctx.set_data("start_target", target);
     
-    # For now, only web target is fully implemented
+    # Handle desktop target
     if target_name == "desktop" {
-        console.error("Desktop target is not yet implemented. Coming in Phase 2!");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
+        import from pathlib { Path }
+        import from jaclang.project.config { get_config }
+        
+        config = get_config();
+        if not config {
+            console.error("No jac.toml found. Run 'jac create' to create a project.");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        # Get entry file
+        entry_file = ctx.get_arg("filename", None);
+        if not entry_file {
+            entry_file = config.entry_point;
+        }
+        if not entry_file {
+            console.error("No entry file specified. Use: jac start <file>");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        entry_path = Path(entry_file);
+        project_dir = config.project_root or Path.cwd();
+        if not entry_path.is_absolute() {
+            entry_path = project_dir / entry_path;
+        }
+        
+        # Check if setup has been run
+        tauri_dir = project_dir / "src-tauri";
+        if not tauri_dir.exists() {
+            console.error("Desktop target not set up. Run 'jac setup desktop' first.");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        # Check if --dev flag is set
+        dev_mode = ctx.get_arg("dev", False);
+        
+        try {
+            if dev_mode {
+                # Desktop target with --dev: launch Tauri dev mode (hot reload)
+                target.dev(entry_path, project_dir);
+            } else {
+                # Desktop target without --dev: build web bundle and launch Tauri with built bundle
+                target.start(entry_path, project_dir);
+            }
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 0);
+        } except Exception as e {
+            console.error(f"Desktop start failed: {e}");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+        }
         return;
     }
     
