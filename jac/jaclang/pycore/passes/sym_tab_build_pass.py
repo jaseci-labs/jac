@@ -274,20 +274,30 @@ class SymTabBuildPass(UniPass):
             archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
 
     def _get_impl_target_archetype(self, impl_def: uni.ImplDef) -> uni.Archetype | None:
-        """Get the target archetype for an impl block by looking up its target symbol."""
-        if not impl_def.parent_scope:
+        """Get target archetype for impl block, handling nested impl declarations."""
+        if not (impl_def.parent_scope and impl_def.target):
             return None
 
-        if not (
-            archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name)
-        ):
-            return None
+        current_scope = impl_def.parent_scope
+        archetype = None
 
-        return (
-            archetype_sym.decl.name_of
-            if isinstance(archetype_sym.decl.name_of, uni.Archetype)
-            else None
-        )
+        for i, target_name in enumerate(impl_def.target[:-1]):
+            if not (sym := current_scope.lookup(target_name.sym_name)):
+                impl_path = ".".join([part.sym_name for part in impl_def.target[:i]])
+                if not (impl_sym := impl_def.parent_scope.lookup(f"impl.{impl_path}")):
+                    return None
+                if not isinstance(impl_scope := impl_sym.decl.name_of, uni.ImplDef):
+                    return None
+                if not (sym := impl_scope.lookup(target_name.sym_name, deep=False)):
+                    return None
+
+            if not isinstance(name_of := sym.decl.name_of, uni.Archetype):
+                return None
+            
+            archetype = name_of
+            current_scope = archetype.sym_tab
+
+        return archetype
 
     def _is_self_member_assignment(self, node: uni.AtomTrailer) -> bool:
         """Check if the node represents a simple `self.attr = value` assignment."""

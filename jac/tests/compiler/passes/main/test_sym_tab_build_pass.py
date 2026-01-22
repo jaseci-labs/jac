@@ -123,15 +123,20 @@ def test_except_variable_registration() -> None:
 
 
 def test_impl_self_assignment() -> None:
-    """Test that self.attr assignments in impl blocks register in archetype symbol table."""
+    """Test self.attr assignments in nested impl blocks."""
     file_path = get_fixture_path("impl_self_assignment.jac")
     mod = JacProgram().compile(file_path)
+    
+    # Test nested hierarchy: Company -> Department -> Team -> Employee
+    test_cases = [
+        ("Company", "employee_count"),
+        ("Department", "budget"),
+        ("Team", "project_count"),
+        ("Employee", "salary"),
+    ]
 
-    someobj_sym = mod.sym_tab.names_in_scope.get("SomeObj")
-    assert someobj_sym is not None, "SomeObj symbol should exist"
-    someobj_archetype = someobj_sym.decl.name_of
-    archetype_members = someobj_archetype.sym_tab.names_in_scope
-
-    assert "b" in archetype_members, (
-        "self.b assigned in impl block should be registered in SomeObj symbol table"
-    )
+    scope = mod.sym_tab
+    for arch_name, attr_name in test_cases:
+        archetype = scope.names_in_scope[arch_name].decl.name_of
+        assert attr_name in archetype.sym_tab.names_in_scope
+        scope = archetype.sym_tab
