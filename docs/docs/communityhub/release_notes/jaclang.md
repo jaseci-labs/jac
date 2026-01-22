@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.10 (Unreleased)
 
+### Bug Fixes
+
+- **`jac add` Now Records Actual Package Versions**: Fixed an issue where `jac add <package>` without a version specifier would record `==0.0.0` in `jac.toml` instead of the actual installed version. Now, when adding a package without specifying a version (e.g., `jac add numpy`), the command retrieves and records the actual installed version (e.g., `numpy = "==2.4.1"`). User-specified version constraints (e.g., `jac add "numpy>=1.24"`) continue to be respected and recorded as provided.
+
 ## jaclang 0.9.9 (Latest Release)
 
 ### Breaking Changes
