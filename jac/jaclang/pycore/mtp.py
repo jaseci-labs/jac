@@ -15,14 +15,14 @@ class MTRuntime:
     caller: Callable[..., object]
     args: dict[int | str, object]
     call_params: dict[str, object]
-    mtir: MTIR
+    mtir: MTIR | None
 
     @staticmethod
     def factory(
         caller: Callable[..., object],
         args: dict[int | str, object],
         call_params: dict[str, object],
-        mtir: MTIR = None,
+        mtir: MTIR | None = None,
     ) -> MTRuntime:
         """Create a new MTRuntime instance."""
         return MTRuntime(caller=caller, args=args, call_params=call_params, mtir=mtir)
@@ -35,7 +35,7 @@ class MTIR:
     caller: Callable[..., object]
     args: dict[int | str, object]
     call_params: dict[str, object]
-    ir_info: Info = None
+    ir_info: Info | None = None
 
     @property
     def runtime(self) -> MTRuntime:
@@ -88,9 +88,9 @@ class ClassInfo(Info):
 
 @dataclass
 class FunctionInfo(Info):
-    params: list[ParamInfo] = None
+    params: list[ParamInfo] | None = None
     return_type: str | ClassInfo | tuple | None = None
-    tools: list[MethodInfo] = None
+    tools: list[MethodInfo] | None = None
     by_call: bool = False
 
     def __post_init__(self):
@@ -103,7 +103,7 @@ class FunctionInfo(Info):
 
 @dataclass
 class MethodInfo(FunctionInfo):
-    parent_class: ClassInfo = None
+    parent_class: ClassInfo | None = None
 
 
 # Minimal, backward-compatible helpers for representing generic/collection types
@@ -149,7 +149,7 @@ def is_union_type(t: object) -> bool:
 def inner_types(t: object) -> tuple:
     if isinstance(t, tuple) and len(t) >= 2:
         return t[1:]
-    return tuple()
+    return ()
 
 
 def type_to_str(t: object) -> str:

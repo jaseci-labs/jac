@@ -53,7 +53,7 @@ from jaclang.pycore.constructs import (
     WalkerArchetype,
 )
 from jaclang.pycore.modresolver import infer_language
-from jaclang.pycore.mtp import MTIR, MTRuntime
+from jaclang.pycore.mtp import MTIR, Info, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
@@ -1920,19 +1920,20 @@ class JacByLLM:
         )
 
     @staticmethod
-    def add_mtir_to_map(scope: str, mtir: MTIR) -> None:
+    def add_mtir_to_map(scope: str, mtir: Info) -> None:
         """Add MTIR to the node's MTIR map."""
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
         JacRuntime.program.mtir_map[scope] = mtir
 
     @staticmethod
-    def get_mtir_from_map(scope: str) -> MTIR | None:
+    def get_mtir_from_map(scope: str) -> Info | None:
         """Get MTIR from the node's MTIR map."""
-        try:
-            if scope not in JacRuntime.program.mtir_map.keys():
-                raise KeyError(f"MTIR not found for scope {scope}")
-            return JacRuntime.program.mtir_map[scope]
-        except AttributeError:
-            raise AttributeError("JacRuntime.program.mtir_map is not initialized")
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
+        if scope not in JacRuntime.program.mtir_map:
+            raise KeyError(f"MTIR not found for scope {scope}")
+        return JacRuntime.program.mtir_map[scope]
 
 
 class JacUtils:
