@@ -6,6 +6,8 @@ import from jaclang.project.config { get_config }
 import subprocess;
 import json;
 import shutil;
+import os;
+import platform;
 
 """Setup desktop target - scaffold Tauri project structure."""
 impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
@@ -321,5 +323,172 @@ def _check_tauri_cli() -> None {
         console.print("  It will be installed automatically when needed", style="muted");
         console.print("  Or install manually: npm install -g @tauri-apps/cli", style="muted");
     }
+}
+
+"""Build desktop app - build web bundle first, then wrap with Tauri."""
+impl DesktopTarget.build(
+    self: DesktopTarget,
+    entry_file: Path,
+    project_dir: Path,
+    platform: Optional[str] = None
+) -> Path {
+    import from jac_client.plugin.src.targets.WebTarget { WebTarget }
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    
+    console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
+    
+    # Check if setup has been run
+    tauri_dir = project_dir / "src-tauri";
+    if not tauri_dir.exists() {
+        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.");
+    }
+    
+    # Step 1: Build web bundle first (reuse existing pipeline)
+    console.print("  Step 1: Building web bundle...", style="muted");
+    web_target = WebTarget();
+    web_bundle_path = web_target.build(entry_file, project_dir, platform);
+    console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
+    
+    # Step 2: Update tauri.conf.json to point to web bundle
+    console.print("  Step 2: Updating Tauri configuration...", style="muted");
+    _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
+    
+    # Step 3: Run cargo tauri build
+    console.print("  Step 3: Building Tauri app...", style="muted");
+    bundle_path = _run_tauri_build(tauri_dir, platform);
+    
+    console.success(f"Desktop app built successfully!");
+    console.print(f"  Output: {bundle_path}", style="muted");
+    return bundle_path;
+}
+
+"""Update tauri.conf.json to point to the built web bundle."""
+def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundle_path: Path) -> None {
+    import json;
+    
+    config_path = tauri_dir / "tauri.conf.json";
+    if not config_path.exists() {
+        raise RuntimeError("tauri.conf.json not found. Run 'jac setup desktop' first.");
+    }
+    
+    # Read existing config
+    with open(config_path, "r") as f {
+        config = json.load(f);
+    }
+    
+    # Calculate relative path from tauri_dir to web bundle
+    try {
+        # Web bundle is typically in .jac/client/dist
+        # Relative to src-tauri, that's ../.jac/client/dist
+        dist_relative = web_bundle_path.relative_to(project_dir);
+        dist_relative_str = "../" + str(dist_relative.as_posix());
+    } except ValueError {
+        # If paths don't share a common root, use absolute path
+        dist_relative_str = str(web_bundle_path.as_posix());
+    }
+    
+    # Update build config
+    if "build" not in config {
+        config["build"] = {};
+    }
+    config["build"]["distDir"] = dist_relative_str;
+    config["build"]["devPath"] = None;  # Not in dev mode
+    config["build"]["beforeBuildCommand"] = None;
+    
+    # Write updated config
+    with open(config_path, "w") as f {
+        json.dump(config, f, indent=2);
+    }
+    
+    console.print("  ✔ Updated tauri.conf.json", style="success");
+}
+
+"""Run cargo tauri build and return path to bundle."""
+def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
+    import os;
+    
+    # Determine target based on platform
+    target = None;
+    if platform == "windows" {
+        target = "x86_64-pc-windows-msvc";
+    } elif platform == "macos" {
+        # Try to detect architecture
+        if platform.machine() == "arm64" {
+            target = "aarch64-apple-darwin";
+        } else {
+            target = "x86_64-apple-darwin";
+        }
+    } elif platform == "linux" {
+        target = "x86_64-unknown-linux-gnu";
+    }
+    
+    # Build command
+    build_cmd = ["npm", "run", "tauri", "build"];
+    if target {
+        build_cmd.extend(["--", "--target", target]);
+    }
+    
+    # Check if package.json has tauri scripts, if not, use cargo directly
+    package_json = tauri_dir.parent / "package.json";
+    use_npm = False;
+    if package_json.exists() {
+        try {
+            with open(package_json, "r") as f {
+                package_data = json.load(f);
+                scripts = package_data.get("scripts", {});
+                if "tauri" in scripts or "tauri:build" in scripts {
+                    use_npm = True;
+                }
+            }
+        } except Exception {
+            pass;
+    }
+    
+    if not use_npm {
+        # Use cargo tauri build directly
+        build_cmd = ["cargo", "tauri", "build"];
+        if target {
+            build_cmd.extend(["--target", target]);
+        }
+    }
+    
+    # Change to tauri directory and run build
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tauri_dir.parent);
+        console.print(f"  Running: {' '.join(build_cmd)}", style="muted");
+        
+        result = subprocess.run(
+            build_cmd,
+            cwd=tauri_dir.parent,
+            check=True,
+            capture_output=False  # Show output to user
+        );
+    } finally {
+        os.chdir(original_cwd);
+    }
+    
+    # Find the bundle output
+    # Tauri outputs to src-tauri/target/{target}/release/bundle/
+    if target {
+        bundle_dir = tauri_dir / "target" / target / "release" / "bundle";
+    } else {
+        bundle_dir = tauri_dir / "target" / "release" / "bundle";
+    }
+    
+    if not bundle_dir.exists() {
+        raise RuntimeError(f"Build completed but bundle not found at: {bundle_dir}");
+    }
+    
+    # Find the actual bundle file (varies by platform)
+    bundle_files = list(bundle_dir.rglob("*"));
+    installers = [f for f in bundle_files if f.is_file() and f.suffix in [".exe", ".dmg", ".AppImage", ".deb", ".rpm", ".msi"]];
+    
+    if installers {
+        return installers[0];
+    }
+    
+    # Fallback: return the bundle directory
+    return bundle_dir;
 }
 
