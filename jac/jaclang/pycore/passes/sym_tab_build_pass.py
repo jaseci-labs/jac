@@ -263,14 +263,24 @@ class SymTabBuildPass(UniPass):
             return
 
         chain = node.as_attr_list
-        ability = node.find_parent_of_type(uni.Ability)
+        archetype = None
 
-        # Register the attribute in the archetype's symbol table
-        # Example: self.attr = value → add 'attr' to archetype.sym_tab
-        if ability and ability.method_owner:
+        if ability := node.find_parent_of_type(uni.Ability):
             archetype = ability.method_owner
-            if isinstance(archetype, uni.Archetype):
-                archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
+        elif (
+            (impl_def := node.find_parent_of_type(uni.ImplDef))
+            and impl_def.parent_scope
+            and (
+                archetype_sym := impl_def.parent_scope.lookup(
+                    impl_def.target[0].sym_name
+                )
+            )
+        ):
+            name_of = archetype_sym.decl.name_of
+            archetype = name_of if isinstance(name_of, uni.Archetype) else None
+
+        if archetype and isinstance(archetype, uni.Archetype):
+            archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
 
     def _is_self_member_assignment(self, node: uni.AtomTrailer) -> bool:
         """Check if the node represents a simple `self.attr = value` assignment."""
@@ -287,14 +297,17 @@ class SymTabBuildPass(UniPass):
         if len(chain) != 2 or chain[0].sym_name != "self":
             return False
 
-        # Must be inside a non-static, non-class instance method
+        # Must be inside a non-static, non-class instance method OR inside an ImplDef
         ability = node.find_parent_of_type(uni.Ability)
-        return (
+        if (
             ability is not None
             and ability.is_method
             and not ability.is_static
             and not ability.is_cls_method
-        )
+        ):
+            return True
+
+        return node.find_parent_of_type(uni.ImplDef) is not None
 
     def exit_enum(self, node: uni.Enum) -> None:
         self.pop_scope()

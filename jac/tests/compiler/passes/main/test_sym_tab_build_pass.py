@@ -6,14 +6,19 @@ import jaclang.pycore.unitree as uni
 from jaclang.pycore.program import JacProgram
 
 
-def test_no_dupl_symbols() -> None:
-    """Basic test for pass."""
-    file_path = os.path.join(
+def get_fixture_path(filename: str) -> str:
+    """Get the full path to a fixture file in symtab_build_tests directory."""
+    return os.path.join(
         os.path.dirname(__file__),
         "fixtures",
         "symtab_build_tests",
-        "no_dupls.jac",
+        filename,
     )
+
+
+def test_no_dupl_symbols() -> None:
+    """Basic test for pass."""
+    file_path = get_fixture_path("no_dupls.jac")
     mod = JacProgram().compile(file_path)
     assert len(mod.sym_tab.names_in_scope.values()) == 3
 
@@ -36,12 +41,7 @@ def test_no_dupl_symbols() -> None:
 
 def test_package() -> None:
     """Test package."""
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        "symtab_build_tests",
-        "main.jac",
-    )
+    file_path = get_fixture_path("main.jac")
     prog = JacProgram()
     prog.compile(file_path)
     assert prog.errors_had == []
@@ -50,13 +50,7 @@ def test_package() -> None:
 
 def test_expr_as_item_alias_variable() -> None:
     """Test that alias variables in 'as' clauses are registered in symbol table."""
-
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        "symtab_build_tests",
-        "with_as_clause.jac",
-    )
+    file_path = get_fixture_path("with_as_clause.jac")
     mod = JacProgram().compile(file_path)
 
     with_names = mod.sym_tab.kid_scope[0].names_in_scope
@@ -71,13 +65,7 @@ def test_expr_as_item_alias_variable() -> None:
 
 def test_in_for_stmt_iteration_variables() -> None:
     """Test that iteration variables in for loops are registered in symbol table."""
-
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        "symtab_build_tests",
-        "for_loop_unpacking.jac",
-    )
+    file_path = get_fixture_path("for_loop_unpacking.jac")
     mod = JacProgram().compile(file_path)
 
     test_cases = [
@@ -97,12 +85,7 @@ def test_in_for_stmt_iteration_variables() -> None:
 
 def test_compr_unpacking_variables() -> None:
     """Test that unpacking variables in comprehensions are in container scope."""
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        "symtab_build_tests",
-        "comprehension_patterns.jac",
-    )
+    file_path = get_fixture_path("comprehension_patterns.jac")
     mod = JacProgram().compile(file_path)
 
     test_cases = [
@@ -128,12 +111,7 @@ def test_compr_unpacking_variables() -> None:
 
 def test_except_variable_registration() -> None:
     """Test that exception variables (as clause) are registered in except block symbol table."""
-    file_path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures",
-        "symtab_build_tests",
-        "symtab_features.jac",
-    )
+    file_path = get_fixture_path("symtab_features.jac")
     mod = JacProgram().compile(file_path)
 
     try_stmt = mod.sym_tab.kid_scope[0]
@@ -141,4 +119,18 @@ def test_except_variable_registration() -> None:
 
     assert "e" in except_clause.names_in_scope, (
         "Exception variable 'e' should be registered in except block symbol table"
+    )
+
+def test_impl_self_assignment() -> None:
+    """Test that self.attr assignments in impl blocks register in archetype symbol table."""
+    file_path = get_fixture_path("impl_self_assignment.jac")
+    mod = JacProgram().compile(file_path)
+
+    someobj_sym = mod.sym_tab.names_in_scope.get("SomeObj")
+    assert someobj_sym is not None, "SomeObj symbol should exist"
+    someobj_archetype = someobj_sym.decl.name_of
+    archetype_members = someobj_archetype.sym_tab.names_in_scope
+
+    assert "b" in archetype_members, (
+        "self.b assigned in impl block should be registered in SomeObj symbol table"
     )
