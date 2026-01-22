@@ -212,58 +212,34 @@ impl DependencyInstaller.list_installed -> list[str] {
 }
 
 impl DependencyInstaller.get_installed_version(name: str) -> str {
-    """Get the installed version of a package from its dist-info directory.
-    
-    Args:
-        name: Package name
-        
-    Returns:
-        Version string (e.g., "2.4.1") or empty string if not found
-    """
+    # Get the installed version of a package from its dist-info directory.
+    # Returns: Version string (e.g., "2.4.1") or empty string if not found
     if not self.packages_dir.exists() {
         return "";
     }
-    
-    # Normalize package name (replace - with _)
     normalized_name = name.lower().replace("-", "_");
-    
-    # Look for dist-info directory
     for item in self.packages_dir.iterdir() {
         if item.name.endswith(".dist-info") {
-            # Strip .dist-info suffix
-            stem = item.name[:-10];  # len(".dist-info") == 10
-            
-            # Parse package name and version from dist-info directory name
-            # Format is typically: package_name-version.dist-info
+            stem = item.name[:-10];
             parts = stem.split("-");
             if len(parts) >= 2 {
-                # Handle package names with hyphens
-                # Find where version starts (first part that starts with a digit)
-                name_parts = [];
-                version_parts = [];
-                found_version = False;
-                
-                for part in parts {
-                    if not found_version and part and part[0].isdigit() {
-                        found_version = True;
-                        version_parts.append(part);
-                    } elif found_version {
-                        version_parts.append(part);
-                    } else {
-                        name_parts.append(part);
+                version_idx = -1;
+                for i in range(len(parts)) {
+                    if parts[i] and parts[i][0].isdigit() {
+                        version_idx = i;
+                        break;
                     }
                 }
-                
-                pkg_name = "-".join(name_parts).lower().replace("-", "_");
-                
-                if pkg_name == normalized_name and version_parts {
-                    # Join version parts with - (e.g., for versions like "1.0.0-beta")
-                    return "-".join(version_parts);
+                if version_idx > 0 {
+                    pkg_name = "-".join(parts[:version_idx]).lower().replace("-", "_");
+                    version = ".".join(parts[version_idx:]);
+                    if pkg_name == normalized_name {
+                        return version;
+                    }
                 }
             }
         }
     }
-    
     return "";
 }
 
