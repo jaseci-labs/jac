@@ -267,20 +267,25 @@ class SymTabBuildPass(UniPass):
 
         if ability := node.find_parent_of_type(uni.Ability):
             archetype = ability.method_owner
-        elif (
-            (impl_def := node.find_parent_of_type(uni.ImplDef))
-            and impl_def.parent_scope
-            and (
-                archetype_sym := impl_def.parent_scope.lookup(
-                    impl_def.target[0].sym_name
-                )
-            )
-        ):
-            name_of = archetype_sym.decl.name_of
-            archetype = name_of if isinstance(name_of, uni.Archetype) else None
+        elif impl_def := node.find_parent_of_type(uni.ImplDef):
+            archetype = self._get_impl_target_archetype(impl_def)
 
         if archetype and isinstance(archetype, uni.Archetype):
             archetype.sym_tab.def_insert(chain[1], access_spec=archetype)
+
+    def _get_impl_target_archetype(self, impl_def: uni.ImplDef) -> uni.Archetype | None:
+        """Get the target archetype for an impl block by looking up its target symbol."""
+        if not impl_def.parent_scope:
+            return None
+
+        if not (archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name)):
+            return None
+
+        return (
+            archetype_sym.decl.name_of
+            if isinstance(archetype_sym.decl.name_of, uni.Archetype)
+            else None
+        )
 
     def _is_self_member_assignment(self, node: uni.AtomTrailer) -> bool:
         """Check if the node represents a simple `self.attr = value` assignment."""
