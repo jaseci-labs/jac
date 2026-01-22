@@ -1,80 +1,5 @@
 """Implementation of BundleErrorReporter for parsing and formatting bundling errors."""
 
-# Error type configurations: patterns, identifier_regex, suggestion templates
-glob ERROR_TYPES:
-         dict = {
-         'DuplicateImport': {
-             'patterns': ['has already been declared', 'varredeclaration'],
-             'id_regex': r"Identifier\s+'([^']+)'",
-             'suggestion': "Remove duplicate 'cl import' of '{id}' in your .jac file.",
-             'suggestion_generic': "Remove duplicate 'cl import' statements for the same symbol."
-         },
-         'ModuleNotFound': {
-             'patterns': ['module not found', 'cannot find module'],
-             'id_regex': r"(?:find|resolve)\s+module\s+['\"]([^'\"]+)['\"]",
-             'suggestion': "Run 'jac add --npm {id}' or verify the import path.",
-             'suggestion_generic': "Run 'jac add --npm <package>' or verify the import path."
-         },
-         'ExportNotFound': {
-             'patterns': ['is not exported'],
-             'id_regex': r"['\"]([^'\"]+)['\"].*(?:not exported|export.*not found)",
-             'suggestion': "Verify '{id}' is exported from the source module.",
-             'suggestion_generic': "Verify the symbol is exported from the source module."
-         },
-         'SyntaxError': {
-             'patterns': ['unexpected token', 'syntaxerror'],
-             'id_regex': None,
-             'suggestion': "Check JSX syntax and JavaScript expressions in your .jac file.",
-             'suggestion_generic': "Check JSX syntax and JavaScript expressions in your .jac file."
-         }
-     };
-
-"""Classify error type from raw output."""
-impl BundleErrorReporter._classify_error(raw_error: str) -> str {
-    error_lower = raw_error.lower();
-    for (error_type, config) in ERROR_TYPES.items() {
-        for pattern in config['patterns'] {
-            if pattern in error_lower {
-                return error_type;
-            }
-        }
-    }
-    # Special case: "export" + "not found" = ExportNotFound
-    if 'export' in error_lower and 'not found' in error_lower {
-        return 'ExportNotFound';
-    }
-    return 'CompilationError';
-}
-
-"""Extract identifier based on error type."""
-impl BundleErrorReporter._extract_identifier(
-    raw_error: str, error_type: str
-) -> (str | None) {
-    config = ERROR_TYPES.get(error_type);
-    if config and config.get('id_regex') {
-        m = re.search(config['id_regex'], raw_error, re.IGNORECASE);
-        if m {
-            return m.group(1);
-        }
-    }
-    return None;
-}
-
-"""Get actionable suggestion for error type."""
-impl BundleErrorReporter._get_suggestion(
-    error_type: str, identifier: (str | None)
-) -> (str | None) {
-    config = ERROR_TYPES.get(error_type);
-    if not config {
-        return None;
-    }
-    if identifier and '{id}' in config.get('suggestion', '') {
-        return config['suggestion'].replace('{id}', identifier);
-    }
-    return config.get('suggestion_generic');
-}
-
-"""Map compiled .js path to source .jac file."""
 impl BundleErrorReporter._resolve_jac_source(compiled_path: str) -> (str | None) {
     try {
         for marker in ['/compiled/', '/build/'] {
@@ -94,7 +19,44 @@ impl BundleErrorReporter._resolve_jac_source(compiled_path: str) -> (str | None)
     return None;
 }
 
-"""Extract code context snippet from error output."""
+impl BundleErrorReporter._extract_identifier(raw_error: str, error_type: str) -> (str | None) {
+    # Generic: find first quoted string (single or double quotes)
+    m = re.search(r'["\']([^"\']+)["\']', raw_error);
+    return m.group(1) if m else None;
+}
+
+impl BundleErrorReporter._classify_error(raw_error: str) -> str {
+    error_lower = raw_error.lower();
+    if 'already been declared' in error_lower or 'redeclaration' in error_lower {
+        return 'DuplicateImport';
+    }
+    if 'could not resolve' in error_lower {
+        return 'ImportResolveError';
+    }
+    if 'module not found' in error_lower or 'cannot find module' in error_lower {
+        return 'ModuleNotFound';
+    }
+    if 'not exported' in error_lower or ('export' in error_lower and 'not found' in error_lower) {
+        return 'ExportNotFound';
+    }
+    if 'unexpected token' in error_lower or 'syntaxerror' in error_lower {
+        return 'SyntaxError';
+    }
+    return 'CompilationError';
+}
+
+impl BundleErrorReporter._get_suggestion(error_type: str, identifier: (str | None)) -> (str | None) {
+    id_str = f"'{identifier}'" if identifier else "the symbol";
+    suggestions = {
+        'DuplicateImport': f"Remove duplicate 'cl import' of {id_str} in your .jac file.",
+        'ImportResolveError': f"Check that {id_str} exists and the import path is correct.",
+        'ModuleNotFound': f"Run 'jac add --npm <package>' or verify the import path for {id_str}.",
+        'ExportNotFound': f"Verify {id_str} is exported from the source module.",
+        'SyntaxError': "Check JSX syntax and JavaScript expressions in your .jac file."
+    };
+    return suggestions.get(error_type);
+}
+
 impl BundleErrorReporter._extract_code_context(raw_error: str) -> (str | None) {
     lines = [];
     for line in raw_error.split('\n') {
@@ -108,65 +70,57 @@ impl BundleErrorReporter._extract_code_context(raw_error: str) -> (str | None) {
     return '\n'.join(lines) if lines else None;
 }
 
-"""Parse raw error output into structured BundleError."""
+impl BundleErrorReporter._extract_file_info(raw_error: str) -> tuple {
+    # Pattern 1: Babel - /path/file.js: Message (line:col)
+    m = re.search(r'([^\s:]+\.jsx?):\s*.+?\s*\((\d+):(\d+)\)', raw_error);
+    if m {
+        return (m.group(1), int(m.group(2)), int(m.group(3)));
+    }
+    # Pattern 2: Vite JSON - "file": "path", "line": N, "column": N
+    m = re.search(r'"file":\s*"([^"]+)".*?"line":\s*(\d+).*?"column":\s*(\d+)', raw_error, re.DOTALL);
+    if m {
+        return (m.group(1), int(m.group(2)), int(m.group(3)));
+    }
+    # Pattern 3: Rollup - file: /path/to/file.js
+    m = re.search(r'^file:\s*(.+\.jsx?)\s*$', raw_error, re.MULTILINE);
+    if m {
+        return (m.group(1).strip(), None, None);
+    }
+    return (None, None, None);
+}
+
+impl BundleErrorReporter._extract_message(raw_error: str) -> str {
+    skip_words = ['build failed', '✗', '✖', 'error during build', 'command:'];
+    for line in raw_error.split('\n') {
+        line = line.strip();
+        if not line or any(s in line.lower() for s in skip_words) {
+            continue;
+        }
+        # Skip stack trace lines
+        if line.startswith('at ') or 'node_modules' in line {
+            continue;
+        }
+        # Found a real error line
+        if any(kw in line.lower() for kw in ['could not', 'cannot', 'error', 'failed', 'not found', 'unexpected']) {
+            msg = re.sub(r'\x1b\[[0-9;]*m', '', line);  # Strip ANSI
+            msg = re.sub(r'^(error:|npm error|npm ERR!)\s*', '', msg, flags=re.IGNORECASE);
+            return msg.strip();
+        }
+    }
+    return "Compilation failed";
+}
+
 impl BundleErrorReporter.parse_error(raw_error: str) -> BundleError {
     error_type = self._classify_error(raw_error);
-    file_path: (str | None) = None;
-    line: (int | None) = None;
-    column: (int | None) = None;
-    message: (str | None) = None;
-    # Try multiple patterns to extract file path and location
-    file_match = re.search(r'([^\s:]+\.jsx?):\s*(.+?)\s*\((\d+):(\d+)\)', raw_error);
-    if file_match {
-        compiled_path = file_match.group(1);
-        message = file_match.group(2).strip();
-        line = int(file_match.group(3));
-        column = int(file_match.group(4));
+    message = self._extract_message(raw_error);
+    (compiled_path, line, column) = self._extract_file_info(raw_error);
+
+    file_path = None;
+    if compiled_path {
         jac_source = self._resolve_jac_source(compiled_path);
         file_path = jac_source or compiled_path;
     }
-    # Vite JSON format fallback
-    if not file_path {
-        vite_match = re.search(
-            r'"file":\s*"([^"]+)".*?"line":\s*(\d+).*?"column":\s*(\d+)',
-            raw_error,
-            re.DOTALL
-        );
-        if vite_match {
-            compiled_path = vite_match.group(1);
-            line = int(vite_match.group(2));
-            column = int(vite_match.group(3));
-            jac_source = self._resolve_jac_source(compiled_path);
-            file_path = jac_source or compiled_path;
-        }
-    }
-    # Extract message if not found
-    if not message {
-        for err_line in raw_error.split('\n') {
-            err_line = err_line.strip();
-            if err_line
-            and (
-                'error' in err_line.lower()
-                or 'cannot' in err_line.lower()
-                or 'failed' in err_line.lower()
-                or 'not found' in err_line.lower()
-            ) {
-                message = re.sub(r'\x1b\[[0-9;]*m', '', err_line);
-                message = re.sub(
-                    r'^(error:|npm error|npm ERR!)\s*',
-                    '',
-                    message,
-                    flags=re.IGNORECASE
-                ).strip();
-                if message {
-                    break;
-                }
-            }
-        }
-    }
-    if not message {
-        message = "Compilation failed";
-    }
+
     identifier = self._extract_identifier(raw_error, error_type);
     return BundleError(
         error_type=error_type,
@@ -180,7 +134,6 @@ impl BundleErrorReporter.parse_error(raw_error: str) -> BundleError {
     );
 }
 
-"""Format BundleError as clean, readable string."""
 impl BundleErrorReporter.format_error(error: BundleError) -> str {
     sep = "-" * 70;
     lines: list[str] = ["", sep, f"CLIENT BUNDLE ERROR [{error.error_type}]", sep];
@@ -209,7 +162,6 @@ impl BundleErrorReporter.format_error(error: BundleError) -> str {
     return '\n'.join(lines);
 }
 
-"""Parse and format error in single call."""
 impl BundleErrorReporter.report_error(raw_error: str) -> str {
     return self.format_error(self.parse_error(raw_error));
 }

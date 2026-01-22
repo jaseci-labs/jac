@@ -3,6 +3,7 @@
 Provides structured error parsing and formatting for Babel and Vite bundling errors,
 with source mapping back to original .jac files.
 """
+
 import re;
 import from pathlib { Path }
 
@@ -34,15 +35,21 @@ obj BundleErrorReporter {
     """Map compiled .js path to source .jac file."""
     def _resolve_jac_source(compiled_path: str) -> (str | None);
 
-    """Get actionable suggestion for error type."""
-    def _get_suggestion(error_type: str, identifier: (str | None)) -> (str | None);
-
     """Classify error type from raw output."""
     def _classify_error(raw_error: str) -> str;
+
+    """Generate suggestion based on error type."""
+    def _get_suggestion(error_type: str, identifier: (str | None)) -> (str | None);
+
+    """Extract the first quoted string as identifier."""
+    def _extract_identifier(raw_error: str, error_type: str) -> (str | None);
 
     """Extract code context snippet from error output."""
     def _extract_code_context(raw_error: str) -> (str | None);
 
-    """Extract identifier based on error type."""
-    def _extract_identifier(raw_error: str, error_type: str) -> (str | None);
+    """Extract file path, line, column from error."""
+    def _extract_file_info(raw_error: str) -> tuple;
+
+    """Extract the actual error message, skipping noise."""
+    def _extract_message(raw_error: str) -> str;
 }
