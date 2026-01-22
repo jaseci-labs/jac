@@ -63,11 +63,13 @@ impl JacPipInstaller._setup_editable_install -> bool {
         );
 
         if returncode == 0 {
-            jac_eps = self.config._raw_data.get("project", {}).get("entry-points", {}).get(
+            jac_entry_points = self.config._raw_data.get("project", {}).get(
+                "entry-points", {}
+            ).get(
                 "jac", {}
             );
-            if jac_eps {
-                print(f"Registered {len(jac_eps)} Jac plugin entry point(s)");
+            if jac_entry_points {
+                print(f"Registered {len(jac_entry_points)} Jac plugin entry point(s)");
             }
             return True;
         }
@@ -81,7 +83,14 @@ impl JacPipInstaller._setup_editable_install -> bool {
                 if self.verbose {
                     print("  Cleaned up generated pyproject.toml");
                 }
-            } except Exception { }
+            } except Exception as e {
+                if self.verbose {
+                    print(
+                        f"  Warning: Failed to remove pyproject.toml: {e}",
+                        file=sys.stderr
+                    );
+                }
+            }
         }
     }
 }
@@ -97,8 +106,8 @@ impl generate_pyproject_from_jac_toml(config: "JacConfig") -> str {
         'build-backend = "setuptools.build_meta"',
         "",
         "[project]",
-        f'name = "{config.project.name}"',
-        f'version = "{config.project.version}"'
+        f'name = "{config.project.name.replace('\\', '\\\\').replace('"', '\\"')}"',
+        f'version = "{config.project.version.replace('\\', '\\\\').replace('"', '\\"')}"'
     ];
     if config.project.description {
         lines.append(
@@ -106,10 +115,10 @@ impl generate_pyproject_from_jac_toml(config: "JacConfig") -> str {
         );
     }
     if config.project.readme {
-        lines.append(f'readme = "{config.project.readme}"');
+        lines.append(f'readme = "{config.project.readme.replace('"', '\\"')}"');
     }
     if config.project.license {
-        lines.append(f'license = "{config.project.license}"');
+        lines.append(f'license = "{config.project.license.replace('"', '\\"')}"');
     }
     lines.append('requires-python = ">=3.11"');
     # Dependencies
@@ -140,13 +149,14 @@ impl generate_pyproject_from_jac_toml(config: "JacConfig") -> str {
         lines.append("");
     }
     # Entry points
-    jac_eps = config._raw_data.get("project", {}).get("entry-points", {}).get(
+    jac_entry_points = config._raw_data.get("project", {}).get("entry-points", {}).get(
         "jac", {}
     );
-    if jac_eps {
+    if jac_entry_points {
         lines.append('[project.entry-points."jac"]');
-        for (ep_name, ep_value) in jac_eps.items() {
-            lines.append(f'{ep_name} = "{ep_value}"');
+        for (ep_name, ep_value) in jac_entry_points.items() {
+            escaped_ep_value = ep_value.replace("\\", "\\\\").replace('"', '\\"');
+            lines.append(f'{ep_name} = "{escaped_ep_value}"');
         }
         lines.append("");
     }

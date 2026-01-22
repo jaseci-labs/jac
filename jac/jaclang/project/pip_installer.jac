@@ -18,7 +18,6 @@ with entry {
     }
 }
 
-"""Installer for Jac projects supporting editable installation."""
 obj JacPipInstaller {
     has config: "JacConfig",
         project_path: Path,
