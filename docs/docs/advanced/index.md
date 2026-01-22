@@ -478,5 +478,5 @@ walker Searcher {
 | Multi-User | [Chapter 14](../jac_book/chapter_14.md) |
 | Performance | [Chapter 19](../jac_book/chapter_19.md) |
 | Library Mode | [Full Guide](../learn/library_mode.md) |
-| Jac Specification | [Reference](../learn/jac_ref.md) |
+| Jac Specification | [Reference](../learn/jac-ref/index.md) |
 | Python Migration | [Chapter 20](../jac_book/chapter_20.md) |

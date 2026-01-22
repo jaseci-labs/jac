@@ -2,8 +2,10 @@
 
 This module provides disk-based caching for compiled Jac bytecode,
 similar to Python's __pycache__ mechanism. Cache files are stored
-in the .jac/cache/ directory within the project, configurable via
-jac.toml [build] section.
+in a global user cache directory following platform conventions:
+- Linux:   ~/.cache/jac/bytecode/
+- macOS:   ~/Library/Caches/jac/bytecode/
+- Windows: %LOCALAPPDATA%/jac/cache/bytecode/
 """
 
 from __future__ import annotations
@@ -19,6 +21,29 @@ from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from jaclang.project.config import JacConfig
+
+
+def get_global_cache_dir() -> Path:
+    """Get the platform-appropriate global cache directory for Jac bytecode.
+
+    Returns:
+        Path to the global cache directory:
+        - Linux:   ~/.cache/jac/bytecode/ (respects XDG_CACHE_HOME)
+        - macOS:   ~/Library/Caches/jac/bytecode/
+        - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
+    """
+    if sys.platform == "win32":
+        # Windows: Use LOCALAPPDATA
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "jac" / "cache" / "bytecode"
+    elif sys.platform == "darwin":
+        # macOS: Use ~/Library/Caches
+        return Path.home() / "Library" / "Caches" / "jac" / "bytecode"
+    else:
+        # Linux/Unix: Follow XDG Base Directory Specification
+        xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        base = Path(xdg_cache) if xdg_cache else Path.home() / ".cache"
+        return base / "jac" / "bytecode"
 
 
 def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[str]:
@@ -116,21 +141,24 @@ class BytecodeCache:
 
 
 class DiskBytecodeCache(BytecodeCache):
-    """Disk-based bytecode cache using the .jac/cache/ directory.
+    """Disk-based bytecode cache using a global user cache directory.
 
-    Cache files are stored in the project's .jac/cache/ directory
-    (configurable via jac.toml [build].dir), with filenames that include
-    a path hash, Python version, and compilation mode to avoid conflicts.
+    Cache files are stored in a platform-appropriate global location:
+    - Linux:   ~/.cache/jac/bytecode/
+    - macOS:   ~/Library/Caches/jac/bytecode/
+    - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
+
+    Filenames include a path hash, Python version, and compilation mode
+    to ensure uniqueness across different projects and avoid conflicts.
 
     Example:
         source:  /project/src/main.jac
-        cache:   .jac/cache/main.a1b2c3d4.cpython-312.jbc
-                 .jac/cache/main.a1b2c3d4.cpython-312.minimal.jbc
+        cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
+                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
     """
 
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
-    FALLBACK_CACHE_DIR: Final[str] = ".jac/cache"
 
     def __init__(self, config: JacConfig | None = None) -> None:
         """Initialize the cache with optional config."""
@@ -138,28 +166,11 @@ class DiskBytecodeCache(BytecodeCache):
         self._cache_dir: Path | None = None
 
     def _get_cache_dir(self) -> Path:
-        """Get the cache directory, using config if available."""
+        """Get the global cache directory."""
         if self._cache_dir is not None:
             return self._cache_dir
 
-        # Try to get from provided config
-        if self._config is not None:
-            self._cache_dir = self._config.get_cache_dir()
-            return self._cache_dir
-
-        # Try to discover project config
-        try:
-            from jaclang.project.config import get_config
-
-            config = get_config()
-            if config is not None:
-                self._cache_dir = config.get_cache_dir()
-                return self._cache_dir
-        except ImportError:
-            pass
-
-        # Fallback to default
-        self._cache_dir = Path.cwd() / self.FALLBACK_CACHE_DIR
+        self._cache_dir = get_global_cache_dir()
         return self._cache_dir
 
     def _get_cache_path(self, key: CacheKey) -> Path:
