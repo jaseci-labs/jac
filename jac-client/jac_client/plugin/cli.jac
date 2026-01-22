@@ -9,9 +9,63 @@ For creating client projects, use: `jac create --use client`
 """
 
 import from jaclang.cli.registry { get_registry }
-import from jaclang.cli.command { Arg, HookContext }
+import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.pycore.runtime { hookimpl }
 import os;
+
+glob registry = get_registry();
+
+with entry {
+    # Register targets when module loads
+    import from jac_client.plugin.src.targets.register { register_targets }
+    register_targets();
+}
+
+"""Register 'build' command at module level."""
+@registry.command(
+    name="build",
+    help="Build a Jac application for a specific target",
+    args=[
+        Arg.create(
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            default="main.jac",
+            help="Path to .jac file (default: main.jac)"
+        ),
+        Arg.create(
+            "target",
+            typ=str,
+            default="web",
+            help="Build target (web, desktop)",
+            choices=["web", "desktop"],
+            short=""  # Disable auto-generated -t (may conflict with other plugins)
+        ),
+        Arg.create(
+            "platform",
+            typ=str,
+            default=None,
+            help="Platform for desktop builds (windows, macos, linux, all)",
+            choices=["windows", "macos", "linux", "all"],
+            short="p"  # Use -p for platform
+        ),
+    ],
+    examples=[
+        ("jac build", "Build web target (default)"),
+        ("jac build main.jac", "Build specific file"),
+        ("jac build --target desktop", "Build desktop app"),
+        ("jac build --target desktop --platform windows", "Build for Windows"),
+    ],
+    group="build",
+    source="jac-client"
+)
+def build(
+    filename: str = "main.jac",
+    target: str = "web",
+    platform: str | None = None
+) -> int {
+    # This will be handled by the pre_hook
+    return 0;
+}
 
 """Jac CLI extensions for client-side development."""
 class JacCmd {
@@ -66,6 +120,32 @@ class JacCmd {
 
             ],
             pre_hook=_handle_npm_remove,
+            source="jac-client"
+        );
+
+        # Add pre-hook to build command (command is registered at module level)
+        registry.extend_command(
+            command_name="build",
+            pre_hook=_handle_build_target,
+            source="jac-client"
+        );
+
+        # Extend 'start' command with --target flag
+        # Note: jac-scale also uses --target, but for deployment targets
+        # We use it for build targets, so we need to handle both cases
+        registry.extend_command(
+            command_name="start",
+            args=[
+                Arg.create(
+                    "build_target",  # Use different name to avoid conflict with jac-scale's --target
+                    typ=str,
+                    default="web",
+                    help="Build target for dev server (web, desktop)",
+                    choices=["web", "desktop"],
+                    short=""  # Disable auto-generated short flag
+                ),
+            ],
+            pre_hook=_handle_start_target,
             source="jac-client"
         );
     }
@@ -172,6 +252,111 @@ def _handle_npm_add(ctx: HookContext) -> None {
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     }
+}
+
+"""Pre-hook to handle --target flag for build command."""
+def _handle_build_target(ctx: HookContext) -> None {
+    import from jaclang.cli.console { console }
+    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    
+    target_name = ctx.get_arg("target", "web");
+    platform = ctx.get_arg("platform", None);
+    
+    registry = get_target_registry();
+    target = registry.get(target_name);
+    
+    if not target {
+        console.error(f"Unknown target: {target_name}");
+        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    
+    # Store target info in context for use by build handler
+    ctx.set_data("build_target", target);
+    ctx.set_data("build_platform", platform);
+    
+    # If target requires setup, warn user
+    if target.requires_setup {
+        console.warning(f"Target '{target_name}' requires setup. Run 'jac setup {target_name}' first.");
+    }
+    
+    # Build using target's build method
+    try {
+        config = get_config();
+        if not config {
+            console.error("No jac.toml found. Run 'jac create' to create a project.");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        entry_file = ctx.get_arg("filename", None);
+        if not entry_file {
+            entry_file = config.entry_point;
+        }
+        if not entry_file {
+            console.error("No entry file specified. Use: jac build <file>");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+        
+        entry_path = Path(entry_file);
+        project_dir = config.project_root or Path.cwd();
+        if not entry_path.is_absolute() {
+            entry_path = project_dir / entry_path;
+        }
+        bundle_path = target.build(entry_path, project_dir, platform);
+        
+        console.success(f"Build complete: {bundle_path}");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 0);
+    } except NotImplementedError as e {
+        console.error(f"Target '{target_name}' is not yet implemented. Coming in Phase 2!");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    } except Exception as e {
+        console.error(f"Build failed: {e}");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+    }
+}
+
+"""Pre-hook to handle --build-target flag for start command."""
+def _handle_start_target(ctx: HookContext) -> None {
+    import from jaclang.cli.console { console }
+    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    
+    target_name = ctx.get_arg("build_target", "web");
+    
+    registry = get_target_registry();
+    target = registry.get(target_name);
+    
+    if not target {
+        console.error(f"Unknown target: {target_name}");
+        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    
+    # Store target info in context
+    ctx.set_data("start_target", target);
+    
+    # For now, only web target is fully implemented
+    if target_name == "desktop" {
+        console.error("Desktop target is not yet implemented. Coming in Phase 2!");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+    
+    # Web target: let existing start command handle it
+    # (no cancellation, let it run normally)
 }
 
 """Pre-hook to handle --npm flag for removing npm dependencies."""
