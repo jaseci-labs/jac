@@ -73,17 +73,17 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         if name == module_name or name.startswith(f"{module_name}.")
     ];
     for mod_name in modules_to_remove {
-        del sys.modules[mod_name] ;
+        del sys.modules[mod_name];
     }
     # Also remove from the program's module hub
     try {
         if file_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[file_path] ;
+            del Jac.program.mod.hub[file_path];
         }
         # Also try with resolved path
         resolved_path = str(Path(file_path).resolve());
         if resolved_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[resolved_path] ;
+            del Jac.program.mod.hub[resolved_path];
         }
     } except Exception as e {
         print(f"[HMR] Warning: Could not clear module hub: {e}", flush=True);
@@ -123,7 +123,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
 
         # Clear existing module from hub to force recompilation
         if source_key in Jac.program.mod.hub {
-            del Jac.program.mod.hub[source_key] ;
+            del Jac.program.mod.hub[source_key];
         }
 
         # Compile the file (this generates JS as part of the compilation)

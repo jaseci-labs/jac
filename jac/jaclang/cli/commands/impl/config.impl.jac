@@ -1070,10 +1070,10 @@ def _config_unset(config: object, key: str) -> int {
     toml_section = group_name;  # Group names match TOML section names
     if config?._raw_data and config._raw_data and toml_section in config._raw_data {
         if setting_name in config._raw_data[toml_section] {
-            del config._raw_data[toml_section][setting_name] ;
+            del config._raw_data[toml_section][setting_name];
             # Remove empty section
             if not config._raw_data[toml_section] {
-                del config._raw_data[toml_section] ;
+                del config._raw_data[toml_section];
             }
         }
     }
@@ -1214,10 +1214,10 @@ def _save_config_without_setting(
 
     # Remove the setting if it exists
     if toml_section in doc and setting_name in doc[toml_section] {
-        del doc[toml_section][setting_name] ;
+        del doc[toml_section][setting_name];
         # Remove empty section
         if not doc[toml_section] {
-            del doc[toml_section] ;
+            del doc[toml_section];
         }
     }
 

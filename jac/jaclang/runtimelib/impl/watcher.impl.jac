@@ -117,7 +117,7 @@ impl JacFileWatcher._debounce_flush -> None {
     }
     # Remove flushed events
     for path in paths_to_remove {
-        del self._pending_events[path] ;
+        del self._pending_events[path];
     }
     # Notify callbacks
     for event in events_to_flush {

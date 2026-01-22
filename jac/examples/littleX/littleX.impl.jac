@@ -6,48 +6,48 @@ impl search_tweets{
 
 impl Profile.update{
     self.username = visitor.new_username;
-    report self ;
+    report self;
 }
 
 impl Profile.get{
     follwers = [{"id": jid(i), "username": i.username} for i in [self-->(`?Profile)]];
-    report {"user": self, "followers": follwers} ;
+    report {"user": self, "followers": follwers};
 }
 
 impl Profile.follow{
     current_profile = [root-->(`?Profile)];
     current_profile[0] +>: Follow() :+> self;
-    report self ;
+    report self;
 }
 
 impl Profile.un_follow{
     current_profile = [root-->(`?Profile)];
     follow_edge = [edge current_profile[0]->:Follow:->self];
-    del follow_edge[0] ;
-    report self ;
+    del follow_edge[0];
+    report self;
 }
 
 impl Tweet.update{
     self.content = visitor.updated_content;
-    report self ;
+    report self;
 }
 
 impl Tweet.delete{
-    del self ;
+    del self;
     disengage;
 }
 
 impl Tweet.like_tweet{
     current_profile = [root-->(`?Profile)];
     self +>: Like() :+> current_profile[0];
-    report self ;
+    report self;
 }
 
 impl Tweet.remove_like{
     current_profile = [root-->(`?Profile)];
     like_edge = [edge self->:Like:->current_profile[0]];
-    del like_edge[0] ;
-    report self ;
+    del like_edge[0];
+    report self;
 }
 
 impl Tweet.comment{
@@ -55,7 +55,7 @@ impl Tweet.comment{
     comment_node = current_profile[0] +>: Post() :+> Comment(content=visitor.content);
     grant(comment_node[0], level=ConnectPerm);
     self ++> comment_node[0];
-    report comment_node[0] ;
+    report comment_node[0];
 }
 
 impl Tweet.get_info{
@@ -83,11 +83,11 @@ impl Tweet.get{
 
 impl Comment.update{
     self.content = visitor.updated_content;
-    report self ;
+    report self;
 }
 
 impl Comment.delete{
-    del self ;
+    del self;
     disengage;
 }
 
@@ -108,14 +108,14 @@ impl load_user_profiles.load_profiles{
 }
 
 impl load_user_profiles.report_profiles{
-    report self.profiles ;
+    report self.profiles;
 }
 
 impl create_tweet.tweet{
     embedding = vectorizer.fit_transform([self.content]).toarray().tolist();
     tweet_node = here +>: Post() :+> Tweet(content=self.content, embedding=embedding);
     grant(tweet_node[0], level=ConnectPerm);
-    report tweet_node ;
+    report tweet_node;
 }
 
 impl load_feed.load{
@@ -127,5 +127,5 @@ impl load_feed.load{
 
 impl load_feed.report_feed{
     self.results.sort(key=lambda x: dict : x['similarity'][0], reverse=True);
-    report self.results ;
+    report self.results;
 }

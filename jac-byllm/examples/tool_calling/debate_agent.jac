@@ -14,7 +14,7 @@ def get_wikipedia_summary(title: str) -> str {
     }
 }
 
-sem get_wikipedia_summary= """Get the summary of the related article from Wikipedia.""";
+sem get_wikipedia_summary = """Get the summary of the related article from Wikipedia.""";
 
 def ask_opponent(statement: str) -> str {
     user_input = input(f"AI -> {statement} ");
