@@ -11,6 +11,8 @@ import platform;
 
 """Setup desktop target - scaffold Tauri project structure."""
 impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
+    import from jac_client.plugin.src.desktop_config { DesktopConfig }
+    
     console.print("\n🖥️  Setting up desktop target (Tauri)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
     
@@ -21,18 +23,15 @@ impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
         return;
     }
     
-    # Get project config
-    config = get_config();
-    if not config {
-        raise RuntimeError("No jac.toml found");
-    }
+    # Load desktop config (will use defaults if [desktop] section doesn't exist)
+    desktop_config = DesktopConfig(project_dir=project_dir);
+    config_data = desktop_config.load();
     
-    project_name = config.project.name or "my-jac-app";
-    project_version = config.project.version or "1.0.0";
+    project_name = config_data.get('name', 'my-jac-app');
+    project_version = config_data.get('version', '1.0.0');
+    identifier = config_data.get('identifier', 'com.myapp');
+    
     console.print(f"  Project name: {project_name}, version: {project_version}", style="muted");
-    
-    # Generate identifier from project name
-    identifier = _generate_identifier(project_name);
     console.print(f"  Identifier: {identifier}", style="muted");
     
     # Create src-tauri directory structure
