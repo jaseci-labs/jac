@@ -126,7 +126,7 @@ def test_impl_self_assignment() -> None:
     """Test self.attr assignments in nested impl blocks."""
     file_path = get_fixture_path("impl_self_assignment.jac")
     mod = JacProgram().compile(file_path)
-    
+
     # Test nested hierarchy: Company -> Department -> Team -> Employee
     test_cases = [
         ("Company", "employee_count"),

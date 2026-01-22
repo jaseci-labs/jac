@@ -293,7 +293,7 @@ class SymTabBuildPass(UniPass):
 
             if not isinstance(name_of := sym.decl.name_of, uni.Archetype):
                 return None
-            
+
             archetype = name_of
             current_scope = archetype.sym_tab
 
