@@ -278,7 +278,9 @@ class SymTabBuildPass(UniPass):
         if not impl_def.parent_scope:
             return None
 
-        if not (archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name)):
+        if not (
+            archetype_sym := impl_def.parent_scope.lookup(impl_def.target[0].sym_name)
+        ):
             return None
 
         return (
