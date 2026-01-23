@@ -131,57 +131,164 @@ impl DependencyInstaller.install_git_package(
     }
 }
 
+"""Remove a package by reading its RECORD file (mimics pip uninstall)."""
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
     import shutil;
     import sys;
+    import csv;
+    import from pathlib { Path }
     if not self.packages_dir or not self.packages_dir.exists() {
-        print(f"  Package {name} not found in packages directory", file=sys.stderr);
         return False;
     }
+    # Find the .dist-info directory (preferred) or .egg-info (fallback)
     normalized_name = name.lower().replace("-", "_");
-    to_remove: list[Path] = [];
+    dist_info_dir = None;
+    egg_info_dir = None;
     for item in self.packages_dir.iterdir() {
-        if not item.is_dir() {
-            continue;
-        }
-        item_name_lower = item.name.lower().replace("-", "_");
-        # Check for exact package directory match
-        if item_name_lower == normalized_name {
-            to_remove.append(item);
-            continue;
-        }
-        # Check for versioned metadata directories (.dist-info, .egg-info, .data)
-        if item.suffix in (".dist-info", ".egg-info", ".data") {
-            # Normalize stem: replace - with _ for package name comparison
-            item_stem_lower = item.stem.lower().replace("-", "_");
-            if item_stem_lower.startswith(f"{normalized_name}_") {
-                to_remove.append(item);
-            }
-            # Also check original name with hyphens (legacy installations)
-            elif name.lower() != normalized_name {
-                item_stem_original = item.stem.lower();
-                if item_stem_original.startswith(f"{name.lower()}-") {
-                    to_remove.append(item);
+        if item.is_dir() {
+            pkg_name = item.name.lower().rsplit("-", 2)[0].replace("-", "_");
+            if pkg_name == normalized_name {
+                if item.name.lower().endswith(".dist-info") {
+                    dist_info_dir = item;
+                    break;  # Prefer .dist-info, stop searching
+                } elif item.name.lower().endswith(".egg-info") {
+                    egg_info_dir = item;  # Keep searching for .dist-info
                 }
             }
         }
     }
-    if not to_remove {
-        print(f"  Package {name} not found in packages directory", file=sys.stderr);
+    # Use .dist-info if found, otherwise fallback to .egg-info
+    metadata_dir = dist_info_dir or egg_info_dir;
+    if not metadata_dir {
         return False;
     }
-    print(f"Removing {name}...");
-    for item in to_remove {
-        try {
-            shutil.rmtree(item);
-            if self.verbose {
-                print(f"  Removed: {item.name}");
+    # Try RECORD first (standard), then installed-files.txt (.egg-info fallback)
+    record_file = metadata_dir / "RECORD";
+    if not record_file.exists() {
+        record_file = metadata_dir / "installed-files.txt";
+        if not record_file.exists() {
+            # Last resort: heuristic removal of the package directory
+            print(f"Uninstalling {name} ...");
+            removed = 0;
+            # Try to find and remove package directory
+            pkg_dir = self.packages_dir / normalized_name;
+            if pkg_dir.exists() and pkg_dir.is_dir() {
+                try {
+                    shutil.rmtree(pkg_dir);
+                    removed += 1;
+                } except Exception as e {
+                    if self.verbose {
+                        print(
+                            f"  Failed to remove {pkg_dir.name}: {e}", file=sys.stderr
+                        );
+                    }
+                }
             }
-        } except Exception as e {
-            print(f"  Failed to remove {item.name}: {e}", file=sys.stderr);
+            # Remove metadata directory
+            try {
+                if metadata_dir.exists() {
+                    shutil.rmtree(metadata_dir);
+                    removed += 1;
+                }
+            } except Exception as e {
+                print(f"  Failed to remove {metadata_dir.name}: {e}", file=sys.stderr);
+            }
+            if removed > 0 {
+                print(f"  {name} uninstalled successfully ({removed} items)");
+                return True;
+            }
+            return False;
         }
     }
-    print(f"  {name} removed successfully");
+    print(f"Uninstalling {name}...");
+    # Collect all paths from RECORD or installed-files.txt
+    all_paths = [];
+    try {
+        with open(record_file, 'r', encoding='utf-8') as f {
+            reader = csv.reader(f);
+            for row in reader {
+                if not row or not row[0] {
+                    continue;
+                }
+
+                file_path = row[0];
+
+                # pip --target quirk: paths starting with ../ may need adjustment
+                if file_path.startswith("../") {
+                    # Try as-is first
+                    path = (self.packages_dir / file_path).resolve();
+                    if not path.exists() {
+                        while file_path.startswith("../") {
+                            file_path = file_path[3:];
+                        }
+                        path = self.packages_dir / file_path;
+                    }
+                } else {
+                    path = self.packages_dir / file_path;
+                }
+
+                # Skip if doesn't exist or is the metadata dir itself
+                if not path.exists() or path.resolve() == metadata_dir.resolve() {
+                    continue;
+                }
+
+                all_paths.append(path);
+            }
+        }
+    } except Exception as e {
+        print(f"  Failed to read RECORD: {e}", file=sys.stderr);
+        return False;
+    }
+    removed = 0;
+    # Delete everything in RECORD and track parent directories
+    parents = set();
+    for path in all_paths {
+        try {
+            if not path.exists() {
+                continue;
+            }
+            if path.is_dir() {
+                shutil.rmtree(path);
+                removed += 1;
+            } elif path.is_file() or path.is_symlink() {
+                path.unlink();
+                removed += 1;
+                # Track parent directories only for files (not for dirs removed by rmtree)
+                parent = path.parent;
+                while parent != self.packages_dir and parent.exists() {
+                    parents.add(parent);
+                    parent = parent.parent;
+                }
+            }
+        } except Exception as e {
+            if self.verbose {
+                print(f"  Failed to remove {path.name}: {e}", file=sys.stderr);
+            }
+        }
+    }
+    # Sort parents by depth (deepest first) and remove empty ones
+    parent_list = [(len(p.parts), p) for p in parents];
+    parent_list.sort(reverse=True);
+    for (_, parent) in parent_list {
+        try {
+            if parent.exists() and not any(parent.iterdir()) {
+                parent.rmdir();
+                removed += 1;
+            }
+        } except Exception {
+            pass;
+        }
+    }
+    # Remove dist-info or egg-info directory
+    try {
+        if metadata_dir.exists() {
+            shutil.rmtree(metadata_dir);
+            removed += 1;
+        }
+    } except Exception as e {
+        print(f"  Failed to remove {metadata_dir.name}: {e}", file=sys.stderr);
+    }
+    print(f"  {name} uninstalled successfully ({removed} items)");
     return True;
 }
 
