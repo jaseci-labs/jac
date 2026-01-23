@@ -107,10 +107,14 @@ def test_core_fixture_emits_expected_constructs(
         "function greet",
         "function fibonacci",
         "for (const i of array)",
-        "for (let i = 0; i < limit; i += 1)",
-        "while (counter > 0)",
+        "for (let i = 0; (i < limit); i += 1)",
+        "while ((counter > 0))",
     ]:
         assert pattern in js_code
+
+    # Expressions with parentheses
+    for expr in ["(items.length + 1)", "(Math.round((divided * 10)) / 10)"]:
+        assert expr in js_code
 
     # Operators
     for op in ["===", "!==", "&&", "||"]:
@@ -160,7 +164,7 @@ def test_advanced_fixture_emits_expected_constructs(
         "function spread_and_rest_examples",
         "...defaults",
         "function template_literal_examples",
-        'score >= 60 ? "pass" : "fail"',
+        '((score >= 60) ? "pass" : "fail")',
         "function do_while_simulation",
         "function build_advanced_report",
         "function pattern_matching_examples",
@@ -222,7 +226,9 @@ def test_iife_fixture_generates_function_expressions(
         "All client-side IIFE tests completed!",
     ]:
         assert pattern in js_code
-    assert "return () => {\n    count = count + 1;\n    return count;\n  };" in js_code
+    assert (
+        "return () => {\n    count = (count + 1);\n    return count;\n  };" in js_code
+    )
 
 
 def test_cli_js_command_outputs_js(fixture_path: Callable[[str], str]) -> None:
@@ -583,9 +589,9 @@ cl def conditional_message(score: int) -> str {
             "`",
             "${x}",
             "${y}",
-            "${x + y}",
+            "${(x + y)}",
             "${score}",
-            "${score >= 60}",
+            "${(score >= 60)}",
             "The sum of",
             "and",
             "is",

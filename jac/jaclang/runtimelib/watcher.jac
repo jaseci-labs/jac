@@ -30,6 +30,7 @@ Debounces rapid changes to avoid redundant reloads.
 obj JacFileWatcher {
     has watch_paths: list[str],
         pattern: str = "*.jac",
+        additional_patterns: list[str] = ["*.tsx", "*.js"],
         _observer: Any = None,
         _callbacks: list[Callable[[FileChangeEvent], None]] = [],
         _debounce_ms: int = 100,

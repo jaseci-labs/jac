@@ -12,9 +12,8 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v5
         with:
-          ref: stable
           submodules: true
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -27,7 +26,3 @@ jobs:
         run: |
           python -m build
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
-      # - run: pip install githubrelease
-      # - run: python scripts/gh_release.py
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

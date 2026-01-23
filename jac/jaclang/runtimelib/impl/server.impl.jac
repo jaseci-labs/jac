@@ -432,20 +432,8 @@ impl ModuleIntrospector._extract_access_levels -> None {
                 self._walker_access[name] = True;
                 continue;
             }
-            # Convert Python file path to Jac file path if needed
-            # Generated Python files are in __jac_gen__ directory
-            jac_source_file = source_file;
-            if "__jac_gen__" in source_file and source_file.endswith(".py") {
-                jac_source_file = source_file.replace("__jac_gen__", "").replace(
-                    ".py", ".jac"
-                );
-            }
             # Try to get the AST from the source module
-            source_ast = get_module_ast(jac_source_file);
-            if not source_ast {
-                # Try the original path as fallback
-                source_ast = get_module_ast(source_file);
-            }
+            source_ast = get_module_ast(source_file);
             if source_ast {
                 access_level = find_walker_access_in_ast(source_ast, name);
                 if access_level is not None {
@@ -609,23 +597,40 @@ impl ModuleIntrospector.introspect_walker(
 ) -> dict[str, Any] {
     try {
         sig = inspect.signature(walker_cls.init);
-        type_hints = get_type_hints(walker_cls.init);
+        try {
+            type_hints = get_type_hints(walker_cls.init);
+        } except Exception {
+            type_hints = {};
+        }
     } except Exception {
         return {'fields': {}};
     }
-    fields = {
-        name: {
-            'type': getattr(
-                type_hints.get(name, Any), '__name__', str(type_hints.get(name, Any))
-            ),
+    fields: dict[str, dict[str, Any]] = {};
+    for (name, param) in sig.parameters.items() {
+        if (name in ('self', 'args', 'kwargs')) {
+            continue;
+        }
+        # Try to get type from type_hints first
+        type_obj = type_hints.get(name, None);
+        if type_obj is not None {
+            type_name = getattr(type_obj, '__name__', str(type_obj));
+        } else {
+            # Fall back to parameter annotation
+            annotation = param.annotation;
+            if (annotation != inspect.Parameter.empty) {
+                type_name = getattr(annotation, '__name__', str(annotation));
+            } else {
+                type_name = 'Any';
+            }
+        }
+        fields[name] = {
+            'type': type_name,
             'required': (param.default == inspect.Parameter.empty),
             'default': None
             if (param.default == inspect.Parameter.empty)
             else param.default
-        }
-        for (name, param) in sig.parameters.items()
-        if (name not in ('self', 'args', 'kwargs'))
-    };
+        };
+    }
     fields['_jac_spawn_node'] = {
         'type': 'str (node ID, optional)',
         'required': False,
@@ -1566,10 +1571,10 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(watch: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
-    if not watch {
+    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import from jaclang.cli.console { console }

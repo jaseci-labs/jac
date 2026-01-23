@@ -271,8 +271,13 @@ impl DocIRGenPass.exit_sem_def(<>node: uni.SemDef) -> None {
     for i in <>node.kid {
         if (i in <>node.target) {
             parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.DOT)) {
+            parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
+            parts.append(i.gen.doc_ir);
+        } elif (isinstance(i, uni.Token) and (i.name in [Tok.EQ, Tok.KW_IS])) {
+            parts.append(self.space());
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } else {
@@ -1001,7 +1006,18 @@ impl DocIRGenPass.exit_assert_stmt(<>node: uni.AssertStmt) -> None {
 
 """Generate DocIR for report statements."""
 impl DocIRGenPass.exit_report_stmt(<>node: uni.ReportStmt) -> None {
-    self._assign_space_group(<>node);
+    parts: list[doc.DocType] = [];
+    for i in <>node.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
+            parts.pop();
+        }
+        parts.append(i.gen.doc_ir);
+        parts.append(self.space());
+    }
+    parts.pop();
+    <>node.gen.doc_ir = self.group(
+        self.concat(parts, ast_node=<>node), ast_node=<>node
+    );
 }
 
 """Generate DocIR for disengage statements."""
@@ -1011,7 +1027,18 @@ impl DocIRGenPass.exit_disengage_stmt(<>node: uni.DisengageStmt) -> None {
 
 """Generate DocIR for delete statements."""
 impl DocIRGenPass.exit_delete_stmt(<>node: uni.DeleteStmt) -> None {
-    self._assign_space_group(<>node);
+    parts: list[doc.DocType] = [];
+    for i in <>node.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
+            parts.pop();
+        }
+        parts.append(i.gen.doc_ir);
+        parts.append(self.space());
+    }
+    parts.pop();
+    <>node.gen.doc_ir = self.group(
+        self.concat(parts, ast_node=<>node), ast_node=<>node
+    );
 }
 
 """Generate DocIR for control statements (break, continue, skip)."""

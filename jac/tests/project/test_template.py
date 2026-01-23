@@ -102,6 +102,61 @@ class TestBundleTemplate:
         with pytest.raises(ValueError, match="No jac.toml found"):
             bundle_template(empty_dir, temp_dir / "out.jacpack")
 
+    def test_bundle_handles_binary_files(self, temp_dir: Path) -> None:
+        """Test that bundling correctly handles binary files (PNG, WASM, etc)."""
+        import base64
+
+        from jaclang.project.template_loader import bundle_template
+
+        # Create a template directory with binary file
+        template_dir = temp_dir / "binary_template"
+        template_dir.mkdir()
+        assets_dir = template_dir / "assets"
+        assets_dir.mkdir()
+
+        # Create jac.toml with [jacpack] section
+        jac_toml = template_dir / "jac.toml"
+        jac_toml.write_text("""[project]
+name = "{{name}}"
+version = "0.1.0"
+entry-point = "main.jac"
+
+[jacpack]
+name = "binary-test"
+description = "Template with binary files"
+jaclang = "0.9.0"
+""")
+
+        # Create a text file
+        main_jac = template_dir / "main.jac"
+        main_jac.write_text('print("Hello");')
+
+        # Create a binary file (simulated PNG header + random bytes)
+        binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256))
+        binary_file = assets_dir / "test.png"
+        binary_file.write_bytes(binary_content)
+
+        # Bundle the template
+        output_path = temp_dir / "binary-test.jacpack"
+        bundle_template(template_dir, output_path)
+
+        # Load and verify the bundled content
+        with open(output_path) as f:
+            data = json.load(f)
+
+        # Text file should be plain text
+        assert "main.jac" in data["files"]
+        assert not data["files"]["main.jac"].startswith("base64:")
+
+        # Binary file should be base64 encoded with prefix
+        assert "assets/test.png" in data["files"]
+        assert data["files"]["assets/test.png"].startswith("base64:")
+
+        # Verify round-trip: decode and compare
+        encoded = data["files"]["assets/test.png"][7:]  # Strip "base64:" prefix
+        decoded = base64.b64decode(encoded)
+        assert decoded == binary_content
+
 
 class TestLoadTemplateFromJson:
     """Tests for loading templates from bundled .jacpack files."""

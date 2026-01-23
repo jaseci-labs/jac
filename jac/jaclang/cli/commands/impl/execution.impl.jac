@@ -124,7 +124,7 @@ impl start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    watch: bool = False,
+    dev: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int {
@@ -167,8 +167,8 @@ impl start(
         mach.close();
         return 1;
     }
-    # Determine actual port (for watch mode with client, Vite takes --port, API takes --api-port)
-    if watch and not no_client {
+    # Determine actual port (for dev mode with client, Vite takes --port, API takes --api-port)
+    if dev and not no_client {
         # Vite dev server gets the main port, API server gets api_port or port+1
         vite_port = port;
         actual_api_port = api_port if api_port > 0 else port + 1;
@@ -197,14 +197,14 @@ impl start(
         mach.close();
         return 0;
     }
-    # Initialize HMR if watch mode enabled
+    # Initialize HMR if dev mode enabled
     hot_reloader = None;
     vite_process = None;
-    if watch {
+    if dev {
         # Check if watchdog is available in the project environment
         if not _check_watchdog_available() {
             print(
-                "\n  Error: --watch requires 'watchdog' package to be installed.\n",
+                "\n  Error: --dev requires 'watchdog' package to be installed.\n",
                 file=sys.stderr
             );
             print(
@@ -249,9 +249,9 @@ impl start(
         }
     }
     # Print startup message
-    _print_startup_message(watch, no_client, port, actual_api_port, base);
+    _print_startup_message(dev, no_client, port, actual_api_port, base);
     try {
-        server.start(watch=watch);
+        server.start(dev=dev);
         return 0;
     } except KeyboardInterrupt {
         print('\nShutting down...');
@@ -353,7 +353,7 @@ def _count_jac_files(directory: str) -> int {
 
 """Print startup message based on mode."""
 def _print_startup_message(
-    watch: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
+    dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
 ) -> None {
     import from jaclang.cli.console { console }
     import from importlib.metadata { version as pkg_version }
@@ -382,7 +382,7 @@ def _print_startup_message(
     console.print();
 
     # Print mode information
-    if watch and not no_client {
+    if dev and not no_client {
         console.print("  🚀 Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
@@ -396,7 +396,7 @@ def _print_startup_message(
         } else {
             console.print("  👀 Watching for changes...", style="info");
         }
-    } elif watch and no_client {
+    } elif dev and no_client {
         console.print("  🚀 Server ready (API only)", style="bold green");
         console.print();
         file_count = _count_jac_files(base_path);
