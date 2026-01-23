@@ -72,6 +72,9 @@ impl check(
             }
         } elif path_obj.is_dir() {
             for jac_file in path_obj.glob('**/*.jac') {
+                if not jac_file.is_file() {
+                    continue;
+                }
                 if not ignore_check(str(jac_file), ignore_list) {
                     total_files += 1;
                     (success, errs, warns) = check_single_file(prog, str(jac_file));
@@ -166,6 +169,9 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
             }
         } elif path_obj.is_dir() {
             for jac_file in path_obj.glob('**/*.jac') {
+                if not jac_file.is_file() {
+                    continue;
+                }
                 total_files += 1;
                 (success, changed) = format_single_file(str(jac_file));
                 if not success {
