@@ -31,7 +31,7 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
         # Show subtle message (optional - uncomment to enable)
         try {
             import from jaclang.cli.console { console }
-            console.print("  ✔ Using MongoDB for persistence", style="muted");
+            logger.debug("  ✔ Using MongoDB for persistence", style="muted");
         } except Exception { }
     } else {
         # Fall back to jaclang's SqliteMemory using configured path
@@ -41,7 +41,7 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
         # Show subtle message
         try {
             import from jaclang.cli.console { console }
-            console.print("  ✔ Using SQLite for persistence", style="muted");
+            logger.debug("  ✔ Using SQLite for persistence", style="muted");
         } except Exception { }
     }
 }
