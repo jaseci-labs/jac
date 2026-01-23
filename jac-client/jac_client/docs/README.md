@@ -750,6 +750,9 @@ Then visit `http://localhost:8000` in your browser.
 
 Ready to dive deeper? Explore these advanced topics:
 
+- **[Multi-Target Builds](multi-targets/intro.md)**: Build for web, desktop, and more from a single codebase
+  - [Web Target](multi-targets/web-target.md): Web builds in detail
+  - [Desktop Target](multi-targets/desktop-target.md): Desktop builds in detail
 - **[Routing](routing.md)**: Build multi-page apps with declarative routing (`<Router>`, `<Routes>`, `<Route>`)
 - **[Lifecycle Hooks](lifecycle-hooks.md)**: Use `onMount()` and React hooks for initialization logic
 - **[Advanced State](advanced-state.md)**: Manage complex state with React hooks and context
