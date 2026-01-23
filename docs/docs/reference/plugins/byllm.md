@@ -62,6 +62,7 @@ system_prompt = "You are a helpful assistant that provides concise answers."
 ```
 
 The system prompt is automatically applied to all `by llm()` function calls, providing:
+
 - Centralized control over LLM behavior across your project
 - Consistent personality without repeating prompts in code
 - Easy updates without touching source code

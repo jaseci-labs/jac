@@ -104,6 +104,7 @@ temperature = 0.7
 ```
 
 This enables centralized control over:
+
 - System prompts across all LLM calls
 - Default model selection
 - Common parameters like temperature
