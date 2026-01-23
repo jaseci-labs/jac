@@ -539,6 +539,22 @@ impl DesktopTarget.build(
     web_bundle_path = web_target.build(entry_file, project_dir, platform);
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
     
+    # Step 1.5: Bundle sidecar (optional - can be skipped if not needed)
+    # This bundles the Jac backend as an executable for local use
+    sidecar_bundled = False;
+    try {
+        console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
+        sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform);
+        if sidecar_path and sidecar_path.exists() {
+            console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
+            sidecar_bundled = True;
+        }
+    } except Exception as e {
+        console.warning(f"  Sidecar bundling skipped: {e}");
+        console.print("  Note: Desktop app will need external API server", style="muted");
+        sidecar_bundled = False;
+    }
+    
     # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
     icon_path = tauri_dir / "icons" / "icon.png";
     if icon_path.exists() {
@@ -596,6 +612,57 @@ except:
     return bundle_path;
 }
 
+"""Add sidecar binary to tauri.conf.json if it exists."""
+def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
+    binaries_dir = tauri_dir / "binaries";
+    if not binaries_dir.exists() {
+        return;  # No binaries directory, skip
+    }
+    
+    # Find sidecar executable (must exist and be executable)
+    sidecar_files = [];
+    for pattern in ["jac-sidecar", "jac-sidecar.exe"] {
+        found = list(binaries_dir.glob(pattern));
+        for f in found {
+            if f.is_file() and f.exists() {
+                sidecar_files.append(f);
+            }
+        }
+    }
+    
+    if not sidecar_files {
+        # Remove sidecar from resources if it was previously added but no longer exists
+        if "bundle" in config and "resources" in config["bundle"] {
+            resources = config["bundle"]["resources"];
+            # Remove any jac-sidecar entries
+            config["bundle"]["resources"] = [
+                r for r in resources if not ("jac-sidecar" in r or "binaries/jac-sidecar" in r)
+            ];
+        }
+        return;  # No sidecar found, skip
+    }
+    
+    # Tauri v2 uses "resources" in bundle section for sidecars
+    if "bundle" not in config {
+        config["bundle"] = {};
+    }
+    
+    # Add resources array if it doesn't exist
+    if "resources" not in config["bundle"] {
+        config["bundle"]["resources"] = [];
+    }
+    
+    # Add sidecar binary path (relative to tauri_dir)
+    for sidecar_file in sidecar_files {
+        rel_path = sidecar_file.relative_to(tauri_dir);
+        rel_str = str(rel_path.as_posix());
+        if rel_str not in config["bundle"]["resources"] {
+            config["bundle"]["resources"].append(rel_str);
+            console.print(f"  ✔ Added sidecar to config: {rel_str}", style="success");
+        }
+    }
+}
+
 """Populate icon array in tauri.conf.json from icons directory."""
 def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
     # Populate icon array if empty or missing
@@ -626,7 +693,7 @@ def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
 }
 
 """Update tauri.conf.json to point to the built web bundle."""
-def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundle_path: Path) -> None {
+def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundle_path: Path, sidecar_bundled: bool = False) -> None {
     import json;
     
     config_path = tauri_dir / "tauri.conf.json";
@@ -679,6 +746,9 @@ def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundl
     
     # Populate icon array if empty or missing
     _populate_icon_array(tauri_dir, config);
+    
+    # Add sidecar binary if it exists
+    _add_sidecar_to_config(tauri_dir, config);
     
     # Write updated config
     with open(config_path, "w") as f {
@@ -776,6 +846,154 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     
     # Fallback: return the bundle directory
     return bundle_dir;
+}
+
+"""Bundle Jac backend as sidecar executable using PyInstaller."""
+def _bundle_sidecar(
+    entry_file: Path,
+    project_dir: Path,
+    tauri_dir: Path,
+    platform: Optional[str] = None
+) -> Path | None {
+    import platform as platform_module;
+    
+    # Check if PyInstaller is available
+    try {
+        subprocess.run(["pyinstaller", "--version"], capture_output=True, check=True, timeout=5);
+    } except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) {
+        raise RuntimeError(
+            "PyInstaller not found. Install it with: pip install pyinstaller\n"
+            "Note: Sidecar bundling is optional. Desktop apps can connect to external API servers."
+        );
+    }
+    
+    # Determine output directory
+    binaries_dir = tauri_dir / "binaries";
+    binaries_dir.mkdir(parents=True, exist_ok=True);
+    
+    # Find sidecar entry point via Python import path (most reliable)
+    sidecar_main = None;
+    try {
+        import importlib.util;
+        spec = importlib.util.find_spec("jac_client.plugin.src.targets.desktop.sidecar.main");
+        if spec and spec.origin {
+            sidecar_main = Path(spec.origin).resolve();
+        }
+    } except Exception {
+        # Fallback to file path search
+        possible_paths = [
+            Path(__file__).parent / "desktop" / "sidecar" / "main.py",
+            project_dir / "src-tauri" / "sidecar" / "main.py",
+        ];
+        for path in possible_paths {
+            if path.exists() {
+                sidecar_main = path.resolve();
+                break;
+            }
+        }
+    }
+    
+    if not sidecar_main or not sidecar_main.exists() {
+        raise RuntimeError(
+            "Sidecar entry point not found. Make sure jac-client is properly installed."
+        );
+    }
+    
+    # Determine executable name based on platform
+    if platform == "windows" or (platform is None and platform_module.system() == "Windows") {
+        exe_name = "jac-sidecar.exe";
+    } else {
+        exe_name = "jac-sidecar";
+    }
+    
+    output_path = binaries_dir / exe_name;
+    
+    # Build PyInstaller command using minimal CLI flags (no spec file)
+    # --onefile: Single executable (required for Tauri sidecar)
+    # --collect-all jaclang: Collect all jaclang modules, submodules, and data files
+    #   This SHOULD be enough, but PyInstaller's static analysis sometimes misses
+    #   standard library modules that are imported dynamically or conditionally.
+    # --hidden-import: Only add stdlib modules that PyInstaller misses
+    #   These are modules that have failed at runtime - add as needed
+    # --name: Output executable name (without .exe extension)
+    # --distpath: Output directory for the built executable
+    # --workpath: Temporary build directory (cleaned up after build)
+    # --clean: Clean PyInstaller cache before building
+    # --noconfirm: Overwrite output without asking
+    #
+    # NOTE: JacLang IS installed from PyPI. The issue is PyInstaller's static analysis
+    # limitation, not the installation method. --collect-all should handle most cases,
+    # but we add hidden imports for modules that fail at runtime.
+    build_cmd = [
+        "pyinstaller",
+        "--onefile",
+        "--collect-all", "jaclang",  # This collects all jaclang code and dependencies
+        # Add stdlib modules that PyInstaller misses (discovered via runtime errors)
+        "--hidden-import", "__future__",
+        "--hidden-import", "html",
+        "--hidden-import", "json",
+        "--hidden-import", "pdb",
+        "--hidden-import", "types",
+        "--hidden-import", "typing",
+        "--hidden-import", "uuid",
+        "--hidden-import", "hashlib",
+        "--hidden-import", "dis",
+        "--hidden-import", "enum",
+        "--hidden-import", "copy",
+        "--hidden-import", "ast",
+        "--hidden-import", "builtins",
+        "--hidden-import", "collections",
+        "--hidden-import", "collections.abc",
+        "--hidden-import", "concurrent.futures",
+        "--hidden-import", "contextlib",
+        "--hidden-import", "dataclasses",
+        "--hidden-import", "fnmatch",
+        "--hidden-import", "functools",
+        # sqlite3
+        "--hidden-import", "sqlite3",
+        # tomlib
+        "--hidden-import", "tomllib",
+        # Add more here only if they fail at runtime
+        "--name", exe_name.replace(".exe", ""),
+        "--distpath", str(binaries_dir),
+        "--workpath", str(binaries_dir / "build"),
+        "--clean",
+        "--noconfirm",
+        str(sidecar_main)
+    ];
+    
+    # Run PyInstaller
+    console.print(f"  Running PyInstaller...", style="muted");
+    result = subprocess.run(
+        build_cmd,
+        cwd=project_dir,
+        check=False,
+        capture_output=True,
+        text=True
+    );
+    
+    # Check if PyInstaller succeeded
+    if result.returncode != 0 {
+        if result.stderr {
+            console.warning(f"PyInstaller error:\n{result.stderr}");
+        }
+        if result.stdout {
+            console.warning(f"PyInstaller output:\n{result.stdout}");
+        }
+        raise RuntimeError(f"PyInstaller failed with exit code {result.returncode}");
+    }
+    
+    # Verify executable was created
+    if output_path.exists() {
+        return output_path;
+    } else {
+        # PyInstaller might create it in a subdirectory
+        possible_paths = list(binaries_dir.glob(f"**/{exe_name}"));
+        if possible_paths {
+            return possible_paths[0];
+        }
+        raise RuntimeError(f"Sidecar executable not found after PyInstaller build");
+    }
 }
 
 """Start desktop dev server - start web dev server and launch tauri dev."""
@@ -895,6 +1113,9 @@ def _update_tauri_config_for_dev(tauri_dir: Path) -> None {
     
     # Populate icon array if empty or missing
     _populate_icon_array(tauri_dir, config);
+    
+    # Add sidecar binary if it exists
+    _add_sidecar_to_config(tauri_dir, config);
     
     # Write updated config
     with open(config_path, "w") as f {
