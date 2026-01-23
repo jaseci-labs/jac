@@ -225,19 +225,16 @@ with entry {
 
 ## Configuration via jac.toml
 
-Instead of setting environment variables, configure in `jac.toml`:
+Set a global system prompt for all LLM calls in `jac.toml`:
 
 ```toml
 [plugins.byllm]
-
-[plugins.byllm.model]
-default_model = "gpt-4o-mini"
-# api_key = "sk-..."  # Or use environment variable
-
-[plugins.byllm.call_params]
-temperature = 0.7
-max_tokens = 0  # 0 = unlimited
+system_prompt = "You are a helpful assistant."
 ```
+
+This applies to all `by llm()` functions, providing consistent behavior without repeating prompts in code.
+
+**Advanced:** For custom/self-hosted models with HTTP client, see [byLLM Reference](../../reference/plugins/byllm.md#project-configuration).
 
 ---
 
