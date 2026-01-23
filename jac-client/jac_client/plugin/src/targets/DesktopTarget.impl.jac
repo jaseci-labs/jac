@@ -362,10 +362,141 @@ def _generate_main_rs(tauri_dir: Path) -> None {
     main_rs = '''// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::process::{Command, Child};
+use std::sync::Mutex;
+use tauri::Manager;
+
+// Global storage for sidecar process
+static SIDECAR_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+
+fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // Try to find the sidecar in bundled resources
+    let resource_dir = app.path().resource_dir()?;
+    
+    // Possible sidecar names
+    let sidecar_names = if cfg!(windows) {
+        vec!["binaries/jac-sidecar.exe", "binaries/jac-sidecar.bat"]
+    } else {
+        vec!["binaries/jac-sidecar", "binaries/jac-sidecar.sh"]
+    };
+    
+    let mut sidecar_path = None;
+    for name in &sidecar_names {
+        let path = resource_dir.join(name);
+        if path.exists() {
+            sidecar_path = Some(path);
+            break;
+        }
+    }
+    
+    // If not found in resources, try relative to executable
+    if sidecar_path.is_none() {
+        if let Ok(exe_dir) = std::env::current_exe().and_then(|p| p.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No parent"))) {
+            for name in &sidecar_names {
+                let path = exe_dir.join(name);
+                if path.exists() {
+                    sidecar_path = Some(path);
+                    break;
+                }
+            }
+        }
+    }
+    
+    if let Some(sidecar_path) = sidecar_path {
+        // Determine module path (try to find main.jac relative to app)
+        let module_path = if let Ok(exe_dir) = std::env::current_exe().and_then(|p| p.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No parent"))) {
+            // Look for main.jac in parent directories
+            let mut current = exe_dir.to_path_buf();
+            loop {
+                let main_jac = current.join("main.jac");
+                if main_jac.exists() {
+                    break Some(main_jac);
+                }
+                if !current.pop() {
+                    break None;
+                }
+            }
+        } else {
+            None
+        };
+        
+        // Build command to start sidecar
+        let mut cmd = if cfg!(windows) {
+            if sidecar_path.extension().and_then(|s| s.to_str()) == Some("bat") {
+                let mut c = Command::new("cmd");
+                c.arg("/C");
+                c.arg(&sidecar_path);
+                c
+            } else {
+                Command::new(&sidecar_path)
+            }
+        } else {
+            if sidecar_path.extension().and_then(|s| s.to_str()) == Some("sh") {
+                let mut c = Command::new("sh");
+                c.arg(&sidecar_path);
+                c
+            } else {
+                Command::new(&sidecar_path)
+            }
+        };
+        
+        // Add arguments
+        if let Some(ref mp) = module_path {
+            cmd.arg("--module-path").arg(mp);
+        } else {
+            cmd.arg("--module-path").arg("main.jac");
+        }
+        cmd.arg("--port").arg("8000");
+        cmd.arg("--host").arg("127.0.0.1");
+        
+        // Spawn sidecar process
+        match cmd.spawn() {
+            Ok(child) => {
+                let mut process = SIDECAR_PROCESS.lock().unwrap();
+                *process = Some(child);
+                eprintln!("Sidecar started successfully");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Failed to start sidecar: {}", e);
+                Err(Box::new(e))
+            }
+        }
+    } else {
+        eprintln!("Sidecar not found in resources, skipping auto-start");
+        Ok(())
+    }
+}
+
+fn stop_sidecar() {
+    let mut process = SIDECAR_PROCESS.lock().unwrap();
+    if let Some(mut child) = process.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+        eprintln!("Sidecar stopped");
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .setup(|app| {
+            // Try to start sidecar on app startup
+            if let Err(e) = find_and_start_sidecar(app.handle()) {
+                eprintln!("Warning: Could not start sidecar: {}", e);
+            }
+            Ok(())
+        })
+        .on_window_event(|_event| {
+            // Clean up sidecar when last window closes
+            if matches!(_event.event(), tauri::WindowEvent::CloseRequested { .. }) {
+                stop_sidecar();
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+    
+    // Ensure sidecar is stopped on exit
+    stop_sidecar();
 }
 ''';
     
