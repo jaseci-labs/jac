@@ -4,10 +4,10 @@ This is the default target for building web applications.
 """
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.targets.registry { Target }
+import from jac_client.plugin.src.targets.registry { ClientTarget }
 
 """Web build target."""
-class WebTarget(Target) {
+class WebTarget(ClientTarget) {
     def init(self: WebTarget) {
         self.name = "web";
         self.default = True;

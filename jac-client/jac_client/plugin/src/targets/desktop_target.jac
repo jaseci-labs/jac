@@ -4,10 +4,10 @@ This target will be implemented in Phase 2.
 """
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.targets.registry { Target }
+import from jac_client.plugin.src.targets.registry { ClientTarget }
 
 """Desktop build target (placeholder for Phase 2)."""
-class DesktopTarget(Target) {
+class DesktopTarget(ClientTarget) {
     def init(self: DesktopTarget) {
         self.name = "desktop";
         self.default = False;

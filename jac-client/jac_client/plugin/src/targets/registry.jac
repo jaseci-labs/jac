@@ -1,7 +1,7 @@
 """Target registry for build targets (web, desktop, mobile, etc.).
 
 This module provides a registry system for managing different build targets.
-Each target is a class that inherits from the base Target class.
+Each target is a class that inherits from the base ClientTarget class.
 """
 import from typing { Optional }
 import from pathlib { Path }
@@ -10,7 +10,7 @@ import from pathlib { Path }
 
 All targets must inherit from this class and implement the required methods.
 """
-class Target {
+class ClientTarget {
     has name: str,
         default: bool = False,
         requires_setup: bool = False,
@@ -19,21 +19,21 @@ class Target {
         output_dir: Optional[Path] = None;
 
     """Setup the target (one-time initialization)."""
-    def setup(self: Target, project_dir: Path) -> None abs;
+    def setup(self: ClientTarget, project_dir: Path) -> None abs;
 
     """Build the target."""
     def build(
-        self: Target,
+        self: ClientTarget,
         entry_file: Path,
         project_dir: Path,
         platform: Optional[str] = None
     ) -> Path abs;
 
     """Start dev server for the target."""
-    def dev(self: Target, entry_file: Path, project_dir: Path) -> None abs;
+    def dev(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
 
     """Start the target (production mode - build and run)."""
-    def start(self: Target, entry_file: Path, project_dir: Path) -> None abs;
+    def start(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
 }
 
 """Central registry for build targets.
@@ -42,20 +42,20 @@ This is a singleton that collects all build targets registered by plugins.
 The CLI uses this registry to delegate build operations to the appropriate target.
 """
 obj TargetRegistry {
-    has _targets: dict[str, Target] = {},
+    has _targets: dict[str, ClientTarget] = {},
         _default_target: Optional[str] = None;
 
     """Register a new build target."""
-    def register(target: Target) -> None;
+    def register(target: ClientTarget) -> None;
 
     """Get a target by name."""
-    def get(name: str) -> Optional[Target];
+    def get(name: str) -> Optional[ClientTarget];
 
     """Get the default target."""
-    def get_default -> Optional[Target];
+    def get_default -> Optional[ClientTarget];
 
     """Get all registered targets."""
-    def get_all -> list[Target];
+    def get_all -> list[ClientTarget];
 
     """Check if a target is registered."""
     def has(name: str) -> bool;
