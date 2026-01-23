@@ -72,6 +72,10 @@ nav:
       - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
       - Advanced State: "jac-client/advanced-state.md"
       - Imports: "jac-client/imports.md"
+      - Multi-Target Builds:
+        - Introduction: "jac-client/multi-targets/intro.md"
+        - Web Target: "jac-client/multi-targets/web-target.md"
+        - Desktop Target: "jac-client/multi-targets/desktop-target.md"
       - File System:
         - Introduction: "jac-client/file-system/intro.md"
         - Backend/Frontend Separation: "jac-client/file-system/backend-frontend.md"

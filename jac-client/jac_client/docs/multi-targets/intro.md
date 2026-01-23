@@ -127,10 +127,6 @@ jac build main.jac --client desktop
 
 - **[Web Target Guide](web-target.md)**: Learn about web builds in detail
 - **[Desktop Target Guide](desktop-target.md)**: Learn about desktop builds in detail
-- **[Routing](../routing.md)**: Add multi-page navigation
-- **[Advanced State](../advanced-state.md)**: Manage complex state
-- **[Imports](../imports.md)**: Use third-party libraries
-
 ---
 
 ## FAQ
