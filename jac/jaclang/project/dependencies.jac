@@ -21,8 +21,8 @@ obj ResolvedDependency {
 
 """Manages installation of dependencies for Jac projects."""
 obj DependencyInstaller {
-    has config: JacConfig | None by postinit,
-        packages_dir: Path | None by postinit,
+    has config: JacConfig | None = None,
+        packages_dir: Path | None = None,
         verbose: bool = False;
 
     def postinit -> None;
@@ -39,7 +39,7 @@ obj DependencyInstaller {
 
 """Resolves dependencies and their transitive dependencies."""
 obj DependencyResolver {
-    has config: JacConfig | None by postinit;
+    has config: JacConfig | None = None;
 
     def postinit -> None;
     def parse_spec(spec: str) -> tuple[str, str];

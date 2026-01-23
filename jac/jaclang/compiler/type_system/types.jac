@@ -160,9 +160,9 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType] by postinit,
-            type_params: (list[TypeVarType] | None) by postinit,
-            base_classes: (list[TypeBase] | None) by postinit,
+            mro: list[ClassType] = [],
+            type_params: (list[TypeVarType] | None) = None,
+            base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
@@ -177,7 +177,7 @@ Holds the private details of class type.
         The private details of classes will be unique to each class instance.
     """
     obj ClassDetailsPrivate {
-        has type_args: (list[TypeBase] | None) by postinit;
+        has type_args: (list[TypeBase] | None) = None;
 
         def postinit -> None;
     }
@@ -225,7 +225,7 @@ obj Parameter {
 obj FunctionType(TypeBase) {
     has func_name: str = "",
         return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) by postinit;
+        parameters: (list[Parameter] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
