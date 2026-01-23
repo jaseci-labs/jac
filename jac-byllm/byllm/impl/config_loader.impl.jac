@@ -25,7 +25,8 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
             'verbose': False
         },
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
-        'litellm': {'local_cost_map': True, 'drop_params': True}
+        'litellm': {'local_cost_map': True, 'drop_params': True},
+        'system_prompt': ''
     };
 }
 
@@ -69,10 +70,24 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
 """Get or create the global JacByllmConfig instance."""
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     global _byllm_config_instance;
+    # If project_dir is provided and differs from cached instance, recreate
+    if (
+        _byllm_config_instance is not None
+        and project_dir is not None
+        and _byllm_config_instance.project_dir != project_dir
+    ) {
+        _byllm_config_instance = None;
+    }
     if _byllm_config_instance is None {
         _byllm_config_instance = JacByllmConfig(project_dir);
     }
     return _byllm_config_instance;
+}
+
+"""Get system prompt from jac.toml configuration."""
+impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
+    config = self.load();
+    return config.get('system_prompt', '');
 }
 
 """Reset the global config instance (useful for testing)."""

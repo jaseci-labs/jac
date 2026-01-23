@@ -87,10 +87,14 @@ is 'mockllm'.
 """
 obj Model(BaseLLM) {
     has proxy: bool = False,
+        http_client: bool = False,
         _mock_delegate: MockLLM | None = None;
 
     def postinit -> None;
     override def invoke(mtir: MTRuntime) -> object;
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict);
+    def model_call_http(
+        url: str, token: str, payload: dict, ca_bundle: str | bool
+    ) -> object;
 }

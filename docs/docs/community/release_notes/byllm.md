@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.15 (Unreleased)
 
+- **Direct HTTP model calls:** Added support for calling custom LLM endpoints via direct HTTP (`http_client` in model config).
+
 ## byllm 0.4.14 (Latest Release)
 
 - **Max Iterations for ReAct (`max_react_iterations`)**: Added a configurable limit for ReAct tool-calling loops via `by llm(max_react_iterations=3)` to prevent overly long or endless reasoning cycles. When the limit is reached, the model stops calling tools and returns a final answer based on the information gathered so far.
