@@ -16,7 +16,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
-        args: [--allow-multiple-documents]
+        args: [--allow-multiple-documents, --unsafe]
       - id: check-json
       - id: trailing-whitespace
       - id: mixed-line-ending

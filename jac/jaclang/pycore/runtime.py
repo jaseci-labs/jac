@@ -575,12 +575,18 @@ class JacWalker:
         walker.path = []
         current_loc = node.archetype
 
+        # Capture reports starting index to track reports from this spawn
+        ctx = JacRuntimeInterface.get_context()
+        reports_start_idx = len(ctx.reports)
+
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
                 i.func(warch, current_loc)
             if walker.disengaged:
                 walker.ignores = []
+                # Capture reports generated during this spawn
+                warch.reports = ctx.reports[reports_start_idx:]
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -602,6 +608,8 @@ class JacWalker:
                 break
 
         walker.ignores = []
+        # Capture reports generated during this spawn
+        warch.reports = ctx.reports[reports_start_idx:]
         return warch
 
     @staticmethod
@@ -761,6 +769,10 @@ class JacWalker:
         walker.path = []
         current_loc = node.archetype
 
+        # Capture reports starting index to track reports from this spawn
+        ctx = JacRuntimeInterface.get_context()
+        reports_start_idx = len(ctx.reports)
+
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
             if not i.trigger:
@@ -769,6 +781,8 @@ class JacWalker:
                     await result
             if walker.disengaged:
                 walker.ignores = []
+                # Capture reports generated during this spawn
+                warch.reports = ctx.reports[reports_start_idx:]
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -794,6 +808,8 @@ class JacWalker:
                 break
 
         walker.ignores = []
+        # Capture reports generated during this spawn
+        warch.reports = ctx.reports[reports_start_idx:]
         return warch
 
     @staticmethod
@@ -1351,7 +1367,7 @@ class JacBasics:
                 )
                 ret_count = JacTestCheck.failcount
             else:
-                print("Not a .jac file.")
+                JacConsole.get_console().error("Not a .jac file.")
         else:
             directory = directory if directory else os.getcwd()
 
@@ -1371,7 +1387,9 @@ class JacBasics:
                 for file in files:
                     if file.endswith(".jac"):
                         test_file = True
-                        print(f"\n\n\t\t* Inside {root_dir}" + "/" + f"{file} *")
+                        JacConsole.get_console().info(
+                            f"\n\n\t\t* Inside {root_dir}/{file} *"
+                        )
                         JacTestCheck.reset()
                         JacRuntimeInterface.jac_import(
                             target=file[:-4], base_path=root_dir
@@ -1387,7 +1405,8 @@ class JacBasics:
             JacTestCheck.breaker = False
             ret_count += JacTestCheck.failcount
             JacTestCheck.failcount = 0
-            print("No test files found.") if not test_file else None
+            if not test_file:
+                JacConsole.get_console().warning("No test files found.")
 
         return ret_count
 
@@ -1405,7 +1424,7 @@ class JacBasics:
         if custom:
             ctx.custom = expr
         else:
-            print(expr)
+            JacConsole.get_console().print(expr)
             ctx.reports.append(expr)
 
     @staticmethod

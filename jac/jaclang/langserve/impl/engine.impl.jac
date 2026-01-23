@@ -233,10 +233,10 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
 """Delete module."""
 impl JacLangServer.delete_module(uri: str) -> None {
     if uri in self.mod.hub {
-        del (self.mod.hub[uri], ) ;
+        del (self.mod.hub[uri], );
     }
     if uri in self.sem_managers {
-        del (self.sem_managers[uri], ) ;
+        del (self.sem_managers[uri], );
     }
 }
 
@@ -245,8 +245,8 @@ impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
     if old_path in self.mod.hub and new_path != old_path {
         self.mod.hub[new_path] = self.mod.hub[old_path];
         self.sem_managers[new_path] = self.sem_managers[old_path];
-        del (self.mod.hub[old_path], ) ;
-        del (self.sem_managers[old_path], ) ;
+        del (self.mod.hub[old_path], );
+        del (self.sem_managers[old_path], );
     }
 }
 
