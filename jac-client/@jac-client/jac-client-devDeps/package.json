@@ -1,8 +1,8 @@
 {
   "name": "@jac-client/dev-deps",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Default devDependencies for Jac client projects",
-  "dependencies": {
+  "peerDependencies": {
     "vite": "^6.4.1",
     "@babel/cli": "^7.28.3",
     "@babel/core": "^7.28.5",
@@ -12,5 +12,16 @@
     "typescript": "^5.3.3",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@babel/cli": { "optional": false },
+    "@babel/core": { "optional": false },
+    "@babel/preset-env": { "optional": false },
+    "@babel/preset-react": { "optional": false },
+    "@vitejs/plugin-react": { "optional": false },
+    "vite": { "optional": false },
+    "typescript": { "optional": false },
+    "@types/react": { "optional": false },
+    "@types/react-dom": { "optional": false }
   }
 }
