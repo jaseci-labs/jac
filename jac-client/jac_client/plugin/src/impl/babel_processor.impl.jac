@@ -13,7 +13,6 @@ impl BabelProcessor.copy_assets_after_compile(
 """Run Babel compilation (npm run compile)."""
 impl BabelProcessor.compile(self: BabelProcessor) -> None {
     bundler = ViteBundler(self.project_dir);
-    error_reporter = BundleErrorReporter(self.project_dir);
     # Ensure root package.json exists temporarily for npm commands
     bundler._ensure_root_package_json();
     try {
@@ -38,7 +37,7 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
                     text=True
                 );
             } except subprocess.CalledProcessError as e {
-                formatted_error = error_reporter.report_error(e.stderr or str(e));
+                formatted_error = _format_bundle_error(e.stderr or str(e));
                 raise ClientBundleError(formatted_error) from None ;
             } except FileNotFoundError {
                 raise ClientBundleError(
@@ -61,7 +60,7 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
         if result.returncode != 0 {
             # Parse and format the error
             raw_error = result.stderr or result.stdout or "Unknown compilation error";
-            formatted_error = error_reporter.report_error(raw_error);
+            formatted_error = _format_bundle_error(raw_error);
             raise ClientBundleError(formatted_error) from None ;
         }
     } finally {

@@ -1,3 +1,15 @@
+import re;
+
+"""Format raw build error into clean output with .jac paths."""
+impl _format_bundle_error(raw_error: str) -> str {
+    clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error).strip();
+    lines = [l for l in clean.split('\n')
+             if not (l.strip().startswith('at ') and 'node_modules' in l)];
+    clean = '\n'.join(lines).strip();
+    sep = "-" * 70;
+    return f"\n{sep}\nCLIENT BUNDLE ERROR\n{sep}\n{clean}\n{sep}\n";
+}
+
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
     # Try to get from project config
@@ -387,8 +399,6 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         # Ensure tsconfig.json exists even if package.json already exists
         self.create_tsconfig();
     }
-    # Initialize error reporter for user-friendly error messages
-    error_reporter = BundleErrorReporter(self.project_dir);
     try {
         build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
@@ -417,7 +427,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
                     error_output = result.stderr or result.stdout;
-                    formatted_error = error_reporter.report_error(error_output);
+                    formatted_error = _format_bundle_error(error_output);
                     raise ClientBundleError(formatted_error) from None ;
                 }
                 print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
@@ -454,7 +464,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         if result.returncode != 0 {
             error_msg = result.stderr or result.stdout or 'Unknown error';
             # Use the error reporter to format a user-friendly message
-            formatted_error = error_reporter.report_error(error_msg);
+            formatted_error = _format_bundle_error(error_msg);
             raise ClientBundleError(formatted_error) from None ;
         }
         print(f"  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
