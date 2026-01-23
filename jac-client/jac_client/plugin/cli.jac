@@ -17,6 +17,9 @@ glob registry = get_registry();
 
 with entry {
     # Register targets when module loads
+    # Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
+    import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
+    import from jac_client.plugin.src.targets.web_target { WebTarget }
     import from jac_client.plugin.src.targets.register { register_targets }
     register_targets();
 }
@@ -431,7 +434,9 @@ def _handle_start_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 0);
         } except Exception as e {
+            import traceback;
             console.error(f"Desktop start failed: {e}");
+            console.print(traceback.format_exc(), style="muted");
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 1);
         }

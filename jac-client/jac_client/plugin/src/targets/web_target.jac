@@ -4,7 +4,7 @@ This is the default target for building web applications.
 """
 import from pathlib { Path }
 import from typing { Optional }
-import from .registry { Target }
+import from jac_client.plugin.src.targets.registry { Target }
 
 """Web build target."""
 class WebTarget(Target) {

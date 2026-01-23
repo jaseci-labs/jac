@@ -12,30 +12,30 @@ import stat;
 
 """Setup desktop target - scaffold Tauri project structure."""
 impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
-    import from jac_client.plugin.src.desktop_config { DesktopConfig }
+    # Define tauri_dir early so we can use it in error handling
+    tauri_dir = project_dir / "src-tauri";
     
+    # Create src-tauri directory structure FIRST (before ANY other operations)
+    # This ensures the directory exists even if later steps fail
     console.print("\n🖥️  Setting up desktop target (Tauri)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
     
     # Check if already set up
-    tauri_dir = project_dir / "src-tauri";
     if tauri_dir.exists() {
         console.warning("Desktop target already set up. Skipping...");
         return;
     }
     
-    # Load desktop config (will use defaults if [desktop] section doesn't exist)
-    desktop_config = DesktopConfig(project_dir=project_dir);
-    config_data = desktop_config.load();
+    # Ensure project directory exists
+    if not project_dir.exists() {
+        try {
+            project_dir.mkdir(parents=True, exist_ok=True);
+        } except Exception as e {
+            raise RuntimeError(f"Failed to create project directory: {e}");
+        }
+    }
     
-    project_name = config_data.get('name', 'my-jac-app');
-    project_version = config_data.get('version', '1.0.0');
-    identifier = config_data.get('identifier', 'com.myapp');
-    
-    console.print(f"  Project name: {project_name}, version: {project_version}", style="muted");
-    console.print(f"  Identifier: {identifier}", style="muted");
-    
-    # Create src-tauri directory structure
+    # Create src-tauri directory structure IMMEDIATELY (before imports or any other operations)
     console.print("  Creating src-tauri/ directory structure...", style="muted");
     try {
         tauri_dir.mkdir(parents=True, exist_ok=True);
@@ -46,77 +46,141 @@ impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
         raise RuntimeError(f"Failed to create src-tauri directory: {e}");
     }
     
-    # Generate tauri.conf.json
+    # Wrap rest of setup in try-finally to ensure directory exists even if exceptions occur
     try {
-        _generate_tauri_config(tauri_dir, project_name, identifier, project_version);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to generate tauri.conf.json: {e}");
-    }
-    
-    # Generate Cargo.toml
-    try {
-        _generate_cargo_toml(tauri_dir, project_name, identifier);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to generate Cargo.toml: {e}");
-    }
-    
-    # Generate build.rs
-    try {
-        _generate_build_rs(tauri_dir);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to generate build.rs: {e}");
-    }
-    
-    # Generate icons
-    try {
-        _generate_default_icons(tauri_dir);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to generate icons: {e}");
-    }
-    
-    # Update tauri.conf.json to include icons
-    try {
-        config_path = tauri_dir / "tauri.conf.json";
-        if config_path.exists() {
-            with open(config_path, "r") as f {
-                config = json.load(f);
+        # Now import and do other operations (directory already exists, so if these fail, directory is still there)
+        import from jac_client.plugin.src.desktop_config { DesktopConfig }
+        
+        # Load desktop config (will use defaults if [desktop] section doesn't exist)
+        # Wrap in try-except to handle config loading errors gracefully
+        try {
+            desktop_config = DesktopConfig(project_dir=project_dir);
+            config_data = desktop_config.load();
+            
+            project_name = config_data.get('name', 'my-jac-app');
+            project_version = config_data.get('version', '1.0.0');
+            identifier = config_data.get('identifier', 'com.myapp');
+        } except Exception as e {
+            console.warning(f"  Failed to load desktop config: {e}, using defaults");
+            project_name = 'my-jac-app';
+            project_version = '1.0.0';
+            identifier = 'com.myapp';
+        }
+        
+        console.print(f"  Project name: {project_name}, version: {project_version}", style="muted");
+        console.print(f"  Identifier: {identifier}", style="muted");
+        
+        # Generate tauri.conf.json (don't fail setup if this fails)
+        try {
+            _generate_tauri_config(tauri_dir, project_name, identifier, project_version);
+        } except Exception as e {
+            console.warning(f"  Failed to generate tauri.conf.json: {e}");
+            console.print("  Setup will continue, but tauri.conf.json may be missing.", style="muted");
+        }
+        
+        # Generate Cargo.toml (don't fail setup if this fails)
+        try {
+            _generate_cargo_toml(tauri_dir, project_name, identifier);
+        } except Exception as e {
+            console.warning(f"  Failed to generate Cargo.toml: {e}");
+            console.print("  Setup will continue, but Cargo.toml may be missing.", style="muted");
+        }
+        
+        # Generate build.rs (don't fail setup if this fails)
+        try {
+            _generate_build_rs(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate build.rs: {e}");
+            console.print("  Setup will continue, but build.rs may be missing.", style="muted");
+        }
+        
+        # Generate icons (don't fail setup if this fails)
+        try {
+            _generate_default_icons(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate icons: {e}");
+            console.print("  Setup will continue, but icons may be missing.", style="muted");
+        }
+        
+        # Update tauri.conf.json to include icons
+        try {
+            config_path = tauri_dir / "tauri.conf.json";
+            if config_path.exists() {
+                with open(config_path, "r") as f {
+                    config = json.load(f);
+                }
+                _populate_icon_array(tauri_dir, config);
+                with open(config_path, "w") as f {
+                    json.dump(config, f, indent=2);
+                }
             }
-            _populate_icon_array(tauri_dir, config);
-            with open(config_path, "w") as f {
-                json.dump(config, f, indent=2);
+        } except Exception as e {
+            console.warning(f"  Failed to update icon array in tauri.conf.json: {e}");
+        }
+        
+        # Generate main.rs (don't fail setup if this fails)
+        try {
+            _generate_main_rs(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate main.rs: {e}");
+            console.print("  Setup will continue, but main.rs may be missing.", style="muted");
+        }
+        
+        # Add [desktop] section to jac.toml (don't fail setup if this fails)
+        try {
+            _add_desktop_config(project_dir, project_name, identifier, project_version);
+        } except Exception as e {
+            console.warning(f"  Failed to add [desktop] section to jac.toml: {e}");
+            console.print("  Setup will continue, but jac.toml may not be updated.", style="muted");
+        }
+        
+        # Check and install required dependencies (wrap in try-except to not fail setup)
+        console.print("\n📦 Checking required dependencies...", style="bold");
+        try {
+            _check_and_install_dependencies();
+        } except Exception as e {
+            console.warning(f"  Dependency check encountered an issue: {e}");
+            console.print("  Setup will continue, but some dependencies may be missing.", style="muted");
+        }
+        
+        # Verify essential files exist, recreate if missing
+        essential_files = {
+            "tauri.conf.json": lambda: _generate_tauri_config(tauri_dir, project_name, identifier, project_version),
+            "Cargo.toml": lambda: _generate_cargo_toml(tauri_dir, project_name, identifier),
+            "build.rs": lambda: _generate_build_rs(tauri_dir),
+            "src/main.rs": lambda: _generate_main_rs(tauri_dir)
+        };
+        
+        for file_path in essential_files {
+            full_path = tauri_dir / file_path;
+            if not full_path.exists() {
+                console.warning(f"  {file_path} not found, regenerating...");
+                try {
+                    generator = essential_files[file_path];
+                    generator();
+                } except Exception as e {
+                    console.warning(f"  Failed to regenerate {file_path}: {e}");
+                }
             }
         }
-    } except Exception as e {
-        console.warning(f"  Failed to update icon array in tauri.conf.json: {e}");
+        
+        console.success("Desktop target setup complete!");
+        console.print("\nNext steps:", style="bold");
+        console.print("  1. Build: jac build main.jac --client desktop");
+        console.print("  2. Dev:   jac start main.jac --client desktop");
+    } finally {
+        # ABSOLUTE GUARANTEE: Ensure src-tauri directory exists no matter what
+        if not tauri_dir.exists() {
+            try {
+                tauri_dir.mkdir(parents=True, exist_ok=True);
+                (tauri_dir / "src").mkdir(exist_ok=True);
+                (tauri_dir / "binaries").mkdir(exist_ok=True);
+                console.print(f"  ✔ Ensured {tauri_dir} exists", style="success");
+            } except Exception as e {
+                console.error(f"  CRITICAL: Could not create src-tauri directory: {e}");
+            }
+        }
     }
-    
-    # Generate main.rs
-    try {
-        _generate_main_rs(tauri_dir);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to generate main.rs: {e}");
-    }
-    
-    # Add [desktop] section to jac.toml
-    try {
-        _add_desktop_config(project_dir, project_name, identifier, project_version);
-    } except Exception as e {
-        raise RuntimeError(f"Failed to add [desktop] section to jac.toml: {e}");
-    }
-    
-    # Check Rust toolchain
-    _check_rust_toolchain();
-    
-    # Check Linux system dependencies
-    _check_linux_dependencies();
-    
-    # Check/install Tauri CLI
-    _check_tauri_cli();
-    
-    console.success("Desktop target setup complete!");
-    console.print("\nNext steps:", style="bold");
-    console.print("  1. Build: jac build main.jac --client desktop");
-    console.print("  2. Dev:   jac start main.jac --client desktop");
 }
 
 """Generate identifier from project name."""
@@ -574,8 +638,46 @@ notifications = false
     console.print("  ✔ Added [desktop] section to jac.toml", style="success");
 }
 
-"""Check if Rust toolchain is installed."""
-def _check_rust_toolchain() -> None {
+"""Check and install all required dependencies for desktop target."""
+def _check_and_install_dependencies() -> None {
+    import platform as platform_module;
+    import sys;
+    
+    system = platform_module.system();
+    
+    # Check Rust toolchain
+    rust_installed = _check_and_install_rust();
+    
+    # Check build tools
+    build_tools_installed = _check_and_install_build_tools(system);
+    
+    # Check system dependencies (Linux only)
+    if system == "Linux" {
+        _check_and_install_linux_dependencies();
+    } elif system == "Darwin" {
+        _check_macos_dependencies();
+    } elif system == "Windows" {
+        _check_windows_dependencies();
+    }
+    
+    # Check Tauri CLI
+    _check_and_install_tauri_cli();
+    
+    # Check Python and jaclang (required for sidecar)
+    _check_python_and_jaclang();
+    
+    # Summary
+    console.print("\n  Dependency check complete!", style="success");
+    if not rust_installed {
+        console.warning("  Rust is required but not installed. Please install it manually.");
+    }
+    if not build_tools_installed {
+        console.warning("  Build tools are required but not installed. Please install them manually.");
+    }
+}
+
+"""Check if Rust toolchain is installed, and offer to install if missing."""
+def _check_and_install_rust() -> bool {
     try {
         result = subprocess.run(
             ["rustc", "--version"],
@@ -586,36 +688,241 @@ def _check_rust_toolchain() -> None {
         if result.returncode == 0 {
             version = result.stdout.strip();
             console.print(f"  ✔ Rust toolchain found: {version}", style="success");
-            return;
+            return True;
         }
     } except Exception {
-        console.warning("  Rust toolchain not found");
-        console.print("  Install Rust: https://rustup.rs/", style="muted");
-        console.print("  Or run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", style="muted");
+        
     }
-}
 
-"""Check if Linux system dependencies are installed (for Tauri on Linux)."""
-def _check_linux_dependencies() -> None {
-    import platform;
-    if platform.system() != "Linux" {
-        return;  # Only check on Linux
+    # Rust not found
+    console.warning("  Rust toolchain not found");
+    console.print("  Rust is required for building desktop applications with Tauri.", style="muted");
+    console.print("  Install Rust: https://rustup.rs/", style="muted");
+    
+    # Try to detect if we can install automatically
+    try {
+        # Check if curl is available
+        subprocess.run(["curl", "--version"], capture_output=True, check=True, timeout=2);
+        console.print("\n  Would you like to install Rust automatically using rustup?", style="info");
+        response = input("  Install Rust? [Y/n]: ").strip().lower();
+        if not response or response in ('y', 'yes') {
+            console.print("  Installing Rust...", style="muted");
+            console.print("  This may take a few minutes...", style="muted");
+            try {
+                # Run rustup installer directly via curl pipe
+                result = subprocess.run(
+                    ["sh", "-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+                    timeout=600,  # 10 minute timeout
+                    check=False
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Rust installed successfully!", style="success");
+                    console.print("  Note: You may need to restart your terminal or run: source $HOME/.cargo/env", style="muted");
+                    # Try to source cargo env and verify
+                    import os;
+                    cargo_bin = os.path.expanduser("~/.cargo/bin");
+                    if os.path.exists(cargo_bin) {
+                        # Add to PATH for current session
+                        current_path = os.environ.get("PATH", "");
+                        os.environ["PATH"] = f"{cargo_bin}:{current_path}";
+                        # Verify installation
+                        try {
+                            verify_result = subprocess.run(
+                                ["rustc", "--version"],
+                                capture_output=True,
+                                text=True,
+                                timeout=5
+                            );
+                            if verify_result.returncode == 0 {
+                                version = verify_result.stdout.strip();
+                                console.print(f"  ✔ Verified: {version}", style="success");
+                                return True;
+                            }
+                        } except Exception {
+                            
+                    }
+                    return True;
+                } else {
+                    console.warning("  Rust installation failed. Please install manually.");
+                }
+                }
+            } except Exception as e {
+                error_str = str(e);
+                if "TimeoutExpired" in error_str or "timeout" in error_str.lower() {
+                    console.warning("  Rust installation timed out. Please install manually.");
+                } else {
+                    console.warning(f"  Failed to install Rust automatically: {e}");
+                    console.print("  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", style="muted");
+                }
+            }
+        } else {
+            console.print("  Skipping Rust installation. Please install manually.", style="muted");
+        }
+    } except Exception {
+        console.print("  curl not found. Cannot install Rust automatically.", style="muted");
+        console.print("  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", style="muted");
     }
     
-    # Check pkg-config
-    try {
-        subprocess.run(["pkg-config", "--version"], capture_output=True, check=True, timeout=5);
-        console.print("  ✔ pkg-config found", style="success");
-    } except Exception {
-        console.warning("  pkg-config not found");
-        console.print("  Install system dependencies:", style="muted");
-        console.print("    Ubuntu/Debian: sudo apt-get install libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev", style="muted");
-        console.print("    Fedora: sudo dnf install webkit2gtk3-devel.x86_64 openssl-devel curl wget libappindicator-gtk3 librsvg2-devel", style="muted");
-        console.print("    Arch: sudo pacman -S webkit2gtk base-devel curl wget openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips", style="muted");
+    return False;
+}
+
+"""Check and install build tools based on OS."""
+def _check_and_install_build_tools(system: str) -> bool {
+    if system == "Linux" {
+        # Check for gcc/cc
+        try {
+            subprocess.run(["gcc", "--version"], capture_output=True, check=True, timeout=5);
+            console.print("  ✔ Build tools (gcc) found", style="success");
+            return True;
+        } except Exception {
+            console.warning("  Build tools (gcc) not found");
+            _try_install_linux_build_tools();
+            return False;
+        }
+    } elif system == "Darwin" {
+        # Check for Xcode Command Line Tools
+        try {
+            result = subprocess.run(
+                ["xcode-select", "-p"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            );
+            if result.returncode == 0 {
+                console.print("  ✔ Xcode Command Line Tools found", style="success");
+                return True;
+            }
+        } except Exception {
+            
+        }
+        console.warning("  Xcode Command Line Tools not found");
+        console.print("  Install with: xcode-select --install", style="muted");
+        console.print("\n  Would you like to open the installer?", style="info");
+        response = input("  Open installer? [Y/n]: ").strip().lower();
+        if not response or response in ('y', 'yes') {
+            try {
+                subprocess.run(["xcode-select", "--install"], check=False);
+                console.print("  ✔ Installer opened. Please complete the installation.", style="success");
+            } except Exception {
+                console.warning("  Failed to open installer. Please run: xcode-select --install");
+            }
+        }
+        return False;
+    } elif system == "Windows" {
+        # Check for Visual Studio Build Tools
+        console.warning("  Build tools check not implemented for Windows");
+        console.print("  Please install Visual Studio Build Tools manually:", style="muted");
+        console.print("    https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022", style="muted");
+        return False;
+    }
+    return False;
+}
+
+"""Try to install Linux build tools."""
+def _try_install_linux_build_tools() -> None {
+    import platform as platform_module;
+    import os;
+    
+    # Detect Linux distribution
+    distro = _detect_linux_distro();
+    
+    if not distro {
+        console.print("  Could not detect Linux distribution. Please install build tools manually.", style="muted");
         return;
     }
     
-    # Check for GTK libraries (basic check)
+    console.print(f"  Detected: {distro}", style="muted");
+    console.print("\n  Would you like to install build tools automatically?", style="info");
+    response = input("  Install build tools? [Y/n]: ").strip().lower();
+    if not response or response in ('y', 'yes') {
+        try {
+            if distro in ("ubuntu", "debian") {
+                console.print("  Installing build-essential...", style="muted");
+                result = subprocess.run(
+                    ["sudo", "apt-get", "update"],
+                    check=False,
+                    timeout=60
+                );
+                if result.returncode == 0 {
+                    result = subprocess.run(
+                        ["sudo", "apt-get", "install", "-y", "build-essential"],
+                        check=False,
+                        timeout=300
+                    );
+                    if result.returncode == 0 {
+                        console.print("  ✔ Build tools installed", style="success");
+                        return;
+                    }
+                }
+            } elif distro == "fedora" {
+                console.print("  Installing gcc gcc-c++...", style="muted");
+                result = subprocess.run(
+                    ["sudo", "dnf", "install", "-y", "gcc", "gcc-c++"],
+                    check=False,
+                    timeout=300
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Build tools installed", style="success");
+                    return;
+                }
+            } elif distro == "arch" {
+                console.print("  Installing base-devel...", style="muted");
+                result = subprocess.run(
+                    ["sudo", "pacman", "-S", "--noconfirm", "base-devel"],
+                    check=False,
+                    timeout=300
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Build tools installed", style="success");
+                    return;
+                }
+            }
+            console.warning("  Failed to install build tools automatically");
+        } except Exception as e {
+            console.warning(f"  Error installing build tools: {e}");
+        }
+    }
+}
+
+"""Detect Linux distribution."""
+def _detect_linux_distro() -> str | None {
+    import os;
+    try {
+        # Check /etc/os-release
+        if os.path.exists("/etc/os-release") {
+            with open("/etc/os-release", "r") as f {
+                content = f.read().lower();
+                if "ubuntu" in content or "debian" in content {
+                    if "ubuntu" in content {
+                        return "ubuntu";
+                    }
+                    return "debian";
+                } elif "fedora" in content {
+                    return "fedora";
+                } elif "arch" in content or "manjaro" in content {
+                    return "arch";
+                }
+            }
+        }
+    } except Exception {
+        return None;
+    }
+}
+
+"""Check and install Linux system dependencies."""
+def _check_and_install_linux_dependencies() -> None {
+    # Check pkg-config
+    pkg_config_ok = False;
+    try {
+        subprocess.run(["pkg-config", "--version"], capture_output=True, check=True, timeout=5);
+        console.print("  ✔ pkg-config found", style="success");
+        pkg_config_ok = True;
+    } except Exception {
+        console.warning("  pkg-config not found");
+    }
+    
+    # Check for GTK/WebKit libraries
+    webkit_ok = False;
     try {
         result = subprocess.run(
             ["pkg-config", "--exists", "webkit2gtk-4.1"],
@@ -624,18 +931,268 @@ def _check_linux_dependencies() -> None {
         );
         if result.returncode == 0 {
             console.print("  ✔ GTK/WebKit libraries found", style="success");
-        } else {
-            console.warning("  GTK/WebKit libraries not found");
-            console.print("  Install system dependencies:", style="muted");
-            console.print("    Ubuntu/Debian: sudo apt-get install libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev", style="muted");
+            webkit_ok = True;
         }
     } except Exception {
-        console.warning("  Could not verify GTK libraries");
+        console.warning("  GTK/WebKit libraries not found");
+    }
+
+    if pkg_config_ok and webkit_ok {
+        return;  # All dependencies satisfied
+    }
+    
+    # Missing dependencies
+    console.warning("  Some Linux system dependencies are missing");
+    distro = _detect_linux_distro();
+    
+    if distro {
+        console.print(f"  Detected: {distro}", style="muted");
+        console.print("\n  Would you like to install missing dependencies automatically?", style="info");
+        response = input("  Install dependencies? [Y/n]: ").strip().lower();
+        if not response or response in ('y', 'yes') {
+            _try_install_linux_system_deps(distro);
+        } else {
+            _print_manual_install_instructions(distro);
+        }
+    } else {
+        _print_manual_install_instructions(None);
     }
 }
 
-"""Check if Tauri CLI is installed."""
-def _check_tauri_cli() -> None {
+"""Try to install Linux system dependencies."""
+def _try_install_linux_system_deps(distro: str) -> None {
+    try {
+        if distro in ("ubuntu", "debian") {
+            deps = [
+                "libwebkit2gtk-4.1-dev",
+                "build-essential",
+                "curl",
+                "wget",
+                "libssl-dev",
+                "libgtk-3-dev",
+                "libayatana-appindicator3-dev",
+                "librsvg2-dev"
+            ];
+            console.print("  Installing dependencies...", style="muted");
+            result = subprocess.run(
+                ["sudo", "apt-get", "update"],
+                check=False,
+                timeout=60
+            );
+            if result.returncode == 0 {
+                result = subprocess.run(
+                    ["sudo", "apt-get", "install", "-y"] + deps,
+                    check=False,
+                    timeout=600
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Dependencies installed", style="success");
+                    return;
+                }
+            }
+        } elif distro == "fedora" {
+            deps = [
+                "webkit2gtk3-devel.x86_64",
+                "openssl-devel",
+                "curl",
+                "wget",
+                "libappindicator-gtk3",
+                "librsvg2-devel"
+            ];
+            console.print("  Installing dependencies...", style="muted");
+            result = subprocess.run(
+                ["sudo", "dnf", "install", "-y"] + deps,
+                check=False,
+                timeout=600
+            );
+            if result.returncode == 0 {
+                console.print("  ✔ Dependencies installed", style="success");
+                return;
+            }
+        } elif distro == "arch" {
+            deps = [
+                "webkit2gtk",
+                "base-devel",
+                "curl",
+                "wget",
+                "openssl",
+                "appmenu-gtk-module",
+                "gtk3",
+                "libappindicator-gtk3",
+                "librsvg",
+                "libvips"
+            ];
+            console.print("  Installing dependencies...", style="muted");
+            result = subprocess.run(
+                ["sudo", "pacman", "-S", "--noconfirm"] + deps,
+                check=False,
+                timeout=600
+            );
+            if result.returncode == 0 {
+                console.print("  ✔ Dependencies installed", style="success");
+                return;
+            }
+        }
+        console.warning("  Failed to install dependencies automatically");
+        _print_manual_install_instructions(distro);
+    } except Exception as e {
+        console.warning(f"  Error installing dependencies: {e}");
+        _print_manual_install_instructions(distro);
+    }
+}
+
+"""Print manual installation instructions."""
+def _print_manual_install_instructions(distro: str | None) -> None {
+    console.print("  Install system dependencies manually:", style="muted");
+    if distro in ("ubuntu", "debian") {
+        console.print("    sudo apt-get install libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev", style="muted");
+    } elif distro == "fedora" {
+        console.print("    sudo dnf install webkit2gtk3-devel.x86_64 openssl-devel curl wget libappindicator-gtk3 librsvg2-devel", style="muted");
+    } elif distro == "arch" {
+        console.print("    sudo pacman -S webkit2gtk base-devel curl wget openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips", style="muted");
+    } else {
+        console.print("    Ubuntu/Debian: sudo apt-get install libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev", style="muted");
+        console.print("    Fedora: sudo dnf install webkit2gtk3-devel.x86_64 openssl-devel curl wget libappindicator-gtk3 librsvg2-devel", style="muted");
+        console.print("    Arch: sudo pacman -S webkit2gtk base-devel curl wget openssl appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg libvips", style="muted");
+    }
+}
+
+"""Check macOS dependencies."""
+def _check_macos_dependencies() -> None {
+    # macOS dependencies are typically handled by Xcode Command Line Tools
+    # which is checked in _check_and_install_build_tools
+    console.print("  ✔ macOS dependencies (handled by Xcode Command Line Tools)", style="success");
+}
+
+"""Check Windows dependencies."""
+def _check_windows_dependencies() -> None {
+    console.warning("  Windows dependencies check not fully implemented");
+    console.print("  Please ensure Visual Studio Build Tools are installed:", style="muted");
+    console.print("    https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022", style="muted");
+}
+
+"""Check Python and jaclang (required for sidecar functionality)."""
+def _check_python_and_jaclang() -> None {
+    # Check Python - try python3 first, then python
+    python_ok = False;
+    python_cmd = None;
+    python_version = None;
+    
+    try {
+        result = subprocess.run(
+            ["python3", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        );
+        if result.returncode == 0 {
+            python_version = result.stdout.strip();
+            console.print(f"  ✔ Python found: {python_version}", style="success");
+            python_ok = True;
+            python_cmd = "python3";
+        }
+    } except Exception {
+        
+    }
+    
+    # Try python command as fallback if python3 not found
+    if not python_ok {
+        try {
+            result = subprocess.run(
+                ["python", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            );
+            if result.returncode == 0 {
+                python_version = result.stdout.strip();
+                console.print(f"  ✔ Python found: {python_version}", style="success");
+                python_ok = True;
+                python_cmd = "python";
+            }
+        } except Exception {
+            
+        }
+    }
+    
+    if not python_ok {
+        console.warning("  Python not found");
+        console.print("  Python is required for sidecar functionality (Jac backend).", style="muted");
+        console.print("  Install Python: https://www.python.org/downloads/", style="muted");
+        return;
+    }
+    
+    # Check jaclang using the detected python command
+    jaclang_ok = False;
+    try {
+        result = subprocess.run(
+            [python_cmd, "-m", "jaclang", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        );
+        if result.returncode == 0 {
+            version = result.stdout.strip();
+            console.print(f"  ✔ jaclang found: {version}", style="success");
+            jaclang_ok = True;
+        }
+    } except Exception {
+        
+    }
+    
+    if not jaclang_ok {
+        console.warning("  jaclang not found");
+        console.print("  jaclang is required for sidecar functionality (Jac backend).", style="muted");
+        console.print("\n  Would you like to install jaclang?", style="info");
+        response = input("  Install jaclang? [Y/n]: ").strip().lower();
+        if not response or response in ('y', 'yes') {
+            console.print("  Installing jaclang...", style="muted");
+            try {
+                result = subprocess.run(
+                    [python_cmd, "-m", "pip", "install", "jaclang"],
+                    check=False,
+                    timeout=300,
+                    capture_output=False  # Show output
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ jaclang installed", style="success");
+                } else {
+                    console.warning("  Failed to install jaclang");
+                    console.print("  Please install manually: pip install jaclang", style="muted");
+                }
+            } except Exception as e {
+                console.warning(f"  Error installing jaclang: {e}");
+                console.print("  Please install manually: pip install jaclang", style="muted");
+            }
+        } else {
+            console.print("  Skipping jaclang installation.", style="muted");
+            console.print("  Sidecar will not work without jaclang. Install with: pip install jaclang", style="muted");
+        }
+    }
+}
+
+"""Check and install Tauri CLI if needed."""
+def _check_and_install_tauri_cli() -> None {
+    # Check if cargo tauri is available (preferred method)
+    cargo_tauri_ok = False;
+    try {
+        result = subprocess.run(
+            ["cargo", "tauri", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        );
+        if result.returncode == 0 {
+            version = result.stdout.strip();
+            console.print(f"  ✔ Tauri CLI found (cargo): {version}", style="success");
+            return;
+        }
+    } except Exception {
+        
+    }
+
+    # Check if npm tauri CLI is available
+    npm_tauri_ok = False;
     try {
         result = subprocess.run(
             ["npm", "list", "-g", "@tauri-apps/cli"],
@@ -644,13 +1201,101 @@ def _check_tauri_cli() -> None {
             timeout=5
         );
         if result.returncode == 0 {
-            console.print("  ✔ Tauri CLI found", style="success");
+            console.print("  ✔ Tauri CLI found (npm)", style="success");
             return;
         }
-    } except Exception {    
-        console.warning("  Tauri CLI not found globally");
-        console.print("  It will be installed automatically when needed", style="muted");
-        console.print("  Or install manually: npm install -g @tauri-apps/cli", style="muted");
+    } except Exception {
+        
+    }
+
+    # Tauri CLI not found
+    console.warning("  Tauri CLI not found");
+    console.print("  Tauri CLI is required for building desktop applications.", style="muted");
+    
+    # Check if Rust/Cargo is available (required for cargo install)
+    cargo_available = False;
+    try {
+        subprocess.run(["cargo", "--version"], capture_output=True, check=True, timeout=5);
+        cargo_available = True;
+    } except Exception {
+        
+    }
+
+    # Check if npm is available
+    npm_available = False;
+    try {
+        subprocess.run(["npm", "--version"], capture_output=True, check=True, timeout=5);
+        npm_available = True;
+    } except Exception {
+        
+    }
+
+    if not cargo_available and not npm_available {
+        console.print("  Neither cargo nor npm is available. Cannot install Tauri CLI automatically.", style="muted");
+        console.print("  Please install Rust (for cargo) or Node.js (for npm) first.", style="muted");
+        return;
+    }
+    
+    # Offer to install
+    console.print("\n  Would you like to install Tauri CLI?", style="info");
+    response = input("  Install Tauri CLI? [Y/n]: ").strip().lower();
+    if not response or response in ('y', 'yes') {
+        if cargo_available {
+            console.print("  Installing Tauri CLI via cargo...", style="muted");
+            try {
+                result = subprocess.run(
+                    ["cargo", "install", "tauri-cli"],
+                    check=False,
+                    timeout=600,
+                    capture_output=False  # Show output
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Tauri CLI installed", style="success");
+                    return;
+                } else {
+                    console.warning("  Failed to install via cargo. Trying npm...");
+                }
+            } except Exception as e {
+                console.warning(f"  Error installing via cargo: {e}");
+            }
+        }
+        
+        if npm_available {
+            console.print("  Installing Tauri CLI via npm...", style="muted");
+            try {
+                result = subprocess.run(
+                    ["npm", "install", "-g", "@tauri-apps/cli"],
+                    check=False,
+                    timeout=300,
+                    capture_output=False  # Show output
+                );
+                if result.returncode == 0 {
+                    console.print("  ✔ Tauri CLI installed", style="success");
+                    return;
+                } else {
+                    console.warning("  Failed to install via npm");
+                }
+            } except Exception as e {
+                console.warning(f"  Error installing via npm: {e}");
+            }
+        }
+        
+        console.print("  Please install manually:", style="muted");
+        if cargo_available {
+            console.print("    cargo install tauri-cli", style="muted");
+        }
+        if npm_available {
+            console.print("    npm install -g @tauri-apps/cli", style="muted");
+        }
+    } else {
+        console.print("  Skipping Tauri CLI installation.", style="muted");
+        console.print("  It will be needed when building. Install with:", style="muted");
+        if cargo_available {
+            console.print("    cargo install tauri-cli", style="muted");
+        }
+        if npm_available {
+            console.print("    npm install -g @tauri-apps/cli", style="muted");
+        }
     }
 }
 
@@ -1430,29 +2075,20 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
     console.print(f"  Running: {' '.join(dev_cmd)}", style="muted");
     
     # Run tauri dev (this will open a window)
-    process = subprocess.Popen(
-        dev_cmd,
-        cwd=tauri_dir.parent,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1
-    );
-    
-    # Stream output
-    import threading;
-    def stream_output() -> None {
-        if process.stdout {
-            for line in process.stdout {
-                console.print(f"  {line.rstrip()}", style="muted");
-            }
-        }
-    };
-    
-    thread = threading.Thread(target=stream_output, daemon=True);
-    thread.start();
-    
-    return process;
+    # Use None for stdout/stderr to show output directly in terminal
+    try {
+        process = subprocess.Popen(
+            dev_cmd,
+            cwd=tauri_dir.parent,
+            stdout=None,  # Show output directly
+            stderr=None,  # Show errors directly
+            text=True
+        );
+        return process;
+    } except Exception as e {
+        console.error(f"  Failed to start Tauri: {e}");
+        raise;
+    }
 }
 
 """Start desktop app - build web bundle and launch Tauri with built bundle."""
@@ -1497,14 +2133,38 @@ impl DesktopTarget.start(self: DesktopTarget, entry_file: Path, project_dir: Pat
     signal.signal(signal.SIGINT, signal_handler);
     signal.signal(signal.SIGTERM, signal_handler);
     
+    tauri_process = None;
     try {
         # Run tauri dev (it will use the built bundle from distDir)
         tauri_process = _run_tauri_dev(tauri_dir);
         
+        if not tauri_process {
+            console.error("  Failed to start Tauri process");
+            return;
+        }
+        
         # Wait for tauri process to finish
-        tauri_process.wait();
+        return_code = tauri_process.wait();
+        if return_code != 0 {
+            console.warning(f"  Tauri process exited with code {return_code}");
+        }
     } except KeyboardInterrupt {
         console.print("\n  Keyboard interrupt detected. Stopping app...", style="muted");
+        if tauri_process {
+            try {
+                tauri_process.terminate();
+                tauri_process.wait(timeout=5);
+            } except Exception {
+                if tauri_process {
+                    tauri_process.kill();
+                }
+                    
+            }
+        }
+    } except Exception as e {
+        console.error(f"  Error starting desktop app: {e}");
+        import traceback;
+        console.print(traceback.format_exc(), style="muted");
     } finally {
         cleanup();
     }
