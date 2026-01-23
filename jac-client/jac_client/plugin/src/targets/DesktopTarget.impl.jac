@@ -391,12 +391,15 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
     
     // If not found in resources, try relative to executable
     if sidecar_path.is_none() {
-        if let Ok(exe_dir) = std::env::current_exe().and_then(|p| p.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No parent"))) {
-            for name in &sidecar_names {
-                let path = exe_dir.join(name);
-                if path.exists() {
-                    sidecar_path = Some(path);
-                    break;
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let exe_dir = exe_dir.to_path_buf();
+                for name in &sidecar_names {
+                    let path = exe_dir.join(name);
+                    if path.exists() {
+                        sidecar_path = Some(path);
+                        break;
+                    }
                 }
             }
         }
@@ -404,17 +407,21 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
     
     if let Some(sidecar_path) = sidecar_path {
         // Determine module path (try to find main.jac relative to app)
-        let module_path = if let Ok(exe_dir) = std::env::current_exe().and_then(|p| p.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No parent"))) {
-            // Look for main.jac in parent directories
-            let mut current = exe_dir.to_path_buf();
-            loop {
-                let main_jac = current.join("main.jac");
-                if main_jac.exists() {
-                    break Some(main_jac);
+        let module_path = if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                // Look for main.jac in parent directories
+                let mut current = exe_dir.to_path_buf();
+                loop {
+                    let main_jac = current.join("main.jac");
+                    if main_jac.exists() {
+                        break Some(main_jac);
+                    }
+                    if !current.pop() {
+                        break None;
+                    }
                 }
-                if !current.pop() {
-                    break None;
-                }
+            } else {
+                None
             }
         } else {
             None
@@ -486,9 +493,9 @@ fn main() {
             }
             Ok(())
         })
-        .on_window_event(|_event| {
+        .on_window_event(|_window, event| {
             // Clean up sidecar when last window closes
-            if matches!(_event.event(), tauri::WindowEvent::CloseRequested { .. }) {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                 stop_sidecar();
             }
         })
@@ -1211,8 +1218,9 @@ impl DesktopTarget.dev(self: DesktopTarget, entry_file: Path, project_dir: Path)
     console.print("  Configuring Tauri for dev mode...", style="muted");
     _update_tauri_config_for_dev(tauri_dir);
     
-    # Step 2: Start web dev server
-    console.print("  Starting web dev server...", style="muted");
+    # Step 1.5: Prepare package.json and get compiler
+    # We need compiled/_entry.js and compiled/main.js to exist before Vite can serve them
+    console.print("  Preparing compilation setup...", style="muted");
     vite_port = 5173;
     bundler = ViteBundler(
         project_dir=project_dir,
@@ -1220,6 +1228,41 @@ impl DesktopTarget.dev(self: DesktopTarget, entry_file: Path, project_dir: Path)
         minify=False,
         config_path=None
     );
+    
+    # Ensure package.json exists (needed for ViteCompiler)
+    package_json_path = bundler._get_client_dir() / 'configs' / 'package.json';
+    if not package_json_path.exists() {
+        bundler.create_package_json();
+    }
+    
+    # Get the compiler via JacClient (this provides all the compile functions)
+    import from jac_client.plugin.client { JacClient }
+    builder = JacClient.get_client_bundle_builder();
+    # Set the package.json path if not already set
+    if not builder.vite_package_json or not builder.vite_package_json.exists() {
+        builder.vite_package_json = package_json_path;
+    }
+    compiler = builder._get_compiler();
+    
+    # Ensure compiled directory exists
+    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
+    
+    # Compile runtime utils (creates client_runtime.js)
+    compiler.compile_runtime_utils();
+    
+    # Compile the module to create compiled/main.js (or whatever the module name is)
+    (module_js, mod, module_manifest) = compiler.jac_compiler.compile_module(entry_file);
+    # Write the compiled module to compiled directory
+    module_name = entry_file.stem;
+    compiled_module_path = compiler.compiled_dir / f"{module_name}.js";
+    compiled_module_path.write_text(module_js, encoding='utf-8');
+    
+    # Create the entry file (this will be used by Vite dev server)
+    compiler.create_entry_file(entry_file);
+    console.print("  ✔ Module compiled for dev mode", style="success");
+    
+    # Step 2: Start web dev server
+    console.print("  Starting web dev server...", style="muted");
     
     # Create dev vite config
     dev_config_path = bundler.create_dev_vite_config(entry_file, api_port=8000);
