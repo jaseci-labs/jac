@@ -619,9 +619,9 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         return;  # No binaries directory, skip
     }
     
-    # Find sidecar executable (must exist and be executable)
+    # Find sidecar wrapper script (must exist and be executable)
     sidecar_files = [];
-    for pattern in ["jac-sidecar", "jac-sidecar.exe"] {
+    for pattern in ["jac-sidecar.sh", "jac-sidecar.bat", "jac-sidecar", "jac-sidecar.exe"] {
         found = list(binaries_dir.glob(pattern));
         for f in found {
             if f.is_file() and f.exists() {
@@ -848,7 +848,7 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     return bundle_dir;
 }
 
-"""Bundle Jac backend as sidecar executable using PyInstaller."""
+"""Create Python-based sidecar wrapper script (no PyInstaller needed)."""
 def _bundle_sidecar(
     entry_file: Path,
     project_dir: Path,
@@ -856,144 +856,59 @@ def _bundle_sidecar(
     platform: Optional[str] = None
 ) -> Path | None {
     import platform as platform_module;
-    
-    # Check if PyInstaller is available
-    try {
-        subprocess.run(["pyinstaller", "--version"], capture_output=True, check=True, timeout=5);
-    } except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) {
-        raise RuntimeError(
-            "PyInstaller not found. Install it with: pip install pyinstaller\n"
-            "Note: Sidecar bundling is optional. Desktop apps can connect to external API servers."
-        );
-    }
+    import stat;
     
     # Determine output directory
     binaries_dir = tauri_dir / "binaries";
     binaries_dir.mkdir(parents=True, exist_ok=True);
     
-    # Find sidecar entry point via Python import path (most reliable)
-    sidecar_main = None;
-    try {
-        import importlib.util;
-        spec = importlib.util.find_spec("jac_client.plugin.src.targets.desktop.sidecar.main");
-        if spec and spec.origin {
-            sidecar_main = Path(spec.origin).resolve();
-        }
-    } except Exception {
-        # Fallback to file path search
-        possible_paths = [
-            Path(__file__).parent / "desktop" / "sidecar" / "main.py",
-            project_dir / "src-tauri" / "sidecar" / "main.py",
-        ];
-        for path in possible_paths {
-            if path.exists() {
-                sidecar_main = path.resolve();
-                break;
-            }
-        }
-    }
-    
-    if not sidecar_main or not sidecar_main.exists() {
-        raise RuntimeError(
-            "Sidecar entry point not found. Make sure jac-client is properly installed."
-        );
-    }
-    
-    # Determine executable name based on platform
+    # Determine script name based on platform
     if platform == "windows" or (platform is None and platform_module.system() == "Windows") {
-        exe_name = "jac-sidecar.exe";
+        script_name = "jac-sidecar.bat";
+        is_windows = True;
     } else {
-        exe_name = "jac-sidecar";
+        script_name = "jac-sidecar.sh";
+        is_windows = False;
     }
     
-    output_path = binaries_dir / exe_name;
+    output_path = binaries_dir / script_name;
     
-    # Build PyInstaller command using minimal CLI flags (no spec file)
-    # --onefile: Single executable (required for Tauri sidecar)
-    # --collect-all jaclang: Collect all jaclang modules, submodules, and data files
-    #   This SHOULD be enough, but PyInstaller's static analysis sometimes misses
-    #   standard library modules that are imported dynamically or conditionally.
-    # --hidden-import: Only add stdlib modules that PyInstaller misses
-    #   These are modules that have failed at runtime - add as needed
-    # --name: Output executable name (without .exe extension)
-    # --distpath: Output directory for the built executable
-    # --workpath: Temporary build directory (cleaned up after build)
-    # --clean: Clean PyInstaller cache before building
-    # --noconfirm: Overwrite output without asking
-    #
-    # NOTE: JacLang IS installed from PyPI. The issue is PyInstaller's static analysis
-    # limitation, not the installation method. --collect-all should handle most cases,
-    # but we add hidden imports for modules that fail at runtime.
-    build_cmd = [
-        "pyinstaller",
-        "--onefile",
-        "--collect-all", "jaclang",  # This collects all jaclang code and dependencies
-        # Add stdlib modules that PyInstaller misses (discovered via runtime errors)
-        "--hidden-import", "__future__",
-        "--hidden-import", "html",
-        "--hidden-import", "json",
-        "--hidden-import", "pdb",
-        "--hidden-import", "types",
-        "--hidden-import", "typing",
-        "--hidden-import", "uuid",
-        "--hidden-import", "hashlib",
-        "--hidden-import", "dis",
-        "--hidden-import", "enum",
-        "--hidden-import", "copy",
-        "--hidden-import", "ast",
-        "--hidden-import", "builtins",
-        "--hidden-import", "collections",
-        "--hidden-import", "collections.abc",
-        "--hidden-import", "concurrent.futures",
-        "--hidden-import", "contextlib",
-        "--hidden-import", "dataclasses",
-        "--hidden-import", "fnmatch",
-        "--hidden-import", "functools",
-        # sqlite3
-        "--hidden-import", "sqlite3",
-        # tomlib
-        "--hidden-import", "tomllib",
-        # Add more here only if they fail at runtime
-        "--name", exe_name.replace(".exe", ""),
-        "--distpath", str(binaries_dir),
-        "--workpath", str(binaries_dir / "build"),
-        "--clean",
-        "--noconfirm",
-        str(sidecar_main)
-    ];
-    
-    # Run PyInstaller
-    console.print(f"  Running PyInstaller...", style="muted");
-    result = subprocess.run(
-        build_cmd,
-        cwd=project_dir,
-        check=False,
-        capture_output=True,
-        text=True
-    );
-    
-    # Check if PyInstaller succeeded
-    if result.returncode != 0 {
-        if result.stderr {
-            console.warning(f"PyInstaller error:\n{result.stderr}");
-        }
-        if result.stdout {
-            console.warning(f"PyInstaller output:\n{result.stdout}");
-        }
-        raise RuntimeError(f"PyInstaller failed with exit code {result.returncode}");
-    }
-    
-    # Verify executable was created
-    if output_path.exists() {
-        return output_path;
+    # Create wrapper script that runs Python module
+    # This approach avoids PyInstaller issues and is much simpler
+    if is_windows {
+        # Windows batch script
+        script_content = f'''@echo off
+REM Jac Sidecar Wrapper - Runs Jac backend using system Python
+REM This requires Python and jaclang to be installed
+
+python -m jac_client.plugin.src.targets.desktop.sidecar.main %*
+''';
     } else {
-        # PyInstaller might create it in a subdirectory
-        possible_paths = list(binaries_dir.glob(f"**/{exe_name}"));
-        if possible_paths {
-            return possible_paths[0];
-        }
-        raise RuntimeError(f"Sidecar executable not found after PyInstaller build");
+        # Unix shell script
+        script_content = '''#!/bin/bash
+# Jac Sidecar Wrapper - Runs Jac backend using system Python
+# This requires Python and jaclang to be installed
+
+exec python -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
+''';
     }
+    
+    # Write the wrapper script
+    with open(output_path, "w") as f {
+        f.write(script_content);
+    }
+    
+    # Make executable on Unix systems
+    if not is_windows {
+        st = output_path.stat();
+        output_path.chmod(st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH);
+    }
+    
+    console.print(f"  ✔ Created sidecar wrapper: {script_name}", style="success");
+    console.print(f"  Note: Requires Python and jaclang to be installed", style="muted");
+    console.print(f"  Run: pip install jaclang", style="muted");
+    
+    return output_path;
 }
 
 """Start desktop dev server - start web dev server and launch tauri dev."""
