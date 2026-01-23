@@ -128,6 +128,7 @@ jac build main.jac --client desktop
 
 - **[Web Target Guide](web-target.md)**: Learn about web builds in detail
 - **[Desktop Target Guide](desktop-target.md)**: Learn about desktop builds in detail
+
 ---
 
 ## FAQ

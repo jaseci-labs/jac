@@ -22,6 +22,7 @@ import from jac_client.plugin.src.targets.desktop_target {
 }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 import from jac_client.plugin.src.targets.register { register_targets }
+
 with entry {
     register_targets();
 }

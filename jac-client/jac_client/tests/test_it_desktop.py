@@ -18,7 +18,6 @@ from __future__ import annotations
 import gc
 import json
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -219,16 +218,20 @@ def test_desktop_target_files_exist() -> None:
 
     # Verify desktop target files
     desktop_target_jac = plugin_dir / "src" / "targets" / "desktop_target.jac"
-    assert desktop_target_jac.exists(), f"desktop_target.jac not found at {desktop_target_jac}"
+    assert desktop_target_jac.exists(), (
+        f"desktop_target.jac not found at {desktop_target_jac}"
+    )
 
     # Verify implementation file
-    desktop_impl_jac = plugin_dir / "src" / "targets" / "impl" / "desktop_target.impl.jac"
-    assert desktop_impl_jac.exists(), f"desktop_target.impl.jac not found at {desktop_impl_jac}"
+    desktop_impl_jac = (
+        plugin_dir / "src" / "targets" / "impl" / "desktop_target.impl.jac"
+    )
+    assert desktop_impl_jac.exists(), (
+        f"desktop_target.impl.jac not found at {desktop_impl_jac}"
+    )
 
     # Verify sidecar files
-    sidecar_main_py = (
-        plugin_dir / "src" / "targets" / "desktop" / "sidecar" / "main.py"
-    )
+    sidecar_main_py = plugin_dir / "src" / "targets" / "desktop" / "sidecar" / "main.py"
     assert sidecar_main_py.exists(), f"sidecar main.py not found at {sidecar_main_py}"
 
     # Read desktop_target.jac and verify it has the expected methods
@@ -305,7 +308,9 @@ def test_desktop_setup_creates_directory_structure() -> None:
         with open(tauri_config_path) as f:
             tauri_config = json.load(f)
 
-        print(f"[DEBUG] tauri.conf.json content: {json.dumps(tauri_config, indent=2)[:500]}")
+        print(
+            f"[DEBUG] tauri.conf.json content: {json.dumps(tauri_config, indent=2)[:500]}"
+        )
 
         # Verify key config values
         assert "productName" in tauri_config, "tauri.conf.json should have productName"
@@ -553,7 +558,9 @@ def test_desktop_build_creates_bundle() -> None:
         binaries_dir = project_dir / "src-tauri" / "binaries"
         sidecar_files = list(binaries_dir.glob("jac-sidecar*"))
         print(f"[DEBUG] Sidecar files: {sidecar_files}")
-        assert len(sidecar_files) > 0, "Sidecar should be bundled in src-tauri/binaries/"
+        assert len(sidecar_files) > 0, (
+            "Sidecar should be bundled in src-tauri/binaries/"
+        )
 
         # Verify Tauri bundle output exists
         bundle_dir = project_dir / "src-tauri" / "target" / "release" / "bundle"
@@ -617,12 +624,12 @@ def:pub get_status() -> dict {
 '''
         (project_dir / "main.jac").write_text(backend_jac)
 
-        jac_toml = '''[project]
+        jac_toml = """[project]
 name = "sidecar-test"
 version = "1.0.0"
 description = "Sidecar test"
 entry-point = "main.jac"
-'''
+"""
         (project_dir / "jac.toml").write_text(jac_toml)
 
         # Start sidecar by running main.py directly
@@ -687,10 +694,14 @@ entry-point = "main.jac"
                     if "greet" in funcs_body or "add" in funcs_body:
                         print("[DEBUG] Functions endpoint lists defined functions")
                     else:
-                        print("[DEBUG] Functions endpoint exists but doesn't list expected functions")
+                        print(
+                            "[DEBUG] Functions endpoint exists but doesn't list expected functions"
+                        )
             except HTTPError as exc:
                 if exc.code == 404:
-                    print("[DEBUG] /functions endpoint returned 404, this is acceptable")
+                    print(
+                        "[DEBUG] /functions endpoint returned 404, this is acceptable"
+                    )
                 else:
                     print(f"[DEBUG] /functions endpoint returned {exc.code}")
             except URLError as exc:
@@ -718,7 +729,9 @@ entry-point = "main.jac"
                         print(f"[DEBUG] Greet response: {data}")
             except HTTPError as exc:
                 if exc.code == 404:
-                    print("[DEBUG] /function/greet returned 404, endpoint may not exist")
+                    print(
+                        "[DEBUG] /function/greet returned 404, endpoint may not exist"
+                    )
                 else:
                     print(f"[DEBUG] /function/greet returned {exc.code}")
             except URLError as exc:
