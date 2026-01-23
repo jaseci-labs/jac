@@ -8,6 +8,7 @@ import json;
 import shutil;
 import os;
 import platform;
+import stat;
 
 """Setup desktop target - scaffold Tauri project structure."""
 impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
@@ -758,6 +759,139 @@ def _update_tauri_config_for_build(tauri_dir: Path, project_dir: Path, web_bundl
     console.print("  ✔ Updated tauri.conf.json", style="success");
 }
 
+"""Check if appimagetool is available and can run."""
+def _check_appimagetool() -> tuple[bool, str | None] {
+    # First check if the command exists
+    try {
+        result = subprocess.run(
+            ["which", "appimagetool"],
+            capture_output=True,
+            timeout=2
+        );
+        if result.returncode != 0 {
+            return (False, "appimagetool not found in PATH");
+        }
+    } except Exception {
+        return (False, "Could not check for appimagetool");
+    }
+    
+    # Try to run appimagetool to see if it works
+    try {
+        result = subprocess.run(
+            ["appimagetool", "--version"],
+            capture_output=True,
+            timeout=5,
+            text=True
+        );
+        if result.returncode == 0 {
+            return (True, None);
+        } else {
+            # Check if it's a FUSE error
+            error_output = result.stderr or result.stdout or "";
+            if "fuse" in error_output.lower() or "libfuse" in error_output.lower() {
+                return (False, "FUSE library not available. Install with: sudo apt-get install libfuse2");
+            }
+            return (False, f"appimagetool failed: {error_output[:100]}");
+        }
+    } except FileNotFoundError {
+        return (False, "appimagetool not found");
+    } except subprocess.TimeoutExpired {
+        return (False, "appimagetool check timed out");
+    } except Exception as e {
+        return (False, f"Error checking appimagetool: {str(e)[:100]}");
+    }
+}
+
+"""Create AppImage from AppDir if appimagetool is available."""
+def _create_appimage_from_appdir(appdir_path: Path) -> Path | None {
+    if not appdir_path.exists() or not appdir_path.is_dir() {
+        return None;
+    }
+    
+    # Check if appimagetool is available and working
+    (is_available, error_msg) = _check_appimagetool();
+    if not is_available {
+        console.warning("  appimagetool not available. AppImage will not be created.");
+        if error_msg {
+            console.print(f"  {error_msg}", style="muted");
+        }
+        # Provide installation instructions based on the error
+        if error_msg and "fuse" in error_msg.lower() {
+            console.print("  For WSL2, you may need to install FUSE:", style="muted");
+            console.print("    sudo apt-get update && sudo apt-get install -y libfuse2", style="muted");
+            console.print("  Or use --appimage-extract to extract appimagetool first", style="muted");
+        } else {
+            console.print("  Install it with:", style="muted");
+            console.print("    wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage", style="muted");
+            console.print("    chmod +x appimagetool-x86_64.AppImage", style="muted");
+            console.print("    sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool", style="muted");
+        }
+        return None;
+    }
+    
+    # Determine AppImage filename from AppDir name
+    appimage_name = f"{appdir_path.name}.AppImage";
+    appimage_path = appdir_path.parent / appimage_name;
+    
+    # Skip if AppImage already exists and is newer than AppDir
+    if appimage_path.exists() {
+        appdir_mtime = appdir_path.stat().st_mtime;
+        appimage_mtime = appimage_path.stat().st_mtime;
+        if appimage_mtime >= appdir_mtime {
+            console.print(f"  ✔ AppImage already exists: {appimage_path.name}", style="success");
+            return appimage_path;
+        }
+    }
+    
+    try {
+        console.print(f"  Creating AppImage from {appdir_path.name}...", style="muted");
+        result = subprocess.run(
+            ["appimagetool", str(appdir_path), str(appimage_path)],
+            cwd=appdir_path.parent,
+            check=False,  # Don't raise on error, we'll check manually
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        );
+        
+        if result.returncode != 0 {
+            error_output = result.stderr or result.stdout or "Unknown error";
+            # Check for FUSE-related errors
+            if "fuse" in error_output.lower() or "libfuse" in error_output.lower() or "FUSE" in error_output {
+                console.warning("  Failed to create AppImage: FUSE library not available");
+                console.print("  Install FUSE with: sudo apt-get install -y libfuse2", style="muted");
+                console.print("  For WSL2, you may also need: sudo apt-get install -y fuse", style="muted");
+            } else {
+                console.warning(f"  Failed to create AppImage: {error_output[:200]}");
+            }
+            return None;
+        }
+        
+        # Verify the AppImage was created
+        if not appimage_path.exists() {
+            console.warning("  AppImage creation reported success but file not found");
+            return None;
+        }
+        
+        # Make AppImage executable
+        appimage_path.chmod(appimage_path.stat().st_mode | stat.S_IEXEC);
+        
+        console.print(f"  ✔ AppImage created: {appimage_path.name}", style="success");
+        return appimage_path;
+    } except subprocess.TimeoutExpired {
+        console.warning("  AppImage creation timed out");
+        return None;
+    } except Exception as e {
+        error_msg = str(e);
+        if "fuse" in error_msg.lower() or "libfuse" in error_msg.lower() {
+            console.warning("  FUSE library error. Install with: sudo apt-get install -y libfuse2");
+        } else {
+            console.warning(f"  Error creating AppImage: {error_msg[:200]}");
+        }
+        return None;
+    }
+}
+
 """Run cargo tauri build and return path to bundle."""
 def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     import os;
@@ -839,6 +973,23 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     # Find the actual bundle file (varies by platform)
     bundle_files = list(bundle_dir.rglob("*"));
     installers = [f for f in bundle_files if f.is_file() and f.suffix in [".exe", ".dmg", ".AppImage", ".deb", ".rpm", ".msi"]];
+    
+    # For Linux: if no AppImage but AppDir exists, try to create AppImage
+    is_linux_build = (platform == "linux") or (not platform and target and "linux" in target);
+    if not installers and is_linux_build {
+        appimage_dir = bundle_dir / "appimage";
+        if appimage_dir.exists() {
+            # Look for AppDir directories
+            appdirs = [d for d in appimage_dir.iterdir() if d.is_dir() and d.name.endswith(".AppDir")];
+            if appdirs {
+                # Try to create AppImage from the first AppDir found
+                appimage_path = _create_appimage_from_appdir(appdirs[0]);
+                if appimage_path and appimage_path.exists() {
+                    installers = [appimage_path];
+                }
+            }
+        }
+    }
     
     if installers {
         return installers[0];

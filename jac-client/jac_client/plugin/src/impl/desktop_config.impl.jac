@@ -64,7 +64,7 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
 }
 
 """Get or load the core JacConfig instance."""
-def _get_jac_config(self: DesktopConfig) -> JacConfig {
+impl DesktopConfig._get_jac_config(self: DesktopConfig) -> JacConfig {
     if self._jac_config is None {
         self._jac_config = get_config();
         if self._jac_config is None {
@@ -81,14 +81,20 @@ impl DesktopConfig.load(self: DesktopConfig) -> dict[str, Any] {
     }
     
     default_config = self.get_default_config();
-    jac_config = self._get_jac_config();
     
-    # Get [desktop] section from raw TOML data
-    # The [desktop] section is not under [plugins], so we access it directly
+    # Try to get [desktop] section from jac.toml
     desktop_config = {};
-    if jac_config and jac_config._raw_data {
-        raw_data = jac_config._raw_data;
-        desktop_config = raw_data.get('desktop', {});
+    try {
+        jac_config = self._get_jac_config();
+        # Get [desktop] section from raw TOML data
+        # The [desktop] section is not under [plugins], so we access it directly
+        if jac_config and jac_config._raw_data {
+            raw_data = jac_config._raw_data;
+            desktop_config = raw_data.get('desktop', {});
+        }
+    } except Exception {
+        # If config loading fails, use defaults only
+        console.warning("Failed to load JacConfig, using fallback defaults");
     }
     
     # Deep merge defaults with user configuration
