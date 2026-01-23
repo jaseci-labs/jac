@@ -3,8 +3,8 @@
 This module registers all available build targets when the plugin loads.
 """
 import from .registry { get_target_registry }
-import from .WebTarget { WebTarget }
-import from .DesktopTarget { DesktopTarget }
+import from .web_target { WebTarget }
+import from .desktop_target { DesktopTarget }
 
 """Register all available targets."""
 def register_targets() -> None {

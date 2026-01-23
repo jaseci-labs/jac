@@ -14,7 +14,7 @@ The web target is the default and requires no setup:
 
 ```bash
 # Build for web
-jac build main.jac --target web
+jac build main.jac --client web
 
 # Or simply (web is default)
 jac build main.jac
@@ -29,10 +29,10 @@ Desktop builds use Tauri to create native desktop applications:
 jac setup desktop
 
 # 2. Build for desktop
-jac build main.jac --target desktop
+jac build main.jac --client desktop
 
 # 3. Or start in dev mode
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 ```
 
 ---
@@ -53,7 +53,7 @@ The **web target** is the default build target. It compiles your Jac code to Jav
 **Usage:**
 ```bash
 # Build
-jac build main.jac --target web
+jac build main.jac --client web
 
 # Start dev server
 jac start main.jac
@@ -89,18 +89,18 @@ The **desktop target** wraps your web application in a native desktop window usi
 jac setup desktop
 
 # Build for current platform
-jac build main.jac --target desktop
+jac build main.jac --client desktop
 
 # Build for specific platform
-jac build main.jac --target desktop --platform windows
-jac build main.jac --target desktop --platform macos
-jac build main.jac --target desktop --platform linux
+jac build main.jac --client desktop --platform windows
+jac build main.jac --client desktop --platform macos
+jac build main.jac --client desktop --platform linux
 
 # Start in dev mode (hot reload)
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 
 # Start with built bundle (production-like)
-jac start main.jac --cl-target desktop
+jac start main.jac --client desktop
 ```
 
 **Output:**
@@ -224,7 +224,7 @@ your-project/
 
 **Development mode (with hot reload):**
 ```bash
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 ```
 
 This will:
@@ -235,7 +235,7 @@ This will:
 
 **Production mode (build first, then run):**
 ```bash
-jac start main.jac --cl-target desktop
+jac start main.jac --client desktop
 ```
 
 This will:
@@ -245,7 +245,7 @@ This will:
 
 **Build for distribution:**
 ```bash
-jac build main.jac --target desktop
+jac build main.jac --client desktop
 ```
 
 This creates platform-specific installers in `src-tauri/target/release/bundle/`.
@@ -257,7 +257,7 @@ This creates platform-specific installers in `src-tauri/target/release/bundle/`.
 ### Building for Windows
 
 ```bash
-jac build main.jac --target desktop --platform windows
+jac build main.jac --client desktop --platform windows
 ```
 
 **Output:** `.exe` installer in `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/`
@@ -265,7 +265,7 @@ jac build main.jac --target desktop --platform windows
 ### Building for macOS
 
 ```bash
-jac build main.jac --target desktop --platform macos
+jac build main.jac --client desktop --platform macos
 ```
 
 **Output:** `.dmg` or `.app` bundle in `src-tauri/target/aarch64-apple-darwin/release/bundle/` (or `x86_64-apple-darwin` for Intel)
@@ -273,7 +273,7 @@ jac build main.jac --target desktop --platform macos
 ### Building for Linux
 
 ```bash
-jac build main.jac --target desktop --platform linux
+jac build main.jac --client desktop --platform linux
 ```
 
 **Output:** `.AppImage`, `.deb`, or `.rpm` in `src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/`
@@ -281,7 +281,7 @@ jac build main.jac --target desktop --platform linux
 ### Building for All Platforms
 
 ```bash
-jac build main.jac --target desktop --platform all
+jac build main.jac --client desktop --platform all
 ```
 
 This builds installers for all supported platforms (requires cross-compilation setup).
@@ -395,8 +395,8 @@ Install system dependencies (see Prerequisites section above).
 
 Make sure `index.html` exists in `.jac/client/dist/`. Rebuild:
 ```bash
-jac build main.jac --target web
-jac start main.jac --cl-target desktop
+jac build main.jac --client web
+jac start main.jac --client desktop
 ```
 
 ### Port 5173 already in use
@@ -411,14 +411,14 @@ Change the Vite port in the dev configuration, or stop the process using port 51
 
 Always use `--dev` flag during development for hot reload:
 ```bash
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 ```
 
 ### 2. Test Production Builds
 
 Before distributing, test the production build:
 ```bash
-jac start main.jac --cl-target desktop  # No --dev flag
+jac start main.jac --client desktop  # No --dev flag
 ```
 
 ### 3. Customize Window Size
@@ -459,7 +459,7 @@ cl {
 Build and run:
 ```bash
 jac setup desktop
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 ```
 
 ### Full-Stack Desktop App
@@ -514,7 +514,7 @@ A: For production, yes. Use `--platform` flag to build for specific platforms. F
 A: Yes! Edit `src-tauri/tauri.conf.json` to customize window size, title, and other properties.
 
 **Q: How do I distribute my desktop app?**  
-A: After building with `jac build --target desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
+A: After building with `jac build --client desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
 
 **Q: Can I use backend features in desktop apps?**  
 A: Yes! Desktop apps can use the same backend features (walkers, nodes, etc.) as web apps.

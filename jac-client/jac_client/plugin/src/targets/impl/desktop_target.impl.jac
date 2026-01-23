@@ -115,8 +115,8 @@ impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
     
     console.success("Desktop target setup complete!");
     console.print("\nNext steps:", style="bold");
-    console.print("  1. Build: jac build main.jac --target desktop");
-    console.print("  2. Dev:   jac start main.jac --target desktop");
+    console.print("  1. Build: jac build main.jac --client desktop");
+    console.print("  2. Dev:   jac start main.jac --client desktop");
 }
 
 """Generate identifier from project name."""
@@ -661,7 +661,7 @@ impl DesktopTarget.build(
     project_dir: Path,
     platform: Optional[str] = None
 ) -> Path {
-    import from jac_client.plugin.src.targets.WebTarget { WebTarget }
+    import from jac_client.plugin.src.targets.web_target { WebTarget }
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     
     console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
@@ -1052,7 +1052,7 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     # Build command
     build_cmd = ["npm", "run", "tauri", "build"];
     if target {
-        build_cmd.extend(["--", "--target", target]);
+        build_cmd.extend(["--", "--client", target]);
     }
     
     # Check if package.json has tauri scripts, if not, use cargo directly
@@ -1076,7 +1076,7 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
         # Use cargo tauri build directly
         build_cmd = ["cargo", "tauri", "build"];
         if target {
-            build_cmd.extend(["--target", target]);
+            build_cmd.extend(["--client", target]);
         }
     }
     
@@ -1457,7 +1457,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
 
 """Start desktop app - build web bundle and launch Tauri with built bundle."""
 impl DesktopTarget.start(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None {
-    import from jac_client.plugin.src.targets.WebTarget { WebTarget }
+    import from jac_client.plugin.src.targets.web_target { WebTarget }
     import signal;
     import sys;
     

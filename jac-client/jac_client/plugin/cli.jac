@@ -33,10 +33,10 @@ with entry {
             help="Path to .jac file (default: main.jac)"
         ),
         Arg.create(
-            "target",
+            "client",
             typ=str,
             default="web",
-            help="Build target (web, desktop)",
+            help="Build client (web, desktop)",
             choices=["web", "desktop"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
         ),
@@ -52,8 +52,8 @@ with entry {
     examples=[
         ("jac build", "Build web target (default)"),
         ("jac build main.jac", "Build specific file"),
-        ("jac build --target desktop", "Build desktop app"),
-        ("jac build --target desktop --platform windows", "Build for Windows"),
+        ("jac build --client desktop", "Build desktop app"),
+        ("jac build --client desktop --platform windows", "Build for Windows"),
     ],
     group="build",
     source="jac-client"
@@ -159,14 +159,14 @@ class JacCmd {
             source="jac-client"
         );
 
-        # Extend 'start' command with --cl-target flag
-        # Note: jac-scale also uses --target, so we use --cl-target to avoid conflict
+        # Extend 'start' command with --client flag
+        # Note: jac-scale also uses --client, so we use --client to avoid conflict
         if registry.has_command("start") {
             registry.extend_command(
                 command_name="start",
                 args=[
                     Arg.create(
-                        "cl_target",  # Use cl_target to avoid conflict with jac-scale's --target
+                        "client",  # Use client to avoid conflict with jac-scale's --client
                         typ=str,
                         default="web",
                         help="Client build target for dev server (web, desktop)",
@@ -284,22 +284,22 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --target flag for build command."""
+"""Pre-hook to handle --client flag for build command."""
 def _handle_build_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jac_client.plugin.src.targets.registry { get_target_registry }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     
-    target_name = ctx.get_arg("target", "web");
+    target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
     
     registry = get_target_registry();
     target = registry.get(target_name);
     
     if not target {
-        console.error(f"Unknown target: {target_name}");
-        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        console.error(f"Unknown client  target: {target_name}");
+        console.print(f"Available client targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
@@ -311,7 +311,7 @@ def _handle_build_target(ctx: HookContext) -> None {
     
     # If target requires setup, warn user
     if target.requires_setup {
-        console.warning(f"Target '{target_name}' requires setup. Run 'jac setup {target_name}' first.");
+        console.warning(f"Client target '{target_name}' requires setup. Run 'jac setup {target_name}' first.");
     }
     
     # Build using target's build method
@@ -356,26 +356,26 @@ def _handle_build_target(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --cl-target flag for start command."""
+"""Pre-hook to handle --client flag for start command."""
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jac_client.plugin.src.targets.registry { get_target_registry }
     
-    target_name = ctx.get_arg("cl_target", "web");
+    target_name = ctx.get_arg("client", "web");
     
     registry = get_target_registry();
     target = registry.get(target_name);
     
     if not target {
-        console.error(f"Unknown target: {target_name}");
-        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        console.error(f"Unknown client target:  {target_name}");
+        console.print(f"Available client targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
     }
     
     # Store target info in context
-    ctx.set_data("start_target", target);
+    ctx.set_data("start_client_target", target);
     
     # Handle desktop target
     if target_name == "desktop" {
@@ -462,7 +462,7 @@ def _handle_setup_target(ctx: HookContext) -> None {
     target = registry.get(target_name);
     
     if not target {
-        console.error(f"Unknown target: {target_name}");
+        console.error(f"Unknown client target: {target_name}");
         console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);

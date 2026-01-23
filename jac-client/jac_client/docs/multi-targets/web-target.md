@@ -27,7 +27,7 @@ The web target produces browser-compatible JavaScript bundles that can be deploy
 jac build main.jac
 
 # Or explicitly
-jac build main.jac --target web
+jac build main.jac --client web
 ```
 
 **Output:**

@@ -26,7 +26,7 @@ The web target requires no setup and works out of the box:
 
 ```bash
 # Build for web
-jac build main.jac --target web
+jac build main.jac --client web
 
 # Or simply (web is default)
 jac build main.jac
@@ -44,10 +44,10 @@ Desktop builds create native applications:
 jac setup desktop
 
 # 2. Build for desktop
-jac build main.jac --target desktop
+jac build main.jac --client desktop
 
 # 3. Start in dev mode (hot reload)
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 ```
 
 ---
@@ -80,8 +80,8 @@ Write your application once in Jac, then build for:
 | Feature | Web | Desktop |
 |---------|-----|---------|
 | **Setup Required** | No | Yes (`jac setup desktop`) |
-| **Build Command** | `jac build` | `jac build --target desktop` |
-| **Dev Command** | `jac start --dev` | `jac start --cl-target desktop --dev` |
+| **Build Command** | `jac build` | `jac build --client desktop` |
+| **Dev Command** | `jac start --dev` | `jac start --client desktop --dev` |
 | **Output** | `.jac/client/dist/` | Installer (`.exe`, `.dmg`, `.AppImage`) |
 | **Distribution** | Web server | Installer file |
 | **Hot Reload** | ✅ Yes | ✅ Yes |
@@ -115,10 +115,10 @@ To add desktop support to your project:
 jac setup desktop
 
 # Develop with hot reload
-jac start main.jac --cl-target desktop --dev
+jac start main.jac --client desktop --dev
 
 # Build installer
-jac build main.jac --target desktop
+jac build main.jac --client desktop
 ```
 
 ---
@@ -145,10 +145,10 @@ A: For production, yes. Use `--platform` flag to build for specific platforms. F
 A: No! Web remains the default target with zero breaking changes.
 
 **Q: Can I test my desktop app before building?**  
-A: Yes! Use `jac start main.jac --cl-target desktop --dev` for hot reload development.
+A: Yes! Use `jac start main.jac --client desktop --dev` for hot reload development.
 
 **Q: How do I distribute my desktop app?**  
-A: After building with `jac build --target desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
+A: After building with `jac build --client desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
 
 ---
 

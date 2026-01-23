@@ -2,7 +2,101 @@
 
 ## Overview
 
-The multi-target build system enables `jac-client` to build applications for multiple platforms (web, desktop, mobiel etc..) from a single codebase. The system uses a target-based architecture where each target (web, desktop, mobile) implements a common interface, allowing for extensible platform support.
+The multi-target build system enables `jac-client` to build applications for multiple platforms (web, desktop, mobile, etc.) from a single codebase. The system uses a target-based architecture where each target (web, desktop, mobile) implements a common interface, allowing for extensible platform support.
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Jac CLI Commands                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │ jac setup    │  │ jac build    │  │ jac start    │        │
+│  │ <target>     │  │ --client <t> │  │ --client  │        │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘        │
+└─────────┼──────────────────┼──────────────────┼─────────────────┘
+          │                  │                  │
+          ▼                  ▼                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Target Registry (Singleton)                   │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  TargetRegistry                                          │  │
+│  │  - register(target)                                      │  │
+│  │  - get(name) -> Target                                    │  │
+│  │  - get_default() -> Target                               │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ├──────────────────┬──────────────────┐
+          ▼                  ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   WebTarget     │  │ DesktopTarget  │  │  MobileTarget   │
+│                 │  │                 │  │   (Future)      │
+│  - setup()      │  │  - setup()     │  │                 │
+│  - build()      │  │  - build()     │  │                 │
+│  - dev()        │  │  - dev()       │  │                 │
+│  - start()      │  │  - start()     │  │                 │
+└─────────────────┘  └────────┬────────┘  └─────────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │  Desktop Build Flow  │
+                    │                      │
+                    │  1. WebTarget.build()│
+                    │  2. Bundle Sidecar   │
+                    │  3. Update Config    │
+                    │  4. Tauri Build      │
+                    └──────────────────────┘
+```
+
+## System Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Build Request Flow                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+User Command: jac build main.jac --client desktop
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │   CLI Handler         │
+        │   (_handle_build)      │
+        └───────────┬───────────┘
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │  TargetRegistry       │
+        │  .get("desktop")      │
+        └───────────┬───────────┘
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │  DesktopTarget.build() │
+        └───────────┬───────────┘
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+        ▼           ▼           ▼
+┌──────────┐  ┌──────────┐  ┌──────────┐
+│ Web      │  │ Sidecar  │  │ Tauri    │
+│ Bundle   │  │ Bundle   │  │ Build    │
+│          │  │          │  │          │
+│ 1. Compile│  │ 1. Find  │  │ 1. Update│
+│    Jac   │  │   Entry  │  │   Config │
+│ 2. Bundle│  │ 2. Run    │  │ 2. Run   │
+│    JS    │  │   PyInst.│  │   Cargo  │
+│ 3. Gen   │  │ 3. Output │  │ 3. Bundle│
+│    HTML  │  │   Binary  │  │   App    │
+└──────────┘  └──────────┘  └──────────┘
+        │           │           │
+        └───────────┼───────────┘
+                    │
+                    ▼
+        ┌───────────────────────┐
+        │   Final Bundle        │
+        │   (.exe/.dmg/.AppImg) │
+        └───────────────────────┘
+```
 
 ## Architecture
 
@@ -44,19 +138,25 @@ The default target for web applications. It:
 - `build()`: Compiles and bundles the web application, generates `index.html`
 - `_generate_index_html()`: Creates static HTML with `__jac_init__` script tag for client runtime
 
-#### 3. Desktop Target (`src/targets/DesktopTarget.jac`)
+#### 3. Desktop Target (`src/targets/desktop_target.jac`)
 
 Target for Tauri-based desktop applications. It:
 - Requires one-time setup via `jac setup desktop`
 - Builds web bundle first, then wraps with Tauri
+- Optionally bundles Jac backend as sidecar executable
 - Supports dev mode with hot reload
 - Supports production mode with built bundle
 
 **Key Methods:**
 - `setup()`: Scaffolds Tauri project structure (`src-tauri/`), generates configs
-- `build()`: Builds web bundle, then runs `cargo tauri build`
+- `build()`: Builds web bundle, bundles sidecar (optional), then runs `cargo tauri build`
 - `dev()`: Starts Vite dev server + Tauri dev window (hot reload)
 - `start()`: Builds web bundle, launches Tauri with built bundle (production-like)
+
+**Sidecar Integration:**
+- `_bundle_sidecar()`: Uses PyInstaller to bundle Jac backend as executable
+- `_add_sidecar_to_config()`: Adds sidecar to `tauri.conf.json` resources
+- Sidecar provides local HTTP API server for desktop apps
 
 ## CLI Integration
 
@@ -73,14 +173,14 @@ One-time initialization for a target. Currently supports:
 - Adds `[desktop]` section to `jac.toml`
 - Checks for Rust toolchain and system dependencies
 
-#### `jac build <file> --target <target> [--platform <platform>]`
+#### `jac build <file> --client <target> [--platform <platform>]`
 Builds the application for the specified target.
 
 **Examples:**
 ```bash
-jac build main.jac --target web
-jac build main.jac --target desktop
-jac build main.jac --target desktop --platform windows
+jac build main.jac --client web
+jac build main.jac --client desktop
+jac build main.jac --client desktop --platform windows
 ```
 
 **Web Target:**
@@ -91,18 +191,19 @@ jac build main.jac --target desktop --platform windows
 
 **Desktop Target:**
 - Builds web bundle first (via `WebTarget.build()`)
-- Updates `tauri.conf.json` to point to dist directory
+- Optionally bundles sidecar executable (if PyInstaller available)
+- Updates `tauri.conf.json` to point to dist directory and include sidecar
 - Runs `cargo tauri build`
 - Returns path to installer/bundle
 
-#### `jac start <file> [--cl-target <target>] [--dev]`
+#### `jac start <file> [--client <target>] [--dev]`
 Starts the application for the specified target.
 
 **Examples:**
 ```bash
 jac start main.jac                    # Web target (default)
-jac start main.jac --cl-target desktop
-jac start main.jac --cl-target desktop --dev  # Dev mode with hot reload
+jac start main.jac --client desktop
+jac start main.jac --client desktop --dev  # Dev mode with hot reload
 ```
 
 **Web Target:**
@@ -125,7 +226,7 @@ jac-client/
 │               ├── registry.impl.jac  # Registry implementation
 │               ├── register.jac        # Target registration
 │               ├── WebTarget.jac       # Web target implementation
-│               ├── DesktopTarget.jac  # Desktop target interface
+│               ├── desktop_target.jac  # Desktop target interface
 │               └── DesktopTarget.impl.jac  # Desktop target implementation
 └── testapp/
     ├── main.jac                       # Entry point
@@ -141,8 +242,10 @@ jac-client/
         ├── build.rs                   # Build script
         ├── src/
         │   └── main.rs                # Rust entry point
-        └── icons/
-            └── icon.png               # App icon
+        ├── icons/
+        │   └── icon.png               # App icon
+        └── binaries/                  # Sidecar executables (after build)
+            └── jac-sidecar            # Bundled Jac backend (optional)
 ```
 
 ## Implementation Details
@@ -174,9 +277,21 @@ jac-client/
 ### Desktop Target Build Process
 
 1. **Build web bundle** - Calls `WebTarget.build()` to create web bundle
-2. **Update Tauri config** - Sets `frontendDist` to dist directory path
-3. **Run Tauri build** - Executes `cargo tauri build`
-4. **Return bundle** - Returns path to installer (`.exe`, `.dmg`, `.AppImage`, etc.)
+2. **Bundle sidecar (optional)** - Uses PyInstaller to bundle Jac backend:
+   - Finds sidecar entry point (`sidecar/main.py`)
+   - Generates PyInstaller spec file
+   - Runs PyInstaller to create executable (`jac-sidecar` or `jac-sidecar.exe`)
+   - Outputs to `src-tauri/binaries/`
+3. **Update Tauri config** - Sets `frontendDist` to dist directory path and adds sidecar to `bundle.resources`
+4. **Run Tauri build** - Executes `cargo tauri build`
+5. **Return bundle** - Returns path to installer (`.exe`, `.dmg`, `.AppImage`, etc.)
+
+**Sidecar Bundling Details:**
+- Entry point: `jac_client/plugin/src/targets/desktop/sidecar/main.py`
+- Bundles: Jac runtime, server components, Python dependencies
+- Output: Platform-specific executable in `src-tauri/binaries/`
+- Integration: Added to `tauri.conf.json` `bundle.resources` array
+- Optional: Build continues gracefully if PyInstaller is missing
 
 ### Desktop Target Dev Process
 
@@ -212,8 +327,22 @@ Generated during `jac setup desktop`, includes:
 - `productName`, `version`, `identifier`
 - `build.devUrl` (for dev mode)
 - `build.frontendDist` (for production mode)
+- `bundle.resources` (includes sidecar executable if bundled)
+- `bundle.icon` (app icon array)
 - Window configuration
 - Security settings
+
+**Sidecar Configuration:**
+When sidecar is bundled, it's automatically added to:
+```json
+{
+  "bundle": {
+    "resources": [
+      "binaries/jac-sidecar"  // or "binaries/jac-sidecar.exe" on Windows
+    ]
+  }
+}
+```
 
 ## Tauri v2 Compatibility
 
@@ -231,6 +360,236 @@ The implementation uses Tauri v2 configuration structure:
 - **Build failures**: Propagates errors with context
 - **Signal handling**: Graceful shutdown of dev servers
 
+## Sidecar Architecture
+
+### Overview
+
+The sidecar pattern allows desktop applications to run the Jac backend locally without requiring a separate server process. The sidecar is a bundled executable that provides the same HTTP API as `jac start`.
+
+**Key Point:** The sidecar follows the exact same process as `jac start`:
+1. **Compiles Jac code to Python** - Uses `Jac.jac_import()` to compile `.jac` files
+2. **Introspects the compiled module** - Discovers functions, walkers, and their signatures
+3. **Creates HTTP API endpoints** - Automatically converts Jac code to REST API
+4. **Starts HTTP server** - Serves the API on localhost
+
+### Sidecar Entry Point
+
+**File:** `jac_client/plugin/src/targets/desktop/sidecar/main.py`
+
+**Process Flow (Same as `jac start`):**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         Sidecar Execution Flow                           │
+└─────────────────────────────────────────────────────────┘
+
+1. Parse Arguments
+   │
+   ├─ module-path: Path to .jac file
+   ├─ port: HTTP server port (default: 8000)
+   ├─ base-path: Project root directory
+   └─ host: Bind address (default: 127.0.0.1)
+
+2. Initialize Jac Runtime
+   │
+   └─ Import: jaclang.pycore.runtime.JacRuntime
+      └─ Import: jaclang.runtimelib.server.JacAPIServer
+
+3. Compile Jac Code to Python
+   │
+   └─ Jac.jac_import(target=module_name, base_path=base, lng="jac")
+      │
+      ├─ Parses .jac file
+      ├─ Compiles to Python bytecode
+      ├─ Loads into Python module
+      └─ Returns compiled module
+
+4. Create API Server
+   │
+   └─ ServerClass = Jac.get_api_server_class()
+      └─ server = ServerClass(module_name, port, base_path)
+         │
+         ├─ ModuleIntrospector: Discovers functions/walkers
+         ├─ ExecutionManager: Handles function/walker execution
+         ├─ UserManager: Manages user authentication
+         └─ HTTP Handler: Routes requests to appropriate handlers
+
+5. Introspect Module (Automatic)
+   │
+   └─ server.introspector.load()
+      │
+      ├─ Scans compiled module for functions
+      ├─ Scans compiled module for walkers
+      ├─ Extracts function signatures (parameters, types)
+      ├─ Extracts walker fields (has variables)
+      └─ Creates API endpoint mappings
+
+6. Start HTTP Server
+   │
+   └─ server.start(dev=False)
+      │
+      ├─ Registers endpoints:
+      │  ├─ POST /user/register
+      │  ├─ POST /user/login
+      │  ├─ GET  /functions (list all functions)
+      │  ├─ GET  /walkers (list all walkers)
+      │  ├─ POST /function/<name> (call function)
+      │  └─ POST /walker/<name> (spawn walker)
+      │
+      └─ Serves on http://host:port
+```
+
+**Responsibilities:**
+- Parse command-line arguments (module path, port, host)
+- Initialize Jac runtime
+- **Compile Jac code to Python** (via `Jac.jac_import()`)
+- **Introspect compiled module** (automatic via `JacAPIServer`)
+- **Create HTTP API endpoints** (automatic conversion)
+- Start HTTP API server
+- Handle graceful shutdown
+
+**Usage:**
+```bash
+jac-sidecar --module-path main.jac --port 8000 --base-path .
+```
+
+**What Happens Internally:**
+1. `Jac.jac_import()` compiles `main.jac` → Python module
+2. `JacAPIServer` introspects the compiled module:
+   - Finds all `def:pub` functions → `/function/<name>` endpoints
+   - Finds all `walker` definitions → `/walker/<name>` endpoints
+   - Extracts signatures (parameters, types, return types)
+3. HTTP server automatically exposes these as REST API
+4. Frontend can call functions/walkers via HTTP requests
+
+### Sidecar Bundling Process
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Sidecar Bundling Flow                       │
+└─────────────────────────────────────────────────────────┘
+
+1. Check PyInstaller availability
+   │
+   ├─ Found → Continue
+   └─ Not Found → Skip (optional, build continues)
+
+2. Locate sidecar entry point
+   │
+   ├─ Try: Path(__file__).parent / "desktop" / "sidecar" / "main.py"
+   ├─ Try: Import via importlib.util.find_spec()
+   └─ Try: project_dir / "src-tauri" / "sidecar" / "main.py"
+
+3. Generate PyInstaller spec
+   │
+   ├─ Include: jaclang, jaclang.pycore, jaclang.runtimelib
+   ├─ Hidden imports: All Jac runtime modules
+   └─ Output: Temporary .spec file
+
+4. Run PyInstaller
+   │
+   ├─ Input: sidecar/main.py
+   ├─ Output: src-tauri/binaries/jac-sidecar[.exe]
+   └─ Cleanup: Remove temporary spec file
+
+5. Add to Tauri config
+   │
+   └─ Update: tauri.conf.json bundle.resources array
+```
+
+### Sidecar Communication
+
+```
+┌──────────────┐         HTTP          ┌──────────────┐
+│   Frontend   │ ◄───────────────────► │   Sidecar    │
+│  (Tauri App) │    (localhost:8000)   │  (Executable)│
+└──────────────┘                        └──────┬───────┘
+                                               │
+                                               ▼
+                                        ┌──────────────────┐
+                                        │  Compiled Python │
+                                        │  Module (from    │
+                                        │   Jac.jac_import)│
+                                        └──────────┬───────┘
+                                                   │
+                                                   ▼
+                                        ┌──────────────────┐
+                                        │  JacAPIServer    │
+                                        │  - Introspector  │
+                                        │  - Exec Manager  │
+                                        │  - User Manager  │
+                                        └──────────────────┘
+```
+
+**Communication Flow:**
+1. **Frontend makes HTTP request** to `http://localhost:8000/function/my_function`
+2. **Sidecar HTTP server** receives request
+3. **JacAPIServer routes** to appropriate handler:
+   - Looks up function/walker in introspected module
+   - Validates authentication (if required)
+   - Executes function/walker with provided parameters
+4. **Response returned** to frontend (JSON format)
+
+**How Jac Code Becomes API Endpoints:**
+
+```jac
+// Example: main.jac
+def:pub greet(name: str) -> str {
+    return f"Hello, {name}!";
+}
+
+walker my_walker {
+    has name: str;
+    root {
+        std.out("Walking with: ", here.name);
+    }
+}
+```
+
+**Automatically becomes:**
+
+```
+POST /function/greet
+Body: {"name": "Alice"}
+Response: {"data": "Hello, Alice!"}
+
+POST /walker/my_walker
+Body: {"name": "Bob", "target_node": "..."}
+Response: {"data": {...}}
+```
+
+**API Compatibility:**
+- **Same endpoints as `jac start` server**
+- `/user/register`, `/user/login` - User management
+- `/functions` - List all functions
+- `/walkers` - List all walkers
+- `/function/<name>` - Call a function
+- `/walker/<name>` - Spawn a walker
+- `/<cl_route_prefix>/<name>` - Client-side routes
+- All endpoints support authentication (token-based)
+
+### Sidecar Lifecycle
+
+**During Build:**
+- Sidecar is bundled into executable
+- Added to Tauri resources
+- Included in final app bundle
+
+**During Runtime:**
+- Tauri app can launch sidecar process
+- Sidecar runs as separate process
+- **Sidecar compiles Jac code on startup** (via `Jac.jac_import()`)
+- **Sidecar introspects compiled module** (discovers functions/walkers)
+- **Sidecar creates HTTP endpoints** (automatic API generation)
+- Frontend connects via HTTP
+- Sidecar manages Jac runtime lifecycle
+- **All Jac code is executed as Python** (compiled from Jac)
+
+**Shutdown:**
+- Sidecar handles SIGINT/SIGTERM
+- Gracefully shuts down HTTP server
+- Cleans up Jac runtime
+
 ## Future Extensions
 
 The architecture supports adding new targets by:
@@ -243,4 +602,11 @@ Potential targets:
 - Electron (alternative to Tauri)
 - Server-side rendering (SSR)
 - Static site generation (SSG)
+
+**Sidecar Enhancements:**
+- Auto-start sidecar on app launch
+- Sidecar process management from Tauri
+- IPC communication (alternative to HTTP)
+- Sidecar health checks and monitoring
+
 
