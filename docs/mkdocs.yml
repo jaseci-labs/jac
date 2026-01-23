@@ -1,146 +1,92 @@
-site_name: The Jac Programming Language and Jaseci Stack
+site_name: Jac - AI-Native Full-Stack Development
 site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
+  # ============================================
+  # NEW REORGANIZED STRUCTURE
+  # ============================================
+
   - Quick Guide:
-    - Getting Started: "getting-started/index.md"
-    - Build a Web App: "full-stack/index.md"
-    - Language Guide:
-      - Overview: "language/index.md"
-      - Syntax & Basics: "language/syntax/index.md"
-      - Object-Spatial Programming: "language/osp/index.md"
-      - Enhanced OOP: "language/oop/index.md"
-    - AI Integration (byLLM): "ai-integration/index.md"
-    - Production (jac-scale): "production/index.md"
-    - CLI Reference: "cli/index.md"
-    - Configuration: "configuration/index.md"
-    - Testing & Debugging: "testing-debugging/index.md"
-    - Advanced Topics: "advanced/index.md"
-    - Contributing: "contributing/index.md"
-  - Learn:
-    # - Getting Started: "learn/getting_started.md"
-    - Getting Started:
-      - Introduction: "learn/tour.md"
-      - Installation: "learn/installation.md"
-      # - Jac as Your First Programming Language: "learn/beginners_guide_to_jac.md"
-      - Quickstart: "learn/quickstart.md"
-      - Syntax Quick Reference: "learn/syntax_quick_reference.md"
-      - Native Superset of Python: "learn/superset_python.md"
-      - Jac Library in Pure Python: "learn/library_mode.md"
-      - Learn Jac in 5 Minutes: "learn/jac_in_a_flash.md"
-      - Examples for Key Features: "learn/example.md"
-      - Jac Tool Suite: "learn/tool_suite.md"
-    - Programming 'by' LLM:
-        - byLLM: "learn/jac-byllm/with_llm.md"
-        - Quick-start: "learn/jac-byllm/quickstart.md"
-        - How to use byLLM: "learn/jac-byllm/usage.md"
-        - byLLM for Agentic AI: "learn/jac-byllm/agentic_ai.md"
-        - Examples: "learn/jac-byllm/examples.md"
-        - Python byllm Interface: "learn/jac-byllm/python_integration.md"
-        - Using Multimodal models: "learn/jac-byllm/multimodality.md"
-        - Creating a Custom Model Class: "learn/jac-byllm/create_own_lm.md"
-        # - Build your own byllm plugin: "learn/jac-byllm/creating_byllm_plugins.md". # Needs review and update
-        - LiteLLM Proxy Server: "learn/jac-byllm/litellm_proxy.md"
-    - Scale-Native Programming:
-      - Jac Lens: "learn/jac-lens.md"
-    - Jac Client:
-      - Getting Started: "jac-client/README.md"
-      - Step-by-Step Tutorial:
-        - Introduction: "jac-client/guide-example/intro.md"
-        - "Step 1: Project Setup": "jac-client/guide-example/step-01-setup.md"
-        - "Step 2: First Component": "jac-client/guide-example/step-02-components.md"
-        - "Step 3: Styling": "jac-client/guide-example/step-03-styling.md"
-        - "Step 4: Todo UI": "jac-client/guide-example/step-04-todo-ui.md"
-        - "Step 5: Local State": "jac-client/guide-example/step-05-local-state.md"
-        - "Step 6: Event Handlers": "jac-client/guide-example/step-06-events.md"
-        - "Step 7: Effects": "jac-client/guide-example/step-07-effects.md"
-        - "Step 8: Backend with Walkers": "jac-client/guide-example/step-08-walkers.md"
-        - "Step 9: Authentication": "jac-client/guide-example/step-09-authentication.md"
-        - "Step 10: Routing": "jac-client/guide-example/step-10-routing.md"
-        - "Step 11: Final Integration": "jac-client/guide-example/step-11-final.md"
-      - Styling:
-        - Introduction: "jac-client/styling/intro.md"
-        - Pure CSS: "jac-client/styling/pure-css.md"
-        - Tailwind CSS: "jac-client/styling/tailwind.md"
-        - Sass/SCSS: "jac-client/styling/sass.md"
-        - Styled Components: "jac-client/styling/styled-components.md"
-        - JavaScript Styling: "jac-client/styling/js-styling.md"
-        - Material-UI: "jac-client/styling/material-ui.md"
-      - Routing: "jac-client/routing.md"
-      - Lifecycle Hooks: "jac-client/lifecycle-hooks.md"
-      - Advanced State: "jac-client/advanced-state.md"
-      - Imports: "jac-client/imports.md"
-      - File System:
-        - Introduction: "jac-client/file-system/intro.md"
-        - Backend/Frontend Separation: "jac-client/file-system/backend-frontend.md"
-        - Nested Folder Imports: "jac-client/file-system/nested-imports.md"
-        - The app.jac Entry Point: "jac-client/file-system/app.jac.md"
-      - Handling Assets: "jac-client/asset-serving/intro.md"
-      - TypeScript: "jac-client/working-with-ts.md"
-      - Exporting Functions & Variables: "jac-client/exporting-functions-and-variables.md"
-      - Advanced:
-        - Introduction: "jac-client/advance/intro.md"
-        - Configuration System Overview: "jac-client/advance/configuration-overview.md"
-        - Custom Configuration: "jac-client/advance/custom-config.md"
-        - Package Management: "jac-client/advance/package-management.md"
-        - Custom Assets Handling: "jac-client/advance/custom-assets-handling.md"
-        - App Metadata: "jac-client/advance/app-metadata.md"
-    - Jac Scale:
-      - Getting Started: "jac-scale/README.md"
-      - Quickstart: "jac-scale/quickstart.md"
-      - Configuration: "jac-scale/configuration.md"
-      - File Upload: "jac-scale/file-upload.md"
-      - Roadmap: "jac-scale/roadmap.md"
-    - Tooling:
-      - Jac Debugger: "learn/debugger.md"
-      - Run Jac In Browser: "learn/jac_playground.md"
-      - Project Configuration (jac.toml): "learn/tools/project_config.md"
-      - "learn/tools/cli.md"
-      - "learn/tools/jac_serve.md"
-      - LLMDocs: "learn/tools/llmdocs.md"
-    - Examples:
-      - Overview: "learn/examples/index.md"
-      - LittleX (your own twitter): "learn/examples/littleX/tutorial.md"
-      - Jac MCP Conversational Chatbot: "learn/examples/rag_chatbot/Overview.md"
-      - RPG game with AI Genarated Maps: "learn/examples/mtp_examples/rpg_game.md"
-      - Agentic Fantasy Trading Game: "learn/examples/mtp_examples/fantasy_trading_game.md"
-      - Friendzone Lite: "learn/examples/agentic_ai/friendzone-lite/friendzone-lite.md"
-      - Aider Genius Lite: "learn/examples/agentic_ai/aider-genius-lite/aider-genius-lite.md"
-      - Task Manager Lite: "learn/examples/agentic_ai/task-manager-lite/task-manager-lite.md"
-      - EmailBuddy: "learn/examples/EmailBuddy/tutorial.md"
-  - Jac Language Reference:
-    - Overview: "learn/jac-ref/index.md"
-    - "Part I: Foundation": "learn/jac-ref/foundation.md"
-    - "Part II: Functions & Objects": "learn/jac-ref/functions-objects.md"
-    - "Part III: OSP": "learn/jac-ref/osp.md"
-    - "Part IV: Full-Stack": "learn/jac-ref/full-stack.md"
-    - "Part V: AI Integration": "learn/jac-ref/ai-integration.md"
-    - "Part VI: Concurrency": "learn/jac-ref/concurrency.md"
-    - "Part VII: Advanced": "learn/jac-ref/advanced.md"
-    - "Part VIII: Ecosystem": "learn/jac-ref/ecosystem.md"
-    - "Part IX: Deployment": "learn/jac-ref/deployment.md"
-    - Appendices: "learn/jac-ref/appendices.md"
+      - Welcome: "quick-guide/index.md"
+      - Installation: "quick-guide/install.md"
+      - Hello World: "quick-guide/hello-world.md"
+      - Your First App: "quick-guide/first-app.md"
+      - Next Steps: "quick-guide/next-steps.md"
 
-  - Contributor Hub:
-    - Contributing: "internals/contrib.md"
-    - Release Notes:
-      - Jaclang: "communityhub/release_notes/jaclang.md"
-      - Jac-Scale: "communityhub/release_notes/jac-scale.md"
-      - (Deprecated) Jac-Cloud: "communityhub/release_notes/jac-cloud.md"
-      - byLLM: "communityhub/release_notes/byllm.md"
-      - Jac-Client: "communityhub/release_notes/jac-client.md"
-    - Breaking Changes: "communityhub/breaking_changes.md"
-    - Leaderboard: "communityhub/top_contributors.md"
-    - Internals:
-      - JSX 'Project OneLang' Design Doc: "internals/jsx_client_serv_design.md"
-      - Jac Client Import Patterns Proposal: "internals/jac_import_patterns.md"
-      - UniIR Nodes: "internals/uniir_node.md"
+  - Tutorials:
+      - Overview: "tutorials/index.md"
+      - Core Language:
+          - Jac Basics (from Python): "tutorials/language/basics.md"
+          - Object-Spatial Programming: "tutorials/language/osp.md"
+          - Testing Your Code: "tutorials/language/testing.md"
+      - AI Integration:
+          - byLLM Quickstart: "tutorials/ai/quickstart.md"
+          - Structured Outputs: "tutorials/ai/structured-outputs.md"
+          - Agentic AI & Tools: "tutorials/ai/agentic.md"
+      - Full-Stack Apps:
+          - Project Setup: "tutorials/fullstack/setup.md"
+          - React-Style Components: "tutorials/fullstack/components.md"
+          - State & Effects: "tutorials/fullstack/state.md"
+          - Backend Integration: "tutorials/fullstack/backend.md"
+          - Authentication: "tutorials/fullstack/auth.md"
+          - Routing: "tutorials/fullstack/routing.md"
+      - Production:
+          - Local API Server: "tutorials/production/local.md"
+          - Deploy to Kubernetes: "tutorials/production/kubernetes.md"
+      - Examples Gallery:
+          - Overview: "tutorials/examples/index.md"
+          - LittleX (Twitter Clone): "tutorials/examples/littlex.md"
+          - EmailBuddy (AI Assistant): "tutorials/examples/emailbuddy.md"
+          - RAG Chatbot: "tutorials/examples/rag-chatbot.md"
+          - RPG Level Generator: "tutorials/examples/rpg.md"
 
+  - Reference:
+      - Language Reference:
+          - Overview: "reference/language/index.md"
+          - "Part I: Foundation": "reference/language/foundation.md"
+          - "Part II: Functions & Objects": "reference/language/functions-objects.md"
+          - "Part III: OSP": "reference/language/osp.md"
+          - "Part IV: Full-Stack": "reference/language/full-stack.md"
+          - "Part V: AI Integration": "reference/language/ai-integration.md"
+          - "Part VI: Concurrency": "reference/language/concurrency.md"
+          - "Part VII: Advanced": "reference/language/advanced.md"
+          - "Part VIII: Ecosystem": "reference/language/ecosystem.md"
+          - "Part IX: Deployment": "reference/language/deployment.md"
+          - Appendices: "reference/language/appendices.md"
+          - Python Integration: "reference/language/python-integration.md"
+          - Library Mode: "reference/language/library-mode.md"
+      - CLI Reference: "reference/cli/index.md"
+      - Configuration: "reference/config/index.md"
+      - Testing: "reference/testing.md"
+      - Plugin Reference:
+          - Overview: "reference/plugins/index.md"
+          - byLLM: "reference/plugins/byllm.md"
+          - jac-client: "reference/plugins/jac-client.md"
+          - jac-scale: "reference/plugins/jac-scale.md"
 
-  - Jac Playground:
-    - Playground: "https://playground.jaseci.org/cl/app"
+  - Community:
+      - Contributing: "community/contributing.md"
+      - Breaking Changes: "community/breaking-changes.md"
+      - Contributors: "community/contributors.md"
+      - Release Notes:
+          - Jaclang: "community/release_notes/jaclang.md"
+          - byLLM: "community/release_notes/byllm.md"
+          - jac-client: "community/release_notes/jac-client.md"
+          - jac-scale: "community/release_notes/jac-scale.md"
+          - "(Deprecated) jac-cloud": "community/release_notes/jac-cloud.md"
+      - Internals:
+          - Contributing Guide: "community/internals/contrib.md"
+          - JSX Design Doc: "community/internals/jsx_client_serv_design.md"
+          - Import Patterns: "community/internals/jac_import_patterns.md"
+          - UniIR Nodes: "community/internals/uniir_node.md"
+
+  # ============================================
+  # EXTERNAL LINKS
+  # ============================================
+
+  - Playground: "https://playground.jaseci.org/cl/app"
 
   - Jac GPT: "https://jac-gpt.jaseci.org"
 
@@ -201,9 +147,9 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.arithmatex:
-  # - pymdownx.emoji:
-  #     emoji_index: !!python/name:materialx.emoji.twemoji
-  #     emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
   - pymdownx.blocks.caption
   - attr_list
@@ -258,7 +204,53 @@ plugins:
       video_controls: False
   - redirects:
       redirect_maps:
-        index.md: getting-started/index.md
+        # Main landing page
+        index.md: quick-guide/index.md
+
+        # Old Quick Guide section redirects
+        getting-started/index.md: quick-guide/index.md
+        cli/index.md: reference/cli/index.md
+        configuration/index.md: reference/config/index.md
+
+        # Old Learn section redirects to new Tutorials
+        learn/installation.md: quick-guide/install.md
+        learn/quickstart.md: tutorials/language/osp.md
+        learn/tour.md: quick-guide/index.md
+
+        # byLLM redirects
+        learn/jac-byllm/quickstart.md: tutorials/ai/quickstart.md
+        learn/jac-byllm/with_llm.md: reference/plugins/byllm.md
+        learn/jac-byllm/usage.md: reference/plugins/byllm.md
+        learn/jac-byllm/agentic_ai.md: tutorials/ai/agentic.md
+
+        # Language reference redirects
+        learn/jac-ref/index.md: reference/language/index.md
+        learn/jac-ref/foundation.md: reference/language/foundation.md
+        learn/jac-ref/functions-objects.md: reference/language/functions-objects.md
+        learn/jac-ref/osp.md: reference/language/osp.md
+        learn/jac-ref/full-stack.md: reference/language/full-stack.md
+        learn/jac-ref/ai-integration.md: reference/language/ai-integration.md
+        learn/jac-ref/concurrency.md: reference/language/concurrency.md
+        learn/jac-ref/advanced.md: reference/language/advanced.md
+        learn/jac-ref/ecosystem.md: reference/language/ecosystem.md
+        learn/jac-ref/deployment.md: reference/language/deployment.md
+        learn/jac-ref/appendices.md: reference/language/appendices.md
+
+        # Contributor Hub redirects
+        internals/contrib.md: community/contributing.md
+        communityhub/breaking_changes.md: community/breaking-changes.md
+        communityhub/release_notes/jaclang.md: community/release_notes/jaclang.md
+        communityhub/release_notes/byllm.md: community/release_notes/byllm.md
+        communityhub/release_notes/jac-client.md: community/release_notes/jac-client.md
+        communityhub/release_notes/jac-scale.md: community/release_notes/jac-scale.md
+        communityhub/release_notes/jac-cloud.md: community/release_notes/jac-cloud.md
+
+        # Examples redirects
+        learn/examples/index.md: tutorials/examples/index.md
+
+        # Legacy content redirects
+        learn/library_mode.md: reference/language/library-mode.md
+        learn/superset_python.md: reference/language/python-integration.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

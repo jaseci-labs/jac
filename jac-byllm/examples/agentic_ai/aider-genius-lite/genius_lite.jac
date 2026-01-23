@@ -11,11 +11,11 @@ obj Task {
         priority: int = 1;
 }
 
-sem Task= "A specific development task with clear implementation requirements";
-sem Task. name= "Clear, descriptive name for the task";
-sem Task. type= "Task category: code, fix, docs, or test";
-sem Task. details= "Specific implementation instructions";
-sem Task. priority= "Task priority: 1=high, 2=medium, 3=low";
+sem Task = "A specific development task with clear implementation requirements";
+sem Task.name = "Clear, descriptive name for the task";
+sem Task.type = "Task category: code, fix, docs, or test";
+sem Task.details = "Specific implementation instructions";
+sem Task.priority = "Task priority: 1=high, 2=medium, 3=low";
 
 obj CodeResult {
     has task_name: str = "",
@@ -24,11 +24,11 @@ obj CodeResult {
         feedback: str = "";
 }
 
-sem CodeResult= "Result of code generation task";
-sem CodeResult. task_name= "Name of the completed task";
-sem CodeResult. code= "Generated code solution";
-sem CodeResult. status= "Task completion status: success or failed";
-sem CodeResult. feedback= "Validation feedback and suggestions";
+sem CodeResult = "Result of code generation task";
+sem CodeResult.task_name = "Name of the completed task";
+sem CodeResult.code = "Generated code solution";
+sem CodeResult.status = "Task completion status: success or failed";
+sem CodeResult.feedback = "Validation feedback and suggestions";
 
 # Core AI functions
 def create_plan(request: str) -> list[Task] by llm(method="Reason");
@@ -158,7 +158,7 @@ walker generate_code {
                 } for result in agent.results
             ],
             "total_tasks": len(agent.results)
-        } ;
+        };
     }
 }
 
