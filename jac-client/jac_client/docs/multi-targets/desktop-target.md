@@ -9,6 +9,7 @@ The **desktop target** wraps your web application in a native desktop window usi
 The desktop target creates native desktop applications that can be distributed as installers for Windows, macOS, and Linux.
 
 **Features:**
+
 - ✅ Native desktop applications
 - ✅ Cross-platform (Windows, macOS, Linux)
 - ✅ Small bundle size (uses system webview)
@@ -28,6 +29,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Verify installation:
+
 ```bash
 rustc --version
 cargo --version
@@ -36,22 +38,26 @@ cargo --version
 ### Install Build Tools
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install build-essential
 ```
 
 **Fedora:**
+
 ```bash
 sudo dnf install gcc gcc-c++
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S base-devel
 ```
 
 **macOS:**
 Install Xcode Command Line Tools:
+
 ```bash
 xcode-select --install
 ```
@@ -62,6 +68,7 @@ Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads
 ### Install System Dependencies (Linux)
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install libwebkit2gtk-4.0-dev \
     build-essential \
@@ -74,6 +81,7 @@ sudo apt-get install libwebkit2gtk-4.0-dev \
 ```
 
 **Fedora:**
+
 ```bash
 sudo dnf install webkit2gtk3-devel.x86_64 \
     openssl-devel \
@@ -84,6 +92,7 @@ sudo dnf install webkit2gtk3-devel.x86_64 \
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S webkit2gtk \
     base-devel \
@@ -110,12 +119,14 @@ jac setup desktop
 ```
 
 This will:
+
 - Create `src-tauri/` directory structure
 - Generate Tauri configuration files
 - Create Rust project files
 - Add desktop configuration to `jac.toml`
 
 **What gets created:**
+
 ```
 your-project/
 ├── src-tauri/
@@ -138,6 +149,7 @@ jac start main.jac --client desktop --dev
 ```
 
 This will:
+
 1. Start a Vite dev server on port 5173
 2. Launch Tauri dev window
 3. Enable hot module replacement (HMR)
@@ -154,6 +166,7 @@ jac start main.jac --client desktop
 ```
 
 This will:
+
 1. Build the web bundle
 2. Generate `index.html`
 3. Launch Tauri with the built bundle
@@ -169,6 +182,7 @@ jac build main.jac --client desktop
 ```
 
 This creates installers in `src-tauri/target/release/bundle/`:
+
 - **Windows**: `.exe` installer
 - **macOS**: `.dmg` or `.app` bundle
 - **Linux**: `.AppImage`, `.deb`, or `.rpm`
@@ -255,6 +269,7 @@ The `[desktop]` section in `jac.toml` is automatically added during setup:
 ### "Rust/Cargo not found"
 
 Install Rust from [rustup.rs](https://rustup.rs/):
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
@@ -266,6 +281,7 @@ Install build tools for your platform (see Prerequisites section above).
 ### "Desktop target not set up"
 
 Run the setup command:
+
 ```bash
 jac setup desktop
 ```
@@ -273,11 +289,13 @@ jac setup desktop
 ### "Tauri CLI not found"
 
 Install Tauri CLI:
+
 ```bash
 cargo install tauri-cli
 ```
 
 Or via npm:
+
 ```bash
 npm install -D @tauri-apps/cli
 ```
@@ -289,6 +307,7 @@ Install system dependencies (see Prerequisites section above).
 ### Empty window in Tauri
 
 Make sure `index.html` exists in `.jac/client/dist/`. Rebuild:
+
 ```bash
 jac build main.jac --client web
 jac start main.jac --client desktop
@@ -310,6 +329,7 @@ Change the Vite port in the dev configuration, or stop the process using port 51
 ### 1. Use Dev Mode for Development
 
 Always use `--dev` flag during development for hot reload:
+
 ```bash
 jac start main.jac --client desktop --dev
 ```
@@ -317,6 +337,7 @@ jac start main.jac --client desktop --dev
 ### 2. Test Production Builds
 
 Before distributing, test the production build:
+
 ```bash
 jac start main.jac --client desktop  # No --dev flag
 ```
@@ -340,12 +361,14 @@ Update version in both `jac.toml` and `src-tauri/tauri.conf.json` for consistenc
 ### Testing the Installer
 
 **Linux (.AppImage):**
+
 ```bash
 chmod +x src-tauri/target/release/bundle/*.AppImage
 ./src-tauri/target/release/bundle/*.AppImage
 ```
 
 **Linux (.deb):**
+
 ```bash
 sudo dpkg -i src-tauri/target/release/bundle/*.deb
 ```
@@ -359,6 +382,7 @@ Open the `.dmg` and drag the app to Applications.
 ### Distributing Your App
 
 After building, distribute the installer files from `src-tauri/target/release/bundle/`:
+
 - Share the installer file with users
 - Upload to app stores (if applicable)
 - Host on your website for download
@@ -367,25 +391,25 @@ After building, distribute the installer files from `src-tauri/target/release/bu
 
 ## FAQ
 
-**Q: Can I use the same codebase for web and desktop?**  
+**Q: Can I use the same codebase for web and desktop?**
 A: Yes! The same Jac code works for both targets. The build system handles the differences.
 
-**Q: Do I need separate builds for each platform?**  
+**Q: Do I need separate builds for each platform?**
 A: For production, yes. Use `--platform` flag to build for specific platforms. For development, Tauri automatically uses your current platform.
 
-**Q: Can I customize the Tauri window?**  
+**Q: Can I customize the Tauri window?**
 A: Yes! Edit `src-tauri/tauri.conf.json` to customize window size, title, and other properties.
 
-**Q: How do I distribute my desktop app?**  
+**Q: How do I distribute my desktop app?**
 A: After building with `jac build --client desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
 
-**Q: Can I use backend features in desktop apps?**  
+**Q: Can I use backend features in desktop apps?**
 A: Yes! Desktop apps can use the same backend features (walkers, nodes, etc.) as web apps.
 
-**Q: What's the difference between `--dev` and without it?**  
+**Q: What's the difference between `--dev` and without it?**
 A: `--dev` uses a Vite dev server with hot reload. Without it, builds the web bundle first and uses the static files.
 
-**Q: Can I build for a different platform than I'm running on?**  
+**Q: Can I build for a different platform than I'm running on?**
 A: Yes, but it requires cross-compilation setup. Use `--platform` flag to specify the target platform.
 
 ---
@@ -401,5 +425,3 @@ A: Yes, but it requires cross-compilation setup. Use `--platform` flag to specif
 ---
 
 Happy building! 🖥️
-
-

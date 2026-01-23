@@ -20,7 +20,6 @@ Options:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -104,6 +103,7 @@ def main():
     except Exception as e:
         print(f"Error: Failed to load module '{module_name}': {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
@@ -112,16 +112,14 @@ def main():
         # Get server class (allows plugins like jac-scale to provide enhanced server)
         ServerClass = Jac.get_api_server_class()
         server = ServerClass(
-            module_name=module_name,
-            port=args.port,
-            base_path=str(base_path)
+            module_name=module_name, port=args.port, base_path=str(base_path)
         )
 
-        print(f"Jac Sidecar starting...")
+        print("Jac Sidecar starting...")
         print(f"  Module: {module_name}")
         print(f"  Base path: {base_path}")
         print(f"  Server: http://{args.host}:{args.port}")
-        print(f"\nPress Ctrl+C to stop the server\n")
+        print("\nPress Ctrl+C to stop the server\n")
 
         # Start the server (blocks until interrupted)
         server.start(dev=False)
@@ -132,11 +130,10 @@ def main():
     except Exception as e:
         print(f"Error: Server failed to start: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
-

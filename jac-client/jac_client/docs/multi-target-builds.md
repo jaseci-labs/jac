@@ -44,6 +44,7 @@ jac start main.jac --client desktop --dev
 The **web target** is the default build target. It compiles your Jac code to JavaScript and bundles it with Vite for optimal web performance.
 
 **Features:**
+
 - ✅ No setup required
 - ✅ Automatic HTML generation
 - ✅ CSS bundling
@@ -51,6 +52,7 @@ The **web target** is the default build target. It compiles your Jac code to Jav
 - ✅ Works with all existing Jac features
 
 **Usage:**
+
 ```bash
 # Build
 jac build main.jac --client web
@@ -63,6 +65,7 @@ jac start main.jac --no-dev
 ```
 
 **Output:**
+
 - Compiled JavaScript bundle: `.jac/client/dist/client.[hash].js`
 - Generated HTML: `.jac/client/dist/index.html`
 - CSS files: `.jac/client/dist/styles.css` (if present)
@@ -72,6 +75,7 @@ jac start main.jac --no-dev
 The **desktop target** wraps your web application in a native desktop window using Tauri. Your Jac code runs in a webview, but users get a native desktop experience.
 
 **Features:**
+
 - ✅ Native desktop applications
 - ✅ Cross-platform (Windows, macOS, Linux)
 - ✅ Small bundle size (uses system webview)
@@ -79,11 +83,13 @@ The **desktop target** wraps your web application in a native desktop window usi
 - ✅ Production builds create installers
 
 **Prerequisites:**
+
 - Rust toolchain (install from [rustup.rs](https://rustup.rs/))
 - Build tools (gcc/cc)
 - System dependencies (varies by OS)
 
 **Usage:**
+
 ```bash
 # One-time setup
 jac setup desktop
@@ -104,6 +110,7 @@ jac start main.jac --client desktop
 ```
 
 **Output:**
+
 - Windows: `.exe` installer
 - macOS: `.dmg` or `.app`
 - Linux: `.AppImage`, `.deb`, or `.rpm`
@@ -123,6 +130,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Verify installation:
+
 ```bash
 rustc --version
 cargo --version
@@ -131,22 +139,26 @@ cargo --version
 #### Install Build Tools
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install build-essential
 ```
 
 **Fedora:**
+
 ```bash
 sudo dnf install gcc gcc-c++
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S base-devel
 ```
 
 **macOS:**
 Install Xcode Command Line Tools:
+
 ```bash
 xcode-select --install
 ```
@@ -157,6 +169,7 @@ Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads
 #### Install System Dependencies (Linux)
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get install libwebkit2gtk-4.0-dev \
     build-essential \
@@ -169,6 +182,7 @@ sudo apt-get install libwebkit2gtk-4.0-dev \
 ```
 
 **Fedora:**
+
 ```bash
 sudo dnf install webkit2gtk3-devel.x86_64 \
     openssl-devel \
@@ -179,6 +193,7 @@ sudo dnf install webkit2gtk3-devel.x86_64 \
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S webkit2gtk \
     base-devel \
@@ -201,12 +216,14 @@ jac setup desktop
 ```
 
 This will:
+
 - Create `src-tauri/` directory structure
 - Generate Tauri configuration files
 - Create Rust project files
 - Add desktop configuration to `jac.toml`
 
 **What gets created:**
+
 ```
 your-project/
 ├── src-tauri/
@@ -223,27 +240,32 @@ your-project/
 ### Step 3: Build or Run
 
 **Development mode (with hot reload):**
+
 ```bash
 jac start main.jac --client desktop --dev
 ```
 
 This will:
+
 1. Start a Vite dev server on port 5173
 2. Launch Tauri dev window
 3. Enable hot module replacement (HMR)
 4. Show your app with live reload
 
 **Production mode (build first, then run):**
+
 ```bash
 jac start main.jac --client desktop
 ```
 
 This will:
+
 1. Build the web bundle
 2. Generate `index.html`
 3. Launch Tauri with the built bundle
 
 **Build for distribution:**
+
 ```bash
 jac build main.jac --client desktop
 ```
@@ -360,6 +382,7 @@ The `[desktop]` section in `jac.toml` is automatically added during setup:
 ### "Rust/Cargo not found"
 
 Install Rust from [rustup.rs](https://rustup.rs/):
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
@@ -371,6 +394,7 @@ Install build tools for your platform (see Prerequisites section above).
 ### "Desktop target not set up"
 
 Run the setup command:
+
 ```bash
 jac setup desktop
 ```
@@ -378,11 +402,13 @@ jac setup desktop
 ### "Tauri CLI not found"
 
 Install Tauri CLI:
+
 ```bash
 cargo install tauri-cli
 ```
 
 Or via npm:
+
 ```bash
 npm install -D @tauri-apps/cli
 ```
@@ -394,6 +420,7 @@ Install system dependencies (see Prerequisites section above).
 ### Empty window in Tauri
 
 Make sure `index.html` exists in `.jac/client/dist/`. Rebuild:
+
 ```bash
 jac build main.jac --client web
 jac start main.jac --client desktop
@@ -410,6 +437,7 @@ Change the Vite port in the dev configuration, or stop the process using port 51
 ### 1. Use Dev Mode for Development
 
 Always use `--dev` flag during development for hot reload:
+
 ```bash
 jac start main.jac --client desktop --dev
 ```
@@ -417,6 +445,7 @@ jac start main.jac --client desktop --dev
 ### 2. Test Production Builds
 
 Before distributing, test the production build:
+
 ```bash
 jac start main.jac --client desktop  # No --dev flag
 ```
@@ -444,7 +473,7 @@ Update version in both `jac.toml` and `src-tauri/tauri.conf.json` for consistenc
 cl {
     def:pub app() -> any {
         has count: int = 0;
-        
+
         return <div style={{padding: "2rem"}}>
             <h1>Desktop App</h1>
             <p>Count: {count}</p>
@@ -457,6 +486,7 @@ cl {
 ```
 
 Build and run:
+
 ```bash
 jac setup desktop
 jac start main.jac --client desktop --dev
@@ -471,16 +501,16 @@ Your desktop app can use the same backend features as web apps:
 cl {
     def:pub app() -> any {
         has todos: list = [];
-        
+
         async def loadTodos() -> None {
             response = root spawn get_todos();
             todos = response.reports[0];
         }
-        
+
         useEffect(lambda -> None {
             loadTodos();
         }, []);
-        
+
         return <div>
             <h1>Todo Desktop App</h1>
             {todos.map(lambda todo: any -> any {
@@ -504,26 +534,24 @@ cl {
 
 ## FAQ
 
-**Q: Can I use the same codebase for web and desktop?**  
+**Q: Can I use the same codebase for web and desktop?**
 A: Yes! The same Jac code works for both targets. The build system handles the differences.
 
-**Q: Do I need separate builds for each platform?**  
+**Q: Do I need separate builds for each platform?**
 A: For production, yes. Use `--platform` flag to build for specific platforms. For development, Tauri automatically uses your current platform.
 
-**Q: Can I customize the Tauri window?**  
+**Q: Can I customize the Tauri window?**
 A: Yes! Edit `src-tauri/tauri.conf.json` to customize window size, title, and other properties.
 
-**Q: How do I distribute my desktop app?**  
+**Q: How do I distribute my desktop app?**
 A: After building with `jac build --client desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
 
-**Q: Can I use backend features in desktop apps?**  
+**Q: Can I use backend features in desktop apps?**
 A: Yes! Desktop apps can use the same backend features (walkers, nodes, etc.) as web apps.
 
-**Q: What's the difference between `--dev` and without it?**  
+**Q: What's the difference between `--dev` and without it?**
 A: `--dev` uses a Vite dev server with hot reload. Without it, builds the web bundle first and uses the static files.
 
 ---
 
 Happy building! 🚀
-
-

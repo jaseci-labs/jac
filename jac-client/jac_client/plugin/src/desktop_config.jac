@@ -15,9 +15,9 @@ Provides access to desktop/Tauri configuration
 from the [desktop] section of jac.toml.
 """
 class DesktopConfig {
-    has project_dir: Path | None = None;
-    has _config: dict[str, Any] | None = None;
-    has _jac_config: JacConfig | None = None;
+    has project_dir: Path | None = None,
+        _config: dict[str, Any] | None = None,
+        _jac_config: JacConfig | None = None;
 
     def init(self: DesktopConfig, project_dir: Path | None = None) -> None;
     def load(self: DesktopConfig) -> dict[str, Any];
@@ -29,4 +29,3 @@ class DesktopConfig {
     def get_default_config(self: DesktopConfig) -> dict[str, Any];
     # def _get_jac_config(self: DesktopConfig) -> JacConfig;
 }
-

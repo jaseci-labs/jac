@@ -31,6 +31,7 @@ class DesktopTarget(Target) {
     override def dev(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None;
 
     """Start desktop app - build web bundle and launch Tauri with built bundle."""
-    override def start(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None;
+    override def start(
+        self: DesktopTarget, entry_file: Path, project_dir: Path
+    ) -> None;
 }
-

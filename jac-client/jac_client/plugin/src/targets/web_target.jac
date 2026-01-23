@@ -33,4 +33,3 @@ class WebTarget(Target) {
     """Start web target (no-op for web, handled by jac start)."""
     override def start(self: WebTarget, entry_file: Path, project_dir: Path) -> None;
 }
-
