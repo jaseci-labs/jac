@@ -86,6 +86,46 @@ def check_eligibility(person: Person, service_type: str) -> bool by llm();
 
 Docstrings naturally enhance the semantics of their associated code constructs, while the `sem` keyword provides an elegant way to enrich the meaning of class attributes and function arguments. Our research shows these concise semantic strings are more effective than traditional multi-line prompts.
 
+## Configuration
+
+### Project-wide Configuration (jac.toml)
+
+Configure byLLM behavior globally using `jac.toml`:
+
+```toml
+[plugins.byllm]
+system_prompt = "You are a helpful assistant..."
+
+[plugins.byllm.model]
+default_model = "gpt-4o-mini"
+
+[plugins.byllm.call_params]
+temperature = 0.7
+```
+
+This enables centralized control over:
+
+- System prompts across all LLM calls
+- Default model selection
+- Common parameters like temperature
+
+### Custom Model Endpoints
+
+Connect to custom or self-hosted models:
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(
+    model_name="custom-model",
+    config={
+        "api_base": "https://your-endpoint.com/v1/chat/completions",
+        "api_key": "your_key",
+        "http_client": True
+    }
+);
+```
+
 ## How well does byLLM work?
 
 byLLM is built using the underline priciple of Meaning Typed Programming and we shown our evaluation data compared with two such AI integration frameworks for python, such as DSPy and LMQL. We show significant performance gain against LMQL while allowing on par or better performance to DSPy, while reducing devloper complexity upto 10x.

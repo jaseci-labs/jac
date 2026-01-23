@@ -34,6 +34,7 @@ glob llm = Model(model_name="gpt-4o");
 | `method` | str | No | Default method ("Reason" for step-by-step) |
 | `tools` | list | No | Default tool functions |
 | `hyperparams` | dict | No | Model-specific parameters (temperature, max_tokens, etc.) |
+| `config` | dict | No | Advanced configuration (http_client, ca_bundle, api_base, etc.) |
 
 ### Supported Providers
 
@@ -46,6 +47,68 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
 | Google | `gemini/*` | `gemini/gemini-2.0-flash` |
 | Ollama | `ollama/*` | `ollama/llama3:70b` |
 | HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
+
+---
+
+## Project Configuration
+
+### System Prompt Override
+
+Override the default system prompt globally via `jac.toml`:
+
+```toml
+[plugins.byllm]
+system_prompt = "You are a helpful assistant that provides concise answers."
+```
+
+The system prompt is automatically applied to all `by llm()` function calls, providing:
+
+- Centralized control over LLM behavior across your project
+- Consistent personality without repeating prompts in code
+- Easy updates without touching source code
+
+**Example:**
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+def greet(name: str) -> str by llm();
+
+with entry {
+    # Uses system prompt from jac.toml
+    result = greet("Alice");
+    print(result);
+}
+```
+
+### HTTP Client for Custom Endpoints
+
+For custom or self-hosted models, configure HTTP client in the Model constructor:
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(
+    model_name="custom-model",
+    config={
+        "api_base": "https://your-endpoint.com/v1/chat/completions",
+        "api_key": "your_api_key_here",
+        "http_client": True,
+        "ca_bundle": True  # True (default SSL), False (skip), or "/path/to/cert.pem"
+    }
+);
+```
+
+**HTTP Client Options:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `api_base` | str | Full URL to your chat completions endpoint |
+| `api_key` | str | Bearer token for authentication |
+| `http_client` | bool | Enable direct HTTP mode (bypasses LiteLLM) |
+| `ca_bundle` | bool/str | SSL certificate verification |
 
 ---
 
