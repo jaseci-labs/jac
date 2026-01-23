@@ -86,9 +86,9 @@ and proxy-based routing. Automatically delegates to MockLLM when model_name
 is 'mockllm'.
 """
 obj Model(BaseLLM) {
-    has proxy: bool = False,
-        http_client: bool = False,
-        _mock_delegate: MockLLM | None = None;
+    has proxy: bool by postinit,
+        http_client: bool by postinit,
+        _mock_delegate: MockLLM | None by postinit;
 
     def postinit -> None;
     override def invoke(mtir: MTRuntime) -> object;
