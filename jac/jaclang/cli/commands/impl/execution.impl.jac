@@ -335,7 +335,7 @@ def _get_network_ips -> list[str] {
             }
         }
     } except Exception {
-        # Silently ignore network interface errors
+    # Silently ignore network interface errors
     }
     return ips;
 }

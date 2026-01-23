@@ -6,7 +6,6 @@ import from jaclang.cli.console { console }
 """Standard logger using jac console for Rich-styled output."""
 class StandardLogger(Logger) {
     def init(self: StandardLogger, config: dict[str, Any] = {}) -> None { }
-
     def info(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
         if context {
             console.info(f"{message} | Context: {context}");
