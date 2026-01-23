@@ -3,8 +3,11 @@ import re;
 """Format raw build error into clean output with .jac paths."""
 impl format_bundle_error(raw_error: str) -> str {
     clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error).strip();
-    lines = [l for l in clean.split('\n')
-             if not (l.strip().startswith('at ') and 'node_modules' in l)];
+    lines = [
+        l
+        for l in clean.split('\n')
+        if not (l.strip().startswith('at ') and 'node_modules' in l)
+    ];
     clean = '\n'.join(lines).strip();
     sep = "-" * 70;
     return f"\n{sep}\nCLIENT BUNDLE ERROR\n{sep}\n{clean}\n{sep}\n";
