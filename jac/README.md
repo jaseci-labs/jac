@@ -23,7 +23,7 @@ This is the main source code repository for the [Jac] programming language. It c
 
 ## What and Why is Jac?
 
-- **Native Superset of Python** - Jac is a native superset of python, meaning the entire python ecosystem is directly interoperable with Jac without any trickery (no interop interface needed). Like Typescript is to Javascript, or C++ is to C, Jac is to Python. (every Jac program can be ejected to pure python, and every python program can be transpiled to a Jac program)
+- **Native Superset of Python and TypeScript/JavaScript** - Jac is a native superset of both Python and TypeScript/JavaScript, meaning both ecosystems (PyPI and npm) are directly interoperable with Jac without any trickery (no interop interface needed). Every Jac program can be ejected to pure Python, and Python programs can be transpiled to Jac.
 
 - **AI as a Programming Language Constructs** - Jac includes a novel (neurosymbolic) language construct that allows replacing code with generative AI models themselves. Jac's philosophy abstracts away prompt engineering. (Imagine taking a function body and swapping it out with a model.)
 

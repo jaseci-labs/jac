@@ -409,6 +409,7 @@ class WalkerArchetype(Archetype):
 
     __jac_async__: ClassVar[bool] = False
     __jac_base__: ClassVar[bool] = True
+    reports: list[Any] = field(default_factory=list)
 
     @cached_property
     def __jac__(self) -> WalkerAnchor:

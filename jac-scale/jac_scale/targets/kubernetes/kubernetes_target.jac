@@ -602,12 +602,6 @@ class KubernetesTarget(DeploymentTarget) {
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{app_name}-service",
-            namespace,
-            'Service'
-        );
         time.sleep(self.k8s_config.resource_deletion_wait);
 
         # 13. Deploy databases
@@ -618,7 +612,17 @@ class KubernetesTarget(DeploymentTarget) {
             self.logger.info(f'Deploying Jaseci-app app...');
         }
         apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment);
-        core_v1.create_namespaced_service(namespace=namespace, body=service);
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{app_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if (e.status == 404) {
+                core_v1.create_namespaced_service(namespace=namespace, body=service);
+            } else {
+                raise ;
+            }
+        }
 
         # 15. Wait for deployment and get service URL
         self._wait_for_deployment(app_name, namespace, health_check_path, is_aws);

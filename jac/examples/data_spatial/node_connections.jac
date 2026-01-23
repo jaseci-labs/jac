@@ -20,5 +20,5 @@ with entry {
     node_1 +>: edge_4 := b() :+> node_5;
 
     node_1 del --> node_2;
-    del node_3 ;
+    del node_3;
 }

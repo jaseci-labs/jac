@@ -11,7 +11,7 @@ walker create_todo {
 
     can create with `root entry {
         new_todo = here ++> Todo(text=self.text);
-        report new_todo ;
+        report new_todo;
     }
 }
 
