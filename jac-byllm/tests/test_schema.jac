@@ -223,8 +223,8 @@ obj Client {
         major: str;
 }
 
-sem Client. name= "Should always be 'Alice'";
-sem Client. major= "Should always be 'Legal Advisor'";
+sem Client.name = "Should always be 'Alice'";
+sem Client.major = "Should always be 'Legal Advisor'";
 
 def generate_client -> Client by llm();
 
@@ -287,7 +287,7 @@ def generate_random_name_and_age -> dict[
     int
 ] by llm();
 
-sem generate_random_name_and_age. name= "Returns a dictionary with names as keys and ages as values";
+sem generate_random_name_and_age.name = "Returns a dictionary with names as keys and ages as values";
 
 test annotated_dictionary {
     name_age_dict = generate_random_name_and_age();
@@ -309,7 +309,7 @@ def generate_student_data -> dict[
     dict[str, int]
 ] by llm();
 
-sem generate_student_data= """
+sem generate_student_data = """
 Returns a dictionary where each key is the class name and value is another
 dictionary, where the key is the student's name in that class and value is
 their average score.

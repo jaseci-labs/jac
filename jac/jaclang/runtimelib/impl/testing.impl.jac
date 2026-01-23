@@ -293,20 +293,20 @@ impl JacTestClient.reload -> None {
     }
     # Clear cached module to force reload (same as HotReloader)
     if "__main__" in sys.modules {
-        del sys.modules["__main__"] ;
+        del sys.modules["__main__"];
     }
     # Also clear the module from Jac.loaded_modules
     if "__main__" in Jac.loaded_modules {
-        del Jac.loaded_modules["__main__"] ;
+        del Jac.loaded_modules["__main__"];
     }
     # Also clear from mod.hub to force recompilation
     try {
         resolved_path = str(Path(self._jac_file).resolve());
         if resolved_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[resolved_path] ;
+            del Jac.program.mod.hub[resolved_path];
         }
         if self._jac_file in Jac.program.mod.hub {
-            del Jac.program.mod.hub[self._jac_file] ;
+            del Jac.program.mod.hub[self._jac_file];
         }
     } except Exception {
         ;  # Ignore if hub doesn't exist

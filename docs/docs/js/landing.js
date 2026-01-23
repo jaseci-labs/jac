@@ -652,7 +652,7 @@ with entry { # Generate random points
 }`,
         codeLang: "python",
         output: `Distance: 5.79 , Circle area: 26.35`,
-        link: "https://www.jac-lang.org/jac_book/chapter_1/#comparison-with-python-and-traditional-languages"
+        link: "https://www.jac-lang.org/tutorials/language/syntax/"
     },
     {
         tagline: "Programming Abstractions for AI",
