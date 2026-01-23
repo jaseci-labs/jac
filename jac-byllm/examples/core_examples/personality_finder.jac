@@ -10,7 +10,7 @@ obj Person {
         personality: Personality;
 }
 
-sem Person. yod= "Year of Death of the person";
+sem Person.yod = "Year of Death of the person";
 
 glob personality_examples: dict[str, Personality] = {
          'Albert Einstein': Personality.INTROVERT,

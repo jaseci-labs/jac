@@ -288,7 +288,7 @@ impl JacConfig.save -> None {
         if self.plugins_config.disabled {
             doc["plugins"]["disabled"] = self.plugins_config.disabled;
         } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"] ;  # Remove if empty
+            del doc["plugins"]["disabled"];  # Remove if empty
         }
     }
     # Write using simple TOML serializer
@@ -430,29 +430,29 @@ impl JacConfig.remove_dependency(
     if dep_type == "python" {
         if dev {
             if name in self.dev_dependencies {
-                del self.dev_dependencies[name] ;
+                del self.dev_dependencies[name];
                 return True;
             }
         } else {
             if name in self.dependencies {
-                del self.dependencies[name] ;
+                del self.dependencies[name];
                 return True;
             }
         }
     } elif dep_type == "git" {
         if name in self.git_dependencies {
-            del self.git_dependencies[name] ;
+            del self.git_dependencies[name];
             return True;
         }
     } else {
         if dep_type in self.plugin_dependencies {
             if dev and "dev" in self.plugin_dependencies[dep_type] {
                 if name in self.plugin_dependencies[dep_type]["dev"] {
-                    del self.plugin_dependencies[dep_type]["dev"][name] ;
+                    del self.plugin_dependencies[dep_type]["dev"][name];
                     return True;
                 }
             } elif name in self.plugin_dependencies[dep_type] {
-                del self.plugin_dependencies[dep_type][name] ;
+                del self.plugin_dependencies[dep_type][name];
                 return True;
             }
         }

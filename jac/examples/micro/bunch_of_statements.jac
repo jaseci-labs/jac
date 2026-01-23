@@ -46,7 +46,7 @@ def example_function(numbers: list[int]) -> int {
     # while loop
     while len(even_numbers) > 0 {
         # delete
-        del even_numbers[0] ;
+        del even_numbers[0];
     }
 
     print("All done!");
