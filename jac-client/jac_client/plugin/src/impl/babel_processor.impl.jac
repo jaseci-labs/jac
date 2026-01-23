@@ -37,7 +37,7 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
                     text=True
                 );
             } except subprocess.CalledProcessError as e {
-                formatted_error = _format_bundle_error(e.stderr or str(e));
+                formatted_error = format_bundle_error(e.stderr or str(e));
                 raise ClientBundleError(formatted_error) from None ;
             } except FileNotFoundError {
                 raise ClientBundleError(
@@ -60,7 +60,7 @@ impl BabelProcessor.compile(self: BabelProcessor) -> None {
         if result.returncode != 0 {
             # Parse and format the error
             raw_error = result.stderr or result.stdout or "Unknown compilation error";
-            formatted_error = _format_bundle_error(raw_error);
+            formatted_error = format_bundle_error(raw_error);
             raise ClientBundleError(formatted_error) from None ;
         }
     } finally {

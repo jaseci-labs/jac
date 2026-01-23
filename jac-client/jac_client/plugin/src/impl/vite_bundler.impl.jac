@@ -1,7 +1,7 @@
 import re;
 
 """Format raw build error into clean output with .jac paths."""
-impl _format_bundle_error(raw_error: str) -> str {
+impl format_bundle_error(raw_error: str) -> str {
     clean = re.sub(r'\x1b\[[0-9;]*m', '', raw_error).strip();
     lines = [l for l in clean.split('\n')
              if not (l.strip().startswith('at ') and 'node_modules' in l)];
@@ -427,7 +427,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
                     error_output = result.stderr or result.stdout;
-                    formatted_error = _format_bundle_error(error_output);
+                    formatted_error = format_bundle_error(error_output);
                     raise ClientBundleError(formatted_error) from None ;
                 }
                 print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
@@ -464,7 +464,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         if result.returncode != 0 {
             error_msg = result.stderr or result.stdout or 'Unknown error';
             # Use the error reporter to format a user-friendly message
-            formatted_error = _format_bundle_error(error_msg);
+            formatted_error = format_bundle_error(error_msg);
             raise ClientBundleError(formatted_error) from None ;
         }
         print(f"  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);

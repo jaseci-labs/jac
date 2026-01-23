@@ -11,7 +11,7 @@ import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__);
 
-def _format_bundle_error(raw_error: str) -> str;
+def format_bundle_error(raw_error: str) -> str;
 
 """Handles Vite bundling operations."""
 class ViteBundler {
