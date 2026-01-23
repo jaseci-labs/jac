@@ -177,7 +177,7 @@ impl CommandRegistry._apply_pending_extensions(name: str) -> None {
         }
     }
     # Clear pending extensions for this command
-    del self._pending_extensions[name] ;
+    del self._pending_extensions[name];
 }
 
 """Build argparse subparser for a command."""

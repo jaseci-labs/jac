@@ -90,7 +90,7 @@ walker create_item {
             pricing
         );
         print([root-->]);
-        report [root-->] ;
+        report [root-->];
     }
 }
 

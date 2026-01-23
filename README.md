@@ -77,10 +77,10 @@ Jac is an innovative programming language that extends both Python and TypeScrip
 Get the complete, stable toolkit from PyPI:
 
 ```bash
-pip install jaclang[all]
+pip install jaseci
 ```
 
-This is the fastest way to get started with building applications.
+The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, and `jac-super` together for convenience. This is the fastest way to get started with building applications.
 
 </details>
 

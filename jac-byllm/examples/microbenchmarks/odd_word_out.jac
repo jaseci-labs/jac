@@ -22,7 +22,7 @@ glob examples: list[OddWord] = [
 
      ];
 
-sem examples= "Examples for Picking Odd Word out (Options, Reasoning, Result)";
+sem examples = "Examples for Picking Odd Word out (Options, Reasoning, Result)";
 
 def odd_word_out_and_reason(options: list[str]) -> OddWord by llm(
     incl_info={"examples": examples}

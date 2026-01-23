@@ -2,64 +2,27 @@ name: Release jaclang to PYPI
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.9.9)'
-        required: true
-        type: string
 
 jobs:
   release-jaclang:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jac
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           submodules: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.12'
-
-      - name: Update version in pyproject.toml
-        run: |
-          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' jac/pyproject.toml
-
-      - name: Update release notes
-        run: |
-          RELEASE_NOTES="docs/docs/communityhub/release_notes/jaclang.md"
-          VERSION="${{ inputs.version }}"
-
-          # Calculate next patch version for unreleased
-          IFS='.' read -r major minor patch <<< "$VERSION"
-          NEXT_VERSION="$major.$minor.$((patch + 1))"
-
-          # Remove (Latest Release) from any existing version
-          sed -i 's/ (Latest Release)//g' "$RELEASE_NOTES"
-
-          # Update the unreleased version to the new version with (Latest Release)
-          sed -i "s/## jaclang .* (Unreleased)/## jaclang $VERSION (Latest Release)/" "$RELEASE_NOTES"
-
-          # Add new unreleased section at the top (after the intro paragraph)
-          sed -i "/^## jaclang $VERSION (Latest Release)/i ## jaclang $NEXT_VERSION (Unreleased)\n" "$RELEASE_NOTES"
-
-      - name: Commit version updates
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add jac/pyproject.toml docs/docs/communityhub/release_notes/jaclang.md
-          git commit -m "chore: bump jaclang version to ${{ inputs.version }}"
-          git push
-
       - name: Install build tools
         run: |
           pip install build twine
-
       - name: Build and publish package
-        working-directory: jac
         run: |
           python -m build
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

@@ -49,6 +49,15 @@ impl HotReloader.on_file_change(event: Any) -> None {
 
 """Process a file change by classifying declarations and taking action."""
 impl HotReloader._process_change(file_path: str) -> None {
+    # Check if this is a frontend file
+    if file_path.endswith(
+        tuple(
+            p[1:] if p.startswith("*") else p for p in self.watcher.additional_patterns
+        )
+    ) {
+        self._copy_frontend_files(file_path);
+        return;
+    }
     # Check if file has client and/or server declarations
     (has_client, has_server) = self._classify_declarations(file_path);
     # Handle server declarations - reload in sys.modules
@@ -73,17 +82,17 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         if name == module_name or name.startswith(f"{module_name}.")
     ];
     for mod_name in modules_to_remove {
-        del sys.modules[mod_name] ;
+        del sys.modules[mod_name];
     }
     # Also remove from the program's module hub
     try {
         if file_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[file_path] ;
+            del Jac.program.mod.hub[file_path];
         }
         # Also try with resolved path
         resolved_path = str(Path(file_path).resolve());
         if resolved_path in Jac.program.mod.hub {
-            del Jac.program.mod.hub[resolved_path] ;
+            del Jac.program.mod.hub[resolved_path];
         }
     } except Exception as e {
         print(f"[HMR] Warning: Could not clear module hub: {e}", flush=True);
@@ -123,7 +132,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
 
         # Clear existing module from hub to force recompilation
         if source_key in Jac.program.mod.hub {
-            del Jac.program.mod.hub[source_key] ;
+            del Jac.program.mod.hub[source_key];
         }
 
         # Compile the file (this generates JS as part of the compilation)
@@ -140,15 +149,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
 
         # If there were previous errors, we need to update the entry point
         if self._overlay_entry {
-            output_base = Path(self.base_path) / self._client_output_dir;
-            output_dir = output_base;
-            output_dir.mkdir(parents=True, exist_ok=True);
-            js_filename = "_entry.js";
-            output_path = output_dir / js_filename;
-            entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
-            output_path.write_text(entry_content, encoding='utf-8');
-            print(f"[HMR] Update entry: {output_path}", flush=True);
-            self._overlay_entry = False;
+            self._update_entry_point();
         }
 
         # Get the generated JS code
@@ -298,4 +299,53 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     self._overlay_entry = True;
     print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
     return;
+}
+
+"""Copy frontend files to compiled directory."""
+impl HotReloader._copy_frontend_files(file_path: str) -> None {
+    try {
+        source_path = Path(file_path).resolve();
+        base_dir = Path(self.base_path).resolve();
+        try {
+            rel_path = source_path.relative_to(base_dir);
+        } except ValueError {
+            rel_path = source_path.name;
+        }
+        output_base = Path(self.base_path) / self._client_output_dir;
+        output_path = output_base / rel_path;
+
+        # Check if source file exists (handle deletion)
+        if not source_path.exists() {
+            # File was deleted - remove from build directory
+            if output_path.exists() {
+                output_path.unlink();
+                print(f"[HMR] Removed deleted frontend file: {rel_path}", flush=True);
+            }
+            self._emit_client_error_overlay(file_path, f"No module in {rel_path}");
+            return;
+        }
+        try {
+            # If there were previous errors, we need to update the entry point
+            if self._overlay_entry {
+                self._update_entry_point();
+            }
+            ts_code = source_path.read_text(encoding='utf-8');
+            output_path.parent.mkdir(parents=True, exist_ok=True);
+            output_path.write_text(ts_code, encoding='utf-8');
+        } except (FileNotFoundError, OSError) { }
+        print(f"[HMR] Copied frontend file: {file_path} -> {output_path}", flush=True);
+    } except Exception as e {
+        print(f"[HMR] Error copying frontend file {file_path}: {e}", flush=True);
+    }
+}
+
+"""Update the entry point to reflect changes in modules."""
+impl HotReloader._update_entry_point -> None {
+    output_base = Path(self.base_path) / self._client_output_dir;
+    output_base.mkdir(parents=True, exist_ok=True);
+    output_path = output_base / "_entry.js";
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+    output_path.write_text(entry_content, encoding='utf-8');
+    print(f"[HMR] Update entry: {output_path}", flush=True);
+    self._overlay_entry = False;
 }
