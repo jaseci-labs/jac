@@ -95,7 +95,7 @@ obj WalkerAnchor(Anchor) {
 }
 
 obj Root(AbsRootHook) {
-    has __jac__: NodeAnchor | None = None;
+    has __jac__: NodeAnchor | None by postinit;
 
     def postinit {
         self.__jac__ = NodeAnchor(self, ds_entry_funcs=[], ds_exit_funcs=[]);
@@ -103,7 +103,7 @@ obj Root(AbsRootHook) {
 }
 
 obj GenericEdge(ArchetypeProtocol) {
-    has __jac__: EdgeAnchor | None = None;
+    has __jac__: EdgeAnchor | None by postinit;
 
     def postinit {
         self.__jac__ = EdgeAnchor(self, ds_entry_funcs=[], ds_exit_funcs=[]);
@@ -111,7 +111,7 @@ obj GenericEdge(ArchetypeProtocol) {
 }
 
 obj Master {
-    has __jac__: Anchor | None = None;
+    has __jac__: Anchor | None by postinit,
     has root_node: Root = Root(Root);
 
     def postinit {

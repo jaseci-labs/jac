@@ -22,12 +22,12 @@ Fields:
 - entry_node: Where walkers start traversal (defaults to user_root)
 """
 obj ExecutionContext {
-    has mem: Memory | None = None,
+    has mem: Memory | None by postinit,
         reports: list[Any] = [],
         custom: Any = MISSING,
-        system_root: NodeAnchor | None = None,
-        user_root: NodeAnchor | None = None,
-        entry_node: NodeAnchor | None = None;
+        system_root: NodeAnchor | None by postinit,
+        user_root: NodeAnchor | None by postinit,
+        entry_node: NodeAnchor | None by postinit;
 
     def postinit -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;

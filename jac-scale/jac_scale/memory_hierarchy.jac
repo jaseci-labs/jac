@@ -37,7 +37,7 @@ Replaces LocalCacheMemory when Redis is available.
 """
 obj RedisBackend(CacheMemory) {
     has redis_url: str = _db_config['redis_url'],
-        redis_client: (redis.Redis | None) = None;
+        redis_client: (redis.Redis | None) by postinit;
 
     def postinit -> None;
     def is_available -> bool;
@@ -74,7 +74,9 @@ MongoDB persistence backend - implements PersistentMemory for durable L3 storage
 Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
-    has client: (MongoClient | None) = None,
+    has client: (MongoClient | None) by postinit,
+        db: Any by postinit,
+        collection: Any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = 'anchors',
         mongo_url: str = _db_config['mongodb_uri'];

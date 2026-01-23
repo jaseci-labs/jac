@@ -35,8 +35,8 @@ obj ParamAssignmentTracker {
     has params: list[types.Parameter],
         curr_param_idx: int = 0,
         matched_params: set[types.Parameter] = set(),
-        varargs: (types.Parameter | None) = None,
-        kwargs: (types.Parameter | None) = None;
+        varargs: (types.Parameter | None) by postinit,
+        kwargs: (types.Parameter | None) by postinit;
 
     def postinit -> None;
     def lookup_named_parameter(param_name: str) -> (types.Parameter | None);

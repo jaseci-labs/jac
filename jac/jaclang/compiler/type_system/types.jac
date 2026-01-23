@@ -144,7 +144,7 @@ obj TypeVarType(TypeBase) {
 """Represents a class type."""
 obj ClassType(TypeBase) {
     has shared: (ClassType.ClassDetailsShared | None) = None,
-        private: (ClassType.ClassDetailsPrivate | None) = None;
+        private: (ClassType.ClassDetailsPrivate | None) by postinit;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
@@ -160,9 +160,9 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType],
-            type_params: (list[TypeVarType] | None) = None,
-            base_classes: (list[TypeBase] | None) = None,
+            mro: list[ClassType] by postinit,
+            type_params: (list[TypeVarType] | None) by postinit,
+            base_classes: (list[TypeBase] | None) by postinit,
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
@@ -177,7 +177,7 @@ Holds the private details of class type.
         The private details of classes will be unique to each class instance.
     """
     obj ClassDetailsPrivate {
-        has type_args: (list[TypeBase] | None) = None;
+        has type_args: (list[TypeBase] | None) by postinit;
 
         def postinit -> None;
     }
@@ -225,7 +225,7 @@ obj Parameter {
 obj FunctionType(TypeBase) {
     has func_name: str = "",
         return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) = None;
+        parameters: (list[Parameter] | None) by postinit;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -239,7 +239,7 @@ obj FunctionType(TypeBase) {
 
 """Represents an overloaded type."""
 obj OverloadedType(TypeBase) {
-    has overloads: (list[FunctionType] | None) = None;
+    has overloads: (list[FunctionType] | None) by postinit;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Overload;
@@ -251,7 +251,7 @@ obj OverloadedType(TypeBase) {
 
 """Represents a union type."""
 obj UnionType(TypeBase) {
-    has types: (list[TypeBase] | None) = None;
+    has types: (list[TypeBase] | None) by postinit;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;

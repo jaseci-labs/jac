@@ -40,10 +40,10 @@ Features:
 - Generic section getter with type conversion
 """
 obj PluginConfigBase {
-    has project_dir: Path | None = None,
-        config_file: Path | None = None,
-        _config: dict[str, Any] | None = None,
-        _jac_config: JacConfig | None = None;
+    has project_dir: Path | None by postinit,
+        config_file: Path | None by postinit,
+        _config: dict[str, Any] | None by postinit,
+        _jac_config: JacConfig | None by postinit;
 
     def postinit -> None;
     def get_plugin_name -> str abs;
