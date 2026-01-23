@@ -77,7 +77,9 @@ def main -> object {
         import from jaclang.runtimelib.server { JacAPIServer }
     } except ImportError as e {
         console.print(f"Error: Failed to import Jac runtime: {e}", file=sys.stderr);
-        console.print('  Make sure jaclang is installed: pip install jaclang', file=sys.stderr);
+        console.print(
+            '  Make sure jaclang is installed: pip install jaclang', file=sys.stderr
+        );
         sys.exit(1);
     }
     try {
@@ -90,7 +92,9 @@ def main -> object {
             sys.exit(1);
         }
     } except Exception as e {
-        console.print(f"Error: Failed to load module '{module_name}': {e}", file=sys.stderr);
+        console.print(
+            f"Error: Failed to load module '{module_name}': {e}", file=sys.stderr
+        );
         import traceback;
         traceback.print_exc();
         sys.exit(1);
@@ -122,4 +126,3 @@ with entry {
         main();
     }
 }
-

@@ -15,12 +15,14 @@ import os;
 
 glob registry = get_registry();
 
+# Register targets when module loads
+# Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
+import from jac_client.plugin.src.targets.desktop_target {
+    DesktopTarget
+}
+import from jac_client.plugin.src.targets.web_target { WebTarget }
+import from jac_client.plugin.src.targets.register { register_targets }
 with entry {
-    # Register targets when module loads
-    # Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
-    import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
-    import from jac_client.plugin.src.targets.register { register_targets }
     register_targets();
 }
 
@@ -51,20 +53,20 @@ with entry {
             choices=["windows", "macos", "linux", "all"],
             short="p"  # Use -p for platform
         ),
+
     ],
     examples=[
         ("jac build", "Build web target (default)"),
         ("jac build main.jac", "Build specific file"),
         ("jac build --client desktop", "Build desktop app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
+
     ],
     group="build",
     source="jac-client"
 )
 def build(
-    filename: str = "main.jac",
-    target: str = "web",
-    platform: str | None = None
+    filename: str = "main.jac", target: str = "web", platform: str | None = None
 ) -> int {
     # This will be handled by the pre_hook
     return 0;
@@ -76,14 +78,11 @@ def build(
     help="Setup a build target (one-time initialization)",
     args=[
         Arg.create(
-            "target",
-            kind=ArgKind.POSITIONAL,
-            help="Target to setup (e.g., desktop)"
+            "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop)"
         ),
+
     ],
-    examples=[
-        ("jac setup desktop", "Setup desktop target (Tauri)"),
-    ],
+    examples=[("jac setup desktop", "Setup desktop target (Tauri)"), ],
     group="project",
     source="jac-client"
 )
@@ -150,16 +149,12 @@ class JacCmd {
 
         # Add pre-hook to build command (command is registered at module level)
         registry.extend_command(
-            command_name="build",
-            pre_hook=_handle_build_target,
-            source="jac-client"
+            command_name="build", pre_hook=_handle_build_target, source="jac-client"
         );
 
         # Add pre-hook to setup command (command is registered at module level)
         registry.extend_command(
-            command_name="setup",
-            pre_hook=_handle_setup_target,
-            source="jac-client"
+            command_name="setup", pre_hook=_handle_setup_target, source="jac-client"
         );
 
         # Extend 'start' command with --client flag
@@ -176,6 +171,7 @@ class JacCmd {
                         choices=["web", "desktop"],
                         short=""  # Disable auto-generated short flag
                     ),
+
                 ],
                 pre_hook=_handle_start_target,
                 source="jac-client"
@@ -293,30 +289,37 @@ def _handle_build_target(ctx: HookContext) -> None {
     import from jac_client.plugin.src.targets.registry { get_target_registry }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    
+
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
-    
+
     registry = get_target_registry();
     target = registry.get(target_name);
-    
+
     if not target {
         console.error(f"Unknown client  target: {target_name}");
-        console.print(f"Available client targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        console.print(
+            f"Available client targets: {', '.join(
+                [t.name for t in registry.get_all()]
+            )}",
+            style="muted"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
     }
-    
+
     # Store target info in context for use by build handler
     ctx.set_data("build_target", target);
     ctx.set_data("build_platform", platform);
-    
+
     # If target requires setup, warn user
     if target.requires_setup {
-        console.warning(f"Client target '{target_name}' requires setup. Run 'jac setup {target_name}' first.");
+        console.warning(
+            f"Client target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
+        );
     }
-    
+
     # Build using target's build method
     try {
         config = get_config();
@@ -326,7 +329,7 @@ def _handle_build_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
+
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
             entry_file = config.entry_point;
@@ -337,19 +340,21 @@ def _handle_build_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
+
         entry_path = Path(entry_file);
         project_dir = config.project_root or Path.cwd();
         if not entry_path.is_absolute() {
             entry_path = project_dir / entry_path;
         }
         bundle_path = target.build(entry_path, project_dir, platform);
-        
+
         console.success(f"Build complete: {bundle_path}");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 0);
     } except NotImplementedError as e {
-        console.error(f"Target '{target_name}' is not yet implemented. Coming in Phase 2!");
+        console.error(
+            f"Target '{target_name}' is not yet implemented. Coming in Phase 2!"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     } except Exception as e {
@@ -363,28 +368,32 @@ def _handle_build_target(ctx: HookContext) -> None {
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jac_client.plugin.src.targets.registry { get_target_registry }
-    
+
     target_name = ctx.get_arg("client", "web");
-    
+
     registry = get_target_registry();
     target = registry.get(target_name);
-    
+
     if not target {
         console.error(f"Unknown client target:  {target_name}");
-        console.print(f"Available client targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        console.print(
+            f"Available client targets: {', '.join(
+                [t.name for t in registry.get_all()]
+            )}",
+            style="muted"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
     }
-    
+
     # Store target info in context
     ctx.set_data("start_client_target", target);
-    
+
     # Handle desktop target
     if target_name == "desktop" {
         import from pathlib { Path }
         import from jaclang.project.config { get_config }
-        
         config = get_config();
         if not config {
             console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -392,7 +401,6 @@ def _handle_start_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
         # Get entry file
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
@@ -404,13 +412,11 @@ def _handle_start_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
         entry_path = Path(entry_file);
         project_dir = config.project_root or Path.cwd();
         if not entry_path.is_absolute() {
             entry_path = project_dir / entry_path;
         }
-        
         # Check if setup has been run
         tauri_dir = project_dir / "src-tauri";
         if not tauri_dir.exists() {
@@ -419,10 +425,8 @@ def _handle_start_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
         # Check if --dev flag is set
         dev_mode = ctx.get_arg("dev", False);
-        
         try {
             if dev_mode {
                 # Desktop target with --dev: launch Tauri dev mode (hot reload)
@@ -442,7 +446,6 @@ def _handle_start_target(ctx: HookContext) -> None {
         }
         return;
     }
-    
     # Web target: let existing start command handle it
     # (no cancellation, let it run normally)
 }
@@ -453,7 +456,7 @@ def _handle_setup_target(ctx: HookContext) -> None {
     import from jac_client.plugin.src.targets.registry { get_target_registry }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    
+
     target_name = ctx.get_arg("target", None);
     if not target_name {
         console.error("No target specified. Use: jac setup <target>");
@@ -462,18 +465,21 @@ def _handle_setup_target(ctx: HookContext) -> None {
         ctx.set_data("cancel_return_code", 1);
         return;
     }
-    
+
     registry = get_target_registry();
     target = registry.get(target_name);
-    
+
     if not target {
         console.error(f"Unknown client target: {target_name}");
-        console.print(f"Available targets: {', '.join([t.name for t in registry.get_all()])}", style="muted");
+        console.print(
+            f"Available targets: {', '.join([t.name for t in registry.get_all()])}",
+            style="muted"
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;
     }
-    
+
     # Setup using target's setup method
     try {
         config = get_config();
@@ -483,21 +489,27 @@ def _handle_setup_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
+
         project_dir = config.project_root or Path.cwd();
-        console.print(f"Setting up target '{target_name}' in: {project_dir}", style="muted");
+        console.print(
+            f"Setting up target '{target_name}' in: {project_dir}", style="muted"
+        );
         target.setup(project_dir);
-        
+
         # Verify setup completed successfully
         tauri_dir = project_dir / "src-tauri";
         if not tauri_dir.exists() {
-            console.error(f"Setup completed but src-tauri directory not found at: {tauri_dir}");
-            console.print("This may indicate the setup function failed silently.", style="muted");
+            console.error(
+                f"Setup completed but src-tauri directory not found at: {tauri_dir}"
+            );
+            console.print(
+                "This may indicate the setup function failed silently.", style="muted"
+            );
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        
+
         console.success(f"Target '{target_name}' setup complete!");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 0);

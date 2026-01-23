@@ -22,7 +22,6 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
     # If config is not available, use fallback defaults
     project_name = "my-jac-app";
     project_version = "1.0.0";
-    
     try {
         jac_config = self._get_jac_config();
         if jac_config and jac_config.project {
@@ -33,10 +32,8 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
         # If config loading fails, use defaults
         console.warning("Failed to load JacConfig, using fallback defaults");
     }
-    
     # Generate identifier from project name
     identifier = _generate_identifier(project_name);
-    
     return {
         'name': project_name,
         'identifier': identifier,
@@ -50,11 +47,7 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'resizable': True,
             'fullscreen': False
         },
-        'platforms': {
-            'windows': True,
-            'macos': True,
-            'linux': True
-        },
+        'platforms': {'windows': True, 'macos': True, 'linux': True},
         'features': {
             'system_tray': False,
             'auto_update': False,
@@ -68,7 +61,9 @@ impl DesktopConfig._get_jac_config(self: DesktopConfig) -> JacConfig {
     if self._jac_config is None {
         self._jac_config = get_config();
         if self._jac_config is None {
-            raise RuntimeError("No jac.toml found. Run 'jac create' to create a project.");
+            raise RuntimeError(
+                "No jac.toml found. Run 'jac create' to create a project."
+            ) ;
         }
     }
     return self._jac_config;
@@ -79,9 +74,7 @@ impl DesktopConfig.load(self: DesktopConfig) -> dict[str, Any] {
     if self._config is not None {
         return self._config;
     }
-    
     default_config = self.get_default_config();
-    
     # Try to get [desktop] section from jac.toml
     desktop_config = {};
     try {
@@ -96,14 +89,12 @@ impl DesktopConfig.load(self: DesktopConfig) -> dict[str, Any] {
         # If config loading fails, use defaults only
         console.warning("Failed to load JacConfig, using fallback defaults");
     }
-    
     # Deep merge defaults with user configuration
     if desktop_config {
         self._config = deep_merge(default_config, desktop_config);
     } else {
         self._config = default_config;
     }
-    
     return self._config;
 }
 
@@ -138,36 +129,40 @@ impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, Any] {
 """Validate desktop configuration."""
 impl DesktopConfig.validate(self: DesktopConfig) -> None {
     config = self.load();
-    
     # Required fields
     name = config.get('name', '');
     if not name {
-        raise ValueError("Desktop configuration error: 'name' is required in [desktop] section");
+        raise ValueError(
+            "Desktop configuration error: 'name' is required in [desktop] section"
+        ) ;
     }
-    
     identifier = config.get('identifier', '');
     if not identifier {
-        raise ValueError("Desktop configuration error: 'identifier' is required in [desktop] section");
+        raise ValueError(
+            "Desktop configuration error: 'identifier' is required in [desktop] section"
+        ) ;
     }
-    
     # Validate identifier format (should be reverse domain notation)
     if not _is_valid_identifier(identifier) {
-        console.warning(f"Desktop identifier '{identifier}' may not be valid. Use reverse domain notation (e.g., 'com.example.myapp')");
+        console.warning(
+            f"Desktop identifier '{identifier}' may not be valid. Use reverse domain notation (e.g., 'com.example.myapp')"
+        );
     }
-    
     # Validate window dimensions
     window = config.get('window', {});
     width = window.get('width', 1200);
     height = window.get('height', 800);
     min_width = window.get('min_width', 800);
     min_height = window.get('min_height', 600);
-    
     if min_width > width {
-        raise ValueError(f"Desktop configuration error: window.min_width ({min_width}) cannot be greater than window.width ({width})");
+        raise ValueError(
+            f"Desktop configuration error: window.min_width ({min_width}) cannot be greater than window.width ({width})"
+        ) ;
     }
-    
     if min_height > height {
-        raise ValueError(f"Desktop configuration error: window.min_height ({min_height}) cannot be greater than window.height ({height})");
+        raise ValueError(
+            f"Desktop configuration error: window.min_height ({min_height}) cannot be greater than window.height ({height})"
+        ) ;
     }
 }
 
@@ -194,4 +189,3 @@ def _is_valid_identifier(identifier: str) -> bool {
     # Should be like: com.example.myapp (at least one dot, alphanumeric + dots)
     return bool(re.match(r'^[a-z0-9]+(\.[a-z0-9]+)+$', identifier.lower()));
 }
-

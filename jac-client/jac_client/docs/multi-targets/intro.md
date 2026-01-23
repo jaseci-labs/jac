@@ -57,6 +57,7 @@ jac start main.jac --client desktop --dev
 ### Single Codebase, Multiple Platforms
 
 Write your application once in Jac, then build for:
+
 - Web browsers (Chrome, Firefox, Safari, Edge)
 - Desktop (Windows, macOS, Linux)
 - Mobile (coming soon)
@@ -131,19 +132,19 @@ jac build main.jac --client desktop
 
 ## FAQ
 
-**Q: Can I use the same codebase for web and desktop?**  
+**Q: Can I use the same codebase for web and desktop?**
 A: Yes! The same Jac code works for both targets. The build system handles the differences.
 
-**Q: Do I need separate builds for each platform?**  
+**Q: Do I need separate builds for each platform?**
 A: For production, yes. Use `--platform` flag to build for specific platforms. For development, Tauri automatically uses your current platform.
 
-**Q: Will adding desktop support break my web app?**  
+**Q: Will adding desktop support break my web app?**
 A: No! Web remains the default target with zero breaking changes.
 
-**Q: Can I test my desktop app before building?**  
+**Q: Can I test my desktop app before building?**
 A: Yes! Use `jac start main.jac --client desktop --dev` for hot reload development.
 
-**Q: How do I distribute my desktop app?**  
+**Q: How do I distribute my desktop app?**
 A: After building with `jac build --client desktop`, distribute the installer files from `src-tauri/target/release/bundle/`.
 
 ---

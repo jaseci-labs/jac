@@ -24,6 +24,7 @@ This guide provides step-by-step instructions to test the desktop target (Tauri)
 ### 1. System Requirements
 
 **Python Environment:**
+
 ```bash
 # Verify Python 3.12+
 python3 --version
@@ -36,6 +37,7 @@ pip install pyinstaller
 ```
 
 **Rust Toolchain (for desktop builds):**
+
 ```bash
 # Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -51,6 +53,7 @@ cargo install tauri-cli
 **Build Tools:**
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt-get update
 sudo apt-get install build-essential \
@@ -64,6 +67,7 @@ sudo apt-get install build-essential \
 ```
 
 **Fedora:**
+
 ```bash
 sudo dnf install gcc gcc-c++ \
     webkit2gtk3-devel.x86_64 \
@@ -75,6 +79,7 @@ sudo dnf install gcc gcc-c++ \
 ```
 
 **Arch Linux:**
+
 ```bash
 sudo pacman -S base-devel \
     webkit2gtk \
@@ -89,12 +94,14 @@ sudo pacman -S base-devel \
 ```
 
 **macOS:**
+
 ```bash
 # Install Xcode Command Line Tools
 xcode-select --install
 ```
 
 **Windows:**
+
 - Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) or Visual Studio with C++ support
 
 ### 2. Verify Installation
@@ -237,6 +244,7 @@ jac setup desktop
 ```
 
 **Expected Output:**
+
 ```
 🖥️  Setting up desktop target (Tauri)
   Project directory: /tmp/my-desktop-app
@@ -276,6 +284,7 @@ grep -A 5 "\[desktop\]" jac.toml
 ```
 
 **Expected Structure:**
+
 ```
 my-desktop-app/
 ├── main.jac
@@ -304,6 +313,7 @@ jac build main.jac --client web
 ```
 
 **Expected Output:**
+
 ```
 🌐 Building web target...
   Compiling Jac code...
@@ -339,6 +349,7 @@ curl http://localhost:8000/
 ```
 
 **Expected:**
+
 - Dev server starts on port 8000
 - Browser shows the app with counter
 - Hot reload works (edit `main.jac`, see changes)
@@ -356,6 +367,7 @@ jac start main.jac --client desktop --dev
 ```
 
 **Expected Behavior:**
+
 1. Vite dev server starts on port 5173
 2. Tauri dev window opens automatically
 3. App loads in the native window
@@ -363,6 +375,7 @@ jac start main.jac --client desktop --dev
 5. Hot reload works (edit `main.jac`, changes appear in window)
 
 **Verify:**
+
 - Window has native title bar
 - Window is resizable
 - App content displays correctly
@@ -378,12 +391,14 @@ jac start main.jac --client desktop
 ```
 
 **Expected Behavior:**
+
 1. Web bundle is built first
 2. `index.html` is generated
 3. Tauri window opens with built bundle
 4. App works correctly (no dev server)
 
 **Verify:**
+
 - Window opens with built app
 - All functionality works
 - No network requests (everything is bundled)
@@ -401,6 +416,7 @@ jac build main.jac --client desktop
 ```
 
 **Expected Output:**
+
 ```
 🖥️  Building desktop app (Tauri)
   Step 1: Building web bundle...
@@ -418,6 +434,7 @@ jac build main.jac --client desktop
 **This may take 5-15 minutes on first build** (Rust compilation).
 
 **Verify Build Output:**
+
 ```bash
 # Check sidecar was created
 ls -lh src-tauri/binaries/
@@ -433,6 +450,7 @@ find src-tauri/target -name "*.AppImage" -o -name "*.exe" -o -name "*.dmg" | hea
 ```
 
 **Expected Bundle Locations:**
+
 - **Linux:** `src-tauri/target/release/bundle/appimage/{app-name}_*.AppImage` (or `{app-name}.AppDir` if appimagetool is not installed)
 - **Windows:** `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/{app-name}_*.exe`
 - **macOS:** `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/{app-name}_*.dmg`
@@ -453,6 +471,7 @@ The sidecar is a bundled executable that provides the Jac backend API server.
 ```
 
 **Expected Output:**
+
 ```
 Jac Sidecar starting...
   Module: main
@@ -463,6 +482,7 @@ Press Ctrl+C to stop the server
 ```
 
 **In another terminal, test the API:**
+
 ```bash
 # Test root endpoint
 curl http://localhost:8002/
@@ -475,6 +495,7 @@ curl http://localhost:8002/walkers
 ```
 
 **Expected:**
+
 - All endpoints return valid JSON
 - No "No module named 'jaclang'" errors
 - Server responds correctly
@@ -486,6 +507,7 @@ curl http://localhost:8002/walkers
 Create a more complete example with backend functions:
 
 **Update `main.jac`:**
+
 ```jac
 """Main entry point with backend functions."""
 
@@ -512,7 +534,7 @@ cl {
             # Test function call
             greet_result = await jacSpawn("greet", "", {"name": "Desktop User"});
             greeting = greet_result.data;
-            
+
             add_result = await jacSpawn("add", "", {"a": 5, "b": 3});
             result = add_result.data;
         }
@@ -543,6 +565,7 @@ cl {
 ```
 
 **Rebuild sidecar:**
+
 ```bash
 # Clean old sidecar
 rm -rf src-tauri/binaries/jac-sidecar*
@@ -552,6 +575,7 @@ jac build main.jac --client desktop
 ```
 
 **Test sidecar with functions:**
+
 ```bash
 # Start sidecar
 ./src-tauri/binaries/jac-sidecar --module-path main.jac --port 8003 &
@@ -573,6 +597,7 @@ pkill -f jac-sidecar
 ```
 
 **Expected:**
+
 - `greet` returns: `{"data": "Hello, World!"}`
 - `add` returns: `{"data": 30}`
 - No compilation errors
@@ -612,6 +637,7 @@ sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
 ```
 
 After installing `appimagetool`, rebuild:
+
 ```bash
 jac build main.jac --client desktop --platform linux
 ```
@@ -689,7 +715,7 @@ curl http://localhost:8000/
 # Test functions endpoint
 curl http://localhost:8000/functions
 
-# Test walkers endpoint  
+# Test walkers endpoint
 curl http://localhost:8000/walkers
 
 # Test a function call (if you have functions defined)
@@ -699,6 +725,7 @@ curl -X POST http://localhost:8000/function/greet \
 ```
 
 **Note:** The sidecar now **automatically starts** when you open the desktop app! The Tauri app is configured to:
+
 1. Find the bundled sidecar executable in resources
 2. Launch it as a background process on app startup
 3. Stop it when the app closes
@@ -706,18 +733,21 @@ curl -X POST http://localhost:8000/function/greet \
 If the sidecar fails to start automatically, check the console output for error messages. The app will continue to run even if the sidecar doesn't start (it will just show a warning).
 
 **Windows:**
+
 ```bash
 # Run the installer
 .\src-tauri\target\x86_64-pc-windows-msvc\release\bundle\msi\my-desktop-app_*.exe
 ```
 
 **macOS:**
+
 ```bash
 # Open the DMG
 open src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/my-desktop-app_*.dmg
 ```
 
 **Expected:**
+
 - App installs/opens correctly
 - Window opens with your app
 - All functionality works
@@ -726,6 +756,7 @@ open src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/my-desktop-app_*.d
 ### Step 3: Verify Bundle Contents
 
 **Linux:**
+
 ```bash
 # Extract and inspect AppImage (optional)
 ./my-desktop-app_*.AppImage --appimage-extract
@@ -734,6 +765,7 @@ ls -la squashfs-root/
 ```
 
 **Verify sidecar is included:**
+
 ```bash
 # Check if sidecar is in the bundle
 find squashfs-root -name "jac-sidecar"
@@ -747,6 +779,7 @@ find squashfs-root -name "jac-sidecar"
 Use this checklist to verify everything is working:
 
 ### ✅ Prerequisites
+
 - [ ] Python 3.12+ installed
 - [ ] `jaclang` installed and working
 - [ ] `jac-client` installed and working
@@ -756,12 +789,14 @@ Use this checklist to verify everything is working:
 - [ ] System dependencies installed (Linux)
 
 ### ✅ Project Setup
+
 - [ ] Fresh project directory created
 - [ ] `main.jac` file created with valid Jac code
 - [ ] `jac.toml` created with project config
 - [ ] Jac code compiles without errors
 
 ### ✅ Desktop Target Setup
+
 - [ ] `jac setup desktop` runs successfully
 - [ ] `src-tauri/` directory created
 - [ ] `tauri.conf.json` generated correctly
@@ -771,6 +806,7 @@ Use this checklist to verify everything is working:
 - [ ] `jac.toml` updated with `[desktop]` section
 
 ### ✅ Web Target (Baseline)
+
 - [ ] `jac build --client web` works
 - [ ] Web bundle created in `.jac/client/dist/`
 - [ ] `index.html` generated correctly
@@ -778,6 +814,7 @@ Use this checklist to verify everything is working:
 - [ ] App displays correctly in browser
 
 ### ✅ Desktop Dev Mode
+
 - [ ] `jac start --client desktop --dev` works
 - [ ] Vite dev server starts on port 5173
 - [ ] Tauri dev window opens
@@ -786,12 +823,14 @@ Use this checklist to verify everything is working:
 - [ ] Buttons/interactions work
 
 ### ✅ Desktop Production Mode
+
 - [ ] `jac start --client desktop` works
 - [ ] Web bundle is built first
 - [ ] Tauri window opens with built bundle
 - [ ] App works without dev server
 
 ### ✅ Desktop Build
+
 - [ ] `jac build --client desktop` completes successfully
 - [ ] Sidecar bundles correctly (if PyInstaller available)
 - [ ] `jac-sidecar` executable created in `src-tauri/binaries/`
@@ -800,6 +839,7 @@ Use this checklist to verify everything is working:
 - [ ] Build output is in expected location
 
 ### ✅ Sidecar Functionality
+
 - [ ] Sidecar executable runs without errors
 - [ ] Sidecar can compile Jac code
 - [ ] Sidecar starts HTTP server
@@ -808,6 +848,7 @@ Use this checklist to verify everything is working:
 - [ ] No "No module named 'jaclang'" errors
 
 ### ✅ Full Integration
+
 - [ ] Built app can be installed/run
 - [ ] App window opens correctly
 - [ ] All UI elements work
@@ -821,10 +862,12 @@ Use this checklist to verify everything is working:
 ### Issue: `jac setup desktop` fails
 
 **Symptoms:**
+
 - Error about missing Rust/Cargo
 - Error about missing system dependencies
 
 **Solutions:**
+
 1. Verify Rust is installed: `cargo --version`
 2. Install system dependencies (see Prerequisites)
 3. Check Tauri CLI: `cargo tauri --version`
@@ -833,10 +876,12 @@ Use this checklist to verify everything is working:
 ### Issue: Sidecar shows "No module named 'jaclang'"
 
 **Symptoms:**
+
 - Sidecar fails to start
 - Error about missing jaclang module
 
 **Solutions:**
+
 1. Verify `jaclang` is installed: `python3 -c "import jaclang; print(jaclang.__file__)"`
 2. Rebuild sidecar: `rm -rf src-tauri/binaries/jac-sidecar* && jac build --client desktop`
 3. Check PyInstaller output for warnings
@@ -845,10 +890,12 @@ Use this checklist to verify everything is working:
 ### Issue: Desktop build fails with Rust errors
 
 **Symptoms:**
+
 - Cargo build errors
 - Missing dependencies
 
 **Solutions:**
+
 1. Update Rust: `rustup update`
 2. Check `Cargo.toml` is valid
 3. Try `cargo clean` in `src-tauri/` directory
@@ -857,10 +904,12 @@ Use this checklist to verify everything is working:
 ### Issue: Tauri window doesn't open
 
 **Symptoms:**
+
 - Build succeeds but no window appears
 - Process starts but exits immediately
 
 **Solutions:**
+
 1. Check Tauri logs in terminal
 2. Verify `tauri.conf.json` is valid JSON
 3. Check window configuration in `tauri.conf.json`
@@ -869,10 +918,12 @@ Use this checklist to verify everything is working:
 ### Issue: Hot reload doesn't work
 
 **Symptoms:**
+
 - Changes to `main.jac` don't appear in window
 - Dev server doesn't detect changes
 
 **Solutions:**
+
 1. Verify Vite dev server is running (check terminal output)
 2. Check file watcher permissions
 3. Try restarting dev server
@@ -881,10 +932,12 @@ Use this checklist to verify everything is working:
 ### Issue: Sidecar API endpoints don't work
 
 **Symptoms:**
+
 - Sidecar starts but endpoints return errors
 - Functions/walkers not found
 
 **Solutions:**
+
 1. Verify `.jac` file has `def:pub` functions or `walker` definitions
 2. Check module path is correct: `--module-path main.jac`
 3. Check sidecar logs for compilation errors
@@ -893,9 +946,11 @@ Use this checklist to verify everything is working:
 ### Issue: Build output not found
 
 **Symptoms:**
+
 - Build completes but can't find installer
 
 **Solutions:**
+
 1. Check platform-specific output location:
    - Linux: `src-tauri/target/release/bundle/appimage/`
    - Windows: `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/`
@@ -973,4 +1028,3 @@ find src-tauri/target -name "*.AppImage" -o -name "*.exe" -o -name "*.dmg" | hea
 ---
 
 **Happy testing! 🚀**
-

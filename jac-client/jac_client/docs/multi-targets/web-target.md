@@ -9,6 +9,7 @@ The **web target** is the default build target for Jac applications. It compiles
 The web target produces browser-compatible JavaScript bundles that can be deployed to any web server or hosting platform.
 
 **Features:**
+
 - ✅ No setup required
 - ✅ Automatic HTML generation
 - ✅ CSS bundling
@@ -31,6 +32,7 @@ jac build main.jac --client web
 ```
 
 **Output:**
+
 - Compiled JavaScript bundle: `.jac/client/dist/client.[hash].js`
 - Generated HTML: `.jac/client/dist/index.html`
 - CSS files: `.jac/client/dist/styles.css` (if present)
@@ -85,6 +87,7 @@ export function app() {
 ### 2. Bundling
 
 JavaScript is bundled with Vite:
+
 - Processes imports and dependencies
 - Optimizes and minifies code
 - Handles CSS imports
@@ -93,6 +96,7 @@ JavaScript is bundled with Vite:
 ### 3. HTML Generation
 
 Static `index.html` is automatically generated with:
+
 - Proper HTML head (meta tags, title, etc.)
 - `__jac_init__` script tag for client runtime
 - Script tag pointing to bundled JavaScript
@@ -144,6 +148,7 @@ jac start main.jac --dev
 ```
 
 This:
+
 - Compiles your Jac code
 - Starts Vite dev server on port 5173
 - Starts API server on port 8000
@@ -160,6 +165,7 @@ jac build main.jac
 ```
 
 This:
+
 - Cleans the dist directory
 - Compiles and bundles your code
 - Generates optimized production bundle
@@ -313,6 +319,7 @@ Use configuration for environment-specific settings:
 ### Build Fails
 
 **Error**: "Failed to compile"
+
 - Check for syntax errors in your `.jac` files
 - Verify all imports are correct
 - Check console for detailed error messages
@@ -320,6 +327,7 @@ Use configuration for environment-specific settings:
 ### Bundle Not Found
 
 **Error**: "Web build failed: bundle not found"
+
 - Ensure build completed successfully
 - Check `.jac/client/dist/` directory exists
 - Rebuild: `jac build main.jac`
@@ -327,6 +335,7 @@ Use configuration for environment-specific settings:
 ### CSS Not Loading
 
 **Issue**: Styles not applied
+
 - Verify CSS file exists
 - Check import path is correct
 - Rebuild to regenerate HTML
@@ -334,6 +343,7 @@ Use configuration for environment-specific settings:
 ### Hot Reload Not Working
 
 **Issue**: Changes don't reflect
+
 - Ensure `--dev` flag is used
 - Check Vite dev server is running
 - Restart dev server if needed
@@ -349,7 +359,7 @@ Use configuration for environment-specific settings:
 cl {
     def:pub app() -> any {
         has count: int = 0;
-        
+
         return <div style={{padding: "2rem"}}>
             <h1>My Web App</h1>
             <p>Count: {count}</p>
@@ -362,6 +372,7 @@ cl {
 ```
 
 Build and run:
+
 ```bash
 jac build main.jac
 jac start main.jac
@@ -374,16 +385,16 @@ jac start main.jac
 cl {
     def:pub app() -> any {
         has todos: list = [];
-        
+
         async def loadTodos() -> None {
             response = root spawn get_todos();
             todos = response.reports[0];
         }
-        
+
         useEffect(lambda -> None {
             loadTodos();
         }, []);
-        
+
         return <div>
             <h1>Todo App</h1>
             {todos.map(lambda todo: any -> any {
@@ -406,5 +417,3 @@ cl {
 ---
 
 Happy coding! 🌐
-
-
