@@ -13,10 +13,7 @@ glob logger = logging.getLogger(__name__);
 
 """Post-initialization: connect to MongoDB."""
 impl MongoBackend.postinit -> None {
-    self.client = None;
-    self.db = None;
-    self.collection = None;
-    if self.mongo_url {
+    if self.client is None and self.mongo_url {
         try {
             self.client = MongoClient(self.mongo_url);
             self.db = self.client[self.db_name];
