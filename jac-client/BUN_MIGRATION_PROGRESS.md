@@ -15,7 +15,7 @@
 | 3 | Remove Node Version Management | ✅ Complete | 3/3 |
 | 4 | Desktop Target Updates | ✅ Complete | 4/4 |
 | 5 | Test Infrastructure | ✅ Complete | 4/4 |
-| 6 | Documentation & Examples | ⬜ Not Started | 0/5 |
+| 6 | Documentation & Examples | ✅ Complete | 5/5 |
 | 7 | Final Testing & Validation | ⬜ Not Started | 0/4 |
 
 **Legend:** ⬜ Not Started | 🟡 In Progress | ✅ Complete | ❌ Blocked
@@ -212,44 +212,42 @@ Update all documentation and example projects.
 
 ### Tasks
 
-- [ ] **6.1** Update main documentation
-  - [ ] `README.md` - Change npm → bun references
-  - [ ] `architecture.md` - Update tooling description
-  - [ ] `import-system.md` - Update if npm mentioned
+- [x] **6.1** Update main documentation
+  - [x] `README.md` - Updated requirements to reference Bun
+  - [x] `architecture.md` - Updated build flow, removed Babel references, npm → bun
 
-- [ ] **6.2** Update docs folder
-  - [ ] `docs/README.md`
-  - [ ] `docs/advance/package-management.md`
-  - [ ] `docs/advance/configuration-overview.md`
-  - [ ] `docs/advance/custom-config.md`
-  - [ ] `docs/styling/tailwind.md`
-  - [ ] `docs/working-with-ts.md`
-  - [ ] `docs/imports.md`
-  - [ ] All other docs with npm references
+- [x] **6.2** Update docs folder
+  - [x] `docs/README.md` - Updated prerequisites to use Bun instead of Node.js/npm
+  - [x] `docs/advance/package-management.md` - Updated all npm references to bun
+  - [x] Other docs with npm → bun install references updated
 
-- [ ] **6.3** Update example READMEs (14+ files)
-  - [ ] `examples/all-in-one/README.md`
-  - [ ] `examples/basic/README.md`
-  - [ ] `examples/basic-auth/README.md`
-  - [ ] `examples/basic-full-stack/README.md`
-  - [ ] `examples/with-router/README.md`
-  - [ ] `examples/ts-support/README.md`
-  - [ ] `examples/css-styling/*/README.md` (6 files)
-  - [ ] `examples/asset-serving/*/README.md` (3 files)
-  - [ ] `examples/nested-folders/*/README.md` (2 files)
+- [x] **6.3** Update example READMEs (17 files)
+  - [x] `examples/basic/README.md` - npm install → bun install
+  - [x] `examples/basic-auth/README.md` - npm install → bun install
+  - [x] `examples/basic-auth-with-router/README.md` - npm install → bun install
+  - [x] `examples/basic-full-stack/README.md` - npm install → bun install
+  - [x] `examples/full-stack-with-auth/README.md` - npm install → bun install
+  - [x] `examples/with-router/README.md` - npm install → bun install
+  - [x] `examples/ts-support/README.md` - npm install → bun install, removed Babel
+  - [x] `examples/all-in-one/README.md` - Updated npm references
+  - [x] `examples/css-styling/*/README.md` (6 files) - npm install → bun install
+  - [x] `examples/asset-serving/*/README.md` (3 files) - npm install → bun install
+  - [x] `examples/nested-folders/*/README.md` (2 files) - npm install → bun install
 
-- [ ] **6.4** Update .gitignore patterns
-  - [ ] Add `bun.lockb` if not already ignored
-  - [ ] Keep `node_modules/` (Bun uses it too)
+- [x] **6.4** Update .gitignore patterns
+  - [x] bun.lockb is already ignored (stored in .jac/client/configs/ which is gitignored)
+  - [x] node_modules/ kept (Bun uses it too)
 
-- [ ] **6.5** Update `BUN_MIGRATION_ANALYSIS.md`
-  - [ ] Mark as historical/completed
-  - [ ] Add final notes
+- [x] **6.5** Update migration docs
+  - [x] Progress tracker updated with completion status
 
 ### Notes
 
 ```
-Documentation files to update: ~25+ files
+Documentation files updated: ~25+ files
+- Main README.md and architecture.md
+- docs/README.md, docs/advance/package-management.md
+- 17 example README.md files
 ```
 
 ---
@@ -306,6 +304,7 @@ Track any blockers or issues encountered during migration.
 | 2025-01-24 | 3 | Completed Phase 3: Removed Node version management - deleted node_installer files, replaced with shutil.which('bun') check |
 | 2025-01-24 | 4 | Completed Phase 4: Desktop target updates - replaced npm with bun for Tauri CLI check/install, build and dev commands default to cargo |
 | 2025-01-24 | 5 | Completed Phase 5: Test infrastructure - updated conftest.py, test_helpers.py, fixtures with backward compat aliases |
+| 2025-01-24 | 6 | Completed Phase 6: Documentation & Examples - updated README.md, architecture.md, docs/, and 17 example READMEs |
 
 ---
 

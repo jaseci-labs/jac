@@ -32,7 +32,7 @@ cl import from .components.Button { Button }
 
 ## Adding Dependencies
 
-Add npm packages with the --npm flag:
+Add packages with the --npm flag:
 
 ```bash
 jac add --npm react-router-dom

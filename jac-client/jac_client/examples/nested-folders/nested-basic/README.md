@@ -26,7 +26,7 @@ js-styling/
 1. Install dependencies:
 
 ```bash
-npm install
+bun install
 ```
 
 1. Run the application:
