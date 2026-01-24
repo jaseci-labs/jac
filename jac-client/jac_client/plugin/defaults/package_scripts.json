@@ -1,6 +1,5 @@
 {
-  "build": "npm run compile && vite build --config .jac/client/configs/vite.config.js",
+  "build": "vite build --config .jac/client/configs/vite.config.js",
   "dev": "vite dev --config .jac/client/configs/vite.config.js",
-  "preview": "vite preview --config .jac/client/configs/vite.config.js",
-  "compile": "babel compiled --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+  "preview": "vite preview --config .jac/client/configs/vite.config.js"
 }

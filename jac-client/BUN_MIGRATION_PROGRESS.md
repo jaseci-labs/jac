@@ -11,7 +11,7 @@
 | Phase | Description | Status | Progress |
 |-------|-------------|--------|----------|
 | 1 | Core Package Manager Replacement | ✅ Complete | 5/5 |
-| 2 | Remove Babel | ⬜ Not Started | 0/4 |
+| 2 | Remove Babel | ✅ Complete | 4/4 |
 | 3 | Remove Node Version Management | ⬜ Not Started | 0/3 |
 | 4 | Desktop Target Updates | ⬜ Not Started | 0/4 |
 | 5 | Test Infrastructure | ⬜ Not Started | 0/4 |
@@ -64,37 +64,40 @@ Remove Babel dependency entirely - Bun handles JSX/TSX transpilation natively.
 
 ### Tasks
 
-- [ ] **2.1** Delete Babel processor files
-  - [ ] Delete `jac_client/plugin/src/babel_processor.jac`
-  - [ ] Delete `jac_client/plugin/src/impl/babel_processor.impl.jac`
+- [x] **2.1** Delete Babel processor files
+  - [x] Delete `jac_client/plugin/src/babel_processor.jac`
+  - [x] Delete `jac_client/plugin/src/impl/babel_processor.impl.jac`
 
-- [ ] **2.2** Update `vite_bundler.impl.jac`
-  - [ ] Remove Babel config from `create_package_json()` (lines ~55-57)
-  - [ ] Remove `'compile'` script from scripts dict (line ~51)
-  - [ ] Remove `'npm run compile &&'` from build script (line ~48)
-  - [ ] Remove `'babel': babel_config` from package_data (line ~67)
+- [x] **2.2** Update `vite_bundler.impl.jac`
+  - [x] Remove Babel config from `create_package_json()` (lines ~55-57)
+  - [x] Remove `'compile'` script from scripts dict (line ~51)
+  - [x] Remove `'npm run compile &&'` from build script (line ~48)
+  - [x] Remove `'babel': babel_config` from package_data (line ~67)
 
-- [ ] **2.3** Update `@jac-client/jac-client-devDeps/package.json`
-  - [ ] Remove `"@babel/cli": "^7.28.3"`
-  - [ ] Remove `"@babel/core": "^7.28.5"`
-  - [ ] Remove `"@babel/preset-env": "^7.28.5"`
-  - [ ] Remove `"@babel/preset-react": "^7.28.5"`
+- [x] **2.3** Update `@jac-client/jac-client-devDeps/package.json`
+  - [x] Remove `"@babel/cli": "^7.28.3"`
+  - [x] Remove `"@babel/core": "^7.28.5"`
+  - [x] Remove `"@babel/preset-env": "^7.28.5"`
+  - [x] Remove `"@babel/preset-react": "^7.28.5"`
 
-- [ ] **2.4** Update `defaults/package_scripts.json`
-  - [ ] Remove `"compile"` script
-  - [ ] Update `"build"` to remove `npm run compile &&` prefix
+- [x] **2.4** Update `defaults/package_scripts.json`
+  - [x] Remove `"compile"` script
+  - [x] Update `"build"` to remove `npm run compile &&` prefix
 
 ### Notes
 
 ```
 Files deleted:
-- [ ] jac_client/plugin/src/babel_processor.jac
-- [ ] jac_client/plugin/src/impl/babel_processor.impl.jac
+- [x] jac_client/plugin/src/babel_processor.jac
+- [x] jac_client/plugin/src/impl/babel_processor.impl.jac
 
 Files modified:
-- [ ] jac_client/plugin/src/impl/vite_bundler.impl.jac
-- [ ] @jac-client/jac-client-devDeps/package.json
-- [ ] jac_client/plugin/defaults/package_scripts.json
+- [x] jac_client/plugin/src/impl/vite_bundler.impl.jac
+- [x] jac_client/plugin/src/compiler.jac (removed BabelProcessor import)
+- [x] jac_client/plugin/src/impl/compiler.impl.jac (removed Babel usage, use compiled/ directly)
+- [x] jac_client/plugin/src/__init__.jac (removed BabelProcessor export)
+- [x] @jac-client/jac-client-devDeps/package.json
+- [x] jac_client/plugin/defaults/package_scripts.json
 ```
 
 ---
@@ -296,6 +299,7 @@ Track any blockers or issues encountered during migration.
 |------|-------|---------|
 | 2025-01-24 | - | Created migration analysis and progress tracker |
 | 2025-01-24 | 1 | Completed Phase 1: Replaced npm/npx with bun in package_installer.impl.jac and vite_bundler.impl.jac |
+| 2025-01-24 | 2 | Completed Phase 2: Removed Babel entirely - deleted babel_processor files, removed Babel config, 4 Babel deps removed |
 
 ---
 

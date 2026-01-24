@@ -44,17 +44,14 @@ impl ViteBundler.create_package_json(
     }
     dependencies = package_config.get('dependencies', {});
     dev_dependencies = package_config.get('devDependencies', {});
+    # Vite handles JSX/TSX transpilation natively with Bun - no Babel compile step needed
     scripts = {
-        'build': 'npm run compile && vite build --config .jac/client/configs/vite.config.js',
+        'build': 'vite build --config .jac/client/configs/vite.config.js',
         'dev': 'vite dev --config .jac/client/configs/vite.config.js',
-        'preview': 'vite preview --config .jac/client/configs/vite.config.js',
-        'compile': 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js'
+        'preview': 'vite preview --config .jac/client/configs/vite.config.js'
     };
     user_scripts = package_config.get('scripts', {});
     scripts.update(user_scripts);
-    babel_config = {
-        'presets': [['@babel/preset-env', {'modules': False}], '@babel/preset-react']
-    };
     package_data = {
         'name': name,
         'version': package_config.get('version', '1.0.0'),
@@ -63,8 +60,7 @@ impl ViteBundler.create_package_json(
         'main': 'index.js',
         'scripts': scripts,
         'dependencies': dependencies,
-        'devDependencies': dev_dependencies,
-        'babel': babel_config
+        'devDependencies': dev_dependencies
     };
     for (key, value) in package_config.items() {
         if (
