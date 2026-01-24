@@ -704,7 +704,10 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             print("\n  ⏳ Installing npm dependencies...\n", flush=True);
             start_time = time.time();
             result = subprocess.run(
-                ['pnpm', 'install', '--progress'], cwd=build_dir, check=False, text=True
+                ['pnpm', 'install', '--progress'],
+                cwd=build_dir,
+                check=False,
+                text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
