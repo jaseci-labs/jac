@@ -2,7 +2,10 @@
 
 Learn how to write and run tests for your Jac code.
 
-**Time:** 20 minutes
+> **Prerequisites**
+>
+> - Completed: [Jac Basics](basics.md)
+> - Time: ~20 minutes
 
 ---
 

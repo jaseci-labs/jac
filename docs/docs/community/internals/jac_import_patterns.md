@@ -55,8 +55,10 @@ cl import from react { useState }                    # Category 1: Named
 cl import from react { default as React }            # Category 2: Default
 cl import from react { * as React }                  # Category 4: Namespace
 cl import from react { default as React, useState }  # Category 3: Mixed
+```
 
-#  Incorrect Usage
+```
+#  Incorrect Usage (these would fail parsing or generate invalid JS)
 import from react { default as React }   # Error: default requires cl
 import from lodash { * as _ }            # Error: namespace requires cl
 cl import from lodash { * as _, map }    # Generates invalid JS
@@ -72,8 +74,10 @@ cl import from "react-dom" { render }
 cl import from "styled-components" { default as styled }
 cl import from "react-router-dom" { BrowserRouter, Route }
 cl import from "date-fns" { format, parse }
+```
 
-#  Incorrect Usage - Without quotes
+```
+#  Incorrect Usage - Without quotes (would fail parsing)
 cl import from react-dom { render }  # Error: hyphen not allowed in identifier
 ```
 
@@ -168,7 +172,7 @@ cl {
         # Reactive state - auto-generates useState
         has count: int = 0;
 
-        now = DateFns.format(new Date());
+        now = DateFns.format(Date.now());
         axios.get(API_URL);
 
         return count;
@@ -199,7 +203,7 @@ import { API_URL } from "../../config.constants";
 function MyComponent() {
   // Generated from `has count: int = 0;` (useState import auto-injected from @jac-client/utils)
   const [count, setCount] = useState(0);
-  now = DateFns.format(new Date());
+  now = DateFns.format(Date.now());
   axios.get(API_URL);
   return count;
 }

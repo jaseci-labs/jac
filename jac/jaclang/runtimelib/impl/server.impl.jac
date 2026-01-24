@@ -1036,7 +1036,7 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
-    self.user_manager = UserManager(base_path=self.base_path);
+    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
         base_path=self.base_path, user_manager=self.user_manager

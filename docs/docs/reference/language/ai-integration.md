@@ -31,8 +31,10 @@ Meaning Typed Programming treats semantic intent as a first-class type. You decl
 def classify_sentiment(text: str) -> str by llm;
 
 # Usage - the LLM infers behavior from the name and types
-result = classify_sentiment("I love this product!");
-# result = "positive"
+with entry {
+    result = classify_sentiment("I love this product!");
+    # result = "positive"
+}
 ```
 
 ### 2 Implicit vs Explicit Semantics
@@ -111,24 +113,29 @@ def analyze(code: str) -> CodeAnalysis by llm;
 ### 1 Basic Usage
 
 ```jac
-# Inline expression
-response = "Explain quantum computing in simple terms" by llm;
-
 # Function delegation
 def translate(text: str, target_lang: str) -> str by llm;
 
 def summarize(article: str) -> str by llm;
 
 def extract_entities(text: str) -> list[str] by llm;
+
+# Inline expression
+with entry {
+    response = "Explain quantum computing in simple terms" by llm;
+}
 ```
 
 ### 2 Chained Transformations
 
 ```jac
-result = text
-    |> (lambda t: str -> str: t by llm("Correct grammar"))
-    |> (lambda t: str -> str: t by llm("Simplify language"))
-    |> (lambda t: str -> str: t by llm("Translate to Spanish"));
+with entry {
+    text = "Some input text";
+    result = text
+        |> (lambda t: str -> str: t by llm("Correct grammar"))
+        |> (lambda t: str -> str: t by llm("Simplify language"))
+        |> (lambda t: str -> str: t by llm("Translate to Spanish"));
+}
 ```
 
 ### 3 Model Configuration
@@ -161,6 +168,15 @@ def creative_story(prompt: str) -> str by llm(
 ### 4 Tool Calling (ReAct)
 
 ```jac
+# Stub implementations for API calls
+def fetch_weather_api(city: str) -> str {
+    return f"Weather data for {city}";
+}
+
+def web_search_api(query: str) -> list[str] {
+    return [f"Result for {query}"];
+}
+
 def get_weather(city: str) -> str {
     # Actual implementation
     return fetch_weather_api(city);
@@ -177,7 +193,9 @@ def answer_question(question: str) -> str by llm(
 );
 
 # The LLM can now call these tools to answer questions
-result = answer_question("What's the weather in Paris?");
+with entry {
+    result = answer_question("What's the weather in Paris?");
+}
 ```
 
 ### 5 Streaming Responses
@@ -186,8 +204,10 @@ result = answer_question("What's the weather in Paris?");
 def stream_story(prompt: str) -> str by llm(stream=True);
 
 # Returns generator
-for chunk in stream_story("Tell me a story") {
-    print(chunk, end="");
+with entry {
+    for chunk in stream_story("Tell me a story") {
+        print(chunk, end="");
+    }
 }
 ```
 
@@ -200,8 +220,10 @@ def describe_image(image: Image) -> str by llm;
 def analyze_video(video: Video) -> str by llm;
 
 # Usage
-description = describe_image(Image("photo.jpg"));
-description = describe_image(Image("https://example.com/image.png"));
+with entry {
+    description = describe_image(Image("photo.jpg"));
+    description = describe_image(Image("https://example.com/image.png"));
+}
 ```
 
 ### 7 Reasoning Methods
@@ -323,3 +345,20 @@ walker Coordinator {
 ```
 
 ---
+
+## Learn More
+
+**Tutorials:**
+
+- [byLLM Quickstart](../../tutorials/ai/quickstart.md) - Your first AI function
+- [Structured Outputs](../../tutorials/ai/structured-outputs.md) - Type-safe LLM responses
+- [Agentic AI](../../tutorials/ai/agentic.md) - Tool calling and ReAct pattern
+
+**Examples:**
+
+- [EmailBuddy](../../tutorials/examples/emailbuddy.md) - AI email assistant
+- [RAG Chatbot](../../tutorials/examples/rag-chatbot.md) - Document Q&A
+
+**Related Reference:**
+
+- [byLLM Reference](../plugins/byllm.md) - Complete API documentation

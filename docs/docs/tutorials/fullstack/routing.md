@@ -2,7 +2,10 @@
 
 Build multi-page applications with client-side routing.
 
-**Time:** 20 minutes
+> **Prerequisites**
+>
+> - Completed: [Authentication](auth.md)
+> - Time: ~20 minutes
 
 ---
 
@@ -77,11 +80,13 @@ cl {
 
 ```jac
 cl {
-    # Use Link for internal navigation (no page reload)
-    <Link to="/about">About</Link>
-
-    # Use anchor for external links
-    <a href="https://example.com">External Site</a>
+    # Navigation example showing Link vs anchor
+    def:pub NavExample() -> any {
+        return <div>
+            <Link to="/about">About</Link>
+            <a href="https://example.com">External Site</a>
+        </div>;
+    }
 }
 ```
 
@@ -154,7 +159,6 @@ cl {
             </aside>
 
             <main>
-                {# Child routes render here #}
                 <Outlet />
             </main>
         </div>;
@@ -232,22 +236,18 @@ cl {
         navigate = useNavigate();
 
         return <div>
-            {# Basic navigation #}
             <button onClick={lambda -> None { navigate("/home"); }}>
                 Go Home
             </button>
 
-            {# Replace history (no back button) #}
             <button onClick={lambda -> None { navigate("/login", {"replace": True}); }}>
                 Login (replace)
             </button>
 
-            {# Go back #}
             <button onClick={lambda -> None { navigate(-1); }}>
                 Back
             </button>
 
-            {# Go forward #}
             <button onClick={lambda -> None { navigate(1); }}>
                 Forward
             </button>
@@ -280,14 +280,13 @@ cl {
             return None;
         }
 
-        return <>{props.children}</>;
+        return <div>{props.children}</div>;
     }
 
     def:pub app() -> any {
         return <Router>
             <Route path="/login" element={<Login />} />
 
-            {# Protected routes #}
             <Route path="/dashboard" element={
                 <ProtectedRoute>
                     <Dashboard />
@@ -383,7 +382,6 @@ cl {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
 
-            {# Catch-all for 404 #}
             <Route path="*" element={<NotFound />} />
         </Router>;
     }
@@ -400,11 +398,10 @@ cl {
 
     def:pub Navigation() -> any {
         return <nav>
-            {# NavLink adds "active" class when route matches #}
             <NavLink
                 to="/"
                 className={lambda info: any -> str {
-                    return "nav-link " + (info.isActive ? "active" : "");
+                    return "nav-link " + ("active" if info.isActive else "");
                 }}
             >
                 Home
@@ -413,7 +410,7 @@ cl {
             <NavLink
                 to="/about"
                 className={lambda info: any -> str {
-                    return "nav-link " + (info.isActive ? "active" : "");
+                    return "nav-link " + ("active" if info.isActive else "");
                 }}
             >
                 About

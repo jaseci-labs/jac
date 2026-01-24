@@ -38,7 +38,11 @@ def summarize(text: str) -> str by llm();
 
 ```jac
 # Backend
-walker get_data { ... }
+walker get_data {
+    can fetch with `root entry {
+        report {"message": "Hello from backend"};
+    }
+}
 
 # Frontend
 cl {

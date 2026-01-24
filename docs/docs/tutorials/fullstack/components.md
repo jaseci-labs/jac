@@ -2,7 +2,10 @@
 
 Build reusable UI components with JSX syntax.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [Project Setup](setup.md)
+> - Time: ~30 minutes
 
 ---
 
@@ -80,7 +83,7 @@ Use `{ }` to embed any Jac expression.
 cl {
     def:pub Status(props: dict) -> any {
         return <span>
-            {props.active ? "Active" : "Inactive"}
+            {("Active" if props.active else "Inactive")}
         </span>;
     }
 }
@@ -351,7 +354,7 @@ cl {
 
 ```jac
 cl {
-    import ".styles.css"
+    import ".styles.css";
 
     def:pub app() -> any {
         return <div className="container">

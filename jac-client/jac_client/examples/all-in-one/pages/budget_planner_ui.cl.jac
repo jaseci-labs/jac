@@ -12,59 +12,54 @@ cl import from ..components.CategoryFilter { CategoryFilter }
 cl import from ..constants.categories { CATEGORY_COLORS }
 
 # cl import from "..components.PieChart.tsx" { PieChart }
+cl def:pub BudgetPlanner -> any {
+    [filter, setFilter] = useState("ALL");
+    budget = useBudgetContext();
 
+    # Filter transactions based on selected category
+    filtered = budget["transactions"];
+    if filter != "ALL" {
+        filtered = filtered.filter(
+            lambda tx: dict  -> bool { return tx["category"] == filter; }
+        );
+    }
 
-cl def:pub BudgetPlanner() -> any {
-        [filter, setFilter] = useState("ALL");
-        budget = useBudgetContext();
+    # Sort by date (newest first)
+    sorted = filtered.slice().sort(
+        lambda a: dict , b: dict  -> int { return Reflect.construct(Date, [b["date"]]).getTime() - Reflect.construct(
+            Date, [a["date"]]
+        ).getTime(); }
+    );
 
-        # Filter transactions based on selected category
-        filtered = budget["transactions"];
-        if filter != "ALL" {
-            filtered = filtered.filter(lambda tx: dict -> bool {
-                return tx["category"] == filter;
-            });
-        }
+    # Prepare chart data with colors
+    chartData = budget["expensesByCategory"].map(
+        lambda item: dict  -> dict { return {
+            "name": item["name"],
+            "value": item["value"],
+            "color": CATEGORY_COLORS[item["name"]]
+        }; }
+    );
 
-        # Sort by date (newest first)
-        sorted = filtered.slice().sort(lambda a: dict, b: dict -> int {
-            return Reflect.construct(Date, [b["date"]]).getTime() - Reflect.construct(Date, [a["date"]]).getTime();
-        });
-
-        # Prepare chart data with colors
-        chartData = budget["expensesByCategory"].map(lambda item: dict -> dict {
-            return {
-                "name": item["name"],
-                "value": item["value"],
-                "color": CATEGORY_COLORS[item["name"]]
-            };
-        });
-
-        return <div className="app-container">
+    return
+        <div className="app-container">
             <Header />
-
             <main className="main-content">
                 <div className="left-panel">
                     <Summary />
                     <ProfitOverview />
                     <TransactionForm />
-                    <CategoryFilter
-                        selectedCategory={filter}
-                        onSelect={setFilter}
-                    />
+                    <CategoryFilter selectedCategory={filter} onSelect={setFilter} />
                     <TransactionList
                         transactions={sorted}
                         onDelete={budget["deleteTransaction"]}
                     />
                 </div>
-
-                <div className="right-panel">
-                    # <PieChart
-                    #     data={chartData}
-                    #     title="Expense Breakdown"
-                    #     colors={CATEGORY_COLORS}
-                    # />
-                </div>
+                <div className="right-panel"></div>
             </main>
         </div>;
-    }
+}
+# <PieChart
+#     data={chartData}
+#     title="Expense Breakdown"
+#     colors={CATEGORY_COLORS}
+# />

@@ -155,9 +155,11 @@ walker FindSenderNode {
 Usage:
 
 ```jac
-finder = FindSenderNode(target="alice@example.com");
-root spawn finder;
-sender = finder.person;  # Found Person node or None
+with entry {
+    finder = FindSenderNode(target="alice@example.com");
+    root spawn finder;
+    sender = finder.person;  # Found Person node or None
+}
 ```
 
 ### 3. AI-Powered Navigation
@@ -223,7 +225,7 @@ walker ask_email {
         if response.option == "@selected@" {
             # Visit selected email
             visit [-->](`?EmailNode).filter(
-                lambda e: e.email_uuid == response.selection
+                lambda e: any -> bool { e.email_uuid == response.selection; }
             );
         } elif response.option == "@query@" {
             # Semantic search for more emails

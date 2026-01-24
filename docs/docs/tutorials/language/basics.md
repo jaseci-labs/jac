@@ -2,7 +2,11 @@
 
 Learn Jac syntax and fundamentals, especially if you're coming from Python.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Familiar with: Python basics
+> - Time: ~30 minutes
 
 ---
 

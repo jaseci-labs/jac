@@ -12,11 +12,13 @@ nav:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
+      - Your First Graph: "quick-guide/first-graph.md"
       - Your First App: "quick-guide/first-app.md"
       - Next Steps: "quick-guide/next-steps.md"
 
   - Tutorials:
       - Overview: "tutorials/index.md"
+      - Learning Roadmap: "tutorials/roadmap.md"
       - Core Language:
           - Jac Basics (from Python): "tutorials/language/basics.md"
           - Object-Spatial Programming: "tutorials/language/osp.md"
@@ -32,6 +34,7 @@ nav:
           - Backend Integration: "tutorials/fullstack/backend.md"
           - Authentication: "tutorials/fullstack/auth.md"
           - Routing: "tutorials/fullstack/routing.md"
+          - "Build a Todo App": "tutorials/fullstack/todo-app.md"
       - Production:
           - Local API Server: "tutorials/production/local.md"
           - Deploy to Kubernetes: "tutorials/production/kubernetes.md"
@@ -41,6 +44,7 @@ nav:
           - EmailBuddy (AI Assistant): "tutorials/examples/emailbuddy.md"
           - RAG Chatbot: "tutorials/examples/rag-chatbot.md"
           - RPG Level Generator: "tutorials/examples/rpg.md"
+      - Troubleshooting: "tutorials/troubleshooting.md"
 
   - Reference:
       - Language Reference:
@@ -52,11 +56,16 @@ nav:
           - "Part V: AI Integration": "reference/language/ai-integration.md"
           - "Part VI: Concurrency": "reference/language/concurrency.md"
           - "Part VII: Advanced": "reference/language/advanced.md"
-          - "Part VIII: Ecosystem": "reference/language/ecosystem.md"
-          - "Part IX: Deployment": "reference/language/deployment.md"
+          - "Part VIII: Ecosystem":
+              - Overview: "reference/language/ecosystem.md"
+              - Python Integration: "reference/language/python-integration.md"
+          - "Part IX: Deployment":
+              - Overview: "reference/language/deployment.md"
+              - Library Mode: "reference/language/library-mode.md"
           - Appendices: "reference/language/appendices.md"
-          - Python Integration: "reference/language/python-integration.md"
-          - Library Mode: "reference/language/library-mode.md"
+          - Quick Reference:
+              - Walker Responses: "reference/language/walker-responses.md"
+              - Graph Operations: "reference/language/graph-operations.md"
       - CLI Reference: "reference/cli/index.md"
       - Configuration: "reference/config/index.md"
       - Testing: "reference/testing.md"

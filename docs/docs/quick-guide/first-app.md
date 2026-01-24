@@ -150,9 +150,38 @@ Open http://localhost:8000/docs to see the Swagger UI.
 For quick testing, make your walkers public by adding `:pub`:
 
 ```jac
-walker:pub add_todo { ... }
-walker:pub list_todos { ... }
-walker:pub complete_todo { ... }
+node Todo {
+    has title: str;
+    has done: bool = False;
+}
+
+walker :pub add_todo {
+    has title: str;
+    can create with `root entry {
+        new_todo = here ++> Todo(title=self.title);
+        report new_todo;
+    }
+}
+
+walker :pub list_todos {
+    can list with `root entry {
+        for todo in [-->](`?Todo) {
+            report todo;
+        }
+    }
+}
+
+walker :pub complete_todo {
+    has todo_id: str;
+    can complete with `root entry {
+        for todo in [-->](`?Todo) {
+            if str(todo.__jac__.id) == self.todo_id {
+                todo.done = True;
+                report todo;
+            }
+        }
+    }
+}
 ```
 
 Then test with curl:

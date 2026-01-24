@@ -25,6 +25,13 @@
 
 Whether you're developing locally with `jac start` or deploying to production with `jac start --scale`, you get the same powerful features with the flexibility to choose your deployment strategy.
 
+### 4. Single Sign-On (SSO) Support
+
+- **Google SSO**: Built-in support for Google Sign-In out of the box
+- **Extensible Architecture**: Easily add other providers (GitHub, Microsoft, etc.)
+- **Secure Authentication**: Integrated with JWT for secure session management
+- **User Management**: Automatic account creation and linking
+
 ## Prerequisites
 
 - kubenetes(K8s) installed
