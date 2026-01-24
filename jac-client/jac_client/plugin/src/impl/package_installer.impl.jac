@@ -46,15 +46,19 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
     bundler._ensure_root_package_json();
     try {
         # Run npm install to actually install the packages
-        subprocess.run(
-            ['npm', 'install'],
+        print("\n  ⏳ Installing npm packages...\n", flush=True);
+        result = subprocess.run(
+            ['npm', 'install', '--progress'],
             cwd=self.project_dir,
-            check=True,
-            capture_output=True,
+            check=False,
             text=True
         );
-    } except subprocess.CalledProcessError as e {
-        raise ClientBundleError(f'Failed to install npm packages: {e.stderr}') from e ;
+        if result.returncode != 0 {
+            raise ClientBundleError(
+                'Failed to install npm packages (see output above)'
+            ) ;
+        }
+        print("\n  ✔ npm packages installed", flush=True);
     } except FileNotFoundError {
         raise ClientBundleError(
             'npm command not found. Ensure Node.js and npm are installed.'

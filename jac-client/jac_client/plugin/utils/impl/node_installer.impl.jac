@@ -345,7 +345,6 @@ impl NodeInstaller.run_pnpm_with_nvm(
     try {
         return subprocess.run(
             ['pnpm'] + args, cwd=cwd, text=True, timeout=timeout, check=True
-            # capture_output=True,
         );
     } except FileNotFoundError { }
     # If pnpm is not in PATH, source NVM and run pnpm in a subprocess
@@ -355,11 +354,6 @@ impl NodeInstaller.run_pnpm_with_nvm(
         'export NVM_DIR="$HOME/.nvm"\n' + '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"\n' + f'npm {args_str}\n'
     );
     return subprocess.run(
-        ['bash', '-c', command],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=True
+        ['bash', '-c', command], cwd=cwd, text=True, timeout=timeout, check=True
     );
 }

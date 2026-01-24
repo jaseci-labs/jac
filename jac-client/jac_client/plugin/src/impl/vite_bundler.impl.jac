@@ -441,14 +441,13 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
-                print(
-                    "  ⏳ Installing npm dependencies (this may take a minute)...",
-                    flush=True
-                );
+                print("\n  ⏳ Installing npm dependencies...\n", flush=True);
                 start_time = time.time();
                 result = subprocess.run(
-                    ['pnpm', 'install'], cwd=build_dir, check=False, text=True
-                    # capture_output=True,
+                    ['pnpm', 'install', '--progress'],
+                    cwd=build_dir,
+                    check=False,
+                    text=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
@@ -456,12 +455,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                         f"\n  ✖ pnpm install failed after {elapsed:.1f}s",
                         file=sys.stderr
                     );
-                    raise ClientBundleError(
-                        f"Failed to install pnpm dependencies: {result.stderr
-                        or result.stdout}"
-                    ) ;
+                    raise ClientBundleError("Failed to install npm dependencies") ;
                 }
-                print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+                print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
                 raise None from ClientBundleError(
                     'pnpm command not found. Ensure Node.js and pnpm are installed.'
@@ -486,20 +482,17 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             command = ['pnpm', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
-        print("  ⏳ Building client bundle...", flush=True);
+        print("\n  ⏳ Building client bundle...\n", flush=True);
         start_time = time.time();
-        result = subprocess.run(
-            command, cwd=build_dir, check=False, capture_output=True, text=True
-        );
+        result = subprocess.run(command, cwd=build_dir, check=False, text=True);
         elapsed = time.time() - start_time;
         if result.returncode != 0 {
             print(f"\n  ✖ Vite build failed after {elapsed:.1f}s", file=sys.stderr);
-            error_msg = result.stderr or result.stdout or 'Unknown error';
             raise ClientBundleError(
-                f"Vite build failed:\n{error_msg}\nCommand: {' '.join(command)}"
+                f"Vite build failed (see output above)\nCommand: {' '.join(command)}"
             ) from None ;
         }
-        print(f"  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
+        print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
     } finally {
         # Clean up temporary files in client build dir
         build_package_json = build_dir / 'package.json';
@@ -708,27 +701,19 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             shutil.copy2(generated_npmrc, build_npmrc);
         }
         try {
-            print(
-                "  ⏳ Installing pnpm dependencies (this may take a minute)...",
-                flush=True
-            );
+            print("\n  ⏳ Installing npm dependencies...\n", flush=True);
             start_time = time.time();
             result = subprocess.run(
-                ['pnpm', 'install'], cwd=build_dir, check=False, text=True
-                # capture_output=True,
+                ['pnpm', 'install', '--progress'], cwd=build_dir, check=False, text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
                 print(
                     f"\n  ✖ pnpm install failed after {elapsed:.1f}s", file=sys.stderr
                 );
-                print(f"  Error: {result.stderr or result.stdout}", file=sys.stderr);
-                raise ClientBundleError(
-                    f"Failed to install pnpm dependencies: {result.stderr
-                    or result.stdout}"
-                ) ;
+                raise ClientBundleError("Failed to install npm dependencies") ;
             }
-            print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+            print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
         } finally {
             # Clean up temp files
             if build_package_json.exists() {
