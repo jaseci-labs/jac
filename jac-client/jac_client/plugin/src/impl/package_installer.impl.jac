@@ -48,10 +48,7 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
         # Run pnpm install to actually install the packages
         print("\n  ⏳ Installing npm packages...\n", flush=True);
         result = subprocess.run(
-            ['pnpm', 'install'],
-            cwd=self.project_dir,
-            check=False,
-            text=True
+            ['pnpm', 'install'], cwd=self.project_dir, check=False, text=True
         );
         if result.returncode != 0 {
             raise ClientBundleError(
