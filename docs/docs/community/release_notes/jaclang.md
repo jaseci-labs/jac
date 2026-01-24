@@ -2,9 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.10 (Unreleased)
+## jaclang 0.9.11 (Unreleased)
 
-## jaclang 0.9.9 (Latest Release)
+## jaclang 0.9.10 (Latest Release)
+
+- **Formatter Spacing Fixes**: Fixed extra spaces before semicolons in `report` and `del` statements, and corrected semantic definition formatting to properly handle dot notation and `=` operator spacing.
+
+## jaclang 0.9.9
 
 ### Breaking Changes
 
