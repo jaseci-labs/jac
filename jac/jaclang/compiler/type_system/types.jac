@@ -144,7 +144,7 @@ obj TypeVarType(TypeBase) {
 """Represents a class type."""
 obj ClassType(TypeBase) {
     has shared: (ClassType.ClassDetailsShared | None) = None,
-        private: (ClassType.ClassDetailsPrivate | None) by postinit;
+        private: (ClassType.ClassDetailsPrivate | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;

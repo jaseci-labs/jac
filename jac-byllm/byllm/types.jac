@@ -56,8 +56,8 @@ Provides JSON schema generation, argument parsing, and invocation capabilities.
 """
 obj Tool {
     has func: Callable,
-        description: str by postinit,
-        params_desc: dict[(str, str)] by postinit;
+        description: str = "",
+        params_desc: dict[(str, str)] = {};
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;
@@ -133,7 +133,7 @@ obj Image(Media) {
             "str | bytes | bytearray | memoryview | BytesIO | IO[bytes] | "
             "os.PathLike[str] | os.PathLike[bytes] | PILImageCls"
         ),
-        mime_type: str | None by postinit;
+        mime_type: str | None = None;
 
     def postinit -> None;
     def _format_to_mime(fmt: str | None) -> str;
