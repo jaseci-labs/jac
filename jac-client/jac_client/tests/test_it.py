@@ -16,11 +16,19 @@ from urllib.request import Request, urlopen
 import pytest
 
 from .test_helpers import (
-    get_env_with_npm,
+    get_env_with_npm,  # Backward compat alias
     get_free_port,
     get_jac_command,
     wait_for_port,
 )
+
+
+def _bun_installed() -> bool:
+    """Check if Bun is installed."""
+    return shutil.which("bun") is not None
+
+
+requires_bun = pytest.mark.skipif(not _bun_installed(), reason="Bun is not installed")
 
 
 def _wait_for_endpoint(
@@ -81,6 +89,7 @@ def _wait_for_endpoint(
     )
 
 
+@requires_bun
 def test_all_in_one_app_endpoints() -> None:
     """Create a Jac app, copy @all-in-one into it, install packages from jac.toml, then verify endpoints."""
     print(
@@ -558,6 +567,7 @@ def test_all_in_one_app_endpoints() -> None:
             gc.collect()
 
 
+@requires_bun
 def test_default_client_app_renders() -> None:
     """Test that a default `jac create --use client` app renders correctly when served.
 
