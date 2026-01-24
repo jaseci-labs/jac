@@ -251,7 +251,7 @@ obj OverloadedType(TypeBase) {
 
 """Represents a union type."""
 obj UnionType(TypeBase) {
-    has types: (list[TypeBase] | None) by postinit;
+    has types: (list[TypeBase] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Union;

@@ -39,7 +39,7 @@ obj _CachedBundle {
 
 """Compile Jac modules and runtime support into a browser-ready bundle."""
 obj ClientBundleBuilder {
-    has runtime_path: (Path | None) by postinit,
+    has runtime_path: (Path | None) = None,
         _cache: dict[(str, _CachedBundle)] = {};
 
     def postinit -> None;
