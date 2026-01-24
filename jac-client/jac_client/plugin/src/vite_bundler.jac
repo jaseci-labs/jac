@@ -36,6 +36,9 @@ class ViteBundler {
         self: ViteBundler, project_name: Optional[str] = None
     ) -> Path;
 
+    """Create .npmrc file to set pnpm configurations."""
+    def create_npmrc(self: ViteBundler) -> Path;
+
     def create_tsconfig(self: ViteBundler) -> Path;
     """Create config files from jac.toml [plugins.client.configs]."""
     def create_config_files(self: ViteBundler) -> list[Path];

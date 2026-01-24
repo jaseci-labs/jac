@@ -45,7 +45,7 @@ impl ViteBundler.create_package_json(
     dependencies = package_config.get('dependencies', {});
     dev_dependencies = package_config.get('devDependencies', {});
     scripts = {
-        'build': 'npm run compile && vite build --config .jac/client/configs/vite.config.js',
+        'build': 'pnpm compile && vite build --config .jac/client/configs/vite.config.js',
         'dev': 'vite dev --config .jac/client/configs/vite.config.js',
         'preview': 'vite preview --config .jac/client/configs/vite.config.js',
         'compile': 'babel compiled --out-dir build --extensions ".jsx,.js" --out-file-extension .js'
@@ -81,6 +81,27 @@ impl ViteBundler.create_package_json(
     # Generate config files (postcss, tailwind, etc.) from jac.toml
     self.create_config_files();
     return package_json_path;
+}
+
+"""Create .npmrc file for pnpm configuration."""
+impl ViteBundler.create_npmrc(self: ViteBundler) -> Path {
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(exist_ok=True);
+    
+    npmrc_path = configs_dir / '.npmrc';
+    
+    # pnpm configuration for auto-installing peer dependencies and hoisting
+    npmrc_content = """# Auto-install peer dependencies
+auto-install-peers=true
+
+# Hoist all packages to root node_modules
+public-hoist-pattern[]=*
+""";
+    
+    npmrc_path.write_text(npmrc_content, encoding='utf-8');
+    return npmrc_path;
 }
 
 """Create tsconfig.json during build time, merging user config from jac.toml."""
@@ -131,16 +152,18 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
 }
 
 """
-Clean up root package.json and move package-lock.json to configs/.
+Clean up root package.json and .npmrc, move pnpm-lock.yaml to configs/.
 
-        Remove root package.json and move package-lock.json to configs/.
+        Remove root package.json and .npmrc, move pnpm-lock.yaml to configs/.
 """
 impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     root_package_json = self.project_dir / 'package.json';
-    root_package_lock = self.project_dir / 'package-lock.json';
+    root_npmrc = self.project_dir / '.npmrc';
+    root_package_lock = self.project_dir / 'pnpm-lock.yaml';
+
     build_dir = self._get_client_dir();
     configs_dir = build_dir / 'configs';
-    configs_package_lock = configs_dir / 'package-lock.json';
+    configs_package_lock = configs_dir / 'pnpm-lock.yaml';
     if root_package_lock.exists() {
         configs_dir.mkdir(exist_ok=True);
         if configs_package_lock.exists() {
@@ -151,12 +174,15 @@ impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     if root_package_json.exists() {
         root_package_json.unlink();
     }
+    if root_npmrc.exists() {
+        root_npmrc.unlink();
+    }
 }
 
 """
-Ensure root package.json exists temporarily for npm commands.
+Ensure root package.json and .npmrc exist temporarily for pnpm commands.
 
-        Create root package.json temporarily if it doesn't exist.
+        Create root package.json and .npmrc temporarily if they don't exist.
 """
 impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
     generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
@@ -166,6 +192,15 @@ impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
     }
     if not root_package_json.exists() {
         shutil.copy2(generated_package_json, root_package_json);
+    }
+
+    generated_npmrc = self._get_client_dir() / 'configs' / '.npmrc';
+    root_npmrc = self.project_dir / '.npmrc';
+    if not generated_npmrc.exists() {
+        self.create_npmrc();
+    }
+    if not root_npmrc.exists() {
+        shutil.copy2(generated_npmrc, root_npmrc);
     }
 }
 
@@ -387,6 +422,11 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         # Ensure tsconfig.json exists even if package.json already exists
         self.create_tsconfig();
     }
+    # Ensure .npmrc exists
+    generated_npmrc = self._get_client_dir() / 'configs' / '.npmrc';
+    if not generated_npmrc.exists() {
+        self.create_npmrc();
+    }
     try {
         build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
@@ -394,9 +434,15 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             # Temporarily copy package.json to client build dir for npm install
             build_package_json = build_dir / 'package.json';
             configs_package_json = build_dir / 'configs' / 'package.json';
+            build_npmrc = build_dir / '.npmrc';
+            configs_npmrc = build_dir / 'configs' / '.npmrc';
             if configs_package_json.exists() and not build_package_json.exists() {
                 import shutil;
                 shutil.copy2(configs_package_json, build_package_json);
+            }
+            if configs_npmrc.exists() and not build_npmrc.exists() {
+                import shutil;
+                shutil.copy2(configs_npmrc, build_npmrc);
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
@@ -406,27 +452,27 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 );
                 start_time = time.time();
                 result = subprocess.run(
-                    ['npm', 'install', '--progress'],
+                    ['pnpm', 'install'],
                     cwd=build_dir,
                     check=False,
-                    capture_output=True,
+                    # capture_output=True,
                     text=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
                     print(
-                        f"\n  ✖ npm install failed after {elapsed:.1f}s",
+                        f"\n  ✖ pnpm install failed after {elapsed:.1f}s",
                         file=sys.stderr
                     );
                     raise ClientBundleError(
-                        f"Failed to install npm dependencies: {result.stderr
+                        f"Failed to install pnpm dependencies: {result.stderr
                         or result.stdout}"
                     ) ;
                 }
                 print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
                 raise None from ClientBundleError(
-                    'npm command not found. Ensure Node.js and npm are installed.'
+                    'pnpm command not found. Ensure Node.js and pnpm are installed.'
                 ) ;
             }
         }
@@ -445,7 +491,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             config_rel = generated_config.relative_to(build_dir);
             command = ['npx', 'vite', 'build', '--config', str(config_rel)];
         } else {
-            command = ['npm', 'run', 'build'];
+            command = ['pnpm', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
         print("  ⏳ Building client bundle...", flush=True);
@@ -463,15 +509,19 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         }
         print(f"  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
     } finally {
-        # Clean up temporary package.json in client build dir
+        # Clean up temporary files in client build dir
         build_package_json = build_dir / 'package.json';
+        build_npmrc = build_dir / '.npmrc';
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to configs/ if it exists
-        build_package_lock = build_dir / 'package-lock.json';
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
+        }
+        # Move pnpm-lock.yaml to configs/ if it exists
+        build_package_lock = build_dir / 'pnpm-lock.yaml';
         if build_package_lock.exists() {
-            configs_package_lock = build_dir / 'configs' / 'package-lock.json';
+            configs_package_lock = build_dir / 'configs' / 'pnpm-lock.yaml';
             if configs_package_lock.exists() {
                 configs_package_lock.unlink();
             }
@@ -652,40 +702,51 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
         if not generated_package_json.exists() {
             self.create_package_json();
         }
-        # Temporarily copy package.json for npm install
+        generated_npmrc = build_dir / 'configs' / '.npmrc';
+        if not generated_npmrc.exists() {
+            self.create_npmrc();
+        }
+        # Temporarily copy package.json and .npmrc for pnpm install
         build_package_json = build_dir / 'package.json';
+        build_npmrc = build_dir / '.npmrc';
         if not build_package_json.exists() {
             shutil.copy2(generated_package_json, build_package_json);
         }
+        if not build_npmrc.exists() {
+            shutil.copy2(generated_npmrc, build_npmrc);
+        }
         try {
             print(
-                "  ⏳ Installing npm dependencies (this may take a minute)...",
+                "  ⏳ Installing pnpm dependencies (this may take a minute)...",
                 flush=True
             );
             start_time = time.time();
             result = subprocess.run(
-                ['npm', 'install', '--progress'],
+                ['pnpm', 'install'],
                 cwd=build_dir,
                 check=False,
-                capture_output=True,
+                # capture_output=True,
                 text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
                 print(
-                    f"\n  ✖ npm install failed after {elapsed:.1f}s", file=sys.stderr
+                    f"\n  ✖ pnpm install failed after {elapsed:.1f}s", file=sys.stderr
                 );
                 print(f"  Error: {result.stderr or result.stdout}", file=sys.stderr);
                 raise ClientBundleError(
-                    f"Failed to install npm dependencies: {result.stderr
+                    f"Failed to install pnpm dependencies: {result.stderr
                     or result.stdout}"
                 ) ;
             }
             print(f"  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
         } finally {
-            # Clean up temp package.json
+            # Clean up temp files
             if build_package_json.exists() {
                 build_package_json.unlink();
+            }
+            if build_npmrc.exists() {
+                build_npmrc.unlink();
             }
         }
     }

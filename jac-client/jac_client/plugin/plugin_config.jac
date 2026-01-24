@@ -179,7 +179,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         console.warning(f"Node.js is required for client development");
         console.print(f"\n  {message}", file=sys.stderr);
         console.print(
-            "  After installing Node.js, run: jac add --cl\n",
+            "  After installing Node.js and pnpm, run: jac add --cl\n",
             style="muted",
             file=sys.stderr
         );
@@ -200,6 +200,30 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         return;
     }
 
+    # Ensure pnpm is installed
+    console.print();
+    with console.status(
+        "[cyan]Checking pnpm installation...[/cyan]", spinner="dots"
+    ) as status {
+        pnpm_result = NodeInstaller.ensure_pnpm_installed(interactive=True);
+        pnpm_installed = pnpm_result[0];
+        pnpm_message = pnpm_result[1];
+        pnpm_just_installed = pnpm_result[2];
+    }
+
+    if not pnpm_installed {
+        console.warning(f"pnpm is required for package management");
+        console.print(f"\n  {pnpm_message}", file=sys.stderr);
+        console.print(
+            "  After installing pnpm, run: jac add --cl\n",
+            style="muted",
+            file=sys.stderr
+        );
+        return;
+    }
+
+    console.print(f"  ✔ {pnpm_message}", style="success");
+
     console.print();
 
     try {
@@ -219,13 +243,18 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         # Generate package.json with default packages
         bundler.create_package_json(project_name=project_name);
 
+        # Generate .npmrc
+        bundler.create_npmrc();
+
         # Ensure .jac/client directory exists
         client_dir = bundler._get_client_dir();
         client_dir.mkdir(parents=True, exist_ok=True);
 
-        # Copy package.json to .jac/client/ for npm install
+        # Copy package.json and .npmrc to .jac/client/ for pnpm install
         configs_package_json = client_dir / 'configs' / 'package.json';
         build_package_json = client_dir / 'package.json';
+        configs_npmrc = client_dir / 'configs' / '.npmrc';
+        build_npmrc = client_dir / '.npmrc';
 
         if not configs_package_json.exists() {
             print(
@@ -234,31 +263,39 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             );
             return;
         }
-
         shutil.copy2(configs_package_json, build_package_json);
+        if configs_npmrc.exists() {
+            shutil.copy2(configs_npmrc, build_npmrc);
+        } else {
+            print(
+                "Warning: .npmrc was not generated, skipping peerDependencies installation",
+                file=sys.stderr
+            );
+        }
 
-        # Run npm install using NodeInstaller to handle NVM environment
+        # Run pnpm install using NodeInstaller to handle NVM environment
         try {
             console.print("  Installing npm packages...", style="cyan");
             with console.status(
                 "[cyan]Installing npm packages...[/cyan]", spinner="dots"
             ) as status {
-                NodeInstaller.run_npm_with_nvm(
+                # CHANGED: Use run_pnpm_with_nvm
+                NodeInstaller.run_pnpm_with_nvm(
                     ['install'], cwd=client_dir, timeout=300
                 );
             }
 
-            # Move package-lock.json to configs/ if it was created
-            build_package_lock = client_dir / 'package-lock.json';
-            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
-            if build_package_lock.exists() {
-                if configs_package_lock.exists() {
-                    configs_package_lock.unlink();
+            # CHANGED: Move pnpm-lock.yaml to configs/ if it was created
+            build_pnpm_lock = client_dir / 'pnpm-lock.yaml';
+            configs_pnpm_lock = client_dir / 'configs' / 'pnpm-lock.yaml';
+            if build_pnpm_lock.exists() {
+                if configs_pnpm_lock.exists() {
+                    configs_pnpm_lock.unlink();
                 }
-                shutil.move(str(build_package_lock), str(configs_package_lock));
+                shutil.move(str(build_pnpm_lock), str(configs_pnpm_lock));
             }
 
-            console.print("  ✔ npm packages installed", style="success");
+            console.print("  ✔ pnpm packages installed", style="success");
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e.stderr}");
             console.print(
@@ -267,16 +304,19 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             );
         } except FileNotFoundError {
             console.warning(
-                "npm command not found. This may require reloading your shell."
+                "pnpm command not found. This may require reloading your shell."
             );
             console.print(
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
             );
         } finally {
-            # Clean up temporary package.json
+            # Clean up temporary files
             if build_package_json.exists() {
                 build_package_json.unlink();
+            }
+            if build_npmrc.exists() {
+                build_npmrc.unlink();
             }
         }
     } except Exception as e {
@@ -284,6 +324,16 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         console.print(
             "  💡 You can install packages later with: jac add --cl\n", style="muted"
         );
+    }
+
+    # If pnpm was just installed, inform user
+    if pnpm_just_installed {
+        console.print();
+        console.info("pnpm was just installed globally");
+        console.print(
+            "\n  💡 pnpm commands work immediately via global installation", style="info"
+        );
+        console.print();
     }
 
     # If Node.js was just installed, offer to restart terminal for full integration
@@ -295,7 +345,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         );
         console.print("    1. Run: source ~/.nvm/nvm.sh", style="muted");
         console.print("    2. Or restart your terminal", style="muted");
-        console.print("\n  💡 npm commands from jac work immediately", style="info");
+        console.print("\n  💡 pnpm commands from jac work immediately", style="info");
         console.print();
     }
 }
@@ -357,7 +407,7 @@ def _npm_remove_handler(
     _regenerate_and_install(project_dir);
 }
 
-"""Regenerate package.json from jac.toml and run npm install."""
+"""Regenerate package.json from jac.toml and run pnpm install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils.node_installer { NodeInstaller }
@@ -375,49 +425,73 @@ def _regenerate_and_install(project_dir: Path) -> None {
         ) ;
     }
 
+    # Ensure pnpm is installed
+    pnpm_result = NodeInstaller.ensure_pnpm_installed(interactive=True);
+    pnpm_installed = pnpm_result[0];
+    pnpm_message = pnpm_result[1];
+    pnpm_just_installed = pnpm_result[2];
+
+    if not pnpm_installed {
+        raise RuntimeError(
+            f"pnpm installation required:\n{pnpm_message}\n" + "Please install pnpm and try again."
+        );
+    }
+
     # Inform user if Node.js was just installed
     if was_just_installed {
-        print(
-            "\nNote: Node.js was just installed. npm commands will work via NVM sourcing."
-        );
+        print("\nNote: Node.js was just installed. pnpm commands will work via NVM sourcing.");
+    }
+    
+    # Inform user if pnpm was just installed
+    if pnpm_just_installed {
+        print("\nNote: pnpm was just installed globally.");
     }
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
+    bundler.create_npmrc();
 
     # Install to .jac/client/ directory where babel processor expects it
     client_dir = bundler._get_client_dir();
     client_dir.mkdir(parents=True, exist_ok=True);
 
-    # Copy package.json to .jac/client/ for npm install
+    # Copy package.json and .npmrc to .jac/client/ for pnpm install
     configs_package_json = client_dir / 'configs' / 'package.json';
+    configs_npmrc = client_dir / 'configs' / '.npmrc';
     build_package_json = client_dir / 'package.json';
+    build_npmrc = client_dir / '.npmrc';
     if configs_package_json.exists() {
         shutil.copy2(configs_package_json, build_package_json);
     }
+    if configs_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
 
     try {
-        # Use NodeInstaller.run_npm_with_nvm to handle NVM environment
-        NodeInstaller.run_npm_with_nvm(["install"], cwd=client_dir, timeout=300);
+        # Use NodeInstaller.run_pnpm_with_nvm to handle NVM environment
+        NodeInstaller.run_pnpm_with_nvm(["install"], cwd=client_dir, timeout=300);
     } except subprocess.CalledProcessError as e {
-        raise RuntimeError(f"Failed to install npm packages: {e.stderr}") from e ;
+        raise RuntimeError(f"Failed to install pnpm packages: {e.stderr}") from e ;
     } except FileNotFoundError {
         raise RuntimeError(
-            "npm command not found. This may require reloading your shell after Node.js installation."
+            "pnpm command not found. This may require reloading your shell after Node.js installation."
         ) from None ;
     } finally {
-        # Clean up temporary package.json
+        # Clean up temporary files
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to configs/ if it exists
-        build_package_lock = client_dir / 'package-lock.json';
-        if build_package_lock.exists() {
-            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
-            if configs_package_lock.exists() {
-                configs_package_lock.unlink();
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
+        }
+        # Move pnpm-lock.yaml to configs/ if it exists
+        build_pnpm_lock = client_dir / 'pnpm-lock.yaml';
+        if build_pnpm_lock.exists() {
+            configs_pnpm_lock = client_dir / 'configs' / 'pnpm-lock.yaml';
+            if configs_pnpm_lock.exists() {
+                configs_pnpm_lock.unlink();
             }
-            build_package_lock.rename(configs_package_lock);
+            build_pnpm_lock.rename(configs_pnpm_lock);
         }
     }
 }

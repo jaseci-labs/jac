@@ -24,6 +24,18 @@ impl NodeInstaller.is_npm_installed -> bool {
     }
 }
 
+"""Check if pnpm is installed and accessible."""
+impl NodeInstaller.is_pnpm_installed -> bool {
+    try {
+        result = subprocess.run(
+            ['pnpm', '--version'], capture_output=True, text=True, timeout=5
+        );
+        return result.returncode == 0;
+    } except (FileNotFoundError, subprocess.TimeoutExpired) {
+        return False;
+    }
+}
+
 """Check if NVM is installed."""
 impl NodeInstaller.is_nvm_installed -> bool {
     nvm_dir = Path.home() / '.nvm';
@@ -35,6 +47,19 @@ impl NodeInstaller.get_node_version -> (str | None) {
     try {
         result = subprocess.run(
             ['node', '--version'], capture_output=True, text=True, timeout=5
+        );
+        if result.returncode == 0 {
+            return result.stdout.strip();
+        }
+    } except (FileNotFoundError, subprocess.TimeoutExpired) { }
+    return None;
+}
+
+"""Get the currently installed pnpm version."""
+impl NodeInstaller.get_pnpm_version -> (str | None) {
+    try {
+        result = subprocess.run(
+            ['pnpm', '--version'], capture_output=True, text=True, timeout=5
         );
         if result.returncode == 0 {
             return result.stdout.strip();
@@ -132,6 +157,38 @@ impl NodeInstaller.install_node_via_nvm(version: str = "20") -> tuple[bool, str]
     }
 }
 
+"""Install pnpm globally using npm."""
+impl NodeInstaller.install_pnpm_via_npm -> tuple[bool, str] {
+    print('Installing pnpm globally...');
+    try {
+        # First check if npm is available
+        if not NodeInstaller.is_npm_installed() {
+            return (False, 'npm is required to install pnpm. Please install Node.js first.');
+        }
+        
+        # Install pnpm globally using npm
+        result = subprocess.run(
+            ['npm', 'install', '-g', 'pnpm'],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+
+        if result.returncode != 0 {
+            return (False, f'pnpm installation failed: {result.stderr}');
+        }
+
+        print('pnpm installed successfully!');
+        return (True, 'pnpm installed successfully');
+    } except subprocess.TimeoutExpired {
+        return (False, 'pnpm installation timed out. Please try again.');
+    } except FileNotFoundError as e {
+        return (False, f'Required command not found: {e}');
+    } except Exception as e {
+        return (False, f'Unexpected error during pnpm installation: {e}');
+    }
+}
+
 """Ensure Node.js is installed, installing automatically if needed.
 
 Returns tuple of (success: bool, message: str, was_just_installed: bool)
@@ -213,26 +270,89 @@ impl NodeInstaller.ensure_node_installed(
     }
 }
 
-"""Run npm command with NVM environment properly sourced.
+"""Ensure pnpm is installed, installing automatically if needed."""
+impl NodeInstaller.ensure_pnpm_installed(
+    interactive: bool = True
+) -> tuple[bool, str, bool] {
+    # Check if pnpm is already available
+    if NodeInstaller.is_pnpm_installed() {
+        version = NodeInstaller.get_pnpm_version();
+        return (True, f'pnpm {version} is already installed', False);
+    }
+    
+    print('\npnpm is not installed or not found in PATH.');
+    
+    # Check for interactive mode
+    if interactive {
+        print(
+            '\nJac client requires pnpm for package management.'
+        );
+        print(
+            f'Would you like to automatically install pnpm v{NodeInstaller.DEFAULT_PNPM_VERSION} globally using npm?'
+        );
+        response = input('Install pnpm? [Y/n]: ').strip().lower();
+        if response and response not in ('y', 'yes') {
+            return (
+                False,
+                f'pnpm installation cancelled. Install manually: npm install -g pnpm',
+                False
+            );
+        }
+    }
+    
+    # Ensure Node.js/npm is installed first
+    node_result = NodeInstaller.ensure_node_installed(interactive=False);
+    if not node_result[0] {
+        return (False, f'Node.js is required to install pnpm.\n{node_result[1]}', False);
+    }
+    
+    # Install pnpm
+    try {
+        success_pnpm = NodeInstaller.install_pnpm_via_npm();
+        if not success_pnpm[0] {
+            return (
+                False,
+                f'Unable to install pnpm.\n\nError: {success_pnpm[1]}\n\nInstall manually: npm install -g pnpm',
+                False
+            );
+        }
+        
+        print('\n' + '=' * 70);
+        print('pnpm has been installed successfully!');
+        print('Continuing with package installation...');
+        print('=' * 70 + '\n');
+        
+        return (True, 'pnpm installed successfully', True);
+    } except Exception as e {
+        return (
+            False,
+            f'Unable to install pnpm.\n\nUnexpected error: {str(e)}\n\nInstall manually: npm install -g pnpm',
+            False
+        );
+    }
+}
 
-This method automatically sources NVM in a subprocess, so npm commands work
+"""Run pnpm command with NVM environment properly sourced.
+
+This method automatically sources NVM in a subprocess, so pnpm commands work
 immediately after NVM installation without requiring the user to reload their shell.
 """
-impl NodeInstaller.run_npm_with_nvm(
+impl NodeInstaller.run_pnpm_with_nvm(
     args: list, cwd: Path, timeout: int = 300
 ) -> object {
-    # First, try running npm directly (in case it's already in PATH)
+    # First, try running pnpm directly (in case it's already in PATH)
     try {
         return subprocess.run(
-            ['npm'] + args,
+            ['pnpm'] + args,
             cwd=cwd,
-            capture_output=True,
+            # capture_output=True,
             text=True,
             timeout=timeout,
             check=True
         );
     } except FileNotFoundError { }
-    # If npm is not in PATH, source NVM and run npm in a subprocess
+    
+    # If pnpm is not in PATH, source NVM and run pnpm in a subprocess
     # This allows npm to work immediately after installation without shell reload
     args_str = ' '.join(args);
     command = (
