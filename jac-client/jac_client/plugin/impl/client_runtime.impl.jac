@@ -86,7 +86,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"args": args})
+            "body": JSON.stringify(args)
         }
     );
     payload = await response.json();

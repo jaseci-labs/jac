@@ -1431,9 +1431,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         }
                     }
                 }
-                response = server.execution_handler.call_function(
-                    name, data.get('args', {}), username
-                );
+                response = server.execution_handler.call_function(name, data, username);
                 self._send_response(response);
             } elif path.startswith('/walker/') {
                 name_parts = path.split('/');
