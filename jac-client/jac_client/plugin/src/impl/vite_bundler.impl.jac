@@ -131,22 +131,22 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
 }
 
 """
-Clean up root package.json and move package-lock.json to configs/.
+Clean up root package.json and move bun.lockb to configs/.
 
-        Remove root package.json and move package-lock.json to configs/.
+        Remove root package.json and move bun.lockb to configs/.
 """
 impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     root_package_json = self.project_dir / 'package.json';
-    root_package_lock = self.project_dir / 'package-lock.json';
+    root_bun_lockb = self.project_dir / 'bun.lockb';
     build_dir = self._get_client_dir();
     configs_dir = build_dir / 'configs';
-    configs_package_lock = configs_dir / 'package-lock.json';
-    if root_package_lock.exists() {
+    configs_bun_lockb = configs_dir / 'bun.lockb';
+    if root_bun_lockb.exists() {
         configs_dir.mkdir(exist_ok=True);
-        if configs_package_lock.exists() {
-            configs_package_lock.unlink();
+        if configs_bun_lockb.exists() {
+            configs_bun_lockb.unlink();
         }
-        shutil.move(str(root_package_lock), str(configs_package_lock));
+        shutil.move(str(root_bun_lockb), str(configs_bun_lockb));
     }
     if root_package_json.exists() {
         root_package_json.unlink();
@@ -154,7 +154,7 @@ impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
 }
 
 """
-Ensure root package.json exists temporarily for npm commands.
+Ensure root package.json exists temporarily for bun commands.
 
         Create root package.json temporarily if it doesn't exist.
 """
@@ -391,7 +391,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
         if not node_modules.exists() {
-            # Temporarily copy package.json to client build dir for npm install
+            # Temporarily copy package.json to client build dir for bun install
             build_package_json = build_dir / 'package.json';
             configs_package_json = build_dir / 'configs' / 'package.json';
             if configs_package_json.exists() and not build_package_json.exists() {
@@ -400,26 +400,23 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
-                print("\n  ⏳ Installing npm dependencies...\n", flush=True);
+                print("\n  ⏳ Installing dependencies...\n", flush=True);
                 start_time = time.time();
                 result = subprocess.run(
-                    ['npm', 'install', '--progress'],
-                    cwd=build_dir,
-                    check=False,
-                    text=True
+                    ['bun', 'install'], cwd=build_dir, check=False, text=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
                     print(
-                        f"\n  ✖ npm install failed after {elapsed:.1f}s",
+                        f"\n  ✖ bun install failed after {elapsed:.1f}s",
                         file=sys.stderr
                     );
-                    raise ClientBundleError("Failed to install npm dependencies") ;
+                    raise ClientBundleError("Failed to install dependencies") ;
                 }
                 print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
                 raise None from ClientBundleError(
-                    'npm command not found. Ensure Node.js and npm are installed.'
+                    'bun command not found. Install Bun: https://bun.sh'
                 ) ;
             }
         }
@@ -427,18 +424,25 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             # Make config path relative to build_dir (where vite runs from)
             try {
                 config_rel = self.config_path.relative_to(build_dir);
-                command = ['npx', 'vite', 'build', '--config', str(config_rel)];
+                command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
             } except ValueError {
                 # Config is outside client build dir, use absolute path
-                command = ['npx', 'vite', 'build', '--config', str(self.config_path)];
+                command = [
+                    'bun',
+                    'x',
+                    'vite',
+                    'build',
+                    '--config',
+                    str(self.config_path)
+                ];
             }
         } elif entry_file {
             generated_config = self.create_vite_config(entry_file);
             # Config is in configs/, make it relative to build_dir
             config_rel = generated_config.relative_to(build_dir);
-            command = ['npx', 'vite', 'build', '--config', str(config_rel)];
+            command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
         } else {
-            command = ['npm', 'run', 'build'];
+            command = ['bun', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
         print("\n  ⏳ Building client bundle...\n", flush=True);
@@ -458,14 +462,14 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to configs/ if it exists
-        build_package_lock = build_dir / 'package-lock.json';
-        if build_package_lock.exists() {
-            configs_package_lock = build_dir / 'configs' / 'package-lock.json';
-            if configs_package_lock.exists() {
-                configs_package_lock.unlink();
+        # Move bun.lockb to configs/ if it exists
+        build_bun_lockb = build_dir / 'bun.lockb';
+        if build_bun_lockb.exists() {
+            configs_bun_lockb = build_dir / 'configs' / 'bun.lockb';
+            if configs_bun_lockb.exists() {
+                configs_bun_lockb.unlink();
             }
-            build_package_lock.rename(configs_package_lock);
+            build_bun_lockb.rename(configs_bun_lockb);
         }
     }
 }
@@ -642,23 +646,23 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
         if not generated_package_json.exists() {
             self.create_package_json();
         }
-        # Temporarily copy package.json for npm install
+        # Temporarily copy package.json for bun install
         build_package_json = build_dir / 'package.json';
         if not build_package_json.exists() {
             shutil.copy2(generated_package_json, build_package_json);
         }
         try {
-            print("\n  ⏳ Installing npm dependencies...\n", flush=True);
+            print("\n  ⏳ Installing dependencies...\n", flush=True);
             start_time = time.time();
             result = subprocess.run(
-                ['npm', 'install', '--progress'], cwd=build_dir, check=False, text=True
+                ['bun', 'install'], cwd=build_dir, check=False, text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
                 print(
-                    f"\n  ✖ npm install failed after {elapsed:.1f}s", file=sys.stderr
+                    f"\n  ✖ bun install failed after {elapsed:.1f}s", file=sys.stderr
                 );
-                raise ClientBundleError("Failed to install npm dependencies") ;
+                raise ClientBundleError("Failed to install dependencies") ;
             }
             print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
         } finally {
@@ -679,7 +683,7 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     logger.debug(f"Starting Vite dev server on port {port}");
     # Start Vite in dev mode (let output go to terminal for HMR visibility)
     process = subprocess.Popen(
-        ['npx', 'vite', '--config', str(config_rel), '--port', str(port)],
+        ['bun', 'x', 'vite', '--config', str(config_rel), '--port', str(port)],
         cwd=build_dir
     );
     return process;
