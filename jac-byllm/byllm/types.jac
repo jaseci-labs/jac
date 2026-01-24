@@ -57,7 +57,7 @@ Provides JSON schema generation, argument parsing, and invocation capabilities.
 obj Tool {
     has func: Callable,
         description: str = "",
-        params_desc: dict[(str, str)] = {};
+        params_desc: dict[(str, str)] = None;
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;

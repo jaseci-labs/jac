@@ -160,7 +160,7 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType] = [],
+            mro: list[ClassType],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
@@ -239,7 +239,7 @@ obj FunctionType(TypeBase) {
 
 """Represents an overloaded type."""
 obj OverloadedType(TypeBase) {
-    has overloads: (list[FunctionType] | None) by postinit;
+    has overloads: (list[FunctionType] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Overload;
