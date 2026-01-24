@@ -163,9 +163,12 @@ impl NodeInstaller.install_pnpm_via_npm -> tuple[bool, str] {
     try {
         # First check if npm is available
         if not NodeInstaller.is_npm_installed() {
-            return (False, 'npm is required to install pnpm. Please install Node.js first.');
+            return (
+                False,
+                'npm is required to install pnpm. Please install Node.js first.'
+            );
         }
-        
+
         # Install pnpm globally using npm
         result = subprocess.run(
             ['npm', 'install', '-g', 'pnpm'],
@@ -279,14 +282,10 @@ impl NodeInstaller.ensure_pnpm_installed(
         version = NodeInstaller.get_pnpm_version();
         return (True, f'pnpm {version} is already installed', False);
     }
-    
     print('\npnpm is not installed or not found in PATH.');
-    
     # Check for interactive mode
     if interactive {
-        print(
-            '\nJac client requires pnpm for package management.'
-        );
+        print('\nJac client requires pnpm for package management.');
         print(
             f'Would you like to automatically install pnpm v{NodeInstaller.DEFAULT_PNPM_VERSION} globally using npm?'
         );
@@ -299,13 +298,15 @@ impl NodeInstaller.ensure_pnpm_installed(
             );
         }
     }
-    
     # Ensure Node.js/npm is installed first
     node_result = NodeInstaller.ensure_node_installed(interactive=False);
     if not node_result[0] {
-        return (False, f'Node.js is required to install pnpm.\n{node_result[1]}', False);
+        return (
+            False,
+            f'Node.js is required to install pnpm.\n{node_result[1]}',
+            False
+        );
     }
-    
     # Install pnpm
     try {
         success_pnpm = NodeInstaller.install_pnpm_via_npm();
@@ -316,12 +317,12 @@ impl NodeInstaller.ensure_pnpm_installed(
                 False
             );
         }
-        
+
         print('\n' + '=' * 70);
         print('pnpm has been installed successfully!');
         print('Continuing with package installation...');
         print('=' * 70 + '\n');
-        
+
         return (True, 'pnpm installed successfully', True);
     } except Exception as e {
         return (
@@ -343,15 +344,10 @@ impl NodeInstaller.run_pnpm_with_nvm(
     # First, try running pnpm directly (in case it's already in PATH)
     try {
         return subprocess.run(
-            ['pnpm'] + args,
-            cwd=cwd,
+            ['pnpm'] + args, cwd=cwd, text=True, timeout=timeout, check=True
             # capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=True
         );
     } except FileNotFoundError { }
-    
     # If pnpm is not in PATH, source NVM and run pnpm in a subprocess
     # This allows npm to work immediately after installation without shell reload
     args_str = ' '.join(args);

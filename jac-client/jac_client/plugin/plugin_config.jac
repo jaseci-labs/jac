@@ -202,9 +202,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
     # Ensure pnpm is installed
     console.print();
-    with console.status(
-        "[cyan]Checking pnpm installation...[/cyan]", spinner="dots"
-    ) as status {
+    with console.status("[cyan]Checking pnpm installation...[/cyan]", spinner="dots") as status {
         pnpm_result = NodeInstaller.ensure_pnpm_installed(interactive=True);
         pnpm_installed = pnpm_result[0];
         pnpm_message = pnpm_result[1];
@@ -331,7 +329,8 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         console.print();
         console.info("pnpm was just installed globally");
         console.print(
-            "\n  💡 pnpm commands work immediately via global installation", style="info"
+            "\n  💡 pnpm commands work immediately via global installation",
+            style="info"
         );
         console.print();
     }
@@ -434,14 +433,16 @@ def _regenerate_and_install(project_dir: Path) -> None {
     if not pnpm_installed {
         raise RuntimeError(
             f"pnpm installation required:\n{pnpm_message}\n" + "Please install pnpm and try again."
-        );
+        ) ;
     }
 
     # Inform user if Node.js was just installed
     if was_just_installed {
-        print("\nNote: Node.js was just installed. pnpm commands will work via NVM sourcing.");
+        print(
+            "\nNote: Node.js was just installed. pnpm commands will work via NVM sourcing."
+        );
     }
-    
+
     # Inform user if pnpm was just installed
     if pnpm_just_installed {
         print("\nNote: pnpm was just installed globally.");

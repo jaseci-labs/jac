@@ -36,7 +36,7 @@ obj NodeInstaller {
     static def install_node_via_nvm(version: str = "20") -> tuple[bool, str];
 
     """Install pnpm using npm."""
-    static def install_pnpm_via_npm() -> tuple[bool, str];
+    static def install_pnpm_via_npm -> tuple[bool, str];
 
     """Ensure Node.js is installed, installing automatically if needed.
 

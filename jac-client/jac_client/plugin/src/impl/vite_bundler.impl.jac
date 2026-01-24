@@ -89,9 +89,7 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Path {
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
-    
     npmrc_path = configs_dir / '.npmrc';
-    
     # pnpm configuration for auto-installing peer dependencies and hoisting
     npmrc_content = """# Auto-install peer dependencies
 auto-install-peers=true
@@ -99,7 +97,6 @@ auto-install-peers=true
 # Hoist all packages to root node_modules
 public-hoist-pattern[]=*
 """;
-    
     npmrc_path.write_text(npmrc_content, encoding='utf-8');
     return npmrc_path;
 }
@@ -160,7 +157,6 @@ impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
     root_package_json = self.project_dir / 'package.json';
     root_npmrc = self.project_dir / '.npmrc';
     root_package_lock = self.project_dir / 'pnpm-lock.yaml';
-
     build_dir = self._get_client_dir();
     configs_dir = build_dir / 'configs';
     configs_package_lock = configs_dir / 'pnpm-lock.yaml';
@@ -193,7 +189,6 @@ impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
     if not root_package_json.exists() {
         shutil.copy2(generated_package_json, root_package_json);
     }
-
     generated_npmrc = self._get_client_dir() / 'configs' / '.npmrc';
     root_npmrc = self.project_dir / '.npmrc';
     if not generated_npmrc.exists() {
@@ -452,11 +447,8 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 );
                 start_time = time.time();
                 result = subprocess.run(
-                    ['pnpm', 'install'],
-                    cwd=build_dir,
-                    check=False,
+                    ['pnpm', 'install'], cwd=build_dir, check=False, text=True
                     # capture_output=True,
-                    text=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
@@ -722,11 +714,8 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             );
             start_time = time.time();
             result = subprocess.run(
-                ['pnpm', 'install'],
-                cwd=build_dir,
-                check=False,
+                ['pnpm', 'install'], cwd=build_dir, check=False, text=True
                 # capture_output=True,
-                text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
