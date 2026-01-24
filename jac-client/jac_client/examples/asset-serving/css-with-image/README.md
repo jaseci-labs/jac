@@ -26,7 +26,7 @@ relative-imports/
 1. Make sure node modules are installed:
 
 ```bash
-npm install
+bun install
 ```
 
 1. Run the Jac server:

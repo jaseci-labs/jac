@@ -33,43 +33,39 @@ impl PackageInstaller.uninstall_package(
     }
     # Save the updated config
     self.config_loader.save();
-    # Regenerate package.json and run npm install to actually remove the package
+    # Regenerate package.json and run bun install to actually remove the package
     self._regenerate_and_install();
 }
 
-"""Regenerate package.json from jac.toml and run npm install."""
+"""Regenerate package.json from jac.toml and run bun install."""
 impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
+    import from jac_client.plugin.utils { ensure_bun_available }
+    # Ensure bun is available before proceeding
+    if not ensure_bun_available() {
+        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+    }
     # Regenerate package.json from updated jac.toml
     bundler = ViteBundler(self.project_dir);
     bundler.create_package_json();
-    # Ensure root package.json exists temporarily for npm commands
+    # Ensure root package.json exists temporarily for bun commands
     bundler._ensure_root_package_json();
     try {
-        # Run npm install to actually install the packages
-        print("\n  ⏳ Installing npm packages...\n", flush=True);
+        # Run bun install to actually install the packages
+        print("\n  ⏳ Installing packages...\n", flush=True);
         result = subprocess.run(
-            ['npm', 'install', '--progress'],
-            cwd=self.project_dir,
-            check=False,
-            text=True
+            ['bun', 'install'], cwd=self.project_dir, check=False, text=True
         );
         if result.returncode != 0 {
-            raise ClientBundleError(
-                'Failed to install npm packages (see output above)'
-            ) ;
+            raise ClientBundleError('Failed to install packages (see output above)') ;
         }
-        print("\n  ✔ npm packages installed", flush=True);
-    } except FileNotFoundError {
-        raise ClientBundleError(
-            'npm command not found. Ensure Node.js and npm are installed.'
-        ) from None ;
+        print("\n  ✔ Packages installed", flush=True);
     } finally {
-        # Always clean up root package.json and move package-lock.json
+        # Always clean up root package.json and move bun.lockb
         bundler._cleanup_root_package_files();
     }
 }
 
-"""Install all packages from jac.toml (regenerate package.json and run npm install)."""
+"""Install all packages from jac.toml (regenerate package.json and run bun install)."""
 impl PackageInstaller.install_all(self: PackageInstaller) -> None {
     if not self.config_file.exists() {
         raise ClientBundleError(
@@ -97,11 +93,11 @@ impl PackageInstaller.install_package(
     self.config_loader.add_dependency(package_name, package_version, is_dev);
     # Save the updated config
     self.config_loader.save();
-    # Regenerate package.json and install the package via npm
+    # Regenerate package.json and install the package via bun
     self._regenerate_and_install();
 }
 
-"""Handles installing npm packages by updating jac.toml."""
+"""Handles installing packages by updating jac.toml."""
 impl PackageInstaller.init(self: PackageInstaller, project_dir: Path) {
     self.project_dir = project_dir;
     self.config_loader = JacClientConfig(project_dir);

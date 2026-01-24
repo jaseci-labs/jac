@@ -26,7 +26,7 @@ ts-support/
 1. Install dependencies:
 
 ```bash
-npm install
+bun install
 ```
 
 1. Run the Jac server:
@@ -104,8 +104,7 @@ The `tsconfig.json` is configured for:
 
 1. Jac files are compiled to JavaScript in `compiled/`
 2. TypeScript files are copied to `compiled/` maintaining structure
-3. Babel transpiles JavaScript from `compiled/` to `build/`
-4. Vite bundles everything from `build/` to `dist/`, processing TypeScript files
+3. Vite bundles everything from `compiled/` to `dist/`, processing TypeScript and JSX natively
 
 ## Benefits
 
