@@ -425,7 +425,7 @@ def test_generate_client_config_existing_file() -> None:
 def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str:
     """Create a minimal jac.toml file for testing.
 
-    Note: These CLI tests run jac commands as subprocesses and include npm install.
+    Note: These CLI tests run jac commands as subprocesses and include pnpm install.
     For faster tests, consider using unit tests with mocked PackageInstaller.
     """
     deps_section = f"\n{deps}" if deps else ""
@@ -448,13 +448,13 @@ entry-point = "app.jac"
 
 
 def test_install_without_cl_flag() -> None:
-    """Test add command without --npm flag should skip silently when no jac.toml exists."""
+    """Test add command without --pnpm flag should skip silently when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run add command without --npm flag and without jac.toml
+            # Run add command without --pnpm flag and without jac.toml
             result = run(
                 ["jac", "add", "lodash"],
                 capture_output=True,
@@ -472,7 +472,7 @@ def test_install_without_cl_flag() -> None:
 
 
 def test_install_all_packages() -> None:
-    """Test add --npm command installs all packages from jac.toml."""
+    """Test add --pnpm command installs all packages from jac.toml."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -481,9 +481,9 @@ def test_install_all_packages() -> None:
             # Create jac.toml with some dependencies
             _create_jac_toml(temp_dir, deps='lodash = "^4.17.21"')
 
-            # Run add --npm command without package name
+            # Run add --pnpm command without package name
             result = run(
-                ["jac", "add", "--npm"],
+                ["jac", "add", "--pnpm"],
                 capture_output=True,
                 text=True,
             )
@@ -505,7 +505,7 @@ def test_install_all_packages() -> None:
 
 
 def test_install_package_to_dependencies() -> None:
-    """Test add --npm command adds package to dependencies."""
+    """Test add --pnpm command adds package to dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -514,9 +514,9 @@ def test_install_package_to_dependencies() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --npm command with package name
+            # Run add --pnpm command with package name
             result = run(
-                ["jac", "add", "--npm", "lodash"],
+                ["jac", "add", "--pnpm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -545,7 +545,7 @@ def test_install_package_to_dependencies() -> None:
 
 
 def test_install_package_with_version() -> None:
-    """Test add --npm command with specific version."""
+    """Test add --pnpm command with specific version."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -554,9 +554,9 @@ def test_install_package_with_version() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --npm command with package and version
+            # Run add --pnpm command with package and version
             result = run(
-                ["jac", "add", "--npm", "lodash@^4.17.21"],
+                ["jac", "add", "--pnpm", "lodash@^4.17.21"],
                 capture_output=True,
                 text=True,
             )
@@ -585,7 +585,7 @@ def test_install_package_with_version() -> None:
 
 
 def test_install_package_to_devdependencies() -> None:
-    """Test add --npm -d command adds package to dev-dependencies."""
+    """Test add --pnpm -d command adds package to dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -594,9 +594,9 @@ def test_install_package_to_devdependencies() -> None:
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir)
 
-            # Run add --npm -d command
+            # Run add --pnpm -d command
             run(
-                ["jac", "add", "--npm", "-d", "@types/react"],
+                ["jac", "add", "--pnpm", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -616,15 +616,15 @@ def test_install_package_to_devdependencies() -> None:
 
 
 def test_install_without_config_json() -> None:
-    """Test add --npm command when jac.toml doesn't exist."""
+    """Test add --pnpm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run add --npm command without jac.toml
+            # Run add --pnpm command without jac.toml
             result = run(
-                ["jac", "add", "--npm", "lodash"],
+                ["jac", "add", "--pnpm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -638,13 +638,13 @@ def test_install_without_config_json() -> None:
 
 
 def test_uninstall_without_cl_flag() -> None:
-    """Test remove command without --npm flag should fail when no jac.toml exists."""
+    """Test remove command without --pnpm flag should fail when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run remove command without --npm flag and without jac.toml
+            # Run remove command without --pnpm flag and without jac.toml
             result = run(
                 ["jac", "remove", "lodash"],
                 capture_output=True,
@@ -660,7 +660,7 @@ def test_uninstall_without_cl_flag() -> None:
 
 
 def test_uninstall_without_package_name() -> None:
-    """Test remove --npm command without package name should fail."""
+    """Test remove --pnpm command without package name should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -669,9 +669,9 @@ def test_uninstall_without_package_name() -> None:
             # Create jac.toml
             _create_jac_toml(temp_dir)
 
-            # Run remove --npm command without package name
+            # Run remove --pnpm command without package name
             result = run(
-                ["jac", "remove", "--npm"],
+                ["jac", "remove", "--pnpm"],
                 capture_output=True,
                 text=True,
             )
@@ -685,7 +685,7 @@ def test_uninstall_without_package_name() -> None:
 
 
 def test_uninstall_package_from_dependencies() -> None:
-    """Test remove --npm command removes package from dependencies."""
+    """Test remove --pnpm command removes package from dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -694,9 +694,9 @@ def test_uninstall_package_from_dependencies() -> None:
             # Create jac.toml with a package
             config_path = _create_jac_toml(temp_dir, deps='lodash = "^4.17.21"')
 
-            # Run remove --npm command
+            # Run remove --pnpm command
             result = run(
-                ["jac", "remove", "--npm", "lodash"],
+                ["jac", "remove", "--pnpm", "lodash"],
                 capture_output=True,
                 text=True,
             )
@@ -719,7 +719,7 @@ def test_uninstall_package_from_dependencies() -> None:
 
 
 def test_uninstall_package_from_devdependencies() -> None:
-    """Test remove --npm -d command removes package from dev-dependencies."""
+    """Test remove --pnpm -d command removes package from dev-dependencies."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -730,9 +730,9 @@ def test_uninstall_package_from_devdependencies() -> None:
                 temp_dir, dev_deps='"@types/react" = "^18.0.0"'
             )
 
-            # Run remove --npm -d command
+            # Run remove --pnpm -d command
             result = run(
-                ["jac", "remove", "--npm", "-d", "@types/react"],
+                ["jac", "remove", "--pnpm", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             )
@@ -754,7 +754,7 @@ def test_uninstall_package_from_devdependencies() -> None:
 
 
 def test_uninstall_nonexistent_package() -> None:
-    """Test remove --npm command with non-existent package should fail."""
+    """Test remove --pnpm command with non-existent package should fail."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -763,9 +763,9 @@ def test_uninstall_nonexistent_package() -> None:
             # Create jac.toml without the package
             _create_jac_toml(temp_dir)
 
-            # Run remove --npm command with non-existent package
+            # Run remove --pnpm command with non-existent package
             result = run(
-                ["jac", "remove", "--npm", "nonexistent-package"],
+                ["jac", "remove", "--pnpm", "nonexistent-package"],
                 capture_output=True,
                 text=True,
             )
@@ -779,15 +779,15 @@ def test_uninstall_nonexistent_package() -> None:
 
 
 def test_uninstall_without_config_toml() -> None:
-    """Test remove --npm command when jac.toml doesn't exist."""
+    """Test remove --pnpm command when jac.toml doesn't exist."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
 
-            # Run remove --npm command without jac.toml
+            # Run remove --pnpm command without jac.toml
             result = run(
-                ["jac", "remove", "--npm", "lodash"],
+                ["jac", "remove", "--pnpm", "lodash"],
                 capture_output=True,
                 text=True,
             )

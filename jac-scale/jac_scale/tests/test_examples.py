@@ -81,7 +81,7 @@ class JacScaleTestRunner:
 
             # Run npm install
             npm_install = subprocess.run(
-                ["jac", "add", "--npm"],
+                ["jac", "add", "--pnpm"],
                 cwd=example_dir,
                 capture_output=True,
                 text=True,

@@ -274,8 +274,8 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         # Run pnpm install using NodeInstaller to handle NVM environment
         try {
             console.print("\n  ⏳ Installing npm packages...\n", style="cyan");
-            NodeInstaller.run_npm_with_nvm(
-                ['install', '--progress'], cwd=client_dir, timeout=300
+            NodeInstaller.run_pnpm_with_nvm(
+                ['install'], cwd=client_dir, timeout=300
             );
 
             # CHANGED: Move pnpm-lock.yaml to configs/ if it was created
