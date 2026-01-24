@@ -111,8 +111,8 @@ obj GenericEdge(ArchetypeProtocol) {
 }
 
 obj Master {
-    has __jac__: Anchor | None = None,
-        root_node: Root = Root(Root);
+    has __jac__: Anchor | None = None;
+    has root_node: Root = Root(Root);
 
     def postinit {
         self.__jac__ = Anchor(self);
