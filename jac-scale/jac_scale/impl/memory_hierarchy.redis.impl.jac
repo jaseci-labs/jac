@@ -11,7 +11,8 @@ glob logger = logging.getLogger(__name__);
 
 """Post-initialization: connect to Redis."""
 impl RedisBackend.postinit -> None {
-    if self.redis_url and self.redis_client is None {
+    self.redis_client = None;
+    if self.redis_url {
         try {
             self.redis_client = redis.from_url(self.redis_url);
         } except Exception as e {
