@@ -6,8 +6,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.10 (Latest Release)
 
-- **Desktop Target Support (Tauri)**: Added multi-target build support for creating native desktop applications. Use `jac setup desktop` for one-time setup, `jac build --client desktop` to build installers, and `jac start --client desktop --dev` for development with hot reload. Supports Windows, macOS, and Linux. [Documentation](../../../jac-client/multi-targets/intro/)
-
 ## jac-client 0.2.9
 
 - **Generic Config File Generation from jac.toml**: Added support for generating JavaScript config files (e.g., `postcss.config.js`, `tailwind.config.js`) directly from `jac.toml` configuration. Define configs under `[plugins.client.configs.<name>]` and they are automatically converted to `<name>.config.js` files in `.jac/client/configs/`. This eliminates the need for standalone JavaScript config files in the project root for tools like PostCSS, Tailwind (v3), ESLint, and other npm packages that use the `*.config.js` convention.
