@@ -336,13 +336,13 @@ html, body {
 .md-sidebar--primary {
     top: 120px !important;
     bottom: 0 !important;
-    height: calc(100vh - 120px) !important;
+    height: calc(100vh - 100px) !important;
 }
 
 .md-sidebar--secondary {
     top: 120px !important;
     bottom: 0 !important;
-    height: calc(100vh - 120px) !important;
+    height: calc(100vh - 100px) !important;
 }
 
 .md-sidebar--primary .md-sidebar__scrollwrap,
