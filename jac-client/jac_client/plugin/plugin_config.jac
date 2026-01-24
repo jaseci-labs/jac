@@ -87,11 +87,11 @@ class JacClientPluginConfig {
         return {
             "name": "npm",
             "dev_name": "npm.dev",
-            "cli_flag": "--npm",
+            "cli_flag": "--pnpm",
             "install_dir": ".jac/client/configs",
-            "install_handler": _npm_install_handler,
-            "install_all_handler": _npm_install_all_handler,
-            "remove_handler": _npm_remove_handler
+            "install_handler": _pnpm_install_handler,
+            "install_all_handler": _pnpm_install_all_handler,
+            "remove_handler": _pnpm_remove_handler
         };
     }
 
@@ -353,7 +353,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 # NPM Dependency Handlers
 # ===============================================================================
 """Install an npm package."""
-def _npm_install_handler(
+def _pnpm_install_handler(
     config: JacConfig,
     package_name: str,
     version: str | None = None,
@@ -375,7 +375,7 @@ def _npm_install_handler(
 }
 
 """Install all npm packages from jac.toml."""
-def _npm_install_all_handler(config: JacConfig) -> None {
+def _pnpm_install_all_handler(config: JacConfig) -> None {
     if config.project_root is None {
         raise RuntimeError("No project root found") ;
     }
@@ -384,7 +384,7 @@ def _npm_install_all_handler(config: JacConfig) -> None {
 }
 
 """Remove an npm package."""
-def _npm_remove_handler(
+def _pnpm_remove_handler(
     config: JacConfig, package_name: str, is_dev: bool = False
 ) -> None {
     if config.project_root is None {

@@ -1,9 +1,9 @@
 """Command line interface tool for the Jac Client.
 
-This module extends core CLI commands to add the --npm flag for
+This module extends core CLI commands to add the --pnpm flag for
 client-side (frontend) package management:
-- `jac add --npm`: Add npm dependencies
-- `jac remove --npm`: Remove npm dependencies
+- `jac add --pnpm`: Add npm dependencies
+- `jac remove --pnpm`: Remove npm dependencies
 
 For creating client projects, use: `jac create --use client`
 """
@@ -97,7 +97,7 @@ class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
     static def create_cmd -> None {
-        """Extend core commands to add --npm flag for npm package management.""";
+        """Extend core commands to add --pnpm flag for npm package management.""";
         registry = get_registry();
 
         # Extend the core 'create' command with --skip flag for client template
@@ -116,12 +116,12 @@ class JacCmd {
             source="jac-client"
         );
 
-        # Extend the core 'add' command with --npm flag
+        # Extend the core 'add' command with --pnpm flag
         registry.extend_command(
             command_name="add",
             args=[
                 Arg.create(
-                    "npm",
+                    "pnpm",
                     typ=bool,
                     default=False,
                     help="Add as npm (client-side) dependency"
@@ -132,12 +132,12 @@ class JacCmd {
             source="jac-client"
         );
 
-        # Extend the core 'remove' command with --npm flag
+        # Extend the core 'remove' command with --pnpm flag
         registry.extend_command(
             command_name="remove",
             args=[
                 Arg.create(
-                    "npm",
+                    "pnpm",
                     typ=bool,
                     default=False,
                     help="Remove npm (client-side) dependency"
@@ -192,11 +192,11 @@ def _handle_create_skip(ctx: HookContext) -> None {
     # Let core create command run normally
 }
 
-"""Pre-hook to handle --npm flag for adding npm dependencies."""
+"""Pre-hook to handle --pnpm flag for adding npm dependencies."""
 def _handle_npm_add(ctx: HookContext) -> None {
-    # Check if --npm flag is set
-    npm_flag = ctx.get_arg("npm", False);
-    if not npm_flag {
+    # Check if --pnpm flag is set
+    pnpm_flag = ctx.get_arg("pnpm", False);
+    if not pnpm_flag {
         # Let core add command run normally
         return;
     }
@@ -217,10 +217,10 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 
     registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
+    dep_type = registry.get_by_flag("--pnpm");
     if dep_type is None {
         console.error(
-            "--npm flag requires jac-client plugin",
+            "--pnpm flag requires jac-client plugin",
             hint="Install with: pip install jac-client"
         );
         ctx.set_data("cancel_execution", True);
@@ -527,11 +527,11 @@ def _handle_setup_target(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --npm flag for removing npm dependencies."""
+"""Pre-hook to handle --pnpm flag for removing npm dependencies."""
 def _handle_npm_remove(ctx: HookContext) -> None {
-    # Check if --npm flag is set
-    npm_flag = ctx.get_arg("npm", False);
-    if not npm_flag {
+    # Check if --pnpm flag is set
+    pnpm_flag = ctx.get_arg("pnpm", False);
+    if not pnpm_flag {
         # Let core remove command run normally
         return;
     }
@@ -557,9 +557,9 @@ def _handle_npm_remove(ctx: HookContext) -> None {
     }
 
     registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
+    dep_type = registry.get_by_flag("--pnpm");
     if dep_type is None {
-        console.error("--npm flag requires jac-client plugin to be installed.");
+        console.error("--pnpm flag requires jac-client plugin to be installed.");
         console.print("Install with: pip install jac-client", style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
