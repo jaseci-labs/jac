@@ -13,7 +13,7 @@
 | 1 | Core Package Manager Replacement | ✅ Complete | 5/5 |
 | 2 | Remove Babel | ✅ Complete | 4/4 |
 | 3 | Remove Node Version Management | ✅ Complete | 3/3 |
-| 4 | Desktop Target Updates | ⬜ Not Started | 0/4 |
+| 4 | Desktop Target Updates | ✅ Complete | 4/4 |
 | 5 | Test Infrastructure | ⬜ Not Started | 0/4 |
 | 6 | Documentation & Examples | ⬜ Not Started | 0/5 |
 | 7 | Final Testing & Validation | ⬜ Not Started | 0/4 |
@@ -142,27 +142,28 @@ Update Tauri integration to use Bun instead of npm.
 
 ### Tasks
 
-- [ ] **4.1** Update Tauri CLI installation check
-  - [ ] Line ~1303-1313: Remove npm-based Tauri CLI check
-  - [ ] Keep cargo-based check as primary method
+- [x] **4.1** Update Tauri CLI installation check
+  - [x] Replace `npm list -g @tauri-apps/cli` → `bun pm ls -g` check
+  - [x] Keep cargo-based check as primary method
 
-- [ ] **4.2** Update Tauri CLI installation
-  - [ ] Line ~1374-1392: Replace `['npm', 'install', '-g', '@tauri-apps/cli']` → `['bun', 'add', '-g', '@tauri-apps/cli']`
-  - [ ] Or better: recommend `cargo install tauri-cli` only
+- [x] **4.2** Update Tauri CLI installation
+  - [x] Replace `['npm', 'install', '-g', '@tauri-apps/cli']` → `['bun', 'add', '-g', '@tauri-apps/cli']`
+  - [x] Update all npm availability checks to bun
 
-- [ ] **4.3** Update Tauri build commands
-  - [ ] Line ~1850: Replace `["npm", "run", "tauri", "build"]` → `["bun", "run", "tauri", "build"]`
-  - [ ] Consider using `["cargo", "tauri", "build"]` as default
+- [x] **4.3** Update Tauri build commands
+  - [x] Changed default to `["cargo", "tauri", "build"]`
+  - [x] Fallback to `["bun", "run", "tauri", "build"]` if package.json has tauri scripts
 
-- [ ] **4.4** Update Tauri dev commands
-  - [ ] Line ~2236-2239: Replace `["npm", "run", "tauri", "dev"]` → `["bun", "run", "tauri", "dev"]`
-  - [ ] Consider using `["cargo", "tauri", "dev"]` as default
+- [x] **4.4** Update Tauri dev commands
+  - [x] Changed default to `["cargo", "tauri", "dev"]`
+  - [x] Fallback to `["bun", "run", "tauri", "dev"]` if package.json has tauri scripts
+  - [x] Updated error messages to reference bun instead of npm
 
 ### Notes
 
 ```
 Files modified:
-- [ ] jac_client/plugin/src/targets/impl/desktop_target.impl.jac
+- [x] jac_client/plugin/src/targets/impl/desktop_target.impl.jac
 ```
 
 ---
@@ -303,6 +304,7 @@ Track any blockers or issues encountered during migration.
 | 2025-01-24 | 1 | Completed Phase 1: Replaced npm/npx with bun in package_installer.impl.jac and vite_bundler.impl.jac |
 | 2025-01-24 | 2 | Completed Phase 2: Removed Babel entirely - deleted babel_processor files, removed Babel config, 4 Babel deps removed |
 | 2025-01-24 | 3 | Completed Phase 3: Removed Node version management - deleted node_installer files, replaced with shutil.which('bun') check |
+| 2025-01-24 | 4 | Completed Phase 4: Desktop target updates - replaced npm with bun for Tauri CLI check/install, build and dev commands default to cargo |
 
 ---
 
