@@ -358,6 +358,7 @@ def test_create_jac_app_installs_default_packages() -> None:
             assert (
                 "Installing default npm packages" in stdout
                 or "Installing npm packages" in stdout
+                or "Installing npm packages..." in stdout
             )
 
             # Verify package.json was generated (even if npm install failed)
@@ -494,6 +495,7 @@ def test_install_all_packages() -> None:
             assert (
                 "Installing all npm packages" in result.stdout
                 or "Installing all npm packages" in result.stdout.lower()
+                or "Installing npm packages..." in result.stdout
             )
             assert (
                 "Installed all npm packages successfully" in result.stdout

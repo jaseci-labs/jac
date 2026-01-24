@@ -288,7 +288,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
                 shutil.move(str(build_pnpm_lock), str(configs_pnpm_lock));
             }
 
-            console.print("  ✔ pnpm packages installed", style="success");
+            console.print("  ✔ npm packages installed", style="success");
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e.stderr}");
             console.print(
