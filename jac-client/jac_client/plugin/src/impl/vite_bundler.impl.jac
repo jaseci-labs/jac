@@ -375,6 +375,12 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
     import sys;
     import time;
+    import shutil;
+    import from jac_client.plugin.utils { ensure_bun_available }
+    # Ensure bun is available before proceeding
+    if not ensure_bun_available() {
+        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+    }
     self.output_dir.mkdir(parents=True, exist_ok=True);
     generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
     if not generated_package_json.exists() {
@@ -411,9 +417,10 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 }
                 print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
-                raise None from ClientBundleError(
-                    'bun command not found. Install Bun: https://bun.sh'
-                ) ;
+                # This shouldn't happen since we check for bun at the start
+                raise ClientBundleError(
+                    'Bun command not found. Install Bun: https://bun.sh'
+                ) from None ;
             }
         }
         if self.config_path {
@@ -618,6 +625,13 @@ def _toml_config_to_js(config_name: str, config_data: dict) -> str {
 impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     import sys;
     import time;
+    import from jac_client.plugin.utils { ensure_bun_available }
+    # Ensure bun is available before starting dev server
+    if not ensure_bun_available() {
+        raise ClientBundleError(
+            'Bun is required for dev server. Install manually: https://bun.sh'
+        ) from None ;
+    }
     build_dir = self._get_client_dir();
     node_modules = build_dir / 'node_modules';
     # Create/update index.html for dev server (load from compiled/ for HMR)

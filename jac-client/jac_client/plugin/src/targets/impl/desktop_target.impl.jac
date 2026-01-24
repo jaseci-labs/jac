@@ -1867,6 +1867,14 @@ def _run_tauri_build(tauri_dir: Path, platform: Optional[str] = None) -> Path {
     }
 
     if use_bun {
+        # Ensure bun is available
+        import from jac_client.plugin.utils { ensure_bun_available }
+        if not ensure_bun_available() {
+            console.error(
+                "Bun is required for this project. Install manually: https://bun.sh"
+            );
+            raise RuntimeError("Bun is required") from None ;
+        }
         # Use bun run tauri build
         build_cmd = ["bun", "run", "tauri", "build"];
         if target {
@@ -2231,6 +2239,14 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
     }
 
     if use_bun {
+        # Ensure bun is available
+        import from jac_client.plugin.utils { ensure_bun_available }
+        if not ensure_bun_available() {
+            console.error(
+                "Bun is required for this project. Install manually: https://bun.sh"
+            );
+            raise RuntimeError("Bun is required") from None ;
+        }
         # Use bun run tauri dev
         dev_cmd = ["bun", "run", "tauri", "dev"];
     } else {

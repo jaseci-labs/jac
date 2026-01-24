@@ -39,6 +39,11 @@ impl PackageInstaller.uninstall_package(
 
 """Regenerate package.json from jac.toml and run bun install."""
 impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
+    import from jac_client.plugin.utils { ensure_bun_available }
+    # Ensure bun is available before proceeding
+    if not ensure_bun_available() {
+        raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
+    }
     # Regenerate package.json from updated jac.toml
     bundler = ViteBundler(self.project_dir);
     bundler.create_package_json();
@@ -54,8 +59,6 @@ impl PackageInstaller._regenerate_and_install(self: PackageInstaller) -> None {
             raise ClientBundleError('Failed to install packages (see output above)') ;
         }
         print("\n  ✔ Packages installed", flush=True);
-    } except FileNotFoundError {
-        raise ClientBundleError('bun command not found. Install Bun: https://bun.sh') from None ;
     } finally {
         # Always clean up root package.json and move bun.lockb
         bundler._cleanup_root_package_files();

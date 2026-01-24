@@ -161,20 +161,13 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jaclang.cli.console { console }
-    import shutil;
+    import from jac_client.plugin.utils { ensure_bun_available }
 
-    # First, ensure Bun is installed
+    # First, ensure Bun is installed (prompt to install if not)
     console.print();
-    bun_path = shutil.which('bun');
-
-    if not bun_path {
+    if not ensure_bun_available() {
         console.warning("Bun is required for client development");
-        console.print("\n  Install Bun: https://bun.sh", file=sys.stderr);
-        console.print(
-            "  After installing Bun, run: jac add --cl\n",
-            style="muted",
-            file=sys.stderr
-        );
+        console.print("  After installing Bun, run: jac add --cl\n", style="muted");
         return;
     }
 
@@ -229,7 +222,21 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         shutil.copy2(configs_package_json, build_package_json);
 
-        # Run bun install
+        # Run bun install (ensure bun is available first)
+        import from jac_client.plugin.utils { ensure_bun_available }
+        if not ensure_bun_available() {
+            console.warning("Bun is required. Install manually: https://bun.sh");
+            console.print(
+                "  💡 You can install packages later with: jac add --cl\n",
+                style="muted"
+            );
+            # Clean up temporary package.json
+            if build_package_json.exists() {
+                build_package_json.unlink();
+            }
+            return;
+        }
+
         try {
             console.print("\n  ⏳ Installing packages...\n", style="cyan");
             subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
@@ -247,12 +254,6 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             console.print("  ✔ Packages installed", style="success");
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e}");
-            console.print(
-                "  💡 You can install packages later with: jac add --cl\n",
-                style="muted"
-            );
-        } except FileNotFoundError {
-            console.warning("bun command not found. Install Bun: https://bun.sh");
             console.print(
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
@@ -331,14 +332,12 @@ def _npm_remove_handler(
 """Regenerate package.json from jac.toml and run bun install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
+    import from jac_client.plugin.utils { ensure_bun_available }
     import shutil;
 
-    # Ensure Bun is installed before proceeding
-    bun_path = shutil.which('bun');
-    if not bun_path {
-        raise RuntimeError(
-            "Bun is required but not installed.\n" + "Install Bun: https://bun.sh"
-        ) ;
+    # Ensure Bun is installed before proceeding (prompt to install if not)
+    if not ensure_bun_available() {
+        raise RuntimeError("Bun is required. Install manually: https://bun.sh") from None ;
     }
 
     bundler = ViteBundler(project_dir);
@@ -360,8 +359,6 @@ def _regenerate_and_install(project_dir: Path) -> None {
         subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
     } except subprocess.CalledProcessError as e {
         raise RuntimeError(f"Failed to install packages: {e}") from e ;
-    } except FileNotFoundError {
-        raise RuntimeError("bun command not found. Install Bun: https://bun.sh") from None ;
     } finally {
         # Clean up temporary package.json
         if build_package_json.exists() {
