@@ -205,10 +205,10 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
                         while file_path.startswith("../") {
                             file_path = file_path[3:];
                         }
-                        path = self.packages_dir / file_path;
+                        path = (self.packages_dir / file_path).resolve();
                     }
                 } else {
-                    path = self.packages_dir / file_path;
+                    path = (self.packages_dir / file_path).resolve();
                 }
 
                 # Skip if doesn't exist or is the metadata dir itself
@@ -270,7 +270,7 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
     } except Exception as e {
         print(f"  Failed to remove {metadata_dir.name}: {e}", file=sys.stderr);
     }
-    print(f"  {metadata_dir.name} uninstalled successfully ({removed} items)");
+    print(f"  {name} uninstalled successfully ({removed} items)");
     return True;
 }
 
