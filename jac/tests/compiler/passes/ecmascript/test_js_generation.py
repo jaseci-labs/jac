@@ -222,7 +222,7 @@ def test_iife_fixture_generates_function_expressions(
     for pattern in [
         "function get_value()",
         "function calculate(x, y)",
-        "}();",
+        "})();",  # Properly parenthesized IIFE
         "function outer()",
         "All client-side IIFE tests completed!",
     ]:
