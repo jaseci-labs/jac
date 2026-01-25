@@ -55,13 +55,13 @@ jobs:
 
           data['project']['version'] = '${{ inputs.version }}'
 
-          # Update all dependencies
+          # Update dependencies
           dependencies = data['project']['dependencies']
           for i, dep in enumerate(dependencies):
               for pkg, version in versions.items():
                   if dep.startswith(pkg):
-                      dependencies[i] = f'{pkg}~={version}'
-                      print(f"Updated {pkg} dependency to ~={version}")
+                      dependencies[i] = f'{pkg}>={version}'
+                      print(f"Updated {pkg} dependency to >={version}")
                       break
 
           with open('jaseci-package/pyproject.toml', 'w') as f:

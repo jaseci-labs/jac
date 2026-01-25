@@ -49,8 +49,8 @@ jobs:
           dependencies = data['project']['dependencies']
           for i, dep in enumerate(dependencies):
               if dep.startswith('jaclang'):
-                  dependencies[i] = f'jaclang~={jaclang_version}'
-                  print(f"Updated jaclang dependency to ~={jaclang_version}")
+                  dependencies[i] = f'jaclang>={jaclang_version}'
+                  print(f"Updated jaclang dependency to >={jaclang_version}")
                   break
 
           with open('jac-client/pyproject.toml', 'w') as f:
