@@ -43,7 +43,9 @@ def fetch_mtir(func: Callable) -> Info | None {
                 module = Path(file).stem;
             } else {
                 # As a last resort, use the invoked script name from argv
-                module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
+                module = Path(sys.argv[0]).stem
+                if sys.argv and sys.argv[0]
+                else "__main__";
             }
         }
     }

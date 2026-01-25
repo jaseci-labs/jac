@@ -20,10 +20,8 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     args = mtir.args;
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
-
     # Check if we have MTIR info (Jac mode) or need runtime introspection (Python lib mode)
     has_mtir = ir_info is not None;
-
     # Prepare tools with or without MTIR info
     if has_mtir {
         tools = [
@@ -34,11 +32,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         # Python library mode: create tools without MTIR info
         tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
     }
-
     # Construct the input information from the arguments.
     inputs_detail: list[str] = [];
     media_inputs: list = [];  # Can be list[Media] or list[tuple[Media, str]] depending on mode
-
     if has_mtir {
         # MTIR mode: use compile-time extracted param info with semantic strings
         params = [param for param in ir_info.params];
@@ -84,7 +80,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             }
         }
     }
-
     incl_info = call_params.get("incl_info");
     if incl_info and isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
@@ -100,7 +95,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             }
         }
     }
-
     if isinstance(caller, MethodType) {
         if has_mtir {
             inputs_detail.insert(
