@@ -143,7 +143,7 @@ Jac's frontend syntax will look familiar (JSX-style).
 2. **Graph thinking** - Model data as nodes and edges
 3. **Walker pattern** - Computation that moves through data
 
-**Start here:** [Hello World](hello-world.md) → [Your First App](first-app.md)
+**Start here:** [Hello World](hello-world.md) → [Your First Full-Stack AI App](first-fullstack-ai-app.md)
 
 ---
 

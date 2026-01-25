@@ -236,10 +236,14 @@ class UniNode:
             # ClientBlock marks client context
             if isinstance(node, ClientBlock):
                 return True
-            # Check for client-marked Ability (.cl.jac files) - stop at first Ability
+            # Check for client-marked Ability (.cl.jac files)
+            # Only return True for explicit CLIENT context; continue traversing
+            # for SERVER (default) context as the ability may be nested in a ClientBlock
             if isinstance(node, Ability):
                 context = getattr(node, "code_context", CodeContext.SERVER)
-                return context == CodeContext.CLIENT
+                if context == CodeContext.CLIENT:
+                    return True
+                # Continue traversing - nested functions may still be in a ClientBlock
             node = node.parent
         return False
 

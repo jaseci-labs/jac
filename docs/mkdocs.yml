@@ -12,8 +12,7 @@ nav:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
-      - Your First Graph: "quick-guide/first-graph.md"
-      - Your First App: "quick-guide/first-app.md"
+      - Your First Full-Stack AI App: "quick-guide/first-fullstack-ai-app.md"
       - Next Steps: "quick-guide/next-steps.md"
 
   - Tutorials:
@@ -218,6 +217,8 @@ plugins:
 
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
+        quick-guide/first-graph.md: quick-guide/first-fullstack-ai-app.md
+        quick-guide/first-app.md: quick-guide/first-fullstack-ai-app.md
         cli/index.md: reference/cli/index.md
         configuration/index.md: reference/config/index.md
 
