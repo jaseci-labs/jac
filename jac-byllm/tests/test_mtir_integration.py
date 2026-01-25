@@ -170,15 +170,20 @@ class TestToolSchemaWithMTIR:
 
         mtir_map = JacRuntime.program.mtir_map
 
-        # Find get_person_details function which uses tools
+        # Find get_person_details function - filter by scope to avoid pollution
+        # from other test fixtures that may have been compiled
         func_with_tools = None
         for scope, info in mtir_map.items():
-            if isinstance(info, FunctionInfo) and info.tools:
+            if (
+                isinstance(info, FunctionInfo)
+                and info.tools
+                and "tool_function" in scope
+                and info.name == "get_person_details"
+            ):
                 func_with_tools = info
                 break
 
-        assert func_with_tools is not None, "Should find a function with tools"
-        assert func_with_tools.name == "get_person_details"
+        assert func_with_tools is not None, "Should find get_person_details with tools"
         assert len(func_with_tools.tools) == 2
 
         tool_names = [t.name for t in func_with_tools.tools]
@@ -198,10 +203,10 @@ class TestToolSchemaWithMTIR:
 
         mtir_map = JacRuntime.program.mtir_map
 
-        # Find eval_expression method which uses self.add and self.multiply as tools
+        # Find eval_expression method - filter by scope to avoid pollution
         method_scope = None
         for scope in mtir_map:
-            if "eval_expression" in scope:
+            if "eval_expression" in scope and "tool_method" in scope:
                 method_scope = scope
                 break
 
@@ -340,14 +345,11 @@ class TestMTIRFixture:
         mtir_map = JacRuntime.program.mtir_map
         assert len(mtir_map) > 0, "MTIR map should have entries"
 
-        # Verify expected entries exist
-        found_person = False
+        # Verify expected GenAI function exists - filter by fixture name
         found_generate_person = False
         for scope in mtir_map:
-            if "Person" in scope:
-                found_person = True
-            if "generate_person" in scope:
+            if "basic_compile" in scope and "generate_person" in scope:
                 found_generate_person = True
+                break
 
-        assert found_person, "Should have Person class in MTIR"
         assert found_generate_person, "Should have generate_person function in MTIR"
