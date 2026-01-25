@@ -20,7 +20,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     args = mtir.args;
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
-    tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
+    tools = [Tool(func, info=ir_info.tools[i]) for (i,func) in enumerate(call_params.get("tools", []))];  # type: ignore
     # Construct the input information from the arguments.
     params = [param for param in ir_info.params];
     # if not param_names {
@@ -113,8 +113,8 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
 impl MTRuntime.dispatch_params -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
-        "tools": self.get_tool_list(info=self.ir_info) or None,
-        "response_format": self.get_output_schema(info=self.ir_info.return_type),
+        "tools": self.get_tool_list() or None,
+        "response_format": self.get_output_schema(),
         "temperature": self.call_params.get("temperature", 0.7),
         # "max_tokens": self.call_params.get("max_tokens", 100),
         # "top_k": self.call_params.get("top_k", 50),

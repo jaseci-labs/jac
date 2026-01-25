@@ -62,7 +62,7 @@ obj FormatConfig {
 }
 
 """Check command defaults from [check] section."""
-obj CheckConfig {
+obj  CheckConfig {
     has print_errs: bool = True,
         warnonly: bool = False;
 }
@@ -79,7 +79,7 @@ obj DotConfig {
 
 """Cache settings from [cache] section."""
 obj CacheConfig {
-    has enabled: bool = True,
+    has enabled: bool = False,
         dir: str = ".jac_cache";
 }
 

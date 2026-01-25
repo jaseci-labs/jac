@@ -4,12 +4,18 @@ Handles primitive types, Union types, lists, tuples, sets, dicts,
 dataclasses, enums, and functions.
 """
 impl _type_to_schema(
-    ty: type, title: str = "", desc: str = "", info: Info = None
+    ty: type, title: str = "", desc: str = "", info: Info | None = None
 ) -> dict {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
     );
+    if hasattr(info, "type_info") {
+        info_type :str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
+        info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
+    } else {
+        info_type = "";
+    }
     semstr: str = ty?._jac_semstr or "";
     semstr = semstr or ty?.__doc__ or "";  # type: ignore
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
@@ -55,7 +61,7 @@ impl _type_to_schema(
             "type": "array",
             "items": _type_to_schema(
                 item_type,
-                info=info.type_info[1] if info.type_info[0] == "list" else None
+                info=info if info_type == "list" else None
             ),
 
         } | context;
@@ -68,9 +74,9 @@ impl _type_to_schema(
             item_type = args[0];
             return {
                 "type": "array",
-                "items": _type_to_schema(
+                    "items": _type_to_schema(
                     item_type,
-                    info=info.type_info[1] if info.type_info[0] == "tuple" else None
+                    info=info[1] if info[0] == "tuple" else None
                 ),
 
             } | context;
@@ -144,15 +150,18 @@ impl _type_to_schema(
 
         };
     }
+
+
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {
+        print(ty);
         hints = get_type_hints(ty);
         hints.pop("return", None);
         params = {
             param.name: _type_to_schema(
                 hints[param.name], param.name, param.semstr, info=param
             ) for param in info.params
-        };
+        } if info else {};
         return {
             "title": title or ty.__name__,
             "type": "function",
@@ -259,11 +268,12 @@ impl type_to_schema(resp_type: type, info: Info) -> dict[str, object] {
     };
 }
 
+
 """Return the JSON schema for a tool function, formatted for LLM APIs."""
 impl tool_to_schema(
-    func: Callable, description: str, params_desc: dict[str, str]
+    func: Callable, description: str, params_desc: dict[str, str], info: Info
 ) -> dict[str, object] {
-    schema = _type_to_schema(func);  # type: ignore
+    schema = _type_to_schema(func, info=info);  # type: ignore
     properties: dict[str, object] = schema.get("properties", {});  # type: ignore
     required: list[str] = schema.get("required", []);  # type: ignore
     for (param_name, param_info) in properties.items() {

@@ -25,13 +25,11 @@ impl MTIRGenPass.postinit -> None {
 
 """Check if a type expression represents a primitive type."""
 impl MTIRGenPass._is_primitive_type(type_expr: uni.Expr | None) -> bool {
+
     if type_expr is None {
         return False;
     }
-    if isinstance(type_expr, uni.Name) {
-        return type_expr.value in PRIMITIVE_TYPES;
-    }
-    if isinstance(type_expr, uni.BuiltinType) {
+    if isinstance(type_expr, uni.Name) or isinstance(type_expr, uni.BuiltinType) {
         return type_expr.value in PRIMITIVE_TYPES;
     }
     return False;
@@ -142,6 +140,7 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     }
     arch_node = decl.name_of;
     class_name = arch_node.name.value;
+
     placeholder = ClassInfo(
         name=class_name,
         semstr=symbol.semstr or arch_node.doc.lit_value if arch_node.doc else None,
@@ -175,15 +174,19 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     if arch_node.body and isinstance(arch_node.body, Sequence) {
         for stmt in arch_node.body {
             if isinstance(stmt, uni.ArchHas) {
+
                 for var in stmt.vars {
                     type_annotation = var.type_tag.tag if var.type_tag else None;
+
                     parsed_type = self._parse_type_expr(type_annotation, arch_node);
+
                     type_symbol_obj = self._extract_type_symbol(
-                        type_annotation, arch_node
+                        parsed_type, arch_node
                     );
+
                     semstr_val = type_symbol_obj.semstr
                     if type_symbol_obj
-                    else symbol.semstr;
+                    else var.sym.semstr;
                     field_info = FieldInfo(
                         name=var.name.value, semstr=semstr_val, type_info=parsed_type
                     );
@@ -219,9 +222,12 @@ impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
             semstr_val = None;
             if type_symbol_obj {
                 semstr_val = type_symbol_obj.semstr;
+
             } elif param.name?.sym and param.name.sym {
                 semstr_val = param.name.sym.semstr;
+
             }
+
             param_info = ParamInfo(
                 name=param.name.value, semstr=semstr_val, type_info=parsed_type
             );
@@ -241,7 +247,7 @@ impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
                 if isinstance(param, uni.KWPair) {
                     if param.key.value == 'tools' {
                         for tool in param.value.values {
-                            tool_ability = node.lookup(tool.value, deep=True).symbol_table;
+                            tool_ability = node.lookup(tool.right.value, deep=True).symbol_table;
                             if tool_ability.is_method {
                                 tool_info = self._extract_method_info(tool_ability);
                             } else {
@@ -259,7 +265,7 @@ impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
         semstr=node.sym.semstr if node?.sym and node.sym else None,
         params=parameters,
         return_type=return_type,
-        tools=tools or None
+        tools=tools
     );
 }
 
@@ -272,13 +278,16 @@ impl MTIRGenPass._extract_method_info(
     parent_class_info = None;
     if parent_arch and parent_arch.name?.sym and parent_arch.name.sym and by_call {
         parent_class_info = self._extract_class_info(parent_arch.name.sym);
+    } else {
+        parent_class_info = parent_arch.name.sym;
     }
     return MethodInfo(
         name=func_info.name,
         semstr=func_info.semstr,
         params=func_info.params,
         return_type=func_info.return_type,
-        parent_class=parent_class_info
+        parent_class=parent_class_info,
+        tools=func_info.tools
     );
 }
 
