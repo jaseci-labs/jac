@@ -131,7 +131,6 @@ impl DependencyInstaller.install_git_package(
     }
 }
 
-"""Remove a package by reading its RECORD file (mimics pip uninstall)."""
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
     import shutil;
     import sys;
@@ -150,58 +149,43 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
             if pkg_name == normalized_name {
                 if item.name.lower().endswith(".dist-info") {
                     dist_info_dir = item;
-                    break;  # Prefer .dist-info, stop searching
                 } elif item.name.lower().endswith(".egg-info") {
-                    egg_info_dir = item;  # Keep searching for .dist-info
+                    egg_info_dir = item;
                 }
             }
         }
     }
-    # Use .dist-info if found, otherwise fallback to .egg-info
-    metadata_dir = dist_info_dir or egg_info_dir;
+    # Handle .egg-info with simple removal (no RECORD reading needed)
+    if egg_info_dir {
+        print(f"Uninstalling {name}...");
+        removed = 0;
+        # Remove egg-info directory
+        try {
+            if egg_info_dir.exists() {
+                shutil.rmtree(egg_info_dir);
+                removed += 1;
+            }
+        } except Exception as e {
+            print(f"  Failed to remove {egg_info_dir.name}: {e}", file=sys.stderr);
+        }
+        if removed > 0 {
+            print(f"  {egg_info_dir.name} uninstalled successfully ({removed} items)");
+        }
+        if not dist_info_dir {
+            return True;
+        }
+    }
+    # Handle .dist-info with RECORD-based removal (standard)
+    metadata_dir = dist_info_dir;
     if not metadata_dir {
         return False;
     }
-    # Try RECORD first (standard), then installed-files.txt (.egg-info fallback)
     record_file = metadata_dir / "RECORD";
     if not record_file.exists() {
-        record_file = metadata_dir / "installed-files.txt";
-        if not record_file.exists() {
-            # Last resort: heuristic removal of the package directory
-            print(f"Uninstalling {name} ...");
-            removed = 0;
-            # Try to find and remove package directory
-            pkg_dir = self.packages_dir / normalized_name;
-            if pkg_dir.exists() and pkg_dir.is_dir() {
-                try {
-                    shutil.rmtree(pkg_dir);
-                    removed += 1;
-                } except Exception as e {
-                    if self.verbose {
-                        print(
-                            f"  Failed to remove {pkg_dir.name}: {e}", file=sys.stderr
-                        );
-                    }
-                }
-            }
-            # Remove metadata directory
-            try {
-                if metadata_dir.exists() {
-                    shutil.rmtree(metadata_dir);
-                    removed += 1;
-                }
-            } except Exception as e {
-                print(f"  Failed to remove {metadata_dir.name}: {e}", file=sys.stderr);
-            }
-            if removed > 0 {
-                print(f"  {name} uninstalled successfully ({removed} items)");
-                return True;
-            }
-            return False;
-        }
+        return False;
     }
     print(f"Uninstalling {name}...");
-    # Collect all paths from RECORD or installed-files.txt
+    # Collect all paths from RECORD
     all_paths = [];
     try {
         with open(record_file, 'r', encoding='utf-8') as f {
@@ -275,9 +259,7 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
                 parent.rmdir();
                 removed += 1;
             }
-        } except Exception {
-            pass;
-        }
+        } except Exception { }
     }
     # Remove dist-info or egg-info directory
     try {
@@ -288,7 +270,7 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
     } except Exception as e {
         print(f"  Failed to remove {metadata_dir.name}: {e}", file=sys.stderr);
     }
-    print(f"  {name} uninstalled successfully ({removed} items)");
+    print(f"  {metadata_dir.name} uninstalled successfully ({removed} items)");
     return True;
 }
 
