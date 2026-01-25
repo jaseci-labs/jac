@@ -54,8 +54,20 @@ impl ClientBundleBuilder._process_imports(
     bundled_module_names: set[str] = <>set();
     if (manifest and manifest.imports) {
         for (import_name, import_path) in manifest.imports.items() {
-            bundled_module_names.add(import_name);
             import_path_obj = Path(import_path);
+            # Only add local files (.jac or JS variants) to bundled_module_names.
+            # NPM packages (like 'react') should NOT be bundled - they're external.
+            if import_path_obj.suffix in [
+                '.jac',
+                '.js',
+                '.jsx',
+                '.ts',
+                '.tsx',
+                '.mjs',
+                '.cjs'
+            ] {
+                bundled_module_names.add(import_name);
+            }
             if (import_path_obj.suffix == '.js') {
                 try {
                     with open(import_path_obj, encoding='utf-8') as f {

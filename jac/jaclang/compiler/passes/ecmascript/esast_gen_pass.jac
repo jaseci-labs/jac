@@ -198,7 +198,11 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_has_var(<>node: uni.HasVar) -> None;
     def _get_setter_name(var_name: str) -> str;
     def _inject_usestate_import(<>node: uni.UniNode) -> None;
+    def _inject_jac_call_function_import(<>node: uni.UniNode) -> None;
     def _has_usestate_import -> bool;
+    def _has_useeffect_import -> bool;
+    def _inject_useeffect_import(<>node: uni.UniNode) -> None;
+    def _transform_to_useeffect(<>node: uni.Ability) -> None;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;

@@ -75,7 +75,7 @@ def complete_example(
     kw_default: bool = True,   # 7. Keyword-only with default
     **kwargs: any              # 8. Variadic keyword (must be last)
 ) -> None {
-    pass;
+    print("called");
 }
 ```
 
@@ -86,8 +86,10 @@ def greet(name: str, /) -> str {
     return f"Hello, {name}!";
 }
 
-greet("Alice");      # OK
-greet(name="Alice"); # Error: positional-only
+with entry {
+    greet("Alice");      # OK
+    # greet(name="Alice"); # Error: positional-only
+}
 ```
 
 **Keyword-only parameters (after `*`):**
@@ -97,9 +99,11 @@ def configure(*, host: str, port: int = 8080) -> None {
     print(f"Connecting to {host}:{port}");
 }
 
-configure(host="localhost");           # OK
-configure("localhost", 8080);          # Error: keyword-only
-configure(host="localhost", port=443); # OK
+with entry {
+    configure(host="localhost");           # OK
+    # configure("localhost", 8080);        # Error: keyword-only
+    configure(host="localhost", port=443); # OK
+}
 ```
 
 **Variadic parameters:**
@@ -110,14 +114,10 @@ def sum_all(*values: int) -> int {
     return sum(values);
 }
 
-sum_all(1, 2, 3, 4, 5);  # 15
-
 # **kwargs collects extra keyword arguments
 def build_config(**options: any) -> dict {
     return dict(options);
 }
-
-build_config(debug=True, verbose=False);  # {"debug": True, "verbose": False}
 
 # Combined
 def flexible(required: int, *args: int, **kwargs: any) -> None {
@@ -126,10 +126,14 @@ def flexible(required: int, *args: int, **kwargs: any) -> None {
     print(f"Extra keyword: {kwargs}");
 }
 
-flexible(1, 2, 3, name="test");
-# Required: 1
-# Extra positional: (2, 3)
-# Extra keyword: {"name": "test"}
+with entry {
+    sum_all(1, 2, 3, 4, 5);  # 15
+    build_config(debug=True, verbose=False);  # {"debug": True, "verbose": False}
+    flexible(1, 2, 3, name="test");
+    # Required: 1
+    # Extra positional: (2, 3)
+    # Extra keyword: {"name": "test"}
+}
 ```
 
 **Unpacking arguments:**
@@ -139,16 +143,18 @@ def add(a: int, b: int, c: int) -> int {
     return a + b + c;
 }
 
-# Unpack list/tuple into positional args
-values = [1, 2, 3];
-result = add(*values);  # add(1, 2, 3)
+with entry {
+    # Unpack list/tuple into positional args
+    values = [1, 2, 3];
+    result = add(*values);  # add(1, 2, 3)
 
-# Unpack dict into keyword args
-params = {"a": 1, "b": 2, "c": 3};
-result = add(**params);  # add(a=1, b=2, c=3)
+    # Unpack dict into keyword args
+    params = {"a": 1, "b": 2, "c": 3};
+    result = add(**params);  # add(a=1, b=2, c=3)
 
-# Combined unpacking
-result = add(*[1, 2], **{"c": 3});  # add(1, 2, c=3)
+    # Combined unpacking
+    result = add(*[1, 2], **{"c": 3});  # add(1, 2, c=3)
+}
 ```
 
 ### 4 Methods
@@ -223,20 +229,30 @@ glob add_five = make_adder(5);  # add_five(10) returns 15
 ### 7 Immediately Invoked Function Expressions (IIFE)
 
 ```jac
-result = (lambda x: int -> int: x * 2)(5);  # result = 10
+with entry {
+    result = (lambda x: int -> int: x * 2)(5);  # result = 10
+}
 ```
 
 ### 8 Decorators
 
 ```jac
-@decorator
-def my_function -> None {
-    pass;
+def decorator(func: any) -> any {
+    return func;
 }
 
-@decorator_with_args(arg1, arg2)
+def decorator_with_args(arg1: any, arg2: any) -> any {
+    return lambda func: any: func;
+}
+
+@decorator
+def my_function -> None {
+    print("decorated");
+}
+
+@decorator_with_args("a", "b")
 def another_function -> None {
-    pass;
+    print("decorated with args");
 }
 ```
 
@@ -283,9 +299,11 @@ obj Person {
     }
 }
 
-# Usage
-person = Person(name="Alice", age=30);
-print(person.greet());
+with entry {
+    # Usage
+    person = Person(name="Alice", age=30);
+    print(person.greet());
+}
 ```
 
 ### 2 Inheritance
@@ -335,21 +353,11 @@ enum Status {
     COMPLETED
 }
 
-# With methods
-enum HttpStatus {
-    OK = 200,
-    NOT_FOUND = 404,
-    SERVER_ERROR = 500
-
-    def is_success() -> bool {
-        return self.value < 400;
-    }
-}
-
-# Usage
-status = HttpStatus.OK;
-if status.is_success() {
-    print("Request succeeded");
+with entry {
+    # Usage
+    color = Color.RED;
+    status = Status.ACTIVE;
+    print(f"Color: {color}, Status: {status}");
 }
 ```
 
@@ -477,3 +485,15 @@ impl Calculator.multiply {
 - **Large codebases**: Separate concerns across files
 
 ---
+
+## Learn More
+
+**Tutorials:**
+
+- [Jac Basics](../../tutorials/language/basics.md) - Objects, functions, and syntax
+- [Testing](../../tutorials/language/testing.md) - Write tests for your code
+
+**Related Reference:**
+
+- [Part I: Foundation](foundation.md) - Variables, types, control flow
+- [Part III: OSP](osp.md) - Nodes, edges, walkers

@@ -1,3 +1,5 @@
+import logging;
+
 """Helper function to convert TransportResponse to JSONResponse (similar to HTTPTransport.send)."""
 def _convert_transport_response_to_json_response(
     transport_response: TransportResponse
@@ -53,13 +55,59 @@ def _convert_transport_response_to_json_response(
     return JSONResponse(status_code=status, content=response_body);
 }
 
+"""Custom logging handler that routes logs to jac-super console."""
+class ConsoleLogHandler(logging.Handler) {
+    """A logging handler that forwards log messages to jac-super's console."""
+    def emit(self: ConsoleLogHandler, record: logging.LogRecord) -> None {
+        import from jaclang.cli.console { console }
+        message = self.format(record);
+        console.print(f"  {message}");
+    }
+}
+
 """Run the FastAPI server using Uvicorn."""
 impl JFastApiServer.run_server(
     self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
 ) -> None {
     app = self.create_server();
-    # Suppress INFO logs to avoid duplicate server messages (we show our own JAC DEV SERVER banner)
-    uvicorn.run(app, host=host, port=port, log_level="warning");
+    # Create custom handler for console logging
+    console_handler = ConsoleLogHandler();
+    console_handler.setFormatter(logging.Formatter("%(message)s"));
+    # Suppress startup logs but route access logs through jac-super console
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(message)s"},
+            "access": {"format": "%(message)s"},
+
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr"
+            },
+            "access": {"()": lambda : console_handler },
+
+        },
+        "loggers": {
+            "uvicorn": {
+                "handlers": ["default"],
+                "level": "WARNING",
+                "propagate": False
+            },
+            "uvicorn.error": {"level": "WARNING", "propagate": False},
+            "uvicorn.access": {
+                "handlers": ["access"],
+                "level": "INFO",
+                "propagate": False
+            },
+
+        },
+
+    };
+    uvicorn.run(app, host=host, port=port, log_config=log_config);
 }
 
 """Get the underlying FastAPI application instance."""

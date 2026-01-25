@@ -38,7 +38,7 @@ Visit `http://localhost:8000` to see your app! (The `app` component is served at
 
 You can also access the app at `http://localhost:8000/cl/app`.
 
-> **Note**: The `--npm` flag creates a client-side project with an organized folder structure. Without `--npm`, `jac create` creates a standard Jac project.
+> **Note**: The `--use client` flag creates a client-side project with an organized folder structure. Without it, `jac create` creates a standard Jac project.
 
 ---
 
@@ -146,7 +146,7 @@ cl {
 ## Requirements
 
 - Python: 3.12+
-- Node.js: For npm and Vite
+- Bun: For package management and Vite bundling ([install](https://bun.sh))
 - Jac Language: `jaclang` (installed automatically)
 
 ---

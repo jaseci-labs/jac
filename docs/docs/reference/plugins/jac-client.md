@@ -151,10 +151,10 @@ cl {
 
         # Create new references for lists/objects
         def add_item(item: str) -> None {
-            items = [...items, item];  # Spread to new list
+            items = items + [item];  # Concatenate to new list
         }
 
-        return <div>...</div>;
+        return <div>Form</div>;
     }
 }
 ```
@@ -163,7 +163,59 @@ cl {
 
 ## React Hooks
 
-### useEffect
+### useEffect (Automatic)
+
+Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax automatically generates `useEffect` hooks:
+
+| Jac Syntax | React Equivalent |
+|------------|------------------|
+| `can with entry { ... }` | `useEffect(() => { ... }, [])` |
+| `async can with entry { ... }` | `useEffect(() => { (async () => { ... })(); }, [])` |
+| `can with exit { ... }` | `useEffect(() => { return () => { ... }; }, [])` |
+| `can with [dep] entry { ... }` | `useEffect(() => { ... }, [dep])` |
+| `can with (a, b) entry { ... }` | `useEffect(() => { ... }, [a, b])` |
+
+```jac
+cl {
+    def:pub DataLoader() -> any {
+        has data: list = [];
+        has loading: bool = True;
+
+        # Run once on mount (async with IIFE wrapping)
+        async can with entry {
+            data = await fetch_data();
+            loading = False;
+        }
+
+        # Cleanup on unmount
+        can with exit {
+            cleanup_subscriptions();
+        }
+
+        return <div>...</div>;
+    }
+
+    def:pub UserProfile(userId: str) -> any {
+        has user: dict = {};
+
+        # Re-run when userId changes (dependency array)
+        async can with [userId] entry {
+            user = await fetch_user(userId);
+        }
+
+        # Multiple dependencies using tuple syntax
+        async can with (userId, refresh) entry {
+            user = await fetch_user(userId);
+        }
+
+        return <div>{user.name}</div>;
+    }
+}
+```
+
+### useEffect (Manual)
+
+You can also use `useEffect` manually by importing it from React:
 
 ```jac
 cl {
@@ -194,7 +246,7 @@ cl {
 cl {
     import from react { createContext, useContext }
 
-    AppContext = createContext(None);
+    glob AppContext = createContext(None);
 
     def:pub AppProvider(props: dict) -> any {
         has theme: str = "light";
@@ -232,7 +284,7 @@ cl {
 
         return <ul>
             {data.map(lambda task: any -> any {
-                <li key={task["id"]}>{task["title"]}</li>
+                return <li key={task["id"]}>{task["title"]}</li>;
             })}
         </ul>;
     }
@@ -251,10 +303,16 @@ cl {
 ### With Parameters
 
 ```jac
-(data, loading, error, refetch) = useWalker(
-    "search_tasks",
-    {"query": search_term, "limit": 10}
-);
+cl {
+    def:pub SearchTasks() -> any {
+        has search_term: str = "";
+        (data, loading, error, refetch) = useWalker(
+            "search_tasks",
+            {"query": search_term, "limit": 10}
+        );
+        return <div>Results</div>;
+    }
+}
 ```
 
 ### callWalker
@@ -345,10 +403,11 @@ cl {
     import from jac_client { Outlet }
 
     def:pub DashboardLayout() -> any {
+        # Child routes render where Outlet is placed
         return <div>
             <Sidebar />
             <main>
-                <Outlet />  {# Child routes render here #}
+                <Outlet />
             </main>
         </div>;
     }
@@ -548,16 +607,18 @@ cl {
         has show: bool = False;
         has items: list = [];
 
+        if show {
+            content = <p>Visible</p>;
+        } else {
+            content = <p>Hidden</p>;
+        }
         return <div>
-            {# If/else #}
-            {show ? <p>Visible</p> : <p>Hidden</p>}
+            {content}
 
-            {# Short-circuit #}
             {show and <p>Only when true</p>}
 
-            {# List rendering #}
             {items.map(lambda item: any -> any {
-                <li key={item["id"]}>{item["name"]}</li>
+                return <li key={item["id"]}>{item["name"]}</li>;
             })}
         </div>;
     }

@@ -723,13 +723,29 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
         <>node.gen.es_ast = typeof_expr;
         return;
     }
+    # Check for server function call from client context - transform to __jacCallFunction
     if (<>node.in_client_context() and isinstance(<>node.target, uni.Name)) {
+        # Symbol may not be linked yet, so look it up directly from the symbol table
         target_sym = getattr(<>node.target, 'sym', None);
+        if not target_sym and <>node.target.sym_tab {
+            target_sym = <>node.target.sym_tab.lookup(
+                <>node.target.sym_name, deep=True
+            );
+        }
         if (target_sym and target_sym.defn) {
             defn_node = target_sym.defn[0];
             if isinstance(defn_node.parent, uni.Ability) {
                 ability_node = defn_node.parent;
-                is_server_func = ability_node.code_context != CodeContext.CLIENT;
+                # A function is a server function if:
+                # 1. It has code_context = SERVER (or default), AND
+                # 2. It is NOT inside a client context (not nested in cl{}), AND
+                # 3. It is a PUBLIC function (def:pub) - this excludes builtins like print
+                is_server_func = (
+                    ability_node.code_context != CodeContext.CLIENT
+                    and not ability_node.in_client_context()
+                    and ability_node.access is not None
+                    and ability_node.access.tag.name == Tok.KW_PUB
+                );
                 if is_server_func {
                     func_name = <>node.target.sym_name;
                     param_names: list[str] = [];
@@ -764,27 +780,45 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                     args_obj = self.sync_loc(
                         es.ObjectExpression(properties=props), jac_node=<>node
                     );
+                    # Generate CallExpression without await - the outer AwaitExpr handles that
                     call_expr = self.sync_loc(
-                        es.AwaitExpression(
-                            argument=self.sync_loc(
-                                es.CallExpression(
-                                    callee=self.sync_loc(
-                                        es.Identifier(name='__jacCallFunction'),
-                                        jac_node=<>node
-                                    ),
-                                    arguments=[
-                                        self.sync_loc(
-                                            es.Literal(value=func_name),
-                                            jac_node=<>node
-                                        ),
-                                        args_obj
-                                    ]
-                                ),
+                        es.CallExpression(
+                            callee=self.sync_loc(
+                                es.Identifier(name='__jacCallFunction'),
                                 jac_node=<>node
-                            )
+                            ),
+                            arguments=[
+                                self.sync_loc(
+                                    es.Literal(value=func_name), jac_node=<>node
+                                ),
+                                args_obj
+                            ]
                         ),
                         jac_node=<>node
                     );
+                    # Auto-inject __jacCallFunction import if not already done
+                    if not self.has_injected_jac_call_function {
+                        # Inline: import { __jacCallFunction } from "@jac-client/utils";
+                        specifier = self.sync_loc(
+                            es.ImportSpecifier(
+                                imported=es.Identifier(name='__jacCallFunction'),
+                                local=es.Identifier(name='__jacCallFunction')
+                            ),
+                            jac_node=<>node
+                        );
+                        source = self.sync_loc(
+                            es.Literal(
+                                value='@jac-client/utils', raw='"@jac-client/utils"'
+                            ),
+                            jac_node=<>node
+                        );
+                        import_decl = self.sync_loc(
+                            es.ImportDeclaration(specifiers=[specifier], source=source),
+                            jac_node=<>node
+                        );
+                        self.imports.append(import_decl);
+                        self.has_injected_jac_call_function = True;
+                    }
                     <>node.gen.es_ast = call_expr;
                     return;
                 }
@@ -1669,6 +1703,159 @@ impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
     self.imports.append(import_decl);
 }
 
+"""Auto-inject __jacCallFunction import from @jac-client/utils when server functions are called from client."""
+impl EsastGenPass._inject_jac_call_function_import(<>node: uni.UniNode) -> None {
+    # Create: import { __jacCallFunction } from "@jac-client/utils";
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name='__jacCallFunction'),
+            local=es.Identifier(name='__jacCallFunction')
+        ),
+        jac_node=<>node
+    );
+    source = self.sync_loc(
+        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
+        jac_node=<>node
+    );
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
+    );
+    self.imports.append(import_decl);
+}
+
+"""Check if useEffect is already imported (either by user or auto-injection)."""
+impl EsastGenPass._has_useeffect_import -> bool {
+    for import_decl in self.imports {
+        for spec in import_decl.specifiers {
+            if isinstance(spec, es.ImportSpecifier) {
+                if spec.local and spec.local.name == 'useEffect' {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}
+
+"""Auto-inject useEffect import from @jac-client/utils when can with entry/exit is used."""
+impl EsastGenPass._inject_useeffect_import(<>node: uni.UniNode) -> None {
+    # Create: import { useEffect } from "@jac-client/utils";
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name='useEffect'),
+            local=es.Identifier(name='useEffect')
+        ),
+        jac_node=<>node
+    );
+    source = self.sync_loc(
+        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
+        jac_node=<>node
+    );
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
+    );
+    self.imports.append(import_decl);
+}
+
+"""Transform an EventSignature ability (can with entry/exit) to useEffect call."""
+impl EsastGenPass._transform_to_useeffect(<>node: uni.Ability) -> None {
+    # Get the body statements
+    inner = (
+        <>node.body.body
+        if isinstance(<>node.body, uni.ImplDef)
+        else self._get_body_inner(<>node)
+    );
+    body_stmts = self._collect_stmt_body(inner);
+    # Determine if this is entry or exit
+    is_entry = <>node.signature.event.name == Tok.KW_ENTRY;
+    is_async = <>node.is_async;
+    effect_body: list[es.Statement] = [];
+    if is_entry {
+        if is_async {
+            # Wrap in IIFE: (async () => { ... })();
+            async_arrow = self.sync_loc(
+                es.ArrowFunctionExpression(
+                    params=[],
+                    body=es.BlockStatement(body=body_stmts),
+                    async_=True,
+                    expression=False
+                ),
+                jac_node=<>node
+            );
+            iife_call = self.sync_loc(
+                es.CallExpression(callee=async_arrow, arguments=[]), jac_node=<>node
+            );
+            effect_body.append(
+                self.sync_loc(
+                    es.ExpressionStatement(expression=iife_call), jac_node=<>node
+                )
+            );
+        } else {
+            effect_body = body_stmts;
+        }
+    } else {
+        # Exit: wrap body in cleanup return
+        # return () => { ... };
+        cleanup_arrow = self.sync_loc(
+            es.ArrowFunctionExpression(
+                params=[],
+                body=es.BlockStatement(body=body_stmts),
+                async_=False,
+                expression=False
+            ),
+            jac_node=<>node
+        );
+        effect_body.append(
+            self.sync_loc(es.ReturnStatement(argument=cleanup_arrow), jac_node=<>node)
+        );
+    }
+    # Create effect callback: () => { ... }
+    effect_callback = self.sync_loc(
+        es.ArrowFunctionExpression(
+            params=[],
+            body=es.BlockStatement(body=effect_body),
+            async_=False,
+            expression=False
+        ),
+        jac_node=<>node
+    );
+    # Build dependency array from arch_tag_info (if provided)
+    # can with entry { ... }           -> []
+    # can with [a, b] entry { ... }    -> [a, b]
+    # can with (a, b) entry { ... }    -> [a, b]
+    deps_elements: list[es.Expression | es.SpreadElement | None] = [];
+    arch_tag = <>node.signature.arch_tag_info;
+    if arch_tag {
+        # Check if it's a list or tuple
+        if isinstance(arch_tag, (uni.ListVal, uni.TupleVal)) {
+            for item in arch_tag.values {
+                if item.gen.es_ast {
+                    deps_elements.append(cast(es.Expression, item.gen.es_ast));
+                }
+            }
+        } else {
+            # Single expression as dependency
+            if arch_tag.gen.es_ast {
+                deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
+            }
+        }
+    }
+    deps_array = self.sync_loc(
+        es.ArrayExpression(elements=deps_elements), jac_node=<>node
+    );
+    # Create useEffect call: useEffect(() => { ... }, [deps]);
+    use_effect_call = self.sync_loc(
+        es.CallExpression(
+            callee=es.Identifier(name='useEffect'),
+            arguments=[effect_callback, deps_array]
+        ),
+        jac_node=<>node
+    );
+    <>node.gen.es_ast = self.sync_loc(
+        es.ExpressionStatement(expression=use_effect_call), jac_node=<>node
+    );
+}
+
 """Process class field declarations - generates useState for client-side reactive state."""
 impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     # Check if this is client-side reactive state (works for both cl {} and .cl.jac)
@@ -1759,6 +1946,19 @@ impl EsastGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
 
 """Process ability (function/method) declaration."""
 impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
+    # CHECK: Is this an event-based ability (can with entry/exit) in client context?
+    if (
+        isinstance(<>node.signature, uni.EventSignature) and <>node.in_client_context()
+    ) {
+        # Auto-inject useEffect import if needed
+        if not self.has_injected_useeffect and not self._has_useeffect_import() {
+            self._inject_useeffect_import(<>node);
+            self.has_injected_useeffect = True;
+        }
+        # Transform to useEffect
+        self._transform_to_useeffect(<>node);
+        return;
+    }
     if (<>node.code_context == CodeContext.CLIENT and not <>node.is_method) {
         self.client_manifest.has_client = True;
         name = <>node.name_ref.sym_name;
@@ -2757,4 +2957,8 @@ impl EsastGenPass.before_pass -> None {
     self.reactive_vars: dict[str, str] = {};
     # Track if useState import has been auto-injected to avoid duplicates
     self.has_injected_usestate: bool = False;
+    # Track if __jacCallFunction import has been auto-injected to avoid duplicates
+    self.has_injected_jac_call_function: bool = False;
+    # Track if useEffect import has been auto-injected to avoid duplicates
+    self.has_injected_useeffect: bool = False;
 }

@@ -2,9 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.10 (Unreleased)
+## jac-client 0.2.11 (Unreleased)
 
-## jac-client 0.2.9 (Latest Release)
+- **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
+
+- **Reactive Effects with `can with entry/exit`**: Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks. Use `async can with entry { }` for mount effects (async bodies are automatically wrapped in IIFE), `can with exit { }` for cleanup on unmount, and `can with [dep] entry { }` or `can with (dep1, dep2) entry { }` for effects with dependency arrays. This provides a cleaner, more declarative syntax for React lifecycle management without manual `useEffect` boilerplate.
+- **Source Mapping for Vite Errors**: Added source mapping to trace Vite build errors back to original `.jac` files. Compiled JavaScript files now include source file header comments, and a custom `jacSourceMapper` Vite plugin maps error locations to the original Jac source. Source maps are enabled by default for both development and production builds, improving the debugging experience when build errors occur.
+
+## jac-client 0.2.10 (Latest Release)
+
+## jac-client 0.2.9
 
 - **Generic Config File Generation from jac.toml**: Added support for generating JavaScript config files (e.g., `postcss.config.js`, `tailwind.config.js`) directly from `jac.toml` configuration. Define configs under `[plugins.client.configs.<name>]` and they are automatically converted to `<name>.config.js` files in `.jac/client/configs/`. This eliminates the need for standalone JavaScript config files in the project root for tools like PostCSS, Tailwind (v3), ESLint, and other npm packages that use the `*.config.js` convention.
 - **Error Handling with JacClientErrorBoundary**: Introduced  error boundary handling in Jac Client apps. The new `JacClientErrorBoundary` component allows you to wrap specific parts of your component tree to catch and display errors gracefully, without affecting the entire application.

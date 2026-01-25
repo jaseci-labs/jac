@@ -1,6 +1,5 @@
 # Utility functions for formatting
 # Demonstrates: def:pub exports, string methods
-
 cl {
     # Format number as currency - demonstrates string methods
     def:pub formatCurrency(amount: float) -> str {
@@ -12,11 +11,9 @@ cl {
     # Format ISO date string to readable format
     def:pub formatDate(dateStr: str) -> str {
         date = Reflect.construct(Date, [dateStr]);
-        return date.toLocaleDateString("en-US", {
-            "month": "short",
-            "day": "numeric",
-            "year": "numeric"
-        });
+        return date.toLocaleDateString(
+            "en-US", {"month": "short", "day": "numeric", "year": "numeric"}
+        );
     }
 
     # Capitalize first letter of string
@@ -39,12 +36,12 @@ cl {
     def:pub formatCompact(num: float) -> str {
         if num >= 1000000 {
             divided = num / 1000000;
-            rounded = (Math.round(divided * 10) / 10);
+            rounded = Math.round(divided * 10) / 10;
             return (rounded.toString().concat("M"));
         }
         if num >= 1000 {
             divided = num / 1000;
-            rounded = (Math.round(divided * 10) / 10);
+            rounded = Math.round(divided * 10) / 10;
             return rounded.toString().concat("K");
         }
         return Math.round(num).toString();

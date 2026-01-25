@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     from jaclang.runtimelib.client_bundle import ClientBundle, ClientBundleBuilder
     from jaclang.runtimelib.context import ExecutionContext
     from jaclang.runtimelib.server import JacAPIServer as JacServer
-    from jaclang.runtimelib.server import ModuleIntrospector
+    from jaclang.runtimelib.server import ModuleIntrospector, UserManager
 
 plugin_manager = pluggy.PluginManager("jac")
 hookspec = pluggy.HookspecMarker("jac")
@@ -2297,6 +2297,23 @@ class JacRuntimeInterface(
     JacPluginConfig,
 ):
     """Jac Feature."""
+
+    @staticmethod
+    def get_user_manager(base_path: str) -> UserManager:
+        """Get UserManager instance (hookable for plugins).
+
+        Plugins can override this to provide custom UserManager implementations.
+        Default returns core UserManager.
+
+        Args:
+            base_path: Base path for user data storage
+
+        Returns:
+            UserManager instance
+        """
+        from jaclang.runtimelib.server import UserManager
+
+        return UserManager(base_path=base_path)
 
 
 def generate_plugin_helpers(

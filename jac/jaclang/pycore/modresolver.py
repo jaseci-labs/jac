@@ -176,6 +176,10 @@ def convert_to_js_import_path(path: str) -> str:
     if not path:
         return path
 
+    # If path is already in JavaScript format (starts with ./ or ../), return as-is
+    if path.startswith("./") or path.startswith("../"):
+        return path
+
     # Count leading dots
     dot_count = 0
     for char in path:

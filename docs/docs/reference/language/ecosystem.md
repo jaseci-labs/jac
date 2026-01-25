@@ -187,13 +187,18 @@ VITE_API_URL=https://api.example.com
 
 ```jac
 cl {
-    api_url = import.meta.env.VITE_API_URL;
+    def:pub app() -> any {
+        api_url = import.meta.env.VITE_API_URL;
+        return <div>{api_url}</div>;
+    }
 }
 ```
 
 ---
 
 ## Python Interoperability
+
+> **Deep Dive:** For comprehensive coverage of Python integration patterns, adoption strategies, and transpilation details, see [Python Integration](python-integration.md).
 
 ### 1 Using Python Libraries
 
@@ -229,7 +234,7 @@ def complex_calculation(data):
 ::py::
 
 with entry {
-    mean, std = complex_calculation([1, 2, 3, 4, 5]);
+    (mean, std) = complex_calculation([1, 2, 3, 4, 5]);
     print(f"Mean: {mean}, Std: {std}");
 }
 ```
@@ -300,18 +305,22 @@ typescript = true
 
 ```jac
 cl {
-    # Window
-    width = window.innerWidth;
+    def:pub app() -> any {
+        # Window
+        width = window.innerWidth;
 
-    # LocalStorage
-    window.localStorage.setItem("key", "value");
-    value = window.localStorage.getItem("key");
+        # LocalStorage
+        window.localStorage.setItem("key", "value");
+        value = window.localStorage.getItem("key");
 
-    # Document
-    element = document.getElementById("my-id");
+        # Document
+        element = document.getElementById("my-id");
+
+        return <div>{width}</div>;
+    }
 
     # Fetch
-    async def load_data -> None {
+    async def load_data() -> None {
         response = await fetch("/api/data");
         data = await response.json();
     }

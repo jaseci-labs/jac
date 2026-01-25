@@ -30,12 +30,9 @@ impl ViteCompiler.compile_and_bundle(
     );
     self.copy_root_assets();
     self.create_entry_file(module_path);
-    self.babel_processor.compile();
-    client_dir = self._get_client_dir();
-    self.babel_processor.copy_assets_after_compile(
-        self.compiled_dir, (client_dir / 'build'), self.asset_processor
-    );
-    entry_file = client_dir / 'build' / '_entry.js';
+    # Vite handles JSX/TSX transpilation natively with Bun - no Babel needed
+    # Vite builds directly from compiled/ directory
+    entry_file = self.compiled_dir / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
     client_exports = sorted(collected_exports);
@@ -59,11 +56,10 @@ impl ViteCompiler.copy_root_assets(self: ViteCompiler) -> None {
     compiled_assets_dir = self.compiled_dir / 'assets';
     if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
         self.asset_processor.copy_assets(root_assets_dir, compiled_assets_dir);
-    }
-    # Copy configured_asset files from root assets/ to build assets/ (bypassing compiled)
-    build_assets_dir = self._get_client_dir() / 'build' / 'assets';
-    if (root_assets_dir.exists() and root_assets_dir.is_dir()) {
-        self.asset_processor.copy_custom_asset_types(root_assets_dir, build_assets_dir);
+        # Copy configured custom asset types to compiled/assets/
+        self.asset_processor.copy_custom_asset_types(
+            root_assets_dir, compiled_assets_dir
+        );
     }
 }
 
@@ -189,7 +185,9 @@ impl ViteCompiler.compile_dependencies_recursively(
         output_path = self.compiled_dir / name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
-    output_path.write_text(combined_js, encoding='utf-8');
+    # Add source file header comment for better error messages
+    source_header = f"/* Source: {module_path} */\n";
+    output_path.write_text(source_header + combined_js, encoding='utf-8');
     if (not manifest or not manifest.imports) {
         return;
     }
@@ -283,6 +281,5 @@ impl ViteCompiler.init(
     );
     self.import_processor = ImportProcessor();
     self.asset_processor = AssetProcessor();
-    self.babel_processor = BabelProcessor(self.project_dir);
     self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
 }

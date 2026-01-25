@@ -146,7 +146,7 @@ impl create(
         steps.append(f"cd {name}");
     }
     steps.append("jac install         Install dependencies");
-    steps.append("jac run main.jac    Start development");
+    steps.append("jac start main.jac    Start development");
     console.print_next_steps(steps);
     console.print("\n🚀 Happy coding!\n", style="bold green");
     return 0;
@@ -531,7 +531,7 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
                 style="muted"
             );
             console.print('  [scripts]', style="muted");
-            console.print('  dev = "jac run main.jac"', style="muted");
+            console.print('  dev = "jac start main.jac"', style="muted");
             console.print('  test = "jac test"', style="muted");
             return 0;
         }

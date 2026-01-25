@@ -257,7 +257,7 @@ class TestServerClientMigrated:
         # Call add_numbers
         response = client.post(
             "/function/add_numbers",
-            json={"args": {"a": 10, "b": 25}},
+            json={"a": 10, "b": 25},
         )
 
         assert response.ok
@@ -268,7 +268,7 @@ class TestServerClientMigrated:
         # Call greet
         response2 = client.post(
             "/function/greet",
-            json={"args": {"name": "World"}},
+            json={"name": "World"},
         )
 
         assert response2.ok
@@ -284,7 +284,7 @@ class TestServerClientMigrated:
         # Call greet without name (should use default)
         response = client.post(
             "/function/greet",
-            json={"args": {}},
+            json={},
         )
 
         assert response.ok
@@ -402,7 +402,7 @@ class TestServerClientMigrated:
         # Try to call nonexistent function
         response = client.post(
             "/function/nonexistent",
-            json={"args": {}},
+            json={},
         )
 
         # Should get error response
@@ -708,7 +708,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling local function
         local_add_response = imports_client.post(
             "/function/local_add",
-            json={"args": {"x": 5, "y": 3}},
+            json={"x": 5, "y": 3},
         )
         assert local_add_response.ok
         local_add_data = local_add_response.data
@@ -718,7 +718,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling imported function
         multiply_response = imports_client.post(
             "/function/multiply_numbers",
-            json={"args": {"a": 4, "b": 7}},
+            json={"a": 4, "b": 7},
         )
         assert multiply_response.ok
         multiply_data = multiply_response.data
@@ -728,7 +728,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling another imported function
         format_response = imports_client.post(
             "/function/format_message",
-            json={"args": {"prefix": "INFO", "message": "test"}},
+            json={"prefix": "INFO", "message": "test"},
         )
         assert format_response.ok
         format_data = format_response.data
@@ -775,7 +775,7 @@ class TestAccessLevels:
         # Call public function without authentication
         response = access_client.post(
             "/function/public_function",
-            json={"args": {"name": "Test"}},
+            json={"name": "Test"},
         )
 
         assert response.ok
@@ -802,7 +802,7 @@ class TestAccessLevels:
         # Try to call protected function without authentication - should fail
         response = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
 
         assert not response.ok
@@ -818,7 +818,7 @@ class TestAccessLevels:
         # Call protected function with authentication
         response = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "secret"}},
+            json={"message": "secret"},
         )
 
         assert response.ok
@@ -831,7 +831,7 @@ class TestAccessLevels:
         # Try to call private function without authentication - should fail
         response = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "test"}},
+            json={"secret": "test"},
         )
 
         assert not response.ok
@@ -847,7 +847,7 @@ class TestAccessLevels:
         # Call private function with authentication
         response = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "topsecret"}},
+            json={"secret": "topsecret"},
         )
 
         assert response.ok
@@ -945,7 +945,7 @@ class TestAccessLevels:
         access_client.clear_auth()
         result1 = access_client.post(
             "/function/public_add",
-            json={"args": {"a": 5, "b": 10}},
+            json={"a": 5, "b": 10},
         )
         data1 = result1.data
         assert "result" in data1
@@ -954,7 +954,7 @@ class TestAccessLevels:
         # Protected function without auth - should fail
         result2 = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
         data2 = result2.data
         assert "error" in data2
@@ -963,7 +963,7 @@ class TestAccessLevels:
         access_client.set_auth_token(token)
         result3 = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
         data3 = result3.data
         assert "result" in data3
@@ -971,7 +971,7 @@ class TestAccessLevels:
         # Private function with auth - should work
         result4 = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "test"}},
+            json={"secret": "test"},
         )
         data4 = result4.data
         assert "result" in data4

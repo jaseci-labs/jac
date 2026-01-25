@@ -1,0 +1,69 @@
+name: Documentation Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/scripts/validate_docs_code.py'
+      - '.github/workflows/docs-validation.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/scripts/validate_docs_code.py'
+      - '.github/workflows/docs-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-docs:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-jac-${{ hashFiles('jac/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-jac-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
+          pip install -e docs
+
+      - name: Validate Jac code block syntax
+        run: python docs/scripts/validate_docs_code.py --docs-dir docs/docs
+
+      - name: Build documentation and check links
+        working-directory: docs
+        run: mkdocs build --strict 2>&1 | tee build.log || true
+
+      - name: Report link warnings
+        working-directory: docs
+        run: |
+          if grep -i "warning" build.log | grep -i "link"; then
+            echo "## ⚠️ Documentation Link Warnings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            grep -i "warning" build.log | grep -i "link" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ All Checks Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Jac code block syntax: ✓" >> $GITHUB_STEP_SUMMARY
+            echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
+          fi

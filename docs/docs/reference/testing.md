@@ -9,7 +9,7 @@ Complete reference for writing and running tests in Jac.
 ### Basic Test
 
 ```jac
-test test_name {
+test my_feature {
     # Test body
     assert condition;
 }
@@ -18,16 +18,23 @@ test test_name {
 ### Test with Setup
 
 ```jac
-test test_with_setup {
+obj MyObject {
+    has data: str;
+
+    def process() -> str {
+        return self.data;
+    }
+}
+
+test object_processing {
     # Setup
-    data = prepare_data();
-    obj = MyObject(data);
+    my_obj = MyObject(data="test");
 
     # Test
-    result = obj.process();
+    result = my_obj.process();
 
     # Assert
-    assert result == expected;
+    assert result == "test";
 }
 ```
 
@@ -38,63 +45,79 @@ test test_with_setup {
 ### Basic Assert
 
 ```jac
-assert condition;
-assert condition, "Error message";
+test basic_assert {
+    assert condition;
+    assert condition, "Error message";
+}
 ```
 
 ### Equality
 
 ```jac
-assert a == b;           # Equal
-assert a != b;           # Not equal
-assert a is b;           # Same object
-assert a is not b;       # Different objects
+test equality_checks {
+    assert a == b;           # Equal
+    assert a != b;           # Not equal
+    assert a is b;           # Same object
+    assert a is not b;       # Different objects
+}
 ```
 
 ### Comparisons
 
 ```jac
-assert a > b;            # Greater than
-assert a >= b;           # Greater or equal
-assert a < b;            # Less than
-assert a <= b;           # Less or equal
+test comparisons {
+    assert a > b;            # Greater than
+    assert a >= b;           # Greater or equal
+    assert a < b;            # Less than
+    assert a <= b;           # Less or equal
+}
 ```
 
 ### Boolean
 
 ```jac
-assert True;
-assert not False;
-assert bool(value);
+test boolean_values {
+    assert True;
+    assert not False;
+    assert bool(value);
+}
 ```
 
 ### Membership
 
 ```jac
-assert item in collection;
-assert item not in collection;
-assert key in dictionary;
+test membership {
+    assert item in collection;
+    assert item not in collection;
+    assert key in dictionary;
+}
 ```
 
 ### Type Checking
 
 ```jac
-assert isinstance(obj, MyClass);
-assert type(obj) == MyClass;
+test type_checking {
+    assert isinstance(obj, MyClass);
+    assert type(obj) == MyClass;
+}
 ```
 
 ### None Checking
 
 ```jac
-assert value is None;
-assert value is not None;
+test none_checking {
+    assert value is None;
+    assert value is not None;
+}
 ```
 
 ### With Messages
 
 ```jac
-assert result > 0, f"Expected positive, got {result}";
-assert len(items) == 3, "Should have 3 items";
+test assertions_with_messages {
+    assert result > 0, f"Expected positive, got {result}";
+    assert len(items) == 3, "Should have 3 items";
+}
 ```
 
 ---
@@ -111,7 +134,7 @@ jac test main.jac
 jac test -d tests/
 
 # Run specific test
-jac test main.jac -t test_name
+jac test main.jac -t my_feature
 ```
 
 ### CLI Options
@@ -135,13 +158,13 @@ jac test main.jac -v
 jac test main.jac -x
 
 # Filter by pattern
-jac test main.jac -f "test_user"
+jac test main.jac -f "user_"
 
 # Max failures
 jac test -d tests/ -m 3
 
 # Combined
-jac test main.jac -t test_add -v
+jac test main.jac -t calculator_add -v
 ```
 
 ---
@@ -196,14 +219,14 @@ obj Calculator {
     }
 }
 
-test test_calculator_add {
+test calculator_add {
     calc = Calculator();
     assert calc.add(5) == 5;
     assert calc.add(3) == 8;
     assert calc.value == 8;
 }
 
-test test_calculator_reset {
+test calculator_reset {
     calc = Calculator();
     calc.add(10);
     calc.reset();
@@ -230,13 +253,13 @@ walker Incrementer {
     }
 }
 
-test test_walker_increments {
+test walker_increments {
     counter = root ++> Counter();
     root spawn Incrementer();
     assert counter[0].count == 1;
 }
 
-test test_walker_custom_amount {
+test walker_custom_amount {
     counter = root ++> Counter();
     root spawn Incrementer(amount=5);
     assert counter[0].count == 5;
@@ -261,7 +284,7 @@ walker FindAdults {
     }
 }
 
-test test_find_adults {
+test find_adults {
     root ++> Person(name="Alice", age=30);
     root ++> Person(name="Bob", age=15);
     root ++> Person(name="Carol", age=25);
@@ -285,7 +308,7 @@ node Room {
 
 edge Door {}
 
-test test_graph_connections {
+test graph_connections {
     kitchen = Room(name="Kitchen");
     living = Room(name="Living Room");
     bedroom = Room(name="Bedroom");
@@ -312,11 +335,11 @@ def divide(a: int, b: int) -> float {
     return a / b;
 }
 
-test test_divide_normal {
+test divide_normal {
     assert divide(10, 2) == 5;
 }
 
-test test_divide_by_zero {
+test divide_by_zero {
     try {
         divide(10, 0);
         assert False, "Should have raised error";
@@ -366,12 +389,12 @@ obj User {
 }
 
 # Tests at bottom
-test test_user_valid {
+test user_valid {
     user = User(name="Alice", email="alice@example.com");
     assert user.is_valid();
 }
 
-test test_user_invalid_email {
+test user_invalid_email {
     user = User(name="Alice", email="invalid");
     assert not user.is_valid();
 }
@@ -398,29 +421,29 @@ max_failures = 10
 ### 1. Descriptive Names
 
 ```jac
-# Good
-test test_user_creation_with_valid_email { }
-test test_walker_visits_all_connected_nodes { }
+# Good - the 'test' keyword already marks it as a test
+test user_creation_with_valid_email { }
+test walker_visits_all_connected_nodes { }
 
 # Avoid
-test test1 { }
-test my_test { }
+test t1 { }
+test thing { }
 ```
 
 ### 2. One Focus Per Test
 
 ```jac
 # Good - focused tests
-test test_add_positive_numbers {
+test add_positive_numbers {
     assert add(2, 3) == 5;
 }
 
-test test_add_negative_numbers {
+test add_negative_numbers {
     assert add(-2, -3) == -5;
 }
 
 # Avoid - too broad
-test test_all_math_operations {
+test all_math_operations {
     assert add(2, 3) == 5;
     assert subtract(5, 3) == 2;
     assert multiply(2, 3) == 6;
@@ -431,14 +454,14 @@ test test_all_math_operations {
 
 ```jac
 # Good - creates fresh state
-test test_counter_increment {
+test counter_increment {
     counter = root ++> Counter();
     root spawn Incrementer();
     assert counter[0].count == 1;
 }
 
 # Each test should be independent
-test test_counter_starts_at_zero {
+test counter_starts_at_zero {
     counter = Counter();
     assert counter.count == 0;
 }
@@ -447,17 +470,17 @@ test test_counter_starts_at_zero {
 ### 4. Test Edge Cases
 
 ```jac
-test test_empty_list {
+test empty_list {
     result = process([]);
     assert result == [];
 }
 
-test test_single_item {
+test single_item {
     result = process([1]);
     assert len(result) == 1;
 }
 
-test test_large_list {
+test large_list {
     result = process(list(range(1000)));
     assert len(result) == 1000;
 }
@@ -467,13 +490,13 @@ test test_large_list {
 
 ```jac
 # Good - clear what failed
-test test_calculation {
+test calculation_with_message {
     result = calculate(input);
     assert result == expected, f"Expected {expected}, got {result}";
 }
 
 # Avoid - unclear failures
-test test_calculation {
+test calculation_no_message {
     assert calculate(input) == expected;
 }
 ```
