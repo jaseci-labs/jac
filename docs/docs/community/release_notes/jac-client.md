@@ -6,6 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
+- **Reactive Effects with `can with entry/exit`**: Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks. Use `async can with entry { }` for mount effects (async bodies are automatically wrapped in IIFE), `can with exit { }` for cleanup on unmount, and `can with [dep] entry { }` or `can with (dep1, dep2) entry { }` for effects with dependency arrays. This provides a cleaner, more declarative syntax for React lifecycle management without manual `useEffect` boilerplate.
+
 ## jac-client 0.2.10 (Latest Release)
 
 ## jac-client 0.2.9

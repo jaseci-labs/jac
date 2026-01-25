@@ -163,7 +163,59 @@ cl {
 
 ## React Hooks
 
-### useEffect
+### useEffect (Automatic)
+
+Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax automatically generates `useEffect` hooks:
+
+| Jac Syntax | React Equivalent |
+|------------|------------------|
+| `can with entry { ... }` | `useEffect(() => { ... }, [])` |
+| `async can with entry { ... }` | `useEffect(() => { (async () => { ... })(); }, [])` |
+| `can with exit { ... }` | `useEffect(() => { return () => { ... }; }, [])` |
+| `can with [dep] entry { ... }` | `useEffect(() => { ... }, [dep])` |
+| `can with (a, b) entry { ... }` | `useEffect(() => { ... }, [a, b])` |
+
+```jac
+cl {
+    def:pub DataLoader() -> any {
+        has data: list = [];
+        has loading: bool = True;
+
+        # Run once on mount (async with IIFE wrapping)
+        async can with entry {
+            data = await fetch_data();
+            loading = False;
+        }
+
+        # Cleanup on unmount
+        can with exit {
+            cleanup_subscriptions();
+        }
+
+        return <div>...</div>;
+    }
+
+    def:pub UserProfile(userId: str) -> any {
+        has user: dict = {};
+
+        # Re-run when userId changes (dependency array)
+        async can with [userId] entry {
+            user = await fetch_user(userId);
+        }
+
+        # Multiple dependencies using tuple syntax
+        async can with (userId, refresh) entry {
+            user = await fetch_user(userId);
+        }
+
+        return <div>{user.name}</div>;
+    }
+}
+```
+
+### useEffect (Manual)
+
+You can also use `useEffect` manually by importing it from React:
 
 ```jac
 cl {
