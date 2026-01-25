@@ -66,6 +66,9 @@ obj MTIRGenPass(UniPass) {
     """Get a unique scope string for a given scope node."""
     def _get_scope_str(node: uni.UniScopeNode) -> str;
 
+    """Extract tools from a by clause expression."""
+    def _extract_tools_from_expr(expr: uni.Expr, scope: uni.UniScopeNode) -> list[FunctionInfo];
+
     """Handle entering an ability node for MTIR generation."""
     def enter_ability(node: uni.Ability) -> None;
 }

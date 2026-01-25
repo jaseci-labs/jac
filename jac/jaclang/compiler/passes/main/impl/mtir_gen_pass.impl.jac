@@ -235,23 +235,10 @@ impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
     }
     tools: list[FunctionInfo] = [];
     if node.is_genai_ability {
-        if node.kid[-1].params {
-            for param in node.kid[-1].params {
-                if isinstance(param, uni.KWPair) {
-                    if param.key.value == 'tools' {
-                        for tool in param.value.values {
-                            tool_ability = node.lookup(tool.right.value, deep=True).symbol_table;
-                            if tool_ability.is_method {
-                                tool_info = self._extract_method_info(tool_ability);
-                            } else {
-                                tool_info = self._extract_function_info(tool_ability);
-                            }
-                            tools.append(tool_info);
-                        }
-                    }
-                }
-            }
-        }
+        # Extract tools from the by clause expression
+        # node.body is the expression after 'by' (e.g., model(tools=[...]))
+        by_expr = node.body;
+        tools = self._extract_tools_from_expr(by_expr, node);
     }
     return FunctionInfo(
         name=function_name,
@@ -292,6 +279,81 @@ impl MTIRGenPass._get_scope_str(node: uni.UniScopeNode) -> str {
         return f"{parent_scope_str}.{self_name}";
     }
     return self_name;
+}
+
+"""Extract tools from a by clause expression."""
+impl MTIRGenPass._extract_tools_from_expr(
+    expr: uni.Expr, scope: uni.UniScopeNode
+) -> list[FunctionInfo] {
+    tools: list[FunctionInfo] = [];
+
+    # Helper to extract tools from a list of params
+    # This is inlined instead of a nested function
+    params_to_check: list = [];
+
+    # Case 1: Direct function call - by model(tools=[...])
+    if isinstance(expr, uni.FuncCall) and expr?.params {
+        params_to_check = expr.params;
+    }
+    # Case 2: AtomTrailer (attribute/subscript access, possibly with call)
+    elif isinstance(expr, uni.AtomTrailer) {
+        # Traverse the chain to find FuncCall nodes
+        current = expr;
+        while current {
+            # Check if right is a FuncCall
+            if isinstance(current.right, uni.FuncCall) and current.right?.params {
+                params_to_check = current.right.params;
+                break;
+            }
+            # Check if target is AtomTrailer to continue chain
+            if isinstance(current.target, uni.AtomTrailer) {
+                current = current.target;
+            } else {
+                break;
+            }
+        }
+    }
+
+    # Extract tools from the params we found
+    for param in params_to_check {
+        if isinstance(param, uni.KWPair) and param?.key and param.key.value == 'tools' {
+            # params.value should be a list of tool references
+            if hasattr(param.value, 'values') {
+                for tool in param.value.values {
+                    try {
+                        # Try to lookup the tool symbol
+                        tool_sym = None;
+                        if isinstance(tool, uni.NameAtom) {
+                            tool_sym = scope.lookup(tool.value, deep=True);
+                        } elif isinstance(tool, uni.AtomTrailer) and isinstance(tool.right, uni.NameAtom) {
+                            # Handle module.function references
+                            tool_sym = scope.lookup(tool.right.value, deep=True);
+                        } elif hasattr(tool, 'symbol_table') {
+                            tool_sym = tool.symbol_table;
+                        }
+
+                        if tool_sym {
+                            tool_ability = tool_sym.decl.name_of if tool_sym.decl else None;
+                            if tool_ability and isinstance(tool_ability, uni.Ability) {
+                                if tool_ability.is_method {
+                                    tool_info = self._extract_method_info(tool_ability);
+                                } else {
+                                    tool_info = self._extract_function_info(tool_ability);
+                                }
+                                tools.append(tool_info);
+                            }
+                        }
+                    } except Exception {
+                        # If we can't resolve the tool, skip it
+                        # Tools might be defined at runtime
+                        ;
+                    }
+                }
+            }
+        }
+    }
+
+    return tools;
 }
 
 """Handle entering an ability node for MTIR generation."""

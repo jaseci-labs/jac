@@ -21,7 +21,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
     tools = [
-        Tool(func, info=ir_info.tools[i])
+        Tool(func, info=ir_info.tools[i] if i < len(ir_info.tools) else None)
         for (i, func) in enumerate(call_params.get("tools", []))
     ];  # type: ignore
     # Construct the input information from the arguments.
