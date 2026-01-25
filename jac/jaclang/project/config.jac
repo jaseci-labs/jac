@@ -79,7 +79,7 @@ obj DotConfig {
 
 """Cache settings from [cache] section."""
 obj CacheConfig {
-    has enabled: bool = False,
+    has enabled: bool = True,
         dir: str = ".jac_cache";
 }
 
