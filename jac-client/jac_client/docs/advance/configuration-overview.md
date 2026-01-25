@@ -192,17 +192,17 @@ sass = "^1.77.8"
 
 ### Package Lifecycle
 
-1. **Add Package**: `jac add --cl <package>`
+1. **Add Package**: `jac add --npm <package>`
    - Updates `jac.toml`
    - Regenerates `package.json`
    - Runs `npm install`
 
-2. **Install All Packages**: `jac add --cl` (no package name)
+2. **Install All Packages**: `jac add --npm` (no package name)
    - Reads all packages from `jac.toml`
    - Regenerates `package.json`
    - Runs `npm install`
 
-3. **Remove Package**: `jac remove --cl <package>`
+3. **Remove Package**: `jac remove --npm <package>`
    - Removes from `jac.toml`
    - Regenerates `package.json`
    - Runs `npm install`
@@ -270,23 +270,23 @@ export default {
 
 | Command | Purpose |
 |---------|---------|
-| `jac create --cl <name>` | Create new client project with `jac.toml` |
-| `jac add --cl <package>` | Add npm package |
-| `jac remove --cl <package>` | Remove npm package |
-| `jac add --cl` | Install all packages from jac.toml |
+| `jac create --use client <name>` | Create new client project with `jac.toml` |
+| `jac add --npm <package>` | Add npm package |
+| `jac remove --npm <package>` | Remove npm package |
+| `jac add --npm` | Install all packages from jac.toml |
 
 ### Command Workflow
 
 ```bash
 # 1. Create project
-jac create --cl my-app
+jac create --use client my-app
 cd my-app
 
 # 2. jac.toml is automatically created with organized folder structure
 
 # 3. Add custom packages
-jac add --cl lodash
-jac add --cl --dev sass
+jac add --npm lodash
+jac add --npm --dev sass
 
 # 4. Customize build (edit jac.toml)
 
@@ -339,10 +339,10 @@ project-root/
 
 ```bash
 # Good: Use CLI
-jac add --cl lodash
+jac add --npm lodash
 
 # Less ideal: Manual edit
-# (requires running jac add --cl after)
+# (requires running jac add --npm after)
 ```
 
 ### 2. Minimal Configuration
@@ -409,7 +409,7 @@ axios = "^1.6.0"        # Caret for minor updates
 
 **Solutions**:
 
-- Run `jac add --cl` to regenerate
+- Run `jac add --npm` to regenerate
 - Delete `.jac/client/` and rebuild
 - Check jac.toml syntax
 

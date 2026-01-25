@@ -6,6 +6,7 @@ Direct implementations - no delegation.
 import subprocess;
 import shlex;
 import sys;
+import base64;
 import from pathlib { Path }
 
 """Initialize a new Jac project."""
@@ -36,24 +37,9 @@ impl create(
         }
         return 0;
     }
-    # If no name specified and not listing templates, show usage error
+    # If no name specified, use "jactastic" as default with incrementing number if exists
     if not name {
-        print("Error: Project name is required.", file=sys.stderr);
-        print("\nUsage: jac create <name> [--use <template>]", file=sys.stderr);
-        print("\nExamples:", file=sys.stderr);
-        print(
-            "  jac create myproject              # Create with default template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create myapp --use client     # Create with 'client' template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create --list-jacpacks         # List available templates",
-            file=sys.stderr
-        );
-        return 1;
+        name = _generate_default_project_name(Path.cwd());
     }
     # Resolve template from --use (supports: registered names, file paths, URLs)
     tmpl = _resolve_template(use, registry);
@@ -108,12 +94,22 @@ impl create(
     console.print(f"  ✔ jac.toml", style="success");
     # Generate files from template
     for (file_path, content) in tmpl.files.items() {
-        rendered = content.replace("{{name}}", project_name);
         full_path = project_path / file_path;
         full_path.parent.mkdir(parents=True, exist_ok=True);
         if not full_path.exists() or force {
-            with open(full_path, "w") as f {
-                f.write(rendered);
+            # Check if content is base64-encoded binary (prefixed with "base64:")
+            if content.startswith("base64:") {
+                # Decode binary content and write as bytes
+                binary_data = base64.b64decode(content[7:]);
+                with open(full_path, "wb") as f {
+                    f.write(binary_data);
+                }
+            } else {
+                # Text file - apply template substitution and write as text
+                rendered = content.replace("{{name}}", project_name);
+                with open(full_path, "w") as f {
+                    f.write(rendered);
+                }
             }
             console.print(f"  ✔ {file_path}", style="success");
         }
@@ -154,6 +150,21 @@ impl create(
     console.print_next_steps(steps);
     console.print("\n🚀 Happy coding!\n", style="bold green");
     return 0;
+}
+
+"""Generate a default project name using 'jactastic' with incrementing number if needed."""
+def _generate_default_project_name(cwd: Path) -> str {
+    base_name = "jactastic";
+    # If jactastic doesn't exist, use it
+    if not (cwd / base_name).exists() {
+        return base_name;
+    }
+    # Otherwise, find the next available number
+    n = 1;
+    while (cwd / f"{base_name}{n}").exists() {
+        n += 1;
+    }
+    return f"{base_name}{n}";
 }
 
 """Resolve a template from a name, file path, or URL.
@@ -386,81 +397,14 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
 
 """Add dependencies to the project."""
 impl add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = '',
-    cl: bool = False,
-    verbose: bool = False
+    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
-        # If --cl flag is used, we need jac.toml to exist
-        if cl {
-            console.error(
-                "No jac.toml found", hint="Run 'jac create' to create a project."
-            );
-            return 1;
-        }
         # Skip silently if jac.toml doesn't exist (for regular Python deps)
-        return 0;
-    }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error(
-                "--cl flag requires jac-client plugin",
-                hint="Install with: pip install jac-client"
-            );
-            return 1;
-        }
-        if not packages {
-            if dep_type.install_all_handler is None {
-                console.error(f"No install_all handler registered for {dep_type.name}");
-                return 1;
-            }
-            try {
-                console.print(
-                    f"\n📦 Installing all {dep_type.name} packages from jac.toml",
-                    style="bold"
-                );
-                with console.status(
-                    f"[cyan]Installing {dep_type.name} packages...[/cyan]",
-                    spinner="dots"
-                ) as status {
-                    dep_type.install_all_handler(config);
-                }
-                console.success(f"Installed all {dep_type.name} packages");
-            } except Exception as e {
-                console.error(f"Failed to install packages: {e}");
-                return 1;
-            }
-            return 0;
-        }
-        try {
-            resolver = DependencyResolver(config=config);
-            console.print(
-                f"\n📦 Adding {len(packages)} {dep_type.name} package(s)", style="bold"
-            );
-            for pkg_spec in packages {
-                (name, version) = resolver.parse_spec(pkg_spec);
-                with console.status(
-                    f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-                ) as status {
-                    dep_type.install_handler(config, name, version, dev);
-                }
-                console.print(f"  ✔ {name}", style="success");
-            }
-            section = f"dependencies.{dep_type.dev_name if dev else dep_type.name}";
-            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
-        } except Exception as e {
-            console.error(f"Failed to install packages: {e}");
-            return 1;
-        }
         return 0;
     }
     # If no packages specified and not git, install all Python dependencies
@@ -535,7 +479,7 @@ impl add(
 }
 
 """Remove dependencies from the project."""
-impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
+impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.cli.console { console }
@@ -547,27 +491,6 @@ impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
     if not packages {
         console.error("No packages specified.");
         return 1;
-    }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error("--cl flag requires jac-client plugin to be installed.");
-            console.print("Install with: pip install jac-client", style="muted");
-            return 1;
-        }
-        try {
-            for name in packages {
-                console.info(f"Removing {name} ({dep_type.name})...");
-                dep_type.remove_handler(config, name, dev);
-            }
-            console.success(f"Removed {len(packages)} package(s)");
-        } except Exception as e {
-            console.error(f"Error removing packages: {e}");
-            return 1;
-        }
-        return 0;
     }
     installer = DependencyInstaller(config=config);
     for name in packages {

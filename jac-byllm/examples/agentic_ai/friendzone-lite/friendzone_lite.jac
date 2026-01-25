@@ -24,15 +24,15 @@ obj Response {
         show_summary: bool;
 }
 
-sem Response= "Memory details refined using the user's input and prior context.";
-sem Response. follow_up_questions= "Ask one follow-up question to continue the conversation. If all required details are present, ask to terminate the conversation.";
-sem Response. summary= "A concise summary of the memory.";
-sem Response. when= "The date of the memory in YYYY-MM-DD format.";
-sem Response. who= "Exact names of people in the memory (e.g., [John, Kate]); return [] if none.";
-sem Response. where= "List of places relevant to the memory.";
-sem Response. what= "What the memory is about.";
-sem Response. show_summary= "True if all required details are present and the summary should be shown.";
-sem Response. terminate_conversation= "True if the user asked to terminate the conversation; otherwise false.";
+sem Response = "Memory details refined using the user's input and prior context.";
+sem Response.follow_up_questions = "Ask one follow-up question to continue the conversation. If all required details are present, ask to terminate the conversation.";
+sem Response.summary = "A concise summary of the memory.";
+sem Response.when = "The date of the memory in YYYY-MM-DD format.";
+sem Response.who = "Exact names of people in the memory (e.g., [John, Kate]); return [] if none.";
+sem Response.where = "List of places relevant to the memory.";
+sem Response.what = "What the memory is about.";
+sem Response.show_summary = "True if all required details are present and the summary should be shown.";
+sem Response.terminate_conversation = "True if the user asked to terminate the conversation; otherwise false.";
 
 """ Update and extract memory details based on user input and context."""
 def update_memory_details(
@@ -124,7 +124,7 @@ walker update_session {
             "follow_up_questions": response.follow_up_questions,
             "conversation": here.conversation,
             "image_url": here.image_url
-        } ;
+        };
     }
 }
 # with entry {

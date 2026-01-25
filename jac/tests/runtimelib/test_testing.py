@@ -115,7 +115,7 @@ class TestJacTestClientBasics:
 
         response = client.post(
             "/function/add_numbers",
-            json={"args": {"a": 10, "b": 25}},
+            json={"a": 10, "b": 25},
         )
 
         assert response.ok

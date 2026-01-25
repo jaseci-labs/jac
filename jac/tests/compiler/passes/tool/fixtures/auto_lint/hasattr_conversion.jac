@@ -18,21 +18,24 @@ glob result1 = instance.value if hasattr(instance, "value") else 0;
 # hasattr with different attribute
 glob result2 = instance.name if hasattr(instance, "name") else "default";
 
+# hasattr with None as else value
+glob result3 = instance.name if hasattr(instance, "name") else None;
+
 # hasattr in binary expression (and)
-glob result3 = hasattr(instance, "value") and instance.value > 0;
+glob result4 = hasattr(instance, "value") and instance.value > 0;
 
 # hasattr in binary expression (or)
-glob result4 = hasattr(instance, "name") or False;
+glob result5 = hasattr(instance, "name") or False;
 
 # hasattr with single quotes
-glob result5 = instance.value if hasattr(instance, 'value') else -1;
+glob result6 = instance.value if hasattr(instance, 'value') else -1;
 
 # Nested hasattr - should only convert the hasattr calls
-glob result6 = instance.value if hasattr(instance, "value") else (instance.name if hasattr(instance, "name") else "none");
+glob result7 = instance.value if hasattr(instance, "value") else (instance.name if hasattr(instance, "name") else "none");
 
 # hasattr that should NOT be converted (variable attribute name)
 glob attr_name = "value";
-glob result7 = instance.value if hasattr(instance, attr_name) else 0;
+glob result8 = instance.value if hasattr(instance, attr_name) else 0;
 
 # hasattr that should NOT be converted (more than 2 args - invalid anyway)
 # This would be a syntax error in real code, but the auto-lint should not touch it
@@ -41,4 +44,4 @@ glob result7 = instance.value if hasattr(instance, attr_name) else 0;
 def hasattr_lookalike(obj: object, attr: str) -> bool {
     return True;
 }
-glob result8 = hasattr_lookalike(instance, "value");
+glob result9 = hasattr_lookalike(instance, "value");

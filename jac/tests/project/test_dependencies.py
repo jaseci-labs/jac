@@ -188,6 +188,46 @@ class TestDependencyInstaller:
         assert "requests" in installed
         assert "numpy" in installed
 
+    def test_cleanup_old_package_removes(self, temp_project: Path) -> None:
+        """Test that _cleanup_old_package removes .dist-info directories."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config, verbose=True)
+
+        # Create packages directory with multiple dist-info versions
+        packages_dir = temp_project / ".jac" / "packages"
+        packages_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create with different casing
+        dist_info = packages_dir / "Typing_extensions-4.11.0.dist-info"
+        dist_info.mkdir()
+
+        pkg_dir = packages_dir / "typing_extensions"
+        pkg_dir.mkdir()
+        old_dist = packages_dir / "typing_extensions-4.11.0.dist-info"
+        old_dist.mkdir()
+        egg_info = packages_dir / "typing_extensions-4.11.0.egg-info"
+        egg_info.mkdir()
+        data_dir = packages_dir / "typing_extensions-4.11.0.data"
+        data_dir.mkdir()
+
+        other_dist = packages_dir / "numpy-1.24.0.dist-info"
+        other_dist.mkdir()
+
+        with patch.object(installer, "_run_pip", return_value=(0, "", "")):
+            installer.install_package("typing-extensions", "==4.15.0")
+            (packages_dir / "typing_extensions-4.15.0.dist-info").mkdir()
+
+            # All old versions should be removed
+            assert not dist_info.exists()
+            assert not pkg_dir.exists()
+            assert not old_dist.exists()
+            assert not egg_info.exists()
+            assert not data_dir.exists()
+            # Newly installed version should exist
+            assert (packages_dir / "typing_extensions-4.15.0.dist-info").exists()
+            # Other package should remain
+            assert other_dist.exists()
+
 
 class TestDependencyResolver:
     """Tests for the DependencyResolver class."""

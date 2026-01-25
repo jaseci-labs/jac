@@ -9,7 +9,11 @@ import from jaclang.cli.console { console }
 
 """Run type checker for specified .jac files."""
 impl check(
-    paths: list, print_errs: bool = True, warnonly: bool = False, ignore: str = ""
+    paths: list,
+    print_errs: bool = True,
+    warnonly: bool = False,
+    ignore: str = "",
+    parse_only: bool = False
 ) -> int {
     import from jaclang.pycore.program { JacProgram }
     if isinstance(paths, str) {
@@ -39,7 +43,7 @@ impl check(
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-            prog.compile(file_path=file_path, type_check=True, no_cgen=True);
+            prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
             if print_errs {
@@ -72,6 +76,9 @@ impl check(
             }
         } elif path_obj.is_dir() {
             for jac_file in path_obj.glob('**/*.jac') {
+                if not jac_file.is_file() {
+                    continue;
+                }
                 if not ignore_check(str(jac_file), ignore_list) {
                     total_files += 1;
                     (success, errs, warns) = check_single_file(prog, str(jac_file));
@@ -88,7 +95,10 @@ impl check(
             total_errors += 1;
         }
     }
-    summary_msg = f"Checked {total_files} '.jac' files: {(total_files - failed_files)} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).";
+    check_type = "Parsed" if parse_only else "Checked";
+    summary_msg = f"{check_type} {total_files} '.jac' files: {(
+        total_files - failed_files
+    )} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).";
     if total_errors {
         console.error(summary_msg);
     } else {
@@ -166,6 +176,9 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
             }
         } elif path_obj.is_dir() {
             for jac_file in path_obj.glob('**/*.jac') {
+                if not jac_file.is_file() {
+                    continue;
+                }
                 total_files += 1;
                 (success, changed) = format_single_file(str(jac_file));
                 if not success {

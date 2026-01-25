@@ -10,7 +10,6 @@ Requirements:
     - jac-client installed
     - jac-scale installed
     - byllm installed
-    - jac-streamlit installed (optional)
 
 Usage:
     python scripts/integration_tests.py

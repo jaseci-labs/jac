@@ -6,14 +6,16 @@
 # This demonstrates that you can have separate .jac files for different purposes
 # Features Test - Backend Walkers
 # This file demonstrates walker functionality for testing various JAC features
-
-import from datetime { datetime, timedelta }
+import from datetime {
+    datetime,
+    timedelta
+}
 
 # Node definition for storing test data
 node TestData {
-    has message: str;
-    has count: int = 0;
-    has created_at: str = "";
+    has message: str,
+        count: int = 0,
+        created_at: str = "";
 }
 
 # Walker: Create test data
@@ -106,12 +108,14 @@ walker process_complex_data {
     can process with `root entry {
         processed = [];
         for item in self.items {
-            processed.append({
-                "id": item.get("id", 0),
-                "name": item.get("name", "").upper(),
-                "value": item.get("value", 0) * 2,
-                "processed_at": datetime.now().strftime("%H:%M:%S")
-            });
+            processed.append(
+                {
+                    "id": item.get("id", 0),
+                    "name": item.get("name", "").upper(),
+                    "value": item.get("value", 0) * 2,
+                    "processed_at": datetime.now().strftime("%H:%M:%S")
+                }
+            );
         }
 
         result = {
@@ -129,5 +133,8 @@ walker process_complex_data {
 cl {
     import from .budget_planner_ui { BudgetPlanner as BudgetPlannerUI }
 
-    def:pub BudgetPlanner -> any { return <BudgetPlannerUI />; }
+    def:pub BudgetPlanner -> any {
+        return
+            <BudgetPlannerUI />;
+    }
 }

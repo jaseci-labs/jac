@@ -42,4 +42,5 @@ def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> any;
+def:pub errorOverlay(filePath: str, errors: str) -> any;
 # React Router components

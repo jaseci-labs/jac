@@ -12,6 +12,50 @@ impl UnionType.postinit -> None {
     self.types = flattened_types;
 }
 
+"""Return a string representation of the union type."""
+impl UnionType.__str__ -> str {
+    if not self.types or len(self.types) == 0 {
+        return "<Union>";
+    }
+    return " | ".join(str(ty) for ty in self.types);
+}
+
+"""Return a string representation of the unbound type."""
+impl UnboundType.__str__ -> str {
+    return "<Unbound>";
+}
+
+"""Return a string representation of the unknown type."""
+impl UnknownType.__str__ -> str {
+    return "<Unknown>";
+}
+
+"""Return a string representation of the never type."""
+impl NeverType.__str__ -> str {
+    return "<Never>";
+}
+
+"""Return a string representation of the any type."""
+impl AnyType.__str__ -> str {
+    return "<Any>";
+}
+
+"""Return a string representation of the module type."""
+impl ModuleType.__str__ -> str {
+    if self.mod_name {
+        return f"<module {self.mod_name}>";
+    }
+    if self.file_uri and str(self.file_uri) != "." {
+        return f"<module {self.file_uri}>";
+    }
+    return "<module>";
+}
+
+"""Return a string representation of the type variable."""
+impl TypeVarType.__str__ -> str {
+    return "<TypeVar>";
+}
+
 """Return the index of the given type variable in the class type."""
 impl FunctionType._index_of_type_param(
     class_type: ClassType, type_var: TypeVarType
@@ -67,8 +111,33 @@ impl FunctionType.postinit -> None {
     self.parameters = self.parameters or [];
 }
 
+"""Return a string representation of the function type."""
+impl FunctionType.__str__ -> str {
+    param_strs: list[str] = [];
+    for param in self.parameters or [] {
+        param_str = param.name;
+        if param.param_type {
+            param_str = f"{param_str}: {param.param_type}";
+        }
+        if param.default_value is not None {
+            param_str = f"{param_str} = ...";
+        }
+        param_strs.append(param_str);
+    }
+    params_str = ", ".join(param_strs);
+    func_name = self.func_name or "<anonymous>";
+    return_type_str = f" -> {self.return_type}" if self.return_type else "";
+    return f"<function {func_name}({params_str}){return_type_str}>";
+}
+
 impl OverloadedType.postinit -> None {
     self.overloads = self.overloads or [];
+}
+
+"""Return a string representation of the overloaded type."""
+impl OverloadedType.__str__ -> str {
+    count = len(self.overloads) if self.overloads else 0;
+    return f"<overload {count} overloads>";
 }
 
 """Return true if this class is the built-in Node type."""

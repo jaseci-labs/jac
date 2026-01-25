@@ -1183,6 +1183,42 @@ def test_slice_type_checking(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_numeric_type_promotion(fixture_path: Callable[[str], str]) -> None:
+    """Test numeric type promotion for arithmetic operations (int -> float)."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_numeric_promotion.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 3 errors: assigning float results to int variables
+    assert len(program.errors_had) == 3
+
+    # Error 1: int + float assigned to int
+    _assert_error_pretty_found(
+        """
+        err1: int = 1 + 2.0;  # <-- Error: float cannot be assigned to int
+        ^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: division always returns float
+    _assert_error_pretty_found(
+        """
+        err2: int = 4 / 2;    # <-- Error: division always returns float
+        ^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: float * int assigned to int
+    _assert_error_pretty_found(
+        """
+        err3: int = 2.0 * 3;  # <-- Error: float cannot be assigned to int
+        ^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+
+
 def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
     """Test that property access returns the property's return type, not FunctionType."""
     program = JacProgram()

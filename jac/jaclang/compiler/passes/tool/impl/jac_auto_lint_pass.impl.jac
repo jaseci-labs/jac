@@ -1001,11 +1001,13 @@ impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> b
     return False;
 }
 
-"""Convert IfElseExpr to BoolExpr with or when value equals condition.
+"""Convert IfElseExpr to simplified form when value equals condition.
 
-Transforms: x?.attr if x?.attr else default -> x?.attr or default
+Transforms:
+- x?.attr if x?.attr else None -> x?.attr (since null-safe already returns None)
+- x?.attr if x?.attr else default -> x?.attr or default
+
 This only applies when the value and condition are identical expressions.
-
 This implementation avoids calling normalize() to preserve comment associations.
 """
 impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
@@ -1013,37 +1015,45 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
         return False;
     }
-    # Create the 'or' token
-    or_token = uni.Token(
-        orig_src=if_else_node.loc.orig_src,
-        name=Tok.KW_OR,
-        value="or",
-        line=if_else_node.loc.first_line,
-        end_line=if_else_node.loc.first_line,
-        col_start=0,
-        col_end=2,
-        pos_start=0,
-        pos_end=2
-    );
-    # Create a BoolExpr with 'or' operator: value or else_value
-    # Build kid list manually: value1 or value2
-    or_expr = uni.BoolExpr(
-        op=or_token,
-        values=[if_else_node.value, if_else_node.else_value],
-        kid=[if_else_node.value, or_token, if_else_node.else_value]
-    );
-    # Replace in parent
     parent = if_else_node.parent;
     if parent is None {
         return False;
     }
-    or_expr.parent = parent;
+    # Check if else_value is None literal (only uni.Null, not the string "None")
+    if isinstance(if_else_node.else_value, uni.Null) {
+        # Special case: x?.attr if x?.attr else None -> x?.attr
+        # Just replace with the value expression
+        replacement = if_else_node.value;
+        replacement.parent = parent;
+    } else {
+        # Normal case: x?.attr if x?.attr else default -> x?.attr or default
+        # Create the 'or' token
+        or_token = uni.Token(
+            orig_src=if_else_node.loc.orig_src,
+            name=Tok.KW_OR,
+            value="or",
+            line=if_else_node.loc.first_line,
+            end_line=if_else_node.loc.first_line,
+            col_start=0,
+            col_end=2,
+            pos_start=0,
+            pos_end=2
+        );
+        # Create a BoolExpr with 'or' operator: value or else_value
+        # Build kid list manually: value1 or value2
+        replacement = uni.BoolExpr(
+            op=or_token,
+            values=[if_else_node.value, if_else_node.else_value],
+            kid=[if_else_node.value, or_token, if_else_node.else_value]
+        );
+        replacement.parent = parent;
+    }
     # Update parent's reference to this node
     if parent?.kid {
         new_kids: list[uni.UniNode] = [];
         for kid in parent.kid {
             if kid is if_else_node {
-                new_kids.append(or_expr);
+                new_kids.append(replacement);
             } else {
                 new_kids.append(kid);
             }
@@ -1053,21 +1063,21 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     # Also update specific parent attributes that might reference this node
     if isinstance(parent, uni.Assignment) {
         if parent.value is if_else_node {
-            parent.value = or_expr;
+            parent.value = replacement;
         }
     } elif isinstance(parent, uni.IfElseExpr) {
         if parent.value is if_else_node {
-            parent.value = or_expr;
+            parent.value = replacement;
         } elif parent.condition is if_else_node {
-            parent.condition = or_expr;
+            parent.condition = replacement;
         } elif parent.else_value is if_else_node {
-            parent.else_value = or_expr;
+            parent.else_value = replacement;
         }
     } elif isinstance(parent, uni.BoolExpr) {
         new_values: list[uni.Expr] = [];
         for val in parent.values {
             if val is if_else_node {
-                new_values.append(or_expr);
+                new_values.append(replacement);
             } else {
                 new_values.append(val);
             }
@@ -1082,14 +1092,16 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
 When an expression contains both null-safe and regular accesses for the same
 object and attribute, convert the regular accesses to null-safe.
 
-Also converts patterns like: x?.attr if x?.attr else default -> x?.attr or default
+Also converts patterns like:
+- x?.attr if x?.attr else None -> x?.attr (since null-safe already returns None)
+- x?.attr if x?.attr else default -> x?.attr or default
 """
 impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     if not self.lint_enabled {
         return;
     }
-    # First, try to convert identical ternary to or expression
-    # Pattern: x?.attr if x?.attr else default -> x?.attr or default
+    # Try to convert/simplify ternary when value equals condition
+    # Handles both None case and or conversion
     if self._convert_ternary_to_or(if_else_node) {
         return;
     }

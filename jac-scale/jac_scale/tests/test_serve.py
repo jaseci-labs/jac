@@ -85,20 +85,23 @@ class TestJacScaleServe:
         jac_executable = Path(sys.executable).parent / "jac"
 
         # Build the command to start the server
+        # Use just the filename and set cwd to fixtures directory
+        # This is required for proper bytecode caching and module resolution
         cmd = [
             str(jac_executable),
             "start",
-            str(cls.test_file),
+            cls.test_file.name,
             "--port",
             str(cls.port),
         ]
 
-        # Start the server process
+        # Start the server process with cwd set to fixtures directory
         cls.server_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            cwd=str(cls.fixtures_dir),
         )
 
         # Wait for server to be ready
@@ -1208,9 +1211,359 @@ class TestJacScaleServe:
         assert "cross-origin-embedder-policy" in response.headers
         assert response.headers["cross-origin-embedder-policy"] == "require-corp"
 
+    def test_update_username_success(self) -> None:
+        """Test successfully updating username and logging in with new username."""
+        # Create user
+        username = f"olduser_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+        original_token = create_result["token"]
+        original_root_id = create_result["root_id"]
 
-class TestJacScaleServeWatchMode:
-    """Test jac-scale serve with --watch mode (dynamic routing).
+        # Update username
+        new_username = f"newuser_{uuid.uuid4().hex[:8]}"
+        update_result = self._request(
+            "PUT",
+            "/user/username",
+            {"current_username": username, "new_username": new_username},
+            token=original_token,
+        )
+
+        assert "username" in update_result
+        assert update_result["username"] == new_username
+        assert "token" in update_result  # New token with updated username
+        assert "root_id" in update_result
+        assert (
+            update_result["root_id"] == original_root_id
+        )  # Root ID should remain same
+
+        # Login with new username should work
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": new_username, "password": "password123"},
+        )
+        assert login_result["username"] == new_username
+        assert "token" in login_result
+
+        # Old username should fail to login
+        login_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "password123"},
+            timeout=5,
+        )
+        assert login_response.status_code == 401
+
+    def test_update_username_requires_auth(self) -> None:
+        """Test that username update requires authentication."""
+        # Create user
+        username = f"authtest_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+
+        # Try to update without token
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": username, "new_username": "newname"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_update_username_cannot_update_other_users(self) -> None:
+        """Test that users cannot update other users' usernames."""
+        # Create user1
+        user1_name = f"user1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"user2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # User1 tries to update user2's username
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": user2_name, "new_username": "hacked"},
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 403
+
+    def test_update_username_duplicate_fails(self) -> None:
+        """Test that updating to an existing username fails."""
+        # Create user1
+        user1_name = f"user1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"user2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # Try to update user1 to user2 (already exists)
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": user1_name, "new_username": user2_name},
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    def test_update_username_empty_validation(self) -> None:
+        """Test that empty username is rejected."""
+        # Create user
+        username = f"testuser_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+        token = user_result["token"]
+
+        # Try to update to empty username
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": username, "new_username": ""},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    # ==================== PASSWORD UPDATE TESTS ====================
+
+    def test_update_password_success(self) -> None:
+        """Test successfully updating password and logging in with new password."""
+        # Create user
+        username = f"passuser_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass123"},
+        )
+        token = create_result["token"]
+
+        # Update password
+        update_result = self._request(
+            "PUT",
+            "/user/password",
+            {
+                "username": username,
+                "current_password": "oldpass123",
+                "new_password": "newpass456",
+            },
+            token=token,
+        )
+
+        assert "username" in update_result
+        assert update_result["username"] == username
+        assert "message" in update_result or "success" in str(update_result).lower()
+
+        # Login with new password should work
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": username, "password": "newpass456"},
+        )
+        assert login_result["username"] == username
+
+        # Old password should fail
+        login_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "oldpass123"},
+            timeout=5,
+        )
+        assert login_response.status_code == 401
+
+    def test_update_password_requires_auth(self) -> None:
+        """Test that password update requires authentication."""
+        # Create user
+        username = f"noauthuser_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+
+        # Try to update without token
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "password123",
+                "new_password": "newpass",
+            },
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_update_password_wrong_current_password(self) -> None:
+        """Test that wrong current password is rejected."""
+        # Create user
+        username = f"wrongpass_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "correctpass"},
+        )
+        token = user_result["token"]
+
+        # Try to update with wrong current password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "wrongpass",
+                "new_password": "newpass",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    def test_update_password_cannot_update_other_users(self) -> None:
+        """Test that users cannot update other users' passwords."""
+        # Create user1
+        user1_name = f"passuser1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"passuser2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # User1 tries to update user2's password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": user2_name,
+                "current_password": "pass2",
+                "new_password": "hacked",
+            },
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 403
+
+    def test_update_password_empty_validation(self) -> None:
+        """Test that empty passwords are rejected."""
+        # Create user
+        username = f"emptypass_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass"},
+        )
+        token = user_result["token"]
+
+        # Try to update to empty new password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "oldpass",
+                "new_password": "",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    # ==================== INTEGRATION TESTS ====================
+
+    def test_username_and_password_update_flow(self) -> None:
+        """Integration test:  Update username, then password, verify both work."""
+        # Create user
+        username = f"original_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass"},
+        )
+        token = create_result["token"]
+        root_id = create_result["root_id"]
+
+        # Update username
+        new_username = f"updated_{uuid.uuid4().hex[:8]}"
+        username_update = self._request(
+            "PUT",
+            "/user/username",
+            {"current_username": username, "new_username": new_username},
+            token=token,
+        )
+        new_token = username_update["token"]
+        assert username_update["root_id"] == root_id
+
+        # Update password with new username and new token
+        password_update = self._request(
+            "PUT",
+            "/user/password",
+            {
+                "username": new_username,
+                "current_password": "oldpass",
+                "new_password": "newpass",
+            },
+            token=new_token,
+        )
+        assert password_update["username"] == new_username
+
+        # Login with new username and new password
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": new_username, "password": "newpass"},
+        )
+        assert login_result["username"] == new_username
+        assert login_result["root_id"] == root_id
+
+        # Old username should fail
+        old_username_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "newpass"},
+            timeout=5,
+        )
+        assert old_username_response.status_code == 401
+
+        # Old password should fail
+        old_password_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": new_username, "password": "oldpass"},
+            timeout=5,
+        )
+        assert old_password_response.status_code == 401
+
+
+class TestJacScaleServeDevMode:
+    """Test jac-scale serve with --dev mode (dynamic routing).
 
     This tests that the dynamic routing endpoints correctly parse request body
     parameters, which is essential for HMR support.
@@ -1236,7 +1589,7 @@ class TestJacScaleServeWatchMode:
 
         cls._cleanup_db_files()
         cls.server_process = None
-        cls._start_server_watch_mode()
+        cls._start_server_dev_mode()
 
     @classmethod
     def teardown_class(cls) -> None:
@@ -1254,17 +1607,17 @@ class TestJacScaleServeWatchMode:
         cls._cleanup_db_files()
 
     @classmethod
-    def _start_server_watch_mode(cls) -> None:
-        """Start the jac-scale server in watch mode (dynamic routing).
+    def _start_server_dev_mode(cls) -> None:
+        """Start the jac-scale server in dev mode (dynamic routing).
 
-        In watch mode, the REST API runs on port+1 while Vite runs on port.
+        In dev mode, the REST API runs on port+1 while Vite runs on port.
         We connect directly to the REST API port to avoid Vite dependency issues.
         """
         import sys
 
         jac_executable = Path(sys.executable).parent / "jac"
         # Use --api-only to skip Vite dev server (if supported), otherwise use base port
-        # The REST API in watch mode runs on base_port + 1
+        # The REST API in dev mode runs on base_port + 1
         vite_port = cls.port
         api_port = cls.port + 1
         cls.base_url = f"http://localhost:{api_port}"
@@ -1275,7 +1628,7 @@ class TestJacScaleServeWatchMode:
             str(cls.test_file),
             "--port",
             str(vite_port),
-            "--watch",  # Enable watch mode for dynamic routing
+            "--dev",  # Enable dev mode for dynamic routing
         ]
 
         cls.server_process = subprocess.Popen(
@@ -1301,7 +1654,7 @@ class TestJacScaleServeWatchMode:
                 response = requests.get(f"{cls.base_url}/docs", timeout=2)
                 if response.status_code in (200, 404):
                     print(
-                        f"Watch mode server started successfully on API port {api_port}"
+                        f"Dev mode server started successfully on API port {api_port}"
                     )
                     server_ready = True
                     break
@@ -1317,7 +1670,7 @@ class TestJacScaleServeWatchMode:
                 stdout, stderr = cls.server_process.communicate()
 
             raise RuntimeError(
-                f"Server failed to start in watch mode after {max_attempts} attempts.\n"
+                f"Server failed to start in dev mode after {max_attempts} attempts.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
             )
 
@@ -1359,8 +1712,8 @@ class TestJacScaleServeWatchMode:
                 return {"error": error_info.get("message", "Unknown error")}
         return json_response
 
-    def test_watch_mode_walker_body_parsing(self) -> None:
-        """Test that walkers in watch mode correctly parse request body parameters.
+    def test_dev_mode_walker_body_parsing(self) -> None:
+        """Test that walkers in dev mode correctly parse request body parameters.
 
         This is a regression test for the fix where dynamic routing endpoints
         weren't parsing JSON body content into walker fields.
@@ -1368,7 +1721,7 @@ class TestJacScaleServeWatchMode:
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1390,12 +1743,12 @@ class TestJacScaleServeWatchMode:
         # Verify the walker received and processed the body parameters
         assert "result" in data or "reports" in data, f"Unexpected response: {data}"
 
-    def test_watch_mode_function_body_parsing(self) -> None:
-        """Test that functions in watch mode correctly parse request body parameters."""
+    def test_dev_mode_function_body_parsing(self) -> None:
+        """Test that functions in dev mode correctly parse request body parameters."""
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1418,8 +1771,8 @@ class TestJacScaleServeWatchMode:
         assert "result" in data, f"Expected 'result' in response: {data}"
         assert data["result"] == 100, f"Expected 100, got {data['result']}"
 
-    def test_watch_mode_public_walker_no_auth(self) -> None:
-        """Test that public walkers work without auth in watch mode."""
+    def test_dev_mode_public_walker_no_auth(self) -> None:
+        """Test that public walkers work without auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PublicInfo",
             json={},
@@ -1431,8 +1784,8 @@ class TestJacScaleServeWatchMode:
         assert "reports" in data
         assert data["reports"][0]["message"] == "This is a public endpoint"
 
-    def test_watch_mode_private_walker_requires_auth(self) -> None:
-        """Test that private walkers require auth in watch mode."""
+    def test_dev_mode_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},
