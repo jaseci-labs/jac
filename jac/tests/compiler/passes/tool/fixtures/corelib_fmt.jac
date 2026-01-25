@@ -31,7 +31,7 @@ obj ExecutionContext {
         memory: Memory = Memory();
 
     def reset;
-    def get_root() -> Archetype;
+    def get_root()  -> Archetype;
 }
 
 "Global Execution Context, should be monkey patched by the user."
@@ -126,7 +126,7 @@ obj JacPlugin {
     ) -> bool;
 
     @hookimpl
-    static def get_root() -> Archetype;
+    static def get_root()  -> Archetype;
 
     @hookimpl
     static def build_edge(
@@ -267,7 +267,7 @@ impl Anchor.revoke_access(caller_id: UUID) {
 impl Anchor.on_entry(cls: type, triggers: list) {
     def decorator(func: callable) -> callable {
         cls.ds_entry_funcs.append({'types': triggers, 'func': func});
-        def wrapper(*args: list, **kwargs: dict) -> callable {
+        def wrapper( *args: list , **kwargs: dict)  -> callable {
             return func(*args, **kwargs);
         }
         return wrapper;
@@ -278,7 +278,7 @@ impl Anchor.on_entry(cls: type, triggers: list) {
 impl Anchor.on_exit(cls: type, triggers: list) {
     def decorator(func: callable) -> callable {
         cls.ds_exit_funcs.append({'types': triggers, 'func': func});
-        def wrapper(*args: list, **kwargs: dict) -> callable {
+        def wrapper( *args: list , **kwargs: dict)  -> callable {
             return func(*args, **kwargs);
         }
         return wrapper;
@@ -441,7 +441,7 @@ impl JacPlugin.bind_archetype(
     return True;
 }
 
-impl JacPlugin.get_root() -> None {
+impl JacPlugin.get_root()  -> None {
     return exec_ctx.get_root();
 }
 
