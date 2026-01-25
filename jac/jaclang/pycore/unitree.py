@@ -2077,12 +2077,14 @@ class Ability(
         kid: Sequence[UniNode],
         doc: String | None = None,
         decorators: Sequence[Expr] | None = None,
+        is_node_func: bool = False,
     ) -> None:
         self.is_override = is_override
         self.is_static = is_static
         self.is_abstract = is_abstract
         self.decorators = decorators
         self.signature = signature
+        self.is_node_func = is_node_func
 
         UniNode.__init__(self, kid=kid)
         AstImplNeedingNode.__init__(self, body=body)

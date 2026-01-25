@@ -4,7 +4,7 @@ import ast as ast3
 from collections.abc import Sequence
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import Tokens as Tok
+from jaclang.pycore.constant import CodeContext, Tokens as Tok
 from jaclang.pycore.passes.uni_pass import UniPass
 
 
@@ -74,6 +74,26 @@ class SemanticAnalysisPass(UniPass):
                 self.log_error(
                     'Missing "postinit" method required by un initialized attribute(s).',
                     node_override=post_init_vars[0].name_spec,
+                )
+
+    def enter_ability(self, node: uni.Ability) -> None:
+        """Validate ability declarations.
+
+        Check that node functions (abilities declared with 'node' keyword) are only
+        used within client context. Node functions are a way to declare client
+        components using OSP-aligned syntax.
+        """
+        if node.is_node_func:
+            # Check if this node function is in client context
+            if node.code_context != CodeContext.CLIENT and not node.in_client_context():
+                error_msg = (
+                    "Node functions can only be declared within client (cl) context. "
+                    "Use 'def' for regular function declarations outside client blocks."
+                )
+                self.log_error(error_msg, node_override=node.name_ref)
+                # Raise exception to stop compilation - this is a semantic error
+                raise SyntaxError(
+                    f"{node.loc.mod_path}, line {node.loc.first_line}: {error_msg}"
                 )
 
     # ------------context update methods---------------------------

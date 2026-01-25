@@ -1199,13 +1199,21 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def function_decl(self, _: None) -> uni.Ability:
             """Grammar rule.
 
-            function_decl: KW_OVERRIDE? KW_STATIC? KW_DEF access_tag? named_ref
+            function_decl: KW_OVERRIDE? KW_STATIC? (KW_DEF | KW_NODE) access_tag? named_ref
                 func_decl? (block_tail | KW_ABSTRACT? SEMI)
+
+            When KW_NODE is used, it creates a node function (client component).
+            Node functions are only valid in client (cl) context.
             """
-            # Save original kids to track tokens
             is_override = self.match_token(Tok.KW_OVERRIDE) is not None
             is_static = self.match_token(Tok.KW_STATIC) is not None
-            self.consume_token(Tok.KW_DEF)
+
+            # Check for KW_DEF or KW_NODE
+            is_node_func = False
+            if self.match_token(Tok.KW_DEF) is None:
+                self.consume_token(Tok.KW_NODE)
+                is_node_func = True
+
             access = self.match(uni.SubTag)
             name = self.consume(uni.NameAtom)
             signature = self.match(uni.FuncSignature)
@@ -1234,6 +1242,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 signature=signature,
                 body=body,
                 kid=self.flat_cur_nodes,
+                is_node_func=is_node_func,
             )
 
         def func_decl(self, _: None) -> uni.FuncSignature:

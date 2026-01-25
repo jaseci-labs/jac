@@ -64,7 +64,7 @@ enum_block: LBRACE assignment_list (py_code_block | free_code)* RBRACE
 // [Heading]: Functions and Abilities.
 ability: decorators? KW_ASYNC? (ability_decl | function_decl)
 
-function_decl: KW_OVERRIDE? KW_STATIC? KW_DEF access_tag? named_ref func_decl? (block_tail | KW_ABSTRACT? SEMI)
+function_decl: KW_OVERRIDE? KW_STATIC? (KW_DEF | KW_NODE) access_tag? named_ref func_decl? (block_tail | KW_ABSTRACT? SEMI)
 ability_decl: KW_OVERRIDE? KW_STATIC? KW_CAN access_tag? named_ref? event_clause (block_tail | KW_ABSTRACT? SEMI)
 block_tail: code_block | KW_BY expression SEMI
 event_clause: KW_WITH expression? (KW_EXIT | KW_ENTRY)
