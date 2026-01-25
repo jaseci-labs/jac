@@ -738,10 +738,13 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                 ability_node = defn_node.parent;
                 # A function is a server function if:
                 # 1. It has code_context = SERVER (or default), AND
-                # 2. It is NOT inside a client context (not nested in cl{})
+                # 2. It is NOT inside a client context (not nested in cl{}), AND
+                # 3. It is a PUBLIC function (def:pub) - this excludes builtins like print
                 is_server_func = (
                     ability_node.code_context != CodeContext.CLIENT
                     and not ability_node.in_client_context()
+                    and ability_node.access is not None
+                    and ability_node.access.tag.name == Tok.KW_PUB
                 );
                 if is_server_func {
                     func_name = <>node.target.sym_name;
