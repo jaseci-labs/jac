@@ -6,6 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
+- **Source Mapping for Vite Errors**: Added source mapping to trace Vite build errors back to original `.jac` files. Compiled JavaScript files now include source file header comments, and a custom `jacSourceMapper` Vite plugin maps error locations to the original Jac source. Source maps are enabled by default for both development and production builds, improving the debugging experience when build errors occur.
+
 ## jac-client 0.2.10 (Latest Release)
 
 ## jac-client 0.2.9

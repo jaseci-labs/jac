@@ -11,8 +11,8 @@ Start with the simplest full-stack app: functions for server logic, minimal UI i
 Create a project:
 
 ```bash
-mkdir my-todo && cd my-todo
-jac create . --use fullstack --skip
+jac create my-todo --use client --skip
+cd my-todo
 ```
 
 Create `styles.css` in your project:
