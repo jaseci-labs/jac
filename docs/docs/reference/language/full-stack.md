@@ -190,15 +190,24 @@ cl {
 
 ### 3 Effects and Lifecycle
 
+Use `can with entry` for mount effects and `can with exit` for cleanup:
+
+| Syntax | Behavior | React Equivalent |
+|--------|----------|------------------|
+| `can with entry { }` | Run on mount | `useEffect(() => { }, [])` |
+| `async can with entry { }` | Async mount | `useEffect(() => { (async () => { })(); }, [])` |
+| `can with exit { }` | Run on unmount | `useEffect(() => { return () => { }; }, [])` |
+| `can with [dep] entry { }` | Run when dep changes | `useEffect(() => { }, [dep])` |
+| `can with (a, b) entry { }` | Multiple deps | `useEffect(() => { }, [a, b])` |
+
 ```jac
 cl {
-    import from react { useEffect }
-
     def:pub DataLoader() -> any {
         has data: list = [];
         has loading: bool = True;
 
-        async def fetch_data() -> None {
+        # Fetch data on mount (async automatically wrapped in IIFE)
+        async can with entry {
             response = await fetch("/api/data");
             data = await response.json();
             loading = False;
@@ -209,6 +218,22 @@ cl {
         }
 
         return <div>{data}</div>;
+    }
+
+    def:pub UserProfile(userId: str) -> any {
+        has user: dict = {};
+
+        # Re-fetch when userId changes
+        async can with [userId] entry {
+            user = await fetch_user(userId);
+        }
+
+        # Cleanup subscriptions on unmount
+        can with exit {
+            unsubscribe();
+        }
+
+        return <div>{user.name}</div>;
     }
 }
 ```
