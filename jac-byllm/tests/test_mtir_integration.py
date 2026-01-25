@@ -13,7 +13,7 @@ Note: MTIR extraction from compiled code is tested in:
 import os
 from collections.abc import Callable
 from dataclasses import fields
-from typing import Any
+from pathlib import Path
 
 import pytest
 
@@ -102,6 +102,7 @@ class TestSchemaGenerationWithMTIR:
 
         assert func_info.name == "calculate_age"
         assert func_info.semstr == "Calculate age from birth year."
+        assert func_info.params is not None
         assert len(func_info.params) == 2
         assert func_info.params[0].name == "birth_year"
         assert func_info.params[0].semstr == "Year of birth."
@@ -131,6 +132,7 @@ class TestSchemaGenerationWithMTIR:
         )
 
         assert user_class.fields[1].type_info == person_class
+        assert isinstance(user_class.fields[1].type_info, ClassInfo)
         assert user_class.fields[1].type_info.name == "Person"
 
     def test_generic_type_encoding(self) -> None:
@@ -168,6 +170,7 @@ class TestToolSchemaWithMTIR:
         prog.compile(fixture_path("tool_function.jac"))
         assert not prog.errors_had
 
+        assert JacRuntime.program is not None
         mtir_map = JacRuntime.program.mtir_map
 
         # Find get_person_details function - filter by scope to avoid pollution
@@ -184,6 +187,7 @@ class TestToolSchemaWithMTIR:
                 break
 
         assert func_with_tools is not None, "Should find get_person_details with tools"
+        assert func_with_tools.tools is not None
         assert len(func_with_tools.tools) == 2
 
         tool_names = [t.name for t in func_with_tools.tools]
@@ -201,6 +205,7 @@ class TestToolSchemaWithMTIR:
         prog.compile(fixture_path("tool_method.jac"))
         assert not prog.errors_had
 
+        assert JacRuntime.program is not None
         mtir_map = JacRuntime.program.mtir_map
 
         # Find eval_expression method - filter by scope to avoid pollution
@@ -291,7 +296,7 @@ class TestMTIRCaching:
         assert hasattr(cache, "get_mtir")
         assert hasattr(cache, "put_mtir")
 
-    def test_mtir_cache_roundtrip(self, tmp_path: Any) -> None:
+    def test_mtir_cache_roundtrip(self, tmp_path: Path) -> None:
         """Test that MTIR can be cached and retrieved."""
         from jaclang.pycore.bccache import CacheKey, DiskBytecodeCache
 
