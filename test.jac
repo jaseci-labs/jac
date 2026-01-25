@@ -28,9 +28,9 @@ with entry {
     print(n4);
 }
 
-sem blob2= "Semstring 1";
-sem blob2. id= "Semstring 2";
-sem blob2. blob= "Semstring 3";
-sem blob3. items= "Semstring 4";
-sem blob3. foo. para1= "Semstring 6";
-sem omg= "Semstring 5";
+sem blob2 = "Semstring 1";
+sem blob2.id = "Semstring 2";
+sem blob2.blob = "Semstring 3";
+sem blob3.items = "Semstring 4";
+sem blob3.foo.para1 = "Semstring 6";
+sem omg = "Semstring 5";

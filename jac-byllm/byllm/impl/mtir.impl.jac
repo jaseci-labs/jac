@@ -20,7 +20,10 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     args = mtir.args;
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
-    tools = [Tool(func, info=ir_info.tools[i]) for (i,func) in enumerate(call_params.get("tools", []))];  # type: ignore
+    tools = [
+        Tool(func, info=ir_info.tools[i])
+        for (i, func) in enumerate(call_params.get("tools", []))
+    ];  # type: ignore
     # Construct the input information from the arguments.
     params = [param for param in ir_info.params];
     # if not param_names {

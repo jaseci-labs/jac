@@ -19,7 +19,7 @@ impl Message.to_dict -> dict[str, object] {
             media_dict["description"] = semstr;
             media_contents.append(media_dict);
         } else {
-        media_contents.extend(media.to_dict());
+            media_contents.extend(media.to_dict());
         }
     }
     return {"role": self.role.value, "content": media_contents};

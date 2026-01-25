@@ -25,7 +25,6 @@ impl MTIRGenPass.postinit -> None {
 
 """Check if a type expression represents a primitive type."""
 impl MTIRGenPass._is_primitive_type(type_expr: uni.Expr | None) -> bool {
-
     if type_expr is None {
         return False;
     }
@@ -140,7 +139,6 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     }
     arch_node = decl.name_of;
     class_name = arch_node.name.value;
-
     placeholder = ClassInfo(
         name=class_name,
         semstr=symbol.semstr or arch_node.doc.lit_value if arch_node.doc else None,
@@ -174,15 +172,12 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     if arch_node.body and isinstance(arch_node.body, Sequence) {
         for stmt in arch_node.body {
             if isinstance(stmt, uni.ArchHas) {
-
                 for var in stmt.vars {
                     type_annotation = var.type_tag.tag if var.type_tag else None;
 
                     parsed_type = self._parse_type_expr(type_annotation, arch_node);
 
-                    type_symbol_obj = self._extract_type_symbol(
-                        parsed_type, arch_node
-                    );
+                    type_symbol_obj = self._extract_type_symbol(parsed_type, arch_node);
 
                     semstr_val = type_symbol_obj.semstr
                     if type_symbol_obj
@@ -222,10 +217,8 @@ impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
             semstr_val = None;
             if type_symbol_obj {
                 semstr_val = type_symbol_obj.semstr;
-
             } elif param.name?.sym and param.name.sym {
                 semstr_val = param.name.sym.semstr;
-
             }
 
             param_info = ParamInfo(

@@ -10,8 +10,8 @@ impl _type_to_schema(
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
     );
-    if hasattr(info, "type_info") {
-        info_type :str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
+    if info?.type_info {
+        info_type: str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
         info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
     } else {
         info_type = "";
@@ -60,8 +60,7 @@ impl _type_to_schema(
         return {
             "type": "array",
             "items": _type_to_schema(
-                item_type,
-                info=info if info_type == "list" else None
+                item_type, info=info if info_type == "list" else None
             ),
 
         } | context;
@@ -74,9 +73,8 @@ impl _type_to_schema(
             item_type = args[0];
             return {
                 "type": "array",
-                    "items": _type_to_schema(
-                    item_type,
-                    info=info[1] if info[0] == "tuple" else None
+                "items": _type_to_schema(
+                    item_type, info=info[1] if info[0] == "tuple" else None
                 ),
 
             } | context;
@@ -150,8 +148,6 @@ impl _type_to_schema(
 
         };
     }
-
-
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {
         print(ty);
@@ -161,7 +157,9 @@ impl _type_to_schema(
             param.name: _type_to_schema(
                 hints[param.name], param.name, param.semstr, info=param
             ) for param in info.params
-        } if info else {};
+        }
+        if info
+        else {};
         return {
             "title": title or ty.__name__,
             "type": "function",
@@ -267,7 +265,6 @@ impl type_to_schema(resp_type: type, info: Info) -> dict[str, object] {
 
     };
 }
-
 
 """Return the JSON schema for a tool function, formatted for LLM APIs."""
 impl tool_to_schema(

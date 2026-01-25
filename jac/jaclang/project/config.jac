@@ -62,7 +62,7 @@ obj FormatConfig {
 }
 
 """Check command defaults from [check] section."""
-obj  CheckConfig {
+obj CheckConfig {
     has print_errs: bool = True,
         warnonly: bool = False;
 }
