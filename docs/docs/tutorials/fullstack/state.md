@@ -2,7 +2,10 @@
 
 Manage reactive state with hooks and the `has` keyword.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [React-Style Components](components.md)
+> - Time: ~30 minutes
 
 ---
 
@@ -85,7 +88,7 @@ cl {
 
         def add_todo() -> None {
             if input_text {
-                todos = [...todos, {"id": len(todos), "text": input_text}];
+                todos = todos + [{"id": len(todos), "text": input_text}];
                 input_text = "";
             }
         }
@@ -181,7 +184,7 @@ cl {
                 onChange={lambda e: any -> None { query = e.target.value; }}
             />
             <ul>
-                {results.map(lambda r: any -> any { <li>{r}</li> })}
+                {results.map(lambda r: any -> any { return <li>{r}</li>; })}
             </ul>
         </div>;
     }
@@ -335,7 +338,7 @@ cl {
         has submitting: bool = False;
 
         def update_field(field: str, value: str) -> None {
-            form_data = {...form_data, field: value};
+            form_data[field] = value;
         }
 
         def validate() -> bool {
@@ -363,7 +366,6 @@ cl {
                 onChange={lambda e: any -> None { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
-            {# ... more fields ... #}
         </form>;
     }
 }

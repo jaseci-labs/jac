@@ -36,6 +36,13 @@ glob registry = get_registry();
             default="",
             help="Comma-separated list of files/folders to ignore"
         ),
+        Arg.create(
+            "parse_only",
+            typ=bool,
+            default=False,
+            help="Only check syntax (skip type checking)",
+            short="p"
+        ),
 
     ],
     examples=[
@@ -44,12 +51,20 @@ glob registry = get_registry();
         ("jac check myproject/", "Check all files in directory"),
         ("jac check myprogram.jac --warnonly", "Report but don't fail on errors"),
         ("jac check myproject/ --ignore fixtures", "Check excluding folders,files"),
+        (
+            "jac check myprogram.jac --parse-only",
+            "Only check syntax, skip type checking"
+        ),
 
     ],
     group="analysis"
 )
 def check(
-    paths: list, print_errs: bool = True, warnonly: bool = False, ignore: str = ""
+    paths: list,
+    print_errs: bool = True,
+    warnonly: bool = False,
+    ignore: str = "",
+    parse_only: bool = False
 ) -> int;
 
 """Format .jac files with improved code style."""

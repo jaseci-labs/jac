@@ -5,31 +5,22 @@ cl import from .level1.level2.ButtonThirdL { ButtonThirdL }
 cl import from .level1.Card { Card }
 
 cl def:pub app -> any {
-    return <div
-        style={{padding: "20px"}}
-    >
-        <h1>
-            Nested Folder Levels Demo
-        </h1>
-        <div
-            style={{margin: "10px 0"}}
-        >
-            <ButtonRoot />
-        </div>
-        <div
-            style={{margin: "10px 0"}}
-        >
-            <ButtonSecondL />
-        </div>
-        <div
-            style={{margin: "10px 0"}}
-        >
-            <ButtonThirdL />
-        </div>
-        <div
-            style={{margin: "10px 0"}}
-        >
-            <Card />
-        </div>
-    </div>;
+    return
+        <div style={{padding: "20px"}}>
+            <h1>
+                Nested Folder Levels Demo
+            </h1>
+            <div style={{margin: "10px 0"}}>
+                <ButtonRoot />
+            </div>
+            <div style={{margin: "10px 0"}}>
+                <ButtonSecondL />
+            </div>
+            <div style={{margin: "10px 0"}}>
+                <ButtonThirdL />
+            </div>
+            <div style={{margin: "10px 0"}}>
+                <Card />
+            </div>
+        </div>;
 }

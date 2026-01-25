@@ -78,21 +78,17 @@ Define different types of queries the system handles:
 ```jac
 node Router {}
 
-node DocumentChat {
-    """Chat about uploaded documents."""
-}
+"""Chat about uploaded documents."""
+node DocumentChat {}
 
-node GeneralChat {
-    """Answer general knowledge questions."""
-}
+"""Answer general knowledge questions."""
+node GeneralChat {}
 
-node ImageChat {
-    """Analyze and discuss images."""
-}
+"""Analyze and discuss images."""
+node ImageChat {}
 
-node VideoChat {
-    """Analyze and discuss videos."""
-}
+"""Analyze and discuss videos."""
+node VideoChat {}
 ```
 
 ### 2. Intelligent Routing
@@ -134,10 +130,10 @@ walker interact {
 
         # Route to appropriate handler
         match query_type {
-            case QueryType.DOCUMENT => visit [-->](`?DocumentChat);
-            case QueryType.GENERAL => visit [-->](`?GeneralChat);
-            case QueryType.IMAGE => visit [-->](`?ImageChat);
-            case QueryType.VIDEO => visit [-->](`?VideoChat);
+            case QueryType.DOCUMENT: visit [-->](`?DocumentChat);
+            case QueryType.GENERAL: visit [-->](`?GeneralChat);
+            case QueryType.IMAGE: visit [-->](`?ImageChat);
+            case QueryType.VIDEO: visit [-->](`?VideoChat);
         }
     }
 
@@ -195,20 +191,19 @@ def search_documents(query: str, session_id: str) -> list {
 
 ```jac
 # mcp_server.jac
-import from mcp { tool }
+import requests;
+import os;
 
+"""Search uploaded documents for relevant information."""
 @tool
 def document_search(query: str, session_id: str) -> str {
-    """Search uploaded documents for relevant information."""
     results = search_documents(query, session_id);
     return format_results(results);
 }
 
+"""Search the web for current information."""
 @tool
 def web_search(query: str) -> str {
-    """Search the web for current information."""
-    import requests;
-
     response = requests.post(
         "https://google.serper.dev/search",
         headers={"X-API-KEY": os.getenv("SERPER_API_KEY")},

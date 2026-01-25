@@ -3,17 +3,13 @@ cl import from antd { Button }
 cl import from ..ButtonRoot { ButtonRoot }
 
 cl def:pub ButtonSecondL -> any {
-    return <div>
-        <Button
-            type="default"
-            size="large"
-        >
-            Second Level Button (imports from root)
-        </Button>
-        <div
-            style={{marginTop: "10px"}}
-        >
-            <ButtonRoot />
-        </div>
-    </div>;
+    return
+        <div>
+            <Button type="default" size="large">
+                Second Level Button (imports from root)
+            </Button>
+            <div style={{marginTop: "10px"}}>
+                <ButtonRoot />
+            </div>
+        </div>;
 }

@@ -151,10 +151,10 @@ cl {
 
         # Create new references for lists/objects
         def add_item(item: str) -> None {
-            items = [...items, item];  # Spread to new list
+            items = items + [item];  # Concatenate to new list
         }
 
-        return <div>...</div>;
+        return <div>Form</div>;
     }
 }
 ```
@@ -194,7 +194,7 @@ cl {
 cl {
     import from react { createContext, useContext }
 
-    AppContext = createContext(None);
+    glob AppContext = createContext(None);
 
     def:pub AppProvider(props: dict) -> any {
         has theme: str = "light";
@@ -232,7 +232,7 @@ cl {
 
         return <ul>
             {data.map(lambda task: any -> any {
-                <li key={task["id"]}>{task["title"]}</li>
+                return <li key={task["id"]}>{task["title"]}</li>;
             })}
         </ul>;
     }
@@ -251,10 +251,16 @@ cl {
 ### With Parameters
 
 ```jac
-(data, loading, error, refetch) = useWalker(
-    "search_tasks",
-    {"query": search_term, "limit": 10}
-);
+cl {
+    def:pub SearchTasks() -> any {
+        has search_term: str = "";
+        (data, loading, error, refetch) = useWalker(
+            "search_tasks",
+            {"query": search_term, "limit": 10}
+        );
+        return <div>Results</div>;
+    }
+}
 ```
 
 ### callWalker
@@ -345,10 +351,11 @@ cl {
     import from jac_client { Outlet }
 
     def:pub DashboardLayout() -> any {
+        # Child routes render where Outlet is placed
         return <div>
             <Sidebar />
             <main>
-                <Outlet />  {# Child routes render here #}
+                <Outlet />
             </main>
         </div>;
     }
@@ -548,16 +555,18 @@ cl {
         has show: bool = False;
         has items: list = [];
 
+        if show {
+            content = <p>Visible</p>;
+        } else {
+            content = <p>Hidden</p>;
+        }
         return <div>
-            {# If/else #}
-            {show ? <p>Visible</p> : <p>Hidden</p>}
+            {content}
 
-            {# Short-circuit #}
             {show and <p>Only when true</p>}
 
-            {# List rendering #}
             {items.map(lambda item: any -> any {
-                <li key={item["id"]}>{item["name"]}</li>
+                return <li key={item["id"]}>{item["name"]}</li>;
             })}
         </div>;
     }

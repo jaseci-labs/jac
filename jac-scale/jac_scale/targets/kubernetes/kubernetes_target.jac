@@ -188,12 +188,17 @@ class KubernetesTarget(DeploymentTarget) {
         commands.append('export DEBIAN_FRONTEND=noninteractive');
         commands.append('apt-get update');
 
-        # Install base packages
-        base_packages = ['git', 'npm', 'nodejs'];
+        # Install base packages (curl and unzip needed for Bun installation)
+        base_packages = ['git', 'curl', 'unzip'];
         if config.additional_packages {
             base_packages.extend(config.additional_packages);
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
+
+        # Install Bun (required for jac-client frontend builds)
+        commands.append('curl -fsSL https://bun.sh/install | bash');
+        commands.append('export BUN_INSTALL="$HOME/.bun"');
+        commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
         # Clone and setup Jaseci if enabled
         if config.install_jaseci {

@@ -197,35 +197,44 @@ pattern       : literal | capture | sequence | mapping | class | as | or | star
 ### 1. Semicolons Required
 
 ```jac
-# Wrong
-x = 5
-print(x)
+# Wrong - missing semicolons
+# x = 5
+# print(x)
 
 # Correct
-x = 5;
-print(x);
+with entry {
+    x = 5;
+    print(x);
+}
 ```
 
 ### 2. Braces Required for Blocks
 
 ```jac
-# Wrong (Python style)
-if condition:
-    do_something()
+# Wrong (Python style) - won't parse
+# if condition:
+#     do_something()
 
 # Correct
-if condition {
-    do_something();
+def do_something() -> None {
+    print("done");
+}
+
+with entry {
+    condition = True;
+    if condition {
+        do_something();
+    }
 }
 ```
 
 ### 3. Type Annotations Required
 
 ```jac
-# Wrong
-def add(a, b) {
-    return a + b;
-}
+# Wrong - missing type annotations
+# def add(a, b) {
+#     return a + b;
+# }
 
 # Correct
 def add(a: int, b: int) -> int {
@@ -239,7 +248,7 @@ def add(a: int, b: int) -> int {
 obj Example {
     has field: int = 0;  # Instance variable (with 'has')
 
-    can method -> None {
+    def method() {
         local = 5;  # Local variable (no 'has')
         self.field = local;
     }
@@ -307,9 +316,13 @@ obj Person {
     has name: str;
     has age: int;
 
-    can greet -> str {
+    def greet() -> str {
         return f"Hi, I'm {self.name}";
     }
+}
+
+with entry {
+    p = Person(name="Alice", age=30);
 }
 ```
 
@@ -346,12 +359,15 @@ else:
 **Jac:**
 
 ```jac
-if x > 0 {
-    print("positive");
-} elif x < 0 {
-    print("negative");
-} else {
-    print("zero");
+with entry {
+    x = 1;
+    if x > 0 {
+        print("positive");
+    } elif x < 0 {
+        print("negative");
+    } else {
+        print("zero");
+    }
 }
 ```
 

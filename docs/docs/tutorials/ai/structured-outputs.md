@@ -2,7 +2,10 @@
 
 Get type-safe responses from LLMs with enums, objects, and lists.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [byLLM Quickstart](quickstart.md)
+> - Time: ~30 minutes
 
 ---
 
@@ -10,7 +13,7 @@ Get type-safe responses from LLMs with enums, objects, and lists.
 
 Traditional LLM calls return strings that you must parse manually. byLLM returns proper typed objects:
 
-```jac
+```
 # Traditional: Returns string, you parse it
 response = llm.call("What's the sentiment?")  # "positive" or "POSITIVE" or "Positive"?
 

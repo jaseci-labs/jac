@@ -723,13 +723,29 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
         <>node.gen.es_ast = typeof_expr;
         return;
     }
+    # Check for server function call from client context - transform to __jacCallFunction
     if (<>node.in_client_context() and isinstance(<>node.target, uni.Name)) {
+        # Symbol may not be linked yet, so look it up directly from the symbol table
         target_sym = getattr(<>node.target, 'sym', None);
+        if not target_sym and <>node.target.sym_tab {
+            target_sym = <>node.target.sym_tab.lookup(
+                <>node.target.sym_name, deep=True
+            );
+        }
         if (target_sym and target_sym.defn) {
             defn_node = target_sym.defn[0];
             if isinstance(defn_node.parent, uni.Ability) {
                 ability_node = defn_node.parent;
-                is_server_func = ability_node.code_context != CodeContext.CLIENT;
+                # A function is a server function if:
+                # 1. It has code_context = SERVER (or default), AND
+                # 2. It is NOT inside a client context (not nested in cl{}), AND
+                # 3. It is a PUBLIC function (def:pub) - this excludes builtins like print
+                is_server_func = (
+                    ability_node.code_context != CodeContext.CLIENT
+                    and not ability_node.in_client_context()
+                    and ability_node.access is not None
+                    and ability_node.access.tag.name == Tok.KW_PUB
+                );
                 if is_server_func {
                     func_name = <>node.target.sym_name;
                     param_names: list[str] = [];
@@ -764,27 +780,45 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                     args_obj = self.sync_loc(
                         es.ObjectExpression(properties=props), jac_node=<>node
                     );
+                    # Generate CallExpression without await - the outer AwaitExpr handles that
                     call_expr = self.sync_loc(
-                        es.AwaitExpression(
-                            argument=self.sync_loc(
-                                es.CallExpression(
-                                    callee=self.sync_loc(
-                                        es.Identifier(name='__jacCallFunction'),
-                                        jac_node=<>node
-                                    ),
-                                    arguments=[
-                                        self.sync_loc(
-                                            es.Literal(value=func_name),
-                                            jac_node=<>node
-                                        ),
-                                        args_obj
-                                    ]
-                                ),
+                        es.CallExpression(
+                            callee=self.sync_loc(
+                                es.Identifier(name='__jacCallFunction'),
                                 jac_node=<>node
-                            )
+                            ),
+                            arguments=[
+                                self.sync_loc(
+                                    es.Literal(value=func_name), jac_node=<>node
+                                ),
+                                args_obj
+                            ]
                         ),
                         jac_node=<>node
                     );
+                    # Auto-inject __jacCallFunction import if not already done
+                    if not self.has_injected_jac_call_function {
+                        # Inline: import { __jacCallFunction } from "@jac-client/utils";
+                        specifier = self.sync_loc(
+                            es.ImportSpecifier(
+                                imported=es.Identifier(name='__jacCallFunction'),
+                                local=es.Identifier(name='__jacCallFunction')
+                            ),
+                            jac_node=<>node
+                        );
+                        source = self.sync_loc(
+                            es.Literal(
+                                value='@jac-client/utils', raw='"@jac-client/utils"'
+                            ),
+                            jac_node=<>node
+                        );
+                        import_decl = self.sync_loc(
+                            es.ImportDeclaration(specifiers=[specifier], source=source),
+                            jac_node=<>node
+                        );
+                        self.imports.append(import_decl);
+                        self.has_injected_jac_call_function = True;
+                    }
                     <>node.gen.es_ast = call_expr;
                     return;
                 }
@@ -1656,6 +1690,26 @@ impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
         es.ImportSpecifier(
             imported=es.Identifier(name='useState'),
             local=es.Identifier(name='useState')
+        ),
+        jac_node=<>node
+    );
+    source = self.sync_loc(
+        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
+        jac_node=<>node
+    );
+    import_decl = self.sync_loc(
+        es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
+    );
+    self.imports.append(import_decl);
+}
+
+"""Auto-inject __jacCallFunction import from @jac-client/utils when server functions are called from client."""
+impl EsastGenPass._inject_jac_call_function_import(<>node: uni.UniNode) -> None {
+    # Create: import { __jacCallFunction } from "@jac-client/utils";
+    specifier = self.sync_loc(
+        es.ImportSpecifier(
+            imported=es.Identifier(name='__jacCallFunction'),
+            local=es.Identifier(name='__jacCallFunction')
         ),
         jac_node=<>node
     );
@@ -2757,4 +2811,6 @@ impl EsastGenPass.before_pass -> None {
     self.reactive_vars: dict[str, str] = {};
     # Track if useState import has been auto-injected to avoid duplicates
     self.has_injected_usestate: bool = False;
+    # Track if __jacCallFunction import has been auto-injected to avoid duplicates
+    self.has_injected_jac_call_function: bool = False;
 }
