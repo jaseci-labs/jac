@@ -1,6 +1,6 @@
 """Example of simple walker walking nodes."""
 
-node A {}
+node A { }
 
 walker Walk {
     has id: int = 0;

@@ -1,4 +1,4 @@
-node MyNode {}
+node MyNode { }
 
 glob first_tier = [MyNode() for i in range(2)],
      second_tier = [MyNode() for i in range(2)];

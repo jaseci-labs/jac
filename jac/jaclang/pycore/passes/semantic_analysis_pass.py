@@ -4,7 +4,8 @@ import ast as ast3
 from collections.abc import Sequence
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import CodeContext, Tokens as Tok
+from jaclang.pycore.constant import CodeContext
+from jaclang.pycore.constant import Tokens as Tok
 from jaclang.pycore.passes.uni_pass import UniPass
 
 
