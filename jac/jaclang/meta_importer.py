@@ -44,24 +44,10 @@ def _discover_minimal_compile_modules() -> frozenset[str]:
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
-    # Compiler passes written in Jac need minimal compilation to avoid
-    # circular imports (they're used by the compiler during compilation itself).
-    MINIMAL_COMPILE_MODULES: frozenset[str] = frozenset(
-        {
-            "jaclang.compiler.passes.main.sem_def_match_pass",
-            "jaclang.compiler.passes.main.annex_pass",
-            "jaclang.compiler.passes.main.semantic_analysis_pass",
-            "jaclang.compiler.passes.main.pyjac_ast_link_pass",
-            "jaclang.compiler.passes.main.type_checker_pass",
-            "jaclang.compiler.passes.main.def_impl_match_pass",
-            "jaclang.compiler.passes.main.cfg_build_pass",
-            "jaclang.compiler.passes.main.mtir_gen_pass",
-            "jaclang.compiler.passes.main.pyast_load_pass",
-            "jaclang.compiler.passes.ecmascript.estree",
-            "jaclang.compiler.passes.ecmascript.es_unparse",
-            "jaclang.compiler.passes.ecmascript.esast_gen_pass",
-        }
-    )
+    @property
+    def MINIMAL_COMPILE_MODULES(self) -> frozenset[str]:  # noqa: N802
+        """Compiler passes written in Jac that need minimal compilation."""
+        return _discover_minimal_compile_modules()
 
     def find_spec(
         self,
