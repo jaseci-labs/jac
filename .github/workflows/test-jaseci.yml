@@ -130,6 +130,7 @@ jobs:
         pip install -e jac-client
         pip install testcontainers
         pip install watchdog
+        pip install python-multipart  # Explicit install to ensure FastAPI form support
 
     - name: Run Backend tests
       run: |
