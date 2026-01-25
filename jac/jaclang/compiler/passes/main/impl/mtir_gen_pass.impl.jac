@@ -286,11 +286,9 @@ impl MTIRGenPass._extract_tools_from_expr(
     expr: uni.Expr, scope: uni.UniScopeNode
 ) -> list[FunctionInfo] {
     tools: list[FunctionInfo] = [];
-
     # Helper to extract tools from a list of params
     # This is inlined instead of a nested function
     params_to_check: list = [];
-
     # Case 1: Direct function call - by model(tools=[...])
     if isinstance(expr, uni.FuncCall) and expr?.params {
         params_to_check = expr.params;
@@ -313,32 +311,36 @@ impl MTIRGenPass._extract_tools_from_expr(
             }
         }
     }
-
     # Extract tools from the params we found
     for param in params_to_check {
         if isinstance(param, uni.KWPair) and param?.key and param.key.value == 'tools' {
             # params.value should be a list of tool references
-            if hasattr(param.value, 'values') {
+            if param.value?.values {
                 for tool in param.value.values {
                     try {
                         # Try to lookup the tool symbol
                         tool_sym = None;
                         if isinstance(tool, uni.NameAtom) {
                             tool_sym = scope.lookup(tool.value, deep=True);
-                        } elif isinstance(tool, uni.AtomTrailer) and isinstance(tool.right, uni.NameAtom) {
+                        } elif isinstance(tool, uni.AtomTrailer)
+                        and isinstance(tool.right, uni.NameAtom) {
                             # Handle module.function references
                             tool_sym = scope.lookup(tool.right.value, deep=True);
-                        } elif hasattr(tool, 'symbol_table') {
+                        } elif tool?.symbol_table {
                             tool_sym = tool.symbol_table;
                         }
 
                         if tool_sym {
-                            tool_ability = tool_sym.decl.name_of if tool_sym.decl else None;
+                            tool_ability = tool_sym.decl.name_of
+                            if tool_sym.decl
+                            else None;
                             if tool_ability and isinstance(tool_ability, uni.Ability) {
                                 if tool_ability.is_method {
                                     tool_info = self._extract_method_info(tool_ability);
                                 } else {
-                                    tool_info = self._extract_function_info(tool_ability);
+                                    tool_info = self._extract_function_info(
+                                        tool_ability
+                                    );
                                 }
                                 tools.append(tool_info);
                             }
@@ -352,7 +354,6 @@ impl MTIRGenPass._extract_tools_from_expr(
             }
         }
     }
-
     return tools;
 }
 
