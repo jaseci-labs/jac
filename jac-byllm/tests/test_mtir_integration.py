@@ -124,9 +124,7 @@ class TestSchemaGenerationWithMTIR:
             semstr="A user with address.",
             fields=[
                 FieldInfo(name="username", semstr="Login name.", type_info="str"),
-                FieldInfo(
-                    name="friend", semstr="A friend.", type_info=person_class
-                ),
+                FieldInfo(name="friend", semstr="A friend.", type_info=person_class),
             ],
             base_classes=[],
             methods=[],
@@ -215,7 +213,9 @@ class TestToolSchemaWithMTIR:
         assert method_info.tools is not None
         tool_names = [t.name for t in method_info.tools]
         assert "add" in tool_names, f"Expected 'add' in tools, got: {tool_names}"
-        assert "multiply" in tool_names, f"Expected 'multiply' in tools, got: {tool_names}"
+        assert "multiply" in tool_names, (
+            f"Expected 'multiply' in tools, got: {tool_names}"
+        )
 
 
 # =============================================================================
@@ -228,7 +228,7 @@ class TestPythonLibraryFallback:
 
     def test_mtruntime_without_mtir_info(self) -> None:
         """Test that MTRuntime works when ir_info is None."""
-        from jaclang.pycore.mtp import MTIR, MTRuntime
+        from jaclang.pycore.mtp import MTIR
 
         # Create an MTIR with no ir_info (Python library mode)
         def sample_func(x: int, y: str) -> str:
