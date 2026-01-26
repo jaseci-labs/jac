@@ -277,7 +277,7 @@ Create reusable custom hooks for shared logic:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacLogout }
+cl import from '@jac/runtime' { jacLogout }
 
 cl {
     # Custom hook: User management

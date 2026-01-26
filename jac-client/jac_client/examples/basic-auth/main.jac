@@ -1,5 +1,5 @@
 # Simple Authentication App with Jac Client Utils
-cl import from '@jac-client/utils' {
+cl import from '@jac/runtime' {
     jacSignup,
     jacLogin,
     jacLogout,

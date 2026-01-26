@@ -505,7 +505,7 @@ The system automatically includes essential configuration:
 
 - **Base plugins**: React plugin (if TypeScript is detected)
 - **Required aliases**:
-  - `@jac-client/utils` → `compiled/client_runtime.js`
+  - `@jac/runtime` → `compiled/client_runtime.js`
   - `@jac-client/assets` → `compiled/assets`
 - **Build settings**: Entry point, output directory, file naming
 - **Extensions**: JavaScript and TypeScript file extensions
@@ -535,7 +535,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
+      "@jac/runtime": path.resolve(projectRoot, "compiled/client_runtime.js"),
       "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
     },
     extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],

@@ -1,4 +1,4 @@
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Link,
     useNavigate,
     useLocation,
