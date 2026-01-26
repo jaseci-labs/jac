@@ -45,13 +45,11 @@ class LocalStorage(Storage) {
     }
 
     override def download(
-        self: LocalStorage,
-        source: str,
-        destination: (str | BinaryIO | None) = None
+        self: LocalStorage, source: str, destination: (str | BinaryIO | None) = None
     ) -> (bytes | None) {
         src_path = self._resolve_path(source);
         if not src_path.exists() {
-            raise FileNotFoundError(f"File not found: {source}");
+            raise FileNotFoundError(f"File not found: {source}") ;
         }
         if destination is None {
             with open(src_path, 'rb') as f {
@@ -86,9 +84,7 @@ class LocalStorage(Storage) {
     }
 
     override def list_files(
-        self: LocalStorage,
-        prefix: str = "",
-        recursive: bool = False
+        self: LocalStorage, prefix: str = "", recursive: bool = False
     ) -> Generator[str, None, None] {
         base = self._resolve_path(prefix) if prefix else Path(self.base_path);
         if base.exists() {
@@ -109,7 +105,7 @@ class LocalStorage(Storage) {
     override def get_metadata(self: LocalStorage, path: str) -> dict[str, Any] {
         file_path = self._resolve_path(path);
         if not file_path.exists() {
-            raise FileNotFoundError(f"File not found: {path}");
+            raise FileNotFoundError(f"File not found: {path}") ;
         }
         stat = file_path.stat();
         return {
@@ -122,9 +118,7 @@ class LocalStorage(Storage) {
     }
 
     override def get_url(
-        self: LocalStorage,
-        path: str,
-        expiry_seconds: int = 3600
+        self: LocalStorage, path: str, expiry_seconds: int = 3600
     ) -> str {
         return str(self._resolve_path(path).absolute());
     }
@@ -162,8 +156,9 @@ class LocalStorage(Storage) {
 
     override def is_available(self: LocalStorage) -> bool {
         base_path = Path(self.base_path);
-        return base_path.exists() or (self._storage_config and self._storage_config.create_dirs);
+        return base_path.exists()
+        or (self._storage_config and self._storage_config.create_dirs);
     }
 
-    override def close(self: LocalStorage) -> None {}
+    override def close(self: LocalStorage) -> None { }
 }

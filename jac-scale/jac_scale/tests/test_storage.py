@@ -71,7 +71,9 @@ class TestStorageFactory:
 
     def test_factory_raises_for_gcs_not_implemented(self) -> None:
         """Test that factory raises NotImplementedError for GCS."""
-        with pytest.raises(NotImplementedError, match="GCS storage not yet implemented"):
+        with pytest.raises(
+            NotImplementedError, match="GCS storage not yet implemented"
+        ):
             StorageFactory.create("gcs", {})
 
     def test_factory_raises_for_azure_not_implemented(self) -> None:

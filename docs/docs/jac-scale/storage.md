@@ -73,6 +73,7 @@ storage.upload(source, 'path/file.txt', {'author': 'john'});
 ```
 
 **Parameters:**
+
 - `source`: File path (str) or file-like object
 - `destination`: Path in storage
 - `metadata`: Optional metadata dict
@@ -95,6 +96,7 @@ storage.download('documents/file.txt', output_file);
 ```
 
 **Parameters:**
+
 - `source`: Path in storage
 - `destination`: File path, file object, or None
 
@@ -142,6 +144,7 @@ for file in storage.list_files('documents/', recursive=True) {
 ```
 
 **Parameters:**
+
 - `prefix`: Directory/prefix to list
 - `recursive`: Whether to list recursively (default: False)
 
@@ -171,6 +174,7 @@ url = storage.get_url('documents/file.txt', expiry_seconds=7200);
 ```
 
 **Parameters:**
+
 - `path`: Path to file
 - `expiry_seconds`: URL expiry time (default: 3600)
 
