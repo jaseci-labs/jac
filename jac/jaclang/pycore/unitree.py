@@ -853,6 +853,29 @@ class ArchBlockStmt(UniNode):
     """ArchBlockStmt node type for Jac Ast."""
 
 
+class ArchExprStmt(ArchBlockStmt):
+    """ArchExprStmt node type for expression statements inside archetype bodies.
+
+    This is used for lifecycle hooks like useEffect() inside client component nodes.
+    """
+
+    def __init__(
+        self,
+        expr: "Expr",
+        kid: Sequence["UniNode"],
+    ) -> None:
+        self.expr = expr
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = True) -> bool:
+        res = self.expr.normalize(deep) if deep else False
+        new_kid: list[UniNode] = []
+        new_kid.append(self.expr)
+        new_kid.append(self.gen_token(Tok.SEMI))
+        self.set_kids(nodes=new_kid)
+        return res and self.expr is not None
+
+
 class EnumBlockStmt(UniNode):
     """EnumBlockStmt node type for Jac Ast."""
 

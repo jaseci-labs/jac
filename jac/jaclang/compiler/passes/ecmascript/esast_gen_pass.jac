@@ -189,6 +189,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_sub_tag(<>node: uni.SubTag[uni.T]) -> None;
     def exit_import(<>node: uni.Import) -> None;
     def exit_archetype(<>node: uni.Archetype) -> None;
+    def _transpile_client_component(<>node: uni.Archetype) -> None;
+    def exit_arch_expr_stmt(<>node: uni.ArchExprStmt) -> None;
     def exit_enum(<>node: uni.Enum) -> None;
     def enter_ability(<>node: uni.Ability) -> None;
     def exit_ability(<>node: uni.Ability) -> None;

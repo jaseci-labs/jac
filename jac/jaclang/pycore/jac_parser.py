@@ -1399,12 +1399,19 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """
             return self.cur_nodes
 
-        def member_stmt(self, _: None) -> uni.ArchBlockStmt:
+        def member_stmt(self, _) -> uni.ArchBlockStmt:
             """Grammar rule.
 
-            member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code)
+            member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code | expression SEMI)
             """
             doc = self.match(uni.String)
+            # Handle expression SEMI case (for lifecycle hooks in client components)
+            if (expr := self.match(uni.Expr)) is not None:
+                ret = uni.ArchExprStmt(
+                    expr=expr,
+                    kid=self.cur_nodes,
+                )
+                return ret
             ret = self.consume(uni.ArchBlockStmt)
             if doc and isinstance(ret, uni.AstDocNode):
                 ret.doc = doc

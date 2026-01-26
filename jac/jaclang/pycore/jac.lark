@@ -50,7 +50,7 @@ arch_type: KW_WALKER
 
 // [Heading]: Class Archetype bodies.
 member_block: LBRACE member_stmt* RBRACE
-member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code)
+member_stmt: STRING? (py_code_block | ability | archetype | impl_def | has_stmt | free_code | expression SEMI)
 has_stmt: KW_STATIC? KW_HAS access_tag? has_assign_list SEMI
 has_assign_list: (has_assign_list COMMA)? typed_has_clause
 typed_has_clause: named_ref type_tag (EQ expression | KW_BY KW_POST_INIT)?
