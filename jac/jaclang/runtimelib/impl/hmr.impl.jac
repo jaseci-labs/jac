@@ -191,18 +191,21 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
 
-        # Extract export statement from original JS code
-        with open(output_path, 'r') as f {
-            content = f.read();
+        # If output file already exists, preserve existing export statements
+        if output_path.exists() {
+            # Extract export statement from original JS code
+            with open(output_path, 'r') as f {
+                content = f.read();
+            }
+            <>match = re.search('(export\\s*\\{[^}]+\\}\\s*;)', content, re.MULTILINE);
+            if <>match {
+                export_statement = <>match.group(1);
+            } else {
+                export_statement = "";
+            }
+            # Append export statement to JS code to export client functions
+            js_code = js_code + '\n' + export_statement;
         }
-        <>match = re.search('(export\\s*\\{[^}]+\\}\\s*;)', content, re.MULTILINE);
-        if <>match {
-            export_statement = <>match.group(1);
-        } else {
-            export_statement = "";
-        }
-        # Append export statement to JS code to export client functions
-        js_code = js_code + '\n' + export_statement;
 
         # Write the JS code
         output_path.write_text(js_code, encoding='utf-8');
