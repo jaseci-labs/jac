@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -130,7 +131,7 @@ class TestDependencyInstaller:
             assert "git+https://github.com/user/plugin.git@main" in call_args
 
     def test_install_package_replaces_older_version(self, temp_project: Path) -> None:
-        """Test that installing a newer version replaces the existence one."""
+        """Test that reinstalling a package replaces the existing installation."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config, verbose=True)
 
@@ -149,7 +150,10 @@ class TestDependencyInstaller:
 
         other_dist = packages_dir / "numpy-1.24.0.dist-info"
         other_dist.mkdir()
-        time.sleep(0.01)  # 10 ms delay
+        past = time.time() - 10
+        os.utime(old_dist, (past, past))
+        os.utime(deppkg_dir, (past, past))
+        os.utime(egg_info, (past, past))
 
         assert pkg_dir.exists()
         assert old_dist.exists()
