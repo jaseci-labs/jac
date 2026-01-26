@@ -581,7 +581,6 @@ impl EsastGenPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
                 and parent_arch.code_context == CodeContext.CLIENT
                 and parent_arch.arch_type.name == Tok.KW_NODE
             );
-
             if is_self_ref and is_client_component {
                 # For client components, self.method -> method (just the identifier)
                 prop_ident = self.sync_loc(
@@ -911,14 +910,18 @@ impl EsastGenPass.exit_assignment(<>node: uni.Assignment) -> None {
         target_name = <>node.target[0].sym_name;
     } elif len(<>node.target) == 1 and isinstance(<>node.target[0], uni.AtomTrailer) {
         trailer = <>node.target[0];
-        if (isinstance(trailer.target, uni.SpecialVarRef)
+        if (
+            isinstance(trailer.target, uni.SpecialVarRef)
             and trailer.target.sym_name == 'self'
-            and isinstance(trailer.right, uni.Name)) {
+            and isinstance(trailer.right, uni.Name)
+        ) {
             # self.count -> check if 'count' is reactive
             parent_arch = <>node.find_parent_of_type(uni.Archetype);
-            if (parent_arch is not None
+            if (
+                parent_arch is not None
                 and parent_arch.code_context == CodeContext.CLIENT
-                and parent_arch.arch_type.name == Tok.KW_NODE) {
+                and parent_arch.arch_type.name == Tok.KW_NODE
+            ) {
                 target_name = trailer.right.sym_name;
             }
         }
@@ -1778,7 +1781,6 @@ impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
         <>node.gen.es_ast = None;
         return;
     }
-
     # Skip props in client component nodes - handled by _transpile_client_component
     parent_arch = <>node.find_parent_of_type(uni.Archetype);
     is_client_component = (
@@ -1788,14 +1790,17 @@ impl EsastGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     );
     if is_client_component {
         # Filter out props variable - it becomes a function parameter, not state
-        non_props_vars = [v for v in <>node.vars if v.name.sym_name != "props"];
+        non_props_vars = [
+            v
+            for v in <>node.vars
+            if v.name.sym_name != "props"
+        ];
         if not non_props_vars {
             # All vars are props, skip useState generation
             <>node.gen.es_ast = None;
             return;
         }
     }
-
     # Auto-inject useState import if not already done and user hasn't imported it
     if not self.has_injected_usestate and not self._has_usestate_import() {
         self._inject_usestate_import(<>node);
@@ -2079,19 +2084,16 @@ impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
         self.client_manifest.has_client = True;
         self.client_manifest.exports.append(<>node.name.sym_name);
     }
-
     # Check if this is a client component (node:pub in client context)
     # These transpile to function components, not classes
     is_client_component = (
-        <>node.code_context == CodeContext.CLIENT and
-        <>node.arch_type.name == Tok.KW_NODE
+        <>node.code_context == CodeContext.CLIENT
+        and <>node.arch_type.name == Tok.KW_NODE
     );
-
     if is_client_component {
         self._transpile_client_component(<>node);
         return;
     }
-
     body_stmts: list[es.MethodDefinition | es.PropertyDefinition | es.StaticBlock] = [];
     has_members: list[uni.ArchHas] = [];
     inner = (
@@ -2282,13 +2284,11 @@ impl EsastGenPass._transpile_client_component(<>node: uni.Archetype) -> None {
     has_render = False;
     has_props = False;
     func_params: list[es.Pattern] = [];
-
     inner = (
         <>node.body.body
         if isinstance(<>node.body, uni.ImplDef)
         else self._get_body_inner(<>node)
     );
-
     if inner {
         for stmt in inner {
             if isinstance(stmt, uni.ArchHas) {
@@ -2317,7 +2317,9 @@ impl EsastGenPass._transpile_client_component(<>node: uni.Archetype) -> None {
                 if not props_found {
                     if stmt.gen.es_ast {
                         if isinstance(stmt.gen.es_ast, <>list) {
-                            body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
+                            body_stmts.extend(
+                                cast(es.Statement, s) for s in stmt.gen.es_ast
+                            );
                         } else {
                             body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
                         }
@@ -2345,10 +2347,13 @@ impl EsastGenPass._transpile_client_component(<>node: uni.Archetype) -> None {
                             if render_stmt.gen.es_ast {
                                 if isinstance(render_stmt.gen.es_ast, <>list) {
                                     render_stmts.extend(
-                                        cast(es.Statement, s) for s in render_stmt.gen.es_ast
+                                        cast(es.Statement, s)
+                                        for s in render_stmt.gen.es_ast
                                     );
                                 } else {
-                                    render_stmts.append(cast(es.Statement, render_stmt.gen.es_ast));
+                                    render_stmts.append(
+                                        cast(es.Statement, render_stmt.gen.es_ast)
+                                    );
                                 }
                             }
                         }
@@ -2356,7 +2361,8 @@ impl EsastGenPass._transpile_client_component(<>node: uni.Archetype) -> None {
                 } else {
                     # Regular method -> inner function
                     # Convert from MethodDefinition to FunctionDeclaration
-                    if stmt.gen.es_ast and isinstance(stmt.gen.es_ast, es.MethodDefinition) {
+                    if stmt.gen.es_ast
+                    and isinstance(stmt.gen.es_ast, es.MethodDefinition) {
                         method_def = cast(es.MethodDefinition, stmt.gen.es_ast);
                         func_expr = cast(es.FunctionExpression, method_def.value);
                         func_decl = self.sync_loc(
@@ -2376,37 +2382,29 @@ impl EsastGenPass._transpile_client_component(<>node: uni.Archetype) -> None {
             }
         }
     }
-
     # Add render statements (return JSX) at the end
     body_stmts.extend(render_stmts);
-
     # If no render method, add return null
     if not has_render {
         body_stmts.append(
             self.sync_loc(
-                es.ReturnStatement(argument=es.Literal(value=None)),
-                jac_node=<>node
+                es.ReturnStatement(argument=es.Literal(value=None)), jac_node=<>node
             )
         );
     }
-
     # Prepend any hoisted declarations
     body_stmts = self._prepend_hoisted(<>node, body_stmts);
-
     # Create function declaration
     func_id = self.sync_loc(
         es.Identifier(name=<>node.name.sym_name), jac_node=<>node.name
     );
-
-    block = self.sync_loc(
-        es.BlockStatement(body=body_stmts), jac_node=<>node
-    );
-
+    block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=<>node);
     func_decl = self.sync_loc(
-        es.FunctionDeclaration(id=func_id, params=func_params, body=block, async_=False),
+        es.FunctionDeclaration(
+            id=func_id, params=func_params, body=block, async_=False
+        ),
         jac_node=<>node
     );
-
     # Export if :pub
     if (<>node.access and (<>node.access.tag.name == Tok.KW_PUB)) {
         export_decl = self.sync_loc(

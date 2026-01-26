@@ -861,8 +861,8 @@ class ArchExprStmt(ArchBlockStmt):
 
     def __init__(
         self,
-        expr: "Expr",
-        kid: Sequence["UniNode"],
+        expr: Expr,
+        kid: Sequence[UniNode],
     ) -> None:
         self.expr = expr
         UniNode.__init__(self, kid=kid)
