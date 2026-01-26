@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.2 (Unreleased)
 
+- **K8s Test CI Branch Alignment**: The K8s deployment test now uses the current CI branch (`GITHUB_HEAD_REF` / `GITHUB_REF_NAME`) when cloning jaseci packages into the pod, ensuring the deployed pod runs the same version of packages as the code being tested.
+
 ## jac-scale 0.1.1 (Latest Release)
 
 ## jac-scale 0.1.0
