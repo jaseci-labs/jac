@@ -16,43 +16,43 @@ Jac-Scale is a multi-target deployment system for Jaseci applications. It provid
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      User Interface                          │
-│                    (plugin.jac, CLI)                        │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Factories                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Deployment   │  │ Database     │  │ Registry     │     │
-│  │ Factory      │  │ Factory      │  │ Factory      │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                 │                  │              │
-└─────────┼─────────────────┼──────────────────┼─────────────┘
-          │                 │                  │
-          ▼                 ▼                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Abstractions                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Deployment   │  │ Database     │  │ Image        │     │
-│  │ Target       │  │ Provider     │  │ Registry     │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                 │                  │              │
-└─────────┼─────────────────┼──────────────────┼─────────────┘
-          │                 │                  │
-          ▼                 ▼                  ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Implementations                            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ Kubernetes   │  │ K8s Mongo    │  │ DockerHub    │     │
-│  │ Target       │  │ Provider     │  │ Registry     │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-│  ┌──────────────┐  ┌──────────────┐                        │
-│  │ AWS Target   │  │ K8s Redis    │                        │
-│  │ (Future)     │  │ Provider     │                        │
-│  └──────────────┘  └──────────────┘                        │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           User Interface                                 │
+│                         (plugin.jac, CLI)                               │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                             Factories                                    │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐       │
+│  │ Deployment │  │ Database   │  │ Registry   │  │ Storage    │       │
+│  │ Factory    │  │ Factory    │  │ Factory    │  │ Factory    │       │
+│  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘       │
+│        │               │               │               │               │
+└────────┼───────────────┼───────────────┼───────────────┼───────────────┘
+         │               │               │               │
+         ▼               ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Abstractions                                   │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐       │
+│  │ Deployment │  │ Database   │  │ Image      │  │ Storage    │       │
+│  │ Target     │  │ Provider   │  │ Registry   │  │            │       │
+│  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘  └─────┬──────┘       │
+│        │               │               │               │               │
+└────────┼───────────────┼───────────────┼───────────────┼───────────────┘
+         │               │               │               │
+         ▼               ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Implementations                                  │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐       │
+│  │ Kubernetes │  │ K8s Mongo  │  │ DockerHub  │  │ Local      │       │
+│  │ Target     │  │ Provider   │  │ Registry   │  │ Storage    │       │
+│  └────────────┘  └────────────┘  └────────────┘  └────────────┘       │
+│  ┌────────────┐  ┌────────────┐                   ┌────────────┐       │
+│  │ AWS Target │  │ K8s Redis  │                   │ S3 Storage │       │
+│  │ (Future)   │  │ Provider   │                   │ (Future)   │       │
+│  └────────────┘  └────────────┘                   └────────────┘       │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Components
@@ -97,6 +97,22 @@ Base class for loggers. Defines:
 - `warn(message: str, context: dict) -> None`
 - `debug(message: str, context: dict) -> None`
 
+#### `abstractions/storage.jac`
+
+Base class for storage providers. Defines:
+
+- `upload(source: str | BinaryIO, destination: str, metadata: dict) -> str`
+- `download(source: str, destination: str | BinaryIO | None) -> bytes | None`
+- `delete(path: str) -> bool`
+- `exists(path: str) -> bool`
+- `list_files(prefix: str, recursive: bool) -> Generator[str]`
+- `get_metadata(path: str) -> dict`
+- `get_url(path: str, expiry_seconds: int) -> str`
+- `copy(source: str, destination: str) -> bool`
+- `move(source: str, destination: str) -> bool`
+- `is_available() -> bool`
+- `close() -> None`
+
 ### 2. Configuration Models
 
 #### `abstractions/config/base_config.jac`
@@ -126,6 +142,15 @@ Kubernetes-specific configuration extending `BaseConfig`:
 - `mongodb_enabled: bool`
 - `redis_enabled: bool`
 - Resource limits, health check settings, etc.
+
+#### `abstractions/config/storage_config.jac`
+
+Storage-specific configuration:
+
+- `BaseStorageConfig`: Base class with `storage_type: str`
+- `LocalStorageConfig`: Local filesystem storage
+  - `base_path: str` - Base directory for storage
+  - `create_dirs: bool` - Auto-create directories
 
 ### 3. Data Models
 
@@ -197,6 +222,21 @@ UtilityFactory.create_logger(
 ) -> Logger
 ```
 
+#### `factories/storage_factory.jac`
+
+Creates storage instances:
+
+```jac
+StorageFactory.create(
+    storage_type: str,  // 'local', 's3', 'gcs', 'azure'
+    config: dict | None = None
+) -> Storage
+
+StorageFactory.get_default(
+    config: dict | None = None
+) -> Storage  // Returns storage based on JAC_STORAGE_TYPE env var
+```
+
 ## Current Implementations
 
 ### Deployment Targets
@@ -239,6 +279,17 @@ UtilityFactory.create_logger(
 - Python logging integration
 - Configurable log levels
 - Context support
+
+### Storage Providers
+
+#### Local Storage (`providers/storage/local_storage.jac`)
+
+- Local filesystem storage
+- Automatic directory creation
+- File upload/download with bytes or file paths
+- File listing (recursive and non-recursive)
+- File metadata (size, modified, created)
+- Copy, move, delete operations
 
 ## Usage Examples
 
@@ -308,6 +359,66 @@ redis_provider = DatabaseProviderFactory.create(
 
 // Add to deployment target
 deployment_target.database_providers = [mongo_provider, redis_provider];
+```
+
+### File Upload with Storage
+
+```jac
+import from fastapi { UploadFile }
+import from jac_scale.factories.storage_factory { StorageFactory }
+import from uuid { uuid4 }
+
+// Initialize storage (reads JAC_STORAGE_TYPE env var, defaults to 'local')
+glob storage = StorageFactory.get_default({'base_path': './uploads'});
+
+// Or create with specific type
+// storage = StorageFactory.create('local', {'base_path': './uploads'});
+
+walker upload_file {
+    has file: UploadFile;
+    has folder: str = "documents";
+
+    can upload with `root entry {
+        // Generate unique filename
+        file_ext = self.file.filename.rsplit('.', 1)[-1] if '.' in self.file.filename else '';
+        unique_name = f"{uuid4()}.{file_ext}";
+        storage_path = f"{self.folder}/{unique_name}";
+
+        // Upload to storage
+        storage.upload(self.file.file, storage_path);
+
+        // Get metadata and URL
+        metadata = storage.get_metadata(storage_path);
+
+        report {
+            "success": True,
+            "path": storage_path,
+            "size": metadata['size'],
+            "url": storage.get_url(storage_path)
+        };
+    }
+}
+
+walker list_files {
+    has folder: str = "";
+
+    can list with `root entry {
+        files = [];
+        for path in storage.list_files(self.folder, recursive=True) {
+            files.append(path);
+        }
+        report {"files": files};
+    }
+}
+
+walker delete_file {
+    has path: str;
+
+    can delete with `root entry {
+        deleted = storage.delete(self.path);
+        report {"success": deleted};
+    }
+}
 ```
 
 ## Extending the System
@@ -406,6 +517,53 @@ deployment_target.database_providers = [mongo_provider, redis_provider];
    }
    ```
 
+### Adding a New Storage Provider
+
+1. **Create the storage class**:
+
+   ```jac
+   // providers/storage/s3_storage.jac
+   import from jac_scale.abstractions.storage { Storage }
+
+   class S3Storage(Storage) {
+       has bucket: str,
+           region: str = 'us-east-1';
+
+       override def upload(self: S3Storage, source: (str | BinaryIO), destination: str, metadata: dict = {}) -> str {
+           // S3-specific upload logic using boto3
+       }
+
+       override def download(self: S3Storage, source: str, destination: (str | BinaryIO | None) = None) -> (bytes | None) {
+           // S3-specific download logic
+       }
+
+       // ... implement other methods
+   }
+   ```
+
+2. **Create the config class** (optional):
+
+   ```jac
+   // abstractions/config/storage_config.jac
+   class S3StorageConfig(BaseStorageConfig) {
+       has bucket: str,
+           region: str = 'us-east-1',
+           access_key_id: (str | None) = None,
+           secret_access_key: (str | None) = None,
+           endpoint_url: (str | None) = None;  // For S3-compatible services
+   }
+   ```
+
+3. **Update the factory**:
+
+   ```jac
+   // factories/storage_factory.jac
+   if storage_type == 's3' {
+       import from jac_scale.providers.storage.s3_storage { S3Storage }
+       return S3Storage(config=config or {});
+   }
+   ```
+
 ## Data Flow
 
 ### Deployment Flow
@@ -443,9 +601,11 @@ jac_scale/
 │   ├── database_provider.jac
 │   ├── image_registry.jac
 │   ├── logger.jac
+│   ├── storage.jac            # Storage abstraction
 │   ├── config/
 │   │   ├── base_config.jac
-│   │   └── app_config.jac
+│   │   ├── app_config.jac
+│   │   └── storage_config.jac # Storage configuration
 │   └── models/
 │       ├── deployment_result.jac
 │       └── resource_status.jac
@@ -457,8 +617,10 @@ jac_scale/
 │   ├── database/
 │   │   ├── kubernetes_mongo.jac
 │   │   └── kubernetes_redis.jac
-│   └── registry/
-│       └── dockerhub.jac
+│   ├── registry/
+│   │   └── dockerhub.jac
+│   └── storage/               # Storage provider implementations
+│       └── local_storage.jac  # Local filesystem storage
 ├── utilities/                 # Utility implementations
 │   └── loggers/
 │       └── standard_logger.jac
@@ -466,7 +628,8 @@ jac_scale/
 │   ├── deployment_factory.jac
 │   ├── database_factory.jac
 │   ├── registry_factory.jac
-│   └── utility_factory.jac
+│   ├── utility_factory.jac
+│   └── storage_factory.jac    # Storage factory
 ├── kubernetes/               # Legacy Kubernetes utilities
 │   └── ...
 ├── plugin.jac                # Main entry point
@@ -503,6 +666,12 @@ Components receive dependencies (logger, config) through constructors.
 - AWS ElastiCache
 - GCP Cloud SQL
 - Managed Redis services
+
+### Planned Storage Providers
+
+- S3 Storage (AWS S3, MinIO, DigitalOcean Spaces)
+- GCS Storage (Google Cloud Storage)
+- Azure Blob Storage
 
 ### Planned Utilities
 

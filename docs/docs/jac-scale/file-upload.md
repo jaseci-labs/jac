@@ -275,3 +275,117 @@ cl {
     }
 }
 ```
+
+## Storage Abstraction
+
+JAC Scale provides a storage abstraction layer that allows you to easily store uploaded files to different backends (local filesystem, S3, etc.) using a consistent API.
+
+### Using StorageFactory
+
+The `StorageFactory` creates storage instances based on configuration:
+
+```jac
+import from jac_scale.factories.storage_factory { StorageFactory }
+
+# Get default storage (reads JAC_STORAGE_TYPE env var, defaults to 'local')
+storage = StorageFactory.get_default();
+
+# Or create with specific configuration
+storage = StorageFactory.create('local', {'base_path': './uploads'});
+```
+
+### Complete File Upload Example with Storage
+
+```jac
+import from fastapi { UploadFile }
+import from jac_scale.factories.storage_factory { StorageFactory }
+import:py from uuid { uuid4 }
+
+# Initialize storage
+glob storage = StorageFactory.get_default({'base_path': './uploads'});
+
+walker UploadDocument {
+    has document: UploadFile;
+    has folder: str = "documents";
+
+    can process with `root entry {
+        # Generate unique filename
+        file_ext = self.document.filename.rsplit('.', 1)[-1] if '.' in self.document.filename else '';
+        unique_name = f"{uuid4()}.{file_ext}" if file_ext else str(uuid4());
+        storage_path = f"{self.folder}/{unique_name}";
+
+        # Upload to storage
+        saved_path = storage.upload(self.document.file, storage_path);
+
+        # Get metadata
+        metadata = storage.get_metadata(storage_path);
+
+        report {
+            "success": True,
+            "original_filename": self.document.filename,
+            "storage_path": storage_path,
+            "size": metadata['size'],
+            "url": storage.get_url(storage_path)
+        };
+    }
+}
+```
+
+### Storage API Methods
+
+| Method | Description |
+|--------|-------------|
+| `upload(source, destination, metadata={})` | Upload a file to storage |
+| `download(source, destination=None)` | Download a file (returns bytes if destination is None) |
+| `delete(path)` | Delete a file |
+| `exists(path)` | Check if file exists |
+| `list_files(prefix="", recursive=False)` | List files in a directory |
+| `get_metadata(path)` | Get file metadata (size, modified, etc.) |
+| `get_url(path, expiry_seconds=3600)` | Get URL/path to access file |
+| `copy(source, destination)` | Copy a file |
+| `move(source, destination)` | Move a file |
+| `is_available()` | Check if storage is available |
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JAC_STORAGE_TYPE` | Storage backend type | `local` |
+| `JAC_STORAGE_LOCAL_PATH` | Base path for local storage | `./storage` |
+| `JAC_STORAGE_CREATE_DIRS` | Auto-create directories | `true` |
+
+### Additional Walkers
+
+```jac
+"""List files in storage."""
+walker ListFiles {
+    has folder: str = "";
+    has recursive: bool = False;
+
+    can process with `root entry {
+        files = [];
+        for file_path in storage.list_files(self.folder, self.recursive) {
+            metadata = storage.get_metadata(file_path);
+            files.append({
+                "path": file_path,
+                "size": metadata['size']
+            });
+        }
+        report {"files": files, "count": len(files)};
+    }
+}
+
+"""Delete a file from storage."""
+walker DeleteFile {
+    has path: str;
+
+    can process with `root entry {
+        if storage.exists(self.path) {
+            storage.delete(self.path);
+            report {"success": True, "deleted": self.path};
+        } else {
+            report {"success": False, "error": "File not found"};
+        }
+    }
+}
+```
