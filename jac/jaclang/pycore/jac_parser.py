@@ -810,34 +810,17 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def import_path(self, _: None) -> uni.ModulePath:
             """Grammar rule.
 
-            import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
+            import_path: (dotted_name | STRING) (KW_AS NAME)?
             """
-            # The grammar can produce: [NAME, COLON, list, KW_AS, NAME]
-            # or just: [list, KW_AS, NAME]
+            # The grammar can produce: [list, KW_AS, NAME]
             # or just: [list]
-            # or: [NAME, COLON, String, KW_AS, NAME]
             # or: [String, KW_AS, NAME]
             # or: [String]
 
-            prefix = None
-
-            # Check if first element is a NAME followed by COLON (prefix case)
-            if (
-                self.cur_nodes
-                and isinstance(self.cur_nodes[0], uni.Name)
-                and len(self.cur_nodes) > 1
-                and isinstance(self.cur_nodes[1], uni.Token)
-                and self.cur_nodes[1].name == Tok.COLON
-            ):
-                # We have a prefix
-                prefix = self.consume(uni.Name)
-                self.consume_token(Tok.COLON)
-
-            # Now consume either String or dotted_name list
-            # Check if we have a String node first
+            # Consume either String or dotted_name list
             valid_path: list[uni.Name | uni.String]
             if self.cur_nodes and isinstance(self.cur_nodes[0], uni.String):
-                # Handle string literal import path
+                # Handle string literal import path (e.g., "@jac/runtime")
                 string_node = self.consume(uni.String)
                 valid_path = [string_node]
             else:
@@ -852,7 +835,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 level=0,
                 alias=alias,
                 kid=self.flat_cur_nodes,
-                prefix=prefix,
             )
 
         def dotted_name(self, _: None) -> list[uni.UniNode]:

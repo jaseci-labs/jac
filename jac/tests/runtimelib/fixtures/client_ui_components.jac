@@ -1,6 +1,6 @@
 """Client UI components module for testing cl imports."""
 
-cl import from jac:client_runtime { createState, navigate, }
+cl import from "@jac/runtime" { createState, navigate, }
 
 cl {
     # Shared state

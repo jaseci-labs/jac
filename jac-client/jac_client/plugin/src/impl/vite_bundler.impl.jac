@@ -378,7 +378,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
       }},
       extensions: [{extensions_str}],
@@ -619,7 +619,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac-client/utils": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
     }},
     extensions: [{extensions_str}],

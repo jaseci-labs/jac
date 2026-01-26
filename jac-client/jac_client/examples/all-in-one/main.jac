@@ -160,7 +160,7 @@ walker process_complex_data {
 # Combined example: auth + routing + CSS styling + asset serving + nested folder imports
 #
 cl import from react { useEffect, useRef }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,

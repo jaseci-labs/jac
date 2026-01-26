@@ -1,6 +1,6 @@
 """Sample Jac module containing client-side declarations."""
 
-cl import from jac:client_runtime { renderJsxTree, }
+cl import from "@jac/runtime" { renderJsxTree, }
 
 cl glob API_LABEL: str = "Runtime Test";
 

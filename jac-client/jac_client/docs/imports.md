@@ -32,12 +32,12 @@ Learn how to import third-party libraries, other Jac files, and JavaScript modul
 
 ## Importing Jac-Client Utilities
 
-Jac-Client provides built-in utilities for authentication, backend communication, and routing through the `@jac-client/utils` package.
+Jac-Client provides built-in utilities for authentication, backend communication, and routing through the `@jac/runtime` package.
 
 ### Available Utilities
 
 ```jac
-cl import from '@jac-client/utils' {
+cl import from '@jac/runtime' {
     jacSpawn,      # Call backend walkers
     jacLogin,        # Login user
     jacSignup,       # Register new user
@@ -56,7 +56,7 @@ The `jacSpawn` function lets you call backend walkers from the frontend:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 # Note: When using `has` variables, useState is auto-injected
 
@@ -99,7 +99,7 @@ jacSpawn(walker_name: str, node_id: str, params: dict) -> any
 #### `jacLogin` - User Login
 
 ```jac
-cl import from '@jac-client/utils' { jacLogin, navigate }
+cl import from '@jac/runtime' { jacLogin, navigate }
 
 cl {
     def LoginForm() -> any {
@@ -129,7 +129,7 @@ cl {
 #### `jacSignup` - User Registration
 
 ```jac
-cl import from '@jac-client/utils' { jacSignup, navigate }
+cl import from '@jac/runtime' { jacSignup, navigate }
 
 cl {
     def SignupForm() -> any {
@@ -160,7 +160,7 @@ cl {
 #### `jacLogout` - User Logout
 
 ```jac
-cl import from '@jac-client/utils' { jacLogout, navigate }
+cl import from '@jac/runtime' { jacLogout, navigate }
 
 cl {
     def Header() -> any {
@@ -179,7 +179,7 @@ cl {
 #### `jacIsLoggedIn` - Check Authentication Status
 
 ```jac
-cl import from '@jac-client/utils' { jacIsLoggedIn, navigate }
+cl import from '@jac/runtime' { jacIsLoggedIn, navigate }
 
 cl {
     def ProtectedPage() -> any {
@@ -201,7 +201,7 @@ cl {
 #### `navigate` - Programmatic Navigation
 
 ```jac
-cl import from '@jac-client/utils' { navigate }
+cl import from '@jac/runtime' { navigate }
 
 cl {
     def MyComponent() -> any {
@@ -224,7 +224,7 @@ cl {
 #### `Link` - Declarative Navigation
 
 ```jac
-cl import from '@jac-client/utils' { Link }
+cl import from '@jac/runtime' { Link }
 
 cl {
     def Navigation() -> any {
@@ -240,7 +240,7 @@ cl {
 #### `initRouter` - Initialize Router
 
 ```jac
-cl import from '@jac-client/utils' { initRouter, jacIsLoggedIn }
+cl import from '@jac/runtime' { initRouter, jacIsLoggedIn }
 
 cl {
     def App() -> any {
@@ -278,7 +278,7 @@ cl {
 
 ```jac
 cl import from react { useState }
-cl import from '@jac-client/utils' {
+cl import from '@jac/runtime' {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -373,7 +373,7 @@ cl {
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacIsLoggedIn, jacSpawn, navigate }
+cl import from '@jac/runtime' { jacIsLoggedIn, jacSpawn, navigate }
 
 # Note: When using `has` variables, useState is auto-injected
 
@@ -409,7 +409,7 @@ cl {
 
 ```jac
 cl import from react { useState }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 # Note: When using `has` variables, useState is auto-injected
 
@@ -452,7 +452,7 @@ cl {
 #### Pattern 3: Navigation with Auth Check
 
 ```jac
-cl import from '@jac-client/utils' { Link, jacIsLoggedIn, jacLogout, navigate }
+cl import from '@jac/runtime' { Link, jacIsLoggedIn, jacLogout, navigate }
 
 cl {
     def Navigation() -> any {

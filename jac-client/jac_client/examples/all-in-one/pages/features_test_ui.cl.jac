@@ -1,7 +1,7 @@
 # # Features Test Page - Client-side UI
 # # Demonstrates: props, exports, cl files, TypeScript imports, string methods,
 # # imports from JAC/JS/TS, spawning walkers from cl file
-import from "@jac-client/utils" {
+import from "@jac/runtime" {
     Link,
     useNavigate
 }

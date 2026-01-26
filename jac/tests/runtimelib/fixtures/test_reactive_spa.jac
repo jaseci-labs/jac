@@ -1,6 +1,6 @@
 """Complete SPA example using reactive state and routing."""
 
-cl import from jac:client_runtime {
+cl import from "@jac/runtime" {
     createSignal,
     createState,
     createRouter,

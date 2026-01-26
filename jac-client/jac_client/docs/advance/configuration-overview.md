@@ -163,7 +163,7 @@ lib_imports = []
 # Default server options
 
 [plugins.client.vite.resolve.alias]
-"@jac-client/utils" = "compiled/client_runtime.js"
+"@jac/runtime" = "compiled/client_runtime.js"
 "@jac-client/assets" = "compiled/assets"
 ```
 
@@ -258,7 +258,7 @@ export default {
   resolve: {
     alias: {
       '@components': path.resolve(__dirname, '../src/components'),
-      '@jac-client/utils': path.resolve(__dirname, '../compiled/client_runtime.js')
+      '@jac/runtime': path.resolve(__dirname, '../compiled/client_runtime.js')
     }
   }
 }

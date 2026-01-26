@@ -1,6 +1,6 @@
-"""Sample Jac module with cl import from jac:client_runtime."""
+"""Sample Jac module with cl import from @jac/runtime."""
 
-cl import from jac:client_runtime { renderJsxTree, jacLogin, }
+cl import from "@jac/runtime" { renderJsxTree, jacLogin, }
 
 cl glob APP_TITLE: str = "Import Test App";
 

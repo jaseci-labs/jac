@@ -1,4 +1,4 @@
-cl import from "@jac-client/utils" { Link }
+cl import from "@jac/runtime" { Link }
 cl import "..styles/notFoundPage/NotFoundstyle.css";
 cl {
     def:pub NotFound -> any {
