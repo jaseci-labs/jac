@@ -66,24 +66,60 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     return all_success;
 }
 
-"""Remove old package files and metadata to prevent version conflicts.
+"""Clean up duplicate package metadata after installation.
 
-When using pip install --target, old versions can accumulate. This function
-removes all traces of a package before reinstalling to ensure a clean state.
+When using pip install --target, old versions of upgraded dependencies may remain.
+This removes old metadata directories when multiple versions are detected, keeping
+only the newest version based on directory modification time.
 """
-impl DependencyInstaller._cleanup_old_package(name: str) -> None {
-    # Temporarily disable verbose to avoid duplicate messages
-    old_verbose = self.verbose;
-    self.verbose = False;
-    self.uninstall_package(name);
-    self.verbose = old_verbose;
+impl DependencyInstaller._cleanup_duplicates -> None {
+    import shutil;
+    if not self.packages_dir or not self.packages_dir.exists() {
+        return;
+    }
+    # Collect all metadata directories grouped by package name
+    package_metadata: dict[str, list] = {};
+    for item in self.packages_dir.iterdir() {
+        if item.is_dir()
+        and (
+            item.name.lower().endswith(".dist-info")
+            or item.name.lower().endswith(".egg-info")
+        ) {
+            # Extract package name (everything before version)
+            pkg_name = item.name.lower().rsplit("-", 2)[0].replace("-", "_");
+            if pkg_name not in package_metadata {
+                package_metadata[pkg_name] = [];
+            }
+            package_metadata[pkg_name].append(item);
+        }
+    }
+    print("package_metadata:", package_metadata);
+    # Remove old versions when duplicates exist, keep the newest
+    for (pkg_name, metadata_dirs) in package_metadata.items() {
+        print("metadata_dirs for", pkg_name, ":", metadata_dirs);
+        if len(metadata_dirs) > 1 {
+            # Sort by modification time (oldest first), keeping only the newest
+            metadata_with_mtime = [(d.stat().st_mtime, d) for d in metadata_dirs];
+            metadata_with_mtime.sort();
+            # Remove all but the newest (last one)
+            print("metadata_with_mtime for", pkg_name, ":", metadata_with_mtime);
+            for (_, metadata_dir) in metadata_with_mtime[:-1] {
+                try {
+                    shutil.rmtree(metadata_dir);
+                    if self.verbose {
+                        print(f"  Removed old version: {metadata_dir.name}");
+                    }
+                } except Exception {
+                # Silently continue if removal fails
+                }
+            }
+        }
+    }
 }
 
 impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     import sys;
     self.ensure_packages_dir();
-    # Clean up old package files before installing to prevent version conflicts
-    self._cleanup_old_package(name);
     if version {
         if version.startswith(("=", ">", "<", "~", "!")) {
             spec = f"{name}{version}";
@@ -98,6 +134,8 @@ impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
         ["install", "--target", str(self.packages_dir), "--upgrade", spec]
     );
     if returncode == 0 {
+        # Clean up any duplicate metadata that pip left behind
+        self._cleanup_duplicates();
         print(f"  {name} installed successfully");
         return True;
     } else {
@@ -111,8 +149,6 @@ impl DependencyInstaller.install_git_package(
 ) -> bool {
     import sys;
     self.ensure_packages_dir();
-    # Clean up old package files before installing to prevent version conflicts
-    self._cleanup_old_package(name);
     if branch {
         spec = f"git+{git_url}@{branch}";
     } else {
@@ -123,6 +159,8 @@ impl DependencyInstaller.install_git_package(
         ["install", "--target", str(self.packages_dir), "--upgrade", spec]
     );
     if returncode == 0 {
+        # Clean up any duplicate metadata that pip left behind
+        self._cleanup_duplicates();
         print(f"  {name} installed successfully from git");
         return True;
     } else {
