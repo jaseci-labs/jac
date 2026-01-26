@@ -1057,6 +1057,77 @@ class TestClientRendering:
 
 
 # =============================================================================
+# Fullstack Client App Test (has + async can with entry)
+# =============================================================================
+
+
+@pytest.fixture
+def fullstack_app_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for client_fullstack_app.jac."""
+    client = JacTestClient.from_file(
+        fixture_abs_path("client_fullstack_app.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestFullstackClientApp:
+    """Test a fullstack Jac app that uses has (useState) and async can with entry (useEffect)."""
+
+    def test_client_page_html_and_bundle(
+        self, fullstack_app_client: JacTestClient
+    ) -> None:
+        """Test that /cl/app serves correct HTML with hydration payload and a valid bundle."""
+        import json
+        import re
+
+        response = fullstack_app_client.get("/cl/app")
+        html = response.text
+
+        # HTML skeleton
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+        assert "/static/client.js?hash=" in html
+
+        # Hydration payload targets the right function
+        init_match = re.search(
+            r'<script id="__jac_init__" type="application/json">([^<]*)</script>',
+            html,
+        )
+        assert init_match is not None
+        payload = json.loads(init_match.group(1))
+        assert payload.get("function") == "app"
+
+        # Fetch JS bundle
+        hash_match = re.search(r"/static/client\.js\?hash=([a-f0-9]+)", html)
+        assert hash_match is not None
+        bundle_js = fullstack_app_client.get(
+            f"/static/client.js?hash={hash_match.group(1)}"
+        ).text
+
+        # @jac/runtime inlined (not left as ES import)
+        assert "// @jac/runtime" in bundle_js
+        assert "import {" not in bundle_js
+
+        # has → useState hook present
+        assert "function useState(" in bundle_js
+        assert "useState([])" in bundle_js
+
+        # async can with entry → useEffect present
+        assert "function useEffect(" in bundle_js
+        assert "useEffect(" in bundle_js
+
+        # Server function call wired up
+        assert "__jacCallFunction" in bundle_js
+        assert '"get_items"' in bundle_js
+
+        # Module registered
+        assert "__jacRegisterClientModule" in bundle_js
+        assert "function app()" in bundle_js
+
+
+# =============================================================================
 # Imported Walker Access Level Tests (GitHub Issue #4145)
 # =============================================================================
 

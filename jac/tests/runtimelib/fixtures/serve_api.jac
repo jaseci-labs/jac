@@ -1,6 +1,6 @@
 """Example Jac program for REST API server."""
 
-cl import from jac:client_runtime { renderJsxTree, }
+cl import from "@jac/runtime" { renderJsxTree, }
 
 # Define some nodes
 node Task {

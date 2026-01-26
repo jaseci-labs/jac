@@ -95,7 +95,7 @@ cl {
 ```jac
 # useState is auto-injected, only import useEffect
 cl import from react { useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 # Backend: Jac nodes and walkers
 node Todo {

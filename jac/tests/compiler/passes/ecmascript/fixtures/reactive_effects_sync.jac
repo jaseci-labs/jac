@@ -1,6 +1,6 @@
 """Test fixture for synchronous reactive effects (non-async can with entry).
 
-Note: useEffect import is auto-injected from @jac-client/utils when `can with entry/exit` is used.
+Note: useEffect import is auto-injected from @jac/runtime when `can with entry/exit` is used.
 """
 
 cl {

@@ -1509,12 +1509,10 @@ class ModulePath(UniNode):
         level: int,
         alias: Name | None,
         kid: Sequence[UniNode],
-        prefix: Name | None = None,
     ) -> None:
         self.path = path
         self.level = level
         self.alias = alias
-        self.prefix = prefix
         self.abs_path: str | None = None
         UniNode.__init__(self, kid=kid)
 
@@ -1539,27 +1537,28 @@ class ModulePath(UniNode):
         """Convert an import target string into a relative file path."""
         target = self.dot_path_str + (f".{target_item}" if target_item else "")
 
-        # Handle 'jac:' prefix for runtime imports
-        if self.prefix and self.prefix.value == "jac":
-            # For jac: imports, resolve relative to the jac runtime directory
+        # Handle '@jac/' prefixed imports (built-in runtime modules)
+        if target.startswith("@jac/"):
             import jaclang.runtimelib
 
             runtime_dir = os.path.dirname(jaclang.runtimelib.__file__)
-            # Handle both .jac and .js file extensions
-            if not (target.endswith(".jac") or target.endswith(".js")):
-                # Try .jac first, then .cl.jac, then .js
-                jac_path = os.path.join(runtime_dir, target + ".jac")
-                if os.path.exists(jac_path):
-                    return jac_path
-                cl_jac_path = os.path.join(runtime_dir, target + ".cl.jac")
-                if os.path.exists(cl_jac_path):
-                    return cl_jac_path
-                js_path = os.path.join(runtime_dir, target + ".js")
-                if os.path.exists(js_path):
-                    return js_path
-                # Default to .jac
-                return jac_path
-            return os.path.join(runtime_dir, target)
+            module_name = target[5:]  # Strip "@jac/"
+
+            # Map module names to files
+            module_map = {
+                "runtime": "client_runtime.cl.jac",
+            }
+
+            if module_name in module_map:
+                return os.path.join(runtime_dir, module_map[module_name])
+
+            # Fallback: try direct file resolution
+            for ext in [".cl.jac", ".jac", ".js"]:
+                path = os.path.join(runtime_dir, module_name + ext)
+                if os.path.exists(path):
+                    return path
+
+            return os.path.join(runtime_dir, module_name + ".jac")
 
         return resolve_relative_path(target, self.loc.mod_path)
 
@@ -1575,16 +1574,11 @@ class ModulePath(UniNode):
     def normalize(self, deep: bool = False) -> bool:
         res = True
         if deep:
-            if self.prefix:
-                res = res and self.prefix.normalize(deep)
             if self.path:
                 for item in self.path:
                     res = res and item.normalize(deep)
             res = res and self.alias.normalize(deep) if self.alias else res
         new_kid: list[UniNode] = []
-        if self.prefix:
-            new_kid.append(self.prefix)
-            new_kid.append(self.gen_token(Tok.COLON))
         for _ in range(self.level):
             new_kid.append(self.gen_token(Tok.DOT))
         if self.path:

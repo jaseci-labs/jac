@@ -899,7 +899,7 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                     );
                     # Auto-inject __jacCallFunction import if not already done
                     if not self.has_injected_jac_call_function {
-                        # Inline: import { __jacCallFunction } from "@jac-client/utils";
+                        # Inline: import { __jacCallFunction } from "@jac/runtime";
                         specifier = self.sync_loc(
                             es.ImportSpecifier(
                                 imported=es.Identifier(name='__jacCallFunction'),
@@ -908,9 +908,7 @@ impl EsastGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                             jac_node=<>node
                         );
                         source = self.sync_loc(
-                            es.Literal(
-                                value='@jac-client/utils', raw='"@jac-client/utils"'
-                            ),
+                            es.Literal(value='@jac/runtime', raw='"@jac/runtime"'),
                             jac_node=<>node
                         );
                         import_decl = self.sync_loc(
@@ -1783,10 +1781,21 @@ impl EsastGenPass._has_usestate_import -> bool {
     return False;
 }
 
-"""Auto-inject useState import from @jac-client/utils when reactive has variables are used."""
+"""Register @jac/runtime in the client manifest so bundler can inline it."""
+impl EsastGenPass._register_jac_runtime_import -> None {
+    import from pathlib { Path }
+    import jaclang.runtimelib;
+    # Only register once
+    if '@jac/runtime' not in self.client_manifest.imports {
+        runtime_dir = Path(jaclang.runtimelib.__file__).parent;
+        runtime_path = runtime_dir / 'client_runtime.cl.jac';
+        self.client_manifest.imports['@jac/runtime'] = str(runtime_path);
+    }
+}
+
+"""Auto-inject useState import from @jac/runtime when reactive has variables are used."""
 impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
-    # Create: import { useState } from "@jac-client/utils";
-    # This import goes through jac-client's client_runtime which re-exports useState from React
+    # Create: import { useState } from "@jac/runtime";
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name='useState'),
@@ -1795,18 +1804,19 @@ impl EsastGenPass._inject_usestate_import(<>node: uni.UniNode) -> None {
         jac_node=<>node
     );
     source = self.sync_loc(
-        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
-        jac_node=<>node
+        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=<>node
     );
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
     );
     self.imports.append(import_decl);
+    # Register in client manifest so bundler knows to inline the runtime
+    self._register_jac_runtime_import();
 }
 
-"""Auto-inject __jacCallFunction import from @jac-client/utils when server functions are called from client."""
+"""Auto-inject __jacCallFunction import from @jac/runtime when server functions are called from client."""
 impl EsastGenPass._inject_jac_call_function_import(<>node: uni.UniNode) -> None {
-    # Create: import { __jacCallFunction } from "@jac-client/utils";
+    # Create: import { __jacCallFunction } from "@jac/runtime";
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name='__jacCallFunction'),
@@ -1815,13 +1825,14 @@ impl EsastGenPass._inject_jac_call_function_import(<>node: uni.UniNode) -> None 
         jac_node=<>node
     );
     source = self.sync_loc(
-        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
-        jac_node=<>node
+        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=<>node
     );
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
     );
     self.imports.append(import_decl);
+    # Register in client manifest so bundler knows to inline the runtime
+    self._register_jac_runtime_import();
 }
 
 """Check if useEffect is already imported (either by user or auto-injection)."""
@@ -1838,9 +1849,9 @@ impl EsastGenPass._has_useeffect_import -> bool {
     return False;
 }
 
-"""Auto-inject useEffect import from @jac-client/utils when can with entry/exit is used."""
+"""Auto-inject useEffect import from @jac/runtime when can with entry/exit is used."""
 impl EsastGenPass._inject_useeffect_import(<>node: uni.UniNode) -> None {
-    # Create: import { useEffect } from "@jac-client/utils";
+    # Create: import { useEffect } from "@jac/runtime";
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name='useEffect'),
@@ -1849,13 +1860,14 @@ impl EsastGenPass._inject_useeffect_import(<>node: uni.UniNode) -> None {
         jac_node=<>node
     );
     source = self.sync_loc(
-        es.Literal(value='@jac-client/utils', raw='"@jac-client/utils"'),
-        jac_node=<>node
+        es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=<>node
     );
     import_decl = self.sync_loc(
         es.ImportDeclaration(specifiers=[specifier], source=source), jac_node=<>node
     );
     self.imports.append(import_decl);
+    # Register in client manifest so bundler knows to inline the runtime
+    self._register_jac_runtime_import();
 }
 
 """Transform an EventSignature ability (can with entry/exit) to useEffect call."""
@@ -2169,14 +2181,9 @@ impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
             ),
             jac_node=<>node
         );
-        if (<>node.access and (<>node.access.tag.name == Tok.KW_PUB)) {
-            export_decl = self.sync_loc(
-                es.ExportNamedDeclaration(declaration=func_decl), jac_node=<>node
-            );
-            <>node.gen.es_ast = export_decl;
-        } else {
-            <>node.gen.es_ast = func_decl;
-        }
+        # Don't use ES exports - functions should be in global scope for registration
+        # The __jacRegisterClientModule mechanism handles exposing functions
+        <>node.gen.es_ast = func_decl;
     }
 }
 
@@ -2442,13 +2449,12 @@ impl EsastGenPass.exit_import(<>node: uni.Import) -> None {
         self.client_manifest.imports[import_key] = resolved_path;
         self.client_manifest.has_client = True;
         # Prepend dot for local Jac modules to make them relative imports in JS
-        # Skip for jac: prefixed imports (built-in runtime modules)
+        # Skip for @jac/ prefixed imports (built-in runtime modules)
         import_path = <>node.from_loc.dot_path_str;
-        has_jac_prefix = <>node.from_loc.prefix
-        and <>node.from_loc.prefix.value == 'jac';
+        is_jac_runtime = import_path.startswith('@jac/');
         if resolved_path.endswith('.jac')
         and not import_path.startswith('.')
-        and not has_jac_prefix {
+        and not is_jac_runtime {
             import_path = '.' + import_path;
         }
         js_import_path = convert_to_js_import_path(import_path);

@@ -198,7 +198,7 @@ def test_def_pub_called_from_client_imports_jac_call_function() -> None:
     """Test that calling def:pub from cl{} generates __jacCallFunction import.
 
     When a server function (def:pub) is called from client code (cl {}),
-    the generated JavaScript must import __jacCallFunction from @jac-client/utils.
+    the generated JavaScript must import __jacCallFunction from @jac/runtime.
     This is a regression test for the bug where the import was missing.
     """
     test_code = '''
@@ -226,13 +226,13 @@ cl {
         js = module.gen.js
         assert js.strip(), "Expected JavaScript output for client code"
 
-        # Verify __jacCallFunction is imported from @jac-client/utils
+        # Verify __jacCallFunction is imported from @jac/runtime
         assert "__jacCallFunction" in js, (
             "__jacCallFunction should be present in generated JS"
         )
         # Check for the import statement (may have varying whitespace)
-        assert "@jac-client/utils" in js, (
-            "__jacCallFunction should be imported from @jac-client/utils"
+        assert "@jac/runtime" in js, (
+            "__jacCallFunction should be imported from @jac/runtime"
         )
 
         # Verify the function call is generated correctly

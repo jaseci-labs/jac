@@ -123,7 +123,7 @@ dedupe = ["react", "react-dom"]
 
 **Default aliases** (automatically included):
 
-- `@jac-client/utils` → `compiled/client_runtime.js`
+- `@jac/runtime` → `compiled/client_runtime.js`
 - `@jac-client/assets` → `compiled/assets`
 
 ### TypeScript Configuration
