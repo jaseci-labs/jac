@@ -1,3 +1,11 @@
+# Python Integration
+
+> **Part of:** [Part VIII: Ecosystem](ecosystem.md)
+>
+> **Related:** [Library Mode](library-mode.md) | [Build a Todo App](../../tutorials/fullstack/todo-app.md)
+
+---
+
 ## **Jac's Native Superset of Python and TypeScript/JavaScript**
 
 Jac is designed as a superset of both Python and TypeScript/JavaScript, providing full compatibility with both the PyPI and npm ecosystems. Developers can leverage their existing knowledge while accessing new capabilities for graph-based and object-spatial programming.

@@ -2,7 +2,10 @@
 
 Manage reactive state with hooks and the `has` keyword.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [React-Style Components](components.md)
+> - Time: ~30 minutes
 
 ---
 
@@ -85,7 +88,7 @@ cl {
 
         def add_todo() -> None {
             if input_text {
-                todos = [...todos, {"id": len(todos), "text": input_text}];
+                todos = todos + [{"id": len(todos), "text": input_text}];
                 input_text = "";
             }
         }
@@ -125,24 +128,22 @@ cl {
 
 ## useEffect - Side Effects
 
+### Automatic Effects with `can with entry/exit`
+
+Similar to how `has` automatically generates `useState`, you can use `can with entry` and `can with exit` to automatically generate `useEffect` hooks:
+
 ```jac
 cl {
-    import from react { useEffect }
-
     def:pub DataFetcher() -> any {
         has data: list = [];
         has loading: bool = True;
 
-        # Run once on mount
-        useEffect(lambda -> None {
-            async def fetch_data() -> None {
-                # Simulate API call
-                result = await some_async_operation();
-                data = result;
-                loading = False;
-            }
-            fetch_data();
-        }, []);  # Empty deps = run once
+        # Run once on mount - async effects are wrapped in IIFE automatically
+        async can with entry {
+            result = await some_async_operation();
+            data = result;
+            loading = False;
+        }
 
         if loading {
             return <p>Loading...</p>;
@@ -159,21 +160,20 @@ cl {
 
 ### Effect Dependencies
 
+Use list `[dep]` or tuple `(dep1, dep2)` syntax to specify dependencies:
+
 ```jac
 cl {
-    import from react { useEffect }
-
     def:pub SearchResults() -> any {
         has query: str = "";
         has results: list = [];
 
         # Run when query changes
-        useEffect(lambda -> None {
+        async can with [query] entry {
             if query {
-                # Fetch results based on query
-                print(f"Searching for: {query}");
+                results = await search_api(query);
             }
-        }, [query]);  # Depends on query
+        }
 
         return <div>
             <input
@@ -181,9 +181,55 @@ cl {
                 onChange={lambda e: any -> None { query = e.target.value; }}
             />
             <ul>
-                {results.map(lambda r: any -> any { <li>{r}</li> })}
+                {results.map(lambda r: any -> any { return <li>{r}</li>; })}
             </ul>
         </div>;
+    }
+}
+```
+
+### Cleanup Effects
+
+Use `can with exit` for cleanup logic (runs on unmount):
+
+```jac
+cl {
+    def:pub Timer() -> any {
+        has seconds: int = 0;
+
+        # Setup interval on mount
+        can with entry {
+            intervalId = setInterval(lambda -> None {
+                seconds = seconds + 1;
+            }, 1000);
+        }
+
+        # Cleanup on unmount
+        can with exit {
+            clearInterval(intervalId);
+        }
+
+        return <p>Seconds: {seconds}</p>;
+    }
+}
+```
+
+### Manual useEffect
+
+You can also use `useEffect` manually by importing from React:
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def:pub DataFetcher() -> any {
+        has data: list = [];
+
+        useEffect(lambda -> None {
+            fetch_data();
+        }, []);
+
+        return <div>...</div>;
     }
 }
 ```
@@ -335,7 +381,7 @@ cl {
         has submitting: bool = False;
 
         def update_field(field: str, value: str) -> None {
-            form_data = {...form_data, field: value};
+            form_data[field] = value;
         }
 
         def validate() -> bool {
@@ -363,7 +409,6 @@ cl {
                 onChange={lambda e: any -> None { update_field("name", e.target.value); }}
             />
             {errors.get("name") and <span className="error">{errors["name"]}</span>}
-            {# ... more fields ... #}
         </form>;
     }
 }

@@ -1,9 +1,9 @@
 """Pytest configuration and shared fixtures for jac-client tests.
 
 This module provides session-scoped fixtures to optimize test execution by:
-1. Running npm install once per session and caching node_modules
+1. Running bun install once per session and caching node_modules
 2. Providing shared Vite build infrastructure
-3. Mocking npm install for tests that only need jac.toml manipulation
+3. Mocking bun install for tests that only need jac.toml manipulation
 """
 
 from __future__ import annotations
@@ -83,16 +83,15 @@ def _get_jac_command() -> list[str]:
     return [sys.executable, "-m", "jaclang"]
 
 
-def _get_env_with_npm() -> dict[str, str]:
-    """Get environment dict with npm in PATH."""
+def _get_env_with_bun() -> dict[str, str]:
+    """Get environment dict with bun in PATH."""
     env = os.environ.copy()
-    # npm might be installed via nvm, ensure PATH includes common locations
-    npm_path = shutil.which("npm")
-    if npm_path:
-        npm_dir = str(Path(npm_path).parent)
+    bun_path = shutil.which("bun")
+    if bun_path:
+        bun_dir = str(Path(bun_path).parent)
         current_path = env.get("PATH", "")
-        if npm_dir not in current_path:
-            env["PATH"] = f"{npm_dir}:{current_path}"
+        if bun_dir not in current_path:
+            env["PATH"] = f"{bun_dir}:{current_path}"
     return env
 
 
@@ -127,16 +126,16 @@ def reset_jac_machine(tmp_path: Path) -> Generator[None, None, None]:
     Jac.loaded_modules.clear()
 
 
-# Session-scoped cache for npm installation
-_npm_cache_dir: Path | None = None
+# Session-scoped cache for bun installation
+_bun_cache_dir: Path | None = None
 
 
 def _get_minimal_jac_toml() -> str:
-    """Get minimal jac.toml content for npm cache setup."""
+    """Get minimal jac.toml content for bun cache setup."""
     return """[project]
-name = "npm-cache"
+name = "bun-cache"
 version = "0.0.1"
-description = "Cached npm modules"
+description = "Cached bun modules"
 entry-point = "app.jac"
 
 [plugins.client.vite.build]
@@ -145,28 +144,28 @@ minify = false
 
 
 @pytest.fixture(scope="session")
-def npm_cache_dir() -> Generator[Path, None, None]:
-    """Session-scoped fixture that provides a directory with npm packages installed.
+def bun_cache_dir() -> Generator[Path, None, None]:
+    """Session-scoped fixture that provides a directory with bun packages installed.
 
-    This runs npm install once per test session and provides the path to the
+    This runs bun install once per test session and provides the path to the
     .jac/client/configs directory containing node_modules.
     """
-    global _npm_cache_dir
+    global _bun_cache_dir
 
-    if _npm_cache_dir is not None and _npm_cache_dir.exists():
-        yield _npm_cache_dir
+    if _bun_cache_dir is not None and _bun_cache_dir.exists():
+        yield _bun_cache_dir
         return
 
     # Create a persistent temp directory for the session
-    cache_dir = Path(tempfile.mkdtemp(prefix="jac_npm_cache_"))
+    cache_dir = Path(tempfile.mkdtemp(prefix="jac_bun_cache_"))
 
     # Create jac.toml
     jac_toml = cache_dir / "jac.toml"
     jac_toml.write_text(_get_minimal_jac_toml())
 
-    # Run jac add --npm to install packages
+    # Run jac add --npm to install packages (flag name unchanged for backward compatibility)
     jac_cmd = _get_jac_command()
-    env = _get_env_with_npm()
+    env = _get_env_with_bun()
     result = subprocess.run(
         [*jac_cmd, "add", "--npm"],
         cwd=cache_dir,
@@ -178,36 +177,44 @@ def npm_cache_dir() -> Generator[Path, None, None]:
     if result.returncode != 0:
         # Clean up on failure
         shutil.rmtree(cache_dir, ignore_errors=True)
-        pytest.skip(f"Failed to set up npm cache: {result.stderr}")
+        pytest.skip(f"Failed to set up bun cache: {result.stderr}")
 
-    _npm_cache_dir = cache_dir
+    _bun_cache_dir = cache_dir
     yield cache_dir
 
     # Cleanup after all tests complete
     shutil.rmtree(cache_dir, ignore_errors=True)
 
 
+# Backward compatibility alias
+@pytest.fixture(scope="session")
+def npm_cache_dir(bun_cache_dir: Path) -> Generator[Path, None, None]:
+    """Backward compatibility alias for bun_cache_dir."""
+    yield bun_cache_dir
+
+
 @pytest.fixture
-def vite_project_dir(npm_cache_dir: Path, tmp_path: Path) -> Path:
+def vite_project_dir(bun_cache_dir: Path, tmp_path: Path) -> Path:
     """Fixture that provides a project directory with pre-installed node_modules.
 
-    This copies node_modules from the session cache instead of running npm install.
+    This copies node_modules from the session cache instead of running bun install.
     """
     # Create jac.toml in the temp directory
     jac_toml = tmp_path / "jac.toml"
     jac_toml.write_text(_get_minimal_jac_toml())
 
     # Copy .jac/client/configs directory (contains package.json)
-    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    source_configs = bun_cache_dir / ".jac" / "client" / "configs"
     dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
         dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
-    # Copy node_modules from project root (npm installs there, not in .jac/client/configs)
-    source_node_modules = npm_cache_dir / "node_modules"
-    dest_node_modules = tmp_path / "node_modules"
+    # Copy node_modules from .jac/client/ (bun installs there)
+    source_node_modules = bun_cache_dir / ".jac" / "client" / "node_modules"
+    dest_node_modules = tmp_path / ".jac" / "client" / "node_modules"
     if source_node_modules.exists():
+        dest_node_modules.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_node_modules, dest_node_modules, symlinks=True)
 
     # Create required directories
@@ -219,7 +226,7 @@ def vite_project_dir(npm_cache_dir: Path, tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def vite_project_with_antd(npm_cache_dir: Path, tmp_path: Path) -> Path:
+def vite_project_with_antd(bun_cache_dir: Path, tmp_path: Path) -> Path:
     """Fixture that provides a project directory with antd pre-installed."""
     # Create jac.toml with antd dependency
     jac_toml_content = """[project]
@@ -238,21 +245,22 @@ antd = "^6.0.0"
     jac_toml.write_text(jac_toml_content)
 
     # Copy base .jac/client/configs first for faster install
-    source_configs = npm_cache_dir / ".jac" / "client" / "configs"
+    source_configs = bun_cache_dir / ".jac" / "client" / "configs"
     dest_configs = tmp_path / ".jac" / "client" / "configs"
     if source_configs.exists():
         dest_configs.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_configs, dest_configs, symlinks=True)
 
-    # Copy base node_modules for faster install (npm will add antd on top)
-    source_node_modules = npm_cache_dir / "node_modules"
-    dest_node_modules = tmp_path / "node_modules"
+    # Copy base node_modules for faster install (bun will add antd on top)
+    source_node_modules = bun_cache_dir / ".jac" / "client" / "node_modules"
+    dest_node_modules = tmp_path / ".jac" / "client" / "node_modules"
     if source_node_modules.exists():
+        dest_node_modules.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source_node_modules, dest_node_modules, symlinks=True)
 
     # Install antd on top (uses cached node_modules as base)
     jac_cmd = _get_jac_command()
-    env = _get_env_with_npm()
+    env = _get_env_with_bun()
     result = subprocess.run(
         [*jac_cmd, "add", "--npm"],
         cwd=tmp_path,
@@ -272,15 +280,22 @@ antd = "^6.0.0"
 
 
 @pytest.fixture
-def mock_npm_install():
-    """Fixture that mocks npm install for tests that only test jac.toml manipulation.
+def mock_bun_install():
+    """Fixture that mocks bun install for tests that only test jac.toml manipulation.
 
-    Use this for CLI tests (add/remove commands) that don't need actual npm packages.
+    Use this for CLI tests (add/remove commands) that don't need actual packages.
     """
     with patch(
         "jac_client.plugin.src.package_installer.PackageInstaller._regenerate_and_install"
     ) as mock:
         yield mock
+
+
+# Backward compatibility alias
+@pytest.fixture
+def mock_npm_install(mock_bun_install: Generator) -> Generator:
+    """Backward compatibility alias for mock_bun_install."""
+    yield mock_bun_install
 
 
 @pytest.fixture

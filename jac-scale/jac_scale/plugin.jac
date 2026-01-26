@@ -15,6 +15,8 @@ import from .factories.deployment_factory { DeploymentTargetFactory }
 import from .factories.registry_factory { ImageRegistryFactory }
 import from .factories.utility_factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
+import from .user_manager { JacScaleUserManager }
+import from jaclang.runtimelib.server { UserManager }
 
 """Pre-hook for jac start command to handle --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
@@ -196,6 +198,12 @@ class JacScalePlugin {
     @hookimpl
     static def get_api_server_class -> type {
         return JacAPIServer;
+    }
+
+    """Provide jac-scale's UserManager."""
+    @hookimpl
+    static def get_user_manager(base_path: str) -> UserManager {
+        return JacScaleUserManager(base_path=base_path);
     }
 }
 

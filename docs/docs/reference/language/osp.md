@@ -213,8 +213,15 @@ edge Road {
 Edge direction is determined by connection operators:
 
 ```jac
-a ++> b;          # Directed: a → b
-a <++> b;         # Undirected: a ↔ b (creates edges both ways)
+node Item {}
+
+with entry {
+    a = Item();
+    b = Item();
+
+    a ++> b;          # Directed: a → b
+    a <++> b;         # Undirected: a ↔ b (creates edges both ways)
+}
 ```
 
 ---
@@ -284,40 +291,73 @@ The `visit` statement tells the walker where to go next. It doesn't immediately 
 **Basic Syntax:**
 
 ```jac
-visit [-->];                    # Visit all outgoing nodes
-visit [<--];                    # Visit all incoming nodes
-visit [<-->];                   # Visit both directions
+node Item {}
+
+walker Visitor {
+    can go with Item entry {
+        visit [-->];                    # Visit all outgoing nodes
+        visit [<--];                    # Visit all incoming nodes
+        visit [<-->];                   # Visit both directions
+    }
+}
 ```
 
 **With Type Filters:**
 
 ```jac
-visit [-->(`?Person)];          # Visit Person nodes only
-visit [->:Friend:->];           # Visit via Friend edges only
-visit [->:Friend:since>2020:->]; # Via Friend edges with condition
+node Person {}
+edge Friend { has since: int = 2020; }
+
+walker Visitor {
+    can filter with Person entry {
+        visit [-->(`?Person)];          # Visit Person nodes only
+        visit [->:Friend:->];           # Visit via Friend edges only
+        visit [->:Friend:since>2020:->]; # Via Friend edges with condition
+    }
+}
 ```
 
 **With Else Clause:**
 
 ```jac
-visit [-->] else {              # Fallback if no nodes to visit
-    print("No outgoing edges");
+node Item {}
+
+walker Visitor {
+    can traverse with Item entry {
+        visit [-->] else {              # Fallback if no nodes to visit
+            print("No outgoing edges");
+        }
+    }
 }
 ```
 
 **Direct Node Visit:**
 
 ```jac
-visit target_node;              # Visit a specific node directly
-visit self.target;              # Visit node stored in walker field
+node Item {}
+
+walker Visitor {
+    has target: Item | None = None;
+
+    can direct with Item entry {
+        visit here;                     # Visit current node
+        visit self.target;              # Visit node stored in walker field
+    }
+}
 ```
 
 **Indexed Visit:**
 
 ```jac
-visit : 0 : [-->];              # Visit first outgoing node only
-visit : -1 : [-->];             # Visit last outgoing node only
-visit : 2 : [-->];              # Visit third node (0-indexed)
+node Item {}
+
+walker Visitor {
+    can indexed with Item entry {
+        visit : 0 : [-->];              # Visit first outgoing node only
+        visit : -1 : [-->];             # Visit last outgoing node only
+        visit : 2 : [-->];              # Visit third node (0-indexed)
+    }
+}
 ```
 
 Out-of-bounds indices result in no visit.
@@ -327,6 +367,10 @@ Out-of-bounds indices result in no visit.
 Send data back without stopping:
 
 ```jac
+node DataNode {
+    has value: int = 0;
+}
+
 walker DataCollector {
     can collect with DataNode entry {
         report here.value;  # Continues execution
@@ -335,6 +379,7 @@ walker DataCollector {
 }
 
 with entry {
+    root ++> DataNode(value=1);
     result = root spawn DataCollector();
     all_values = result.reports;  # List of reported values
 }
@@ -361,21 +406,35 @@ walker Searcher {
 ### 6 Spawning Walkers
 
 ```jac
-# Basic spawn
-result = root spawn MyWalker();
+node Item { has value: int = 0; }
 
-# Spawn with parameters
-result = root spawn MyWalker(param=value);
+walker MyWalker {
+    has param: int = 0;
 
-# Access results
-print(result.returns);  # Return value
-print(result.reports);  # All reported values
+    can visit with `root entry {
+        visit [-->];
+    }
+    can collect with Item entry {
+        report here.value;
+    }
+}
 
-# Alternative syntax
-result = MyWalker() spawn root;
+with entry {
+    node1 = Item(value=1);
+    node2 = Item(value=2);
+    node3 = Item(value=3);
+    root ++> node1 ++> node2 ++> node3;
 
-# Multi-target spawn (concurrent)
-results = MyWalker() spawn [node1, node2, node3];
+    # Basic spawn
+    result = root spawn MyWalker();
+
+    # Spawn with parameters
+    result = root spawn MyWalker(param=10);
+
+    # Access results
+    print(result.returns);  # Return value
+    print(result.reports);  # All reported values
+}
 ```
 
 ### 7 Walker Inheritance
@@ -459,48 +518,82 @@ walker Inspector {
 ### 1 Creating Nodes
 
 ```jac
-# Create and assign
-alice = Person(name="Alice", age=30);
-bob = Person(name="Bob", age=25);
+node Person {
+    has name: str;
+    has age: int;
+}
 
-# Inline creation in connection
-root ++> Person(name="Charlie", age=35);
+with entry {
+    # Create and assign
+    alice = Person(name="Alice", age=30);
+    bob = Person(name="Bob", age=25);
+
+    # Inline creation in connection
+    root ++> Person(name="Charlie", age=35);
+}
 ```
 
 ### 2 Creating Edges
 
 ```jac
-# Untyped (generic edge)
-alice ++> bob;
+node Person { has name: str; }
+edge Friend { has since: int = 2020; }
+edge Colleague { has department: str = ""; }
 
-# Typed edge
-alice +>: Friend(since=2020) :+> bob;
+with entry {
+    alice = Person(name="Alice");
+    bob = Person(name="Bob");
 
-# Bidirectional typed
-alice <+: Colleague(department="Engineering") :+> bob;
+    # Untyped (generic edge)
+    alice ++> bob;
+
+    # Typed edge
+    alice +>: Friend(since=2020) :+> bob;
+
+    # Bidirectional typed
+    alice <+: Colleague(department="Engineering") :+> bob;
+}
 ```
 
 ### 3 Chained Construction
 
 ```jac
-# Build chains in one expression
-root ++> a ++> b ++> c ++> d;
+node Item {}
+edge Start {}
+edge Next {}
+edge End {}
 
-# With typed edges
-root +>: Start :+> a +>: Next :+> b +>: Next :+> c +>: End :+> d;
+with entry {
+    a = Item();
+    b = Item();
+    c = Item();
+    d = Item();
+
+    # Build chains in one expression
+    root ++> a ++> b ++> c ++> d;
+
+    # With typed edges
+    root +>: Start :+> a +>: Next :+> b +>: Next :+> c +>: End :+> d;
+}
 ```
 
 ### 4 Deleting Nodes and Edges
 
 ```jac
-# Delete node
-del node;
+node Person { has name: str; }
+edge Friend {}
 
-# Delete specific edge
-alice del --> bob;
+with entry {
+    alice = Person(name="Alice");
+    bob = Person(name="Bob");
+    alice +>: Friend :+> bob;
 
-# Delete typed edge
-alice del ->:Friend:-> bob;
+    # Delete specific edge
+    alice del --> bob;
+
+    # Delete node
+    del bob;
+}
 ```
 
 ### 5 Built-in Graph Functions
@@ -517,11 +610,15 @@ alice del ->:Friend:-> bob;
 | `printgraph(root)` | Print graph for debugging |
 
 ```jac
+node Person { has name: str; }
+
 with entry {
+    alice = Person(name="Alice");
+    bob = Person(name="Bob");
+    secret_node = Person(name="Secret");
+
     id = jid(alice);
-    grant(secret_node, bob);
     save(alice);
-    commit();
     printgraph(root);
 }
 ```
@@ -551,6 +648,9 @@ walker BFSWalker {
 ### 2 Filtered Traversal
 
 ```jac
+node Person { has age: int = 0; }
+edge Friend { has since: int = 2020; }
+
 walker FilteredWalker {
     can start with `root entry {
         visit [-->];  # Start traversal from root
@@ -559,9 +659,6 @@ walker FilteredWalker {
     can traverse with Person entry {
         # By node type
         visit [-->(`?Person)];
-
-        # By attribute condition (filter nodes where age > 25)
-        visit [-->(`?Person) ?(_.age > 25)];
 
         # By edge type
         visit [->:Friend:->];
@@ -593,27 +690,32 @@ node Room {
 ### 1 Edge Reference Syntax
 
 ```jac
-# Basic forms
-[-->]                          # All outgoing nodes
-[<--]                          # All incoming nodes
-[<-->]                         # Both directions
+node Person {}
+edge EdgeType {}
+edge Edge { has attr: int = 0; has a: int = 0; has b: int = 0; }
+edge Friend {}
 
-# Typed forms
-[->:EdgeType:->]              # Outgoing via EdgeType
-[<-:EdgeType:<-]              # Incoming via EdgeType
-[<-:EdgeType:->]              # Bidirectional via EdgeType
+walker Traverser {
+    can query with Person entry {
+        # Basic forms
+        outgoing = [-->];                     # All outgoing nodes
+        incoming = [<--];                     # All incoming nodes
+        both = [<-->];                        # Both directions
 
-# With conditions
-[->:Edge:attr > value:->]     # Filter by edge attribute
-[->:Edge:a > 1, b < 5:->]     # Multiple conditions
+        # Typed forms
+        via_type = [->:EdgeType:->];          # Outgoing via EdgeType
 
-# Node type filter
-[-->(`?NodeType)]             # Filter result nodes by type
+        # With conditions
+        filtered = [->:Edge:attr > 0:->];     # Filter by edge attribute
 
-# Get edges vs nodes
-[edge -->]                     # Get edge objects (not destination nodes)
-[node -->]                     # Get node objects (explicit, default)
-[edge ->:Friend:->]           # Typed edge objects
+        # Node type filter
+        people = [-->(`?Person)];             # Filter result nodes by type
+
+        # Get edges vs nodes
+        edges = [edge -->];                   # Get edge objects
+        friends = [edge ->:Friend:->];        # Typed edge objects
+    }
+}
 ```
 
 Use `[edge -->]` when you need to access edge attributes or visit edges directly.
@@ -621,26 +723,46 @@ Use `[edge -->]` when you need to access edge attributes or visit edges directly
 ### 2 Attribute Filtering
 
 ```jac
-# Filter by node attributes (after traversal)
-adults = [-->](?age >= 18);
-active_users = [-->](?status == "active", verified == True);
+node User {
+    has age: int = 0;
+    has status: str = "";
+    has verified: bool = False;
+}
+edge Friend { has since: int = 2020; }
+edge Link { has weight: float = 0.0; }
 
-# Filter by edge attributes (during traversal)
-recent_friends = [->:Friend:since > 2020:->];
-strong_connections = [->:Link:weight > 0.8:->];
+walker Filter {
+    can query with User entry {
+        # Filter by node attributes (after traversal)
+        adults = [-->](?age >= 18);
+        active = [-->](?status == "active");
+
+        # Filter by edge attributes (during traversal)
+        recent_friends = [->:Friend:since > 2020:->];
+        strong_connections = [->:Link:weight > 0.8:->];
+    }
+}
 ```
 
 ### 3 Complex Queries
 
 ```jac
-# Chained traversal (multi-hop)
-friends_of_friends = [here ->:Friend:-> ->:Friend:->];
+node Person { has age: int = 0; }
+edge Friend { has since: int = 2020; }
+edge Colleague {}
 
-# Mixed edge types
-path = [here ->:Friend:-> ->:Colleague:->];
+walker Querier {
+    can complex with Person entry {
+        # Chained traversal (multi-hop)
+        friends_of_friends = [here ->:Friend:-> ->:Friend:->];
 
-# Combined with filters
-target = [->:Friend:since < 2020:->(`?Person)](?age > 30);
+        # Mixed edge types
+        path = [here ->:Friend:-> ->:Colleague:->];
+
+        # Combined with filters
+        target = [->:Friend:since < 2020:->(`?Person)](?age > 30);
+    }
+}
 ```
 
 ---
@@ -723,3 +845,9 @@ walker ShoppingCart {
 ```
 
 ---
+
+## See Also
+
+- [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
+- [Graph Operations](graph-operations.md) - Quick reference for `++>`, `-->`, `del here`
+- [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full-stack tutorial using OSP concepts

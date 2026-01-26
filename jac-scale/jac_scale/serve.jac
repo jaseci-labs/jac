@@ -43,9 +43,6 @@ obj JacAPIServer(JServer) {
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None;
 
-    static def create_jwt_token(username: str) -> str;
-    static def validate_jwt_token(token: str) -> (str | None);
-    static def refresh_jwt_token(token: str) -> (str | None);
     def postinit -> None;
     def login(username: str, password: str) -> TransportResponse;
     def register_login_endpoint -> None;
@@ -66,15 +63,6 @@ obj JacAPIServer(JServer) {
     def refresh_token(token: (str | None) = None) -> TransportResponse;
     def register_create_user_endpoint -> None;
     def register_refresh_token_endpoint -> None;
-    def get_sso(platform: str, operation: str) -> (GoogleSSO | None);
-    async def sso_initiate(
-        platform: str, operation: str
-    ) -> (Response | TransportResponse);
-
-    async def sso_callback(
-        request: Request, platform: str, operation: str
-    ) -> TransportResponse;
-
     def register_sso_endpoints -> None;
     def create_walker_callback(
         walker_name: str, has_node_param: bool = False

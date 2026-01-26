@@ -2,7 +2,11 @@
 
 Scale your Jac application with jac-scale on Kubernetes.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [Local API Server](local.md)
+> - Familiar with: Kubernetes basics (kubectl, deployments)
+> - Time: ~30 minutes
 
 ---
 
@@ -357,7 +361,7 @@ spec:
 
 ### Using External Database
 
-```jac
+```toml
 # Configure in jac.toml
 [database]
 url = "${DATABASE_URL}"

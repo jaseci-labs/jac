@@ -17,6 +17,9 @@ Jac is a programming language and superset of both Python and TypeScript/JavaScr
 | **Model complex domains** | Graph-based Object-Spatial Programming for connected data |
 | **Code with AI assistance** | Clean syntax designed for both humans and AI models to read and write |
 
+!!! example "See it in action"
+    Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) - a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
+
 ---
 
 ## Get Started in 5 Minutes
@@ -73,13 +76,13 @@ Note: `jac` is shorthand for `jac run` - both work identically.
 
     ---
 
-    Jump to [Your First App](first-app.md) to build a full-stack todo app.
+    Jump to [Your First Full-Stack AI App](first-fullstack-ai-app.md) - build a complete app in 15 minutes.
 
 - :material-robot:{ .lg .middle } **Working with AI/LLMs?**
 
     ---
 
-    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics.
+    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics, or try the AI phase in [Your First Full-Stack AI App](first-fullstack-ai-app.md).
 
 - :material-book-open-variant:{ .lg .middle } **Want the full picture?**
 
@@ -147,8 +150,8 @@ Jac is designed for developers who want to build AI-powered applications without
 | Resource | Description |
 |----------|-------------|
 | [Installation](install.md) | Detailed setup with IDE configuration |
-| [Hello World](hello-world.md) | Your first Jac program |
-| [First App](first-app.md) | Build a complete application |
+| [Hello World](hello-world.md) | Your first Jac program (2 min) |
+| [First Full-Stack AI App](first-fullstack-ai-app.md) | Complete tutorial: API, frontend, AI, walkers (15 min) |
 | [Tutorials](../tutorials/index.md) | In-depth learning paths |
 | [Language Reference](../reference/language/index.md) | Complete language documentation |
 | [CLI Reference](../reference/cli/index.md) | All `jac` commands |

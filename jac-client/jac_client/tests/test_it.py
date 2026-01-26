@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from .test_helpers import (
-    get_env_with_npm,
+    get_env_with_npm,  # Backward compat alias
     get_free_port,
     get_jac_command,
     wait_for_port,

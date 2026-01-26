@@ -2,7 +2,11 @@
 
 Connect your frontend components to Jac walkers for data fetching and mutations.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [State Management](state.md)
+> - Familiar with: [Your First Graph](../../quick-guide/first-graph.md) (walkers)
+> - Time: ~30 minutes
 
 ---
 
@@ -180,7 +184,7 @@ cl {
 
             <ul>
                 {data and data.map(lambda task: any -> any {
-                    <li key={task["id"]}>{task["title"]}</li>
+                    return <li key={task["id"]}>{task["title"]}</li>;
                 })}
             </ul>
         </div>;
@@ -299,7 +303,7 @@ cl {
                 onClick={lambda -> None { handle_submit({"key": "value"}); }}
                 disabled={submitting}
             >
-                {submitting ? "Submitting..." : "Submit"}
+                {("Submitting..." if submitting else "Submit")}
             </button>
         </div>;
     }
@@ -333,7 +337,7 @@ cl {
         }
 
         return <div className="data">
-            {# Render data #}
+            {data}
         </div>;
     }
 }
@@ -361,7 +365,6 @@ cl {
 
         return <div>
             <p>Last updated: {data and data["timestamp"]}</p>
-            {# ... render data ... #}
         </div>;
     }
 }
@@ -379,12 +382,12 @@ cl {
         (data, connected) = useWalkerStream("watch_updates");
 
         return <div>
-            <span className={connected ? "online" : "offline"}>
-                {connected ? "Connected" : "Disconnected"}
+            <span className={("online" if connected else "offline")}>
+                {("Connected" if connected else "Disconnected")}
             </span>
             <ul>
                 {data.map(lambda item: any -> any {
-                    <li key={item["id"]}>{item["message"]}</li>
+                    return <li key={item["id"]}>{item["message"]}</li>;
                 })}
             </ul>
         </div>;
@@ -472,17 +475,21 @@ cl {
                 <button onClick={lambda -> None { add(); }}>Add</button>
             </div>
 
-            {loading ? <p>Loading...</p> : <ul>
-                {tasks.map(lambda t: any -> any {
-                    return <li
-                        key={t.id}
-                        className={t.completed and "done"}
-                        onClick={lambda -> None { toggle(t.id); }}
-                    >
-                        {t.completed ? "✓ " : "○ "}{t.title}
-                    </li>;
-                })}
-            </ul>}
+            {(
+                <p>Loading...</p>
+            ) if loading else (
+                <ul>
+                    {tasks.map(lambda t: any -> any {
+                        return <li
+                            key={t.id}
+                            className={t.completed and "done"}
+                            onClick={lambda -> None { toggle(t.id); }}
+                        >
+                            {("Y " if t.completed else "O ")}{t.title}
+                        </li>;
+                    })}
+                </ul>
+            )}
         </div>;
     }
 }
@@ -506,3 +513,9 @@ cl {
 
 - [Authentication](auth.md) - Add user login
 - [Routing](routing.md) - Multi-page applications
+- [Build a Todo App](todo-app.md) - Complete full-stack example with AI integration
+
+**Reference:**
+
+- [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
+- [Graph Operations](../../reference/language/graph-operations.md) - Node creation, traversal, deletion

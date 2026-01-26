@@ -2,7 +2,10 @@
 
 Add user login, signup, and protected routes to your Jac application.
 
-**Time:** 30 minutes
+> **Prerequisites**
+>
+> - Completed: [Backend Integration](backend.md)
+> - Time: ~30 minutes
 
 ---
 
@@ -304,7 +307,7 @@ cl {
                 value={email}
                 onChange={lambda e: any -> None { email = e.target.value; }}
                 placeholder="Email"
-                required=True
+                required={True}
             />
 
             <input
@@ -312,7 +315,7 @@ cl {
                 value={password}
                 onChange={lambda e: any -> None { password = e.target.value; }}
                 placeholder="Password"
-                required=True
+                required={True}
             />
 
             <button
@@ -320,7 +323,7 @@ cl {
                 onClick={lambda -> None { handle_submit(); }}
                 disabled={loading}
             >
-                {loading ? "Logging in..." : "Login"}
+                {("Logging in..." if loading else "Login")}
             </button>
 
             <p>
@@ -382,7 +385,7 @@ cl {
                 value={name}
                 onChange={lambda e: any -> None { name = e.target.value; }}
                 placeholder="Full Name"
-                required=True
+                required={True}
             />
 
             <input
@@ -390,7 +393,7 @@ cl {
                 value={email}
                 onChange={lambda e: any -> None { email = e.target.value; }}
                 placeholder="Email"
-                required=True
+                required={True}
             />
 
             <input
@@ -398,7 +401,7 @@ cl {
                 value={password}
                 onChange={lambda e: any -> None { password = e.target.value; }}
                 placeholder="Password"
-                required=True
+                required={True}
             />
 
             <input
@@ -406,7 +409,7 @@ cl {
                 value={confirm_password}
                 onChange={lambda e: any -> None { confirm_password = e.target.value; }}
                 placeholder="Confirm Password"
-                required=True
+                required={True}
             />
 
             <button
@@ -414,7 +417,7 @@ cl {
                 onClick={lambda -> None { handle_submit(); }}
                 disabled={loading}
             >
-                {loading ? "Creating account..." : "Sign Up"}
+                {("Creating account..." if loading else "Sign Up")}
             </button>
 
             <p>
@@ -507,16 +510,20 @@ cl {
         return <div className="navbar">
             <a href="/">Home</a>
 
-            {auth.isAuthenticated ? <>
-                <a href="/dashboard">Dashboard</a>
-                <span>Hi, {auth.user.name}</span>
-                <button onClick={lambda -> None { auth.logout(); }}>
-                    Logout
-                </button>
-            </> : <>
-                <a href="/login">Login</a>
-                <a href="/signup">Sign Up</a>
-            </>}
+            {(
+                <span>
+                    <a href="/dashboard">Dashboard</a>
+                    <span>Hi, {auth.user.name}</span>
+                    <button onClick={lambda -> None { auth.logout(); }}>
+                        Logout
+                    </button>
+                </span>
+            ) if auth.isAuthenticated else (
+                <span>
+                    <a href="/login">Login</a>
+                    <a href="/signup">Sign Up</a>
+                </span>
+            )}
         </div>;
     }
 }

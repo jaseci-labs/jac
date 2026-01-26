@@ -2,9 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.1 (Unreleased)
+## jac-scale 0.1.2 (Unreleased)
 
-## jac-scale 0.1.0 (Latest Release)
+## jac-scale 0.1.1 (Latest Release)
+
+## jac-scale 0.1.0
 
 ### Initial Release
 

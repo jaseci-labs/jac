@@ -123,11 +123,13 @@ jac start main.jac --port 8000
 ### 3 Module Introspection
 
 ```jac
-# List all walkers in module
-walkers = get_module_walkers();
+with entry {
+    # List all walkers in module
+    walkers = get_module_walkers();
 
-# List all functions
-functions = get_module_functions();
+    # List all functions
+    functions = get_module_functions();
+}
 ```
 
 ### 4 Transport Layer
@@ -165,124 +167,148 @@ cl glob THEME: str = "dark";
 In client components, `has` creates reactive state:
 
 ```jac
-def:pub TodoApp -> any {
-    has todos: list = [];
-    has input_text: str = "";
+cl {
+    def:pub TodoApp() -> any {
+        has todos: list = [];
+        has input_text: str = "";
 
-    def add_todo -> None {
-        if self.input_text {
-            self.todos.append({"text": self.input_text, "done": False});
-            self.input_text = "";
+        def add_todo() -> None {
+            if input_text {
+                todos = todos + [{"text": input_text, "done": False}];
+                input_text = "";
+            }
         }
-    }
 
-    return (
-        <div>
-            <input
-                value={self.input_text}
-                oninput={lambda e: self.input_text = e.target.value}
-            />
-            <button onclick={self.add_todo}>Add</button>
-            <ul>
-                {[<li>{todo["text"]}</li> for todo in self.todos]}
-            </ul>
-        </div>
-    );
+        return <div>
+            <input value={input_text} />
+            <button>Add</button>
+            <ul>{todos}</ul>
+        </div>;
+    }
 }
 ```
 
 ### 3 Effects and Lifecycle
 
+Use `can with entry` for mount effects and `can with exit` for cleanup:
+
+| Syntax | Behavior | React Equivalent |
+|--------|----------|------------------|
+| `can with entry { }` | Run on mount | `useEffect(() => { }, [])` |
+| `async can with entry { }` | Async mount | `useEffect(() => { (async () => { })(); }, [])` |
+| `can with exit { }` | Run on unmount | `useEffect(() => { return () => { }; }, [])` |
+| `can with [dep] entry { }` | Run when dep changes | `useEffect(() => { }, [dep])` |
+| `can with (a, b) entry { }` | Multiple deps | `useEffect(() => { }, [a, b])` |
+
 ```jac
-def:pub DataLoader -> any {
-    has data: list = [];
-    has loading: bool = True;
+cl {
+    def:pub DataLoader() -> any {
+        has data: list = [];
+        has loading: bool = True;
 
-    useEffect(lambda: {
-        fetch_data();
-    }, []);
+        # Fetch data on mount (async automatically wrapped in IIFE)
+        async can with entry {
+            response = await fetch("/api/data");
+            data = await response.json();
+            loading = False;
+        }
 
-    async def fetch_data -> None {
-        response = await fetch("/api/data");
-        self.data = await response.json();
-        self.loading = False;
+        if loading {
+            return <div>Loading...</div>;
+        }
+
+        return <div>{data}</div>;
     }
 
-    if self.loading {
-        return <div>Loading...</div>;
-    }
+    def:pub UserProfile(userId: str) -> any {
+        has user: dict = {};
 
-    return <div>{[<p>{item}</p> for item in self.data]}</div>;
+        # Re-fetch when userId changes
+        async can with [userId] entry {
+            user = await fetch_user(userId);
+        }
+
+        # Cleanup subscriptions on unmount
+        can with exit {
+            unsubscribe();
+        }
+
+        return <div>{user.name}</div>;
+    }
 }
 ```
 
 ### 4 JSX Syntax
 
 ```jac
-# Elements
-<div>content</div>
-<Component prop="value" />
+cl {
+    def:pub JsxExamples() -> any {
+        has variable: str = "text";
+        has condition: bool = True;
+        has items: list = [];
+        has props: dict = {};
 
-# Attributes
-<input type="text" value={variable} />
-<button onclick={handler}>Click</button>
+        return <div>
+            <input type="text" value={variable} />
+            <button>Click</button>
 
-# Conditionals
-{condition && <div>Shown if true</div>}
-{condition ? <Yes /> : <No />}
+            {condition and <div>Shown if true</div>}
 
-# Lists
-{[<Item key={i} data={item} /> for (i, item) in enumerate(items)]}
+            {items}
 
-# Fragments
-<>
-    <Child1 />
-    <Child2 />
-</>
-
-# Spread attributes
-<button {...props}>Click</button>
-<div {...baseStyle} {...additionalProps} />
+            <button {...props}>Click</button>
+        </div>;
+    }
+}
 ```
 
 ### 5 Styling Patterns
 
 ```jac
-import from "@jac-client/utils" { cn }
+cl {
+    import from "@jac-client/utils" { cn }
 
-# Inline styles
-<div style={{"color": "red", "fontSize": "16px"}}>Styled</div>
+    def:pub StylingExamples() -> any {
+        has condition: bool = True;
+        has hasError: bool = False;
+        has isSuccess: bool = True;
 
-# Tailwind classes
-<div className="p-4 bg-blue-500 text-white">Tailwind</div>
+        # Conditional classes with cn()
+        className = cn(
+            "base-class",
+            condition and "active",
+            {"error": hasError, "success": isSuccess}
+        );
 
-# Conditional classes with cn()
-className = cn(
-    "base-class",
-    condition && "active",
-    {"error": hasError, "success": isSuccess}
-);
-<div className={className}>Dynamic</div>
+        return <div>
+            <div style={{"color": "red", "fontSize": "16px"}}>Styled</div>
+            <div className="p-4 bg-blue-500 text-white">Tailwind</div>
+            <div className={className}>Dynamic</div>
+        </div>;
+    }
+}
 ```
 
 ### 6 Routing
 
 ```jac
-import from react-router-dom { BrowserRouter, Routes, Route, Link }
+cl {
+    import from "react-router-dom" { BrowserRouter, Routes, Route, Link }
 
-def:pub App -> any {
-    return (
-        <BrowserRouter>
-            <nav>
-                <Link to="/">Home</Link>
-                <Link to="/about">About</Link>
-            </nav>
-            <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-            </Routes>
-        </BrowserRouter>
-    );
+    def:pub App() -> any {
+        return (
+            <BrowserRouter>
+                <nav>
+                    <Link to="/">Home</Link>
+                    <Link to="/about">About</Link>
+                </nav>
+                <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/about" element={<About />} />
+                </Routes>
+            </BrowserRouter>
+        );
+    }
 }
 ```
 
@@ -441,9 +467,12 @@ node User {
     has name: str;
 }
 
-# Manual save
-save(user_node);
-commit();
+with entry {
+    user_node = User(name="Alice");
+    # Manual save
+    save(user_node);
+    commit();
+}
 ```
 
 ### 3 ExecutionContext
@@ -490,3 +519,16 @@ Provides:
 - Graph visualization
 
 ---
+
+## Learn More
+
+**Tutorials:**
+
+- [Full-Stack Project Setup](../../tutorials/fullstack/setup.md) - Create your first full-stack project
+- [React-Style Components](../../tutorials/fullstack/components.md) - Build UI components
+- [Backend Integration](../../tutorials/fullstack/backend.md) - Connect frontend to walkers
+- [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Complete example
+
+**Related Reference:**
+
+- [jac-client Reference](../plugins/jac-client.md) - Complete API documentation

@@ -157,41 +157,26 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
 # ===============================================================================
 # Post-create Hook for Client Template
 # ===============================================================================
-"""Post-create hook to ensure Node.js is installed and optionally install npm packages."""
+"""Post-create hook to ensure Bun is installed and optionally install packages."""
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.utils.node_installer { NodeInstaller }
     import from jaclang.cli.console { console }
-    import shutil;
+    import from jac_client.plugin.utils { ensure_bun_available }
 
-    # First, ensure Node.js is installed
+    # First, ensure Bun is installed (prompt to install if not)
     console.print();
-    with console.status(
-        "[cyan]Checking Node.js installation...[/cyan]", spinner="dots"
-    ) as status {
-        node_result = NodeInstaller.ensure_node_installed(interactive=True);
-        node_installed = node_result[0];
-        message = node_result[1];
-        was_just_installed = node_result[2];
-    }
-
-    if not node_installed {
-        console.warning(f"Node.js is required for client development");
-        console.print(f"\n  {message}", file=sys.stderr);
-        console.print(
-            "  After installing Node.js, run: jac add --cl\n",
-            style="muted",
-            file=sys.stderr
-        );
+    if not ensure_bun_available() {
+        console.warning("Bun is required for client development");
+        console.print("  After installing Bun, run: jac add --cl\n", style="muted");
         return;
     }
 
-    console.print(f"  ✔ {message}", style="success");
+    console.print("  ✔ Bun is installed", style="success");
 
-    # Check if npm package installation should be skipped
+    # Check if package installation should be skipped
     if os.environ.get("JAC_CLIENT_SKIP_NPM_INSTALL") {
         console.print(
-            "\n  ⏭ Skipping npm package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
+            "\n  ⏭ Skipping package installation (JAC_CLIENT_SKIP_NPM_INSTALL is set)",
             style="muted"
         );
         console.print(
@@ -223,7 +208,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         client_dir = bundler._get_client_dir();
         client_dir.mkdir(parents=True, exist_ok=True);
 
-        # Copy package.json to .jac/client/ for npm install
+        # Copy package.json to .jac/client/ for bun install
         configs_package_json = client_dir / 'configs' / 'package.json';
         build_package_json = client_dir / 'package.json';
 
@@ -237,38 +222,38 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         shutil.copy2(configs_package_json, build_package_json);
 
-        # Run npm install using NodeInstaller to handle NVM environment
-        try {
-            console.print("  Installing npm packages...", style="cyan");
-            with console.status(
-                "[cyan]Installing npm packages...[/cyan]", spinner="dots"
-            ) as status {
-                NodeInstaller.run_npm_with_nvm(
-                    ['install'], cwd=client_dir, timeout=300
-                );
-            }
-
-            # Move package-lock.json to configs/ if it was created
-            build_package_lock = client_dir / 'package-lock.json';
-            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
-            if build_package_lock.exists() {
-                if configs_package_lock.exists() {
-                    configs_package_lock.unlink();
-                }
-                shutil.move(str(build_package_lock), str(configs_package_lock));
-            }
-
-            console.print("  ✔ npm packages installed", style="success");
-        } except subprocess.CalledProcessError as e {
-            console.warning(f"Failed to install packages: {e.stderr}");
+        # Run bun install (ensure bun is available first)
+        import from jac_client.plugin.utils { ensure_bun_available }
+        if not ensure_bun_available() {
+            console.warning("Bun is required. Install manually: https://bun.sh");
             console.print(
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
             );
-        } except FileNotFoundError {
-            console.warning(
-                "npm command not found. This may require reloading your shell."
-            );
+            # Clean up temporary package.json
+            if build_package_json.exists() {
+                build_package_json.unlink();
+            }
+            return;
+        }
+
+        try {
+            console.print("\n  ⏳ Installing packages...\n", style="cyan");
+            subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
+
+            # Move bun.lockb to configs/ if it was created
+            build_bun_lockb = client_dir / 'bun.lockb';
+            configs_bun_lockb = client_dir / 'configs' / 'bun.lockb';
+            if build_bun_lockb.exists() {
+                if configs_bun_lockb.exists() {
+                    configs_bun_lockb.unlink();
+                }
+                shutil.move(str(build_bun_lockb), str(configs_bun_lockb));
+            }
+
+            console.print("  ✔ Packages installed", style="success");
+        } except subprocess.CalledProcessError as e {
+            console.warning(f"Failed to install packages: {e}");
             console.print(
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
@@ -284,19 +269,6 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         console.print(
             "  💡 You can install packages later with: jac add --cl\n", style="muted"
         );
-    }
-
-    # If Node.js was just installed, offer to restart terminal for full integration
-    if was_just_installed {
-        console.print();
-        console.info("Node.js was just installed via NVM");
-        console.print(
-            "\n  For Node.js to be available in your current shell:", style="muted"
-        );
-        console.print("    1. Run: source ~/.nvm/nvm.sh", style="muted");
-        console.print("    2. Or restart your terminal", style="muted");
-        console.print("\n  💡 npm commands from jac work immediately", style="info");
-        console.print();
     }
 }
 
@@ -357,39 +329,25 @@ def _npm_remove_handler(
     _regenerate_and_install(project_dir);
 }
 
-"""Regenerate package.json from jac.toml and run npm install."""
+"""Regenerate package.json from jac.toml and run bun install."""
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import from jac_client.plugin.utils.node_installer { NodeInstaller }
+    import from jac_client.plugin.utils { ensure_bun_available }
     import shutil;
 
-    # Ensure Node.js is installed before proceeding
-    node_result = NodeInstaller.ensure_node_installed(interactive=True);
-    node_installed = node_result[0];
-    message = node_result[1];
-    was_just_installed = node_result[2];
-
-    if not node_installed {
-        raise RuntimeError(
-            f"Node.js installation required:\n{message}\n" + "Please install Node.js and try again."
-        ) ;
-    }
-
-    # Inform user if Node.js was just installed
-    if was_just_installed {
-        print(
-            "\nNote: Node.js was just installed. npm commands will work via NVM sourcing."
-        );
+    # Ensure Bun is installed before proceeding (prompt to install if not)
+    if not ensure_bun_available() {
+        raise RuntimeError("Bun is required. Install manually: https://bun.sh") from None ;
     }
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
 
-    # Install to .jac/client/ directory where babel processor expects it
+    # Install to .jac/client/ directory
     client_dir = bundler._get_client_dir();
     client_dir.mkdir(parents=True, exist_ok=True);
 
-    # Copy package.json to .jac/client/ for npm install
+    # Copy package.json to .jac/client/ for bun install
     configs_package_json = client_dir / 'configs' / 'package.json';
     build_package_json = client_dir / 'package.json';
     if configs_package_json.exists() {
@@ -397,27 +355,23 @@ def _regenerate_and_install(project_dir: Path) -> None {
     }
 
     try {
-        # Use NodeInstaller.run_npm_with_nvm to handle NVM environment
-        NodeInstaller.run_npm_with_nvm(["install"], cwd=client_dir, timeout=300);
+        # Run bun install
+        subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
     } except subprocess.CalledProcessError as e {
-        raise RuntimeError(f"Failed to install npm packages: {e.stderr}") from e ;
-    } except FileNotFoundError {
-        raise RuntimeError(
-            "npm command not found. This may require reloading your shell after Node.js installation."
-        ) from None ;
+        raise RuntimeError(f"Failed to install packages: {e}") from e ;
     } finally {
         # Clean up temporary package.json
         if build_package_json.exists() {
             build_package_json.unlink();
         }
-        # Move package-lock.json to configs/ if it exists
-        build_package_lock = client_dir / 'package-lock.json';
-        if build_package_lock.exists() {
-            configs_package_lock = client_dir / 'configs' / 'package-lock.json';
-            if configs_package_lock.exists() {
-                configs_package_lock.unlink();
+        # Move bun.lockb to configs/ if it exists
+        build_bun_lockb = client_dir / 'bun.lockb';
+        if build_bun_lockb.exists() {
+            configs_bun_lockb = client_dir / 'configs' / 'bun.lockb';
+            if configs_bun_lockb.exists() {
+                configs_bun_lockb.unlink();
             }
-            build_package_lock.rename(configs_package_lock);
+            build_bun_lockb.rename(configs_bun_lockb);
         }
     }
 }

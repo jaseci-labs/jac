@@ -130,6 +130,9 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         source_path = Path(file_path).resolve();
         source_key = str(source_path);
 
+        # Clear any stale errors from previous compilations (important for test isolation)
+        Jac.program.errors_had.clear();
+
         # Clear existing module from hub to force recompilation
         if source_key in Jac.program.mod.hub {
             del Jac.program.mod.hub[source_key];

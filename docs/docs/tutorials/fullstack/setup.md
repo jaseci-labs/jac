@@ -2,15 +2,12 @@
 
 Create a Jac project with frontend and backend in one codebase.
 
-**Time:** 15 minutes
-
----
-
-## Prerequisites
-
-```bash
-pip install jaseci  # Includes jac-client
-```
+> **Prerequisites**
+>
+> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Familiar with: HTML/CSS basics, React concepts helpful
+> - Install: `pip install jaseci`
+> - Time: ~15 minutes
 
 ---
 
@@ -128,7 +125,9 @@ The `cl { }` block marks frontend (client) code:
 
 ```jac
 # This is backend code (runs on server)
-walker api_endpoint { ... }
+walker api_endpoint {
+    can visit with `root entry { report {}; }
+}
 
 # This is frontend code (runs in browser)
 cl {
@@ -154,12 +153,16 @@ cl {
 # main.jac - everything in one file
 
 # Backend
-node User { has name: str; }
-walker get_user { ... }
+node User { has name: str = ""; }
+walker get_user {
+    can visit with `root entry { report {}; }
+}
 
 # Frontend
 cl {
-    def:pub app() -> any { ... }
+    def:pub app() -> any {
+        return <div>App</div>;
+    }
 }
 ```
 
@@ -190,7 +193,9 @@ myapp/
 # api.jac
 import from models { User, Todo }
 
-walker get_user { ... }
+walker get_user {
+    can visit with `root entry { report {}; }
+}
 ```
 
 ### Frontend Imports
@@ -240,7 +245,7 @@ cl {
 
     def:pub app() -> any {
         items = lodash.sortBy(["c", "a", "b"]);
-        return <ul>{items.map(lambda i: any -> any { <li>{i}</li> })}</ul>;
+        return <ul>{items.map(lambda i: any -> any { return <li>{i}</li>; })}</ul>;
     }
 }
 ```
@@ -306,3 +311,4 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
+- [Build a Todo App](todo-app.md) - Complete full-stack example with AI

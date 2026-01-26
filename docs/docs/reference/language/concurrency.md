@@ -67,30 +67,58 @@ The `flow/wait` pattern provides explicit concurrency control. `flow` launches a
 The `flow` keyword launches a function call as a background task and returns a future immediately. Use it when you have independent operations that can run in parallel.
 
 ```jac
-future = flow expensive_computation();
+def expensive_computation -> int {
+    return 42;
+}
 
-# Do other work while computation runs
-other_result = do_something_else();
+def do_something_else -> int {
+    return 1;
+}
 
-# Wait for result when needed
-result = wait future;
+with entry {
+    future = flow expensive_computation();
+
+    # Do other work while computation runs
+    other_result = do_something_else();
+
+    # Wait for result when needed
+    result = wait future;
+}
 ```
 
 ### 2 Parallel Operations
 
 ```jac
-# Launch multiple operations in parallel
-future1 = flow fetch_users();
-future2 = flow fetch_orders();
-future3 = flow fetch_inventory();
+def fetch_users -> list {
+    return [];
+}
 
-# Continue with other work
-process_local_data();
+def fetch_orders -> list {
+    return [];
+}
 
-# Collect all results
-users = wait future1;
-orders = wait future2;
-inventory = wait future3;
+def fetch_inventory -> list {
+    return [];
+}
+
+def process_local_data {
+    # Process local data here
+}
+
+with entry {
+    # Launch multiple operations in parallel
+    future1 = flow fetch_users();
+    future2 = flow fetch_orders();
+    future3 = flow fetch_inventory();
+
+    # Continue with other work
+    process_local_data();
+
+    # Collect all results
+    users = wait future1;
+    orders = wait future2;
+    inventory = wait future3;
+}
 ```
 
 ### 3 flow vs async
@@ -102,3 +130,10 @@ inventory = wait future3;
 | Blocking | Non-blocking | Can block threads |
 
 ---
+
+## Learn More
+
+**Related Reference:**
+
+- [Part I: Foundation](foundation.md) - Control flow basics
+- [Part V: AI Integration](ai-integration.md) - Async LLM calls

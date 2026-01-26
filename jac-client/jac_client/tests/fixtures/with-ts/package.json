@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "npm run compile && vite build",
+    "build": "vite build",
     "dev": "vite dev",
-    "preview": "vite preview",
-    "compile": "babel compiled --out-dir build --extensions \".jsx,.js\" --out-file-extension .js"
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
@@ -15,10 +14,6 @@
   "type": "module",
   "devDependencies": {
     "vite": "^6.4.1",
-    "@babel/cli": "^7.28.3",
-    "@babel/core": "^7.28.5",
-    "@babel/preset-env": "^7.28.5",
-    "@babel/preset-react": "^7.28.5",
     "@vitejs/plugin-react": "^4.2.1",
     "typescript": "^5.3.3",
     "@types/react": "^18.2.45",
@@ -28,16 +23,5 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.30.1"
-  },
-  "babel": {
-    "presets": [
-      [
-        "@babel/preset-env",
-        {
-          "modules": false
-        }
-      ],
-      "@babel/preset-react"
-    ]
   }
 }

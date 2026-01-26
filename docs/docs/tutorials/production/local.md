@@ -2,7 +2,10 @@
 
 Run your Jac walkers as a production-ready HTTP API server.
 
-**Time:** 15 minutes
+> **Prerequisites**
+>
+> - Completed: [Your First App](../../quick-guide/first-app.md)
+> - Time: ~15 minutes
 
 ---
 
