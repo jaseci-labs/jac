@@ -7,22 +7,24 @@ JAC Scale provides a storage abstraction layer for managing file uploads and sto
 ```jac
 import from jac_scale.factories.storage_factory { StorageFactory }
 
-# Get default storage (local filesystem)
-storage = StorageFactory.get_default({'base_path': './uploads'});
+with entry {
+    # Get default storage (local filesystem)
+    storage = StorageFactory.get_default({'base_path': './uploads'});
 
-# Upload a file
-storage.upload('/path/to/file.txt', 'documents/file.txt');
+    # Upload a file
+    storage.upload('/path/to/file.txt', 'documents/file.txt');
 
-# Download a file
-content = storage.download('documents/file.txt');
+    # Download a file
+    content = storage.download('documents/file.txt');
 
-# Check if file exists
-if storage.exists('documents/file.txt') {
-    print("File exists!");
+    # Check if file exists
+    if storage.exists('documents/file.txt') {
+        print("File exists!");
+    }
+
+    # Delete a file
+    storage.delete('documents/file.txt');
 }
-
-# Delete a file
-storage.delete('documents/file.txt');
 ```
 
 ## StorageFactory
@@ -34,14 +36,16 @@ The `StorageFactory` creates storage instances based on configuration.
 ```jac
 import from jac_scale.factories.storage_factory { StorageFactory }
 
-# Create local storage with custom path
-storage = StorageFactory.create('local', {'base_path': '/data/uploads'});
+with entry {
+    # Create local storage with custom path
+    storage = StorageFactory.create('local', {'base_path': '/data/uploads'});
 
-# Get default storage (reads JAC_STORAGE_TYPE env var, defaults to 'local')
-storage = StorageFactory.get_default();
+    # Get default storage (reads JAC_STORAGE_TYPE env var, defaults to 'local')
+    storage = StorageFactory.get_default();
 
-# With configuration
-storage = StorageFactory.get_default({'base_path': './uploads', 'create_dirs': True});
+    # With configuration
+    storage = StorageFactory.get_default({'base_path': './uploads', 'create_dirs': True});
+}
 ```
 
 ### Supported Storage Types
@@ -62,14 +66,17 @@ All storage implementations provide these methods:
 Upload a file to storage.
 
 ```jac
-# From file path
-storage.upload('/tmp/myfile.txt', 'documents/myfile.txt');
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-# From file object (e.g., FastAPI UploadFile)
-storage.upload(file.file, 'documents/uploaded.txt');
+with entry {
+    storage = StorageFactory.get_default();
 
-# With metadata
-storage.upload(source, 'path/file.txt', {'author': 'john'});
+    # From file path
+    storage.upload('/tmp/myfile.txt', 'documents/myfile.txt');
+
+    # With metadata
+    storage.upload('/tmp/file.txt', 'path/file.txt', {'author': 'john'});
+}
 ```
 
 **Parameters:**
@@ -85,14 +92,17 @@ storage.upload(source, 'path/file.txt', {'author': 'john'});
 Download a file from storage.
 
 ```jac
-# Get file content as bytes
-content = storage.download('documents/file.txt');
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-# Download to a file path
-storage.download('documents/file.txt', '/tmp/downloaded.txt');
+with entry {
+    storage = StorageFactory.get_default();
 
-# Download to a file object
-storage.download('documents/file.txt', output_file);
+    # Get file content as bytes
+    content = storage.download('documents/file.txt');
+
+    # Download to a file path
+    storage.download('documents/file.txt', '/tmp/downloaded.txt');
+}
 ```
 
 **Parameters:**
@@ -107,9 +117,14 @@ storage.download('documents/file.txt', output_file);
 Delete a file from storage.
 
 ```jac
-deleted = storage.delete('documents/file.txt');
-if deleted {
-    print("File deleted");
+import from jac_scale.factories.storage_factory { StorageFactory }
+
+with entry {
+    storage = StorageFactory.get_default();
+    deleted = storage.delete('documents/file.txt');
+    if deleted {
+        print("File deleted");
+    }
 }
 ```
 
@@ -120,8 +135,13 @@ if deleted {
 Check if a file exists.
 
 ```jac
-if storage.exists('documents/file.txt') {
-    print("File exists");
+import from jac_scale.factories.storage_factory { StorageFactory }
+
+with entry {
+    storage = StorageFactory.get_default();
+    if storage.exists('documents/file.txt') {
+        print("File exists");
+    }
 }
 ```
 
@@ -132,14 +152,20 @@ if storage.exists('documents/file.txt') {
 List files in a directory.
 
 ```jac
-# List files in a folder
-for file in storage.list_files('documents/') {
-    print(file);
-}
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-# List recursively
-for file in storage.list_files('documents/', recursive=True) {
-    print(file);
+with entry {
+    storage = StorageFactory.get_default();
+
+    # List files in a folder
+    for file in storage.list_files('documents/') {
+        print(file);
+    }
+
+    # List recursively
+    for file in storage.list_files('documents/', recursive=True) {
+        print(file);
+    }
 }
 ```
 
@@ -155,9 +181,14 @@ for file in storage.list_files('documents/', recursive=True) {
 Get file metadata.
 
 ```jac
-metadata = storage.get_metadata('documents/file.txt');
-print(f"Size: {metadata['size']} bytes");
-print(f"Modified: {metadata['modified']}");
+import from jac_scale.factories.storage_factory { StorageFactory }
+
+with entry {
+    storage = StorageFactory.get_default();
+    metadata = storage.get_metadata('documents/file.txt');
+    print(f"Size: {metadata['size']} bytes");
+    print(f"Modified: {metadata['modified']}");
+}
 ```
 
 **Returns:** Dict with keys: `size`, `modified`, `created`, `is_dir`, `name`
@@ -167,10 +198,15 @@ print(f"Modified: {metadata['modified']}");
 Get a URL or path to access the file.
 
 ```jac
-url = storage.get_url('documents/file.txt');
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-# With custom expiry (for cloud storage)
-url = storage.get_url('documents/file.txt', expiry_seconds=7200);
+with entry {
+    storage = StorageFactory.get_default();
+    url = storage.get_url('documents/file.txt');
+
+    # With custom expiry (for cloud storage)
+    url = storage.get_url('documents/file.txt', expiry_seconds=7200);
+}
 ```
 
 **Parameters:**
@@ -185,11 +221,17 @@ url = storage.get_url('documents/file.txt', expiry_seconds=7200);
 Copy or move files within storage.
 
 ```jac
-# Copy a file
-storage.copy('documents/file.txt', 'backup/file.txt');
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-# Move a file
-storage.move('documents/old.txt', 'archive/old.txt');
+with entry {
+    storage = StorageFactory.get_default();
+
+    # Copy a file
+    storage.copy('documents/file.txt', 'backup/file.txt');
+
+    # Move a file
+    storage.move('documents/old.txt', 'archive/old.txt');
+}
 ```
 
 **Returns:** True if successful, False otherwise
@@ -199,12 +241,17 @@ storage.move('documents/old.txt', 'archive/old.txt');
 Get storage information and check availability.
 
 ```jac
-info = storage.get_info();
-print(f"Type: {info['type']}");
-print(f"Base path: {info['base_path']}");
+import from jac_scale.factories.storage_factory { StorageFactory }
 
-if storage.is_available() {
-    print("Storage is ready");
+with entry {
+    storage = StorageFactory.get_default();
+    info = storage.get_info();
+    print(f"Type: {info['type']}");
+    print(f"Base path: {info['base_path']}");
+
+    if storage.is_available() {
+        print("Storage is ready");
+    }
 }
 ```
 
@@ -345,14 +392,16 @@ walker delete_file {
 ```jac
 import from jac_scale.abstractions.config.storage_config { LocalStorageConfig }
 
-# From dict
-config = LocalStorageConfig.from_dict(LocalStorageConfig, {
-    'base_path': '/data/uploads',
-    'create_dirs': True
-});
+with entry {
+    # From dict
+    config = LocalStorageConfig.from_dict(LocalStorageConfig, {
+        'base_path': '/data/uploads',
+        'create_dirs': True
+    });
 
-# From environment variables
-config = LocalStorageConfig.from_env(LocalStorageConfig);
+    # From environment variables
+    config = LocalStorageConfig.from_env(LocalStorageConfig);
+}
 ```
 
 ## TypeScript Client Example
