@@ -1,5 +1,4 @@
 # Pages
-cl import from react { useEffect }
 cl import from .styled {
     Container,
     Card,
@@ -17,7 +16,9 @@ cl {
     def:pub app -> any {
         has count: int = 0;
 
-        useEffect(lambda -> None { console.log("Count changed: ", count);}, [count]);
+        can with count entry {
+            console.log("Count changed: ", count);
+        }
 
         handleIncrement = lambda e: any  -> None { count = count + 1;};
 

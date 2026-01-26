@@ -1,5 +1,4 @@
 # Pages
-cl import from react { useEffect }
 # Import image using the @jac-client/assets alias
 cl import from "@jac-client/assets/burger.png" {
     default as burgerImage
@@ -8,7 +7,11 @@ cl import from "@jac-client/assets/burger.png" {
 cl {
     def:pub app -> any {
         has count: int = 0;
-        useEffect(lambda -> None { console.log("Count: ", count);}, [count]);
+
+        can with count entry {
+            console.log("Count: ", count);
+        }
+
         return
             <div
                 style={{

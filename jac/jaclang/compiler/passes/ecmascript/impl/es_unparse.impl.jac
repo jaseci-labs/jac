@@ -216,6 +216,10 @@ impl JSCodeGenerator.gen_chain_expression(<>node: es.ChainExpression) -> str {
 """Generate call expression."""
 impl JSCodeGenerator.gen_call_expression(<>node: es.CallExpression) -> str {
     callee = self.generate(<>node.callee);
+    # Wrap arrow/function expressions in parentheses for IIFE pattern
+    if isinstance(<>node.callee, (es.ArrowFunctionExpression, es.FunctionExpression)) {
+        callee = f"({callee})";
+    }
     optional = '?.' if <>node.optional else '';
     if isinstance(<>node.arguments, es.ObjectExpression) {
         args = self.generate(<>node.arguments);

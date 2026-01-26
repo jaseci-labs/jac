@@ -11,8 +11,8 @@ Start with the simplest full-stack app: functions for server logic, minimal UI i
 Create a project:
 
 ```bash
-mkdir my-todo && cd my-todo
-jac create . --use fullstack --skip
+jac create my-todo --use client --skip
+cd my-todo
 ```
 
 Create `styles.css` in your project:
@@ -33,12 +33,13 @@ Replace `main.jac` with:
 
 ```jac
 import from uuid { uuid4 }
+cl import "./styles.css";
 
 # Data stored in graph nodes (persists across restarts)
 node Todo {
-    has id: str;
-    has title: str;
-    has done: bool = False;
+    has id: str,
+        title: str,
+        done: bool = False;
 }
 
 # Server functions - def:pub creates HTTP endpoints automatically
@@ -49,13 +50,13 @@ def:pub add_todo(title: str) -> dict {
 }
 
 """Get all todos."""
-def:pub get_todos() -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root -->](`?Todo)];
+def:pub get_todos -> list {
+    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](`?Todo)];
 }
 
 """Toggle a todo's done status."""
 def:pub toggle_todo(id: str) -> dict {
-    for todo in [root -->](`?Todo) {
+    for todo in [root-->](`?Todo) {
         if todo.id == id {
             todo.done = not todo.done;
             return {"id": todo.id, "title": todo.title, "done": todo.done};
@@ -66,7 +67,7 @@ def:pub toggle_todo(id: str) -> dict {
 
 """Delete a todo."""
 def:pub delete_todo(id: str) -> dict {
-    for todo in [root -->](`?Todo) {
+    for todo in [root-->](`?Todo) {
         if todo.id == id {
             del todo;
             return {"deleted": id};
@@ -76,56 +77,79 @@ def:pub delete_todo(id: str) -> dict {
 }
 
 # Frontend - minimal UI in the same file
-cl {
-    import from react { useEffect }
-    import "./styles.css";
+cl def:pub app -> any {
+    has items: list = [],
+        text: str = "";
 
-    def:pub app -> any {
-        has items: list = [];
-        has text: str = "";
-
-        useEffect(lambda -> None {
-            async def load -> None { items = await get_todos(); }
-            load();
-        }, []);
-
-        async def add -> None {
-            if text.trim() {
-                todo = await add_todo(text.trim());
-                items = items.concat([todo]);
-                text = "";
-            }
-        }
-
-        async def toggle(id: str) -> None {
-            await toggle_todo(id);
-            items = items.map(lambda t: any -> any {
-                return {"id": t.id, "title": t.title, "done": not t.done} if t.id == id else t;
-            });
-        }
-
-        async def remove(id: str) -> None {
-            await delete_todo(id);
-            items = items.filter(lambda t: any -> bool { return t.id != id; });
-        }
-
-        return <div class="container">
-            <h1>Todo App</h1>
-            <div class="input-row">
-                <input class="input" value={text} onChange={lambda e: any -> None { text = e.target.value; }}
-                    onKeyPress={lambda e: any -> None { if e.key == "Enter" { add(); }}}
-                    placeholder="What needs to be done?" />
-                <button class="btn-add" onClick={add}>Add</button>
-            </div>
-            {items.map(lambda t: any -> any {
-                return <div key={t.id} class="todo-item">
-                    <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
-                    <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
-                    <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
-                </div>;
-            })}
-        </div>;
+    async can with entry {
+        items = await get_todos();
     }
+
+    async def add -> None {
+        if text.trim() {
+            todo = await add_todo(text.trim());
+            items = items.concat([todo]);
+            text = "";
+        }
+    }
+
+    async def toggle(id: str) -> None {
+        await toggle_todo(id);
+        items = items.map(
+            lambda t: any  -> any { return {
+                "id": t.id,
+                "title": t.title,
+                "done": not t.done
+            }
+            if t.id == id
+            else t; }
+        );
+    }
+
+    async def remove(id: str) -> None {
+        await delete_todo(id);
+        items = items.filter(lambda t: any  -> bool { return t.id != id; });
+    }
+
+    return
+        <div class="container">
+            <h1>
+                Todo App
+            </h1>
+            <div class="input-row">
+                <input
+                    class="input"
+                    value={text}
+                    onChange={lambda e: any  -> None { text = e.target.value;}}
+                    onKeyPress={lambda e: any  -> None { if e.key == "Enter" {
+                        add();
+                    }}}
+                    placeholder="What needs to be done?"
+                />
+                <button class="btn-add" onClick={add}>
+                    Add
+                </button>
+            </div>
+            {items.map(
+                lambda t: any  -> any { return
+                    <div key={t.id} class="todo-item">
+                        <input
+                            type="checkbox"
+                            checked={t.done}
+                            onChange={lambda -> None { toggle(t.id);}}
+                        />
+                        <span class={"todo-title " + ("todo-done" if t.done else "")}>
+                            {t.title}
+                        </span>
+                        <button
+                            class="btn-delete"
+                            onClick={lambda -> None { remove(t.id);}}
+                        >
+                            X
+                        </button>
+                    </div>; }
+            )}
+        </div>;
 }
 ```
 

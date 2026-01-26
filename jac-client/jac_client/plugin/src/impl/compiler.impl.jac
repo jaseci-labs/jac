@@ -185,7 +185,9 @@ impl ViteCompiler.compile_dependencies_recursively(
         output_path = self.compiled_dir / name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
-    output_path.write_text(combined_js, encoding='utf-8');
+    # Add source file header comment for better error messages
+    source_header = f"/* Source: {module_path} */\n";
+    output_path.write_text(source_header + combined_js, encoding='utf-8');
     if (not manifest or not manifest.imports) {
         return;
     }

@@ -9,7 +9,7 @@ walker test_walker {
     has message: str = "Hello from walker";
 
     can execute with `root entry {
-        report {"result": self.message} ;
+        report {"result": self.message};
     }
 }
 
@@ -17,7 +17,7 @@ walker parameterized_walker {
     has value: int;
 
     can execute with `root entry {
-        report {"computed": self.value * 2} ;
+        report {"computed": self.value * 2};
     }
 }
 
@@ -27,15 +27,13 @@ walker positional_walker {
     has metadata: dict = {};
 
     can execute with `root entry {
-        report {"label": self.label, "count": self.count, "meta": self.metadata} ;
+        report {"label": self.label, "count": self.count, "meta": self.metadata};
     }
 }
 
 # Client-side code testing both spawn orderings
-cl import from react { useEffect }
-
 cl {
-    def app()  -> any {
+    def app() -> any {
         has standardResult: any = None;
         has standardComputed: any = None;
         has reverseResult: any = None;
@@ -44,7 +42,7 @@ cl {
         has positionalResult: any = None;
         has spreadResult: any = None;
 
-        async def loadData()  -> None {
+        async can with entry {
             # Test standard spawn order: node spawn walker()
             data1 = root spawn test_walker();
             standardResult = data1;
@@ -76,51 +74,50 @@ cl {
             spreadResult = data7;
         }
 
-        useEffect(lambda   -> None{ loadData();} , []);
-
-        return <div>
-            <h1>
-                Spawn Operator Test
-            </h1>
-            <h2>
-                Standard Order (node spawn walker)
-            </h2>
+        return
             <div>
-                Result: {JSON.stringify(standardResult)}
-            </div>
-            <div>
-                Computed: {JSON.stringify(standardComputed)}
-            </div>
-            <h2>
-                Reverse Order (walker spawn node)
-            </h2>
-            <div>
-                Result: {JSON.stringify(reverseResult)}
-            </div>
-            <h2>
-                UUID Spawn (uuid spawn walker)
-            </h2>
-            <div>
-                Result: {JSON.stringify(uuidResult)}
-            </div>
-            <h2>
-                Reverse UUID Spawn (walker spawn uuid)
-            </h2>
-            <div>
-                Result: {JSON.stringify(reverseUuidResult)}
-            </div>
-            <h2>
-                Positional Walker Arguments
-            </h2>
-            <div>
-                Result: {JSON.stringify(positionalResult)}
-            </div>
-            <h2>
-                Spread Walker Arguments
-            </h2>
-            <div>
-                Result: {JSON.stringify(spreadResult)}
-            </div>
-        </div>;
+                <h1>
+                    Spawn Operator Test
+                </h1>
+                <h2>
+                    Standard Order (node spawn walker)
+                </h2>
+                <div>
+                    Result: {JSON.stringify(standardResult)}
+                </div>
+                <div>
+                    Computed: {JSON.stringify(standardComputed)}
+                </div>
+                <h2>
+                    Reverse Order (walker spawn node)
+                </h2>
+                <div>
+                    Result: {JSON.stringify(reverseResult)}
+                </div>
+                <h2>
+                    UUID Spawn (uuid spawn walker)
+                </h2>
+                <div>
+                    Result: {JSON.stringify(uuidResult)}
+                </div>
+                <h2>
+                    Reverse UUID Spawn (walker spawn uuid)
+                </h2>
+                <div>
+                    Result: {JSON.stringify(reverseUuidResult)}
+                </div>
+                <h2>
+                    Positional Walker Arguments
+                </h2>
+                <div>
+                    Result: {JSON.stringify(positionalResult)}
+                </div>
+                <h2>
+                    Spread Walker Arguments
+                </h2>
+                <div>
+                    Result: {JSON.stringify(spreadResult)}
+                </div>
+            </div>;
     }
 }

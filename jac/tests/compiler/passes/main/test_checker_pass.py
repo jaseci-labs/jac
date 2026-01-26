@@ -738,6 +738,16 @@ def test_connect_any_type(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 0
 
 
+def test_connect_node_collection(fixture_path: Callable[[str], str]) -> None:
+    """Test that connection operations accept collections (list, tuple) of nodes."""
+    program = JacProgram()
+    path = fixture_path("checker_connect_node_collection.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - collections of nodes are valid connection operands
+    assert len(program.errors_had) == 0
+
+
 def test_root_type(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_root_type.jac")
