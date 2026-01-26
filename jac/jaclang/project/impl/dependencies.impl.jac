@@ -198,18 +198,14 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
                 file_path = row[0];
 
                 # pip --target quirk: paths starting with ../ may need adjustment
-                if file_path.startswith("../") {
+                while file_path.startswith("../") {
                     # Try as-is first
                     path = (self.packages_dir / file_path).resolve();
                     if not path.exists() {
-                        while file_path.startswith("../") {
-                            file_path = file_path[3:];
-                        }
-                        path = (self.packages_dir / file_path).resolve();
+                        file_path = file_path[3:];
                     }
-                } else {
-                    path = (self.packages_dir / file_path).resolve();
                 }
+                path = (self.packages_dir / file_path).resolve();
 
                 # Skip if doesn't exist or is the metadata dir itself
                 if not path.exists() or path.resolve() == metadata_dir.resolve() {
@@ -234,6 +230,11 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
             if path.is_dir() {
                 shutil.rmtree(path);
                 removed += 1;
+                parent = path.parent;
+                while parent != self.packages_dir and parent.exists() {
+                    parents.add(parent);
+                    parent = parent.parent;
+                }
             } elif path.is_file() or path.is_symlink() {
                 path.unlink();
                 removed += 1;
