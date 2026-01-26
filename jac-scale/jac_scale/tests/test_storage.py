@@ -149,7 +149,7 @@ class TestLocalStorage:
         """Test uploading from a file-like object."""
         file_obj = io.BytesIO(b"Binary content here")
 
-        result = local_storage.upload(file_obj, "binary/data.bin")
+        local_storage.upload(file_obj, "binary/data.bin")
 
         assert local_storage.exists("binary/data.bin")
         content = local_storage.download("binary/data.bin")
