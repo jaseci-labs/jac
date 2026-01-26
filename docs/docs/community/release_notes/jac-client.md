@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.11 (Unreleased)
+## jac-client 0.2.12 (Unreleased)
+
+## jac-client 0.2.11 (Latest Release)
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
@@ -11,7 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`@jac/runtime` Canonical Import Path**: Migrated the client runtime import path from `@jac-client/utils` to `@jac/runtime`, aligning with the new `@jac/` scoped package syntax in Jac source code. The jac-client Vite plugin now maps `@jac/runtime` to its own compiled runtime via a resolve alias. Compiled modules include ES module `export` statements so Vite can resolve named imports between modules. All examples, docs, and templates have been updated.
 - **Various Refactors**: Inluding supporting new useEffect primitives, example updates, etc
 
-## jac-client 0.2.10 (Latest Release)
+## jac-client 0.2.10
 
 ## jac-client 0.2.9
 
