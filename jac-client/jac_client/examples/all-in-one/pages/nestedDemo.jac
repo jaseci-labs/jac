@@ -3,7 +3,7 @@ cl import from ..components.nestedDemo.CustomButton.tsx {
     CustomButton
 }
 cl import from ..button { CustomButtonRoot }
-cl import from "@jac-client/utils" { Navigate, jacIsLoggedIn }
+cl import from "@jac/runtime" { Navigate, jacIsLoggedIn }
 
 cl {
     def:pub NestedImportsDemo -> any {

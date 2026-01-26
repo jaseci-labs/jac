@@ -200,6 +200,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _inject_usestate_import(<>node: uni.UniNode) -> None;
     def _inject_jac_call_function_import(<>node: uni.UniNode) -> None;
     def _has_usestate_import -> bool;
+    def _register_jac_runtime_import -> None;
+    def _has_useeffect_import -> bool;
+    def _inject_useeffect_import(<>node: uni.UniNode) -> None;
+    def _transform_to_useeffect(<>node: uni.Ability) -> None;
     def exit_jsx_element(<>node: uni.JsxElement) -> None;
     def exit_jsx_element_name(<>node: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None;
@@ -245,6 +249,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_dict_val(<>node: uni.DictVal) -> None;
     def exit_k_v_pair(<>node: uni.KVPair) -> None;
     def exit_inner_compr(<>node: uni.InnerCompr) -> None;
+    def exit_list_compr(<>node: uni.ListCompr) -> None;
+    def exit_set_compr(<>node: uni.SetCompr) -> None;
+    def exit_gen_compr(<>node: uni.GenCompr) -> None;
+    def _build_compr_chain(<>node: uni.ListCompr) -> None;
     def exit_bool(<>node: uni.Bool) -> None;
     def exit_int(<>node: uni.Int) -> None;
     def exit_float(<>node: uni.Float) -> None;

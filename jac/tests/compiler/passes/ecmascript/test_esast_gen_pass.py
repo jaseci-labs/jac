@@ -213,10 +213,12 @@ def test_export_semantics_for_pub_declarations(
     js_code = es_to_js(es_ast)
 
     # Verify ExportNamedDeclaration nodes exist in AST
+    # Note: cl functions no longer use ES exports — they're registered via
+    # __jacRegisterClientModule instead, so only 3 exports (global, class, enum)
     export_decls = [
         node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
     ]
-    assert len(export_decls) == 4, "Expected 4 exports (global, class, function, enum)"
+    assert len(export_decls) == 3, "Expected 3 exports (global, class, enum)"
 
     # Check that public global is exported
     assert "export let PUBLIC_API_URL" in js_code, (
@@ -240,9 +242,11 @@ def test_export_semantics_for_pub_declarations(
         "Private class should NOT have export keyword"
     )
 
-    # Check that public function is exported
-    assert "export function public_function" in js_code, (
-        "Public function should have export keyword"
+    # cl functions don't use ES exports — they're registered via
+    # __jacRegisterClientModule for global scope compatibility
+    assert "function public_function" in js_code
+    assert "export function public_function" not in js_code, (
+        "cl functions should not have export keyword (uses registration instead)"
     )
 
     # Check that private function is NOT exported
@@ -270,9 +274,9 @@ def test_reactive_state_generates_use_state(
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useState is imported from @jac-client/utils (auto-injected)
-    assert 'import { useState } from "@jac-client/utils"' in js_code, (
-        "useState should be auto-imported from @jac-client/utils"
+    # Check that useState is imported from @jac/runtime (auto-injected)
+    assert 'import { useState } from "@jac/runtime"' in js_code, (
+        "useState should be auto-imported from @jac/runtime"
     )
 
     # Check that has declarations generate useState destructuring
@@ -304,9 +308,9 @@ def test_reactive_state_in_cl_jac_file(
     es_ast = compile_to_esast(fixture_path("reactive_state.cl.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useState is imported from @jac-client/utils (auto-injected)
-    assert 'import { useState } from "@jac-client/utils"' in js_code, (
-        "useState should be auto-imported from @jac-client/utils in .cl.jac files"
+    # Check that useState is imported from @jac/runtime (auto-injected)
+    assert 'import { useState } from "@jac/runtime"' in js_code, (
+        "useState should be auto-imported from @jac/runtime in .cl.jac files"
     )
 
     # Check that has declarations generate useState destructuring
@@ -413,3 +417,125 @@ def test_equivalent_context_patterns(fixture_path: Callable[[str], str]) -> None
         "Server import should be in Python output"
     )
     assert "os" not in js_outputs[0], "Server import should NOT be in JavaScript output"
+
+
+def test_reactive_effects_async_entry(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that async can with entry generates useEffect with IIFE wrapper."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
+    )
+
+    # Check that useEffect is called with arrow function
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that async entry generates IIFE wrapper: (async () => { ... })()
+    assert "async () =>" in js_code, "Async entry should generate async arrow function"
+
+    # Check empty dependency array for mount-only effect
+    assert "}, [])" in js_code, "Mount effect should have empty dependency array"
+
+
+def test_reactive_effects_sync_entry(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that non-async can with entry generates useEffect without IIFE."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_sync.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
+    )
+
+    # Check that useEffect is called
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that sync entry does NOT wrap in async IIFE
+    assert "async () =>" not in js_code, (
+        "Sync entry should NOT generate async arrow function"
+    )
+
+    # Check empty dependency array for mount-only effect
+    assert "}, [])" in js_code, "Mount effect should have empty dependency array"
+
+
+def test_reactive_effects_cleanup(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that can with exit generates useEffect with cleanup return."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_cleanup.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
+    )
+
+    # Check that useEffect is called with cleanup return
+    assert "useEffect(" in js_code, "useEffect should be called"
+    assert "return () =>" in js_code, "Exit effect should return cleanup function"
+
+    # Check empty dependency array
+    assert "}, [])" in js_code, "Cleanup effect should have empty dependency array"
+
+
+def test_reactive_effects_with_dependencies(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that can with (deps) tuple generates useEffect with dependency array."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_deps.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
+    )
+
+    # Check that useEffect is called
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that dependency array contains userId and loading (tuple syntax)
+    assert "[userId, loading])" in js_code, (
+        "Effect with (userId, loading) tuple should have both in dependency array"
+    )
+
+
+def test_jsx_comprehension_basic(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that JSX comprehension generates .map() calls."""
+    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that basic comprehension generates .map() call
+    assert ".map(" in js_code, "JSX comprehension should generate .map() call"
+    assert "item =>" in js_code, (
+        "JSX comprehension should generate arrow function with item"
+    )
+
+    # Check that the JSX element is in the map callback
+    assert "__jacJsx" in js_code, "JSX should be lowered to __jacJsx calls"
+
+
+def test_jsx_comprehension_with_filter(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that JSX comprehension with if clause generates .filter().map() chain."""
+    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that filtered comprehension generates .filter() call
+    assert ".filter(" in js_code, (
+        "JSX comprehension with if should generate .filter() call"
+    )
+
+    # Check that filter is chained with map
+    assert ".filter(" in js_code and ".map(" in js_code, (
+        "Filtered JSX comprehension should chain .filter().map()"
+    )

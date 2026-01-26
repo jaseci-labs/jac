@@ -1,7 +1,7 @@
 # Landing Page - Ledgerly Brand
 # Professional landing page with hero, features, and CTA sections
 # Demonstrates: routing with Link, dark theme design, responsive layout
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Link,
 }
 

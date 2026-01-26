@@ -25,7 +25,9 @@ glob __jacReactiveContext = {
          "currentComponent": None,  # Current component ID being rendered
          "currentEffect": None,  # Current effect for dependency tracking
          "router": None,  # Global router instance
-         "mountedComponents": {}  # Track which components have mounted (for onMount)
+         "mountedComponents": {},  # Track which components have mounted (for onMount)
+         "hookIndex": 0,  # Current hook index during render
+         "hooks": []
      };
 # Create a reactive signal (primitive value)
 # Returns [getter, setter] tuple for reactive primitive value
@@ -143,3 +145,13 @@ def __jacEnsureHydration(moduleName: str) -> None;
 def __jacRegisterClientModule(
     moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
 ) -> None;
+
+# ============================================================================
+# React-style API aliases for compatibility
+# ============================================================================
+# These provide React-like API using the core reactive primitives
+def useState(
+    initialValue: any
+) -> list;
+
+def useEffect(effectFn: any, deps: list = []) -> None;

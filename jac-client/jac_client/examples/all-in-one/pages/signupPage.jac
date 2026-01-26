@@ -1,4 +1,4 @@
-cl import from "@jac-client/utils" { Link, useNavigate, jacSignup }
+cl import from "@jac/runtime" { Link, useNavigate, jacSignup }
 
 cl {
     def:pub SignupPage -> any {

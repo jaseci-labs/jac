@@ -27,7 +27,7 @@ import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
 from_path: (DOT | ELLIPSIS)* import_path
          | (DOT | ELLIPSIS)+
 
-import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
+import_path: (dotted_name | STRING) (KW_AS NAME)?
 import_items: (import_item COMMA)* import_item COMMA?
 import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 dotted_name: named_ref (DOT named_ref)*
@@ -780,7 +780,7 @@ JSX_NAME: /[A-Z_a-z][A-Z_a-z0-9\-]*/
 
 // JSX text content (anything except < > { } and must not start/end with whitespace-only)
 // Using negative priority so it's only matched as last resort within JSX
-JSX_TEXT.-1: /[^<>{}\n]+/
+JSX_TEXT.-10: /[^<>{}\n]+/
 
 
 // ************************************************************************* //

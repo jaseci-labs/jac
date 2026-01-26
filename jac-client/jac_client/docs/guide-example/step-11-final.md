@@ -18,7 +18,7 @@ cl import from react {
     useState,
     useEffect
 }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
