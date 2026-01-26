@@ -13,6 +13,7 @@ nav:
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
       - Your First Full-Stack AI App: "quick-guide/first-fullstack-ai-app.md"
+      - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
       - Next Steps: "quick-guide/next-steps.md"
 
   - Tutorials:

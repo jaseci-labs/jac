@@ -413,3 +413,90 @@ def test_equivalent_context_patterns(fixture_path: Callable[[str], str]) -> None
         "Server import should be in Python output"
     )
     assert "os" not in js_outputs[0], "Server import should NOT be in JavaScript output"
+
+
+def test_reactive_effects_async_entry(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that async can with entry generates useEffect with IIFE wrapper."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac-client/utils (auto-injected)
+    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
+        "useEffect should be auto-imported from @jac-client/utils"
+    )
+
+    # Check that useEffect is called with arrow function
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that async entry generates IIFE wrapper: (async () => { ... })()
+    assert "async () =>" in js_code, "Async entry should generate async arrow function"
+
+    # Check empty dependency array for mount-only effect
+    assert "}, [])" in js_code, "Mount effect should have empty dependency array"
+
+
+def test_reactive_effects_sync_entry(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that non-async can with entry generates useEffect without IIFE."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_sync.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac-client/utils (auto-injected)
+    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
+        "useEffect should be auto-imported from @jac-client/utils"
+    )
+
+    # Check that useEffect is called
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that sync entry does NOT wrap in async IIFE
+    assert "async () =>" not in js_code, (
+        "Sync entry should NOT generate async arrow function"
+    )
+
+    # Check empty dependency array for mount-only effect
+    assert "}, [])" in js_code, "Mount effect should have empty dependency array"
+
+
+def test_reactive_effects_cleanup(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that can with exit generates useEffect with cleanup return."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_cleanup.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac-client/utils (auto-injected)
+    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
+        "useEffect should be auto-imported from @jac-client/utils"
+    )
+
+    # Check that useEffect is called with cleanup return
+    assert "useEffect(" in js_code, "useEffect should be called"
+    assert "return () =>" in js_code, "Exit effect should return cleanup function"
+
+    # Check empty dependency array
+    assert "}, [])" in js_code, "Cleanup effect should have empty dependency array"
+
+
+def test_reactive_effects_with_dependencies(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that can with (deps) tuple generates useEffect with dependency array."""
+    es_ast = compile_to_esast(fixture_path("reactive_effects_deps.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that useEffect is imported from @jac-client/utils (auto-injected)
+    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
+        "useEffect should be auto-imported from @jac-client/utils"
+    )
+
+    # Check that useEffect is called
+    assert "useEffect(" in js_code, "useEffect should be called"
+
+    # Check that dependency array contains userId and loading (tuple syntax)
+    assert "[userId, loading])" in js_code, (
+        "Effect with (userId, loading) tuple should have both in dependency array"
+    )
