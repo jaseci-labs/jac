@@ -4,7 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.16 (Unreleased)
 
-- **MTIR (Meaning Typed Intermediate Representation)**: Added compile-time extraction of semantic type information from `by` call sites. MTIR captures parameter types, return types, semstrings, and tool schemas at compile time, enabling richer context for LLM schema generation. Includes MTIR caching for improved performance.
+- **MTIR-Powered Schema Generation**: `MTRuntime` now uses compile-time MTIR info for generating JSON schemas with semantic descriptions. Tool and return type schemas include semstrings extracted at compile time, providing richer context for LLM calls.
+
+- **Python Library Fallback Mode**: When MTIR is unavailable (e.g., using byLLM as a Python library without Jac compilation), the runtime gracefully falls back to introspection-based schema generation, maintaining backward compatibility.
 
 ## byllm 0.4.15 (Latest Release)
 

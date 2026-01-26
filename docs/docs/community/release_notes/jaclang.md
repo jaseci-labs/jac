@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.11 (Unreleased)
 
+- **MTIR Generation Pass**: Added `MTIRGenPass` compiler pass that extracts semantic type information from GenAI `by` call sites at compile time. The pass captures parameter types, return types, semstrings, tool schemas, and class structures into `Info` dataclasses (`FunctionInfo`, `MethodInfo`, `ClassInfo`, `ParamInfo`, `FieldInfo`). MTIR is stored in `JacProgram.mtir_map` keyed by scope path.
+
+- **MTIR Bytecode Caching**: Extended `DiskBytecodeCache` to cache MTIR maps alongside bytecode (`.mtir.pkl` files). MTIR is automatically saved after compilation and restored from cache on subsequent runs, avoiding redundant extraction.
+
 - **Reactive Effects with `can with entry/exit`**: The `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks in client-side code. When used inside a `cl` codespace, `async can with entry { items = await fetch(); }` generates `useEffect(() => { (async () => { setItems(await fetch()); })(); }, []);`. Supports dependency arrays using list or tuple syntax: `can with (userId, count) entry { ... }` generates effects that re-run when dependencies change. The `can with exit` variant generates cleanup functions via `return () => { ... }` inside the effect. This provides a declarative, Jac-native way to handle component lifecycle without manual `useEffect` boilerplate.
 
 - **JSX Comprehension Syntax**: List and set comprehensions containing JSX elements now compile to JavaScript `.map()` and `.filter().map()` chains. Instead of verbose `{items.map(lambda item: dict -> any { return <li>{item}</li>; })}`, you can now write `{[<li key={item.id}>{item.title}</li> for item in items]}` or use double-brace syntax `{{ <li>{item}</li> for item in items }}`. Filtered comprehensions like `{[<li>{item}</li> for item in items if item.active]}` generate `.filter(item => item.active).map(item => ...)`. This brings Python-style comprehension elegance to JSX rendering.
