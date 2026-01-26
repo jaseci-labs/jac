@@ -61,10 +61,15 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
         # Create app config
         app_config = AppConfig(
-            code_folder=code_folder, file_name=base_file_path, build=build, experimental=experimental
+            code_folder=code_folder,
+            file_name=base_file_path,
+            build=build,
+            experimental=experimental
         );
         if experimental {
-            console.print("Installing Jaseci packages from repository (experimental mode)...");
+            console.print(
+                "Installing Jaseci packages from repository (experimental mode)..."
+            );
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
@@ -74,7 +79,9 @@ def _scale_pre_hook(context: HookContext) -> None {
             raise RuntimeError(result.message or "Deployment failed") ;
         }
         if result.service_url {
-            console.print(f"Deployment complete! Service available at: {result.service_url}");
+            console.print(
+                f"Deployment complete! Service available at: {result.service_url}"
+            );
         }
         # Cancel normal start execution since we handled it
         context.set_data("cancel_execution", True);
@@ -182,7 +189,9 @@ class JacCmd {
             app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
             deployment_target.destroy(app_name);
 
-            console.print(f"Successfully destroyed deployment '{app_name}' from {target}");
+            console.print(
+                f"Successfully destroyed deployment '{app_name}' from {target}"
+            );
             return 0;
         }
     }

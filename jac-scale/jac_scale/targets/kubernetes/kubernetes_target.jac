@@ -218,25 +218,21 @@ class KubernetesTarget(DeploymentTarget) {
             scale_v = packages.get('jac_scale', 'latest');
             client_v = packages.get('jac_client', 'latest');
             byllm_v = packages.get('jac_byllm', 'latest');
-
             if jaclang_v == 'latest' {
                 commands.append('pip install jaclang');
             } else {
                 commands.append(f'pip install jaclang=={jaclang_v}');
             }
-
             if scale_v == 'latest' {
                 commands.append('pip install jac-scale');
             } else {
                 commands.append(f'pip install jac-scale=={scale_v}');
             }
-
             if client_v == 'latest' {
                 commands.append('pip install jac-client');
             } else {
                 commands.append(f'pip install jac-client=={client_v}');
             }
-
             if byllm_v and byllm_v != 'none' {
                 if byllm_v == 'latest' {
                     commands.append('pip install jac-byllm');
