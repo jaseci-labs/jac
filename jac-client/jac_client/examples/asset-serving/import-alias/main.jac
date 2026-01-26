@@ -82,7 +82,7 @@ cl {
                         <li>
                             Import using:
                             <code>
-                                cl import from '@jac-client/assets/burger.png'
+                                climportfrom'@jac-client/assets/burger.png'
                             </code>
                         </li>
                         <li>

@@ -401,7 +401,7 @@ def:pub FeaturesTest -> any {
                     </div>
                     <div style={{"marginTop": "20px"}}>
                         <strong style={{"color": "#374151"}}>
-                            Stored Data ({testData.length} items):
+                            Stored Data ({testData.length}items):
                         </strong>
                         {testData.length == 0
                         and <p style={{"color": "#9ca3af", "fontStyle": "italic"}}>
@@ -436,7 +436,7 @@ def:pub FeaturesTest -> any {
                                                 "color": "#6b7280"
                                             }}
                                         >
-                                            Count: {item.count} | Created: {item.created_at}
+                                            Count: {item.count}| Created: {item.created_at}
                                         </div>
                                     </div>
                                     <div style={{"display": "flex", "gap": "8px"}}>

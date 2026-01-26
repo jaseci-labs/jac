@@ -26,14 +26,10 @@ cl def:pub app() -> any {
 
     return
         <div>
-            {items.map(
-                lambda item: dict -> any { return
-                    <div key={item.title}>
-                        <input type="checkbox" checked={item.done} />
-                        {item.title}
-                    </div>;
-                }
-            )}
+            {[<div key={item.title}>
+                <input type="checkbox" checked={item.done} />
+                {item.title}
+            </div> for item in items]}
         </div>;
 }
 

@@ -8,7 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Reactive Effects with `can with entry/exit`**: Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks. Use `async can with entry { }` for mount effects (async bodies are automatically wrapped in IIFE), `can with exit { }` for cleanup on unmount, and `can with [dep] entry { }` or `can with (dep1, dep2) entry { }` for effects with dependency arrays. This provides a cleaner, more declarative syntax for React lifecycle management without manual `useEffect` boilerplate.
 - **Source Mapping for Vite Errors**: Added source mapping to trace Vite build errors back to original `.jac` files. Compiled JavaScript files now include source file header comments, and a custom `jacSourceMapper` Vite plugin maps error locations to the original Jac source. Source maps are enabled by default for both development and production builds, improving the debugging experience when build errors occur.
-- **Various Refactors**: Inluding supporting new useEffect primitives, etc
+- **Various Refactors**: Inluding supporting new useEffect primitives, example updates, etc
 
 ## jac-client 0.2.10 (Latest Release)
 

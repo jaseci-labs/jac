@@ -398,9 +398,110 @@ impl EsastGenPass.exit_bool(<>node: uni.Bool) -> None {
     <>node.gen.es_ast = bool_lit;
 }
 
-"""Process list comprehension."""
+"""Process inner comprehension (for x in items if cond) - handled by parent comprehension."""
 impl EsastGenPass.exit_inner_compr(<>node: uni.InnerCompr) -> None {
-    <>node.gen.es_ast = self.sync_loc(es.ArrayExpression(elements=[]), jac_node=<>node);
+    # InnerCompr is handled by the parent ListCompr/SetCompr/GenCompr
+    ;
+}
+
+"""Process list comprehension: [expr for x in items if cond] -> items.filter(x => cond).map(x => expr)."""
+impl EsastGenPass.exit_list_compr(<>node: uni.ListCompr) -> None {
+    self._build_compr_chain(<>node);
+}
+
+"""Process set comprehension: {expr for x in items if cond} -> items.filter(x => cond).map(x => expr)."""
+impl EsastGenPass.exit_set_compr(<>node: uni.SetCompr) -> None {
+    self._build_compr_chain(<>node);
+}
+
+"""Process generator comprehension: (expr for x in items if cond) -> items.filter(x => cond).map(x => expr)."""
+impl EsastGenPass.exit_gen_compr(<>node: uni.GenCompr) -> None {
+    self._build_compr_chain(<>node);
+}
+
+"""Build filter().map() chain for comprehensions."""
+impl EsastGenPass._build_compr_chain(<>node: uni.ListCompr) -> None {
+    # Start with the output expression
+    out_expr = cast(es.Expression, <>node.out_expr.gen.es_ast);
+    if not out_expr {
+        <>node.gen.es_ast = self.sync_loc(
+            es.ArrayExpression(elements=[]), jac_node=<>node
+        );
+        return;
+    }
+    # Process comprehensions (currently only support single compr, nested would be more complex)
+    if not <>node.compr or len(<>node.compr) == 0 {
+        <>node.gen.es_ast = self.sync_loc(
+            es.ArrayExpression(elements=[out_expr]), jac_node=<>node
+        );
+        return;
+    }
+    compr = <>node.compr[0];
+    collection = cast(es.Expression, compr.collection.gen.es_ast);
+    target = cast(es.Expression, compr.target.gen.es_ast);
+    if not collection or not target {
+        <>node.gen.es_ast = self.sync_loc(
+            es.ArrayExpression(elements=[]), jac_node=<>node
+        );
+        return;
+    }
+    # Build params for arrow function (the iteration variable)
+    param = self.sync_loc(
+        es.Identifier(name=target.name if isinstance(target, es.Identifier) else 'x'),
+        jac_node=compr.target
+    );
+    result = collection;
+    # Add filter() calls for each conditional
+    if compr.conditional {
+        for cond in compr.conditional {
+            cond_expr = cast(es.Expression, cond.gen.es_ast);
+            if cond_expr {
+                filter_arrow = self.sync_loc(
+                    es.ArrowFunctionExpression(
+                        params=[param], body=cond_expr, expression=True
+                    ),
+                    jac_node=cond
+                );
+                filter_call = self.sync_loc(
+                    es.CallExpression(
+                        callee=self.sync_loc(
+                            es.MemberExpression(
+                                object=result,
+                                property=self.sync_loc(
+                                    es.Identifier(name='filter'), jac_node=cond
+                                ),
+                                computed=False
+                            ),
+                            jac_node=cond
+                        ),
+                        arguments=[filter_arrow]
+                    ),
+                    jac_node=cond
+                );
+                result = filter_call;
+            }
+        }
+    }
+    # Add map() call for the output expression
+    map_arrow = self.sync_loc(
+        es.ArrowFunctionExpression(params=[param], body=out_expr, expression=True),
+        jac_node=<>node.out_expr
+    );
+    map_call = self.sync_loc(
+        es.CallExpression(
+            callee=self.sync_loc(
+                es.MemberExpression(
+                    object=result,
+                    property=self.sync_loc(es.Identifier(name='map'), jac_node=<>node),
+                    computed=False
+                ),
+                jac_node=<>node
+            ),
+            arguments=[map_arrow]
+        ),
+        jac_node=<>node
+    );
+    <>node.gen.es_ast = map_call;
 }
 
 """Process key-value pair."""

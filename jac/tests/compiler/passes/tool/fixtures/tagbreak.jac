@@ -392,7 +392,7 @@ cl {
                 </div>
                 # Random comment
                 <div class="tweet-content" style={{"marginBottom": "12px"}}>
-                    {tweet.content} # Another andom comment
+                    {tweet.content}  # Another andom comment
                 </div>
                 <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                     <button

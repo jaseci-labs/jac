@@ -332,7 +332,7 @@ cl {
                         }}
                     >
                         <span style={{"color": "#6b7280", "fontSize": "14px"}}>
-                            {activeCount} {"item" if activeCount == 1 else "items"} left
+                            {activeCount}{"item" if activeCount == 1 else "items"}left
                         </span>
                         {(
                             <button

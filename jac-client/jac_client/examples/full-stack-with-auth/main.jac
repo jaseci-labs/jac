@@ -653,7 +653,7 @@ cl {
                             "color": "#666"
                         }}
                     >
-                        {activeCount} {"item" if activeCount == 1 else "items"} left
+                        {activeCount}{"item" if activeCount == 1 else "items"}left
                     </div>
                 )
                 if todos.length > 0

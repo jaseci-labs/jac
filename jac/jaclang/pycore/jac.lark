@@ -780,7 +780,7 @@ JSX_NAME: /[A-Z_a-z][A-Z_a-z0-9\-]*/
 
 // JSX text content (anything except < > { } and must not start/end with whitespace-only)
 // Using negative priority so it's only matched as last resort within JSX
-JSX_TEXT.-1: /[^<>{}\n]+/
+JSX_TEXT.-10: /[^<>{}\n]+/
 
 
 // ************************************************************************* //
