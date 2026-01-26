@@ -1,16 +1,25 @@
 # Custom hook for budget operations
 # Demonstrates: custom hooks, useState, array methods
-
-cl import from react { useCallback, useMemo }
+cl import from react {
+    useCallback,
+    useMemo
+}
 
 cl {
     # Main budget management hook
-    def:pub useBudget() -> dict {
+    def:pub useBudget -> dict {
         # Simple useState - no complex localStorage hook
         [transactions, setTransactions] = useState([]);
 
         # Add a new transaction
-        def addTransaction(description: str, amount: float, category: str, txType: str, isBusiness: bool, clientName: str) -> None {
+        def addTransaction(
+            description: str,
+            amount: float,
+            category: str,
+            txType: str,
+            isBusiness: bool,
+            clientName: str
+        ) -> None {
             newTx = {
                 "id": Date.now().toString(),
                 "description": description,
@@ -26,9 +35,9 @@ cl {
 
         # Delete a transaction by ID
         def deleteTransaction(id: str) -> None {
-            filtered = transactions.filter(lambda tx: dict -> bool {
-                return tx["id"] != id;
-            });
+            filtered = transactions.filter(
+                lambda tx: dict  -> bool { return tx["id"] != id; }
+            );
             setTransactions(filtered);
         }
 
@@ -75,7 +84,7 @@ cl {
         netProfit = businessIncome - businessExpenses - taxReserve;
 
         # Get expense breakdown by category (for chart)
-        def getExpensesByCategory() -> list {
+        def getExpensesByCategory -> list {
             categoryTotals = {};
             for tx in transactions {
                 if tx["type"] == "expense" {
@@ -89,10 +98,7 @@ cl {
             }
             result = [];
             for key in Object.keys(categoryTotals) {
-                result = result.concat([{
-                    "name": key,
-                    "value": categoryTotals[key]
-                }]);
+                result = result.concat([{"name": key, "value": categoryTotals[key]}]);
             }
             return result;
         }

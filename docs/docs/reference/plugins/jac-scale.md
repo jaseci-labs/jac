@@ -62,7 +62,7 @@ Each walker becomes an API endpoint:
 ```jac
 walker get_users {
     can fetch with `root entry {
-        report [...]
+        report [];
     }
 }
 ```
@@ -144,12 +144,14 @@ curl -X POST http://localhost:8000/walker/my_walker \
 ### Grant/Revoke Permissions
 
 ```jac
-# Grant permission
-grant(node, WritePerm);
-grant(node, level=ConnectPerm);
+with entry {
+    # Grant permission
+    grant(node, WritePerm);
+    grant(node, level=ConnectPerm);
 
-# Revoke permission
-revoke(node);
+    # Revoke permission
+    revoke(node);
+}
 ```
 
 ### Custom Access Validation
@@ -444,15 +446,19 @@ walker ready {
 ### Root Access
 
 ```jac
-# Get all roots in memory/database
-roots = allroots();
+with entry {
+    # Get all roots in memory/database
+    roots = allroots();
+}
 ```
 
 ### Memory Commit
 
 ```jac
-# Commit memory to database
-commit();
+with entry {
+    # Commit memory to database
+    commit();
+}
 ```
 
 ---

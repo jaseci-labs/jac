@@ -489,7 +489,7 @@ def compute(x: int) -> int {
             client.register_user("testuser", "password123")
 
             # Test v1 logic
-            resp1 = client.post("/function/compute", json={"args": {"x": 5}})
+            resp1 = client.post("/function/compute", json={"x": 5})
             assert resp1.ok
             assert resp1.data.get("result") == 10  # 5 * 2
 
@@ -505,7 +505,7 @@ def compute(x: int) -> int {
             client.reload()
 
             # Test v2 logic - should now multiply by 3
-            resp2 = client.post("/function/compute", json={"args": {"x": 5}})
+            resp2 = client.post("/function/compute", json={"x": 5})
             assert resp2.ok
             assert resp2.data.get("result") == 15, (  # 5 * 3
                 f"Expected 15 (5*3), got {resp2.data.get('result')} - code change not applied"

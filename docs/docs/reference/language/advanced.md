@@ -18,22 +18,36 @@ Jac uses Python's exception model with `try/except/finally` blocks. The syntax u
 ### 1 Try/Except/Finally
 
 ```jac
-try {
-    result = risky_operation();
-} except ValueError as e {
-    print(f"Value error: {e}");
-} except KeyError {
-    print("Key not found");
-} except Exception as e {
-    print(f"Unexpected: {e}");
-} finally {
-    cleanup();
+def risky_operation() -> int {
+    return 42;
+}
+
+def cleanup() -> None {
+    # Cleanup logic here
+}
+
+def example() {
+    try {
+        result = risky_operation();
+    } except ValueError as e {
+        print(f"Value error: {e}");
+    } except KeyError {
+        print("Key not found");
+    } except Exception as e {
+        print(f"Unexpected: {e}");
+    } finally {
+        cleanup();
+    }
 }
 ```
 
 ### 2 Raising Exceptions
 
 ```jac
+def inner_process(data: dict) -> None {
+    # Process data here
+}
+
 def validate(value: int) -> None {
     if value < 0 {
         raise ValueError("Value must be non-negative");
@@ -52,9 +66,16 @@ def process(data: dict) -> None {
 ### 3 Assertions
 
 ```jac
-assert condition;
-assert value > 0, "Value must be positive";
-assert data is not None, f"Data was None for id {id}";
+def example() {
+    condition = True;
+    value = 10;
+    data: object = "something";
+    id = 1;
+
+    assert condition;
+    assert value > 0, "Value must be positive";
+    assert data is not None, f"Data was None for id {id}";
+}
 ```
 
 ---
@@ -148,20 +169,23 @@ jac test --verbose
 ### 1 Standard Comprehensions
 
 ```jac
-# List comprehension
-squares = [x ** 2 for x in range(10)];
+def example() {
+    # List comprehension
+    squares = [x ** 2 for x in range(10)];
 
-# With condition
-evens = [x for x in range(20) if x % 2 == 0];
+    # With condition
+    evens = [x for x in range(20) if x % 2 == 0];
 
-# Dict comprehension
-squared_dict = {x: x ** 2 for x in range(5)};
+    # Dict comprehension
+    squared_dict = {x: x ** 2 for x in range(5)};
 
-# Set comprehension
-unique_lengths = {len(s) for s in strings};
+    # Set comprehension
+    strings = ["hello", "world", "hi"];
+    unique_lengths = {len(s) for s in strings};
 
-# Generator expression
-gen = (x ** 2 for x in range(1000000));
+    # Generator expression
+    gen = (x ** 2 for x in range(1000000));
+}
 ```
 
 ### 2 Filter Comprehension Syntax
@@ -169,14 +193,26 @@ gen = (x ** 2 for x in range(1000000));
 Filter collections with `?condition`:
 
 ```jac
-# Filter people by age
-adults = people(?age >= 18);
+node Person {
+    has age: int,
+        status: str;
+}
 
-# Multiple conditions
-qualified = employees(?salary > 50000, experience >= 5);
+node Employee {
+    has salary: int,
+        experience: int;
+}
 
-# On graph traversal results
-friends = [-->](?status == "active");
+def example(people: list[Person], employees: list[Employee]) {
+    # Filter people by age
+    adults = people(?age >= 18);
+
+    # Multiple conditions
+    qualified = employees(?salary > 50000, experience >= 5);
+
+    # On graph traversal results
+    friends = [-->](?status == "active");
+}
 ```
 
 ### 3 Typed Filter Comprehensions
@@ -184,10 +220,24 @@ friends = [-->](?status == "active");
 Filter by type with backtick syntax:
 
 ```jac
-dogs = animals(`?Dog);                    # By type only
-indoor_cats = animals(`?Cat:indoor==True); # Type with condition
-people = [-->](`?Person);                 # On graph traversal
-adults = [-->](`?Person:age > 21);        # Traversal with condition
+node Dog {
+    has name: str;
+}
+
+node Cat {
+    has indoor: bool;
+}
+
+node Person {
+    has age: int;
+}
+
+def example(animals: list) {
+    dogs = animals(`?Dog);                    # By type only
+    indoor_cats = animals(`?Cat:indoor==True); # Type with condition
+    people = [-->](`?Person);                 # On graph traversal
+    adults = [-->](`?Person:age > 21);        # Traversal with condition
+}
 ```
 
 ### 4 Assign Comprehension Syntax
@@ -195,14 +245,31 @@ adults = [-->](`?Person:age > 21);        # Traversal with condition
 Modify all items with `=attr=value`:
 
 ```jac
-# Set attribute on all items
-people(=verified=True);
+node Person {
+    has age: int,
+        verified: bool = False,
+        can_vote: bool = False;
+}
 
-# Chained: filter then assign
-people(?age >= 18)(=can_vote=True);
+node Item {
+    has status: str,
+        processed_at: str;
+}
 
-# Multiple assignments
-items(=status="processed", processed_at=now());
+def now() -> str {
+    return "2024-01-01";
+}
+
+def example(people: list[Person], items: list[Item]) {
+    # Set attribute on all items
+    people(=verified=True);
+
+    # Chained: filter then assign
+    people(?age >= 18)(=can_vote=True);
+
+    # Multiple assignments
+    items(=status="processed", processed_at=now());
+}
 ```
 
 ---
@@ -212,35 +279,83 @@ items(=status="processed", processed_at=now());
 ### 1 Forward Pipe
 
 ```jac
-# Traditional
-result = output(filter(transform(input)));
+def transform(x: list) -> list { return x; }
+def filter(x: list) -> list { return x; }
+def output(x: list) -> list { return x; }
+def remove_nulls(x: list) -> list { return x; }
+def normalize(x: list) -> list { return x; }
+def validate(x: list) -> list { return x; }
 
-# With pipes
-result = input |> transform |> filter |> output;
+def example() {
+    input = [1, 2, 3];
+    raw_data = [1, 2, 3];
 
-# More readable data pipeline
-cleaned = raw_data
-    |> remove_nulls
-    |> normalize
-    |> validate
-    |> transform;
+    # Traditional
+    result = output(filter(transform(input)));
+
+    # With pipes
+    result = input |> transform |> filter |> output;
+
+    # More readable data pipeline
+    cleaned = raw_data
+        |> remove_nulls
+        |> normalize
+        |> validate
+        |> transform;
+}
 ```
 
 ### 2 Backward Pipe
 
 ```jac
-# Right to left
-result = output <| filter <| transform <| input;
+def transform(x: list) -> list { return x; }
+def filter(x: list) -> list { return x; }
+def output(x: list) -> list { return x; }
+
+def example() {
+    input = [1, 2, 3];
+
+    # Right to left
+    result = output <| filter <| transform <| input;
+}
 ```
 
 ### 3 Atomic Pipes (Graph Operations)
 
 ```jac
-# Depth-first traversal
-node spawn :> DepthFirstWalker;
+node Item {}
 
-# Breadth-first traversal
-node spawn |> BreadthFirstWalker;
+walker DepthFirstWalker {
+    can visit with Item entry {
+        print("depth first");
+    }
+}
+walker BreadthFirstWalker {
+    can visit with Item entry {
+        print("breadth first");
+    }
+}
+
+with entry {
+    start = Item();
+
+    # Depth-first traversal
+    start spawn :> DepthFirstWalker();
+
+    # Breadth-first traversal
+    start spawn |> BreadthFirstWalker();
+}
 ```
 
 ---
+
+## Learn More
+
+**Tutorials:**
+
+- [Testing](../../tutorials/language/testing.md) - Write and run tests
+
+**Related Reference:**
+
+- [Part I: Foundation](foundation.md) - Core language features
+- [Part III: OSP](osp.md) - Graph operations

@@ -25,6 +25,7 @@ from jaclang.cli.commands import (  # type: ignore[attr-defined]
 from jaclang.cli.commands import (  # type: ignore[attr-defined]
     config as config_cmd,
 )
+from jaclang.project.config import set_config
 from jaclang.runtimelib.builtin import printgraph
 
 
@@ -784,10 +785,14 @@ verbose = true
         toml_path.write_text(toml_content)
         original_cwd = os.getcwd()
         os.chdir(tmp_path)
+        # Reset global config to force re-discovery from new directory
+        set_config(None)  # type: ignore[arg-type]
         try:
             yield str(tmp_path)
         finally:
             os.chdir(original_cwd)
+            # Reset config again after test
+            set_config(None)  # type: ignore[arg-type]
 
     @pytest.fixture
     def capture(self) -> Callable[[], AbstractContextManager[io.StringIO]]:

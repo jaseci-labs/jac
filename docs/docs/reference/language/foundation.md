@@ -174,9 +174,11 @@ Jac source files are UTF-8 encoded. Unicode is fully supported in strings and co
 All statements end with semicolons:
 
 ```jac
-x = 5;
-print(x);
-result = compute(x) + 10;
+with entry {
+    x = 5;
+    print(x);
+    result = compute(x) + 10;
+}
 ```
 
 ### 4 Code Blocks
@@ -184,9 +186,11 @@ result = compute(x) + 10;
 Code blocks use braces:
 
 ```jac
-if condition {
-    statement1;
-    statement2;
+with entry {
+    if condition {
+        statement1;
+        statement2;
+    }
 }
 ```
 
@@ -217,7 +221,9 @@ Valid identifiers start with a letter or underscore, followed by letters, digits
 To use a reserved keyword as an identifier, escape it with angle brackets:
 
 ```jac
-has <class>: str;  # Uses 'class' as field name
+obj Example {
+    has class_name: str;  # Field name (use <class> syntax for reserved words)
+}
 ```
 
 ### 7 Entry Point Variants
@@ -265,28 +271,45 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 Type annotations are required for fields and function signatures:
 
 ```jac
-has name: str;
-has count: int = 0;
-has items: list[str] = [];
-has mapping: dict[str, int] = {};
+obj Example {
+    has name: str;
+    has count: int = 0;
+    has items: list[str] = [];
+    has mapping: dict[str, int] = {};
+}
 ```
 
 ### 3 Generic Types
 
+Jac will support generic type parameters using Python-style syntax (coming soon):
+
 ```jac
-def first[T](items: list[T]) -> T {
+# Generic function (coming soon):
+# def first[T](items: list[T]) -> T {
+#     return items[0];
+# }
+
+# Generic object (coming soon):
+# obj Container[T] {
+#     has value: T;
+# }
+
+# For now, use `any` as a placeholder:
+def first(items: list) -> any {
     return items[0];
 }
 
-obj Container[T] {
-    has value: T;
+obj Container {
+    has value: any;
 }
 ```
 
 ### 4 Union Types
 
 ```jac
-has value: int | str | None;
+obj Example {
+    has value: int | str | None;
+}
 
 def process(data: list[int] | dict[str, int]) -> None {
     # Handle either type
@@ -298,11 +321,13 @@ def process(data: list[int] | dict[str, int]) -> None {
 The backtick operator creates a reference to a type itself, rather than an instance of that type. This is essential for OSP operations like filtering graph traversals by node type, or for metaprogramming. Think of it as "the type called X" rather than "a value of type X".
 
 ```jac
-`TypeName       # Reference to TypeName type
-`root           # Reference to root node
+def example() {
+    `TypeName;       # Reference to TypeName type
+    `root;           # Reference to root node
 
-# In edge references
-[-->(`?Person)]  # Filter nodes by Person type
+    # In edge references
+    [-->(`?Person)];  # Filter nodes by Person type
+}
 ```
 
 ### 6 Literals
@@ -310,29 +335,34 @@ The backtick operator creates a reference to a type itself, rather than an insta
 **Numbers:**
 
 ```jac
-decimal = 42;
-hex = 0x2A;
-octal = 0o52;
-binary = 0b101010;
-floating = 3.14159;
-scientific = 1.5e-10;
+def example() {
+    decimal = 42;
+    hex = 0x2A;
+    octal = 0o52;
+    binary = 0b101010;
+    floating = 3.14159;
+    scientific = 1.5e-10;
 
-# Underscore separators (for readability)
-million = 1_000_000;
-hex_word = 0xFF_FF;
+    # Underscore separators (for readability)
+    million = 1_000_000;
+    hex_word = 0xFF_FF;
+}
 ```
 
 **Strings:**
 
 ```jac
-regular = "hello\nworld";
-raw = r"no\escape";
-bytes_lit = b"binary data";
-f_string = f"Value: {x}";
-multiline = """
-    Multiple
-    lines
-""";
+def example() {
+    regular = "hello\nworld";
+    raw = r"no\escape";
+    bytes_lit = b"binary data";
+    x = 42;
+    f_string = f"Value: {x}";
+    multiline = """
+        Multiple
+        lines
+    """;
+}
 ```
 
 ### 7 F-String Format Specifications
@@ -342,98 +372,109 @@ F-strings support powerful formatting with the syntax `{expression:format_spec}`
 **Basic formatting:**
 
 ```jac
-name = "Alice";
-age = 30;
+def example() {
+    name = "Alice";
+    age = 30;
 
-# Simple interpolation
-greeting = f"Hello, {name}!";
+    # Simple interpolation
+    greeting = f"Hello, {name}!";
 
-# With expressions
-message = f"In 5 years: {age + 5}";
+    # With expressions
+    message = f"In 5 years: {age + 5}";
+}
 ```
 
 **Width and alignment:**
 
 ```jac
-# Width specification
-f"{name:10}";           # "Alice     " (10 chars, left-aligned)
-f"{name:>10}";          # "     Alice" (right-aligned)
-f"{name:^10}";          # "  Alice   " (centered)
-f"{name:<10}";          # "Alice     " (left-aligned, explicit)
+def example() {
+    name = "Alice";
+    # Width specification
+    f"{name:10}";           # "Alice     " (10 chars, left-aligned)
+    f"{name:>10}";          # "     Alice" (right-aligned)
+    f"{name:^10}";          # "  Alice   " (centered)
+    f"{name:<10}";          # "Alice     " (left-aligned, explicit)
 
-# Fill character
-f"{name:*>10}";         # "*****Alice" (fill with *)
-f"{name:-^10}";         # "--Alice---" (centered with -)
+    # Fill character
+    f"{name:*>10}";         # "*****Alice" (fill with *)
+    f"{name:-^10}";         # "--Alice---" (centered with -)
+}
 ```
 
 **Number formatting:**
 
 ```jac
-n = 42;
-pi = 3.14159265;
+def example() {
+    n = 42;
+    pi = 3.14159265;
 
-# Integer formats
-f"{n:d}";               # "42" (decimal)
-f"{n:b}";               # "101010" (binary)
-f"{n:o}";               # "52" (octal)
-f"{n:x}";               # "2a" (hex lowercase)
-f"{n:X}";               # "2A" (hex uppercase)
-f"{n:05d}";             # "00042" (zero-padded, width 5)
+    # Integer formats
+    f"{n:d}";               # "42" (decimal)
+    f"{n:b}";               # "101010" (binary)
+    f"{n:o}";               # "52" (octal)
+    f"{n:x}";               # "2a" (hex lowercase)
+    f"{n:X}";               # "2A" (hex uppercase)
+    f"{n:05d}";             # "00042" (zero-padded, width 5)
 
-# Float formats
-f"{pi:f}";              # "3.141593" (fixed-point, 6 decimals default)
-f"{pi:.2f}";            # "3.14" (2 decimal places)
-f"{pi:10.2f}";          # "      3.14" (width 10, 2 decimals)
-f"{pi:e}";              # "3.141593e+00" (scientific notation)
-f"{pi:.2e}";            # "3.14e+00" (scientific, 2 decimals)
-f"{pi:g}";              # "3.14159" (general format)
+    # Float formats
+    f"{pi:f}";              # "3.141593" (fixed-point, 6 decimals default)
+    f"{pi:.2f}";            # "3.14" (2 decimal places)
+    f"{pi:10.2f}";          # "      3.14" (width 10, 2 decimals)
+    f"{pi:e}";              # "3.141593e+00" (scientific notation)
+    f"{pi:.2e}";            # "3.14e+00" (scientific, 2 decimals)
+    f"{pi:g}";              # "3.14159" (general format)
 
-# Percentage
-ratio = 0.756;
-f"{ratio:.1%}";         # "75.6%"
+    # Percentage
+    ratio = 0.756;
+    f"{ratio:.1%}";         # "75.6%"
 
-# Thousands separator
-big = 1234567;
-f"{big:,}";             # "1,234,567"
-f"{big:_}";             # "1_234_567" (underscore separator)
+    # Thousands separator
+    big = 1234567;
+    f"{big:,}";             # "1,234,567"
+    f"{big:_}";             # "1_234_567" (underscore separator)
+}
 ```
 
 **Sign and padding:**
 
 ```jac
-x = 42;
-y = -42;
+def example() {
+    x = 42;
+    y = -42;
 
-f"{x:+d}";              # "+42" (always show sign)
-f"{y:+d}";              # "-42"
-f"{x: d}";              # " 42" (space for positive)
-f"{x:=+5d}";            # "+  42" (pad after sign)
+    f"{x:+}";               # "+42" (always show sign)
+    f"{y:+}";               # "-42"
+    f"{x:05}";              # "00042" (zero-padded)
+}
 ```
 
 **Conversions (`!r`, `!s`, `!a`):**
 
 ```jac
-text = "hello\nworld";
+def example() {
+    text = "hello\nworld";
 
-f"{text}";              # "hello
-                        #  world" (default str())
-f"{text!s}";            # "hello
-                        #  world" (explicit str())
-f"{text!r}";            # "'hello\\nworld'" (repr())
-f"{text!a}";            # "'hello\\nworld'" (ascii())
+    f"{text}";              # "hello\nworld" (default str())
+    f"{text!s}";            # "hello\nworld" (explicit str())
+    f"{text!r}";            # "'hello\\nworld'" (repr())
+    f"{text!a}";            # "'hello\\nworld'" (ascii())
+}
 ```
 
 **Nested expressions:**
 
 ```jac
-width = 10;
-precision = 2;
+def example() {
+    width = 10;
+    pi = 3.14159;
 
-# Dynamic width and precision
-f"{pi:{width}.{precision}f}";   # "      3.14"
+    # Dynamic width
+    f"{pi:{width}}";   # "   3.14159"
 
-# Expression in format spec
-f"{value:{'>10' if right else '<10'}}";
+    # Expression in format
+    value = "test";
+    f"{value:>10}";    # "      test"
+}
 ```
 
 **Format specification grammar:**
@@ -455,12 +496,14 @@ type      : 's' 'd' 'f' 'e' 'g' 'b' 'o' 'x' 'X' '%'
 **Collections:**
 
 ```jac
-list_lit = [1, 2, 3];
-tuple_lit = (1, 2, 3);
-set_lit = {1, 2, 3};
-dict_lit = {"key": "value", "num": 42};
-empty_dict = {};
-empty_list = [];
+def example() {
+    list_lit = [1, 2, 3];
+    tuple_lit = (1, 2, 3);
+    set_lit = {1, 2, 3};
+    dict_lit = {"key": "value", "num": 42};
+    empty_dict: dict = {};
+    empty_list: list = [];
+}
 ```
 
 ---
@@ -472,13 +515,15 @@ Jac distinguishes between local variables (within functions), instance variables
 ### 1 Local Variables
 
 ```jac
-# Type inferred
-x = 42;
-name = "Alice";
+def example() {
+    # Type inferred
+    x = 42;
+    name = "Alice";
 
-# Explicit type
-count: int = 0;
-items: list[str] = [];
+    # Explicit type
+    count: int = 0;
+    items: list[str] = [];
+}
 ```
 
 ### 2 Instance Variables (has)
@@ -490,7 +535,6 @@ obj Person {
     has name: str;                    # Required
     has age: int = 0;                 # With default
     static has count: int = 0;        # Static (class-level)
-    has computed: int by postinit;    # Deferred initialization
 }
 ```
 
@@ -573,15 +617,17 @@ def outer -> None {
 **Block scope behavior:**
 
 ```jac
-if True {
-    block_var = 42;    # Created in block
-}
-# block_var is still accessible here in Jac (unlike some languages)
+def example() {
+    if True {
+        block_var = 42;    # Created in block
+    }
+    # block_var is still accessible here in Jac (unlike some languages)
 
-for i in range(3) {
-    loop_var = i;
+    for i in range(3) {
+        loop_var = i;
+    }
+    # loop_var and i are accessible here
 }
-# loop_var and i are accessible here
 ```
 
 ### 5 Truthiness
@@ -605,30 +651,30 @@ All other values are **truthy**.
 **Examples:**
 
 ```jac
-# Falsy values
-if not 0 { print("0 is falsy"); }
-if not "" { print("empty string is falsy"); }
-if not [] { print("empty list is falsy"); }
-if not None { print("None is falsy"); }
+def example() {
+    # Falsy values
+    if not 0 { print("0 is falsy"); }
+    if not "" { print("empty string is falsy"); }
+    if not [] { print("empty list is falsy"); }
+    if not None { print("None is falsy"); }
 
-# Truthy values
-if 1 { print("non-zero is truthy"); }
-if "hello" { print("non-empty string is truthy"); }
-if [1, 2] { print("non-empty list is truthy"); }
+    # Truthy values
+    if 1 { print("non-zero is truthy"); }
+    if "hello" { print("non-empty string is truthy"); }
+    if [1, 2] { print("non-empty list is truthy"); }
 
-# Common patterns
-items = get_items();
-if items {
-    process(items);
-} else {
-    print("No items to process");
+    # Common patterns
+    items = [1, 2, 3];
+    if items {
+        print(items);
+    } else {
+        print("No items to process");
+    }
+
+    # Default value pattern
+    user_input = "";
+    name = user_input or "Anonymous";
 }
-
-# Default value pattern
-name = user_input or "Anonymous";
-
-# Guard pattern
-user and user.is_active and process(user);
 ```
 
 ---
@@ -668,14 +714,19 @@ Jac includes all standard Python operators plus several unique operators for gra
 ### 3 Logical Operators
 
 ```jac
-# Word form (preferred)
-result = a and b;
-result = a or b;
-result = not a;
+def example() {
+    a = True;
+    b = False;
 
-# Symbol form (also valid)
-result = a && b;
-result = a || b;
+    # Word form (preferred)
+    result = a and b;
+    result = a or b;
+    result = not a;
+
+    # Symbol form (also valid)
+    result = a && b;
+    result = a || b;
+}
 ```
 
 ### 4 Bitwise Operators
@@ -692,25 +743,32 @@ result = a || b;
 **Examples:**
 
 ```jac
-# Bitwise AND - check if bit is set
-has_flag = (flags & FLAG_MASK) != 0;
+def example() {
+    flags = 0b1010;
+    FLAG_MASK = 0b0010;
+    NEW_FLAG = 0b0100;
+    value = 16;
 
-# Bitwise OR - set a bit
-flags = flags | NEW_FLAG;
+    # Bitwise AND - check if bit is set
+    has_flag = (flags & FLAG_MASK) != 0;
 
-# Bitwise XOR - toggle a bit
-flags = flags ^ TOGGLE_FLAG;
+    # Bitwise OR - set a bit
+    flags = flags | NEW_FLAG;
 
-# Bitwise NOT - invert all bits
-inverted = ~value;
+    # Bitwise XOR - toggle a bit
+    flags = flags ^ FLAG_MASK;
 
-# Left shift - multiply by 2^n
-doubled = value << 1;      # value * 2
-quadrupled = value << 2;   # value * 4
+    # Bitwise NOT - invert all bits
+    inverted = ~value;
 
-# Right shift - divide by 2^n
-halved = value >> 1;       # value // 2
-quartered = value >> 2;    # value // 4
+    # Left shift - multiply by 2^n
+    doubled = value << 1;      # value * 2
+    quadrupled = value << 2;   # value * 4
+
+    # Right shift - divide by 2^n
+    halved = value >> 1;       # value // 2
+    quartered = value >> 2;    # value // 4
+}
 ```
 
 **Common bit manipulation patterns:**
@@ -747,9 +805,11 @@ def is_power_of_two(n: int) -> bool {
 **Simple Assignment:**
 
 ```jac
-x = 5;
-name = "Alice";
-a = b = c = 0;  # Chained assignment
+def example() {
+    x = 5;
+    name = "Alice";
+    a = b = c = 0;  # Chained assignment
+}
 ```
 
 **Walrus Operator (`:=`):**
@@ -757,21 +817,22 @@ a = b = c = 0;  # Chained assignment
 The walrus operator assigns a value and returns it in a single expression:
 
 ```jac
-# In conditionals - assign and test
-if (n := len(items)) > 10 {
-    print(f"List has {n} items, too many!");
+def example() {
+    items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+    # In conditionals - assign and test
+    if (n := len(items)) > 10 {
+        print(f"List has {n} items, too many!");
+    }
+
+    # In comprehensions
+    data = [1, 2, 3];
+    results = [y for x in data if (y := x * 2) > 2];
+
+    # In function calls
+    text = "hello";
+    print(f"Length: {(n := len(text))}, doubled: {n * 2}");
 }
-
-# In while loops - assign and check
-while (line := file.readline()) {
-    process(line);
-}
-
-# In comprehensions - avoid redundant computation
-results = [y for x in data if (y := expensive(x)) > threshold];
-
-# In function calls
-print(f"Length: {(n := len(text))}, doubled: {n * 2}");
 ```
 
 **Augmented Assignment Operators:**
@@ -795,16 +856,29 @@ All augmented assignments modify the variable in place:
 | `x >>= y` | `x = x >> y` | Right shift and assign |
 
 ```jac
-# Numeric augmented assignment
-count += 1;
-total *= tax_rate;
-value **= 2;
+def example() {
+    count = 0;
+    total = 100.0;
+    tax_rate = 1.08;
+    value = 2;
+    flags = 0b0000;
+    NEW_FLAG = 0b0100;
+    OLD_FLAG = 0b0010;
+    bits = 0b1010;
+    mask = 0b0011;
+    register = 1;
 
-# Bitwise augmented assignment
-flags |= NEW_FLAG;      # Set a flag
-flags &= ~OLD_FLAG;     # Clear a flag
-bits ^= mask;           # Toggle bits
-register <<= 4;         # Shift left
+    # Numeric augmented assignment
+    count += 1;
+    total *= tax_rate;
+    value **= 2;
+
+    # Bitwise augmented assignment
+    flags |= NEW_FLAG;      # Set a flag
+    flags &= ~OLD_FLAG;     # Clear a flag
+    bits ^= mask;           # Toggle bits
+    register <<= 4;         # Shift left
+}
 ```
 
 ### 6 Null-Safe Operators
@@ -814,56 +888,93 @@ The `?` operator provides safe access to potentially null values, returning `Non
 **Safe attribute access (`?.`):**
 
 ```jac
-# Without null-safe: raises AttributeError if obj is None
-value = obj.field;
+obj Profile {
+    has settings: dict = {};
+}
 
-# With null-safe: returns None if obj is None
-value = obj?.field;
+obj User {
+    has profile: Profile | None = None;
+}
 
-# Chained - stops at first None
-result = user?.profile?.settings?.theme;
+def example(obj: User | None, user: User | None) {
+    # Without null-safe: raises AttributeError if obj is None
+    value = obj.profile;
+
+    # With null-safe: returns None if obj is None
+    value = obj?.profile;
+
+    # Chained - stops at first None
+    result = user?.profile?.settings;
+}
 ```
 
 **Safe index access (`?[]`):**
 
 ```jac
-# Without null-safe: raises TypeError if list is None
-item = my_list[0];
+def example(my_list: list | None, config: dict | None) {
+    # Without null-safe: raises TypeError if list is None
+    item = my_list[0];
 
-# With null-safe: returns None if list is None
-item = my_list?[0];
+    # With null-safe: returns None if list is None
+    item = my_list?[0];
 
-# Works with dictionaries too
-value = config?["key"];
+    # Works with dictionaries too
+    value = config?["key"];
+}
 ```
 
 **Safe method calls:**
 
 ```jac
-# Returns None if obj is None, doesn't call method
-result = obj?.method();
+obj Data {
+    def transform(param: str) -> Data {
+        return self;
+    }
+    def format() -> str {
+        return "formatted";
+    }
+}
 
-# Chained with arguments
-output = data?.transform(param)?.format();
+def example(obj: Data | None, data: Data | None) {
+    # Returns None if obj is None, doesn't call method
+    result = obj?.transform("x");
+
+    # Chained with arguments
+    output = data?.transform("param")?.format();
+}
 ```
 
 **Combining with default values:**
 
 ```jac
-# Null-safe with fallback using or
-name = user?.name or "Anonymous";
+obj User {
+    has name: str = "";
+    has is_active: bool = True;
+}
 
-# In conditionals
-if user?.is_active {
-    process(user);
+def example(user: User | None) {
+    # Null-safe with fallback using or
+    name = user?.name or "Anonymous";
+
+    # In conditionals
+    if user?.is_active {
+        print(user);
+    }
 }
 ```
 
 **In filter comprehensions:**
 
 ```jac
-# The ? in filter comprehensions
-valid_items = items(?value > 0);  # Filter where value > 0
+obj Item {
+    has value: int = 0;
+}
+
+def example() {
+    items = [Item(value=1), Item(value=-1), Item(value=2)];
+    # The ? in filter comprehensions
+    valid_items = items(?value > 0);  # Filter where value > 0
+}
 ```
 
 **Behavior summary:**
@@ -882,33 +993,56 @@ Graph operators are fundamental to Object-Spatial Programming. They let you crea
 **Connection Operators:**
 
 ```jac
-# Untyped connections
-node1 ++> node2;         # Forward
-node1 <++ node2;         # Backward
-node1 <++> node2;        # Bidirectional
+node Person {
+    has name: str;
+}
 
-# Typed connections
-node1 +>: Edge :+> node2;         # Forward typed
-node1 <+: Edge :<+ node2;         # Backward typed
-node1 <+: Edge :+> node2;         # Bidirectional typed
+edge Friend {
+    has since: int = 2020;
+}
 
-# With edge attributes
-alice +>: Friend(since=2020) :+> bob;
+with entry {
+    node1 = Person(name="Alice");
+    node2 = Person(name="Bob");
+
+    # Untyped connections
+    node1 ++> node2;         # Forward
+    node1 <++ node2;         # Backward
+    node1 <++> node2;        # Bidirectional
+
+    # Typed connections
+    alice = Person(name="Alice");
+    bob = Person(name="Bob");
+    alice +>: Friend(since=2020) :+> bob;
+}
 ```
 
 **Edge Reference Operators:**
 
 ```jac
-[-->]                    # All outgoing edges
-[<--]                    # All incoming edges
-[<-->]                   # Bidirectional (both)
+node Item {
+    has value: int = 0;
+}
 
-[->:Type:->]            # Typed outgoing
-[<-:Type:<-]            # Typed incoming
-[<-:Type:->]            # Typed bidirectional
+edge Link {
+    has weight: int = 1;
+}
 
-[->:Edge:attr > 5:->]   # Filtered by edge attribute
-[-->(`?NodeType)]        # Filtered by node type
+walker Visitor {
+    can visit with Item entry {
+        # All outgoing edges
+        neighbors = [-->];
+
+        # All incoming edges
+        sources = [<--];
+
+        # Typed outgoing
+        linked = [->:Link:->];
+
+        # Filtered by edge attribute
+        heavy = [->:Link:weight > 5:->];
+    }
+}
 ```
 
 ### 8 Pipe Operators
@@ -918,17 +1052,18 @@ Pipe operators enable functional-style data transformation by passing results fr
 **Standard Pipes (`|>`, `<|`):**
 
 ```jac
-# Forward pipe - data flows left to right
-result = data |> transform |> filter |> format;
+def double(x: int) -> int { return x * 2; }
+def add_one(x: int) -> int { return x + 1; }
 
-# Equivalent to:
-result = format(filter(transform(data)));
+def example() {
+    data = 5;
 
-# Backward pipe - data flows right to left
-result = output <| filter <| transform <| data;
+    # Forward pipe - data flows left to right
+    result = data |> double |> add_one;
 
-# Equivalent to:
-result = output(filter(transform(data)));
+    # Equivalent to:
+    result = add_one(double(data));
+}
 ```
 
 **Atomic Pipes (`:>`, `<:`):**
@@ -936,14 +1071,25 @@ result = output(filter(transform(data)));
 Atomic pipes are used with spawn operations and affect traversal order:
 
 ```jac
-# Atomic pipe forward - depth-first traversal
-result = node spawn :> Walker();
+node Item {
+    has value: int = 0;
+}
 
-# Atomic pipe backward
-result = Walker() <: spawn node;
+walker Visitor {
+    can visit with Item entry {
+        print(here.value);
+    }
+}
 
-# Standard pipe with spawn - breadth-first traversal
-result = node spawn |> Walker();
+with entry {
+    start = Item(value=1);
+
+    # Atomic pipe forward - depth-first traversal
+    start spawn :> Visitor();
+
+    # Standard pipe with spawn - breadth-first traversal
+    start spawn |> Visitor();
+}
 ```
 
 **Dot Pipes (`.>`, `<.`):**
@@ -951,24 +1097,40 @@ result = node spawn |> Walker();
 Dot pipes chain method calls:
 
 ```jac
-# Dot forward pipe
-result = data .> method1 .> method2 .> method3;
+obj Builder {
+    has value: int = 0;
 
-# Equivalent to:
-result = data.method1().method2().method3();
+    def add(n: int) -> Builder {
+        self.value += n;
+        return self;
+    }
+    def double() -> Builder {
+        self.value *= 2;
+        return self;
+    }
+}
 
-# Dot backward pipe
-result = method3 <. method2 <. method1 <. data;
+def example() {
+    # Dot forward pipe
+    result = Builder() .> add(5) .> double;
+
+    # Equivalent to:
+    result = Builder().add(5).double();
+}
 ```
 
 **Pipe with lambdas:**
 
 ```jac
-# Using lambdas in pipe chains
-result = numbers
-    |> (lambda x: list : [i * 2 for i in x])
-    |> (lambda x: list : [i for i in x if i > 10])
-    |> sum;
+def example() {
+    numbers = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    # Using lambdas in pipe chains
+    result = numbers
+        |> (lambda x: list : [i * 2 for i in x])
+        |> (lambda x: list : [i for i in x if i > 10])
+        |> sum;
+}
 ```
 
 **Comparison of pipe operators:**
@@ -989,14 +1151,16 @@ The `by` operator is Jac's mechanism for delegation -- handing off work to an ex
 **General Syntax:**
 
 ```jac
-# Basic by expression
-result = "hello" by "world";
+def example() {
+    # Basic by expression
+    result = "hello" by "world";
 
-# Chained by expressions (right-associative)
-result = "a" by "b" by "c";  # Parsed as: "a" by ("b" by "c")
+    # Chained by expressions (right-associative)
+    result = "a" by "b" by "c";  # Parsed as: "a" by ("b" by "c")
 
-# With expressions
-result = (1 + 2) by (3 * 4);
+    # With expressions
+    result = (1 + 2) by (3 * 4);
+}
 ```
 
 **With byllm Plugin (LLM Delegation):**
@@ -1004,14 +1168,17 @@ result = (1 + 2) by (3 * 4);
 When the `byllm` plugin is installed, `by` enables LLM delegation:
 
 ```jac
-# Expression processed by LLM
-response = "Explain quantum computing" by llm;
-
 # Function implementation delegated to LLM
-def summarize(text: str) -> str by llm;
+"""Summarize the given text."""
+def summarize(text: str) -> str by llm();
 
-# With specific model
+"""Translate text to French."""
 def translate(text: str) -> str by llm(model_name="gpt-4");
+
+with entry {
+    # Expression processed by LLM
+    result = summarize("Hello world");
+}
 ```
 
 See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
@@ -1048,29 +1215,38 @@ Complete precedence table from **lowest** (evaluated last) to **highest** (evalu
 **Examples showing precedence:**
 
 ```jac
-# Ternary binds loosely
-x = a if cond else b + 1;   # x = a if cond else (b + 1)
+def f(x: int) -> int { return x + 1; }
+def g(x: int) -> int { return x * 2; }
 
-# Logical operators
-x = a or b and c;           # x = a or (b and c)
-x = not a and b;            # x = (not a) and b
+def example() {
+    a = 1; b = 2; c = 3; cond = True;
 
-# Comparison chaining
-valid = 0 < x < 10;         # (0 < x) and (x < 10)
+    # Ternary binds loosely
+    x = a if cond else b + 1;   # x = a if cond else (b + 1)
 
-# Arithmetic
-x = a + b * c;              # x = a + (b * c)
-x = a ** b ** c;            # x = a ** (b ** c)  (right associative)
+    # Logical operators
+    x = a or b and c;           # x = a or (b and c)
+    x = not a and b;            # x = (not a) and b
 
-# Bitwise
-x = a | b & c;              # x = a | (b & c)
-x = a << 2 + 1;             # x = a << (2 + 1)
+    # Comparison chaining
+    x = 5;
+    valid = 0 < x < 10;         # (0 < x) and (x < 10)
 
-# Pipe operators
-result = a |> f |> g;       # result = g(f(a))
+    # Arithmetic
+    x = a + b * c;              # x = a + (b * c)
+    x = a ** b ** c;            # x = a ** (b ** c)
 
-# Walrus in condition
-if (n := len(x)) > 10 { }   # Assignment happens first
+    # Bitwise
+    x = a | b & c;              # x = a | (b & c)
+    x = a << 2 + 1;             # x = a << (2 + 1)
+
+    # Pipe operators
+    result = a |> f |> g;       # result = g(f(a))
+
+    # Walrus in condition
+    items = [1, 2, 3];
+    if (n := len(items)) > 2 { print(n); }
+}
 ```
 
 **Short-circuit evaluation:**
@@ -1078,15 +1254,20 @@ if (n := len(x)) > 10 { }   # Assignment happens first
 `and` and `or` use short-circuit evaluation:
 
 ```jac
-# 'and' stops at first falsy value
-result = a and b and c;  # Returns first falsy, or last value
+def example() {
+    a = 1; b = 2; c = 3;
 
-# 'or' stops at first truthy value
-result = a or b or c;    # Returns first truthy, or last value
+    # 'and' stops at first falsy value
+    result = a and b and c;  # Returns first falsy, or last value
 
-# Common patterns
-value = user_input or default;     # Use default if input is falsy
-safe = obj and obj.method();       # Only call if obj exists
+    # 'or' stops at first truthy value
+    result = a or b or c;    # Returns first truthy, or last value
+
+    # Common patterns
+    user_input = "";
+    fallback = "fallback";
+    value = user_input or fallback;     # Use fallback if input is falsy
+}
 ```
 
 ---
@@ -1098,30 +1279,41 @@ Jac's control flow is familiar to Python developers with a few enhancements: bra
 ### 1 Conditional Statements
 
 ```jac
-if condition {
-    # block
-} elif other_condition {
-    # block
-} else {
-    # block
-}
+def example() {
+    condition = True;
+    other_condition = False;
 
-# Ternary expression
-result = value_if_true if condition else value_if_false;
+    if condition {
+        print("condition true");
+    } elif other_condition {
+        print("other condition");
+    } else {
+        print("else");
+    }
+
+    # Ternary expression
+    result = "yes" if condition else "no";
+}
 ```
 
 ### 2 While Loops
 
 ```jac
-while condition {
-    # loop body
-}
+def example() {
+    count = 0;
 
-# With else clause (executes if loop completes normally)
-while condition {
-    # loop body
-} else {
-    # no break occurred
+    while count < 3 {
+        print(count);
+        count += 1;
+    }
+
+    # With else clause (executes if loop completes normally)
+    count = 0;
+    while count < 3 {
+        count += 1;
+    } else {
+        print("completed");
+    }
 }
 ```
 
@@ -1130,28 +1322,32 @@ while condition {
 Jac supports Python-style iteration and also adds C-style for loops with explicit initialization, condition, and update expressions. The C-style syntax uses `to` for the condition and `by` for the update step -- useful when you need precise control over loop variables.
 
 ```jac
-# Iterate over collection (Python-style)
-for item in items {
-    print(item);
-}
+def example() {
+    items = [1, 2, 3];
 
-# With index
-for (i, item) in enumerate(items) {
-    print(f"{i}: {item}");
-}
-
-# C-style for loop: for INIT to CONDITION by UPDATE
-for i = 0 to i < 10 by i += 1 {
-    print(i);
-}
-
-# With else clause
-for item in items {
-    if found(item) {
-        break;
+    # Iterate over collection (Python-style)
+    for item in items {
+        print(item);
     }
-} else {
-    print("Not found");
+
+    # With index
+    for (i, item) in enumerate(items) {
+        print(f"{i}: {item}");
+    }
+
+    # C-style for loop: for INIT to CONDITION by UPDATE
+    for i = 0 to i < 10 by i += 1 {
+        print(i);
+    }
+
+    # With else clause
+    for item in items {
+        if item == 5 {
+            break;
+        }
+    } else {
+        print("Not found");
+    }
 }
 ```
 
@@ -1162,42 +1358,51 @@ Pattern matching lets you destructure and test complex data in a single construc
 **Basic Patterns:**
 
 ```jac
-match value {
-    case 0:
-        print("zero");
+obj Point {
+    has x: int = 0;
+    has y: int = 0;
+}
 
-    case 1 | 2 | 3:
-        print("small");
+def example(value: any) {
+    match value {
+        case 0:
+            print("zero");
 
-    case [x, y]:
-        print(f"pair: {x}, {y}");
+        case 1 | 2 | 3:
+            print("small");
 
-    case {"key": v}:
-        print(f"dict with key: {v}");
+        case [x, y]:
+            print(f"pair: {x}, {y}");
 
-    case Point(x=x, y=y):
-        print(f"point at {x}, {y}");
+        case {"key": v}:
+            print(f"dict with key: {v}");
 
-    case _:
-        print("default");
+        case Point(x=x, y=y):
+            print(f"point at {x}, {y}");
+
+        case _:
+            print("default");
+    }
 }
 ```
 
 **Advanced Patterns:**
 
 ```jac
-match data {
-    case [1, *middle, 5]:              # Spread: capture remainder
-        print(f"Middle: {middle}");
+def example(data: any) {
+    match data {
+        case [1, *middle, 5]:              # Spread: capture remainder
+            print(f"Middle: {middle}");
 
-    case {"key1": 1, **rest}:          # Dict spread
-        print(f"Rest: {rest}");
+        case {"key1": 1, **rest}:          # Dict spread
+            print(f"Rest: {rest}");
 
-    case [1, 2, last as captured]:     # As: bind to name
-        print(f"Captured: {captured}");
+        case [1, 2, last as captured]:     # As: bind to name
+            print(f"Captured: {captured}");
 
-    case [1, 2] | [3, 4]:              # Or: match either
-        print("Matched");
+        case [1, 2] | [3, 4]:              # Or: match either
+            print("Matched");
+    }
 }
 ```
 
@@ -1219,15 +1424,16 @@ match data {
 ### 5 Switch Statement
 
 ```jac
-switch value {
-    case 1 {
-        print("one");
-    }
-    case 2 {
-        print("two");
-    }
-    default {
-        print("other");
+def example(value: int) {
+    switch value {
+        case 1:
+            print("one");
+
+        case 2:
+            print("two");
+
+        default:
+            print("other");
     }
 }
 ```
@@ -1237,15 +1443,17 @@ Note: Unlike C, there is no fall-through between cases.
 ### 6 Loop Control
 
 ```jac
-for item in items {
-    if should_skip(item) {
-        continue;    # Skip to next iteration
-    }
-    if should_stop(item) {
-        break;       # Exit loop
-    }
-    if should_skip_outer(item) {
-        skip;        # Skip in nested context
+def example() {
+    items = [1, 2, 3, 4, 5];
+
+    for item in items {
+        if item == 2 {
+            continue;    # Skip to next iteration
+        }
+        if item == 4 {
+            break;       # Exit loop
+        }
+        print(item);
     }
 }
 ```
@@ -1253,18 +1461,15 @@ for item in items {
 ### 7 Context Managers
 
 ```jac
-with open("file.txt") as f {
-    content = f.read();
-}
+def example() {
+    with open("file.txt") as f {
+        content = f.read();
+    }
 
-# Multiple context managers
-with open("in.txt") as fin, open("out.txt", "w") as fout {
-    fout.write(fin.read());
-}
-
-# Async context manager
-async with acquire_lock() as lock {
-    # critical section
+    # Multiple context managers
+    with open("in.txt") as fin, open("out.txt", "w") as fout {
+        fout.write(fin.read());
+    }
 }
 ```
 
@@ -1273,54 +1478,76 @@ async with acquire_lock() as lock {
 **Basic try/except:**
 
 ```jac
-try {
-    result = risky_operation();
-} except ValueError {
-    print("Value error occurred");
+def risky_operation() -> int {
+    raise ValueError("error");
+}
+
+def example() {
+    try {
+        result = risky_operation();
+    } except ValueError {
+        print("Value error occurred");
+    }
 }
 ```
 
 **Capturing the exception:**
 
 ```jac
-try {
-    data = parse_json(input);
-} except ValueError as e {
-    print(f"Parse error: {e}");
-} except KeyError as e {
-    print(f"Missing key: {e}");
+import json;
+
+def example(input: str) {
+    try {
+        data = json.loads(input);
+    } except ValueError as e {
+        print(f"Parse error: {e}");
+    } except KeyError as e {
+        print(f"Missing key: {e}");
+    }
 }
 ```
 
 **Multiple exception types:**
 
 ```jac
-try {
-    process(data);
-} except (TypeError, ValueError) as e {
-    print(f"Type or value error: {e}");
+def process(data: any) -> None {
+    print(data);
+}
+
+def example(data: any) {
+    try {
+        process(data);
+    } except (TypeError, ValueError) as e {
+        print(f"Type or value error: {e}");
+    }
 }
 ```
 
 **Full try/except/else/finally:**
 
 ```jac
-try {
-    file = open("data.txt");
-    data = file.read();
-} except FileNotFoundError {
-    print("File not found");
-    data = default_data;
-} except PermissionError as e {
-    print(f"Permission denied: {e}");
-    raise;  # Re-raise the exception
-} else {
-    # Executes only if no exception occurred
-    print(f"Read {len(data)} bytes");
-} finally {
-    # Always executes (cleanup)
-    if file {
-        file.close();
+def example() {
+    default_data = "default";
+    file = None;
+    data = "";
+
+    try {
+        file = open("data.txt");
+        data = file.read();
+    } except FileNotFoundError {
+        print("File not found");
+        data = default_data;
+    } except PermissionError as e {
+        print(f"Permission denied: {e}");
+        raise;  # Re-raise the exception
+    } else {
+        # Executes only if no exception occurred
+        print(f"Read {len(data)} bytes");
+    } finally {
+        # Always executes (cleanup)
+        if file {
+            file.close();
+        }
     }
 }
 ```
@@ -1328,23 +1555,20 @@ try {
 **Raising exceptions:**
 
 ```jac
-# Raise an exception
-raise ValueError("Invalid input");
-
-# Raise with a message
-raise RuntimeError(f"Failed to process: {item}");
-
-# Re-raise current exception
-except SomeError {
-    log_error();
-    raise;
+def validate(input: str) -> None {
+    if not input {
+        # Raise an exception
+        raise ValueError("Invalid input");
+    }
 }
 
-# Exception chaining (raise from)
-try {
-    low_level_operation();
-} except LowLevelError as e {
-    raise HighLevelError("Operation failed") from e;
+def process(item: str) -> None {
+    try {
+        validate(item);
+    } except ValueError as e {
+        # Re-raise with more context
+        raise RuntimeError(f"Failed to process: {item}") from e;
+    }
 }
 ```
 
@@ -1368,20 +1592,30 @@ def validate(data: dict) -> None {
 Assertions verify conditions during development:
 
 ```jac
-# Basic assertion
-assert condition;
+def example() {
+    condition = True;
+    items = [1, 2, 3];
+    value = 42;
 
-# Assertion with message
-assert len(items) > 0, "Items list cannot be empty";
+    # Basic assertion
+    assert condition;
 
-# Type checking
-assert isinstance(value, int), f"Expected int, got {type(value)}";
+    # Assertion with message
+    assert len(items) > 0, "Items list cannot be empty";
 
-# Invariant checking
-def withdraw(amount: float) -> None {
-    assert amount > 0, "Withdrawal amount must be positive";
-    assert amount <= self.balance, "Insufficient funds";
-    self.balance -= amount;
+    # Type checking
+    assert isinstance(value, int), f"Expected int, got {type(value)}";
+}
+
+# Invariant checking in class methods
+obj Account {
+    has balance: float = 0.0;
+
+    def withdraw(amount: float) -> None {
+        assert amount > 0, "Withdrawal amount must be positive";
+        assert amount <= self.balance, "Insufficient funds";
+        self.balance -= amount;
+    }
 }
 ```
 
@@ -1400,9 +1634,11 @@ def count_up(n: int) -> int {
     }
 }
 
-# Usage
-for num in count_up(5) {
-    print(num);  # 0, 1, 2, 3, 4
+with entry {
+    # Usage
+    for num in count_up(5) {
+        print(num);  # 0, 1, 2, 3, 4
+    }
 }
 ```
 
@@ -1432,19 +1668,34 @@ def flatten(nested: list) -> any {
     }
 }
 
-# Usage
-nested = [[1, 2], [3, [4, 5]], 6];
-flat = list(flatten(nested));  # [1, 2, 3, 4, 5, 6]
+with entry {
+    # Usage
+    nested = [[1, 2], [3, [4, 5]], 6];
+    flat = list(flatten(nested));  # [1, 2, 3, 4, 5, 6]
+}
 ```
 
 **Generator expressions:**
 
 ```jac
-# Generator expression (lazy)
-squares = (x ** 2 for x in range(1000000));
+def example() {
+    # Generator expression (lazy)
+    squares = (x ** 2 for x in range(1000000));
 
-# List comprehension (eager)
-squares_list = [x ** 2 for x in range(100)];
+    # List comprehension (eager)
+    squares_list = [x ** 2 for x in range(100)];
+}
 ```
 
 ---
+
+## Learn More
+
+**Tutorials:**
+
+- [Jac Basics](../../tutorials/language/basics.md) - Step-by-step introduction to Jac syntax
+- [Hello World](../../quick-guide/hello-world.md) - Your first Jac program
+
+**Related Reference:**
+
+- [Part II: Functions & Objects](functions-objects.md) - Classes, methods, inheritance

@@ -53,11 +53,27 @@ impl MTRuntime.factory(
     if isinstance(caller, MethodType) {
         inputs_detail.insert(0, f"self = {caller.__self__}");
     }
+    # System prompt: Config from jac.toml or default SYSTEM_PERSONA
+    system_content = SYSTEM_PERSONA;
+    try {
+        import from jaclang.project.config { find_project_root }
+        import from pathlib { Path }
+
+        # Get the file path of the caller's module
+        caller_file = inspect.getfile(caller);
+        project_root_result = find_project_root(Path(caller_file).parent);
+        project_dir = project_root_result[0] if project_root_result else None;
+
+        config_system_prompt = get_byllm_config(project_dir).get_system_prompt();
+        if config_system_prompt {
+            system_content = config_system_prompt;
+        }
+    } except Exception { }
     # Prepare the messages for the LLM call.
     messages: list[MessageType] = [
         Message(
             role=MessageRole.SYSTEM,
-            content=SYSTEM_PERSONA + (INSTRUCTION_TOOL if tools else ""),
+            content=system_content + (INSTRUCTION_TOOL if tools else ""),
         ),
         Message(
             role=MessageRole.USER,

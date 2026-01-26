@@ -100,6 +100,7 @@ Tools, plugins, and interoperability.
 - Project Configuration
 - Python Interoperability
 - JavaScript/TypeScript Interoperability
+- **[Python Integration](python-integration.md)** - 5 adoption patterns, transpilation details
 
 ### [Part IX: Deployment and Scaling](deployment.md)
 
@@ -108,6 +109,7 @@ Production deployment with jac-scale.
 - jac-scale Plugin
 - Kubernetes Deployment
 - Production Architecture
+- **[Library Mode](library-mode.md)** - Pure Python with Jac runtime
 
 ### [Appendices](appendices.md)
 
@@ -119,6 +121,13 @@ Quick references and migration guides.
 - Common Gotchas
 - Migration from Python
 - LLM Provider Reference
+
+### Quick Reference
+
+Focused reference pages for common patterns:
+
+- **[Walker Responses](walker-responses.md)** - Understanding `.reports` patterns
+- **[Graph Operations](graph-operations.md)** - Node creation, traversal, deletion
 
 ---
 

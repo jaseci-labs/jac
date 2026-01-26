@@ -1,0 +1,70 @@
+name: Check Release Notes
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check release notes are updated
+        run: |
+          # Define folder to release notes mapping
+          declare -A FOLDER_TO_NOTES=(
+            ["jac/"]="docs/docs/community/release_notes/jaclang.md"
+            ["jac-scale/"]="docs/docs/community/release_notes/jac-scale.md"
+            ["jac-client/"]="docs/docs/community/release_notes/jac-client.md"
+            ["jac-byllm/"]="docs/docs/community/release_notes/byllm.md"
+            ["jac-super/"]="docs/docs/community/release_notes/jac-super.md"
+          )
+
+          # Get list of changed files in this PR
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          MISSING_NOTES=()
+
+          for folder in "${!FOLDER_TO_NOTES[@]}"; do
+            notes_file="${FOLDER_TO_NOTES[$folder]}"
+
+            # Check if any files in the folder were changed
+            if echo "$CHANGED_FILES" | grep -q "^${folder}"; then
+              echo "Changes detected in ${folder}"
+
+              # Check if the corresponding release notes file was also changed
+              if ! echo "$CHANGED_FILES" | grep -q "^${notes_file}$"; then
+                MISSING_NOTES+=("${folder} -> ${notes_file}")
+              else
+                echo "  ✓ Release notes updated: ${notes_file}"
+              fi
+            fi
+          done
+
+          if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
+            echo ""
+            echo "=========================================="
+            echo "ERROR: Release notes not updated!"
+            echo "=========================================="
+            echo ""
+            echo "The following folders were modified but their release notes were not updated:"
+            echo ""
+            for item in "${MISSING_NOTES[@]}"; do
+              echo "  - $item"
+            done
+            echo ""
+            echo "Please update the corresponding release notes file(s) before merging."
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ All release notes checks passed!"

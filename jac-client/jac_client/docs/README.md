@@ -21,38 +21,27 @@ Welcome to the Todo App example! This guide will walk you through building a ful
 
 ### Prerequisites
 
-Before installing Jac client, you need to have **Node.js** installed on your system.
+Before installing Jac client, you need to have **Bun** installed on your system.
 
-#### Installing Node.js
+#### Installing Bun
 
-**For Linux users:**
+Visit [https://bun.sh](https://bun.sh) and follow the installation instructions:
 
-Visit [https://nodejs.org/en/download](https://nodejs.org/en/download) and follow the instructions to install Node.js using **nvm** (Node Version Manager) with **npm**.
-
-Select:
-
-- **Platform**: Linux
-- **Package Manager**: nvm
-- **Package**: npm
-
-Then follow the installation commands provided on that page.
-
-**For macOS users:**
-
-Download and install Node.js from [https://nodejs.org/en/download](https://nodejs.org/en/download) by selecting your operating system.
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
 
 **Verify Installation:**
 
-After installation, verify Node.js and npm are installed correctly:
+After installation, verify Bun is installed correctly:
 
 ```bash
-node -v
-npm -v
+bun --version
 ```
 
 ### Installation
 
-Once Node.js is installed, install the Jac client package:
+Once Bun is installed, install the Jac client package:
 
 ```bash
 pip install jac-client
@@ -72,7 +61,7 @@ This command will:
 - Set up an organized project structure
 - Create a starter `main.jac` file with a sample component
 - Include a sample TypeScript component
-- **Automatically install npm packages** in the `.jac/client/` directory
+- **Automatically install packages** in the `.jac/client/` directory
 
 #### Skipping Package Installation
 
@@ -85,7 +74,7 @@ jac create --use client --skip todo-app
 **When to use `--skip`:**
 
 - You want to manually control when packages are installed
-- You're setting up the project in an environment without npm/Node.js initially
+- You're setting up the project in an environment without Bun initially
 - You want to customize the package.json before installation
 
 **Note:** If you use `--skip`, you'll need to install packages manually later using:
@@ -94,7 +83,7 @@ jac create --use client --skip todo-app
 jac add --npm <package-name>
 ```
 
-Or you can manually run `npm install` in the `.jac/client/configs/` directory after the project is created.
+Or you can manually run `bun install` in the `.jac/client/` directory after the project is created.
 
 **What gets created:**
 
@@ -750,6 +739,9 @@ Then visit `http://localhost:8000` in your browser.
 
 Ready to dive deeper? Explore these advanced topics:
 
+- **[Multi-Target Builds](multi-targets/intro.md)**: Build for web, desktop, and more from a single codebase
+  - [Web Target](multi-targets/web-target.md): Web builds in detail
+  - [Desktop Target](multi-targets/desktop-target.md): Desktop builds in detail
 - **[Routing](routing.md)**: Build multi-page apps with declarative routing (`<Router>`, `<Routes>`, `<Route>`)
 - **[Lifecycle Hooks](lifecycle-hooks.md)**: Use `onMount()` and React hooks for initialization logic
 - **[Advanced State](advanced-state.md)**: Manage complex state with React hooks and context

@@ -48,10 +48,10 @@ Routing allows you to create multi-page applications where different URLs displa
 
 ## Getting Started
 
-Import routing components from `@jac-client/utils`:
+Import routing components from `@jac/runtime`:
 
 ```jac
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
@@ -85,7 +85,7 @@ cl import from "@jac-client/utils" {
 
 ```jac
 cl import from react { useEffect }
-cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 # Note: useState is auto-injected when using `has` variables
 
@@ -227,7 +227,7 @@ The `<Link>` component creates clickable navigation links:
 ### Basic Navigation
 
 ```jac
-cl import from "@jac-client/utils" { Router, Routes, Route, Link }
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 cl {
     def Navigation() -> any {
@@ -245,7 +245,7 @@ cl {
 ### Active Link Styling with useLocation
 
 ```jac
-cl import from "@jac-client/utils" { Link, useLocation }
+cl import from "@jac/runtime" { Link, useLocation }
 
 cl {
     def Navigation() -> any {
@@ -287,7 +287,7 @@ cl {
 For programmatic navigation (e.g., after form submission), use the `useNavigate()` hook:
 
 ```jac
-cl import from "@jac-client/utils" { useNavigate }
+cl import from "@jac/runtime" { useNavigate }
 
 cl {
     def LoginForm() -> any {
@@ -345,7 +345,7 @@ cl {
 Access dynamic URL parameters using the `useParams()` hook:
 
 ```jac
-cl import from "@jac-client/utils" { useParams, Link }
+cl import from "@jac/runtime" { useParams, Link }
 
 cl {
     def UserProfile() -> any {
@@ -383,7 +383,7 @@ cl {
 Access the current location object using `useLocation()`:
 
 ```jac
-cl import from "@jac-client/utils" { useLocation }
+cl import from "@jac/runtime" { useLocation }
 
 cl {
     def CurrentPath() -> any {
@@ -412,7 +412,7 @@ cl {
 Use the `<Navigate>` component to protect routes that require authentication:
 
 ```jac
-cl import from "@jac-client/utils" { Navigate, useNavigate }
+cl import from "@jac/runtime" { Navigate, useNavigate }
 
 cl {
     def Dashboard() -> any {
@@ -476,7 +476,7 @@ cl {
 
 ```jac
 cl import from react { useEffect }
-cl import from "@jac-client/utils" { Router, Routes, Route, Link, useLocation }
+cl import from "@jac/runtime" { Router, Routes, Route, Link, useLocation }
 
 # Note: useState is auto-injected when using `has` variables
 
@@ -544,7 +544,7 @@ cl {
 ### Example 2: App with URL Parameters
 
 ```jac
-cl import from "@jac-client/utils" { Router, Routes, Route, Link, useParams }
+cl import from "@jac/runtime" { Router, Routes, Route, Link, useParams }
 
 cl {
     def UserList() -> any {
@@ -599,7 +599,7 @@ cl {
 ### 2. **Import All Needed Components**
 
 ```jac
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,

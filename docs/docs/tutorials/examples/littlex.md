@@ -160,26 +160,28 @@ walker follow_user {
 ### Load Feed
 
 ```jac
+import from datetime { datetime }
+
 walker load_feed {
     has limit: int = 20;
 
     can gather with Profile entry {
-        tweets = [];
+        tweets: list = [];
 
         # Get own tweets
-        for tweet in [here ->:Post:-> (?Tweet)] {
+        for tweet in [here ->:Post:-> (`?Tweet)] {
             tweets.append(tweet);
         }
 
         # Get tweets from followed users
-        for followed in [here ->:Follow:-> (?Profile)] {
-            for tweet in [followed ->:Post:-> (?Tweet)] {
+        for followed in [here ->:Follow:-> (`?Profile)] {
+            for tweet in [followed ->:Post:-> (`?Tweet)] {
                 tweets.append(tweet);
             }
         }
 
         # Sort by date, limit results
-        sorted_tweets = sorted(tweets, key=lambda t: t.created_at, reverse=True);
+        sorted_tweets = sorted(tweets, key=lambda t: any -> any { t.created_at; }, reverse=True);
         report sorted_tweets[:self.limit];
     }
 }
@@ -223,6 +225,8 @@ Open `http://localhost:5173` in your browser.
 ## Testing
 
 ```jac
+import from datetime { datetime }
+
 test test_create_tweet {
     # Setup
     profile = root ++> Profile(username="testuser");
@@ -231,7 +235,7 @@ test test_create_tweet {
     root spawn create_tweet(content="Hello, World!");
 
     # Verify
-    tweets = [profile[0] ->:Post:-> (?Tweet)];
+    tweets = [profile[0] ->:Post:-> (`?Tweet)];
     assert len(tweets) == 1;
     assert tweets[0].content == "Hello, World!";
 }
@@ -245,7 +249,7 @@ test test_follow_user {
     alice[0] spawn follow_user(target_username="bob");
 
     # Verify
-    following = [alice[0] ->:Follow:-> (?Profile)];
+    following = [alice[0] ->:Follow:-> (`?Profile)];
     assert len(following) == 1;
     assert following[0].username == "bob";
 }

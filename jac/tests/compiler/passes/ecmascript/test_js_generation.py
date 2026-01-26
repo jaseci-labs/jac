@@ -11,6 +11,7 @@ import pytest
 from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
 from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
+from jaclang.pycore.modresolver import convert_to_js_import_path
 from jaclang.pycore.program import JacProgram
 
 
@@ -221,7 +222,7 @@ def test_iife_fixture_generates_function_expressions(
     for pattern in [
         "function get_value()",
         "function calculate(x, y)",
-        "}();",
+        "})();",  # Properly parenthesized IIFE
         "function outer()",
         "All client-side IIFE tests completed!",
     ]:
@@ -347,7 +348,7 @@ def test_category1_named_imports_generate_correct_js(
         'import { helper } from "./utils.js";',
         'import { formatter as format } from "../lib.js";',
         'import { settings } from "../../config.js";',
-        'import { renderJsxTree, jacLogin, jacLogout } from "client_runtime";',
+        'import { renderJsxTree, jacLogin, jacLogout } from "@jac/runtime";',
     ]
     for pattern in imports:
         assert pattern in js_code
@@ -729,3 +730,27 @@ def test_separated_files(fixture_path: Callable[[str], str]) -> None:
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code
     assert '__jacSpawn("create_todo", "", {"text": input.trim()});' in js_code
+
+
+def test_convert_to_js_import_path_preserves_js_format() -> None:
+    """Test that paths already in JS format are not double-converted.
+
+    This ensures Vite error messages map back to correct source locations
+    by preventing path corruption like .//styles.css from ./styles.css.
+    """
+    # Paths already in JavaScript format should pass through unchanged
+    assert convert_to_js_import_path("./styles.css") == "./styles.css"
+    assert convert_to_js_import_path("../lib/utils.js") == "../lib/utils.js"
+    assert convert_to_js_import_path("../../config.json") == "../../config.json"
+
+    # Jac-style paths should still be converted correctly
+    assert convert_to_js_import_path(".utils") == "./utils.js"
+    assert convert_to_js_import_path("..lib") == "../lib.js"
+    assert convert_to_js_import_path("...config") == "../../config.js"
+
+    # CSS imports in Jac format should convert correctly
+    assert convert_to_js_import_path(".styles.css") == "./styles.css"
+
+    # NPM packages should pass through unchanged
+    assert convert_to_js_import_path("react") == "react"
+    assert convert_to_js_import_path("lodash") == "lodash"

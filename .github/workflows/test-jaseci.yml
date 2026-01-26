@@ -51,6 +51,9 @@ jobs:
       with:
         node-version: '20'
 
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -114,6 +117,9 @@ jobs:
       with:
         python-version: 3.12
 
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
     - name: Install Jaseci scale package
       run: |
         python -m pip install --upgrade pip
@@ -124,6 +130,7 @@ jobs:
         pip install -e jac-client
         pip install testcontainers
         pip install watchdog
+        pip install python-multipart  # Explicit install to ensure FastAPI form support
 
     - name: Run Backend tests
       run: |
@@ -154,11 +161,20 @@ jobs:
         with:
           python-version: 3.12
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Install Jaseci scale package
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
           pip install -e jac-scale
+          pip install -e jac-client
           pip install pytest
           pip install pytest-asyncio
 

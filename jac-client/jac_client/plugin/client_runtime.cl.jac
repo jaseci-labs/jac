@@ -1,7 +1,7 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
 import from 'react' { * as React }
-import from 'react' { useState as reactUseState }
+import from 'react' { useState as reactUseState, useEffect as reactUseEffect }
 import from 'react-dom/client' { * as ReactDOM }
 import from 'react-router-dom' {
     HashRouter as ReactRouterHashRouter,
@@ -17,8 +17,10 @@ import from 'react-error-boundary' { ErrorBoundary }
 
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
 
-# React hooks re-exported for auto-injection by `has` variables
-glob:pub useState = reactUseState,
+# React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
+glob:
+    pub useState = reactUseState,
+     useEffect = reactUseEffect,
      Router = ReactRouterHashRouter,
      Routes = ReactRouterRoutes,
      Route = ReactRouterRoute,

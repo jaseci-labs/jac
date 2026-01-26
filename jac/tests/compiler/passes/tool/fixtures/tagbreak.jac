@@ -346,7 +346,7 @@ async def type_check(self: JacLangServer, file_path: str) -> None {
     await asyncio.to_thread(self.debounce_timers[file_path].join);
 }
 
-cl import from jac:client_runtime {
+cl import from "@jac/runtime" {
     jacLogin,
     jacLogout,
     jacSignup,
@@ -392,7 +392,7 @@ cl {
                 </div>
                 # Random comment
                 <div class="tweet-content" style={{"marginBottom": "12px"}}>
-                    {tweet.content} # Another andom comment
+                    {tweet.content}  # Another andom comment
                 </div>
                 <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                     <button

@@ -138,5 +138,6 @@ Output: `Bonjour, le monde!`
 
 Ready for something more substantial?
 
-- [Your First App](first-app.md) - Build a complete todo application
+- [Your First Graph](first-graph.md) - Learn nodes, edges, and walkers (5 min)
+- [Your First App](first-app.md) - Build a complete todo application (10 min)
 - [Next Steps](next-steps.md) - Choose a learning path based on your goals

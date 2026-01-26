@@ -192,3 +192,100 @@ cl {
         assert 'from "mymodule"' not in js, (
             "Should not have bare module name without ./ prefix"
         )
+
+
+def test_def_pub_called_from_client_imports_jac_call_function() -> None:
+    """Test that calling def:pub from cl{} generates __jacCallFunction import.
+
+    When a server function (def:pub) is called from client code (cl {}),
+    the generated JavaScript must import __jacCallFunction from @jac/runtime.
+    This is a regression test for the bug where the import was missing.
+    """
+    test_code = '''
+"""Test def:pub called from client context."""
+
+def:pub get_server_data(name: str) -> dict {
+    return {"message": "Hello " + name};
+}
+
+cl {
+    def:pub app() -> any {
+        data = await get_server_data("World");
+        return <div>{data}</div>;
+    }
+}
+'''
+
+    with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
+        f.write(test_code)
+        f.flush()
+
+        prog = JacProgram()
+        module = prog.compile(f.name)
+
+        js = module.gen.js
+        assert js.strip(), "Expected JavaScript output for client code"
+
+        # Verify __jacCallFunction is imported from @jac/runtime
+        assert "__jacCallFunction" in js, (
+            "__jacCallFunction should be present in generated JS"
+        )
+        # Check for the import statement (may have varying whitespace)
+        assert "@jac/runtime" in js, (
+            "__jacCallFunction should be imported from @jac/runtime"
+        )
+
+        # Verify the function call is generated correctly
+        assert '__jacCallFunction("get_server_data"' in js, (
+            "Should generate __jacCallFunction call with function name"
+        )
+
+        # Clean up
+        os.unlink(f.name)
+
+
+def test_jac_call_function_sends_params_directly() -> None:
+    """Test that __jacCallFunction sends params directly, not wrapped in 'args'.
+
+    The client runtime's __jacCallFunction should send parameters as:
+        JSON.stringify(args)  // correct: {"name": "value"}
+    NOT:
+        JSON.stringify({"args": args})  // wrong: {"args": {"name": "value"}}
+
+    This is a regression test for the bug where the server returned 422
+    because params were wrapped in an extra 'args' object.
+    """
+    # Find the jac-client runtime source file
+    jac_root = Path(__file__).resolve().parent.parent.parent.parent
+    runtime_path = (
+        jac_root
+        / "jac-client"
+        / "jac_client"
+        / "plugin"
+        / "impl"
+        / "client_runtime.impl.jac"
+    )
+
+    if not runtime_path.exists():
+        pytest.skip("jac-client not found in expected location")
+
+    content = runtime_path.read_text()
+
+    # Find the __jacCallFunction implementation
+    assert "impl __jacCallFunction" in content, (
+        "Should have __jacCallFunction implementation"
+    )
+
+    # Should NOT have the {"args": args} wrapper pattern
+    assert '"args": args' not in content, (
+        "client_runtime should NOT wrap params in 'args' object. "
+        'Use JSON.stringify(args) not JSON.stringify({"args": args})'
+    )
+    assert "'args': args" not in content, (
+        "client_runtime should NOT wrap params in 'args' object"
+    )
+
+    # Should have direct JSON.stringify(args)
+    assert "JSON.stringify(args)" in content, (
+        "client_runtime should send params directly with JSON.stringify(args)"
+    )

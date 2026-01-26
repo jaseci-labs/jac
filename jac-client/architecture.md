@@ -36,8 +36,8 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
      import { app as App } from "./app.js";
      ```
 
-   - Runs `npm run compile` then copies assets (`_copy_asset_files`)
-   - Runs `npm run build` to bundle with Vite
+   - Copies assets (`_copy_asset_files`)
+   - Runs `bun run build` to bundle with Vite
    - Generates hashed bundle file (`client.[hash].js`)
    - Vite extracts CSS to `dist/main.css`
    - Returns bundle code and SHA256 hash
@@ -58,23 +58,18 @@ Extends the base `ClientBundleBuilder` to provide Vite integration. Key responsi
    ├── Accumulate exports & globals
    └── Skip bare specifiers (handled by Vite)
 
-3. Babel compilation
-   ├── Run npm run compile
-   ├── Transpile JavaScript from compiled/ to build/
-   └── Preserves CSS import statements
-
-4. Asset copying
-   ├── Copy CSS and other assets from compiled/ to build/
+3. Asset copying
+   ├── Copy CSS and other assets to compiled/
    └── Ensures Vite can resolve CSS imports during bundling
 
-5. Vite bundling
-   ├── Write entry point (main.js)
-   ├── Run npm run build
+4. Vite bundling
+   ├── Write entry point (_entry.js)
+   ├── Run bun run build (Vite handles JSX/TSX transpilation natively)
    ├── Process CSS imports and extract to dist/main.css
    ├── Locate generated bundle in dist/
    └── Return code + hash
 
-6. Cleanup
+5. Cleanup
    └── Remove compiled/ directory
 ```
 
@@ -154,14 +149,14 @@ This gets compiled to JavaScript:
 import "./styles.css";
 ```
 
-#### 2. Asset Copying (`_copy_asset_files`)
+#### 2. Asset Copying
 
-After Babel compilation, CSS and other asset files are copied from `compiled/` to `build/`:
+CSS and other asset files are copied to the `compiled/` directory:
 
-- **Why**: Babel only transpiles JavaScript, so CSS files need manual copying
-- **When**: After `npm run compile`, before `npm run build`
+- **Why**: Vite needs access to CSS files during bundling
+- **When**: Before `bun run build`
 - **What**: Copies `.css`, `.scss`, `.sass`, `.less`, and image files
-- **Location**: `compiled/styles.css` → `build/styles.css`
+- **Location**: Source CSS files → `compiled/` directory
 
 #### 3. Vite CSS Processing
 
@@ -222,9 +217,7 @@ app.jac (cl import ".styles.css")
   ↓
 compiled/app.js (import "./styles.css")
   ↓
-Babel: compiled/app.js → build/app.js (preserves import)
-  ↓
-_copy_asset_files: compiled/styles.css → build/styles.css
+_copy_asset_files: styles.css → compiled/styles.css
   ↓
 Vite: Processes CSS import, extracts to .jac/client/dist/main.css
   ↓
@@ -267,19 +260,18 @@ The `package` section in `config.json` contains only the essential package metad
 
 - **Minimal Configuration**: Only `name`, `version`, `description`, `dependencies`, and `devDependencies` are stored in `config.json`
 - **Build-Time Generation**: All other `package.json` fields (scripts, babel config, `type: 'module'`, etc.) are automatically generated during build
-- **Default Dependencies**: Core dependencies (React, Vite, Babel) are automatically included and merged with user-defined dependencies
+- **Default Dependencies**: Core dependencies (React, Vite) are automatically included and merged with user-defined dependencies
 
 #### Package.json Generation
 
-The `package.json` file is dynamically generated from `config.json` by `ViteBundler.create_package_json()`:
+The `package.json` file is dynamically generated from `jac.toml` by `ViteBundler.create_package_json()`:
 
 1. **Location**: Generated in `.jac/client/configs/package.json` (primary location)
-2. **Temporary Root Copy**: Also copied to project root temporarily for npm commands
+2. **Temporary Root Copy**: Also copied to `.jac/client/` temporarily for bun commands
 3. **Auto-Generated Fields**:
    - `type: 'module'` (always included)
-   - `scripts` (build, dev, preview, compile)
-   - `babel` configuration
-   - Default dependencies (React, Vite, Babel)
+   - `scripts` (build, dev, preview)
+   - Default dependencies (React, Vite)
    - Default devDependencies (Vite plugins, TypeScript types if needed)
 
 4. **Merged Fields**:
@@ -289,22 +281,22 @@ The `package.json` file is dynamically generated from `config.json` by `ViteBund
 
 #### Package Installation Workflow
 
-The `jac add --npm` command manages npm packages through `config.json`:
+The `jac add --npm` command manages packages through `jac.toml`:
 
 ```
 1. Developer runs: jac add --npm lodash
    ↓
-2. PackageInstaller updates config.json (adds lodash to dependencies)
+2. PackageInstaller updates jac.toml (adds lodash to dependencies.npm)
    ↓
-3. ViteBundler.create_package_json() generates package.json from config.json
+3. ViteBundler.create_package_json() generates package.json from jac.toml
    ↓
-4. package.json copied to project root (npm requires it there)
+4. package.json copied to .jac/client/ (bun requires it there)
    ↓
-5. npm install runs (installs all packages from package.json)
+5. bun install runs (installs all packages from package.json)
    ↓
-6. package-lock.json moved to .jac/client/configs/
+6. bun.lockb moved to .jac/client/configs/
    ↓
-7. Root package.json removed (keeps only .jac/client/configs/package.json)
+7. Temporary package.json removed (keeps only .jac/client/configs/package.json)
 ```
 
 #### File Lifecycle
@@ -312,14 +304,14 @@ The `jac add --npm` command manages npm packages through `config.json`:
 **During Build/Install:**
 
 - `.jac/client/configs/package.json` - Generated from `jac.toml` (source of truth)
-- `package.json` (root) - Temporary copy for npm commands
-- `package-lock.json` (root) - Generated by npm, then moved to `.jac/client/configs/`
+- `.jac/client/package.json` - Temporary copy for bun commands
+- `.jac/client/bun.lockb` - Generated by bun, then moved to `.jac/client/configs/`
 
 **After Build/Install:**
 
 - `.jac/client/configs/package.json` - Persisted (generated file)
-- `.jac/client/configs/package-lock.json` - Persisted (lock file)
-- `package.json` (root) - Removed (not needed after npm install)
+- `.jac/client/configs/bun.lockb` - Persisted (lock file)
+- `.jac/client/package.json` - Removed (not needed after bun install)
 - `jac.toml` (root) - Source configuration (committed to git)
 
 #### CLI Commands
@@ -335,7 +327,7 @@ jac add --npm lodash@^4.17.21     # Add with specific version
 **Install All Packages:**
 
 ```bash
-jac add --npm                     # Install all packages from jac.toml
+jac add --npm                     # Install all packages from jac.toml (uses bun)
 ```
 
 **Remove Package:**
@@ -354,10 +346,10 @@ jac create --use client my-app            # Creates jac.toml with organized fold
 #### Benefits
 
 - **Clean Project Root**: No `package.json` clutter in project root
-- **Version Control Friendly**: Only `config.json` needs to be committed
+- **Version Control Friendly**: Only `jac.toml` needs to be committed
 - **Simplified Configuration**: Developers only manage essential package info
 - **Automatic Defaults**: Build tools and scripts are automatically configured
-- **npm Compatibility**: Temporary root `package.json` ensures npm commands work correctly
+- **Bun Compatibility**: Temporary `package.json` in `.jac/client/` ensures bun commands work correctly
 
 ### Configuration System
 
@@ -409,15 +401,15 @@ The `config.json` file uses a hierarchical structure with predefined keys for di
 
 ##### `package.*`
 
-Package configuration for npm dependencies. See [Package Management Architecture](./package_management.md) for detailed documentation.
+Package configuration for dependencies. See [Package Management Architecture](./package_management.md) for detailed documentation.
 
 **Fields**:
 
 - `package.name`: Project name (auto-populated from project filename)
 - `package.version`: Project version (default: "1.0.0")
 - `package.description`: Project description
-- `package.dependencies`: Runtime npm packages
-- `package.devDependencies`: Development npm packages
+- `package.dependencies`: Runtime packages
+- `package.devDependencies`: Development packages
 
 **Example**:
 
@@ -437,7 +429,7 @@ Package configuration for npm dependencies. See [Package Management Architecture
 }
 ```
 
-**Note**: Other `package.json` fields (scripts, babel, type) are automatically generated during build.
+**Note**: Other `package.json` fields (scripts, type) are automatically generated during build.
 
 ##### `vite.plugins`
 
@@ -513,7 +505,7 @@ The system automatically includes essential configuration:
 
 - **Base plugins**: React plugin (if TypeScript is detected)
 - **Required aliases**:
-  - `@jac-client/utils` → `compiled/client_runtime.js`
+  - `@jac/runtime` → `compiled/client_runtime.js`
   - `@jac-client/assets` → `compiled/assets`
 - **Build settings**: Entry point, output directory, file naming
 - **Extensions**: JavaScript and TypeScript file extensions
@@ -543,7 +535,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@jac-client/utils": path.resolve(projectRoot, "compiled/client_runtime.js"),
+      "@jac/runtime": path.resolve(projectRoot, "compiled/client_runtime.js"),
       "@jac-client/assets": path.resolve(projectRoot, "compiled/assets"),
     },
     extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
@@ -565,7 +557,7 @@ export default defineConfig({
    ├── vite.config.js in .jac/client/configs/
    └── package.json in .jac/client/configs/ (from jac.toml)
    ↓
-5. package.json copied to root (temporary, for npm commands)
+5. package.json copied to .jac/client/ (temporary, for bun commands)
    ↓
 6. Vite uses generated configs for bundling
    ↓
@@ -581,11 +573,11 @@ export default defineConfig({
    ↓
 3. ViteBundler generates package.json from jac.toml
    ↓
-4. npm install runs (installs packages)
+4. bun install runs (installs packages)
    ↓
-5. package-lock.json moved to .jac/client/configs/
+5. bun.lockb moved to .jac/client/configs/
    ↓
-6. Root package.json removed (keeps only .jac/client/configs/)
+6. Temporary package.json removed (keeps only .jac/client/configs/)
 ```
 
 **Remove Workflow**:
@@ -597,11 +589,11 @@ export default defineConfig({
    ↓
 3. ViteBundler regenerates package.json from updated jac.toml
    ↓
-4. npm install runs (removes package from node_modules)
+4. bun install runs (removes package from node_modules)
    ↓
-5. package-lock.json moved to .jac/client/configs/
+5. bun.lockb moved to .jac/client/configs/
    ↓
-6. Root package.json removed (keeps only .jac/client/configs/)
+6. Temporary package.json removed (keeps only .jac/client/configs/)
 ```
 
 #### Benefits

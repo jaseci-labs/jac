@@ -1,6 +1,6 @@
 """Test declarative routing system."""
 
-cl import from jac:client_runtime { createRouter, Route, Link, navigate, createSignal, }
+cl import from "@jac/runtime" { createRouter, Route, Link, navigate, createSignal, }
 
 cl {
     # Mock components for testing

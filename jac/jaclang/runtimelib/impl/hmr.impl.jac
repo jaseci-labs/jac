@@ -130,6 +130,9 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         source_path = Path(file_path).resolve();
         source_key = str(source_path);
 
+        # Clear any stale errors from previous compilations (important for test isolation)
+        Jac.program.errors_had.clear();
+
         # Clear existing module from hub to force recompilation
         if source_key in Jac.program.mod.hub {
             del Jac.program.mod.hub[source_key];
@@ -161,7 +164,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         }
 
         # Ensure __jacJsx import is present (required for client-side rendering)
-        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";';
+        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
         if '__jacJsx' in js_code and jac_runtime_import not in js_code {
             # Add import at the beginning of the file
             js_code = jac_runtime_import + '\n' + js_code;
@@ -292,7 +295,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     output_dir.mkdir(parents=True, exist_ok=True);
     js_filename = "_entry.js";
     output_path = output_dir / js_filename;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
     # Update the entry point to show the error overlay
     output_path.write_text(entry_content, encoding='utf-8');
     # Mark that have an overlay entry
@@ -344,7 +347,7 @@ impl HotReloader._update_entry_point -> None {
     output_base = Path(self.base_path) / self._client_output_dir;
     output_base.mkdir(parents=True, exist_ok=True);
     output_path = output_base / "_entry.js";
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
     output_path.write_text(entry_content, encoding='utf-8');
     print(f"[HMR] Update entry: {output_path}", flush=True);
     self._overlay_entry = False;

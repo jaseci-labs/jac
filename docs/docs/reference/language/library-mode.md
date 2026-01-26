@@ -1,4 +1,10 @@
-# **Jac Library Mode: Pure Python with Jac's Power**
+# Jac Library Mode
+
+> **Part of:** [Part IX: Deployment](deployment.md)
+>
+> **Related:** [Python Integration](python-integration.md) | [Part III: OSP](osp.md)
+
+---
 
 ## **Introduction**
 
@@ -241,9 +247,21 @@ Abilities define event handlers that execute when a walker interacts with nodes 
 **In Jac:**
 
 ```jac
-root ++> p1;                      # Connect root to p1
-p1 +>: Friend :+> p2;             # Connect p1 to p2 with Friend edge
-p2 +>: Family :+> [p1, p3];       # Connect p2 to multiple nodes
+node Person {
+    has name: str;
+}
+
+edge Friend {}
+edge Family {}
+
+with entry {
+    p1 = Person(name="John");
+    p2 = Person(name="Susan");
+    p3 = Person(name="Mike");
+    root ++> p1;                      # Connect root to p1
+    p1 +>: Friend :+> p2;             # Connect p1 to p2 with Friend edge
+    p2 +>: Family :+> [p1, p3];       # Connect p2 to multiple nodes
+}
 ```
 
 **In Library Mode:**
@@ -263,7 +281,15 @@ The `connect()` function creates directed edges between nodes. The `edge` parame
 **In Jac:**
 
 ```jac
-result = FriendFinder() spawn root;
+walker FriendFinder {
+    can find with `root entry {
+        visit [-->];
+    }
+}
+
+with entry {
+    result = FriendFinder() spawn root;
+}
 ```
 
 **In Library Mode:**
@@ -281,8 +307,14 @@ The `spawn()` function initiates a walker at a specified node and begins travers
 **In Jac:**
 
 ```jac
-visit [-->];                      # Visit all outgoing edges
-visit [edge ->:Family :->];       # Visit only Family edges
+edge Family {}
+
+walker Visitor {
+    can traverse with `root entry {
+        visit [-->];                      # Visit all outgoing edges
+        visit [->:Family:->];             # Visit only Family edges
+    }
+}
 ```
 
 **In Library Mode:**
