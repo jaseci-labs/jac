@@ -5,7 +5,7 @@ import from "@jac-client/utils" {
     Link,
     useNavigate
 }
-import from react { useState, useEffect }
+import from react { useState }
 
 # # Import TypeScript component
 # import from ..components.PieChart { PieChart }
@@ -160,17 +160,14 @@ def:pub FeaturesTest -> any {
         loading: bool = false;
 
     # Load test data on mount
-    useEffect(
-        lambda -> None { async def loadData -> None {
-            try {
-                result = root spawn read_test_data();
-                testData = result.reports if result.reports[0] else [];
-            } except Exception as e {
-                console.log("Error loading data:", e);
-            }
-        } loadData();},
-        []
-    );
+    async can with entry {
+        try {
+            result = root spawn read_test_data();
+            testData = result.reports if result.reports[0] else [];
+        } except Exception as e {
+            console.log("Error loading data:", e);
+        }
+    }
 
     # ========================================================================
     # EVENT HANDLERS - Demonstrating Walker Spawning from CL

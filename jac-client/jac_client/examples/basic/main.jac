@@ -1,9 +1,12 @@
 # Pages
-cl import from react { useEffect }
 cl {
     def:pub app -> any {
         has count: int = 0;
-        useEffect(lambda -> None { console.log("Count: ", count);}, [count]);
+
+        can with count entry {
+            console.log("Count: ", count);
+        }
+
         return
             <div>
                 <h1>

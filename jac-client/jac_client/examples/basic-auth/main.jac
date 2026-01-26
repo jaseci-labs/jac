@@ -1,9 +1,10 @@
 # Simple Authentication App with Jac Client Utils
-cl import from react {
-    useState,
-    useEffect
+cl import from '@jac-client/utils' {
+    jacSignup,
+    jacLogin,
+    jacLogout,
+    jacIsLoggedIn
 }
-cl import from '@jac-client/utils' { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 cl {
     def:pub app -> any {
@@ -15,7 +16,9 @@ cl {
             loading: bool = False;
 
         # Check login status on mount
-        useEffect(lambda -> None { isLoggedIn = jacIsLoggedIn();}, []);
+        can with entry {
+            isLoggedIn = jacIsLoggedIn();
+        }
 
         # Handle login
         async def handleLogin -> None {

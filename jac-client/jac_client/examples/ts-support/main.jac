@@ -1,12 +1,15 @@
 
 # Pages
-cl import from react { useEffect }
 cl import from ".components/Button.tsx" { Button }
 
 cl {
     def:pub app -> any {
         has count: int = 0;
-        useEffect(lambda -> None { console.log("Count: ", count);}, [count]);
+
+        can with count entry {
+            console.log("Count: ", count);
+        }
+
         return
             <div style={{padding: "2rem", fontFamily: "Arial, sans-serif"}}>
                 <h1>

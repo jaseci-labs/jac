@@ -217,9 +217,9 @@ cl {
             serverMessage: str = "",
             lastTodoMessage: str = "";
 
-        useEffect(
-            lambda -> None { console.log("Home count changed: ", count);}, [count]
-        );
+        can with count entry {
+            console.log("Home count changed: ", count);
+        }
 
         # Call simple backend walkers
         async def handlePing -> None {
@@ -246,7 +246,9 @@ cl {
             }
         }
 
-        useEffect(lambda -> None { loadServerMessage();}, []);
+        async can with entry {
+            await loadServerMessage();
+        }
 
         # Initialize a Web Worker and handle message-based communication
         workerRef = useRef(None);
