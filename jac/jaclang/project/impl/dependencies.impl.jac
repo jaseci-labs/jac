@@ -93,16 +93,13 @@ impl DependencyInstaller._cleanup_duplicates -> None {
             package_metadata[pkg_name].append(item);
         }
     }
-    print("package_metadata:", package_metadata);
     # Remove old versions when duplicates exist, keep the newest
     for (pkg_name, metadata_dirs) in package_metadata.items() {
-        print("metadata_dirs for", pkg_name, ":", metadata_dirs);
         if len(metadata_dirs) > 1 {
             # Sort by modification time (oldest first), keeping only the newest
             metadata_with_mtime = [(d.stat().st_mtime, d) for d in metadata_dirs];
             metadata_with_mtime.sort();
             # Remove all but the newest (last one)
-            print("metadata_with_mtime for", pkg_name, ":", metadata_with_mtime);
             for (_, metadata_dir) in metadata_with_mtime[:-1] {
                 try {
                     shutil.rmtree(metadata_dir);
