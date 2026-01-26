@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.16 (Unreleased)
 
+- **MTIR (Meaning Typed Intermediate Representation)**: Added compile-time extraction of semantic type information from `by` call sites. MTIR captures parameter types, return types, semstrings, and tool schemas at compile time, enabling richer context for LLM schema generation. Includes MTIR caching for improved performance.
+
 ## byllm 0.4.15 (Latest Release)
 
 - **Direct HTTP model calls:** Added support for calling custom LLM endpoints via direct HTTP (`http_client` in model config).
