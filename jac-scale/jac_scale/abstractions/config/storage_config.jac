@@ -46,7 +46,7 @@ class LocalStorageConfig(BaseStorageConfig) {
         base_path = config.get('base_path', './storage');
         create_dirs_val = config.get('create_dirs', True);
         return LocalStorageConfig(
-            base_path=base_path if base_path else './storage',
+            base_path=base_path or './storage',
             create_dirs=create_dirs_val if create_dirs_val is not None else True
         );
     }
