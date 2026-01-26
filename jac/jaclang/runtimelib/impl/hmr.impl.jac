@@ -7,6 +7,7 @@ import logging;
 import os;
 import sys;
 import time;
+import shutil;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.constant { CodeContext }
@@ -332,9 +333,8 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
             if self._overlay_entry {
                 self._update_entry_point();
             }
-            ts_code = source_path.read_text(encoding='utf-8');
             output_path.parent.mkdir(parents=True, exist_ok=True);
-            output_path.write_text(ts_code, encoding='utf-8');
+            shutil.copy2(source_path, output_path);
         } except (FileNotFoundError, OSError) { }
         print(f"[HMR] Copied frontend file: {file_path} -> {output_path}", flush=True);
     } except Exception as e {
