@@ -13,7 +13,9 @@ impl WorkerConfig.default -> WorkerConfig {
         shutdown_timeout_ms=5000,
         restart_on_crash=True,
         max_restart_attempts=3,
-        cancel_check_interval_ms=50
+        cancel_check_interval_ms=50,
+        health_check_interval_ms=5000,
+        health_check_timeout_ms=2000
     );
 }
 
@@ -36,20 +38,35 @@ impl CompilationWorker.initialize(
 impl CompilationWorker.run -> None {
     # Import here to avoid loading in main process
     import from jaclang.pycore.program { JacProgram }
+    import traceback;
+
     # Initialize program in worker process
     program = JacProgram();
     sem_managers: dict = {};
-    self._logger.info("Worker process started");
+
+    # Send startup notification via IPC (main process will log)
+    self._response_queue.put({
+        'request_id': '__startup__',
+        'success': True,
+        'message': 'Worker process started'
+    });
+
     poll_interval = (self._config.poll_interval_ms or 100) / 1000.0;
+
     while not self._shutdown_event.is_set() {
         try {
             # Non-blocking poll with timeout
-            # Request comes as dict (for pickle compatibility)
             request_dict = self._request_queue.get(timeout=poll_interval);
         } except Empty {
             continue;
         } except Exception as e {
-            self._logger.error(f"Queue error: {e}");
+            # Send queue error via IPC
+            self._response_queue.put({
+                'request_id': '__error__',
+                'success': False,
+                'error_message': f"Queue error: {str(e)}",
+                'error_type': 'QUEUE_ERROR'
+            });
             continue;
         }
 
@@ -63,7 +80,6 @@ impl CompilationWorker.run -> None {
             request_type = request_dict.get('request_type', '');
 
             if request_type == 'SHUTDOWN' {
-                self._logger.info("Received shutdown request");
                 self._response_queue.put(self._make_pong_response(request_id));
                 break;
             } elif request_type == 'PING' {
@@ -72,12 +88,10 @@ impl CompilationWorker.run -> None {
                 response_dict = self.handle_compile_file_dict(
                     request_dict, program, sem_managers
                 );
-                # Only send response if not cancelled
                 if not self.is_cancelled() {
                     self._response_queue.put(response_dict);
                 } else {
                     self._response_queue.put(self._make_cancelled_response(request_id));
-                    self._logger.debug(f"Request {request_id} cancelled");
                 }
             } elif request_type == 'COMPILE_ALL' {
                 response_dict = self.handle_compile_all_dict(
@@ -89,7 +103,6 @@ impl CompilationWorker.run -> None {
                     self._response_queue.put(self._make_cancelled_response(request_id));
                 }
             } else {
-                self._logger.warning(f"Unknown request type: {request_type}");
                 self._response_queue.put(
                     self._make_error_response(
                         request_id, f"Unknown request type: {request_type}"
@@ -97,15 +110,28 @@ impl CompilationWorker.run -> None {
                 );
             }
         } except Exception as e {
-            self._logger.error(f"Error processing request: {e}");
-            import traceback;
-            traceback.print_exc();
-            self._response_queue.put(self._make_error_response(request_id, str(e)));
+            # Send error with full traceback via IPC
+            tb = traceback.format_exc();
+            self._response_queue.put({
+                'request_id': request_id,
+                'success': False,
+                'cancelled': False,
+                'error_message': str(e),
+                'error_traceback': tb,
+                'error_type': 'PROCESSING_ERROR',
+                'timestamp': time.time()
+            });
         } finally {
             self._current_request_id = None;
         }
     }
-    self._logger.info("Worker process exiting");
+
+    # Send shutdown notification via IPC
+    self._response_queue.put({
+        'request_id': '__shutdown__',
+        'success': True,
+        'message': 'Worker process exiting'
+    });
 }
 
 impl CompilationWorker._make_pong_response(request_id: str) -> dict {
@@ -190,9 +216,65 @@ impl CompilationWorker.handle_compile_file_dict(
             return self._make_cancelled_response(request_id);
         }
 
+        # IMPORTANT: Manually add module to hub even if there are parse errors.
+        # The compiler's parse_str returns early on errors without adding to hub,
+        # but LSP needs the partial AST for features like completion.
+        if module and module?.loc {
+            program.mod.hub[file_path] = module;
+        }
+
+        files_analyzed = [file_path];
+
         # Update semantic manager for this file
         if module and module?.loc {
             sem_managers[file_path] = SemTokManager(ir=module, hub=program.mod.hub);
+        }
+
+        # Handle impl files: if this file is annexable by another (e.g., foo.impl.jac -> foo.jac),
+        # we need to recompile the parent file to get proper type checking
+        if module and module?.annexable_by {
+            parent_path = module.annexable_by;
+            files_analyzed.append(parent_path);
+
+            if self.is_cancelled() {
+                return self._make_cancelled_response(request_id);
+            }
+
+            # Read parent file from disk and recompile
+            try {
+                with open(parent_path, 'r') as f {
+                    parent_source = f.read();
+                }
+                # Clear parent file errors before recompiling
+                program.errors_had = [
+                    e for e in program.errors_had
+                    if not (e?.loc and e.loc?.mod_path and e.loc.mod_path == parent_path)
+                ];
+                program.warnings_had = [
+                    w for w in program.warnings_had
+                    if not (w?.loc and w.loc?.mod_path and w.loc.mod_path == parent_path)
+                ];
+
+                parent_module = program.compile(
+                    file_path=parent_path,
+                    use_str=parent_source,
+                    type_check=type_check,
+                    no_cgen=no_cgen,
+                    cancel_token=cancel_event
+                );
+
+                if parent_module and parent_module?.loc {
+                    sem_managers[parent_path] = SemTokManager(
+                        ir=parent_module, hub=program.mod.hub
+                    );
+                }
+            } except FileNotFoundError {
+                # Parent file doesn't exist yet, skip
+                pass;
+            } except Exception as e {
+                # Log but don't fail the whole compilation
+                pass;
+            }
         }
 
         # Create snapshot
@@ -209,13 +291,24 @@ impl CompilationWorker.handle_compile_file_dict(
             'warnings': list(program.warnings_had),
             'duration_ms': duration_ms,
             'timestamp': time.time(),
-            'files_analyzed': [file_path]
+            'files_analyzed': files_analyzed
         };
     } except Exception as e {
-        self._logger.error(f"Compilation error: {e}");
         import traceback;
-        traceback.print_exc();
-        return self._make_error_response(request_id, f"Compilation failed: {str(e)}");
+        tb = traceback.format_exc();
+        duration_ms = (time.time() - start_time) * 1000;
+        # Return structured error via IPC (main process will log)
+        return {
+            'request_id': request_id,
+            'success': False,
+            'cancelled': False,
+            'error_message': f"Compilation failed: {str(e)}",
+            'error_traceback': tb,
+            'error_type': 'COMPILATION_ERROR',
+            'duration_ms': duration_ms,
+            'timestamp': time.time(),
+            'files_analyzed': [file_path] if file_path else []
+        };
     }
 }
 
@@ -274,8 +367,13 @@ impl WorkerManager.postinit -> None {
     self._logger = logging.getLogger("jac.worker_manager");
     self._running = False;
     self._snapshot_callback = None;
+    self._health_callback = None;
     self._current_request_id = None;
     self._restart_count = 0;
+    # Health monitoring
+    self._health_status = WorkerHealth.DEAD;
+    self._last_health_check = 0;
+    self._consecutive_failures = 0;
 }
 
 impl WorkerManager.start -> None {
@@ -308,11 +406,21 @@ impl WorkerManager.start -> None {
     );
     self._process.start();
     self._running = True;
+    self._health_status = WorkerHealth.HEALTHY;
+    self._consecutive_failures = 0;
+
     # Start response processing thread
     self._response_thread = threading.Thread(
         target=self._response_processor, daemon=True
     );
     self._response_thread.start();
+
+    # Start health check thread
+    self._health_thread = threading.Thread(
+        target=self._health_checker, daemon=True
+    );
+    self._health_thread.start();
+
     self._logger.info(f"Worker process started: PID {self._process.pid}");
 }
 
@@ -449,17 +557,46 @@ impl WorkerManager._response_processor -> None {
 
 impl WorkerManager._process_response_dict(response_dict: dict) -> None {
     request_id = response_dict.get('request_id', '');
+
+    # Handle special worker messages (startup, shutdown, errors)
+    if request_id == '__startup__' {
+        self._logger.info("Worker: " + response_dict.get('message', 'started'));
+        return;
+    }
+    if request_id == '__shutdown__' {
+        self._logger.info("Worker: " + response_dict.get('message', 'stopped'));
+        return;
+    }
+    if request_id == '__error__' {
+        error_type = response_dict.get('error_type', 'UNKNOWN');
+        error_msg = response_dict.get('error_message', 'Unknown error');
+        self._logger.error(f"Worker {error_type}: {error_msg}");
+        return;
+    }
+
     # Clear current request tracking if this is our current request
     if self._current_request_id == request_id {
         self._current_request_id = None;
     }
+
     # Skip processing cancelled responses (user already sent new request)
     if response_dict.get('cancelled', False) {
-        self._logger.debug(f"Request {request_id} was cancelled, skipping");
-        # Remove from pending without calling callback
+        self._logger.debug(f"Request {request_id} was cancelled");
         self._pending_requests.pop(request_id, None);
         return;
     }
+
+    # Log errors from the worker
+    if not response_dict.get('success', False) {
+        error_msg = response_dict.get('error_message', 'Unknown error');
+        error_type = response_dict.get('error_type', 'ERROR');
+        error_tb = response_dict.get('error_traceback', '');
+        self._logger.error(f"Worker {error_type} for request {request_id}: {error_msg}");
+        if error_tb {
+            self._logger.debug(f"Traceback:\n{error_tb}");
+        }
+    }
+
     # Convert dict to WorkerResponse for callback compatibility
     response = WorkerResponse(
         request_id=request_id,
@@ -473,15 +610,17 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
         timestamp=response_dict.get('timestamp', 0),
         files_analyzed=response_dict.get('files_analyzed')
     );
+
     # Call registered callback
     if request_id in self._pending_requests {
         callback = self._pending_requests.pop(request_id);
         try {
             callback(response);
         } except Exception as e {
-            self._logger.error(f"Callback error: {e}");
+            self._logger.error(f"Callback error for request {request_id}: {e}");
         }
     }
+
     # If success and has snapshot, call snapshot callback
     if response.success and response.snapshot_data and self._snapshot_callback {
         try {
@@ -495,17 +634,26 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
 
 impl WorkerManager._handle_crash -> None {
     self._logger.error("Worker process crashed");
+    self._health_status = WorkerHealth.DEAD;
+    self._notify_health_change(WorkerHealth.DEAD);
+
     if not self._config.restart_on_crash {
         self._running = False;
         return;
     }
     if self._restart_count >= self._config.max_restart_attempts {
-        self._logger.error("Max restart attempts reached");
+        self._logger.error(
+            f"Max restart attempts ({self._config.max_restart_attempts}) reached, giving up"
+        );
         self._running = False;
         return;
     }
+
     self._restart_count += 1;
+    self._health_status = WorkerHealth.RESTARTING;
+    self._notify_health_change(WorkerHealth.RESTARTING);
     self._logger.info(f"Restarting worker (attempt {self._restart_count})");
+
     # Clear old process
     self._process = None;
     # Restart
@@ -544,7 +692,92 @@ impl WorkerManager.ping(timeout_ms: float = 1000) -> bool {
         time.sleep(0.01);  # 10ms poll
     }
     return False;  # Timeout
+}
 
+"""Background health checker thread."""
+impl WorkerManager._health_checker -> None {
+    interval_sec = self._config.health_check_interval_ms / 1000.0;
+    timeout_ms = self._config.health_check_timeout_ms;
+
+    while self._running {
+        time.sleep(interval_sec);
+
+        if not self._running {
+            break;
+        }
+
+        # Check process status first
+        if not self._process or not self._process.is_alive() {
+            old_status = self._health_status;
+            self._health_status = WorkerHealth.DEAD;
+            if old_status != WorkerHealth.DEAD {
+                self._notify_health_change(WorkerHealth.DEAD);
+            }
+            continue;
+        }
+
+        # Skip ping check if worker is busy with a request - compilation can take time
+        if self._current_request_id is not None {
+            # Worker is busy, reset consecutive failures and continue
+            self._consecutive_failures = 0;
+            continue;
+        }
+
+        # Perform ping check
+        self._last_health_check = time.time();
+        ping_ok = self.ping(timeout_ms=timeout_ms);
+
+        if ping_ok {
+            self._consecutive_failures = 0;
+            old_status = self._health_status;
+            self._health_status = WorkerHealth.HEALTHY;
+            if old_status != WorkerHealth.HEALTHY {
+                self._notify_health_change(WorkerHealth.HEALTHY);
+                self._logger.info("Worker health restored");
+            }
+        } else {
+            self._consecutive_failures += 1;
+            old_status = self._health_status;
+            self._health_status = WorkerHealth.UNHEALTHY;
+            if old_status != WorkerHealth.UNHEALTHY {
+                self._notify_health_change(WorkerHealth.UNHEALTHY);
+            }
+            self._logger.warning(
+                f"Worker health check failed ({self._consecutive_failures} consecutive)"
+            );
+
+            # After 3 consecutive failures, trigger recovery
+            if self._consecutive_failures >= 3 and self._config.restart_on_crash {
+                self._logger.error("Worker unresponsive, triggering recovery");
+                self._health_status = WorkerHealth.RESTARTING;
+                self._notify_health_change(WorkerHealth.RESTARTING);
+                self._handle_crash();
+            }
+        }
+    }
+}
+
+"""Notify health callback of status change."""
+impl WorkerManager._notify_health_change(status: WorkerHealth) -> None {
+    if self._health_callback is not None {
+        try {
+            self._health_callback(status);
+        } except Exception as e {
+            self._logger.error(f"Health callback error: {e}");
+        }
+    }
+}
+
+"""Set health status callback."""
+impl WorkerManager.set_health_callback(
+    callback: Callable[[WorkerHealth], None]
+) -> None {
+    self._health_callback = callback;
+}
+
+"""Get current worker health status."""
+impl WorkerManager.get_health -> WorkerHealth {
+    return self._health_status;
 }
 
 impl worker_process_main(

@@ -96,6 +96,15 @@ obj AnalysisScheduler {
     """Check if analysis is in progress."""
     def is_analyzing -> bool;
 
+    """Check if there are pending files to analyze."""
+    def has_pending -> bool;
+
+    """Check if backoff timer is active."""
+    def has_timer_active -> bool;
+
+    """Check if scheduler has any work (pending, timer, or in-progress)."""
+    def is_busy -> bool;
+
     """Get current snapshot."""
     def get_snapshot -> Optional[ProgramSnapshot];
 

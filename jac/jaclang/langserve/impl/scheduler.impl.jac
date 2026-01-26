@@ -154,18 +154,38 @@ impl AnalysisScheduler.set_focused_file(file_uri: str | None) -> None {
 }
 
 impl AnalysisScheduler.cancel_current -> None {
+    # Cancel the token (which will trigger callback to cancel worker)
     if self._current_cancel_source is not None {
         self._current_cancel_source.cancel();
         self._current_cancel_source = None;
     }
+    # Also directly cancel worker as fallback (idempotent operation)
     if self._worker_manager is not None {
         self._worker_manager.cancel_current();
     }
     self._analysis_in_progress = False;
+    self._logger.debug("Analysis cancelled");
 }
 
 impl AnalysisScheduler.is_analyzing -> bool {
     return self._analysis_in_progress;
+}
+
+impl AnalysisScheduler.has_pending -> bool {
+    with self._pending_lock {
+        return len(self._pending) > 0;
+    }
+}
+
+impl AnalysisScheduler.has_timer_active -> bool {
+    with self._timer_lock {
+        return self._timer is not None and self._timer.is_alive();
+    }
+}
+
+impl AnalysisScheduler.is_busy -> bool {
+    """Returns True if scheduler has any pending work, active timer, or in-progress analysis."""
+    return self.has_pending() or self.has_timer_active() or self._analysis_in_progress;
 }
 
 impl AnalysisScheduler.get_snapshot -> Optional[ProgramSnapshot] {
@@ -234,8 +254,19 @@ impl AnalysisScheduler._process_pending -> None {
         return;
     }
     self._analysis_in_progress = True;
-    # Create cancellation source
+
+    # Create cancellation source with callback to cancel worker
+    # This bridges the main-process CancellationToken to the worker's multiprocessing.Event
     self._current_cancel_source = CancellationTokenSource();
+    # Register callback so any token cancellation propagates to worker
+    def on_cancel {
+        if self._worker_manager is not None {
+            self._worker_manager.cancel_current();
+            self._logger.debug("Cancellation propagated to worker");
+        }
+    }
+    self._current_cancel_source.token.register_callback(on_cancel);
+
     # Map priority to request priority
     req_priority = RequestPriority.NORMAL;
     if pending.priority == AnalysisPriority.FOREGROUND {
@@ -243,6 +274,7 @@ impl AnalysisScheduler._process_pending -> None {
     } elif pending.priority == AnalysisPriority.BACKGROUND {
         req_priority = RequestPriority.LOW;
     }
+
     # Send to worker
     if pending.source is not None {
         self._worker_manager.compile_file(

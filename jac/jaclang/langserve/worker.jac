@@ -27,7 +27,10 @@ obj WorkerConfig {
         shutdown_timeout_ms: float = 5000,
         restart_on_crash: bool = True,
         max_restart_attempts: int = 3,
-        cancel_check_interval_ms: float = 50;
+        cancel_check_interval_ms: float = 50,
+        # Health monitoring
+        health_check_interval_ms: float = 5000,
+        health_check_timeout_ms: float = 2000;
 
     """Return default config."""
     static def default -> WorkerConfig;
@@ -73,6 +76,23 @@ obj CompilationWorker {
 
     """Clear cancellation flag."""
     def clear_cancellation -> None;
+
+    """Create pong response dict."""
+    def _make_pong_response(request_id: str) -> dict;
+
+    """Create error response dict."""
+    def _make_error_response(request_id: str, error_message: str) -> dict;
+
+    """Create cancelled response dict."""
+    def _make_cancelled_response(request_id: str) -> dict;
+}
+
+"""Worker health status."""
+enum WorkerHealth {
+    HEALTHY,     # Worker is responding to pings
+    UNHEALTHY,   # Worker not responding but process alive
+    DEAD,        # Worker process not running
+    RESTARTING   # Worker is being restarted
 }
 
 """Manages worker process lifecycle from main process."""
@@ -89,8 +109,14 @@ obj WorkerManager {
         _restart_count: int = 0,
         _logger: Any | None = None,
         _response_thread: threading.Thread | None = None,
+        _health_thread: threading.Thread | None = None,
         _running: bool = False,
-        _snapshot_callback: Callable | None = None;
+        _snapshot_callback: Callable | None = None,
+        # Health monitoring
+        _health_status: WorkerHealth = WorkerHealth.DEAD,
+        _last_health_check: float = 0,
+        _consecutive_failures: int = 0,
+        _health_callback: Callable | None = None;
 
     def postinit -> None;
     """Start the worker process."""
@@ -125,11 +151,23 @@ obj WorkerManager {
     """Background response processor."""
     def _response_processor -> None;
 
+    """Background health checker."""
+    def _health_checker -> None;
+
+    """Notify health callback of status change."""
+    def _notify_health_change(status: WorkerHealth) -> None;
+
     """Handle worker crash."""
     def _handle_crash -> None;
 
     """Set snapshot update callback."""
     def set_snapshot_callback(callback: Callable[[ProgramSnapshot], None]) -> None;
+
+    """Set health status callback."""
+    def set_health_callback(callback: Callable[[WorkerHealth], None]) -> None;
+
+    """Get current worker health status."""
+    def get_health -> WorkerHealth;
 
     """Ping worker to check if alive."""
     def ping(timeout_ms: float = 1000) -> bool;

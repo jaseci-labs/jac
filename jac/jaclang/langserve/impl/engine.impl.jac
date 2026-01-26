@@ -1,22 +1,76 @@
+"""Implementation of JacLangServer - production-grade LSP engine.
+
+This implementation uses a scheduler-first architecture:
+- All analysis is routed through AnalysisScheduler
+- Worker process handles CPU-bound compilation
+- Immutable snapshots enable lock-free foreground queries
+- Full LSP request cancellation support
+"""
+
+import threading;
+import time;
+import logging;
+
+"""Initialize JacLangServer with scheduler-based architecture."""
+impl JacLangServer.postinit -> None {
+    LanguageServer.init(self, 'jac-lsp', 'v0.1');
+    JacProgram.init(self);
+
+    # Initialize logger
+    self._logger = logging.getLogger("jac.lsp");
+
+    # Initialize module manager
+    self.module_manager = ModuleManager(self, self.sem_managers);
+
+    # Initialize lock manager for thread-safe updates
+    self._lock_manager = LockManager();
+
+    # Initialize request tracking for cancellation
+    self._pending_requests = {};
+    self._pending_requests_lock = threading.Lock();
+
+    # Initialize snapshot manager
+    self._snapshot_manager = SnapshotManager();
+    self._snapshot_manager.initialize_empty();
+
+    # Initialize and start scheduler
+    config = SchedulerConfig.default();
+    self._scheduler = AnalysisScheduler(
+        _config=config,
+        _snapshot_manager=self._snapshot_manager
+    );
+    self._scheduler.set_diagnostics_callback(self._on_scheduler_diagnostics);
+    self._scheduler.start();
+
+    self.debug("JacLangServer initialized with scheduler architecture");
+}
+
+"""Shutdown the language server."""
 impl JacLangServer.shutdown -> None {
-    # Guard against double shutdown.
     if self._shutdown_called {
         return;
     }
     self._shutdown_called = True;
+
     try {
-        if self?.worker_future and not self?.worker_future.done() {
-            self.queue.put(None);  # Signal the worker to exit
-            wait self.worker_future ;  # Wait for the worker to finish
+        # Stop scheduler (which stops the worker)
+        if self._scheduler is not None {
+            self._scheduler.stop();
+            self._scheduler = None;
         }
     } finally {
         super.shutdown();
     }
+    self.debug("JacLangServer shutdown complete");
 }
 
 """Log a message."""
 impl JacLangServer.log_py(message: str) -> None {
-    logging.info(message);
+    if self._logger {
+        self._logger.info(message);
+    } else {
+        logging.info(message);
+    }
 }
 
 """Log an info message."""
@@ -40,12 +94,23 @@ impl JacLangServer.log_error(message: str) -> None {
 """Return semantic tokens for a file."""
 impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     fs_path = uris.to_fs_path(file_path);
-    sem_mgr = self.sem_managers.get(fs_path);
-    if not sem_mgr {
+    try {
+        self._lock_manager.sem_managers_lock.acquire_read();
+        try {
+            sem_mgr = self.sem_managers.get(fs_path);
+            if not sem_mgr {
+                return lspt.SemanticTokens(data=[]);
+            }
+            # Copy the tokens list to avoid holding lock during serialization
+            tokens_copy = list(sem_mgr.sem_tokens);
+        } finally {
+            self._lock_manager.sem_managers_lock.release_read();
+        }
+        return lspt.SemanticTokens(data=tokens_copy);
+    } except Exception as e {
+        self.debug(f"Error getting semantic tokens: {e}");
         return lspt.SemanticTokens(data=[]);
-        return lspt.SemanticToken();
     }
-    return lspt.SemanticTokens(data=sem_mgr.sem_tokens);
 }
 
 """Rename a symbol in a file."""
@@ -106,17 +171,13 @@ impl JacLangServer.get_definition(
     }
     node_type = node_selected.type;
     parent = node_selected.parent;
-    ####################################################################
-    ##         Check for impl body first (stub -> impl navigation)    ##
-    ####################################################################
+    # Check for impl body first (stub -> impl navigation)
     if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
         if isinstance(parent.body, uni.ImplDef) {
             return make_location(parent.body.sym.decl);
         }
     }
-    ####################################################################
-    ##          Handle go to def for types and variables              ##
-    ####################################################################
+    # Handle go to def for types and variables
     if node_type {
         if isinstance(node_type, ModuleType) {
             return make_location(node_selected, is_module=True);
@@ -126,21 +187,14 @@ impl JacLangServer.get_definition(
             return make_location(node_selected.sym.decl);
         }
     }
-    ####################################################################
-    ##         Ad-hoc handling for impl-def go to def                 ##
-    ####################################################################
+    # Ad-hoc handling for impl-def go to def
     if not parent {
         return None;
     }
     if isinstance(parent, uni.ImplDef) and parent.decl_link {
         return make_location(parent.decl_link.sym.decl);
     }
-    ####################################################################
-    ##         Fallback: use symbol resolution if available           ##
-    ####################################################################
-    # Even if type is not available, we can still navigate using the symbol
-    # reference. This is important for symbols resolved in impl bodies where
-    # type inference may not have run yet.
+    # Fallback: use symbol resolution if available
     if node_selected.sym and node_selected.sym.defn {
         try {
             return make_location(node_selected.sym.defn[0]);
@@ -313,30 +367,51 @@ impl JacLangServer.get_node_at_position(
 }
 
 impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
-    if file_path in self.mod.hub {
-        return self.mod.hub[file_path];
+    try {
+        self._lock_manager.hub_lock.acquire_read();
+        try {
+            if file_path in self.mod.hub {
+                return self.mod.hub[file_path];
+            }
+            return None;
+        } finally {
+            self._lock_manager.hub_lock.release_read();
+        }
+    } except Exception as e {
+        self.debug(f"Error getting AST: {e}");
+        return None;
     }
-    return None;
 }
 
+"""Wait for all pending analysis to complete."""
 impl JacLangServer.wait_till_idle -> None {
-    self.debug("Waiting for queue to empty...");
-    await asyncio.to_thread(self.queue.join);
-    self.debug("Queue is now empty");
+    self.debug("Waiting for analysis to complete...");
+    if self._scheduler is not None {
+        # Wait for scheduler to finish ALL work: pending queue, backoff timer, and current analysis
+        while self._scheduler.is_busy() {
+            await asyncio.sleep(0.05);
+        }
+    }
+    self.debug("Analysis complete");
 }
 
 """Synchronous version of wait_till_idle for testing."""
 impl JacLangServer.wait_till_idle_sync -> None {
-    self.debug("Waiting for queue to empty (sync)...");
-    self.queue.join();
-    self.debug("Queue is now empty");
+    self.debug("Waiting for analysis to complete (sync)...");
+    if self._scheduler is not None {
+        # Wait for scheduler to finish ALL work: pending queue, backoff timer, and current analysis
+        while self._scheduler.is_busy() {
+            time.sleep(0.05);
+        }
+    }
+    self.debug("Analysis complete");
 }
 
 """Return completion for a file."""
 impl JacLangServer.get_completion(
     file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
 ) -> lspt.CompletionList {
-    # NOTE: We may only need to wait for the current file's type check.
+    # Wait for analysis to complete before providing completions
     await self.wait_till_idle();
     self.debug("Getting completion for " + file_uri + " at " + str(position));
     try {
@@ -358,7 +433,6 @@ impl JacLangServer.get_completion(
                         self.debug("before returning the list");
                         return self.get_completion_of_node(member_access.target);
                     }
-                    # FIXME: This is wrong but imma do it anyways like this for now.
                 } elif node_at_pos.name == "NAME" {
                     # Name of atom trailer.
                     if (
@@ -394,94 +468,79 @@ impl JacLangServer.get_token_at_position(
     file_path: str, position: lspt.Position
 ) -> Optional[uni.AstNode] {
     fs_path = uris.to_fs_path(file_path);
-    if fs_path not in self.mod.hub {
-        return None;
-    }
-    sem_mgr = self.sem_managers.get(fs_path);
-    if not sem_mgr {
-        return None;
-    }
-    token_index = utils.find_index(
-        sem_mgr.sem_tokens, position.line, position.character
-    );
-    if token_index is None {
-        return None;
-    }
-    node_selected = sem_mgr.static_sem_tokens[token_index][3];
-    return node_selected;
-}
 
-impl JacLangServer.type_check(file_uri: str) -> None {
-    if self.last_task and not self.last_task.cancel_token.is_set() {
-        self.last_task.cancel_token.set();
-        self.debug(f" Cancelling id: " + str(self.last_task.task_id));
-    }
-    self.last_task = Task(file_uri);
-    # Remove all the previous tasks.
-    while True {
-        try {
-            self.queue.get_nowait();
-            self.queue.task_done();
-        } except Empty {
-            break;
-        }
-    }
-    self.queue.put(self.last_task);
-}
-
-"""Rebuild a file and its dependencies (typecheck)."""
-impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: Event | None = None, annex_view: Optional[str] = None,
-    # This parameter will be passed recursively
-    # and dont need to pass when the function itself is called
-    # outside.
-) -> bool {
-    if cancel_token and cancel_token.is_set() {
-        return;
-    }
+    # Acquire read locks for thread-safe access
     try {
-        document = self.workspace.get_text_document(file_uri);
-        fs_path = document.path;
-        self._clear_alerts_for_file(fs_path);
-
-        build = self.compile(
-            use_str=document.source,
-            file_path=document.path,
-            type_check=True,
-            cancel_token=cancel_token,
-        );
-
-        if cancel_token and cancel_token.is_set() {
-            return;
-        }
-        self.update_modules(fs_path, build);
-
-        if build.annexable_by {
-            return self.type_check_file(
-                uris.from_fs_path(build.annexable_by),
-                cancel_token=cancel_token,
-                annex_view=fs_path,
-            );
-        }
-        self.publish_diagnostics(
-            (
-                uris.from_fs_path(annex_view)
-                if annex_view
-                else uris.from_fs_path(fs_path)
-                # to display diagnostic , it need URI starts with "file://"
-            ),
-            utils.gen_diagnostics(
-                (annex_view or fs_path), self.errors_had, self.warnings_had
-            )
-        );
-        if annex_view {
-            self.publish_diagnostics(
-                uris.from_fs_path(fs_path),
-                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
-            );
+        self._lock_manager.hub_lock.acquire_read();
+        try {
+            self._lock_manager.sem_managers_lock.acquire_read();
+            try {
+                if fs_path not in self.mod.hub {
+                    return None;
+                }
+                sem_mgr = self.sem_managers.get(fs_path);
+                if not sem_mgr {
+                    return None;
+                }
+                token_index = utils.find_index(
+                    sem_mgr.sem_tokens, position.line, position.character
+                );
+                if token_index is None {
+                    return None;
+                }
+                node_selected = sem_mgr.static_sem_tokens[token_index][3];
+                return node_selected;
+            } finally {
+                self._lock_manager.sem_managers_lock.release_read();
+            }
+        } finally {
+            self._lock_manager.hub_lock.release_read();
         }
     } except Exception as e {
-        self.debug(f"Error during type check: {e}");
+        self.debug(f"Error getting token at position: {e}");
+        return None;
+    }
+}
+
+"""Request type checking for a file.
+
+Schedules analysis via the scheduler, which dispatches to the worker process.
+Compilation does NOT happen in the main process - it happens in the worker
+to bypass the GIL for CPU-bound type checking.
+"""
+impl JacLangServer.type_check(file_uri: str) -> None {
+    try {
+        document = self.workspace.get_text_document(file_uri);
+        if document and document.source {
+            # Route to scheduler -> worker (compilation in separate process)
+            self.schedule_analysis(file_uri, document.source);
+        }
+    } except Exception as e {
+        self.debug(f"Error getting document for type_check: {e}");
+    }
+}
+
+"""Synchronous type check for testing.
+
+Schedules analysis and waits for completion. This is a blocking call
+that should only be used in tests, not in production LSP handlers.
+
+Returns True if analysis completed, False on error.
+"""
+impl JacLangServer.type_check_file(file_uri: str) -> bool {
+    try {
+        document = self.workspace.get_text_document(file_uri);
+        if document and document.source {
+            # Schedule analysis
+            self.schedule_analysis(file_uri, document.source);
+            # Wait for completion (blocking)
+            self.wait_till_idle_sync();
+            return True;
+        }
+        return False;
+    } except Exception as e {
+        self.debug(f"Error in type_check_file: {e}");
+        return False;
     }
 }
 
@@ -508,95 +567,17 @@ impl JacLangServer.diagnostics -> dict[str, list] {
     result = {};
     for file_path in self.mod.hub {
         uri = uris.from_fs_path(file_path);
-        result[uri] = utils.gen_diagnostics(
+        result[uri] = utils.gen_diagnostics( 
             file_path, self.errors_had, self.warnings_had
         );
     }
     return result;
 }
 
-impl JacLangServer.dispatcher -> None {
-    while True {
-        start_time = time.time();
-        task: Task | None = self.queue.get();
-
-        if task is None {
-            self.queue.task_done();
-            self.debug("Task was None, exiting dispatcher.");
-            break;
-        }
-
-        self.debug("Dispatching task id: " + str(task.task_id));
-        try {
-            self.type_check_file(task.file_uri);
-            self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-        } finally {
-            self.queue.task_done();
-        }
-        if task.cancel_token.is_set() {
-            self.debug("Task cancled id: " + str(task.task_id));
-        } else {
-            elapsed = time.time() - start_time;
-            self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
-        }
-    }
-}
-
-"""Initialize JacLangServer."""
-impl JacLangServer.postinit -> None {
-    LanguageServer.init(self, 'jac-lsp', 'v0.1');
-    JacProgram.init(self);
-    self.module_manager = ModuleManager(self, self.sem_managers);
-    # Worker for type checking using flow.
-    self.worker_future = flow self.dispatcher() ;
-}
-
-impl Task.postinit -> None {
-    self.task_id = Task._task_id;
-    self.cancel_token = threading.Event();
-    Task._task_id += 1;
-}
-
-"""Enable the new scheduler-based analysis."""
-impl JacLangServer.enable_scheduler -> None {
-    if self._scheduler is not None {
-        return;
-    }
-    self.debug("Enabling scheduler-based analysis");
-    # Create snapshot manager
-    self._snapshot_manager = SnapshotManager();
-    # Create scheduler with default config
-    config = SchedulerConfig.default();
-    self._scheduler = AnalysisScheduler(
-        _config=config, _snapshot_manager=self._snapshot_manager
-    );
-    # Set up diagnostics callback
-    self._scheduler.set_diagnostics_callback(self._on_scheduler_diagnostics);
-    # Start scheduler
-    self._scheduler.start();
-    self._use_scheduler = True;
-    self.debug("Scheduler enabled");
-}
-
-"""Disable the scheduler and revert to queue-based analysis."""
-impl JacLangServer.disable_scheduler -> None {
-    if self._scheduler is None {
-        return;
-    }
-    self.debug("Disabling scheduler-based analysis");
-    self._scheduler.stop();
-    self._scheduler = None;
-    self._use_scheduler = False;
-    self.debug("Scheduler disabled");
-}
-
-"""Schedule a file for analysis (used by didChange)."""
+"""Schedule a file for analysis."""
 impl JacLangServer.schedule_analysis(file_uri: str, source: str) -> None {
-    if self._use_scheduler and self._scheduler is not None {
+    if self._scheduler is not None {
         self._scheduler.schedule_file(file_uri, source);
-    } else {
-        # Fall back to existing queue-based approach
-        self.type_check(file_uri);
     }
 }
 
@@ -621,8 +602,14 @@ impl JacLangServer.on_file_focused(file_uri: str) -> None {
     }
 }
 
-"""Handle diagnostics from the scheduler."""
+"""Handle diagnostics from the scheduler.
+
+Called when the worker completes analysis and provides a new snapshot.
+"""
 impl JacLangServer._on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None {
+    # Sync snapshot to main process state
+    self._sync_snapshot_to_state(snapshot);
+
     # Publish diagnostics for all files in the snapshot
     for file_path in snapshot.hub.keys() {
         uri = uris.from_fs_path(file_path);
@@ -631,6 +618,86 @@ impl JacLangServer._on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None 
         );
         self.publish_diagnostics(uri, diagnostics);
     }
+
     # Refresh semantic tokens
-    self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+    try {
+        self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+    } except Exception as e {
+        self.debug(f"Failed to refresh semantic tokens: {e}");
+    }
+}
+
+"""Sync snapshot data to main process state.
+
+Updates mod.hub and recreates sem_managers from the snapshot.
+This runs in the main process after receiving a snapshot from the worker.
+Uses LockManager for thread-safe updates.
+"""
+impl JacLangServer._sync_snapshot_to_state(snapshot: ProgramSnapshot) -> None {
+    # Acquire write locks in consistent order to prevent deadlocks
+    # Order: hub_lock -> sem_managers_lock (as defined in LockManager)
+    try {
+        self._lock_manager.hub_lock.acquire_write();
+        try {
+            self._lock_manager.sem_managers_lock.acquire_write();
+            try {
+                # Update the hub with snapshot data
+                for (path, module) in snapshot.hub.items() {
+                    self.mod.hub[path] = module;
+                    # Recreate semantic manager for this module
+                    self.sem_managers[path] = SemTokManager(ir=module, hub=self.mod.hub);
+                }
+
+                # Update errors and warnings
+                self.errors_had = list(snapshot.errors);
+                self.warnings_had = list(snapshot.warnings);
+            } finally {
+                self._lock_manager.sem_managers_lock.release_write();
+            }
+        } finally {
+            self._lock_manager.hub_lock.release_write();
+        }
+    } except Exception as e {
+        self.debug(f"Error syncing snapshot: {e}");
+    }
+
+    self.debug(f"Synced snapshot version {snapshot.version} to state");
+}
+
+"""Register a pending LSP request for cancellation tracking."""
+impl JacLangServer.register_request(request_id: str) -> CancellationToken {
+    source = CancellationTokenSource();
+    with self._pending_requests_lock {
+        self._pending_requests[request_id] = source;
+    }
+    return source.token;
+}
+
+"""Unregister a completed LSP request."""
+impl JacLangServer.unregister_request(request_id: str) -> None {
+    with self._pending_requests_lock {
+        if request_id in self._pending_requests {
+            source = self._pending_requests.pop(request_id);
+            source.dispose();
+        }  
+    }
+}
+
+"""Cancel a pending LSP request (called from $/cancelRequest handler)."""
+impl JacLangServer.cancel_request(request_id: str) -> None {
+    with self._pending_requests_lock {
+        if request_id in self._pending_requests {
+            source = self._pending_requests[request_id];
+            source.cancel();
+            self.debug(f"Cancelled request {request_id}");
+        }
+    }
+}
+
+"""Get current snapshot for queries (non-blocking)."""
+impl JacLangServer.get_current_snapshot -> Optional[ProgramSnapshot] {
+    if self._snapshot_manager is not None {
+        return self._snapshot_manager.get_snapshot();
+    }
+    return None;
 }

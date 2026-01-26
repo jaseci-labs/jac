@@ -1,4 +1,11 @@
-"""Jaclang Language Server."""
+"""Jaclang Language Server.
+
+Production-grade LSP implementation with:
+- Multiprocess architecture for GIL-free compilation
+- Intelligent scheduling with user-activity backoff
+- Full request cancellation support
+- Immutable snapshots for lock-free queries
+"""
 
 import asyncio;
 import sys;
@@ -17,6 +24,13 @@ import from .engine { JacLangServer }
 import lsprotocol.types as lspt;
 
 def debug(msg: str) -> None;
+
+"""Handle LSP request cancellation ($/cancelRequest).
+
+Cancels in-flight requests when the client sends a cancellation.
+Critical for responsive UX when user types quickly.
+"""
+def cancel_request(ls: JacLangServer, params: lspt.CancelParams) -> None;
 
 """Handle file open - track file and schedule initial analysis."""
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {

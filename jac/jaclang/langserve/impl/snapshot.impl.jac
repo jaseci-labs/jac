@@ -3,6 +3,7 @@
 import threading;
 import pickle;
 import time;
+import sys;
 import from typing { Optional, Any, Callable }
 
 impl ProgramSnapshot.postinit -> None {
@@ -59,7 +60,15 @@ impl ProgramSnapshot.serialize -> bytes {
         'version': self.version,
         'timestamp': self.timestamp
     };
-    return pickle.dumps(data);
+    # AST nodes have deep parent-child relationships that can exceed default recursion limit.
+    # Temporarily increase it for pickling.
+    old_limit = sys.getrecursionlimit();
+    try {
+        sys.setrecursionlimit(max(old_limit, 50000));
+        return pickle.dumps(data);
+    } finally {
+        sys.setrecursionlimit(old_limit);
+    }
 }
 
 impl ProgramSnapshot.deserialize(data: bytes) -> ProgramSnapshot {
