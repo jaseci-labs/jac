@@ -22,7 +22,6 @@ class Storage {
 
     def get_metadata(self: Storage, path: str) -> dict[str, Any] abs;
     def get_url(self: Storage, path: str, expiry_seconds: int = 3600) -> str abs;
-
     def copy(self: Storage, source: str, destination: str) -> bool abs;
     def move(self: Storage, source: str, destination: str) -> bool abs;
     def get_info(self: Storage) -> dict[str, Any] abs;

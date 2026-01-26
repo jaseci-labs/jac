@@ -132,7 +132,9 @@ class TestLocalStorageConfig:
 class TestLocalStorage:
     """Tests for LocalStorage implementation."""
 
-    def test_upload_from_file_path(self, local_storage: LocalStorage, temp_storage_dir: str) -> None:
+    def test_upload_from_file_path(
+        self, local_storage: LocalStorage, temp_storage_dir: str
+    ) -> None:
         """Test uploading a file from a file path."""
         # Create a source file
         source_file = Path(temp_storage_dir) / "source.txt"
@@ -164,7 +166,9 @@ class TestLocalStorage:
 
         assert content == b"Test content"
 
-    def test_download_to_file_path(self, local_storage: LocalStorage, temp_storage_dir: str) -> None:
+    def test_download_to_file_path(
+        self, local_storage: LocalStorage, temp_storage_dir: str
+    ) -> None:
         """Test download to a file path."""
         file_obj = io.BytesIO(b"Download me")
         local_storage.upload(file_obj, "source.txt")
@@ -186,7 +190,9 @@ class TestLocalStorage:
         output.seek(0)
         assert output.read() == b"Stream me"
 
-    def test_download_nonexistent_file_raises(self, local_storage: LocalStorage) -> None:
+    def test_download_nonexistent_file_raises(
+        self, local_storage: LocalStorage
+    ) -> None:
         """Test that downloading a non-existent file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             local_storage.download("nonexistent.txt")
@@ -208,14 +214,18 @@ class TestLocalStorage:
 
         assert result is False
 
-    def test_exists_returns_true_for_existing(self, local_storage: LocalStorage) -> None:
+    def test_exists_returns_true_for_existing(
+        self, local_storage: LocalStorage
+    ) -> None:
         """Test exists returns True for existing file."""
         file_obj = io.BytesIO(b"I exist")
         local_storage.upload(file_obj, "exists.txt")
 
         assert local_storage.exists("exists.txt") is True
 
-    def test_exists_returns_false_for_nonexistent(self, local_storage: LocalStorage) -> None:
+    def test_exists_returns_false_for_nonexistent(
+        self, local_storage: LocalStorage
+    ) -> None:
         """Test exists returns False for non-existent file."""
         assert local_storage.exists("nonexistent.txt") is False
 
@@ -262,7 +272,9 @@ class TestLocalStorage:
         with pytest.raises(FileNotFoundError):
             local_storage.get_metadata("nonexistent.txt")
 
-    def test_get_url_returns_absolute_path(self, local_storage: LocalStorage, temp_storage_dir: str) -> None:
+    def test_get_url_returns_absolute_path(
+        self, local_storage: LocalStorage, temp_storage_dir: str
+    ) -> None:
         """Test get_url returns absolute path for local storage."""
         local_storage.upload(io.BytesIO(b"url test"), "url_test.txt")
 
@@ -327,7 +339,9 @@ class TestLocalStorage:
         assert os.path.exists(new_path)
         storage.close()
 
-    def test_upload_creates_parent_directories(self, local_storage: LocalStorage) -> None:
+    def test_upload_creates_parent_directories(
+        self, local_storage: LocalStorage
+    ) -> None:
         """Test that upload creates parent directories as needed."""
         file_obj = io.BytesIO(b"Nested content")
 
