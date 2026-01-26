@@ -213,10 +213,12 @@ def test_export_semantics_for_pub_declarations(
     js_code = es_to_js(es_ast)
 
     # Verify ExportNamedDeclaration nodes exist in AST
+    # Note: cl functions no longer use ES exports — they're registered via
+    # __jacRegisterClientModule instead, so only 3 exports (global, class, enum)
     export_decls = [
         node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
     ]
-    assert len(export_decls) == 4, "Expected 4 exports (global, class, function, enum)"
+    assert len(export_decls) == 3, "Expected 3 exports (global, class, enum)"
 
     # Check that public global is exported
     assert "export let PUBLIC_API_URL" in js_code, (
@@ -240,9 +242,11 @@ def test_export_semantics_for_pub_declarations(
         "Private class should NOT have export keyword"
     )
 
-    # Check that public function is exported
-    assert "export function public_function" in js_code, (
-        "Public function should have export keyword"
+    # cl functions don't use ES exports — they're registered via
+    # __jacRegisterClientModule for global scope compatibility
+    assert "function public_function" in js_code
+    assert "export function public_function" not in js_code, (
+        "cl functions should not have export keyword (uses registration instead)"
     )
 
     # Check that private function is NOT exported
@@ -270,9 +274,9 @@ def test_reactive_state_generates_use_state(
     es_ast = compile_to_esast(fixture_path("reactive_state.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useState is imported from @jac-client/utils (auto-injected)
-    assert 'import { useState } from "@jac-client/utils"' in js_code, (
-        "useState should be auto-imported from @jac-client/utils"
+    # Check that useState is imported from @jac/runtime (auto-injected)
+    assert 'import { useState } from "@jac/runtime"' in js_code, (
+        "useState should be auto-imported from @jac/runtime"
     )
 
     # Check that has declarations generate useState destructuring
@@ -304,9 +308,9 @@ def test_reactive_state_in_cl_jac_file(
     es_ast = compile_to_esast(fixture_path("reactive_state.cl.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useState is imported from @jac-client/utils (auto-injected)
-    assert 'import { useState } from "@jac-client/utils"' in js_code, (
-        "useState should be auto-imported from @jac-client/utils in .cl.jac files"
+    # Check that useState is imported from @jac/runtime (auto-injected)
+    assert 'import { useState } from "@jac/runtime"' in js_code, (
+        "useState should be auto-imported from @jac/runtime in .cl.jac files"
     )
 
     # Check that has declarations generate useState destructuring
@@ -422,9 +426,9 @@ def test_reactive_effects_async_entry(
     es_ast = compile_to_esast(fixture_path("reactive_effects.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useEffect is imported from @jac-client/utils (auto-injected)
-    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
-        "useEffect should be auto-imported from @jac-client/utils"
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
     )
 
     # Check that useEffect is called with arrow function
@@ -444,9 +448,9 @@ def test_reactive_effects_sync_entry(
     es_ast = compile_to_esast(fixture_path("reactive_effects_sync.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useEffect is imported from @jac-client/utils (auto-injected)
-    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
-        "useEffect should be auto-imported from @jac-client/utils"
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
     )
 
     # Check that useEffect is called
@@ -468,9 +472,9 @@ def test_reactive_effects_cleanup(
     es_ast = compile_to_esast(fixture_path("reactive_effects_cleanup.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useEffect is imported from @jac-client/utils (auto-injected)
-    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
-        "useEffect should be auto-imported from @jac-client/utils"
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
     )
 
     # Check that useEffect is called with cleanup return
@@ -488,9 +492,9 @@ def test_reactive_effects_with_dependencies(
     es_ast = compile_to_esast(fixture_path("reactive_effects_deps.jac"))
     js_code = es_to_js(es_ast)
 
-    # Check that useEffect is imported from @jac-client/utils (auto-injected)
-    assert 'import { useEffect } from "@jac-client/utils"' in js_code, (
-        "useEffect should be auto-imported from @jac-client/utils"
+    # Check that useEffect is imported from @jac/runtime (auto-injected)
+    assert 'import { useEffect } from "@jac/runtime"' in js_code, (
+        "useEffect should be auto-imported from @jac/runtime"
     )
 
     # Check that useEffect is called
