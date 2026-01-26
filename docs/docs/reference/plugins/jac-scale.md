@@ -34,6 +34,11 @@ jac start app.jac
 | `--host` | Bind address | 0.0.0.0 |
 | `--workers` | Number of workers | 1 |
 | `--reload` | Hot reload on changes | false |
+| `--scale` | Deploy to Kubernetes | false |
+| `--build` `-b` | Build and push Docker image (with --scale) | false |
+| `--experimental` `-e` | Install from repo instead of PyPI (with --scale) | false |
+| `--target` | Deployment target (kubernetes, aws, gcp) | kubernetes |
+| `--registry` | Image registry (dockerhub, ecr, gcr) | dockerhub |
 
 ### Examples
 
@@ -399,6 +404,25 @@ debug = false
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
 ```
+
+### Package Version Pinning
+
+Configure specific package versions for Kubernetes deployments:
+
+```toml
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "0.1.5"      # Specific version
+jac_scale = "latest"   # Latest from PyPI (default)
+jac_client = "0.1.0"   # Specific version
+jac_byllm = "none"     # Skip installation
+```
+
+| Package | Description | Default |
+|---------|-------------|---------|
+| `jaclang` | Core Jac language package | latest |
+| `jac_scale` | Scaling plugin | latest |
+| `jac_client` | Client/frontend support | latest |
+| `jac_byllm` | LLM integration (use "none" to skip) | latest |
 
 ---
 

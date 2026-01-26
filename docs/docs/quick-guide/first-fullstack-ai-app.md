@@ -522,6 +522,28 @@ You built the same app three ways:
 
 ## Next Steps
 
-- **Deploy**: `jac start main.jac --scale` for Kubernetes
+### Deploy to Kubernetes
+
+```bash
+# Default deployment (installs packages from PyPI)
+jac start main.jac --scale
+
+# Experimental mode (install from repo instead of PyPI)
+jac start main.jac --scale --experimental
+```
+
+Pin package versions in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "0.1.5"
+jac_scale = "latest"
+jac_client = "0.1.0"
+jac_byllm = "none"  # skip if not needed
+```
+
+### Learn More
+
 - **Advanced AI**: Structured outputs, agents - see [ByLLM Guide](../tutorials/ai/quickstart.md)
 - **Graph patterns**: Edges, complex traversals - see [OSP Guide](../tutorials/language/osp.md)
+- **Deployment details**: See [jac-scale Reference](../reference/plugins/jac-scale.md)
