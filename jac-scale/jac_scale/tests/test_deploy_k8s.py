@@ -88,6 +88,13 @@ def test_deploy_all_in_one():
     target_config["app_name"] = app_name
     target_config["namespace"] = namespace
 
+    # Use the current branch/commit in CI so the K8s pod installs the same
+    # version of jaseci packages as the code being tested.
+    ci_branch = os.environ.get("GITHUB_HEAD_REF") or os.environ.get(
+        "GITHUB_REF_NAME", "main"
+    )
+    target_config["jaseci_branch"] = ci_branch
+
     # Create logger
     logger = UtilityFactory.create_logger("standard")
 
