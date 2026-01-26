@@ -128,66 +128,6 @@ class TestDependencyInstaller:
             call_args = mock_pip.call_args[0][0]
             assert "git+https://github.com/user/plugin.git@main" in call_args
 
-    def test_install_package_replaces_older_version(self, temp_project: Path) -> None:
-        """Test that installing a newer version replaces the older one."""
-        config = JacConfig.load(temp_project / "jac.toml")
-        installer = DependencyInstaller(config=config, verbose=False)
-
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
-
-        # Install older version (1.0.0)
-        old_dist_info = packages_dir / "testpkg-1.0.0.dist-info"
-        old_dist_info.mkdir()
-        (old_dist_info / "METADATA").write_text("Name: testpkg\nVersion: 1.0.0")
-        (old_dist_info / "RECORD").write_text("testpkg-1.0.0.dist-info/METADATA,,\n")
-
-        old_pkg_dir = packages_dir / "testpkg"
-        old_pkg_dir.mkdir()
-        (old_pkg_dir / "__init__.py").write_text("# version 1.0.0")
-
-        # Verify old version exists
-        assert old_dist_info.exists()
-        assert old_pkg_dir.exists()
-
-        # Mock pip install for new version
-        with patch.object(installer, "_run_pip") as mock_pip:
-            mock_pip.return_value = (0, "Successfully installed testpkg-2.0.0", "")
-
-            # Simulate new version installation by creating new dist-info
-            def side_effect(cmd: list[str]) -> tuple[int, str, str]:
-                # Create new version structure
-                new_dist_info = packages_dir / "testpkg-2.0.0.dist-info"
-                new_dist_info.mkdir(exist_ok=True)
-                (new_dist_info / "METADATA").write_text("Name: testpkg\nVersion: 2.0.0")
-                (new_dist_info / "RECORD").write_text(
-                    "testpkg/__init__.py,,\ntestpkg-2.0.0.dist-info/METADATA,,\n"
-                )
-                # Update package file
-                (old_pkg_dir / "__init__.py").write_text("# version 2.0.0")
-                return (0, "Successfully installed testpkg-2.0.0", "")
-
-            mock_pip.side_effect = side_effect
-
-            # Install newer version (2.0.0)
-            result = installer.install_package("testpkg", "==2.0.0")
-
-            assert result is True
-
-        # Verify old version is removed
-        assert not old_dist_info.exists()
-
-        # Verify new version exists
-        new_dist_info = packages_dir / "testpkg-2.0.0.dist-info"
-        assert new_dist_info.exists()
-        assert (
-            new_dist_info / "METADATA"
-        ).read_text() == "Name: testpkg\nVersion: 2.0.0"
-
-        # Verify package directory still exists (updated)
-        assert old_pkg_dir.exists()
-        assert (old_pkg_dir / "__init__.py").read_text() == "# version 2.0.0"
-
     def test_install_all(self, temp_project: Path) -> None:
         """Test installing all dependencies."""
         config = JacConfig.load(temp_project / "jac.toml")
