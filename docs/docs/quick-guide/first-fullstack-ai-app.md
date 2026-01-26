@@ -130,25 +130,22 @@ cl def:pub app -> any {
                     Add
                 </button>
             </div>
-            {items.map(
-                lambda t: any  -> any { return
-                    <div key={t.id} class="todo-item">
-                        <input
-                            type="checkbox"
-                            checked={t.done}
-                            onChange={lambda -> None { toggle(t.id);}}
-                        />
-                        <span class={"todo-title " + ("todo-done" if t.done else "")}>
-                            {t.title}
-                        </span>
-                        <button
-                            class="btn-delete"
-                            onClick={lambda -> None { remove(t.id);}}
-                        >
-                            X
-                        </button>
-                    </div>; }
-            )}
+            {[<div key={t.id} class="todo-item">
+                <input
+                    type="checkbox"
+                    checked={t.done}
+                    onChange={lambda -> None { toggle(t.id);}}
+                />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>
+                    {t.title}
+                </span>
+                <button
+                    class="btn-delete"
+                    onClick={lambda -> None { remove(t.id);}}
+                >
+                    X
+                </button>
+            </div> for t in items]}
         </div>;
 }
 ```
@@ -272,14 +269,12 @@ cl {
                     placeholder="What needs to be done?" />
                 <button class="btn-add" onClick={add}>Add</button>
             </div>
-            {items.map(lambda t: any -> any {
-                return <div key={t.id} class="todo-item">
-                    <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
-                    <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
-                    <span class="category">{t.category}</span>
-                    <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
-                </div>;
-            })}
+            {[<div key={t.id} class="todo-item">
+                <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
+                <span class="category">{t.category}</span>
+                <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
+            </div> for t in items]}
         </div>;
     }
 }
@@ -467,14 +462,12 @@ cl {
                     placeholder="What needs to be done?" />
                 <button class="btn-add" onClick={add}>Add</button>
             </div>
-            {items.map(lambda t: any -> any {
-                return <div key={t.id} class="todo-item">
-                    <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
-                    <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
-                    <span class="category">{t.category}</span>
-                    <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
-                </div>;
-            })}
+            {[<div key={t.id} class="todo-item">
+                <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
+                <span class="category">{t.category}</span>
+                <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
+            </div> for t in items]}
         </div>;
     }
 }

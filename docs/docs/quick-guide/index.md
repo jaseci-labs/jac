@@ -17,6 +17,9 @@ Jac is a programming language and superset of both Python and TypeScript/JavaScr
 | **Model complex domains** | Graph-based Object-Spatial Programming for connected data |
 | **Code with AI assistance** | Clean syntax designed for both humans and AI models to read and write |
 
+!!! example "See it in action"
+    Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) - a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
+
 ---
 
 ## Get Started in 5 Minutes

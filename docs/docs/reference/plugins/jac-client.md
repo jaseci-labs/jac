@@ -283,9 +283,7 @@ cl {
         }
 
         return <ul>
-            {data.map(lambda task: any -> any {
-                return <li key={task["id"]}>{task["title"]}</li>;
-            })}
+            {[<li key={task["id"]}>{task["title"]}</li> for task in data]}
         </ul>;
     }
 }
@@ -617,9 +615,7 @@ cl {
 
             {show and <p>Only when true</p>}
 
-            {items.map(lambda item: any -> any {
-                return <li key={item["id"]}>{item["name"]}</li>;
-            })}
+            {[<li key={item["id"]}>{item["name"]}</li> for item in items]}
         </div>;
     }
 }

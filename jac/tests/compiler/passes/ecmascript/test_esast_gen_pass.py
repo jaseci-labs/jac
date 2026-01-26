@@ -500,3 +500,38 @@ def test_reactive_effects_with_dependencies(
     assert "[userId, loading])" in js_code, (
         "Effect with (userId, loading) tuple should have both in dependency array"
     )
+
+
+def test_jsx_comprehension_basic(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that JSX comprehension generates .map() calls."""
+    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that basic comprehension generates .map() call
+    assert ".map(" in js_code, "JSX comprehension should generate .map() call"
+    assert "item =>" in js_code, (
+        "JSX comprehension should generate arrow function with item"
+    )
+
+    # Check that the JSX element is in the map callback
+    assert "__jacJsx" in js_code, "JSX should be lowered to __jacJsx calls"
+
+
+def test_jsx_comprehension_with_filter(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that JSX comprehension with if clause generates .filter().map() chain."""
+    es_ast = compile_to_esast(fixture_path("jsx_comprehension.jac"))
+    js_code = es_to_js(es_ast)
+
+    # Check that filtered comprehension generates .filter() call
+    assert ".filter(" in js_code, (
+        "JSX comprehension with if should generate .filter() call"
+    )
+
+    # Check that filter is chained with map
+    assert ".filter(" in js_code and ".map(" in js_code, (
+        "Filtered JSX comprehension should chain .filter().map()"
+    )
