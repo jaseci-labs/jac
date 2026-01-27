@@ -38,7 +38,7 @@ import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
 import from .worker { WorkerManager, WorkerConfig }
-import from .snapshot { SnapshotManager, ProgramSnapshot }
+import from .snapshot { ProgramSnapshot }
 import from .cancellation { CancellationToken, CancellationTokenSource }
 
 with entry{
@@ -57,7 +57,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
         _shutdown_called: bool = False,
         # Worker-based analysis
         _worker_manager: WorkerManager | None = None,
-        _snapshot_manager: SnapshotManager | None = None,
         # LSP request tracking for cancellation
         _pending_requests: Dict[str, CancellationTokenSource] | None = None,
         _pending_requests_lock: threading.Lock | None = None,
