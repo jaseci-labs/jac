@@ -211,7 +211,6 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
                 # Add comprehensive export statement at the end
                 export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
                 js_code = clean_js + export_stmt;
-                print(f"[HMR] Added exports: {module_export_names}", flush=True);
             }
         }
 
