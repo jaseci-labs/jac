@@ -194,10 +194,13 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Handle exports: extract from manifest and add comprehensive export statement
         client_manifest = mod.gen.client_manifest if mod else None;
         if client_manifest {
-            exports_list = list(client_manifest.exports) if client_manifest.exports else [];
-            globals_list = list(client_manifest.globals) if client_manifest.globals else [];
+            exports_list = list(client_manifest.exports)
+            if client_manifest.exports
+            else [];
+            globals_list = list(client_manifest.globals)
+            if client_manifest.globals
+            else [];
             module_export_names = sorted(set(exports_list + globals_list));
-            
             if module_export_names {
                 import re;
                 # Strip any existing export declarations to avoid duplicates
