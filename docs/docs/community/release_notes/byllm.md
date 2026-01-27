@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.16 (Unreleased)
 
+- **Internal**: Explicitly declared all postinit fields across the codebase.
+
 ## byllm 0.4.15 (Latest Release)
 
 - **Direct HTTP model calls:** Added support for calling custom LLM endpoints via direct HTTP (`http_client` in model config).
