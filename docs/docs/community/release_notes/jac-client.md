@@ -2,7 +2,12 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.11 (Unreleased)
+## jac-client 0.2.12 (Unreleased)
+
+- **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.
+- **Auto-Prompt for Missing Client Dependencies**: When running `jac start` on a project without npm dependencies configured (no `jac.toml` or empty `[dependencies.npm]`), the CLI now detects the missing dependencies and interactively prompts the user to install the default jac-client packages (react, vite, etc.). Accepting writes the defaults to `jac.toml` and proceeds with the build. This follows the same pattern as the existing Bun auto-install prompt and eliminates the cryptic "Cannot find package 'vite'" error that previously occurred. Additionally, stale `node_modules` directories from prior failed installs are now automatically detected and cleaned up before reinstalling.
+
+## jac-client 0.2.11 (Latest Release)
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
@@ -11,7 +16,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`@jac/runtime` Canonical Import Path**: Migrated the client runtime import path from `@jac-client/utils` to `@jac/runtime`, aligning with the new `@jac/` scoped package syntax in Jac source code. The jac-client Vite plugin now maps `@jac/runtime` to its own compiled runtime via a resolve alias. Compiled modules include ES module `export` statements so Vite can resolve named imports between modules. All examples, docs, and templates have been updated.
 - **Various Refactors**: Inluding supporting new useEffect primitives, example updates, etc
 
-## jac-client 0.2.10 (Latest Release)
+## jac-client 0.2.10
 
 ## jac-client 0.2.9
 

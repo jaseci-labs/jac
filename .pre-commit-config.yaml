@@ -49,12 +49,13 @@ repos:
         name: jac-format
         description: Format Jac files with consistent code style
         entry: env PYTHONPATH=jac python3 -m jaclang format
-        language: system
+        language: python
         types: [file]
         args: [--fix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
+        additional_dependencies: [llvmlite>=0.43.0]
       - id: jac-check
         name: jac-check
         description: Type check Jac files

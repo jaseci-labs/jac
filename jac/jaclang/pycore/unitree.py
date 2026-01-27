@@ -247,6 +247,27 @@ class UniNode:
             node = node.parent
         return False
 
+    def in_native_context(self) -> bool:
+        """Check if this node is in a native context.
+
+        This covers:
+        - Nodes inside an explicit na {} block in a .jac file
+        - Nodes inside a function marked with NATIVE context in .na.jac files
+        - Overridden by sv {} or cl {} blocks
+        """
+        node: UniNode | None = self.parent
+        while node is not None:
+            if isinstance(node, (ServerBlock, ClientBlock)):
+                return False
+            if isinstance(node, NativeBlock):
+                return True
+            if isinstance(node, Ability):
+                context = getattr(node, "code_context", CodeContext.SERVER)
+                if context == CodeContext.NATIVE:
+                    return True
+            node = node.parent
+        return False
+
     def to_dict(self) -> dict[str, str]:
         """Return dict representation of node."""
         ret = {
@@ -1359,6 +1380,47 @@ class ServerBlock(ElementStmt):
                 new_kid.append(EmptyToken())
         else:
             new_kid.append(self.gen_token(Tok.KW_SERVER))
+            new_kid.append(self.gen_token(Tok.LBRACE))
+            for stmt in self.body:
+                new_kid.append(stmt)
+            new_kid.append(self.gen_token(Tok.RBRACE))
+        self.set_kids(nodes=new_kid)
+        return res
+
+
+class NativeBlock(ElementStmt):
+    """NativeBlock node type for na { ... } blocks in Jac Ast."""
+
+    def __init__(
+        self,
+        body: Sequence[ElementStmt],
+        kid: Sequence[UniNode],
+        implicit: bool = False,
+    ) -> None:
+        self.body = list(body)
+        self.implicit = implicit
+        UniNode.__init__(self, kid=kid)
+
+    def normalize(self, deep: bool = False) -> bool:
+        res = True
+        if deep:
+            for stmt in self.body:
+                res = res and stmt.normalize(deep)
+        new_kid: list[UniNode] = []
+        parent_mod = self.find_parent_of_type(Module)
+        is_implicit_top_level_na_module = (
+            self.implicit
+            and parent_mod is not None
+            and parent_mod.loc.mod_path.endswith(".na.jac")
+            and parent_mod.body == [self]
+        )
+        if is_implicit_top_level_na_module:
+            if self.body:
+                new_kid.extend(self.body)
+            else:
+                new_kid.append(EmptyToken())
+        else:
+            new_kid.append(self.gen_token(Tok.KW_NATIVE))
             new_kid.append(self.gen_token(Tok.LBRACE))
             for stmt in self.body:
                 new_kid.append(stmt)

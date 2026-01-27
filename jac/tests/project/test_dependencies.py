@@ -188,45 +188,92 @@ class TestDependencyInstaller:
         assert "requests" in installed
         assert "numpy" in installed
 
-    def test_cleanup_old_package_removes(self, temp_project: Path) -> None:
-        """Test that _cleanup_old_package removes .dist-info directories."""
+    def test_uninstall_package_comprehensive(self, temp_project: Path) -> None:
+        """Comprehensive test for uninstall_package covering all scenarios."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config, verbose=True)
 
-        # Create packages directory with multiple dist-info versions
         packages_dir = temp_project / ".jac" / "packages"
         packages_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create with different casing
-        dist_info = packages_dir / "Typing_extensions-4.11.0.dist-info"
+        # === Scenario 1: Full RECORD-based removal ===
+        # Create package structure
+        pkg_dir = packages_dir / "testpkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "__init__.py").write_text("# test package")
+        (pkg_dir / "module.py").write_text("def func(): pass")
+
+        pkg_data = packages_dir / "testpkg.data"
+        pkg_data.mkdir()
+
+        # Create .dist-info directory with RECORD
+        dist_info = packages_dir / "testpkg-1.0.0.dist-info"
         dist_info.mkdir()
 
-        pkg_dir = packages_dir / "typing_extensions"
-        pkg_dir.mkdir()
-        old_dist = packages_dir / "typing_extensions-4.11.0.dist-info"
-        old_dist.mkdir()
-        egg_info = packages_dir / "typing_extensions-4.11.0.egg-info"
-        egg_info.mkdir()
-        data_dir = packages_dir / "typing_extensions-4.11.0.data"
-        data_dir.mkdir()
+        # Create RECORD file listing all package files
+        record_content = """testpkg/__init__.py,sha256=abc123,15
+testpkg/module.py,sha256=def456,20
+testpkg.data,sha256=,0
+testpkg-1.0.0.dist-info/METADATA,sha256=xyz789,100
+testpkg-1.0.0.dist-info/RECORD,,
+"""
+        (dist_info / "RECORD").write_text(record_content)
+        (dist_info / "METADATA").write_text("Name: testpkg\nVersion: 1.0.0")
 
-        other_dist = packages_dir / "numpy-1.24.0.dist-info"
-        other_dist.mkdir()
+        # Create bin script (tests ../ path handling)
+        bin_dir = packages_dir / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "testpkg-script").write_text("#!/usr/bin/env python")
 
-        with patch.object(installer, "_run_pip", return_value=(0, "", "")):
-            installer.install_package("typing-extensions", "==4.15.0")
-            (packages_dir / "typing_extensions-4.15.0.dist-info").mkdir()
+        # Add bin script to RECORD with ../ path
+        (dist_info / "RECORD").write_text(
+            record_content + "../../bin/testpkg-script,sha256=script123,25\n"
+        )
 
-            # All old versions should be removed
-            assert not dist_info.exists()
-            assert not pkg_dir.exists()
-            assert not old_dist.exists()
-            assert not egg_info.exists()
-            assert not data_dir.exists()
-            # Newly installed version should exist
-            assert (packages_dir / "typing_extensions-4.15.0.dist-info").exists()
-            # Other package should remain
-            assert other_dist.exists()
+        # Uninstall the package
+        result = installer.uninstall_package("testpkg")
+
+        assert result is True
+        assert not pkg_dir.exists()
+        assert not pkg_data.exists()
+        assert not dist_info.exists()
+        assert not (bin_dir / "testpkg-script").exists()
+        assert not bin_dir.exists()
+
+        # === Scenario 2: Prefer .dist-info over .egg-info ===
+        dist_info2 = packages_dir / "pkg2-1.0.0.dist-info"
+        dist_info2.mkdir()
+        (dist_info2 / "RECORD").write_text("pkg2/__init__.py,sha256=abc,10\n")
+
+        egg_info2 = packages_dir / "pkg2-1.0.0.egg-info"
+        egg_info2.mkdir()
+        assert egg_info2.exists()
+
+        pkg2_dir = packages_dir / "pkg2"
+        pkg2_dir.mkdir()
+        (pkg2_dir / "__init__.py").write_text("")
+
+        result = installer.uninstall_package("pkg2")
+
+        assert result is True
+        assert not dist_info2.exists()
+        assert not pkg2_dir.exists()
+        assert not egg_info2.exists()
+
+        # === Scenario 3: Fallback to .egg-info ===
+        egg_info3 = packages_dir / "oldpkg-0.5.0.egg-info"
+        egg_info3.mkdir()
+
+        pkg3_dir = packages_dir / "oldpkg"
+        pkg3_dir.mkdir()
+        (pkg3_dir / "__init__.py").write_text("")
+
+        result = installer.uninstall_package("oldpkg")
+
+        assert result is True
+        assert not egg_info3.exists()
+        # Package dir remains , because if dist-info files remains in package dir
+        assert pkg3_dir.exists()
 
 
 class TestDependencyResolver:

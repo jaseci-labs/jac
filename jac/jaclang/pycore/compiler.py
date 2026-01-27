@@ -62,7 +62,15 @@ def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
     from jaclang.compiler.passes.ecmascript import EsastGenPass
     from jaclang.compiler.passes.main import PyJacAstLinkPass
 
-    return [EsastGenPass, PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]
+    passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass]
+
+    # Include native compilation passes
+    from jaclang.compiler.passes.native import NaIRGenPass, NativeCompilePass
+
+    passes.extend([NaIRGenPass, NativeCompilePass])
+
+    passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass])
+    return passes
 
 
 def get_minimal_ir_gen_sched() -> list[type[Transform[uni.Module, uni.Module]]]:

@@ -132,10 +132,10 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Enter node."""
-        # Prune ClientBlocks from Python generation
-        if isinstance(node, uni.ClientBlock) or (
+        # Prune ClientBlocks and NativeBlocks from Python generation
+        if isinstance(node, (uni.ClientBlock, uni.NativeBlock)) or (
             isinstance(node, uni.ContextAwareNode)
-            and node.code_context == CodeContext.CLIENT
+            and node.code_context in (CodeContext.CLIENT, CodeContext.NATIVE)
             and (node.parent is None or isinstance(node.parent, uni.Module))
         ):
             self.prune()
@@ -147,13 +147,13 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def exit_node(self, node: uni.UniNode) -> None:
         """Exit node."""
-        # ClientBlock handled in enter_node (pruned)
+        # ClientBlock/NativeBlock handled in enter_node (pruned)
         # ServerBlock has its own exit handler (exit_server_block)
-        if isinstance(node, uni.ClientBlock):
+        if isinstance(node, (uni.ClientBlock, uni.NativeBlock)):
             return
         if (
             isinstance(node, uni.ContextAwareNode)
-            and node.code_context == CodeContext.CLIENT
+            and node.code_context in (CodeContext.CLIENT, CodeContext.NATIVE)
             and (node.parent is None or isinstance(node.parent, uni.Module))
         ):
             return
@@ -713,6 +713,10 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         node.gen.py_ast = self._flatten_ast_list(
             [item.gen.py_ast for item in node.body]
         )
+
+    def exit_native_block(self, node: uni.NativeBlock) -> None:
+        """Handle NativeBlock - already pruned in enter_node."""
+        pass
 
     def exit_py_inline_code(self, node: uni.PyInlineCode) -> None:
         if node.doc:
@@ -1973,17 +1977,13 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         node.gen.py_ast = [self.sync(destroy_expr), self.sync(delete_stmt)]
 
     def exit_report_stmt(self, node: uni.ReportStmt) -> None:
-        if isinstance(node.expr, uni.YieldExpr):
-            fun_name = "log_report_yield"
-        else:
-            fun_name = "log_report"
         node.gen.py_ast = [
             self.sync(
                 ast3.Expr(
                     value=self.sync(
                         self.sync(
                             ast3.Call(
-                                func=self.jaclib_obj(fun_name),
+                                func=self.jaclib_obj("log_report"),
                                 args=cast(list[ast3.expr], node.expr.gen.py_ast),
                                 keywords=[],
                             )
