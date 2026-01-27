@@ -319,6 +319,28 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
 
+            # Check for bare except pattern: When semicolon appears in what parser thinks is a dict
+            # This happens when `except {` is written (bare except), parser tries to parse { as dict start
+            # then encounters code statements with semicolons which are invalid in dict context
+            if (
+                e.token.type == Tok.SEMI.name
+                and Tok.COMMA.name in e.accepts
+                and Tok.RBRACE.name in e.accepts
+                and Tok.SEMI.name not in e.accepts
+            ):
+                # Create error token pointing to the line with 'except'
+                error_tok = self.error_to_token(e)
+                error_tok.line_no = (
+                    e.line - 1
+                )  # except keyword is typically 1 line before
+                error_tok.end_line = error_tok.line_no
+
+                self.log_error(
+                    "Bare except is not supported. Use `except Exception` or `except Exception as e`",
+                    error_tok,
+                )
+                return False  # Stop parsing gracefully
+
             # Check for unsupported python keywords in code blocks
             if (
                 e.token

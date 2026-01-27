@@ -283,6 +283,21 @@ def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
         assert expected in pretty
 
 
+def test_bare_except_error(fixture_path: Callable[[str], str]) -> None:
+    """Test bare except without exception type shows appropriate error."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    prog = JacProgram()
+    prog.compile(fixture_path("bare_except_error.jac"))
+    sys.stdout = sys.__stdout__
+    assert len(prog.errors_had) >= 1
+    # Check that the first error mentions bare except
+    error_msg = prog.errors_had[0].pretty_print()
+    assert "Bare except is not supported" in error_msg
+    assert "except Exception" in error_msg
+    assert "except Exception as e" in error_msg
+
+
 def test_report_yield(fixture_path: Callable[[str], str]) -> None:
     """Parse report yield jac file."""
     captured_output = io.StringIO()
