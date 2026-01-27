@@ -4,6 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.12 (Unreleased)
 
+- **Native Binary Compilation via `na {}` Blocks and `.na.jac` Files**: Added a third compilation target to Jac using `na {}` context blocks and `.na.jac` file conventions. Code within the `na` context compiles to native LLVM IR via llvmlite and is JIT-compiled to machine code at runtime. Functions defined in `na {}` blocks are callable via ctypes function pointers. Supports integer, float, and boolean types, arithmetic and comparison operators, if/else and while control flow, recursive function calls, local variables with type inference, and `print()` mapped to native `printf`. Native code is fully isolated from Python (`sv`) and JavaScript (`cl`) codegen -- `na` functions are excluded from both `py_ast` and `es_ast` output, and vice versa. The `llvmlite` package is now a core dependency.
+- **Startup error handling improvements:** Aggregates initialization errors and displays concise, formatted Vite/Bun bundling failures after the API endpoint list.
+- **Pip-Compatible Uninstall with RECORD Support**: Package removal now matches `pip uninstall` by using `RECORD` files to accurately remove all installed files, including scripts and data directories, while cleaning up leftover paths.
+- **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
 - **Internal**: Explicitly declared all postinit fields across the codebase.
 
 ## jaclang 0.9.11 (Latest Release)
@@ -28,8 +32,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 ### Features and Improvements
 
 - **Console Plugin Architecture**: Refactored console system to use a plugin-based architecture, removing the `rich` dependency from core jaclang. The base `JacConsole` now uses pure Python `print()` for all output, keeping jaclang dependency-free. Plugins (like `jac-super`) can override the console implementation via the `get_console()` hook to provide Rich-enhanced output with themes, panels, tables, and spinners. This maintains backward compatibility while allowing optional aesthetic enhancements through plugins.
-
-- **Report Yield Support**: The `report` statement now supports yield expressions (e.g., `report yield "Hello, World!";`), laying the groundwork for streaming response support in walkers.
 
 - **User Management Endpoints**:  Added new user management endpoints to the `jac start` API server:
   - `GET /user/info` - Retrieve authenticated user's information (username, token, root_id)

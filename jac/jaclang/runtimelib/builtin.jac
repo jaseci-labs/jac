@@ -57,6 +57,8 @@ def printgraph(
 
 def _jac_graph_json(file: (str | None) = None) -> str;
 
+def restspec(**specs: Any) -> Callable;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -69,5 +71,6 @@ glob __all__ = [
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',
-         'WritePerm'
+         'WritePerm',
+         'restspec'
      ];

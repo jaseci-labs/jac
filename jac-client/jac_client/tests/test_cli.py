@@ -1,9 +1,11 @@
 """Test create-jac-app command."""
 
+import contextlib
 import os
 import tempfile
 import tomllib
 from subprocess import PIPE, Popen, run
+from unittest.mock import patch
 
 
 def test_create_jac_app() -> None:
@@ -920,3 +922,69 @@ def test_create_cl_and_run_no_root_files() -> None:
 
         finally:
             os.chdir(original_cwd)
+
+
+def test_vite_build_prompts_for_missing_client_deps() -> None:
+    """Test that ViteBundler.build() prompts to install deps when jac.toml is missing.
+
+    Exercises the same code path as `jac start` → server.start() → ensure_bundle()
+    → ViteBundler.build(), which checks for npm deps before building.
+    """
+    import json
+    from pathlib import Path
+
+    from jac_client.plugin.src.vite_bundler import ViteBundler
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_dir = Path(temp_dir)
+        config_file = project_dir / "jac.toml"
+
+        # No jac.toml — ViteBundler.build() should prompt via ensure_client_deps
+        bundler = ViteBundler(project_dir)
+
+        # Mock input to accept, and mock bun/vite so we don't need real installs.
+        # We only care that ensure_client_deps wrote jac.toml before reaching bun.
+        with (
+            patch("builtins.input", return_value="Y"),
+            patch(
+                "jac_client.plugin.utils.bun_installer.ensure_bun_available",
+                return_value=True,
+            ),
+            patch("subprocess.run") as mock_subprocess,
+        ):
+            # bun install returns success, vite build returns failure
+            # (we don't have real vite — that's fine, we're testing the dep prompt)
+            mock_subprocess.side_effect = [
+                type("Result", (), {"returncode": 0})(),  # bun install
+                type("Result", (), {"returncode": 1})(),  # vite build
+            ]
+            with contextlib.suppress(Exception):
+                bundler.build()  # vite build failure is expected
+
+        # The key assertion: jac.toml was created with default client deps
+        assert config_file.exists(), (
+            "jac.toml should have been created after accepting the prompt"
+        )
+
+        with open(config_file, "rb") as f:
+            data = tomllib.load(f)
+
+        npm_deps = data.get("dependencies", {}).get("npm", {})
+        assert "react" in npm_deps, "react should be in dependencies.npm"
+        assert "react-dom" in npm_deps, "react-dom should be in dependencies.npm"
+
+        npm_dev = npm_deps.get("dev", {})
+        assert "vite" in npm_dev, "vite should be in dev dependencies"
+        assert "@vitejs/plugin-react" in npm_dev, (
+            "@vitejs/plugin-react should be in dev deps"
+        )
+
+        # Verify the generated package.json also picked up the deps
+        package_json = project_dir / ".jac" / "client" / "configs" / "package.json"
+        assert package_json.exists(), "package.json should have been generated"
+
+        with open(package_json) as f:
+            pkg = json.load(f)
+
+        assert pkg["dependencies"].get("react"), "package.json should have react"
+        assert pkg["devDependencies"].get("vite"), "package.json should have vite"
