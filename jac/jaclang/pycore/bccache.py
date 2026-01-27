@@ -13,11 +13,12 @@ from __future__ import annotations
 import hashlib
 import marshal
 import os
+import pickle
 import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from jaclang.project.config import JacConfig
@@ -155,10 +156,12 @@ class DiskBytecodeCache(BytecodeCache):
         source:  /project/src/main.jac
         cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
                  ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
+                 ~/.cache/jac/cache/main.a1b2c3d4.cpython-312.mtir.pkl
     """
 
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
+    MTIR_EXTENSION: Final[str] = ".mtir.pkl"
 
     def __init__(self, config: JacConfig | None = None) -> None:
         """Initialize the cache with optional config."""
@@ -248,6 +251,56 @@ class DiskBytecodeCache(BytecodeCache):
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_bytes(bytecode)
         except OSError:
+            pass  # Silently ignore write failures
+
+    def _get_mtir_cache_path(self, key: CacheKey) -> Path:
+        """Generate the MTIR cache file path for a given key.
+
+        MTIR cache is stored alongside bytecode cache with .mtir.pkl extension.
+        """
+        source = Path(key.source_path).resolve()
+        cache_dir = self._get_cache_dir()
+
+        # Create a short hash of the full path for uniqueness
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+
+        major, minor = key.python_version
+        py_version = f"cpython-{major}{minor}"
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.MTIR_EXTENSION}"
+
+        return cache_dir / cache_name
+
+    def get_mtir(self, key: CacheKey) -> dict[str, Any] | None:
+        """Retrieve cached MTIR map if valid.
+
+        Returns the mtir_map dictionary that maps scope strings to MTIR objects.
+        """
+        mtir_cache_path = self._get_mtir_cache_path(key)
+
+        # Use same validation as bytecode cache
+        if not self._is_valid(key, mtir_cache_path):
+            return None
+
+        try:
+            with open(mtir_cache_path, "rb") as f:
+                return pickle.load(f)
+        except (OSError, pickle.PickleError, EOFError):
+            return None
+
+    def put_mtir(self, key: CacheKey, mtir_map: dict[str, Any]) -> None:
+        """Store MTIR map in the cache.
+
+        Args:
+            key: Cache key identifying the source file
+            mtir_map: Dictionary mapping scope strings to MTIR objects
+        """
+        mtir_cache_path = self._get_mtir_cache_path(key)
+
+        try:
+            mtir_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(mtir_cache_path, "wb") as f:
+                pickle.dump(mtir_map, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except (OSError, pickle.PickleError):
             pass  # Silently ignore write failures
 
 
