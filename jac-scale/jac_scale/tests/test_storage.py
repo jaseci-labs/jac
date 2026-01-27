@@ -11,9 +11,8 @@ from unittest.mock import patch
 import pytest
 
 try:
-    from jac_scale.abstractions.config.storage_config import LocalStorageConfig
+    from jaclang.runtimelib.storage import LocalStorageConfig, LocalStorage
     from jac_scale.factories.storage_factory import StorageFactory
-    from jac_scale.providers.storage.local_storage import LocalStorage
 except ImportError as e:
     pytest.skip(f"Jac modules not compiled: {e}", allow_module_level=True)
 
@@ -89,7 +88,7 @@ class TestLocalStorageConfig:
 
     def test_from_dict_with_defaults(self) -> None:
         """Test LocalStorageConfig creation with defaults."""
-        config = LocalStorageConfig.from_dict(LocalStorageConfig, {})
+        config = LocalStorageConfig.from_dict({})
 
         assert config.storage_type == "local"
         assert config.base_path == "./storage"
@@ -98,7 +97,6 @@ class TestLocalStorageConfig:
     def test_from_dict_with_custom_values(self) -> None:
         """Test LocalStorageConfig creation with custom values."""
         config = LocalStorageConfig.from_dict(
-            LocalStorageConfig,
             {"base_path": "/custom/path", "create_dirs": False},
         )
 
@@ -114,7 +112,7 @@ class TestLocalStorageConfig:
                 "JAC_STORAGE_CREATE_DIRS": "false",
             },
         ):
-            config = LocalStorageConfig.from_env(LocalStorageConfig)
+            config = LocalStorageConfig.from_env()
 
         assert config.base_path == "/env/path"
         assert config.create_dirs is False

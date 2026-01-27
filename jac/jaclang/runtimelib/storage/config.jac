@@ -1,8 +1,11 @@
-"""Storage configuration classes for jac_scale."""
+"""Storage configuration classes for Jac core."""
 import from typing { Any }
 import os;
 
-"""Base storage configuration."""
+"""Base storage configuration class.
+
+All storage configurations should inherit from this class.
+"""
 class BaseStorageConfig {
     has storage_type: str = 'local';
 
@@ -10,12 +13,14 @@ class BaseStorageConfig {
         self.storage_type = storage_type;
     }
 
+    """Convert configuration to dictionary."""
     def to_dict(self: BaseStorageConfig) -> dict[str, Any] {
         return {'storage_type': self.storage_type};
     }
 
-    static def from_dict(cls: type, config: dict[str, Any]) -> BaseStorageConfig {
-        return cls(storage_type=config.get('storage_type', 'local'));
+    """Create configuration from dictionary."""
+    static def from_dict(config: dict[str, Any]) -> BaseStorageConfig {
+        return BaseStorageConfig(storage_type=config.get('storage_type', 'local'));
     }
 }
 
@@ -34,6 +39,7 @@ class LocalStorageConfig(BaseStorageConfig) {
         self.create_dirs = create_dirs;
     }
 
+    """Convert configuration to dictionary."""
     override def to_dict(self: LocalStorageConfig) -> dict[str, Any] {
         return {
             'storage_type': self.storage_type,
@@ -42,7 +48,8 @@ class LocalStorageConfig(BaseStorageConfig) {
         };
     }
 
-    static def from_dict(cls: type, config: dict[str, Any]) -> LocalStorageConfig {
+    """Create configuration from dictionary."""
+    static def from_dict(config: dict[str, Any]) -> LocalStorageConfig {
         base_path = config.get('base_path', './storage');
         create_dirs_val = config.get('create_dirs', True);
         return LocalStorageConfig(
@@ -51,7 +58,13 @@ class LocalStorageConfig(BaseStorageConfig) {
         );
     }
 
-    static def from_env(cls: type) -> LocalStorageConfig {
+    """Create configuration from environment variables.
+
+    Environment variables:
+        JAC_STORAGE_LOCAL_PATH: Base path for storage (default: './storage')
+        JAC_STORAGE_CREATE_DIRS: Whether to create directories (default: 'true')
+    """
+    static def from_env() -> LocalStorageConfig {
         return LocalStorageConfig(
             base_path=os.environ.get('JAC_STORAGE_LOCAL_PATH', './storage'),
             create_dirs=os.environ.get('JAC_STORAGE_CREATE_DIRS', 'true').lower() == 'true'

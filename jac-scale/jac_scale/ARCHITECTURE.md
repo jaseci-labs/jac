@@ -523,7 +523,7 @@ walker delete_file {
 
    ```jac
    // providers/storage/s3_storage.jac
-   import from jac_scale.abstractions.storage { Storage }
+   import from jaclang.runtimelib.storage { Storage }
 
    class S3Storage(Storage) {
        has bucket: str,

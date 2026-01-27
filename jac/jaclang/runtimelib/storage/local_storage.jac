@@ -1,16 +1,17 @@
-"""Local filesystem storage implementation.
-
-NOTE: This file is kept for backwards compatibility.
-The canonical LocalStorage implementation is now in jaclang.runtimelib.storage.
-Consider importing from there instead.
-"""
+"""Local filesystem storage implementation for Jac core."""
 import os;
 import shutil;
 import from pathlib { Path }
 import from typing { Any, BinaryIO, Generator }
-import from jaclang.runtimelib.storage { Storage, LocalStorageConfig }
+import from jaclang.runtimelib.storage.storage { Storage }
+import from jaclang.runtimelib.storage.config { LocalStorageConfig }
 
-"""Local filesystem storage provider."""
+"""Local filesystem storage provider.
+
+This is the default storage implementation that stores files on the local
+filesystem. Plugins like jac-scale can override get_storage() to provide
+cloud storage backends instead.
+"""
 class LocalStorage(Storage) {
     has config: dict[str, Any] = {},
         base_path: str = './storage',
@@ -25,6 +26,7 @@ class LocalStorage(Storage) {
         }
     }
 
+    """Resolve a relative path to an absolute path within the storage base."""
     def _resolve_path(self: LocalStorage, path: str) -> Path {
         return Path(self.base_path) / path.lstrip('/');
     }
