@@ -135,7 +135,6 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
     import shutil;
     import sys;
     import csv;
-    import from pathlib { Path }
     if not self.packages_dir or not self.packages_dir.exists() {
         return False;
     }
