@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.11 (Unreleased)
+## jaclang 0.9.12 (Unreleased)
+
+## jaclang 0.9.11 (Latest Release)
 
 - **Explicit Field Initialization with `by postinit`**: Fields that are initialized in the `postinit` method can now be explicitly marked with `by postinit` to improve code clarity and self-documentation. This makes it immediately clear which fields are computed during initialization versus those with simple default values. For example, `has db: Any by postinit, collection: Any by postinit;` indicates these fields will be set in `postinit`. While not required for functionality, this annotation helps quickly understand object initialization patterns without reading implementation files.
 
@@ -13,7 +15,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Permissive Type Check for Node Collections in Connections**: The type checker now accepts collections (list, tuple, set, frozenset) on the right side of connection operators (`++>`, `<++>`, etc.). Previously, code like `root ++> [Node1(), Node2(), Node3()];` was incorrectly rejected. This is a temporary workaround until element type inference for list literals is fully implemented.
 
-## jaclang 0.9.10 (Latest Release)
+## jaclang 0.9.10
 
 - **Formatter Spacing Fixes**: Fixed extra spaces before semicolons in `report` and `del` statements, and corrected semantic definition formatting to properly handle dot notation and `=` operator spacing.
 
