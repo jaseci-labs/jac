@@ -651,3 +651,63 @@ cl {
         assert not wrong_output.exists(), (
             f"File incorrectly written to {wrong_output} instead of {correct_output}"
         )
+
+class TestHMRAssetServing:
+    """Tests for HMR handling of static assets like images."""
+
+    @pytest.fixture
+    def temp_project(self, tmp_path: Path) -> Generator[Path, None, None]:
+        """Create a temporary project with asset structure."""
+        import uuid
+        
+        unique_dir = tmp_path / f"project_{uuid.uuid4().hex[:8]}"
+        unique_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = unique_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled"
+        compiled_dir.mkdir(parents=True, exist_ok=True)
+        yield unique_dir
+
+    def test_image_asset_copied_on_add(self, temp_project: Path) -> None:
+        """Test that image assets are correctly copied to compiled directory when added."""
+        # Create a sample image file (mock as a small binary file)
+        image_file = temp_project / "assets" / "logo.png"
+        image_content = b"fake_png_data"  # In real test, use actual image bytes
+        image_file.write_bytes(image_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._copy_frontend_files(str(image_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        assert output_file.exists(), "Asset file was not copied to compiled directory"
+        assert output_file.read_bytes() == image_content, "Asset content does not match"
+
+    def test_image_asset_deleted_when_source_deleted(self, temp_project: Path) -> None:
+        """Test that compiled asset is deleted when source asset is deleted."""
+        # Create a sample image file
+        image_file = temp_project / "assets" / "logo.png"
+        image_content = b"fake_png_data"
+        image_file.write_bytes(image_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        # Copy the file
+        reloader._copy_frontend_files(str(image_file))
+        output_file = temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        assert output_file.exists(), "Asset file was not copied to compiled directory"
+
+        # Delete the source file
+        image_file.unlink()
+
+        # Call copy again, which should detect deletion and remove output
+        reloader._copy_frontend_files(str(image_file))
+        assert not output_file.exists(), "Compiled asset was not deleted when source was deleted"
+
+ 
