@@ -462,15 +462,17 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 print("\n  ⏳ Installing dependencies...\n", flush=True);
                 start_time = time.time();
                 result = subprocess.run(
-                    ['bun', 'install'], cwd=build_dir, check=False, text=True
+                    ['bun', 'install'],
+                    cwd=build_dir,
+                    check=False,
+                    text=True,
+                    capture_output=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
-                    print(
-                        f"\n  ✖ bun install failed after {elapsed:.1f}s",
-                        file=sys.stderr
-                    );
-                    raise ClientBundleError("Failed to install dependencies") ;
+                    error_output = result.stderr or result.stdout;
+                    error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
+                    raise ClientBundleError(error_msg) from None ;
                 }
                 print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
@@ -507,13 +509,16 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         # Run vite from client build directory so it can find node_modules
         print("\n  ⏳ Building client bundle...\n", flush=True);
         start_time = time.time();
-        result = subprocess.run(command, cwd=build_dir, check=False, text=True);
+        result = subprocess.run(
+            command, cwd=build_dir, check=False, text=True, capture_output=True
+        );
         elapsed = time.time() - start_time;
         if result.returncode != 0 {
-            print(f"\n  ✖ Vite build failed after {elapsed:.1f}s", file=sys.stderr);
-            raise ClientBundleError(
-                f"Vite build failed (see output above)\nCommand: {' '.join(command)}"
-            ) from None ;
+            error_output = result.stderr or result.stdout;
+            error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{error_output}\nCommand: {' '.join(
+                command
+            )}";
+            raise ClientBundleError(error_msg) from None ;
         }
         print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
     } finally {

@@ -1,4 +1,5 @@
 """REST API Server for Jac Programs."""
+import asyncio;
 import hashlib;
 import html;
 import inspect;
@@ -8,10 +9,19 @@ import secrets;
 import from collections.abc { Callable }
 import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
+import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, Any, Literal, TypeAlias, get_type_hints }
+import from typing {
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Literal,
+    TypeAlias,
+    get_type_hints
+}
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.runtimelib.context { CallState }
 import from jaclang.runtimelib.transport {
     BaseTransport,
     TransportRequest,
@@ -80,13 +90,15 @@ obj ExecutionManager {
     has base_path: str,
         user_manager: UserManager;
 
-    def execute_function(
+    async def execute_function(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
     async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
+
+    async def report_collector(call_state: CallState) -> dict[str, JsonValue];
 }
 
 """Introspects and caches module metadata."""
@@ -188,7 +200,7 @@ obj ExecutionHandler {
         execution_manager: ExecutionManager,
         user_manager: UserManager;
 
-    def call_function(
+    async def call_function(
         name: str, args: dict[(str, Any)], username: str
     ) -> TransportResponse;
 
@@ -202,6 +214,10 @@ obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
         base_path: str = "";
+
+    obj RestSpecs {
+        has method: str;
+    }
 
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
