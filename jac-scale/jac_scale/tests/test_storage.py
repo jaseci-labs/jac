@@ -6,13 +6,11 @@ import shutil
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 try:
-    from jac_scale.factories.storage_factory import StorageFactory
-    from jaclang.runtimelib.storage import LocalStorage, LocalStorageConfig
+    from jaclang.runtimelib.storage import LocalStorage
 except ImportError as e:
     pytest.skip(f"Jac modules not compiled: {e}", allow_module_level=True)
 
@@ -22,7 +20,6 @@ def temp_storage_dir() -> Generator[str, None, None]:
     """Create a temporary directory for storage tests."""
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
-    # Cleanup after test
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
@@ -30,101 +27,8 @@ def temp_storage_dir() -> Generator[str, None, None]:
 @pytest.fixture
 def local_storage(temp_storage_dir: str) -> Generator[LocalStorage, None, None]:
     """Create a LocalStorage instance with temp directory."""
-    storage = StorageFactory.create("local", {"base_path": temp_storage_dir})
+    storage = LocalStorage(base_path=temp_storage_dir)
     yield storage
-    storage.close()
-
-
-class TestStorageFactory:
-    """Tests for StorageFactory."""
-
-    def test_create_local_storage(self, temp_storage_dir: str) -> None:
-        """Test that factory creates LocalStorage for 'local' type."""
-        storage = StorageFactory.create("local", {"base_path": temp_storage_dir})
-
-        assert storage is not None
-        assert isinstance(storage, LocalStorage)
-        assert hasattr(storage, "upload")
-        assert hasattr(storage, "download")
-        assert hasattr(storage, "delete")
-        assert hasattr(storage, "exists")
-        assert hasattr(storage, "list_files")
-
-    def test_get_default_returns_local_storage(self, temp_storage_dir: str) -> None:
-        """Test that get_default returns LocalStorage by default."""
-        with patch.dict(os.environ, {"JAC_STORAGE_TYPE": "local"}):
-            storage = StorageFactory.get_default({"base_path": temp_storage_dir})
-
-        assert storage is not None
-        assert isinstance(storage, LocalStorage)
-
-    def test_factory_raises_for_unsupported_type(self) -> None:
-        """Test that factory raises ValueError for unsupported storage type."""
-        with pytest.raises(ValueError, match="Unsupported storage type"):
-            StorageFactory.create("unsupported", {})
-
-    def test_factory_raises_for_s3_not_implemented(self) -> None:
-        """Test that factory raises NotImplementedError for S3."""
-        with pytest.raises(NotImplementedError, match="S3 storage not yet implemented"):
-            StorageFactory.create("s3", {})
-
-    def test_factory_raises_for_gcs_not_implemented(self) -> None:
-        """Test that factory raises NotImplementedError for GCS."""
-        with pytest.raises(
-            NotImplementedError, match="GCS storage not yet implemented"
-        ):
-            StorageFactory.create("gcs", {})
-
-    def test_factory_raises_for_azure_not_implemented(self) -> None:
-        """Test that factory raises NotImplementedError for Azure."""
-        with pytest.raises(
-            NotImplementedError, match="Azure Blob storage not yet implemented"
-        ):
-            StorageFactory.create("azure", {})
-
-
-class TestLocalStorageConfig:
-    """Tests for LocalStorageConfig."""
-
-    def test_from_dict_with_defaults(self) -> None:
-        """Test LocalStorageConfig creation with defaults."""
-        config = LocalStorageConfig.from_dict({})
-
-        assert config.storage_type == "local"
-        assert config.base_path == "./storage"
-        assert config.create_dirs is True
-
-    def test_from_dict_with_custom_values(self) -> None:
-        """Test LocalStorageConfig creation with custom values."""
-        config = LocalStorageConfig.from_dict(
-            {"base_path": "/custom/path", "create_dirs": False},
-        )
-
-        assert config.base_path == "/custom/path"
-        assert config.create_dirs is False
-
-    def test_from_env(self) -> None:
-        """Test LocalStorageConfig creation from environment variables."""
-        with patch.dict(
-            os.environ,
-            {
-                "JAC_STORAGE_LOCAL_PATH": "/env/path",
-                "JAC_STORAGE_CREATE_DIRS": "false",
-            },
-        ):
-            config = LocalStorageConfig.from_env()
-
-        assert config.base_path == "/env/path"
-        assert config.create_dirs is False
-
-    def test_to_dict(self) -> None:
-        """Test LocalStorageConfig to_dict method."""
-        config = LocalStorageConfig(base_path="/test/path", create_dirs=True)
-        config_dict = config.to_dict()
-
-        assert config_dict["storage_type"] == "local"
-        assert config_dict["base_path"] == "/test/path"
-        assert config_dict["create_dirs"] is True
 
 
 class TestLocalStorage:
@@ -134,14 +38,11 @@ class TestLocalStorage:
         self, local_storage: LocalStorage, temp_storage_dir: str
     ) -> None:
         """Test uploading a file from a file path."""
-        # Create a source file
         source_file = Path(temp_storage_dir) / "source.txt"
         source_file.write_text("Hello, World!")
 
-        # Upload
         result = local_storage.upload(str(source_file), "uploaded/file.txt")
 
-        # Verify
         assert local_storage.exists("uploaded/file.txt")
         assert Path(result).exists()
 
@@ -270,17 +171,6 @@ class TestLocalStorage:
         with pytest.raises(FileNotFoundError):
             local_storage.get_metadata("nonexistent.txt")
 
-    def test_get_url_returns_absolute_path(
-        self, local_storage: LocalStorage, temp_storage_dir: str
-    ) -> None:
-        """Test get_url returns absolute path for local storage."""
-        local_storage.upload(io.BytesIO(b"url test"), "url_test.txt")
-
-        url = local_storage.get_url("url_test.txt")
-
-        assert os.path.isabs(url)
-        assert "url_test.txt" in url
-
     def test_copy_file(self, local_storage: LocalStorage) -> None:
         """Test copying a file."""
         local_storage.upload(io.BytesIO(b"Copy me"), "original.txt")
@@ -315,27 +205,12 @@ class TestLocalStorage:
 
         assert result is False
 
-    def test_get_info(self, local_storage: LocalStorage, temp_storage_dir: str) -> None:
-        """Test get_info returns storage information."""
-        info = local_storage.get_info()
-
-        assert info["type"] == "local"
-        assert temp_storage_dir in info["base_path"]
-        assert info["exists"] is True
-
-    def test_is_available(self, local_storage: LocalStorage) -> None:
-        """Test is_available returns True for valid storage."""
-        assert local_storage.is_available() is True
-
     def test_creates_directories_automatically(self, temp_storage_dir: str) -> None:
         """Test that directories are created when create_dirs is True."""
         new_path = os.path.join(temp_storage_dir, "new", "nested", "dir")
-        storage = StorageFactory.create(
-            "local", {"base_path": new_path, "create_dirs": True}
-        )
+        LocalStorage(base_path=new_path, create_dirs=True)
 
         assert os.path.exists(new_path)
-        storage.close()
 
     def test_upload_creates_parent_directories(
         self, local_storage: LocalStorage
@@ -393,7 +268,6 @@ class TestStorageIntegration:
     def test_special_characters_in_filename(self, local_storage: LocalStorage) -> None:
         """Test handling files with special characters in name."""
         content = b"Special chars"
-        # Note: Using URL-safe special chars that work on filesystem
         local_storage.upload(io.BytesIO(content), "file-with_special.chars.txt")
 
         assert local_storage.exists("file-with_special.chars.txt")

@@ -1,15 +1,13 @@
 # Storage Abstraction
 
-JAC Scale provides a storage abstraction layer for managing file uploads and storage operations. This allows you to easily switch between different storage backends (local filesystem, S3, etc.) without changing your application code.
+Jac provides a storage abstraction layer for managing file uploads and storage operations. The `get_storage()` builtin returns a `Storage` instance configured from your project settings, and plugins like jac-scale can override it to provide cloud backends.
 
 ## Quick Start
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    # Get default storage (local filesystem)
-    storage = StorageFactory.get_default({'base_path': './uploads'});
+    # Get storage (uses jac.toml / env vars / defaults)
+    storage = get_storage({'base_path': './uploads'});
 
     # Upload a file
     storage.upload('/path/to/file.txt', 'documents/file.txt');
@@ -27,35 +25,29 @@ with entry {
 }
 ```
 
-## StorageFactory
+## Getting a Storage Instance
 
-The `StorageFactory` creates storage instances based on configuration.
-
-### Creating Storage Instances
+The recommended way to get storage is via the `get_storage()` builtin, which respects your project configuration:
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    # Create local storage with custom path
-    storage = StorageFactory.create('local', {'base_path': '/data/uploads'});
+    # Default storage (reads jac.toml, then env vars, then defaults to local)
+    storage = get_storage();
 
-    # Get default storage (reads JAC_STORAGE_TYPE env var, defaults to 'local')
-    storage = StorageFactory.get_default();
-
-    # With configuration
-    storage = StorageFactory.get_default({'base_path': './uploads', 'create_dirs': True});
+    # With explicit config
+    storage = get_storage({'base_path': './uploads', 'create_dirs': True});
 }
 ```
 
-### Supported Storage Types
+You can also create `LocalStorage` directly:
 
-| Type | Status | Description |
-|------|--------|-------------|
-| `local` | **Available** | Local filesystem storage |
-| `s3` | Coming Soon | AWS S3 (and S3-compatible services like MinIO) |
-| `gcs` | Coming Soon | Google Cloud Storage |
-| `azure` | Coming Soon | Azure Blob Storage |
+```jac
+import from jaclang.runtimelib.storage { LocalStorage }
+
+with entry {
+    storage = LocalStorage(base_path='/data/uploads');
+}
+```
 
 ## Storage API
 
@@ -66,10 +58,8 @@ All storage implementations provide these methods:
 Upload a file to storage.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
 
     # From file path
     storage.upload('/tmp/myfile.txt', 'documents/myfile.txt');
@@ -92,10 +82,8 @@ with entry {
 Download a file from storage.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
 
     # Get file content as bytes
     content = storage.download('documents/file.txt');
@@ -117,10 +105,8 @@ with entry {
 Delete a file from storage.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
     deleted = storage.delete('documents/file.txt');
     if deleted {
         print("File deleted");
@@ -135,10 +121,8 @@ with entry {
 Check if a file exists.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
     if storage.exists('documents/file.txt') {
         print("File exists");
     }
@@ -152,10 +136,8 @@ with entry {
 List files in a directory.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
 
     # List files in a folder
     for file in storage.list_files('documents/') {
@@ -181,10 +163,8 @@ with entry {
 Get file metadata.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
     metadata = storage.get_metadata('documents/file.txt');
     print(f"Size: {metadata['size']} bytes");
     print(f"Modified: {metadata['modified']}");
@@ -193,38 +173,13 @@ with entry {
 
 **Returns:** Dict with keys: `size`, `modified`, `created`, `is_dir`, `name`
 
-### get_url
-
-Get a URL or path to access the file.
-
-```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
-with entry {
-    storage = StorageFactory.get_default();
-    url = storage.get_url('documents/file.txt');
-
-    # With custom expiry (for cloud storage)
-    url = storage.get_url('documents/file.txt', expiry_seconds=7200);
-}
-```
-
-**Parameters:**
-
-- `path`: Path to file
-- `expiry_seconds`: URL expiry time (default: 3600)
-
-**Returns:** URL or absolute path
-
 ### copy / move
 
 Copy or move files within storage.
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
 with entry {
-    storage = StorageFactory.get_default();
+    storage = get_storage();
 
     # Copy a file
     storage.copy('documents/file.txt', 'backup/file.txt');
@@ -236,35 +191,15 @@ with entry {
 
 **Returns:** True if successful, False otherwise
 
-### get_info / is_available
-
-Get storage information and check availability.
-
-```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
-with entry {
-    storage = StorageFactory.get_default();
-    info = storage.get_info();
-    print(f"Type: {info['type']}");
-    print(f"Base path: {info['base_path']}");
-
-    if storage.is_available() {
-        print("Storage is ready");
-    }
-}
-```
-
 ## File Upload Walker Example
 
 Here's a complete example of a file upload walker using the storage abstraction:
 
 ```jac
 import from fastapi { UploadFile }
-import from jac_scale.factories.storage_factory { StorageFactory }
 import from uuid { uuid4 }
 
-glob storage = StorageFactory.get_default({'base_path': './uploads'});
+glob storage = get_storage({'base_path': './uploads'});
 
 walker upload_document {
     has document: UploadFile;
@@ -286,8 +221,7 @@ walker upload_document {
             "success": True,
             "original_filename": self.document.filename,
             "storage_path": path,
-            "size": metadata['size'],
-            "url": storage.get_url(path)
+            "size": metadata['size']
         };
     }
 }
@@ -306,11 +240,10 @@ curl -X POST "http://localhost:8000/walker/upload_document" \
 
 ```jac
 import from fastapi { UploadFile }
-import from jac_scale.factories.storage_factory { StorageFactory }
 import from uuid { uuid4 }
 import from datetime { datetime }
 
-glob storage = StorageFactory.get_default({'base_path': './uploads'});
+glob storage = get_storage({'base_path': './uploads'});
 
 walker upload_image {
     has image: UploadFile;
@@ -332,8 +265,7 @@ walker upload_image {
 
         report {
             "success": True,
-            "path": path,
-            "url": storage.get_url(path)
+            "path": path
         };
     }
 }
@@ -342,9 +274,7 @@ walker upload_image {
 ## List and Delete Files
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
-glob storage = StorageFactory.get_default({'base_path': './uploads'});
+glob storage = get_storage({'base_path': './uploads'});
 
 walker list_files {
     has folder: str = "";
@@ -379,28 +309,29 @@ walker delete_file {
 
 ## Configuration
 
+### jac.toml
+
+```toml
+[storage]
+type = "local"
+base_path = "./storage"
+create_dirs = true
+```
+
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JAC_STORAGE_TYPE` | Storage backend type | `local` |
-| `JAC_STORAGE_LOCAL_PATH` | Base path for local storage | `./storage` |
+| `JAC_STORAGE_PATH` | Base path for local storage | `./storage` |
 | `JAC_STORAGE_CREATE_DIRS` | Auto-create directories | `true` |
 
-### LocalStorageConfig
+### Direct Construction
 
 ```jac
-import from jac_scale.abstractions.config.storage_config { LocalStorageConfig }
+import from jaclang.runtimelib.storage { LocalStorage }
 
 with entry {
-    # From dict
-    config = LocalStorageConfig.from_dict(LocalStorageConfig, {
-        'base_path': '/data/uploads',
-        'create_dirs': True
-    });
-
-    # From environment variables
-    config = LocalStorageConfig.from_env(LocalStorageConfig);
+    storage = LocalStorage(base_path='/data/uploads', create_dirs=True);
 }
 ```
 

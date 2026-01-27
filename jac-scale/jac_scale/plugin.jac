@@ -18,8 +18,7 @@ import from .factories.utility_factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
-import from jaclang.runtimelib.storage { Storage }
-import from .factories.storage_factory { StorageFactory }
+import from jaclang.runtimelib.storage { Storage, LocalStorage }
 
 """Pre-hook for jac start command to handle --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
@@ -233,13 +232,27 @@ class JacScalePlugin {
 
     """Provide jac-scale's storage backend.
 
-    This overrides the core get_storage() to use jac-scale's StorageFactory,
-    which supports cloud storage backends (S3, GCS, Azure) based on
-    JAC_STORAGE_TYPE environment variable.
+    This overrides the core get_storage() to use jac-scale's storage,
+    which can be extended to support cloud backends (S3, GCS, Azure).
     """
     @hookimpl
     static def get_storage(config: (dict | None) = None) -> Storage {
-        return StorageFactory.get_default(config);
+        import from jaclang.project.config { get_config }
+        cfg = config or {};
+        jac_config = get_config();
+
+        if jac_config and jac_config.storage {
+            base_path = cfg.get('base_path', jac_config.storage.base_path);
+            create_dirs = cfg.get('create_dirs', jac_config.storage.create_dirs);
+        } else {
+            base_path = cfg.get(
+                'base_path', os.environ.get('JAC_STORAGE_PATH', './storage')
+            );
+            create_dirs_str = os.environ.get('JAC_STORAGE_CREATE_DIRS', 'true');
+            create_dirs = cfg.get('create_dirs', create_dirs_str.lower() == 'true');
+        }
+
+        return LocalStorage(base_path=base_path, create_dirs=create_dirs);
     }
 }
 

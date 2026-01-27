@@ -33,30 +33,23 @@ class TestLocalStorage:
 
     def test_import_storage(self) -> None:
         """Test that storage classes can be imported from core."""
-        from jaclang.runtimelib.storage import (
-            BaseStorageConfig,
-            LocalStorage,
-            LocalStorageConfig,
-            Storage,
-        )
+        from jaclang.runtimelib.storage import LocalStorage, Storage
 
         assert Storage is not None
         assert LocalStorage is not None
-        assert BaseStorageConfig is not None
-        assert LocalStorageConfig is not None
 
     def test_create_local_storage(self, temp_storage_dir: str) -> None:
         """Test creating a LocalStorage instance."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
         assert storage.base_path == temp_storage_dir
 
     def test_upload_and_download(self, temp_storage_dir: str, temp_file: str) -> None:
         """Test uploading and downloading a file."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         # Upload
         result = storage.upload(temp_file, "test/uploaded.txt")
@@ -70,7 +63,7 @@ class TestLocalStorage:
         """Test checking if a file exists."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         assert not storage.exists("nonexistent.txt")
 
@@ -81,7 +74,7 @@ class TestLocalStorage:
         """Test deleting a file."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         storage.upload(temp_file, "to_delete.txt")
         assert storage.exists("to_delete.txt")
@@ -94,7 +87,7 @@ class TestLocalStorage:
         """Test listing files in a directory."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         storage.upload(temp_file, "list_test/file1.txt")
         storage.upload(temp_file, "list_test/file2.txt")
@@ -108,7 +101,7 @@ class TestLocalStorage:
         """Test copying a file."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         storage.upload(temp_file, "original.txt")
         result = storage.copy("original.txt", "copied.txt")
@@ -121,7 +114,7 @@ class TestLocalStorage:
         """Test moving a file."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
+        storage = LocalStorage(base_path=temp_storage_dir)
 
         storage.upload(temp_file, "to_move.txt")
         result = storage.move("to_move.txt", "moved.txt")
@@ -130,56 +123,19 @@ class TestLocalStorage:
         assert not storage.exists("to_move.txt")
         assert storage.exists("moved.txt")
 
-    def test_is_available(self, temp_storage_dir: str) -> None:
-        """Test checking if storage is available."""
+    def test_get_metadata(self, temp_storage_dir: str, temp_file: str) -> None:
+        """Test getting file metadata."""
         from jaclang.runtimelib.storage import LocalStorage
 
-        storage = LocalStorage({"base_path": temp_storage_dir})
-        assert storage.is_available() is True
+        storage = LocalStorage(base_path=temp_storage_dir)
+        storage.upload(temp_file, "meta.txt")
 
-    def test_get_info(self, temp_storage_dir: str) -> None:
-        """Test getting storage info."""
-        from jaclang.runtimelib.storage import LocalStorage
-
-        storage = LocalStorage({"base_path": temp_storage_dir})
-        info = storage.get_info()
-
-        assert info["type"] == "local"
-        assert info["base_path"] == temp_storage_dir
-
-
-class TestStorageConfig:
-    """Tests for storage configuration classes."""
-
-    def test_local_storage_config_defaults(self) -> None:
-        """Test LocalStorageConfig with default values."""
-        from jaclang.runtimelib.storage import LocalStorageConfig
-
-        config = LocalStorageConfig()
-        assert config.storage_type == "local"
-        assert config.base_path == "./storage"
-        assert config.create_dirs is True
-
-    def test_local_storage_config_from_dict(self) -> None:
-        """Test LocalStorageConfig.from_dict method."""
-        from jaclang.runtimelib.storage import LocalStorageConfig
-
-        config = LocalStorageConfig.from_dict(
-            {"base_path": "/custom/path", "create_dirs": False}
-        )
-        assert config.base_path == "/custom/path"
-        assert config.create_dirs is False
-
-    def test_local_storage_config_to_dict(self) -> None:
-        """Test LocalStorageConfig.to_dict method."""
-        from jaclang.runtimelib.storage import LocalStorageConfig
-
-        config = LocalStorageConfig(base_path="/test/path")
-        config_dict = config.to_dict()
-
-        assert config_dict["storage_type"] == "local"
-        assert config_dict["base_path"] == "/test/path"
-        assert config_dict["create_dirs"] is True
+        metadata = storage.get_metadata("meta.txt")
+        assert metadata["size"] == len(b"Test content for storage")
+        assert "modified" in metadata
+        assert "created" in metadata
+        assert metadata["is_dir"] is False
+        assert metadata["name"] == "meta.txt"
 
 
 class TestGetStorageBuiltin:

@@ -8,13 +8,12 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 #### Storage Abstraction
 
-Introduced a flexible storage abstraction layer with factory pattern for file operations.
+Introduced a pluggable storage abstraction layer for file operations.
 
-- **Abstract Storage Interface**: Base `Storage` class defining standard file operations (upload, download, delete, list, copy, move, etc.)
-- **StorageFactory**: Factory class for creating storage instances with `create()` and `get_default()` methods
-- **LocalStorage Provider**: Full implementation for local filesystem storage
-- **Configuration Support**: `LocalStorageConfig` with `from_dict()` and `from_env()` static methods
-- **Environment Variables**: Configure storage via `JAC_STORAGE_TYPE` and `JAC_LOCAL_STORAGE_BASE_PATH`
+- **Abstract Storage Interface**: Base `Storage` class defining standard file operations (upload, download, delete, list, copy, move, get_metadata)
+- **LocalStorage**: Default local filesystem implementation in `jaclang.runtimelib.storage`
+- **`get_storage()` builtin**: Hookable function that returns a configured `Storage` instance
+- **Configuration**: Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` env vars
 
 ### PyPI Installation by Default
 

@@ -2316,30 +2316,16 @@ class JacRuntimeInterface(
         return UserManager(base_path=base_path)
 
     @staticmethod
-    def get_storage(config: dict | None = None) -> Any:
+    def get_storage(config: dict | None = None) -> Any:  # noqa: ANN401
         """Get storage backend instance (hookable for plugins).
 
-        Default implementation returns LocalStorage for filesystem operations.
-        Plugins (like jac-scale) can override this to provide cloud storage
-        backends (S3, GCS, Azure, etc.).
+        Default returns LocalStorage. Plugins (like jac-scale) can override
+        to provide cloud storage backends.
 
-        Configuration priority: jac.toml [storage] > environment variable > default
-
-        In jac.toml:
-            [storage]
-            type = "local"
-            base_path = "/data/storage"
-            create_dirs = true
-
-        Environment variables:
-            JAC_STORAGE_TYPE: Storage type (local, s3, gcs, azure)
-            JAC_STORAGE_PATH: Base directory for storage
-            JAC_STORAGE_CREATE_DIRS: Whether to auto-create directories
+        Config priority: explicit config > jac.toml [storage] > env var > default
 
         Args:
-            config: Optional configuration dictionary with keys like:
-                - base_path: Base directory for local storage
-                - create_dirs: Whether to auto-create directories
+            config: Optional dict with 'base_path' and 'create_dirs' keys.
 
         Returns:
             Storage instance (LocalStorage by default)
@@ -2349,24 +2335,20 @@ class JacRuntimeInterface(
         from jaclang.project.config import get_config
         from jaclang.runtimelib.storage import LocalStorage
 
-        # Get config from jac.toml if available
+        cfg = config or {}
         jac_config = get_config()
 
-        # Config priority: jac.toml > env var > default
         if jac_config and jac_config.storage:
-            base_path = jac_config.storage.base_path
-            create_dirs = jac_config.storage.create_dirs
+            base_path = cfg.get("base_path", jac_config.storage.base_path)
+            create_dirs = cfg.get("create_dirs", jac_config.storage.create_dirs)
         else:
-            base_path = os.environ.get("JAC_STORAGE_PATH", "./storage")
+            base_path = cfg.get(
+                "base_path", os.environ.get("JAC_STORAGE_PATH", "./storage")
+            )
             create_dirs_str = os.environ.get("JAC_STORAGE_CREATE_DIRS", "true")
-            create_dirs = create_dirs_str.lower() == "true"
+            create_dirs = cfg.get("create_dirs", create_dirs_str.lower() == "true")
 
-        storage_config = {
-            "base_path": base_path,
-            "create_dirs": create_dirs,
-            **(config or {}),
-        }
-        return LocalStorage(storage_config)
+        return LocalStorage(base_path=base_path, create_dirs=create_dirs)
 
 
 def generate_plugin_helpers(

@@ -1,10 +1,8 @@
 """Local filesystem storage implementation for Jac core."""
-import os;
 import shutil;
 import from pathlib { Path }
 import from typing { Any, BinaryIO, Generator }
 import from jaclang.runtimelib.storage.storage { Storage }
-import from jaclang.runtimelib.storage.config { LocalStorageConfig }
 
 """Local filesystem storage provider.
 
@@ -13,16 +11,16 @@ filesystem. Plugins like jac-scale can override get_storage() to provide
 cloud storage backends instead.
 """
 class LocalStorage(Storage) {
-    has config: dict[str, Any] = {},
-        base_path: str = './storage',
-        _storage_config: (LocalStorageConfig | None) = None;
+    has base_path: str = './storage',
+        create_dirs: bool = True;
 
-    def init(self: LocalStorage, config: dict[str, Any] = {}) -> None {
-        self.config = config;
-        self._storage_config = LocalStorageConfig.from_dict(config);
-        self.base_path = self._storage_config.base_path;
-        if self._storage_config.create_dirs {
-            Path(self.base_path).mkdir(parents=True, exist_ok=True);
+    def init(
+        self: LocalStorage, base_path: str = './storage', create_dirs: bool = True
+    ) -> None {
+        self.base_path = base_path;
+        self.create_dirs = create_dirs;
+        if create_dirs {
+            Path(base_path).mkdir(parents=True, exist_ok=True);
         }
     }
 
@@ -123,12 +121,6 @@ class LocalStorage(Storage) {
         };
     }
 
-    override def get_url(
-        self: LocalStorage, path: str, expiry_seconds: int = 3600
-    ) -> str {
-        return str(self._resolve_path(path).absolute());
-    }
-
     override def copy(self: LocalStorage, source: str, destination: str) -> bool {
         src_path = self._resolve_path(source);
         dest_path = self._resolve_path(destination);
@@ -150,21 +142,4 @@ class LocalStorage(Storage) {
         shutil.move(str(src_path), str(dest_path));
         return True;
     }
-
-    override def get_info(self: LocalStorage) -> dict[str, Any] {
-        base = Path(self.base_path);
-        return {
-            'type': 'local',
-            'base_path': str(base.absolute()),
-            'exists': base.exists()
-        };
-    }
-
-    override def is_available(self: LocalStorage) -> bool {
-        base_path = Path(self.base_path);
-        return base_path.exists()
-        or (self._storage_config and self._storage_config.create_dirs);
-    }
-
-    override def close(self: LocalStorage) -> None { }
 }
