@@ -74,7 +74,9 @@ MongoDB persistence backend - implements PersistentMemory for durable L3 storage
 Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
-    has client: (MongoClient | None) = None,
+    has client: MongoClient | None = None,
+        db: Any by postinit,
+        collection: Any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = 'anchors',
         mongo_url: str = _db_config['mongodb_uri'];

@@ -45,7 +45,8 @@ obj Message {
 """Result of a tool call in LLM interactions."""
 obj ToolCallResultMsg(Message) {
     has tool_call_id: str,
-        name: str;
+        name: str,
+        role: MessageRole by postinit;
 
     def postinit -> None;
     def to_dict -> dict[str, object];

@@ -9,6 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Pip-Compatible Uninstall with RECORD Support**: Package removal now matches `pip uninstall` by using `RECORD` files to accurately remove all installed files, including scripts and data directories, while cleaning up leftover paths.
 - **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
 - **Automatic Metadata Cleanup on Upgrade**: Automatically cleans up stale `.dist-info` and `.egg-info` directories during `jac add` / `jac install` upgrades, ensuring only the latest package metadata remains and preventing version conflicts (including dependencies).
+- **Internal**: Explicitly declared all postinit fields across the codebase.
 
 ## jaclang 0.9.11 (Latest Release)
 
