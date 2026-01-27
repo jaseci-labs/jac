@@ -1,4 +1,9 @@
 """Handle insert inside token."""
+import sys;
+
+def _semtok_debug(msg: str) -> None {
+    print(f"[SemTokMgr] {msg}", file=sys.stderr);
+}
 
 impl SemTokManager.handle_insert_inside_token(
     self: SemTokManager,
@@ -179,6 +184,7 @@ impl SemTokManager.update_sem_tokens(
     sem_tokens: list[int],
     document_lines: List[str]
 ) -> list[int] {
+    _semtok_debug(f"update_sem_tokens: {len(content_changes.content_changes)} changes, {len(sem_tokens)} tokens");
     for change in [
         x
         for x in content_changes.content_changes
@@ -614,6 +620,8 @@ impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
 
 """Initialize semantic token manager."""
 impl SemTokManager.postinit -> None {
+    _semtok_debug(f"Initializing SemTokManager for {self.ir.loc.mod_path if self.ir and self.ir.loc else 'unknown'}");
     self.sem_tokens = self.gen_sem_tokens(self.ir);
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
+    _semtok_debug(f"Generated {len(self.sem_tokens)} sem_tokens, {len(self.static_sem_tokens)} static_sem_tokens");
 }

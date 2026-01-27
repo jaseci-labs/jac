@@ -36,6 +36,7 @@ def cancel_request(ls: JacLangServer, params: lspt.CancelParams) -> None;
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
     uri = params.text_document.uri;
     source = params.text_document.text;
+    debug(f"did_open: {uri} ({len(source)} chars)");
     ls.on_file_opened(uri);
     ls.on_file_focused(uri);
     ls.schedule_analysis(uri, source);
@@ -43,6 +44,7 @@ async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 
 """Handle file save."""
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
+    debug(f"did_save: {params.text_document.uri}");
     ls.type_check(params.text_document.uri);
 }
 
@@ -51,6 +53,7 @@ async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
     uri = params.text_document.uri;
+    debug(f"did_change: {uri} ({len(params.content_changes)} changes)");
     # Get the full text from content changes
     source = None;
     for change in params.content_changes {
@@ -59,16 +62,17 @@ async def did_change(
         }
     }
     if source is not None {
-        debug("Did change: Scheduling analysis...");
+        debug(f"did_change: Scheduling analysis ({len(source)} chars)");
         ls.schedule_analysis(uri, source);
     } else {
-        debug("Did change: No source, falling back to type_check");
+        debug("did_change: No source, falling back to type_check");
         ls.type_check(uri);
     }
 }
 
 """Handle file close - stop tracking file."""
 async def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None {
+    debug(f"did_close: {params.text_document.uri}");
     ls.on_file_closed(params.text_document.uri);
 }
 
@@ -88,12 +92,15 @@ async def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
     file_path = params.text_document.uri;
-    debug("Completion requested");
-    return await ls.get_completion(
+    trigger = params.context.trigger_character if params.context else None;
+    debug(f"completion: {file_path} at {params.position} (trigger='{trigger}')");
+    result = await ls.get_completion(
         params.text_document.uri,
         params.position,
-        (params.context.trigger_character if params.context else None)
+        trigger
     );
+    debug(f"completion: returning {len(result.items)} items");
+    return result;
 }
 
 def hover(

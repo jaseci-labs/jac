@@ -39,8 +39,6 @@ impl check(
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
             prog.compile(file_path=file_path, type_check=True, no_cgen=True);
-            print(f"Checked '{file_path}'.");
-            print(prog.mod.hub);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
             if print_errs {
@@ -89,7 +87,6 @@ impl check(
             total_errors += 1;
         }
     }
-    print('all mods:', prog.mod.hub);
     print(
         f"Checked {total_files} '.jac' files: {(total_files - failed_files)} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).",
         file=sys.stderr if total_errors else sys.stdout

@@ -4,8 +4,19 @@ import multiprocessing;
 import threading;
 import logging;
 import time;
+import sys;
 import from typing { Optional, Callable, Any }
 import from queue { Empty }
+
+"""Internal debug logging for worker."""
+def _worker_debug(msg: str) -> None {
+    print(f"[Worker] {msg}", file=sys.stderr);
+}
+
+"""Internal debug logging for worker manager."""
+def _mgr_debug(msg: str) -> None {
+    print(f"[WorkerMgr] {msg}", file=sys.stderr);
+}
 
 impl WorkerConfig.default -> WorkerConfig {
     return WorkerConfig(
@@ -173,6 +184,7 @@ impl CompilationWorker.handle_compile_file_dict(
     source = request_dict.get('source');
     type_check = request_dict.get('type_check', True);
     no_cgen = request_dict.get('no_cgen', True);
+    _worker_debug(f"compile_file: {file_uri} ({len(source) if source else 0} chars)");
     # Convert URI to file path
     if file_uri and file_uri.startswith("file://") {
         file_path = file_uri[7:];
@@ -180,6 +192,7 @@ impl CompilationWorker.handle_compile_file_dict(
         file_path = file_uri;
     }
     if not file_path or not source {
+        _worker_debug("Missing file_uri or source");
         return self._make_error_response(request_id, "Missing file_uri or source");
     }
     try {
@@ -204,6 +217,7 @@ impl CompilationWorker.handle_compile_file_dict(
         }
 
         # Compile with type checking, skip code gen
+        _worker_debug(f"Starting compilation: type_check={type_check}, no_cgen={no_cgen}");
         module = program.compile(
             file_path=file_path,
             use_str=source,
@@ -211,8 +225,10 @@ impl CompilationWorker.handle_compile_file_dict(
             no_cgen=no_cgen,
             cancel_token=cancel_event
         );
+        _worker_debug(f"Compilation finished, module={'valid' if module else 'None'}");
 
         if self.is_cancelled() {
+            _worker_debug("Cancelled after compilation");
             return self._make_cancelled_response(request_id);
         }
 
@@ -270,17 +286,17 @@ impl CompilationWorker.handle_compile_file_dict(
                 }
             } except FileNotFoundError {
                 # Parent file doesn't exist yet, skip
-                pass;
             } except Exception as e {
-                # Log but don't fail the whole compilation
-                pass;
+                _worker_debug(f"Exception during parent file compilation: {e}");
             }
         }
 
         # Create snapshot
+        _worker_debug("Creating snapshot");
         snapshot = self.create_snapshot(program, sem_managers);
 
         duration_ms = (time.time() - start_time) * 1000;
+        _worker_debug(f"Compilation complete: {duration_ms:.1f}ms, {len(program.errors_had)} errors, {len(program.warnings_had)} warnings");
 
         return {
             'request_id': request_id,
@@ -294,6 +310,7 @@ impl CompilationWorker.handle_compile_file_dict(
             'files_analyzed': files_analyzed
         };
     } except Exception as e {
+        _worker_debug(f"Compilation exception: {e}");
         import traceback;
         tb = traceback.format_exc();
         duration_ms = (time.time() - start_time) * 1000;
@@ -377,11 +394,14 @@ impl WorkerManager.postinit -> None {
 }
 
 impl WorkerManager.start -> None {
+    _mgr_debug("start() called");
     if self._process and self._process.is_alive() {
+        _mgr_debug("Worker already running");
         self._logger.warning("Worker already running");
         return;
     }
     # Create IPC primitives
+    _mgr_debug("Creating IPC primitives");
     self._request_queue = multiprocessing.Queue();
     self._response_queue = multiprocessing.Queue();
     self._shutdown_event = multiprocessing.Event();
@@ -393,6 +413,7 @@ impl WorkerManager.start -> None {
         'cancel_check_interval_ms': self._config.cancel_check_interval_ms
     };
     # Start worker process
+    _mgr_debug("Starting worker process");
     self._process = multiprocessing.Process(
         target=worker_process_main,
         args=(
@@ -408,14 +429,17 @@ impl WorkerManager.start -> None {
     self._running = True;
     self._health_status = WorkerHealth.HEALTHY;
     self._consecutive_failures = 0;
+    _mgr_debug(f"Worker process started: PID {self._process.pid}");
 
     # Start response processing thread
+    _mgr_debug("Starting response processor thread");
     self._response_thread = threading.Thread(
         target=self._response_processor, daemon=True
     );
     self._response_thread.start();
 
     # Start health check thread
+    _mgr_debug("Starting health checker thread");
     self._health_thread = threading.Thread(
         target=self._health_checker, daemon=True
     );
@@ -425,12 +449,15 @@ impl WorkerManager.start -> None {
 }
 
 impl WorkerManager.stop -> None {
+    _mgr_debug("stop() called");
     if not self._process {
+        _mgr_debug("No process to stop");
         return;
     }
     self._running = False;
     # Send shutdown request as dict (for pickle compatibility)
     try {
+        _mgr_debug("Sending shutdown request");
         shutdown_req = {
             'request_type': 'SHUTDOWN',
             'request_id': self._id_generator.next_id(),
@@ -438,20 +465,25 @@ impl WorkerManager.stop -> None {
         };
         self._request_queue.put(shutdown_req);
     } except Exception as e {
+        _mgr_debug(f"Error sending shutdown: {e}");
         self._logger.error(f"Error sending shutdown: {e}");
     }
     # Signal shutdown
+    _mgr_debug("Setting shutdown event");
     self._shutdown_event.set();
     # Wait for graceful shutdown
     timeout = (self._config.shutdown_timeout_ms or 5000) / 1000.0;
+    _mgr_debug(f"Waiting for graceful shutdown ({timeout}s timeout)");
     self._process.join(timeout=timeout);
     # Force terminate if still running
     if self._process.is_alive() {
+        _mgr_debug("Force terminating worker");
         self._logger.warning("Force terminating worker");
         self._process.terminate();
         self._process.join(timeout=1.0);
     }
     self._process = None;
+    _mgr_debug("Worker process stopped");
     self._logger.info("Worker process stopped");
 }
 
@@ -465,16 +497,20 @@ impl WorkerManager.compile_file(
     priority: RequestPriority = RequestPriority.NORMAL,
     callback: Optional[Callable] = None
 ) -> str {
+    _mgr_debug(f"compile_file: {file_uri} ({len(source)} chars, priority={priority})");
     if not self.is_running() {
+        _mgr_debug("Worker not running, starting...");
         self._logger.warning("Worker not running, starting...");
         self.start();
     }
     # Cancel any in-progress work - user typed again
     if self._current_request_id {
+        _mgr_debug(f"Cancelling in-progress request: {self._current_request_id}");
         self.cancel_current();
     }
     request_id = self._id_generator.next_id();
     self._current_request_id = request_id;
+    _mgr_debug(f"Created request: {request_id}");
     # Use dict for IPC (pickle compatibility)
     request = {
         'request_type': 'COMPILE_FILE',
@@ -489,6 +525,7 @@ impl WorkerManager.compile_file(
     if callback {
         self._pending_requests[request_id] = callback;
     }
+    _mgr_debug(f"Queueing request: {request_id}");
     self._request_queue.put(request);
     return request_id;
 }
@@ -557,30 +594,36 @@ impl WorkerManager._response_processor -> None {
 
 impl WorkerManager._process_response_dict(response_dict: dict) -> None {
     request_id = response_dict.get('request_id', '');
+    _mgr_debug(f"Processing response: {request_id}");
 
     # Handle special worker messages (startup, shutdown, errors)
     if request_id == '__startup__' {
+        _mgr_debug("Worker startup confirmed");
         self._logger.info("Worker: " + response_dict.get('message', 'started'));
         return;
     }
     if request_id == '__shutdown__' {
+        _mgr_debug("Worker shutdown confirmed");
         self._logger.info("Worker: " + response_dict.get('message', 'stopped'));
         return;
     }
     if request_id == '__error__' {
         error_type = response_dict.get('error_type', 'UNKNOWN');
         error_msg = response_dict.get('error_message', 'Unknown error');
+        _mgr_debug(f"Worker error: {error_type} - {error_msg}");
         self._logger.error(f"Worker {error_type}: {error_msg}");
         return;
     }
 
     # Clear current request tracking if this is our current request
     if self._current_request_id == request_id {
+        _mgr_debug(f"Clearing current request: {request_id}");
         self._current_request_id = None;
     }
 
     # Skip processing cancelled responses (user already sent new request)
     if response_dict.get('cancelled', False) {
+        _mgr_debug(f"Request {request_id} was cancelled, skipping");
         self._logger.debug(f"Request {request_id} was cancelled");
         self._pending_requests.pop(request_id, None);
         return;
@@ -591,10 +634,14 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
         error_msg = response_dict.get('error_message', 'Unknown error');
         error_type = response_dict.get('error_type', 'ERROR');
         error_tb = response_dict.get('error_traceback', '');
+        _mgr_debug(f"Request {request_id} failed: {error_type} - {error_msg}");
         self._logger.error(f"Worker {error_type} for request {request_id}: {error_msg}");
         if error_tb {
             self._logger.debug(f"Traceback:\n{error_tb}");
         }
+    } else {
+        duration = response_dict.get('duration_ms', 0);
+        _mgr_debug(f"Request {request_id} succeeded in {duration:.1f}ms");
     }
 
     # Convert dict to WorkerResponse for callback compatibility

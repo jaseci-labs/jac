@@ -2,8 +2,14 @@
 
 import threading;
 import time;
+import sys;
 import from typing { Optional }
 import from contextlib { contextmanager }
+
+"""Internal debug logging for sync primitives."""
+def _sync_debug(msg: str) -> None {
+    print(f"[Sync] {msg}", file=sys.stderr);
+}
 
 """Initialize RWLock with required locks."""
 impl RWLock.postinit -> None {
@@ -68,6 +74,7 @@ impl AnalysisGate.mark_busy -> None {
     with self._condition {
         self._pending_count += 1;
         self._is_idle = False;
+        _sync_debug(f"AnalysisGate.mark_busy: pending_count={self._pending_count}");
     }
 }
 
@@ -79,8 +86,10 @@ all pending work is complete.
 impl AnalysisGate.mark_idle -> None {
     with self._condition {
         self._pending_count = max(0, self._pending_count - 1);
+        _sync_debug(f"AnalysisGate.mark_idle: pending_count={self._pending_count}");
         if self._pending_count == 0 {
             self._is_idle = True;
+            _sync_debug("AnalysisGate: now idle, notifying waiters");
             self._condition.notify_all();
         }
     }
@@ -96,14 +105,19 @@ Returns:
     True if analysis became idle, False if timeout.
 """
 impl AnalysisGate.wait_until_idle(timeout_ms: Optional[float] = None) -> bool {
+    _sync_debug(f"AnalysisGate.wait_until_idle: timeout={timeout_ms}ms");
     timeout_sec = timeout_ms / 1000.0 if timeout_ms else None;
     with self._condition {
         if self._is_idle {
+            _sync_debug("AnalysisGate: already idle");
             return True;
         }
-        return self._condition.wait_for(
+        _sync_debug("AnalysisGate: waiting for idle...");
+        result = self._condition.wait_for(
             predicate=lambda : self._is_idle, timeout=timeout_sec
         );
+        _sync_debug(f"AnalysisGate: wait completed, result={result}");
+        return result;
     }
 }
 

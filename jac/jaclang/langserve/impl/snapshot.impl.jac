@@ -6,6 +6,11 @@ import time;
 import sys;
 import from typing { Optional, Any, Callable }
 
+"""Internal debug logging for snapshot."""
+def _snap_debug(msg: str) -> None {
+    print(f"[Snapshot] {msg}", file=sys.stderr);
+}
+
 impl ProgramSnapshot.postinit -> None {
     if self.timestamp == 0 {
         self.timestamp = time.time();
@@ -52,6 +57,7 @@ impl ProgramSnapshot.is_empty -> bool {
 }
 
 impl ProgramSnapshot.serialize -> bytes {
+    _snap_debug(f"Serializing snapshot v{self.version}: {len(self.hub)} files, {len(self.errors)} errors");
     data = {
         'hub': self.hub,
         'sem_managers': {},  # Don't serialize sem_managers (not picklable)
@@ -65,15 +71,18 @@ impl ProgramSnapshot.serialize -> bytes {
     old_limit = sys.getrecursionlimit();
     try {
         sys.setrecursionlimit(max(old_limit, 50000));
-        return pickle.dumps(data);
+        result = pickle.dumps(data);
+        _snap_debug(f"Serialized snapshot: {len(result)} bytes");
+        return result;
     } finally {
         sys.setrecursionlimit(old_limit);
     }
 }
 
 impl ProgramSnapshot.deserialize(data: bytes) -> ProgramSnapshot {
+    _snap_debug(f"Deserializing snapshot: {len(data)} bytes");
     d = pickle.loads(data);
-    return ProgramSnapshot(
+    snapshot = ProgramSnapshot(
         hub=d.get('hub', {}),
         sem_managers=d.get('sem_managers', {}),
         errors=d.get('errors', []),
@@ -81,6 +90,8 @@ impl ProgramSnapshot.deserialize(data: bytes) -> ProgramSnapshot {
         version=d.get('version', 0),
         timestamp=d.get('timestamp', time.time())
     );
+    _snap_debug(f"Deserialized snapshot v{snapshot.version}: {len(snapshot.hub)} files");
+    return snapshot;
 }
 
 impl ProgramSnapshot.from_program_state(
@@ -109,17 +120,20 @@ impl SnapshotManager.get_snapshot -> Optional[ProgramSnapshot] {
 }
 
 impl SnapshotManager.update_snapshot(new_snapshot: ProgramSnapshot) -> None {
+    _snap_debug(f"Updating to snapshot v{new_snapshot.version}");
     callbacks_to_run = [];
     with self._lock {
         self._snapshot = new_snapshot;
         self._version_counter = new_snapshot.version;
         callbacks_to_run = list(self._update_callbacks);
     }
+    _snap_debug(f"Running {len(callbacks_to_run)} update callbacks");
     # Run callbacks outside lock
     for callback in callbacks_to_run {
         try {
             callback(new_snapshot);
         } except Exception as e {
+            _snap_debug(f"Snapshot update callback error: {e}");
             print(f"Snapshot update callback error: {e}");
         }
     }
@@ -137,6 +151,7 @@ impl SnapshotManager.create_snapshot_from_program(
         self._version_counter += 1;
         version = self._version_counter;
     }
+    _snap_debug(f"Creating snapshot v{version}: {len(hub) if hub else 0} files, {len(errors) if errors else 0} errors");
     return ProgramSnapshot(
         hub=hub.copy() if hub else {},
         sem_managers=sem_managers.copy() if sem_managers else {},

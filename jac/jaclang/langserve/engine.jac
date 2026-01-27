@@ -44,6 +44,11 @@ import from .snapshot { SnapshotManager, ProgramSnapshot }
 import from .sync { LockManager }
 import from .cancellation { CancellationToken, CancellationTokenSource }
 
+with entry{
+    # Suppress noisy external library logs - we use our own debug() for internal logging
+    logging.getLogger().setLevel(logging.CRITICAL);
+}
+
 """Jac Language Server, manages JacProgram and LSP.
 
 Uses a multiprocess architecture with:

@@ -83,6 +83,7 @@ impl run_lang_server -> None {
 impl semantic_tokens_full(
     ls: JacLangServer, params: lspt.SemanticTokensParams
 ) -> lspt.SemanticTokens {
+    debug(f"semantic_tokens_full: {params.text_document.uri}");
     return ls.get_semantic_tokens(params.text_document.uri);
 }
 
@@ -90,12 +91,14 @@ impl semantic_tokens_full(
 impl rename(
     ls: JacLangServer, params: lspt.RenameParams
 ) -> Optional[lspt.WorkspaceEdit] {
+    debug(f"rename: {params.text_document.uri} at {params.position} -> '{params.new_name}'");
     ls.log_warning('Auto Rename is Experimental, Please use with caution.');
     return ls.rename_symbol(params.text_document.uri, params.position, params.new_name);
 }
 
 """Provide references."""
 impl references(ls: JacLangServer, params: lspt.ReferenceParams) -> list[lspt.Location] {
+    debug(f"references: {params.text_document.uri} at {params.position}");
     return ls.get_references(params.text_document.uri, params.position);
 }
 
@@ -103,6 +106,7 @@ impl references(ls: JacLangServer, params: lspt.ReferenceParams) -> list[lspt.Lo
 impl definition(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Location] {
+    debug(f"definition: {params.text_document.uri} at {params.position}");
     return ls.get_definition(params.text_document.uri, params.position);
 }
 
@@ -110,6 +114,7 @@ impl definition(
 impl document_symbol(
     ls: JacLangServer, params: lspt.DocumentSymbolParams
 ) -> list[lspt.DocumentSymbol] {
+    debug(f"document_symbol: {params.text_document.uri}");
     return ls.get_outline(params.text_document.uri);
 }
 
@@ -117,21 +122,26 @@ impl document_symbol(
 impl hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Hover] {
+    debug(f"hover: {params.text_document.uri} at {params.position}");
     return ls.get_hover_info(params.text_document.uri, params.position);
 }
 
 """Check syntax on file delete."""
 impl did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None {
+    debug(f"did_delete_files: {len(params.files)} files");
     for file in params.files {
+        debug(f"  Deleting: {file.uri}");
         ls.delete_module(file.uri);
     }
 }
 
 """Check syntax on file rename."""
 impl did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None {
+    debug(f"did_rename_files: {len(params.files)} files");
     new_uris = [file.new_uri for file in params.files];
     old_uris = [file.old_uri for file in params.files];
     for i in range(len(new_uris)) {
+        debug(f"  Renaming: {old_uris[i]} -> {new_uris[i]}");
         ls.rename_module(old_uris[i], new_uris[i]);
     }
 }
@@ -140,6 +150,7 @@ impl did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None
 impl formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
+    debug(f"formatting: {params.text_document.uri}");
     return ls.formatted_jac(params.text_document.uri);
 }
 
