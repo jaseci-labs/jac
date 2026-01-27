@@ -495,10 +495,9 @@ impl WorkerManager.is_running -> bool {
 impl WorkerManager.compile_file(
     file_uri: str,
     source: str,
-    priority: RequestPriority = RequestPriority.NORMAL,
     callback: Optional[Callable] = None
 ) -> str {
-    _mgr_debug(f"compile_file: {file_uri} ({len(source)} chars, priority={priority})");
+    _mgr_debug(f"compile_file: {file_uri} ({len(source)} chars)");
     if not self.is_running() {
         _mgr_debug("Worker not running, starting...");
         self._logger.warning("Worker not running, starting...");
@@ -518,7 +517,6 @@ impl WorkerManager.compile_file(
         'request_id': request_id,
         'file_uri': file_uri,
         'source': source,
-        'priority': priority?.value or priority,
         'timestamp': time.time(),
         'type_check': True,
         'no_cgen': True
@@ -540,7 +538,6 @@ impl WorkerManager.compile_all(callback: Optional[Callable] = None) -> str {
     request = {
         'request_type': 'COMPILE_ALL',
         'request_id': request_id,
-        'priority': RequestPriority.LOW.value,
         'timestamp': time.time(),
         'type_check': True,
         'no_cgen': True
@@ -662,32 +659,19 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
         }
     }
 
-    # Convert dict to WorkerResponse for callback compatibility
-    response = WorkerResponse(
-        request_id=request_id,
-        success=response_dict.get('success', False),
-        cancelled=response_dict.get('cancelled', False),
-        snapshot_data=None,  # We use shared memory now
-        errors=response_dict.get('errors'),
-        warnings=response_dict.get('warnings'),
-        error_message=response_dict.get('error_message'),
-        duration_ms=response_dict.get('duration_ms', 0),
-        timestamp=response_dict.get('timestamp', 0),
-        files_analyzed=response_dict.get('files_analyzed')
-    );
-
-    # Call registered callback
+    # Call registered callback with response dict
     if request_id in self._pending_requests {
         callback = self._pending_requests.pop(request_id);
         try {
-            callback(response);
+            callback(response_dict);
         } except Exception as e {
             self._logger.error(f"Callback error for request {request_id}: {e}");
         }
     }
 
     # If success and has snapshot, call snapshot callback
-    if response.success and snapshot is not None and self._snapshot_callback {
+    success = response_dict.get('success', False);
+    if success and snapshot is not None and self._snapshot_callback {
         try {
             self._snapshot_callback(snapshot);
         } except Exception as e {

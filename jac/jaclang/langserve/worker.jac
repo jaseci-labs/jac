@@ -11,13 +11,7 @@ import time;
 import from typing { Optional, Callable, Any }
 import from queue { Empty }
 
-import from .ipc {
-    RequestType,
-    RequestPriority,
-    WorkerRequest,
-    WorkerResponse,
-    RequestIdGenerator
-}
+import from .ipc { RequestIdGenerator }
 import from .snapshot { ProgramSnapshot }
 import from .sem_manager { SemTokManager }
 
@@ -132,7 +126,6 @@ obj WorkerManager {
     def compile_file(
         file_uri: str,
         source: str,
-        priority: RequestPriority = RequestPriority.NORMAL,
         callback: Optional[Callable] = None
     ) -> str;
 

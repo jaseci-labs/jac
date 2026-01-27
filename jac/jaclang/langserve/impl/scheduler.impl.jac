@@ -308,19 +308,11 @@ impl AnalysisScheduler._process_pending -> None {
     }
     self._current_cancel_source.token.register_callback(on_cancel);
 
-    # Map priority to request priority
-    req_priority = RequestPriority.NORMAL;
-    if pending.priority == AnalysisPriority.FOREGROUND {
-        req_priority = RequestPriority.HIGH;
-    } elif pending.priority == AnalysisPriority.BACKGROUND {
-        req_priority = RequestPriority.LOW;
-    }
-
     # Send to worker
     if pending.source is not None {
         _sched_debug(f"Sending compile_file to worker: {pending.file_uri}");
         self._worker_manager.compile_file(
-            file_uri=pending.file_uri, source=pending.source, priority=req_priority
+            file_uri=pending.file_uri, source=pending.source
         );
     } else {
         # No source provided, trigger compile all

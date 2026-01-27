@@ -10,7 +10,6 @@ import time;
 import from typing { Optional, Callable, Any }
 import from enum { auto }
 
-import from .ipc { RequestPriority }
 import from .worker { WorkerManager, WorkerConfig }
 import from .snapshot { ProgramSnapshot, SnapshotManager }
 import from .cancellation { CancellationTokenSource }

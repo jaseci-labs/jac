@@ -63,4 +63,4 @@ import from .scheduler { AnalysisScheduler, SchedulerConfig, AnalysisPriority }
 import from .worker { WorkerManager, WorkerConfig, WorkerHealth }
 import from .snapshot { ProgramSnapshot, SnapshotManager }
 import from .cancellation { CancellationToken, CancellationTokenSource }
-import from .ipc { WorkerRequest, WorkerResponse, RequestPriority }
+import from .ipc { RequestIdGenerator }
