@@ -5,7 +5,6 @@ Handles file change events and coordinates module reloading.
 
 import logging;
 import os;
-import re;
 import sys;
 import time;
 import from pathlib { Path }
@@ -202,6 +201,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
             else [];
             module_export_names = sorted(set(exports_list + globals_list));
             if module_export_names {
+                import re;
                 # Strip any existing export declarations to avoid duplicates
                 clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', js_code);
                 clean_js = re.sub(
