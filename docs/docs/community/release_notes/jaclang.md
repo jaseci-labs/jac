@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.12 (Unreleased)
 
-- **Fix**: Automatically cleans up stale `.dist-info` and `.egg-info` directories during `jac add` / `jac install` upgrades, ensuring only the latest package metadata remains and preventing version conflicts.
+- **Automatic Metadata Cleanup on Upgrade**: Automatically cleans up stale `.dist-info` and `.egg-info` directories during `jac add` / `jac install` upgrades, ensuring only the latest package metadata remains and preventing version conflicts (including dependencies).
 
 ## jaclang 0.9.11 (Latest Release)
 
