@@ -11,6 +11,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Permissive Type Check for Node Collections in Connections**: The type checker now accepts collections (list, tuple, set, frozenset) on the right side of connection operators (`++>`, `<++>`, etc.). Previously, code like `root ++> [Node1(), Node2(), Node3()];` was incorrectly rejected. This is a temporary workaround until element type inference for list literals is fully implemented.
 
+- **Fix**: Automatically cleans up stale `.dist-info` and `.egg-info` directories during `jac add` / `jac install` upgrades, ensuring only the latest package metadata remains and preventing version conflicts.
+
 ## jaclang 0.9.10 (Latest Release)
 
 - **Formatter Spacing Fixes**: Fixed extra spaces before semicolons in `report` and `del` statements, and corrected semantic definition formatting to properly handle dot notation and `=` operator spacing.
