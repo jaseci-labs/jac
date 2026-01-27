@@ -426,22 +426,29 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import sys;
     import time;
     import shutil;
-    import from jac_client.plugin.utils { ensure_bun_available }
+    import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
     # Ensure bun is available before proceeding
     if not ensure_bun_available() {
         raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
     }
-    self.output_dir.mkdir(parents=True, exist_ok=True);
-    generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
-    if not generated_package_json.exists() {
-        self.create_package_json();
-    } else {
-        # Ensure tsconfig.json exists even if package.json already exists
-        self.create_tsconfig();
+    # Ensure client npm deps are configured; prompt to install defaults if missing
+    if not ensure_client_deps(self.config_loader) {
+        raise ClientBundleError(
+            'Client dependencies not configured. Add [dependencies.npm] to jac.toml '
+            'or create a project with: jac create --use client'
+        ) from None ;
     }
+    self.output_dir.mkdir(parents=True, exist_ok=True);
+    # Always regenerate package.json to pick up any dependency changes
+    self.create_package_json();
     try {
         build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
+        # Reinstall if node_modules is missing or stale (e.g. empty from a prior failed install)
+        vite_bin = node_modules / '.bin' / 'vite';
+        if node_modules.exists() and not vite_bin.exists() {
+            shutil.rmtree(node_modules);
+        }
         if not node_modules.exists() {
             # Temporarily copy package.json to client build dir for bun install
             build_package_json = build_dir / 'package.json';
