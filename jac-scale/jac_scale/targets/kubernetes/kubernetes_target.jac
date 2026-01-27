@@ -174,10 +174,7 @@ class KubernetesTarget(DeploymentTarget) {
         return service;
     }
 
-    """Build the bash command for setting up Jaseci runtime environment.
-
-    This replaces the hard-coded command with a configurable version.
-    """
+    """Build the bash command for setting up Jaseci runtime environment."""
     def _build_runtime_setup_command(
         self: KubernetesTarget, app_config: AppConfig
     ) -> list[str] {
@@ -200,29 +197,49 @@ class KubernetesTarget(DeploymentTarget) {
         commands.append('export BUN_INSTALL="$HOME/.bun"');
         commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
-        # Clone and setup Jaseci if enabled
-        if config.install_jaseci {
+        if app_config.experimental {
             commands.append('rm -rf jaseci');
-            # Clone repository
             clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
-            # Checkout specific commit if provided
             if config.jaseci_commit {
                 commands.append(f"git checkout {config.jaseci_commit}");
             }
-            # Update submodules
             commands.append('git submodule update --init --recursive');
-            # Setup virtual environment
-            commands.append('python -m venv venv');
-            commands.append('source venv/bin/activate');
-            # Install Jaseci components
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
             commands.append('cd ..');
+        } else {
+            packages = config.plugin_versions or {};
+            jaclang_v = packages.get('jaclang', 'latest');
+            scale_v = packages.get('jac_scale', 'latest');
+            client_v = packages.get('jac_client', 'latest');
+            byllm_v = packages.get('jac_byllm', 'latest');
+            if jaclang_v == 'latest' {
+                commands.append('pip install jaclang');
+            } else {
+                commands.append(f'pip install jaclang=={jaclang_v}');
+            }
+            if scale_v == 'latest' {
+                commands.append('pip install jac-scale');
+            } else {
+                commands.append(f'pip install jac-scale=={scale_v}');
+            }
+            if client_v == 'latest' {
+                commands.append('pip install jac-client');
+            } else {
+                commands.append(f'pip install jac-client=={client_v}');
+            }
+            if byllm_v and byllm_v != 'none' {
+                if byllm_v == 'latest' {
+                    commands.append('pip install jac-byllm');
+                } else {
+                    commands.append(f'pip install jac-byllm=={byllm_v}');
+                }
+            }
         }
 
         # Change to app directory (project is already copied there via volume mount)

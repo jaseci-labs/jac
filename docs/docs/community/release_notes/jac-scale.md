@@ -15,6 +15,39 @@ Introduced a flexible storage abstraction layer with factory pattern for file op
 - **LocalStorage Provider**: Full implementation for local filesystem storage
 - **Configuration Support**: `LocalStorageConfig` with `from_dict()` and `from_env()` static methods
 - **Environment Variables**: Configure storage via `JAC_STORAGE_TYPE` and `JAC_LOCAL_STORAGE_BASE_PATH`
+### PyPI Installation by Default
+
+Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments.
+
+**Default behavior (PyPI installation):**
+
+```bash
+jac start app.jac --scale
+```
+
+**Experimental mode (repo clone - previous behavior):**
+
+```bash
+jac start app.jac --scale --experimental
+```
+
+### New CLI Flag: `--experimental`
+
+Added `--experimental` (`-e`) flag to `jac start --scale` command. When enabled, falls back to the previous behavior of cloning the Jaseci repository and installing packages in editable mode. Useful for testing unreleased changes.
+
+### Version Pinning via `plugin_versions` Configuration
+
+Added `plugin_versions` configuration in `jac.toml` to pin specific package versions:
+
+```toml
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "0.1.5"      # or "latest"
+jac_scale = "0.1.1"    # or "latest"
+jac_client = "0.1.0"   # or "latest"
+jac_byllm = "none"     # use "none" to skip installation
+```
+
+When not specified, defaults to `"latest"` for all packages.
 
 ## jac-scale 0.1.1 (Latest Release)
 
