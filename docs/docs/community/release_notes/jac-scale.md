@@ -33,7 +33,7 @@ Added `plugin_versions` configuration in `jac.toml` to pin specific package vers
 jaclang = "0.1.5"      # or "latest"
 jac_scale = "0.1.1"    # or "latest"
 jac_client = "0.1.0"   # or "latest"
-jac_byllm = "none"     # use "none" to skip installation
+jac_byllm = "none"     # use "none" to skip installation (will insall elvant byllm version)
 ```
 
 When not specified, defaults to `"latest"` for all packages.
