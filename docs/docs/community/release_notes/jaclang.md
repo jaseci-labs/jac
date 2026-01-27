@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.12 (Unreleased)
 
-- **Explicit Field Initialization with `by postinit`**: Fields that are initialized in the `postinit` method can now be explicitly marked with `by postinit` to improve code clarity and self-documentation. This makes it immediately clear which fields are computed during initialization versus those with simple default values. For example, `has db: Any by postinit, collection: Any by postinit;` indicates these fields will be set in `postinit`. While not required for functionality, this annotation helps quickly understand object initialization patterns without reading implementation files.
+- **Internal**: Explicitly declared all postinit fields across the codebase.
 
 ## jaclang 0.9.11 (Latest Release)
 
