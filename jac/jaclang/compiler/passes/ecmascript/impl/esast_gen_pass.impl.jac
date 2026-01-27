@@ -108,6 +108,11 @@ impl EsastGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
     <>node.gen.es_ast = body_stmts;
 }
 
+"""Process native block (na { ... }) - pruned from ECMAScript generation."""
+impl EsastGenPass.exit_native_block(<>node: uni.NativeBlock) -> None {
+    ;
+}
+
 """Process module code (with entry block)."""
 impl EsastGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
     body_stmts: list[es.Statement] = [];
@@ -3031,6 +3036,11 @@ impl EsastGenPass.exit_node(<>node: uni.UniNode) -> None {
 
 """Enter node."""
 impl EsastGenPass.enter_node(<>node: uni.UniNode) -> None {
+    # Prune NativeBlocks from ECMAScript generation
+    if isinstance(<>node, uni.NativeBlock) {
+        self.prune();
+        return;
+    }
     if (
         isinstance(<>node, uni.ElementStmt)
         and isinstance(<>node, uni.ContextAwareNode)
