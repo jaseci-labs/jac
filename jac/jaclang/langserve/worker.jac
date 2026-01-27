@@ -53,6 +53,9 @@ obj CompilationWorker {
     """Main worker loop."""
     def run -> None;
 
+    """Internal compile file method."""
+    def _compile_file(request: dict, program: Any, sem_managers: dict) -> dict;
+
     """Handle compile file request (dict-based)."""
     def handle_compile_file_dict(
         request_dict: dict, program: Any, sem_managers: dict
@@ -173,6 +176,9 @@ obj WorkerManager {
 
     """Process all pending responses (call from async loop)."""
     def process_pending_responses -> None;
+
+    """Handle a single response from worker."""
+    def _handle_response(response: dict) -> None;
 
     """Process a response dict."""
     def _process_response_dict(response_dict: dict) -> None;
