@@ -998,7 +998,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     ),
                     self.sync(
                         ast3.keyword(
-                            arg="mtir",
+                            arg="mt_run",
                             value=mtir_ast,
                         )
                     ),
