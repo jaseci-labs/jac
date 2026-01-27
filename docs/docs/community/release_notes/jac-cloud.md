@@ -4,8 +4,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-cloud 0.2.11 (Unreleased)
 
-- **Internal**: Explicitly declared all postinit fields across the codebase.
-
 ## jac-cloud 0.2.10 (Latest Release)
 
 - **Jac Serve Faux Mode**: Added `--faux` flag to `jac serve` command that prints documentation for API endpoints instead of starting the server, useful for quickly inspecting available endpoints and their specifications.
