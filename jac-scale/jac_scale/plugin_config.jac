@@ -149,6 +149,33 @@ class JacScalePluginConfig {
                             "type": "bool",
                             "default": True,
                             "description": "Enable Redis deployment in Kubernetes"
+                        },
+                        "plugin_versions": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Package versions for PyPI installation (default mode). Use 'latest' or specific version.",
+                            "nested": {
+                                "jaclang": {
+                                    "type": "string",
+                                    "default": "latest",
+                                    "description": "jaclang package version"
+                                },
+                                "jac_scale": {
+                                    "type": "string",
+                                    "default": "latest",
+                                    "description": "jac-scale package version"
+                                },
+                                "jac_client": {
+                                    "type": "string",
+                                    "default": "latest",
+                                    "description": "jac-client package version"
+                                },
+                                "jac_byllm": {
+                                    "type": "string",
+                                    "default": "latest",
+                                    "description": "jac-byllm package version (use 'none' to skip)"
+                                }
+                            }
                         }
                     }
                 },

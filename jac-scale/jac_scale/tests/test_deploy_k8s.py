@@ -97,10 +97,12 @@ def test_deploy_all_in_one():
     )
 
     # Create app config
+    # Use experimental=True to install from repo (PyPI packages may not be available)
     app_config = AppConfig(
         code_folder=todo_app_path,
         file_name="main.jac",
         build=False,
+        experimental=True,
     )
 
     # Deploy using new architecture
