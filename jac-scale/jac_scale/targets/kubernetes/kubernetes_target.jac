@@ -235,9 +235,9 @@ class KubernetesTarget(DeploymentTarget) {
             }
             if byllm_v and byllm_v != 'none' {
                 if byllm_v == 'latest' {
-                    commands.append('pip install jac-byllm');
+                    commands.append('pip install byllm');
                 } else {
-                    commands.append(f'pip install jac-byllm=={byllm_v}');
+                    commands.append(f'pip install byllm=={byllm_v}');
                 }
             }
         }
