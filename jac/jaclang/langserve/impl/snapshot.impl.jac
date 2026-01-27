@@ -4,7 +4,8 @@ import threading;
 import pickle;
 import time;
 import sys;
-import from typing { Optional, Any, Callable }
+import from typing { Optional, Any, Callable, Tuple }
+import from multiprocessing { shared_memory }
 
 """Internal debug logging for snapshot."""
 def _snap_debug(msg: str) -> None {
@@ -92,6 +93,56 @@ impl ProgramSnapshot.deserialize(data: bytes) -> ProgramSnapshot {
     );
     _snap_debug(f"Deserialized snapshot v{snapshot.version}: {len(snapshot.hub)} files");
     return snapshot;
+}
+
+impl ProgramSnapshot.serialize_to_shared_memory -> Tuple[str, int] {
+    # Serialize snapshot to shared memory for zero-copy IPC.
+    # Returns (shm_name, size) tuple. Receiver must call deserialize_from_shared_memory().
+    _snap_debug(f"Serializing to shared memory v{self.version}: {len(self.hub)} files");
+
+    # First serialize to bytes
+    data = self.serialize();
+    size = len(data);
+
+    # Create shared memory block
+    shm = shared_memory.SharedMemory(create=True, size=size);
+    _snap_debug(f"Created shared memory: {shm.name}, {size} bytes");
+
+    # Copy data to shared memory
+    shm.buf[:size] = data;
+
+    # Return name and size - DO NOT close/unlink here
+    # The receiver will attach and unlink
+    return (shm.name, size);
+}
+
+impl ProgramSnapshot.deserialize_from_shared_memory(shm_name: str, size: int) -> ProgramSnapshot {
+    # Deserialize from shared memory and cleanup.
+    # Attaches to the shared memory block, reads data, then closes and unlinks.
+    _snap_debug(f"Deserializing from shared memory: {shm_name}, {size} bytes");
+
+    # Attach to existing shared memory
+    shm = shared_memory.SharedMemory(name=shm_name);
+
+    try {
+        # Read data
+        data = bytes(shm.buf[:size]);
+
+        # Deserialize
+        snapshot = ProgramSnapshot.deserialize(data);
+
+        _snap_debug(f"Deserialized from shared memory v{snapshot.version}");
+        return snapshot;
+    } finally {
+        # Cleanup - close our handle and unlink the block
+        shm.close();
+        try {
+            shm.unlink();
+            _snap_debug(f"Unlinked shared memory: {shm_name}");
+        } except FileNotFoundError {
+            # Already unlinked, that's fine
+        }
+    }
 }
 
 impl ProgramSnapshot.from_program_state(

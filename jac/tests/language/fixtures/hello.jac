@@ -6,4 +6,9 @@ def still_there {
 
 with entry {
     "Hello World!" |> print;
+    a = 90;  
+
+
+
+    a = 'io';
 }

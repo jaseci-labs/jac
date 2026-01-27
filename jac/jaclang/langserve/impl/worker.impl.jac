@@ -295,6 +295,12 @@ impl CompilationWorker.handle_compile_file_dict(
         _worker_debug("Creating snapshot");
         snapshot = self.create_snapshot(program, sem_managers);
 
+        # Use shared memory for zero-copy transfer
+        shm_result = snapshot.serialize_to_shared_memory();
+        shm_name = shm_result[0];
+        shm_size = shm_result[1];
+        _worker_debug(f"Snapshot in shared memory: {shm_name}, {shm_size} bytes");
+
         duration_ms = (time.time() - start_time) * 1000;
         _worker_debug(f"Compilation complete: {duration_ms:.1f}ms, {len(program.errors_had)} errors, {len(program.warnings_had)} warnings");
 
@@ -302,7 +308,8 @@ impl CompilationWorker.handle_compile_file_dict(
             'request_id': request_id,
             'success': True,
             'cancelled': False,
-            'snapshot_data': snapshot.serialize(),
+            'shm_name': shm_name,
+            'shm_size': shm_size,
             'errors': list(program.errors_had),
             'warnings': list(program.warnings_had),
             'duration_ms': duration_ms,
@@ -337,12 +344,19 @@ impl CompilationWorker.handle_compile_all_dict(
     # For now, create snapshot of current state
     # Full implementation would iterate workspace files
     snapshot = self.create_snapshot(program, sem_managers);
+
+    # Use shared memory for zero-copy transfer
+    shm_result = snapshot.serialize_to_shared_memory();
+    shm_name = shm_result[0];
+    shm_size = shm_result[1];
+
     duration_ms = (time.time() - start_time) * 1000;
     return {
         'request_id': request_id,
         'success': True,
         'cancelled': False,
-        'snapshot_data': snapshot.serialize(),
+        'shm_name': shm_name,
+        'shm_size': shm_size,
         'errors': list(program.errors_had),
         'warnings': list(program.warnings_had),
         'duration_ms': duration_ms,
@@ -644,12 +658,27 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
         _mgr_debug(f"Request {request_id} succeeded in {duration:.1f}ms");
     }
 
+    # Deserialize snapshot from shared memory if present
+    snapshot: ProgramSnapshot | None = None;
+    shm_name = response_dict.get('shm_name');
+    shm_size = response_dict.get('shm_size');
+    if shm_name and shm_size {
+        try {
+            _mgr_debug(f"Reading snapshot from shared memory: {shm_name}, {shm_size} bytes");
+            snapshot = ProgramSnapshot.deserialize_from_shared_memory(shm_name, shm_size);
+            _mgr_debug(f"Snapshot deserialized: v{snapshot.version}, {len(snapshot.hub)} files");
+        } except Exception as e {
+            _mgr_debug(f"Failed to read shared memory: {e}");
+            self._logger.error(f"Shared memory read error: {e}");
+        }
+    }
+
     # Convert dict to WorkerResponse for callback compatibility
     response = WorkerResponse(
         request_id=request_id,
         success=response_dict.get('success', False),
         cancelled=response_dict.get('cancelled', False),
-        snapshot_data=response_dict.get('snapshot_data'),
+        snapshot_data=None,  # We use shared memory now
         errors=response_dict.get('errors'),
         warnings=response_dict.get('warnings'),
         error_message=response_dict.get('error_message'),
@@ -669,9 +698,8 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
     }
 
     # If success and has snapshot, call snapshot callback
-    if response.success and response.snapshot_data and self._snapshot_callback {
+    if response.success and snapshot is not None and self._snapshot_callback {
         try {
-            snapshot = ProgramSnapshot.deserialize(response.snapshot_data);
             self._snapshot_callback(snapshot);
         } except Exception as e {
             self._logger.error(f"Snapshot callback error: {e}");

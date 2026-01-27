@@ -3,7 +3,8 @@
 import threading;
 import pickle;
 import time;
-import from typing { Optional, Any, Callable }
+import from typing { Optional, Any, Callable, Tuple }
+import from multiprocessing { shared_memory }
 
 """Immutable snapshot of program state.
 
@@ -45,6 +46,19 @@ obj ProgramSnapshot {
 
     """Deserialize snapshot from bytes."""
     static def deserialize(data: bytes) -> ProgramSnapshot;
+
+    """Serialize snapshot to shared memory (zero-copy IPC).
+
+    Returns tuple of (shm_name, size) for the receiver to attach.
+    Caller must NOT close the shared memory - receiver will unlink it.
+    """
+    def serialize_to_shared_memory -> Tuple[str, int];
+
+    """Deserialize snapshot from shared memory and cleanup.
+
+    Attaches to shared memory, deserializes, then unlinks the block.
+    """
+    static def deserialize_from_shared_memory(shm_name: str, size: int) -> ProgramSnapshot;
 
     """Create snapshot from program state."""
     static def from_program_state(
