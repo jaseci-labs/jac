@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.12 (Unreleased)
 
 - **Startup error handling improvements:** Aggregates initialization errors and displays concise, formatted Vite/Bun bundling failures after the API endpoint list.
+- **Pip-Compatible Uninstall with RECORD Support**: Package removal now matches `pip uninstall` by using `RECORD` files to accurately remove all installed files, including scripts and data directories, while cleaning up leftover paths.
+- **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
 
 ## jaclang 0.9.11 (Latest Release)
 

@@ -203,6 +203,10 @@ obj JacAPIServer {
         port: int = 8000,
         base_path: str = "";
 
+    obj RestSpecs {
+        has method: str;
+    }
+
     def postinit -> None;
     def create_handler -> type[BaseHTTPRequestHandler];
     def load_module(force_reload: bool = False) -> None;
