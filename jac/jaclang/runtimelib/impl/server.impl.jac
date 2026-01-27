@@ -1572,10 +1572,10 @@ impl JacAPIServer.print_endpoint_docs -> None {
 impl JacAPIServer.start(dev: bool = False) -> None {
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev mode)
+    bundle_error = None;
     if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
-            import from jaclang.cli.console { console }
             try {
                 # ViteBundler.build() handles its own progress messages
                 self.introspector.ensure_bundle();
@@ -1584,15 +1584,7 @@ impl JacAPIServer.start(dev: bool = False) -> None {
                     flush=True
                 );
             } except Exception as e {
-                import sys;
-                import traceback;
-                console.warning(f"Failed to build client bundle: {e}");
-                console.print("\n  Full traceback:", style="muted", file=sys.stderr);
-                traceback.print_exc(file=sys.stderr);
-                print(
-                    f"\nClient pages will not be available until this is fixed.\n",
-                    file=sys.stderr
-                );
+                bundle_error = str(e);
             }
         }
     }
@@ -1621,6 +1613,21 @@ impl JacAPIServer.start(dev: bool = False) -> None {
             print(f'\nBase route (/) configured to serve: {base_route_app}');
         }
         print('\nPress Ctrl+C to stop the server');
+        # Display bundle error after endpoints if one occurred
+        if bundle_error {
+            import from jaclang.cli.console { console }
+            import sys;
+            console.print('\n' + '=' * 70, file=sys.stderr);
+            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
+            console.print('=' * 70, file=sys.stderr);
+            console.print(file=sys.stderr);
+            console.print(bundle_error, file=sys.stderr);
+            console.print(file=sys.stderr);
+            console.warning(
+                'Client pages will not be available until this is fixed.', emoji=True
+            );
+            console.print('=' * 70 + '\n', file=sys.stderr);
+        }
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {
