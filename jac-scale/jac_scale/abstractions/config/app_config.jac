@@ -7,7 +7,8 @@ class AppConfig {
         file_name: str = 'none',
         build: bool = False,
         app_name: (str | None) = None,
-        testing: bool = False;
+        testing: bool = False,
+        experimental: bool = False;
 
     def init(
         self: AppConfig,
@@ -15,13 +16,15 @@ class AppConfig {
         file_name: str = 'none',
         build: bool = False,
         app_name: (str | None) = None,
-        testing: bool = False
+        testing: bool = False,
+        experimental: bool = False
     ) -> None {
         self.code_folder = code_folder;
         self.file_name = file_name;
         self.build = build;
         self.app_name = app_name;
         self.testing = testing;
+        self.experimental = experimental;
     }
 
     def get_code_path(self: AppConfig) -> Path {
