@@ -11,8 +11,8 @@ from unittest.mock import patch
 import pytest
 
 try:
-    from jaclang.runtimelib.storage import LocalStorageConfig, LocalStorage
     from jac_scale.factories.storage_factory import StorageFactory
+    from jaclang.runtimelib.storage import LocalStorage, LocalStorageConfig
 except ImportError as e:
     pytest.skip(f"Jac modules not compiled: {e}", allow_module_level=True)
 

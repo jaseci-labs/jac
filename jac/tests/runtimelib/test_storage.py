@@ -4,7 +4,6 @@ import os
 import shutil
 import tempfile
 from collections.abc import Generator
-from pathlib import Path
 
 import pytest
 
@@ -53,9 +52,7 @@ class TestLocalStorage:
         storage = LocalStorage({"base_path": temp_storage_dir})
         assert storage.base_path == temp_storage_dir
 
-    def test_upload_and_download(
-        self, temp_storage_dir: str, temp_file: str
-    ) -> None:
+    def test_upload_and_download(self, temp_storage_dir: str, temp_file: str) -> None:
         """Test uploading and downloading a file."""
         from jaclang.runtimelib.storage import LocalStorage
 

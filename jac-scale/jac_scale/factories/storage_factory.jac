@@ -56,7 +56,7 @@ class StorageFactory {
         storage_config = {
             'base_path': base_path,
             'create_dirs': create_dirs,
-            **(config or {})
+            ** (config or {})
         };
         return StorageFactory.create(storage_type, storage_config);
     }

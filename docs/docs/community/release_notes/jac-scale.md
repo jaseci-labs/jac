@@ -15,6 +15,7 @@ Introduced a flexible storage abstraction layer with factory pattern for file op
 - **LocalStorage Provider**: Full implementation for local filesystem storage
 - **Configuration Support**: `LocalStorageConfig` with `from_dict()` and `from_env()` static methods
 - **Environment Variables**: Configure storage via `JAC_STORAGE_TYPE` and `JAC_LOCAL_STORAGE_BASE_PATH`
+
 ### PyPI Installation by Default
 
 Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments.

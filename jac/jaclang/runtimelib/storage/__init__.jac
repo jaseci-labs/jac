@@ -7,4 +7,9 @@ import from jaclang.runtimelib.storage.storage { Storage }
 import from jaclang.runtimelib.storage.local_storage { LocalStorage }
 import from jaclang.runtimelib.storage.config { BaseStorageConfig, LocalStorageConfig }
 
-glob __all__ = ['Storage', 'LocalStorage', 'BaseStorageConfig', 'LocalStorageConfig'];
+glob __all__ = [
+         'Storage',
+         'LocalStorage',
+         'BaseStorageConfig',
+         'LocalStorageConfig'
+     ];

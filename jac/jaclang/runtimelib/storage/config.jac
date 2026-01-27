@@ -64,7 +64,7 @@ class LocalStorageConfig(BaseStorageConfig) {
         JAC_STORAGE_LOCAL_PATH: Base path for storage (default: './storage')
         JAC_STORAGE_CREATE_DIRS: Whether to create directories (default: 'true')
     """
-    static def from_env() -> LocalStorageConfig {
+    static def from_env -> LocalStorageConfig {
         return LocalStorageConfig(
             base_path=os.environ.get('JAC_STORAGE_LOCAL_PATH', './storage'),
             create_dirs=os.environ.get('JAC_STORAGE_CREATE_DIRS', 'true').lower() == 'true'
