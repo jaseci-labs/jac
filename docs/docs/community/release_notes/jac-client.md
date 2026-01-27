@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.12 (Unreleased)
 
+- **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.
+
 ## jac-client 0.2.11 (Latest Release)
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
