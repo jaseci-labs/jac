@@ -105,6 +105,9 @@ obj AnalysisScheduler {
     """Check if scheduler has any work (pending, timer, or in-progress)."""
     def is_busy -> bool;
 
+    """Process pending responses from worker (call from async loop)."""
+    def process_worker_responses -> None;
+
     """Get current snapshot."""
     def get_snapshot -> Optional[ProgramSnapshot];
 

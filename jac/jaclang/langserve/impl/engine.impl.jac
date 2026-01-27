@@ -27,10 +27,6 @@ impl JacLangServer.postinit -> None {
     self.module_manager = ModuleManager(self, self.sem_managers);
     self.debug("Module manager initialized");
 
-    # Initialize lock manager for thread-safe updates
-    self._lock_manager = LockManager();
-    self.debug("Lock manager initialized");
-
     # Initialize request tracking for cancellation
     self._pending_requests = {};
     self._pending_requests_lock = threading.Lock();
@@ -64,6 +60,9 @@ impl JacLangServer.shutdown -> None {
     self.debug("Shutting down JacLangServer...");
 
     try {
+        # Stop response polling task
+        self.stop_response_polling();
+
         # Stop scheduler (which stops the worker)
         if self._scheduler is not None {
             self.debug("Stopping scheduler...");
@@ -109,20 +108,14 @@ impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     self.debug(f"get_semantic_tokens called: {file_path}");
     fs_path = uris.to_fs_path(file_path);
     try {
-        self._lock_manager.sem_managers_lock.acquire_read();
-        try {
-            sem_mgr = self.sem_managers.get(fs_path);
-            if not sem_mgr {
-                self.debug(f"No semantic manager found for: {fs_path}");
-                return lspt.SemanticTokens(data=[]);
-            }
-            # Copy the tokens list to avoid holding lock during serialization
-            tokens_copy = list(sem_mgr.sem_tokens);
-            self.debug(f"Returning {len(tokens_copy)} semantic tokens for: {fs_path}");
-        } finally {
-            self._lock_manager.sem_managers_lock.release_read();
+        sem_mgr = self.sem_managers.get(fs_path);
+        if not sem_mgr {
+            self.debug(f"No semantic manager found for: {fs_path}");
+            return lspt.SemanticTokens(data=[]);
         }
-        return lspt.SemanticTokens(data=tokens_copy);
+        tokens = sem_mgr.sem_tokens;
+        self.debug(f"Returning {len(tokens)} semantic tokens for: {fs_path}");
+        return lspt.SemanticTokens(data=tokens);
     } except Exception as e {
         self.debug(f"Error getting semantic tokens: {e}");
         return lspt.SemanticTokens(data=[]);
@@ -438,17 +431,12 @@ impl JacLangServer.get_node_at_position(
 impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
     self.debug(f"get_ast_of_file called: {file_path}");
     try {
-        self._lock_manager.hub_lock.acquire_read();
-        try {
-            if file_path in self.mod.hub {
-                self.debug(f"AST found in hub for: {file_path}");
-                return self.mod.hub[file_path];
-            }
-            self.debug(f"AST not found in hub for: {file_path}");
-            return None;
-        } finally {
-            self._lock_manager.hub_lock.release_read();
+        if file_path in self.mod.hub {
+            self.debug(f"AST found in hub for: {file_path}");
+            return self.mod.hub[file_path];
         }
+        self.debug(f"AST not found in hub for: {file_path}");
+        return None;
     } except Exception as e {
         self.debug(f"Error getting AST: {e}");
         return None;
@@ -542,37 +530,26 @@ impl JacLangServer.get_token_at_position(
     self.debug(f"get_token_at_position called: {file_path} at line={position.line}, char={position.character}");
     fs_path = uris.to_fs_path(file_path);
 
-    # Acquire read locks for thread-safe access
     try {
-        self._lock_manager.hub_lock.acquire_read();
-        try {
-            self._lock_manager.sem_managers_lock.acquire_read();
-            try {
-                if fs_path not in self.mod.hub {
-                    self.debug(f"File not found in hub: {fs_path}");
-                    return None;
-                }
-                sem_mgr = self.sem_managers.get(fs_path);
-                if not sem_mgr {
-                    self.debug(f"No semantic manager for: {fs_path}");
-                    return None;
-                }
-                token_index = utils.find_index(
-                    sem_mgr.sem_tokens, position.line, position.character
-                );
-                if token_index is None {
-                    self.debug(f"No token index found at position");
-                    return None;
-                }
-                node_selected = sem_mgr.static_sem_tokens[token_index][3];
-                self.debug(f"Token found at index {token_index}: {type(node_selected).__name__}");
-                return node_selected;
-            } finally {
-                self._lock_manager.sem_managers_lock.release_read();
-            }
-        } finally {
-            self._lock_manager.hub_lock.release_read();
+        if fs_path not in self.mod.hub {
+            self.debug(f"File not found in hub: {fs_path}");
+            return None;
         }
+        sem_mgr = self.sem_managers.get(fs_path);
+        if not sem_mgr {
+            self.debug(f"No semantic manager for: {fs_path}");
+            return None;
+        }
+        token_index = utils.find_index(
+            sem_mgr.sem_tokens, position.line, position.character
+        );
+        if token_index is None {
+            self.debug(f"No token index found at position");
+            return None;
+        }
+        node_selected = sem_mgr.static_sem_tokens[token_index][3];
+        self.debug(f"Token found at index {token_index}: {type(node_selected).__name__}");
+        return node_selected;
     } except Exception as e {
         self.debug(f"Error getting token at position: {e}");
         return None;
@@ -673,6 +650,10 @@ impl JacLangServer.schedule_analysis(file_uri: str, source: str) -> None {
 """Called when a file is opened in the editor."""
 impl JacLangServer.on_file_opened(file_uri: str) -> None {
     self.debug(f"File opened: {file_uri}");
+    # Start response polling on first file open (event loop is now running)
+    if self._polling_task is None {
+        self.start_response_polling();
+    }
     if self._scheduler is not None {
         self._scheduler.mark_file_open(file_uri);
     }
@@ -727,38 +708,24 @@ impl JacLangServer._on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None 
 
 Updates mod.hub and recreates sem_managers from the snapshot.
 This runs in the main process after receiving a snapshot from the worker.
-Uses LockManager for thread-safe updates.
+No locking needed - runs in single-threaded asyncio event loop.
 """
 impl JacLangServer._sync_snapshot_to_state(snapshot: ProgramSnapshot) -> None {
     self.debug(f"Syncing snapshot v{snapshot.version} to state...");
 
-    # Acquire write locks in consistent order to prevent deadlocks
-    # Order: hub_lock -> sem_managers_lock (as defined in LockManager)
     try {
-        self.debug("Acquiring write locks...");
-        self._lock_manager.hub_lock.acquire_write();
-        try {
-            self._lock_manager.sem_managers_lock.acquire_write();
-            try {
-                # Update the hub with snapshot data
-                for (path, module) in snapshot.hub.items() {
-                    self.mod.hub[path] = module;
-                    # Recreate semantic manager for this module
-                    self.sem_managers[path] = SemTokManager(ir=module, hub=self.mod.hub);
-                    self.debug(f"Updated hub entry: {path}");
-                }
-
-                # Update errors and warnings
-                self.errors_had = list(snapshot.errors);
-                self.warnings_had = list(snapshot.warnings);
-                self.debug(f"Updated errors={len(self.errors_had)}, warnings={len(self.warnings_had)}");
-            } finally {
-                self._lock_manager.sem_managers_lock.release_write();
-            }
-        } finally {
-            self._lock_manager.hub_lock.release_write();
+        # Update the hub with snapshot data
+        for (path, module) in snapshot.hub.items() {
+            self.mod.hub[path] = module;
+            # Recreate semantic manager for this module
+            self.sem_managers[path] = SemTokManager(ir=module, hub=self.mod.hub);
+            self.debug(f"Updated hub entry: {path}");
         }
-        self.debug("Write locks released");
+
+        # Update errors and warnings
+        self.errors_had = list(snapshot.errors);
+        self.warnings_had = list(snapshot.warnings);
+        self.debug(f"Updated errors={len(self.errors_had)}, warnings={len(self.warnings_had)}");
     } except Exception as e {
         self.debug(f"Error syncing snapshot: {e}");
     }
@@ -806,4 +773,50 @@ impl JacLangServer.get_current_snapshot -> Optional[ProgramSnapshot] {
         return self._snapshot_manager.get_snapshot();
     }
     return None;
+}
+
+"""Start the async response polling task."""
+impl JacLangServer.start_response_polling -> None {
+    if self._polling_task is not None {
+        self.debug("Polling task already running");
+        return;
+    }
+    try {
+        loop = asyncio.get_event_loop();
+        self._polling_task = loop.create_task(self._response_polling_loop());
+        self.debug("Response polling task started");
+    } except RuntimeError as e {
+        self.debug(f"Cannot start polling task - no event loop: {e}");
+    }
+}
+
+"""Stop the async response polling task."""
+impl JacLangServer.stop_response_polling -> None {
+    if self._polling_task is not None {
+        self._polling_task.cancel();
+        self._polling_task = None;
+        self.debug("Response polling task stopped");
+    }
+}
+
+"""Async loop that polls worker responses."""
+impl JacLangServer._response_polling_loop -> None {
+    self.debug("Response polling loop started");
+    interval_sec = self._polling_interval_ms / 1000.0;
+    while not self._shutdown_called {
+        try {
+            # Poll worker responses from scheduler
+            if self._scheduler is not None {
+                self._scheduler.process_worker_responses();
+            }
+            await asyncio.sleep(interval_sec);
+        } except asyncio.CancelledError {
+            self.debug("Response polling loop cancelled");
+            break;
+        } except Exception as e {
+            self.debug(f"Error in polling loop: {e}");
+            await asyncio.sleep(interval_sec);
+        }
+    }
+    self.debug("Response polling loop exited");
 }

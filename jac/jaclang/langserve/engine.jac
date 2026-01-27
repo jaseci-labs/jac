@@ -41,7 +41,6 @@ import from . { utils }
 import from .module_manager { ModuleManager }
 import from .scheduler { AnalysisScheduler, SchedulerConfig }
 import from .snapshot { SnapshotManager, ProgramSnapshot }
-import from .sync { LockManager }
 import from .cancellation { CancellationToken, CancellationTokenSource }
 
 with entry{
@@ -63,13 +62,14 @@ obj JacLangServer(JacProgram, LanguageServer) {
         # Scheduler-based analysis
         _scheduler: AnalysisScheduler | None = None,
         _snapshot_manager: SnapshotManager | None = None,
-        # Lock manager for thread-safe state updates
-        _lock_manager: LockManager | None = None,
         # LSP request tracking for cancellation
         _pending_requests: Dict[str, CancellationTokenSource] | None = None,
         _pending_requests_lock: threading.Lock | None = None,
         # Logger
-        _logger: logging.Logger | None = None;
+        _logger: logging.Logger | None = None,
+        # Async response polling task
+        _polling_task: asyncio.Task | None = None,
+        _polling_interval_ms: float = 50;
 
     def postinit -> None;
 
@@ -169,4 +169,14 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     """Get current snapshot for queries (non-blocking)."""
     def get_current_snapshot -> Optional[ProgramSnapshot];
+
+    # Async response polling
+    """Start the async response polling task."""
+    def start_response_polling -> None;
+
+    """Stop the async response polling task."""
+    def stop_response_polling -> None;
+
+    """Async loop that polls worker responses."""
+    async def _response_polling_loop -> None;
 }

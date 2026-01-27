@@ -213,6 +213,13 @@ impl AnalysisScheduler.is_busy -> bool {
     return self.has_pending() or self.has_timer_active() or self._analysis_in_progress;
 }
 
+impl AnalysisScheduler.process_worker_responses -> None {
+    # Process pending responses from worker (call from async loop)
+    if self._worker_manager is not None {
+        self._worker_manager.process_pending_responses();
+    }
+}
+
 impl AnalysisScheduler.get_snapshot -> Optional[ProgramSnapshot] {
     if self._snapshot_manager is not None {
         return self._snapshot_manager.get_snapshot();

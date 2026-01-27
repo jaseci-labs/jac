@@ -445,20 +445,7 @@ impl WorkerManager.start -> None {
     self._consecutive_failures = 0;
     _mgr_debug(f"Worker process started: PID {self._process.pid}");
 
-    # Start response processing thread
-    _mgr_debug("Starting response processor thread");
-    self._response_thread = threading.Thread(
-        target=self._response_processor, daemon=True
-    );
-    self._response_thread.start();
-
-    # Start health check thread
-    _mgr_debug("Starting health checker thread");
-    self._health_thread = threading.Thread(
-        target=self._health_checker, daemon=True
-    );
-    self._health_thread.start();
-
+    # NOTE: No background threads - use process_pending_responses() from async loop instead
     self._logger.info(f"Worker process started: PID {self._process.pid}");
 }
 
@@ -589,21 +576,23 @@ impl WorkerManager.poll_responses -> list {
     return responses;
 }
 
-impl WorkerManager._response_processor -> None {
-    while self._running {
-        responses = self.poll_responses();
+impl WorkerManager.process_pending_responses -> None {
+    # Process all pending responses from the worker (call from async loop)
+    responses = self.poll_responses();
 
-        for response_dict in responses {
-            self._process_response_dict(response_dict);
-        }
-
-        # Check for worker crash
-        if self._process and not self._process.is_alive() and self._running {
-            self._handle_crash();
-        }
-
-        time.sleep(0.05);  # 50ms poll interval
+    for response_dict in responses {
+        self._process_response_dict(response_dict);
     }
+
+    # Check for worker crash
+    if self._process and not self._process.is_alive() and self._running {
+        self._handle_crash();
+    }
+}
+
+impl WorkerManager._response_processor -> None {
+    # DEPRECATED: No longer used - use process_pending_responses() from async loop
+    pass;
 }
 
 impl WorkerManager._process_response_dict(response_dict: dict) -> None {

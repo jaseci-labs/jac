@@ -145,10 +145,13 @@ obj WorkerManager {
     """Poll for responses."""
     def poll_responses -> list;
 
+    """Process all pending responses (call from async loop)."""
+    def process_pending_responses -> None;
+
     """Process a response dict."""
     def _process_response_dict(response_dict: dict) -> None;
 
-    """Background response processor."""
+    """Background response processor (DEPRECATED)."""
     def _response_processor -> None;
 
     """Background health checker."""
