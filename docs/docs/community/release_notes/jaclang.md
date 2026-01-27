@@ -11,7 +11,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Permissive Type Check for Node Collections in Connections**: The type checker now accepts collections (list, tuple, set, frozenset) on the right side of connection operators (`++>`, `<++>`, etc.). Previously, code like `root ++> [Node1(), Node2(), Node3()];` was incorrectly rejected. This is a temporary workaround until element type inference for list literals is fully implemented.
 
-- **Hot Module Replacement (HMR) Support**: Added infrastructure for Hot Module Replacement during development. The file watcher now supports `.tsx` and `.js` files in addition to `.jac` files, enabling automatic reloading of client-side code changes. The HMR implementation coordinates module reloading and provides callbacks for file change events, improving the development experience with instant updates.
+- **Static files support HMR**: Added infrastructure for Hot Module Replacement during development. The file watcher now supports static assets files such as `.css` and images (`.png`, `.jpg`, `.jpeg`) in addition to `.jac` files, enabling automatic reloading of client-side code changes.
 
 ## jaclang 0.9.10 (Latest Release)
 
