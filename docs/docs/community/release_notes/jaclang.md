@@ -2,7 +2,14 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.11 (Unreleased)
+## jaclang 0.9.12 (Unreleased)
+
+- **Native Binary Compilation via `na {}` Blocks and `.na.jac` Files**: Added a third compilation target to Jac using `na {}` context blocks and `.na.jac` file conventions. Code within the `na` context compiles to native LLVM IR via llvmlite and is JIT-compiled to machine code at runtime. Functions defined in `na {}` blocks are callable via ctypes function pointers. Supports integer, float, and boolean types, arithmetic and comparison operators, if/else and while control flow, recursive function calls, local variables with type inference, and `print()` mapped to native `printf`. Native code is fully isolated from Python (`sv`) and JavaScript (`cl`) codegen -- `na` functions are excluded from both `py_ast` and `es_ast` output, and vice versa. The `llvmlite` package is now a core dependency.
+- **Startup error handling improvements:** Aggregates initialization errors and displays concise, formatted Vite/Bun bundling failures after the API endpoint list.
+- **Pip-Compatible Uninstall with RECORD Support**: Package removal now matches `pip uninstall` by using `RECORD` files to accurately remove all installed files, including scripts and data directories, while cleaning up leftover paths.
+- **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
+
+## jaclang 0.9.11 (Latest Release)
 
 - **Reactive Effects with `can with entry/exit`**: The `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks in client-side code. When used inside a `cl` codespace, `async can with entry { items = await fetch(); }` generates `useEffect(() => { (async () => { setItems(await fetch()); })(); }, []);`. Supports dependency arrays using list or tuple syntax: `can with (userId, count) entry { ... }` generates effects that re-run when dependencies change. The `can with exit` variant generates cleanup functions via `return () => { ... }` inside the effect. This provides a declarative, Jac-native way to handle component lifecycle without manual `useEffect` boilerplate.
 
@@ -11,7 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Permissive Type Check for Node Collections in Connections**: The type checker now accepts collections (list, tuple, set, frozenset) on the right side of connection operators (`++>`, `<++>`, etc.). Previously, code like `root ++> [Node1(), Node2(), Node3()];` was incorrectly rejected. This is a temporary workaround until element type inference for list literals is fully implemented.
 
-## jaclang 0.9.10 (Latest Release)
+## jaclang 0.9.10
 
 - **Formatter Spacing Fixes**: Fixed extra spaces before semicolons in `report` and `del` statements, and corrected semantic definition formatting to properly handle dot notation and `=` operator spacing.
 
@@ -24,8 +31,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 ### Features and Improvements
 
 - **Console Plugin Architecture**: Refactored console system to use a plugin-based architecture, removing the `rich` dependency from core jaclang. The base `JacConsole` now uses pure Python `print()` for all output, keeping jaclang dependency-free. Plugins (like `jac-super`) can override the console implementation via the `get_console()` hook to provide Rich-enhanced output with themes, panels, tables, and spinners. This maintains backward compatibility while allowing optional aesthetic enhancements through plugins.
-
-- **Report Yield Support**: The `report` statement now supports yield expressions (e.g., `report yield "Hello, World!";`), laying the groundwork for streaming response support in walkers.
 
 - **User Management Endpoints**:  Added new user management endpoints to the `jac start` API server:
   - `GET /user/info` - Retrieve authenticated user's information (username, token, root_id)

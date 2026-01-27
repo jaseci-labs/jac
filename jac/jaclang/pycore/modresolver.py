@@ -51,6 +51,8 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
         return candidate + ".jac", "jac"
     if os.path.isfile(candidate + ".sv.jac"):
         return candidate + ".sv.jac", "jac"
+    if os.path.isfile(candidate + ".na.jac"):
+        return candidate + ".na.jac", "jac"
     if os.path.isfile(candidate + ".cl.jac"):
         return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):

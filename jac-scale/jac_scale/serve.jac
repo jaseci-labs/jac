@@ -24,6 +24,9 @@ import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
+import from typing { AsyncGenerator }
+import from inspect { isgenerator }
+import from fastapi.responses { StreamingResponse }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),

@@ -31,7 +31,7 @@ def _discover_minimal_compile_modules() -> frozenset[str]:
     passes_dir = jaclang_dir / "compiler" / "passes"
     modules = set()
 
-    for subdir in ["main", "ecmascript"]:
+    for subdir in ["main", "ecmascript", "native"]:
         for jac_file in (passes_dir / subdir).rglob("*.jac"):
             if jac_file.name.endswith(".impl.jac"):
                 continue
