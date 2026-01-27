@@ -180,7 +180,7 @@ Update `main.jac` - just add the AI parts:
 
 ```jac
 import from uuid { uuid4 }
-import from byllm { Model }
+import from byllm.lib { Model }
 
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -308,7 +308,7 @@ Update `main.jac`:
 
 ```jac
 import from uuid { uuid4 }
-import from byllm { Model }
+import from byllm.lib { Model }
 
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -369,7 +369,7 @@ walker:priv DeleteTodo {
 
 cl {
     import from react { useEffect }
-    import from "@jac-client/utils" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
+    import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
     import "./styles.css";
 
     def:pub app -> any {
