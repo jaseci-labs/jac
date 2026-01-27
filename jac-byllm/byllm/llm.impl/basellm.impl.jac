@@ -1,6 +1,6 @@
 """Construct the call parameters and return self (factory pattern).
 
-Allows chaining like: `model(temperature=0.5).invoke(mtir)`.
+Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
 """
 impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
     self.call_params = kwargs;
@@ -12,13 +12,13 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 Handles both streaming and non-streaming modes. For tool-enabled requests,
 implements a ReAct loop that continues until finish_tool is called.
 """
-impl BaseLLM.invoke(mtir: MTRuntime) -> object {
+impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     # If streaming without tools, stream immediately
-    if mtir.stream and len(mtir.tools) == 0 {
-        return self.dispatch_streaming(mtir);
+    if mt_run.stream and len(mt_run.tools) == 0 {
+        return self.dispatch_streaming(mt_run);
     }
     max_iters = (
-        mtir.call_params.get("max_react_iterations")
+        mt_run.call_params.get("max_react_iterations")
         or self.call_params.get("max_react_iterations")
         or _call_params_config.get("max_react_iterations")
         or 0
@@ -29,37 +29,37 @@ impl BaseLLM.invoke(mtir: MTRuntime) -> object {
         iter_count += 1;
         if int(max_iters) > 0 and iter_count > int(max_iters) {
             # If streaming, reuse the existing streaming final-answer path
-            if mtir.stream {
-                return self._stream_final_answer(mtir);
+            if mt_run.stream {
+                return self._stream_final_answer(mt_run);
             }
             # Non-streaming: disable tools and ask for final answer once
             final_instruction = Message(
                 role=MessageRole.USER,
                 content="Based on the tool calls and their results above, provide only your final answer.",
             );
-            mtir.add_message(final_instruction);
-            original_tools = mtir.tools;
-            mtir.tools = [];
+            mt_run.add_message(final_instruction);
+            original_tools = mt_run.tools;
+            mt_run.tools = [];
             try {
-                final_resp = self.dispatch_no_streaming(mtir);
+                final_resp = self.dispatch_no_streaming(mt_run);
                 return final_resp.output;
             } finally {
-                mtir.tools = original_tools;
+                mt_run.tools = original_tools;
             }
         }
-        resp = self.dispatch_no_streaming(mtir);
+        resp = self.dispatch_no_streaming(mt_run);
         if resp.tool_calls {
             for tool_call in resp.tool_calls {
                 if tool_call.is_finish_call() {
                     # If streaming is enabled, make a new streaming call
-                    mtir.add_message(tool_call());
+                    mt_run.add_message(tool_call());
                     # to generate the final answer based on all context
-                    if mtir.stream {
-                        return self._stream_final_answer(mtir);
+                    if mt_run.stream {
+                        return self._stream_final_answer(mt_run);
                     }
                     return tool_call.get_output();
                 } else {
-                    mtir.add_message(tool_call());
+                    mt_run.add_message(tool_call());
                 }
             }
         } else {
@@ -74,7 +74,7 @@ impl BaseLLM.invoke(mtir: MTRuntime) -> object {
 Builds the parameter dict including model name, messages, tools,
 response format, and call parameters like temperature and max_tokens.
 """
-impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
+impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     # Use call_params from config as defaults, then override with instance call_params
     default_temp = _call_params_config.get("temperature", 0.7);
     default_max_tokens = _call_params_config.get("max_tokens");
@@ -86,9 +86,9 @@ impl BaseLLM.make_model_params(mtir: MTRuntime) -> dict {
             or self.config.get("api_base")
             or _model_config.get("base_url")
         ),
-        "messages": mtir.get_msg_list(),
-        "tools": mtir.get_tool_list() or None,
-        "response_format": mtir.get_output_schema(),
+        "messages": mt_run.get_msg_list(),
+        "tools": mt_run.get_tool_list() or None,
+        "response_format": mt_run.get_output_schema(),
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
 
@@ -143,9 +143,9 @@ impl BaseLLM.format_prompt(params: dict) -> str {
 Makes a synchronous API call and processes the response, including
 parsing any tool calls returned by the model.
 """
-impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
+impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # Construct the parameters for the LLM call
-    params = self.make_model_params(mtir);
+    params = self.make_model_params(mt_run);
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
@@ -157,14 +157,14 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
     #
     # TODO: Handle stream output (type ignoring stream response)
     message: LiteLLMMessage = response.get("choices", [])[0].get("message");  # type: ignore
-    mtir.add_message(message);
+    mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
-    output_value = mtir.parse_response(output_content);
+    output_value = mt_run.parse_response(output_content);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
     for tool_call in tool_calls_list {
-        if tool := mtir.get_tool(tool_call.function.name) {
+        if tool := mt_run.get_tool(tool_call.function.name) {
             args_json = json.loads(tool_call.function.arguments);
             args = tool.parse_arguments(args_json);
             tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
@@ -181,9 +181,9 @@ impl BaseLLM.dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult {
 
 Makes a streaming API call and yields content chunks as they arrive.
 """
-impl BaseLLM.dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None] {
+impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {
     # Construct the parameters for the LLM call
-    params = self.make_model_params(mtir);
+    params = self.make_model_params(mt_run);
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
@@ -227,7 +227,7 @@ to generate the final answer in real-time streaming mode.
 Unlike _stream_finish_output which splits an already-complete string,
 this makes a REAL streaming API call to the LLM.
 """
-impl BaseLLM._stream_final_answer(mtir: MTRuntime) -> Generator[str, None, None] {
+impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None] {
     # Add a message instructing the LLM to provide the final answer
     # based on all the tool call results gathered so far
     final_instruction = Message(
@@ -235,16 +235,16 @@ impl BaseLLM._stream_final_answer(mtir: MTRuntime) -> Generator[str, None, None]
         content="Based on the tool calls and their results above, provide your final answer. "
         "Be comprehensive and synthesize all the information gathered.",
     );
-    mtir.add_message(final_instruction);
+    mt_run.add_message(final_instruction);
     # Remove tools and make a streaming call to get the real-time answer
     # We temporarily clear tools so the LLM just responds with text
-    original_tools = mtir.tools;
-    mtir.tools = [];
+    original_tools = mt_run.tools;
+    mt_run.tools = [];
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
-        yield from self.dispatch_streaming(mtir);
+        yield from self.dispatch_streaming(mt_run);
     } finally {
         # Restore tools (though we're done at this point)
-        mtir.tools = original_tools;
+        mt_run.tools = original_tools;
     }
 }

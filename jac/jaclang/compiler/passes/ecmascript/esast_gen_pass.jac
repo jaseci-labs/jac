@@ -268,6 +268,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None;
     def exit_module_code(<>node: uni.ModuleCode) -> None;
     def exit_client_block(<>node: uni.ClientBlock) -> None;
+    def exit_native_block(<>node: uni.NativeBlock) -> None;
     def exit_test(<>node: uni.Test) -> None;
     def exit_token(<>node: uni.Token) -> None;
     def exit_semi(<>node: uni.Semi) -> None;

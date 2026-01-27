@@ -48,7 +48,6 @@ __all__ = [
     "jsx",
     "field",
     "log_report",
-    "log_report_yield",
     "refs",
     "arefs",
     "filter_on",
@@ -91,7 +90,6 @@ impl_patch_filename = JacRuntimeInterface.impl_patch_filename
 jac_test = JacRuntimeInterface.jac_test
 jsx = JacRuntimeInterface.jsx
 log_report = JacRuntimeInterface.log_report
-log_report_yield = JacRuntimeInterface.log_report_yield
 refs = JacRuntimeInterface.refs
 safe_subscript = JacRuntimeInterface.safe_subscript
 sem = JacRuntimeInterface.sem

@@ -546,7 +546,7 @@ impl JacAPIServer.create_function_callback(
 ) -> Callable[..., TransportResponse] {
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
-    def callback(**kwargs: JsonValue) -> TransportResponse {
+    async def callback(**kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
             authorization = kwargs.pop('Authorization', None);
@@ -568,9 +568,21 @@ impl JacAPIServer.create_function_callback(
             }
         }
         print(f"Executing function '{func_name}' with params: {kwargs}");
-        result = self.execution_manager.execute_function(
+        result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or '__guest__')
         );
+        # Handle streaming responses (generators/async generators)
+        if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            return StreamingResponse(
+                result,
+                media_type='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'close',
+                    'X-Accel-Buffering': 'no'
+                }
+            );
+        }
         if 'error' in result {
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
@@ -700,6 +712,17 @@ impl JacAPIServer.create_walker_callback(
         result = await self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], kwargs, (username or '__guest__')
         );
+        if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            return StreamingResponse(
+                result,
+                media_type='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'close',
+                    'X-Accel-Buffering': 'no'
+                }
+            );
+        }
         if 'error' in result {
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
@@ -1260,6 +1283,20 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
         result = await self.execution_manager.spawn_walker(
             walkers[walker_name], kwargs, (username or '__guest__')
         );
+
+        # Handle streaming responses (generators/async generators)
+        if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            return StreamingResponse(
+                result,
+                media_type='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'close',
+                    'X-Accel-Buffering': 'no'
+                }
+            );
+        }
+
         if 'error' in result {
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
@@ -1401,9 +1438,21 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
             }
         }
 
-        result = self.execution_manager.execute_function(
+        result = await self.execution_manager.execute_function(
             functions[function_name], kwargs, (username or '__guest__')
         );
+        # Handle streaming responses (generators/async generators)
+        if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            return StreamingResponse(
+                result,
+                media_type='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'close',
+                    'X-Accel-Buffering': 'no'
+                }
+            );
+        }
         if 'error' in result {
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
