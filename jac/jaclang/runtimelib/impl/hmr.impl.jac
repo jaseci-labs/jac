@@ -191,20 +191,25 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
 
-        # If output file already exists, preserve existing export statements
-        if output_path.exists() {
-            # Extract export statement from original JS code
-            with open(output_path, 'r') as f {
-                content = f.read();
+        # Handle exports: extract from manifest and add comprehensive export statement
+        client_manifest = mod.gen.client_manifest if mod else None;
+        if client_manifest {
+            exports_list = list(client_manifest.exports) if client_manifest.exports else [];
+            globals_list = list(client_manifest.globals) if client_manifest.globals else [];
+            module_export_names = sorted(set(exports_list + globals_list));
+            
+            if module_export_names {
+                import re;
+                # Strip any existing export declarations to avoid duplicates
+                clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', js_code);
+                clean_js = re.sub(
+                    r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_js
+                );
+                # Add comprehensive export statement at the end
+                export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
+                js_code = clean_js + export_stmt;
+                print(f"[HMR] Added exports: {module_export_names}", flush=True);
             }
-            <>match = re.search('(export\\s*\\{[^}]+\\}\\s*;)', content, re.MULTILINE);
-            if <>match {
-                export_statement = <>match.group(1);
-            } else {
-                export_statement = "";
-            }
-            # Append export statement to JS code to export client functions
-            js_code = js_code + '\n' + export_statement;
         }
 
         # Write the JS code
