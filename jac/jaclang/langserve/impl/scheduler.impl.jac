@@ -1,4 +1,4 @@
-"""Implementation of analysis scheduler."""
+"""Implementation of simplified analysis scheduler."""
 
 import threading;
 import time;
@@ -6,7 +6,7 @@ import logging;
 import sys;
 import from typing { Optional, Callable, Any }
 
-"""Internal debug logging that bypasses logging level."""
+"""Internal debug logging."""
 def _sched_debug(msg: str) -> None {
     print(f"[Scheduler] {msg}", file=sys.stderr);
 }
@@ -15,30 +15,9 @@ impl SchedulerConfig.default -> SchedulerConfig {
     return SchedulerConfig();
 }
 
-impl PendingAnalysis.postinit -> None {
-    if self.timestamp == 0 {
-        self.timestamp = time.time();
-    }
-}
-
-impl PendingAnalysis.__lt__(other: PendingAnalysis) -> bool {
-    # Lower priority value = higher priority
-    if self.priority.value != other.priority.value {
-        return self.priority.value < other.priority.value;
-    }
-    # Earlier timestamp = higher priority
-    return self.timestamp < other.timestamp;
-}
-
 impl AnalysisScheduler.postinit -> None {
     if self._config is None {
         self._config = SchedulerConfig.default();
-    }
-    if self._pending is None {
-        self._pending = {};
-    }
-    if self._pending_lock is None {
-        self._pending_lock = threading.Lock();
     }
     if self._timer_lock is None {
         self._timer_lock = threading.Lock();
@@ -94,9 +73,7 @@ impl AnalysisScheduler.stop -> None {
     self._logger.info("Analysis scheduler stopped");
 }
 
-impl AnalysisScheduler.schedule_file(
-    file_uri: str, source: str, priority: Optional[AnalysisPriority] = None
-) -> None {
+impl AnalysisScheduler.schedule_file(file_uri: str, source: str) -> None {
     _sched_debug(f"schedule_file called: {file_uri} ({len(source)} chars)");
     if not self._running {
         _sched_debug("Scheduler not running, ignoring schedule request");
@@ -104,63 +81,19 @@ impl AnalysisScheduler.schedule_file(
     }
     # Record activity
     self._last_activity = time.time();
-    # Determine priority if not specified
-    if priority is None {
-        priority = self._get_file_priority(file_uri);
-    }
-    _sched_debug(f"File priority: {priority}");
-    # Add to pending queue
-    with self._pending_lock {
-        # Check queue size limit
-        if len(self._pending) >= self._config.max_pending_files {
-            _sched_debug(f"Queue full ({len(self._pending)} items), removing lowest priority");
-            # Remove lowest priority item
-            if self._pending {
-                lowest_uri = max(
-                    self._pending.keys(),
-                    key=lambda u: str : self._pending[u].priority.value
-                );
-                if self._pending[lowest_uri].priority.value > priority.value {
-                    _sched_debug(f"Removing {lowest_uri} to make room");
-                    del self._pending[lowest_uri] ;
-                } else {
-                    # New item is lower priority, skip it
-                    _sched_debug("New item is lower priority, skipping");
-                    return;
-                }
-            }
-        }
-        # Add or update pending analysis
-        self._pending[file_uri] = PendingAnalysis(
-            file_uri=file_uri, source=source, priority=priority
-        );
-        _sched_debug(f"Added to pending queue, queue size: {len(self._pending)}");
-    }
+    # Replace any pending (most recent edit wins)
+    self._pending_uri = file_uri;
+    self._pending_source = source;
+    _sched_debug(f"Set pending file: {file_uri}");
     # Cancel current analysis if in progress
     if self._analysis_in_progress {
         _sched_debug("Cancelling in-progress analysis");
         self.cancel_current();
     }
-    # Reset backoff timer
-    _sched_debug("Resetting backoff timer");
+    # Reset debounce timer
+    _sched_debug("Resetting debounce timer");
     self._reset_timer();
-    self._logger.debug(f"Scheduled {file_uri} with priority {priority}");
-}
-
-impl AnalysisScheduler.schedule_all_open -> None {
-    with self._pending_lock {
-        for file_uri in self._open_files {
-            if file_uri not in self._pending {
-                # Schedule with no source - will use cached
-                self._pending[file_uri] = PendingAnalysis(
-                    file_uri=file_uri,
-                    source=None,
-                    priority=self._get_file_priority(file_uri)
-                );
-            }
-        }
-    }
-    self._reset_timer();
+    self._logger.debug(f"Scheduled {file_uri}");
 }
 
 impl AnalysisScheduler.mark_file_open(file_uri: str) -> None {
@@ -169,22 +102,10 @@ impl AnalysisScheduler.mark_file_open(file_uri: str) -> None {
 
 impl AnalysisScheduler.mark_file_closed(file_uri: str) -> None {
     self._open_files.discard(file_uri);
-    if self._focused_file == file_uri {
-        self._focused_file = None;
-    }
-}
-
-impl AnalysisScheduler.set_focused_file(file_uri: str | None) -> None {
-    self._focused_file = file_uri;
 }
 
 impl AnalysisScheduler.cancel_current -> None {
-    # Cancel the token (which will trigger callback to cancel worker)
-    if self._current_cancel_source is not None {
-        self._current_cancel_source.cancel();
-        self._current_cancel_source = None;
-    }
-    # Also directly cancel worker as fallback (idempotent operation)
+    # Directly cancel worker
     if self._worker_manager is not None {
         self._worker_manager.cancel_current();
     }
@@ -197,9 +118,7 @@ impl AnalysisScheduler.is_analyzing -> bool {
 }
 
 impl AnalysisScheduler.has_pending -> bool {
-    with self._pending_lock {
-        return len(self._pending) > 0;
-    }
+    return self._pending_uri is not None;
 }
 
 impl AnalysisScheduler.has_timer_active -> bool {
@@ -208,7 +127,6 @@ impl AnalysisScheduler.has_timer_active -> bool {
     }
 }
 
-"""Returns True if scheduler has any pending work, active timer, or in-progress analysis."""
 impl AnalysisScheduler.is_busy -> bool {
     return self.has_pending() or self.has_timer_active() or self._analysis_in_progress;
 }
@@ -239,9 +157,9 @@ impl AnalysisScheduler._on_timer_expired -> None {
     }
     # Check if enough time has passed since last activity
     elapsed = (time.time() - self._last_activity) * 1000;
-    if elapsed < self._config.user_activity_backoff_ms {
+    if elapsed < self._config.debounce_ms {
         # User still active, reset timer for remaining time
-        remaining = self._config.user_activity_backoff_ms - elapsed;
+        remaining = self._config.debounce_ms - elapsed;
         _sched_debug(f"User still active, resetting timer for {remaining:.0f}ms");
         with self._timer_lock {
             self._timer = threading.Timer(remaining / 1000.0, self._on_timer_expired);
@@ -250,8 +168,8 @@ impl AnalysisScheduler._on_timer_expired -> None {
         }
         return;
     }
-    # Start processing pending files
-    _sched_debug(f"Backoff complete ({elapsed:.0f}ms elapsed), processing pending");
+    # Start processing pending file
+    _sched_debug(f"Debounce complete ({elapsed:.0f}ms elapsed), processing pending");
     self._process_pending();
 }
 
@@ -263,7 +181,7 @@ impl AnalysisScheduler._reset_timer -> None {
             self._timer = None;
         }
         # Start new timer
-        delay_sec = self._config.user_activity_backoff_ms / 1000.0;
+        delay_sec = self._config.debounce_ms / 1000.0;
         self._timer = threading.Timer(delay_sec, self._on_timer_expired);
         self._timer.daemon = True;
         self._timer.start();
@@ -285,61 +203,28 @@ impl AnalysisScheduler._process_pending -> None {
         _sched_debug("Scheduler not running, skipping");
         return;
     }
-    # Get next file to analyze
-    pending = self._get_next_pending();
-    if pending is None {
-        _sched_debug("No pending items, setting idle");
+    # Get pending file
+    if self._pending_uri is None {
+        _sched_debug("No pending file, setting idle");
         self._analysis_in_progress = False;
         return;
     }
-    _sched_debug(f"Processing: {pending.file_uri} (priority={pending.priority})");
+    file_uri = self._pending_uri;
+    source = self._pending_source;
+    # Clear pending
+    self._pending_uri = None;
+    self._pending_source = None;
+    _sched_debug(f"Processing: {file_uri}");
     self._analysis_in_progress = True;
-
-    # Create cancellation source with callback to cancel worker
-    # This bridges the main-process CancellationToken to the worker's multiprocessing.Event
-    self._current_cancel_source = CancellationTokenSource();
-    # Register callback so any token cancellation propagates to worker
-    def on_cancel {
-        if self._worker_manager is not None {
-            self._worker_manager.cancel_current();
-            _sched_debug("Cancellation propagated to worker");
-            self._logger.debug("Cancellation propagated to worker");
-        }
-    }
-    self._current_cancel_source.token.register_callback(on_cancel);
-
     # Send to worker
-    if pending.source is not None {
-        _sched_debug(f"Sending compile_file to worker: {pending.file_uri}");
-        self._worker_manager.compile_file(
-            file_uri=pending.file_uri, source=pending.source
-        );
-    } else {
-        # No source provided, trigger compile all
-        _sched_debug("Sending compile_all to worker");
-        self._worker_manager.compile_all();
-    }
-    self._logger.debug(f"Started analysis for {pending.file_uri}");
-}
-
-impl AnalysisScheduler._get_next_pending -> Optional[PendingAnalysis] {
-    with self._pending_lock {
-        if not self._pending {
-            return None;
-        }
-        best_uri = min(
-            self._pending.keys(),
-            key=lambda u: str :
-                (self._pending[u].priority.value, self._pending[u].timestamp)
-        );
-        return self._pending.pop(best_uri);
-    }
+    _sched_debug(f"Sending compile_file to worker: {file_uri}");
+    self._worker_manager.compile_file(file_uri=file_uri, source=source);
+    self._logger.debug(f"Started analysis for {file_uri}");
 }
 
 impl AnalysisScheduler._on_snapshot_received(snapshot: ProgramSnapshot) -> None {
     _sched_debug(f"Snapshot received: v{snapshot.version}, {len(snapshot.hub)} files, {len(snapshot.errors)} errors");
     self._analysis_in_progress = False;
-    self._current_cancel_source = None;
     # Update snapshot manager
     if self._snapshot_manager is not None {
         _sched_debug("Updating snapshot manager");
@@ -356,25 +241,11 @@ impl AnalysisScheduler._on_snapshot_received(snapshot: ProgramSnapshot) -> None 
         }
     }
     # Check if more pending work
-    with self._pending_lock {
-        has_more = len(self._pending) > 0;
-    }
-    if has_more {
-        _sched_debug(f"More pending work ({len(self._pending)} items), scheduling next batch");
-        # Schedule next batch
+    if self._pending_uri is not None {
+        _sched_debug("More pending work, scheduling");
         self._reset_timer();
     } else {
         _sched_debug("No more pending work");
     }
     self._logger.debug(f"Snapshot received, version {snapshot.version}");
-}
-
-impl AnalysisScheduler._get_file_priority(file_uri: str) -> AnalysisPriority {
-    if file_uri == self._focused_file {
-        return AnalysisPriority.FOREGROUND;
-    }
-    if file_uri in self._open_files {
-        return AnalysisPriority.OPEN_FILE;
-    }
-    return AnalysisPriority.BACKGROUND;
 }

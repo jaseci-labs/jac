@@ -393,7 +393,7 @@ impl CompilationWorker.clear_cancellation -> None {
 
 impl WorkerManager.postinit -> None {
     self._config = self._config or WorkerConfig.default();
-    self._id_generator = RequestIdGenerator();
+    self._request_counter = 0;
     self._pending_requests = {};
     self._logger = logging.getLogger("jac.worker_manager");
     self._running = False;
@@ -405,6 +405,12 @@ impl WorkerManager.postinit -> None {
     self._health_status = WorkerHealth.DEAD;
     self._last_health_check = 0;
     self._consecutive_failures = 0;
+}
+
+"""Generate next request ID (simple counter, no lock needed - single thread access)."""
+impl WorkerManager._next_request_id -> str {
+    self._request_counter += 1;
+    return f"req_{self._request_counter}";
 }
 
 impl WorkerManager.start -> None {
@@ -461,7 +467,7 @@ impl WorkerManager.stop -> None {
         _mgr_debug("Sending shutdown request");
         shutdown_req = {
             'request_type': 'SHUTDOWN',
-            'request_id': self._id_generator.next_id(),
+            'request_id': self._next_request_id(),
             'timestamp': time.time()
         };
         self._request_queue.put(shutdown_req);
@@ -508,7 +514,7 @@ impl WorkerManager.compile_file(
         _mgr_debug(f"Cancelling in-progress request: {self._current_request_id}");
         self.cancel_current();
     }
-    request_id = self._id_generator.next_id();
+    request_id = self._next_request_id();
     self._current_request_id = request_id;
     _mgr_debug(f"Created request: {request_id}");
     # Use dict for IPC (pickle compatibility)
@@ -533,7 +539,7 @@ impl WorkerManager.compile_all(callback: Optional[Callable] = None) -> str {
     if not self.is_running() {
         self.start();
     }
-    request_id = self._id_generator.next_id();
+    request_id = self._next_request_id();
     # Use dict for IPC (pickle compatibility)
     request = {
         'request_type': 'COMPILE_ALL',
@@ -718,7 +724,7 @@ impl WorkerManager.ping(timeout_ms: float = 1000) -> bool {
     if not self.is_running() {
         return False;
     }
-    request_id = self._id_generator.next_id();
+    request_id = self._next_request_id();
     request = {
         'request_type': 'PING',
         'request_id': request_id,

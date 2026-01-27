@@ -39,7 +39,7 @@ impl JacLangServer.postinit -> None {
 
     # Initialize and start scheduler
     config = SchedulerConfig.default();
-    self.debug(f"Scheduler config: backoff={config.user_activity_backoff_ms}ms, max_pending={config.max_pending_files}");
+    self.debug(f"Scheduler config: debounce={config.debounce_ms}ms");
     self._scheduler = AnalysisScheduler(
         _config=config,
         _snapshot_manager=self._snapshot_manager

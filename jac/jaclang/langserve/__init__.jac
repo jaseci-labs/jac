@@ -1,19 +1,17 @@
 """Jaclang langserve package.
 
-Production-grade Language Server Protocol implementation for Jaclang.
+Simplified Language Server Protocol implementation for Jaclang.
 
 Architecture:
-- Multiprocess: Worker process handles CPU-bound compilation (bypasses GIL)
-- Scheduler: Intelligent scheduling with user-activity backoff
+- Single worker process handles CPU-bound compilation (bypasses GIL)
+- Scheduler: Simple debounce + cancel-on-new-edit
 - Snapshots: Immutable state for lock-free foreground queries
-- Cancellation: Full request cancellation support
 
 Components:
 - JacLangServer: Main LSP server (engine.jac)
-- AnalysisScheduler: Manages analysis queue with priorities (scheduler.jac)
+- AnalysisScheduler: Simple debounce scheduler (scheduler.jac)
 - CompilationWorker: Background compilation process (worker.jac)
 - ProgramSnapshot: Immutable program state (snapshot.jac)
-- CancellationToken: Task cancellation (cancellation.jac)
 """
 
 import logging;
@@ -59,8 +57,7 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> None 
 
 """Re-export key components."""
 import from .engine { JacLangServer }
-import from .scheduler { AnalysisScheduler, SchedulerConfig, AnalysisPriority }
+import from .scheduler { AnalysisScheduler, SchedulerConfig }
 import from .worker { WorkerManager, WorkerConfig, WorkerHealth }
 import from .snapshot { ProgramSnapshot, SnapshotManager }
-import from .cancellation { CancellationToken, CancellationTokenSource }
-import from .ipc { RequestIdGenerator }
+import from .cancellation { OperationCancelledException, CancellationToken, CancellationTokenSource }

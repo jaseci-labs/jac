@@ -11,7 +11,6 @@ import time;
 import from typing { Optional, Callable, Any }
 import from queue { Empty }
 
-import from .ipc { RequestIdGenerator }
 import from .snapshot { ProgramSnapshot }
 import from .sem_manager { SemTokManager }
 
@@ -97,7 +96,7 @@ obj WorkerManager {
         _shutdown_event: Any | None = None,
         _cancel_event: Any | None = None,
         _config: WorkerConfig | None = None,
-        _id_generator: RequestIdGenerator | None = None,
+        _request_counter: int = 0,
         _pending_requests: dict | None = None,
         _current_request_id: str | None = None,
         _restart_count: int = 0,
@@ -113,6 +112,8 @@ obj WorkerManager {
         _health_callback: Callable | None = None;
 
     def postinit -> None;
+    """Generate next request ID (simple counter)."""
+    def _next_request_id -> str;
     """Start the worker process."""
     def start -> None;
 
