@@ -398,9 +398,19 @@ impl WorkerManager.postinit -> None {
     self._logger = logging.getLogger("jac.worker_manager");
     self._running = False;
     self._snapshot_callback = None;
+    self._diagnostics_callback = None;
     self._health_callback = None;
     self._current_request_id = None;
     self._restart_count = 0;
+    # Debounce scheduling
+    self._pending_uri = None;
+    self._pending_source = None;
+    self._timer = None;
+    self._timer_lock = threading.Lock();
+    self._last_activity = 0;
+    self._analysis_in_progress = False;
+    # Snapshot manager
+    self._snapshot_manager = SnapshotManager();
     # Health monitoring
     self._health_status = WorkerHealth.DEAD;
     self._last_health_check = 0;
@@ -560,6 +570,150 @@ impl WorkerManager.cancel_current -> None {
         self._cancel_event.set();
         self._logger.debug("Cancellation requested");
     }
+    self._analysis_in_progress = False;
+}
+
+"""Schedule a file for analysis with debouncing."""
+impl WorkerManager.schedule_file(file_uri: str, source: str) -> None {
+    _mgr_debug(f"schedule_file: {file_uri} ({len(source)} chars)");
+    if not self._running {
+        _mgr_debug("Not running, starting worker first");
+        self.start();
+    }
+    # Record activity
+    self._last_activity = time.time();
+    # Replace any pending (most recent edit wins)
+    self._pending_uri = file_uri;
+    self._pending_source = source;
+    # Cancel current analysis if in progress
+    if self._analysis_in_progress {
+        _mgr_debug("Cancelling in-progress analysis");
+        self.cancel_current();
+    }
+    # Reset debounce timer
+    self._reset_timer();
+}
+
+impl WorkerManager.has_pending -> bool {
+    return self._pending_uri is not None;
+}
+
+impl WorkerManager.is_analyzing -> bool {
+    return self._analysis_in_progress;
+}
+
+impl WorkerManager.is_busy -> bool {
+    has_timer = False;
+    with self._timer_lock {
+        has_timer = self._timer is not None and self._timer.is_alive();
+    }
+    return self.has_pending() or has_timer or self._analysis_in_progress;
+}
+
+impl WorkerManager._on_timer_expired -> None {
+    _mgr_debug("Timer expired");
+    if not self._running {
+        return;
+    }
+    # Check if enough time has passed since last activity
+    elapsed = (time.time() - self._last_activity) * 1000;
+    if elapsed < self._config.debounce_ms {
+        # User still active, reset timer for remaining time
+        remaining = self._config.debounce_ms - elapsed;
+        _mgr_debug(f"User still active, resetting timer for {remaining:.0f}ms");
+        with self._timer_lock {
+            self._timer = threading.Timer(remaining / 1000.0, self._on_timer_expired);
+            self._timer.daemon = True;
+            self._timer.start();
+        }
+        return;
+    }
+    # Start processing pending file
+    _mgr_debug(f"Debounce complete ({elapsed:.0f}ms elapsed), processing");
+    self._process_pending();
+}
+
+impl WorkerManager._reset_timer -> None {
+    with self._timer_lock {
+        if self._timer is not None {
+            self._timer.cancel();
+            self._timer = None;
+        }
+        delay_sec = self._config.debounce_ms / 1000.0;
+        self._timer = threading.Timer(delay_sec, self._on_timer_expired);
+        self._timer.daemon = True;
+        self._timer.start();
+    }
+}
+
+impl WorkerManager._cancel_timer -> None {
+    with self._timer_lock {
+        if self._timer is not None {
+            self._timer.cancel();
+            self._timer = None;
+        }
+    }
+}
+
+impl WorkerManager._process_pending -> None {
+    _mgr_debug("_process_pending called");
+    if not self._running {
+        return;
+    }
+    if self._pending_uri is None {
+        _mgr_debug("No pending file");
+        self._analysis_in_progress = False;
+        return;
+    }
+    file_uri = self._pending_uri;
+    source = self._pending_source;
+    self._pending_uri = None;
+    self._pending_source = None;
+    _mgr_debug(f"Processing: {file_uri}");
+    self._analysis_in_progress = True;
+    # Send to worker
+    self.compile_file(file_uri=file_uri, source=source);
+}
+
+impl WorkerManager._on_snapshot_received(snapshot: ProgramSnapshot) -> None {
+    _mgr_debug(f"Snapshot received: v{snapshot.version}, {len(snapshot.hub)} files");
+    self._analysis_in_progress = False;
+    # Update snapshot manager
+    if self._snapshot_manager is not None {
+        self._snapshot_manager.update_snapshot(snapshot);
+    }
+    # Call snapshot callback
+    if self._snapshot_callback is not None {
+        try {
+            self._snapshot_callback(snapshot);
+        } except Exception as e {
+            self._logger.error(f"Snapshot callback error: {e}");
+        }
+    }
+    # Call diagnostics callback
+    if self._diagnostics_callback is not None {
+        try {
+            self._diagnostics_callback(snapshot);
+        } except Exception as e {
+            self._logger.error(f"Diagnostics callback error: {e}");
+        }
+    }
+    # Check if more pending work
+    if self._pending_uri is not None {
+        _mgr_debug("More pending work, scheduling");
+        self._reset_timer();
+    }
+}
+
+impl WorkerManager.set_diagnostics_callback(callback: Callable) -> None {
+    self._diagnostics_callback = callback;
+}
+
+impl WorkerManager.get_snapshot -> Optional[ProgramSnapshot] {
+    if self._snapshot_manager is not None {
+        return self._snapshot_manager.get_snapshot();
+    }
+    return None;
 }
 
 impl WorkerManager.poll_responses -> list {
@@ -675,14 +829,10 @@ impl WorkerManager._process_response_dict(response_dict: dict) -> None {
         }
     }
 
-    # If success and has snapshot, call snapshot callback
+    # If success and has snapshot, handle it
     success = response_dict.get('success', False);
-    if success and snapshot is not None and self._snapshot_callback {
-        try {
-            self._snapshot_callback(snapshot);
-        } except Exception as e {
-            self._logger.error(f"Snapshot callback error: {e}");
-        }
+    if success and snapshot is not None {
+        self._on_snapshot_received(snapshot);
     }
 }
 

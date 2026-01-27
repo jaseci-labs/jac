@@ -1,8 +1,7 @@
-"""Implementation of JacLangServer - production-grade LSP engine.
+"""Implementation of JacLangServer - simplified LSP engine.
 
-This implementation uses a scheduler-first architecture:
-- All analysis is routed through AnalysisScheduler
-- Worker process handles CPU-bound compilation
+Single worker process architecture:
+- WorkerManager handles compilation with debounce scheduling
 - Immutable snapshots enable lock-free foreground queries
 - Full LSP request cancellation support
 """
@@ -12,15 +11,12 @@ import time;
 import logging;
 
 
-
-"""Initialize JacLangServer with scheduler-based architecture."""
+"""Initialize JacLangServer with worker-based architecture."""
 impl JacLangServer.postinit -> None {
     LanguageServer.init(self, 'jac-lsp', 'v0.1');
     JacProgram.init(self);
 
-    # Initialize logger (for compatibility, but we primarily use debug())
     self._logger = logging.getLogger("jac.lsp");
-
     self.debug("Initializing JacLangServer...");
 
     # Initialize module manager
@@ -37,17 +33,14 @@ impl JacLangServer.postinit -> None {
     self._snapshot_manager.initialize_empty();
     self.debug("Snapshot manager initialized");
 
-    # Initialize and start scheduler
-    config = SchedulerConfig.default();
-    self.debug(f"Scheduler config: debounce={config.debounce_ms}ms");
-    self._scheduler = AnalysisScheduler(
-        _config=config,
-        _snapshot_manager=self._snapshot_manager
-    );
-    self._scheduler.set_diagnostics_callback(self._on_scheduler_diagnostics);
-    self._scheduler.start();
+    # Initialize and start worker manager
+    config = WorkerConfig.default();
+    self.debug(f"Worker config: debounce={config.debounce_ms}ms");
+    self._worker_manager = WorkerManager(_config=config);
+    self._worker_manager.set_diagnostics_callback(self._on_worker_diagnostics);
+    self._worker_manager.start();
 
-    self.debug("Scheduler started - JacLangServer ready");
+    self.debug("Worker started - JacLangServer ready");
 }
 
 """Shutdown the language server."""
@@ -63,12 +56,12 @@ impl JacLangServer.shutdown -> None {
         # Stop response polling task
         self.stop_response_polling();
 
-        # Stop scheduler (which stops the worker)
-        if self._scheduler is not None {
-            self.debug("Stopping scheduler...");
-            self._scheduler.stop();
-            self._scheduler = None;
-            self.debug("Scheduler stopped");
+        # Stop worker
+        if self._worker_manager is not None {
+            self.debug("Stopping worker...");
+            self._worker_manager.stop();
+            self._worker_manager = None;
+            self.debug("Worker stopped");
         }
     } finally {
         super.shutdown();
@@ -446,9 +439,9 @@ impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
 """Wait for all pending analysis to complete."""
 impl JacLangServer.wait_till_idle -> None {
     self.debug("Waiting for analysis to complete...");
-    if self._scheduler is not None {
+    if self._worker_manager is not None {
         # Wait for scheduler to finish ALL work: pending queue, backoff timer, and current analysis
-        while self._scheduler.is_busy() {
+        while self._worker_manager.is_busy() {
             await asyncio.sleep(0.05);
         }
     }
@@ -458,9 +451,9 @@ impl JacLangServer.wait_till_idle -> None {
 """Synchronous version of wait_till_idle for testing."""
 impl JacLangServer.wait_till_idle_sync -> None {
     self.debug("Waiting for analysis to complete (sync)...");
-    if self._scheduler is not None {
+    if self._worker_manager is not None {
         # Wait for scheduler to finish ALL work: pending queue, backoff timer, and current analysis
-        while self._scheduler.is_busy() {
+        while self._worker_manager.is_busy() {
             time.sleep(0.05);
         }
     }
@@ -639,9 +632,9 @@ impl JacLangServer.diagnostics -> dict[str, list] {
 
 """Schedule a file for analysis."""
 impl JacLangServer.schedule_analysis(file_uri: str, source: str) -> None {
-    if self._scheduler is not None {
+    if self._worker_manager is not None {
         self.debug(f"Scheduling analysis: {file_uri} ({len(source)} chars)");
-        self._scheduler.schedule_file(file_uri, source);
+        self._worker_manager.schedule_file(file_uri, source);
     } else {
         self.debug(f"Cannot schedule analysis - scheduler not initialized");
     }
@@ -654,32 +647,23 @@ impl JacLangServer.on_file_opened(file_uri: str) -> None {
     if self._polling_task is None {
         self.start_response_polling();
     }
-    if self._scheduler is not None {
-        self._scheduler.mark_file_open(file_uri);
-    }
 }
 
 """Called when a file is closed in the editor."""
 impl JacLangServer.on_file_closed(file_uri: str) -> None {
     self.debug(f"File closed: {file_uri}");
-    if self._scheduler is not None {
-        self._scheduler.mark_file_closed(file_uri);
-    }
 }
 
 """Called when a file gains focus in the editor."""
 impl JacLangServer.on_file_focused(file_uri: str) -> None {
     self.debug(f"File focused: {file_uri}");
-    if self._scheduler is not None {
-        self._scheduler.set_focused_file(file_uri);
-    }
 }
 
 """Handle diagnostics from the scheduler.
 
 Called when the worker completes analysis and provides a new snapshot.
 """
-impl JacLangServer._on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None {
+impl JacLangServer._on_worker_diagnostics(snapshot: ProgramSnapshot) -> None {
     self.debug(f"Received snapshot v{snapshot.version}: {len(snapshot.hub)} files, {len(snapshot.errors)} errors, {len(snapshot.warnings)} warnings");
 
     # Sync snapshot to main process state
@@ -806,8 +790,8 @@ impl JacLangServer._response_polling_loop -> None {
     while not self._shutdown_called {
         try {
             # Poll worker responses from scheduler
-            if self._scheduler is not None {
-                self._scheduler.process_worker_responses();
+            if self._worker_manager is not None {
+                self._worker_manager.process_pending_responses();
             }
             await asyncio.sleep(interval_sec);
         } except asyncio.CancelledError {

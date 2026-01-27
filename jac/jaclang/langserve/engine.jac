@@ -1,12 +1,10 @@
 """Living Workspace of Jac project.
 
-Production-grade LSP server with multiprocess architecture for bypassing
-Python's GIL during type checking. Uses immutable snapshots for lock-free
-foreground queries and a dedicated worker process for background analysis.
+Simplified LSP server with single worker process architecture.
 
 Architecture:
-- Main Process: LSP handlers, scheduler, query dispatch
-- Worker Process: Compilation, type checking (CPU-bound)
+- Main Process: LSP handlers, query dispatch
+- Worker Process: Compilation with debounce scheduling
 - IPC: multiprocessing.Queue for request/response
 - Sync: Immutable snapshots + atomic swap (no locking for reads)
 """
@@ -39,28 +37,26 @@ import from jaclang.vendor.pygls.server { LanguageServer }
 import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
-import from .scheduler { AnalysisScheduler, SchedulerConfig }
+import from .worker { WorkerManager, WorkerConfig }
 import from .snapshot { SnapshotManager, ProgramSnapshot }
 import from .cancellation { CancellationToken, CancellationTokenSource }
 
 with entry{
-    # Suppress noisy external library logs - we use our own debug() for internal logging
     logging.getLogger().setLevel(logging.CRITICAL);
 }
 
 """Jac Language Server, manages JacProgram and LSP.
 
-Uses a multiprocess architecture with:
-- Scheduler: Manages analysis priority queue with user-activity backoff
-- Worker: Separate process for CPU-bound compilation
+Uses single worker process architecture:
+- Worker: Background process with debounce scheduling
 - Snapshots: Immutable state for lock-free foreground queries
 """
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
         module_manager: ModuleManager | None = None,
         _shutdown_called: bool = False,
-        # Scheduler-based analysis
-        _scheduler: AnalysisScheduler | None = None,
+        # Worker-based analysis
+        _worker_manager: WorkerManager | None = None,
         _snapshot_manager: SnapshotManager | None = None,
         # LSP request tracking for cancellation
         _pending_requests: Dict[str, CancellationTokenSource] | None = None,
@@ -80,22 +76,14 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def get_ir(file_path: str) -> Optional[uni.Module];
     def update_modules(file_path: str, build: uni.Module, need: bool = True) -> None;
 
-    """Request type checking for a file.
-
-    This schedules analysis via the scheduler, which dispatches to the
-    worker process. Compilation does NOT happen in the main process.
-    """
+    """Request type checking for a file."""
     def type_check(file_uri: str) -> None;
 
-    """Synchronous type check for testing.
-
-    Schedules analysis and waits for completion. This is a blocking call
-    that should only be used in tests, not in production LSP handlers.
-    """ 
+    """Synchronous type check for testing."""
     def type_check_file(file_uri: str) -> bool;
 
     def get_token_at_position(
-        file_path: str, position: lspt.Position      
+        file_path: str, position: lspt.Position
     ) -> Optional[uni.AstNode];
 
     def debug(msg: str) -> None;
@@ -138,7 +126,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def log_py(message: str) -> None;
     def shutdown -> None;
 
-    # Scheduler integration methods
     """Schedule a file for analysis."""
     def schedule_analysis(file_uri: str, source: str) -> None;
 
@@ -148,17 +135,17 @@ obj JacLangServer(JacProgram, LanguageServer) {
     """Mark a file as closed in editor."""
     def on_file_closed(file_uri: str) -> None;
 
-    """Mark a file as focused (for priority)."""
+    """Mark a file as focused."""
     def on_file_focused(file_uri: str) -> None;
 
-    """Handle diagnostics from scheduler."""
-    def _on_scheduler_diagnostics(snapshot: ProgramSnapshot) -> None;
+    """Handle diagnostics from worker."""
+    def _on_worker_diagnostics(snapshot: ProgramSnapshot) -> None;
 
     """Sync snapshot data to main process state."""
     def _sync_snapshot_to_state(snapshot: ProgramSnapshot) -> None;
 
     # LSP Request cancellation support
-    """Register a pending LSP request for cancellation tracking."""
+    """Register a pending LSP request."""
     def register_request(request_id: str) -> CancellationToken;
 
     """Unregister a completed LSP request."""
@@ -167,7 +154,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     """Cancel a pending LSP request."""
     def cancel_request(request_id: str) -> None;
 
-    """Get current snapshot for queries (non-blocking)."""
+    """Get current snapshot."""
     def get_current_snapshot -> Optional[ProgramSnapshot];
 
     # Async response polling
