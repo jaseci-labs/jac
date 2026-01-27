@@ -1617,15 +1617,16 @@ impl JacAPIServer.start(dev: bool = False) -> None {
         if bundle_error {
             import from jaclang.cli.console { console }
             import sys;
-            
-            console.print('\n' + '='*70, file=sys.stderr);
+            console.print('\n' + '=' * 70, file=sys.stderr);
             console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
-            console.print('='*70, file=sys.stderr);
+            console.print('=' * 70, file=sys.stderr);
             console.print(file=sys.stderr);
             console.print(bundle_error, file=sys.stderr);
             console.print(file=sys.stderr);
-            console.warning('Client pages will not be available until this is fixed.', emoji=True);
-            console.print('='*70 + '\n', file=sys.stderr);
+            console.warning(
+                'Client pages will not be available until this is fixed.', emoji=True
+            );
+            console.print('=' * 70 + '\n', file=sys.stderr);
         }
         try {
             httpd.serve_forever();
