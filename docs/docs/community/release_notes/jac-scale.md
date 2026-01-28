@@ -6,51 +6,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.
 
+- **Storage Abstraction**: Introduced a pluggable storage abstraction layer for file operations. Includes an abstract `Storage` interface defining standard operations (upload, download, delete, list, copy, move, get_metadata), a default `LocalStorage` implementation in `jaclang.runtimelib.storage`, and a hookable `store()` builtin that returns a configured `Storage` instance. Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` environment variables.
+
+- **PyPI Installation by Default**: Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments. Use `jac start app.jac --scale` for default behavior, or `jac start app.jac --scale --experimental` to fall back to repo clone.
+
+- **New CLI Flag `--experimental`**: Added `--experimental` (`-e`) flag to `jac start --scale` command. When enabled, falls back to the previous behavior of cloning the Jaseci repository and installing packages in editable mode. Useful for testing unreleased changes.
+
+- **Version Pinning via `plugin_versions` Configuration**: Added `plugin_versions` configuration in `jac.toml` to pin specific package versions. Configure under `[plugins.scale.kubernetes.plugin_versions]` with keys like `jaclang`, `jac_scale`, `jac_client`, `jac_byllm`. Values can be version strings (e.g., `"0.1.5"`), `"latest"`, or `"none"` to skip installation. Defaults to `"latest"` for all packages.
+
 - **Internal**: Explicitly declared all postinit fields across the codebase.
-
-### New Features
-
-#### Storage Abstraction
-
-Introduced a pluggable storage abstraction layer for file operations.
-- **Abstract Storage Interface**: Base `Storage` class defining standard file operations (upload, download, delete, list, copy, move, get_metadata)
-- **LocalStorage**: Default local filesystem implementation in `jaclang.runtimelib.storage`
-- **`store()` builtin**: Hookable function that returns a configured `Storage` instance
-- **Configuration**: Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` env vars
-
-### PyPI Installation by Default
-
-Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments.
-
-**Default behavior (PyPI installation):**
-
-```bash
-jac start app.jac --scale
-```
-
-**Experimental mode (repo clone - previous behavior):**
-
-```bash
-jac start app.jac --scale --experimental
-```
-
-### New CLI Flag: `--experimental`
-
-Added `--experimental` (`-e`) flag to `jac start --scale` command. When enabled, falls back to the previous behavior of cloning the Jaseci repository and installing packages in editable mode. Useful for testing unreleased changes.
-
-### Version Pinning via `plugin_versions` Configuration
-
-Added `plugin_versions` configuration in `jac.toml` to pin specific package versions:
-
-```toml
-[plugins.scale.kubernetes.plugin_versions]
-jaclang = "0.1.5"      # or "latest"
-jac_scale = "0.1.1"    # or "latest"
-jac_client = "0.1.0"   # or "latest"
-jac_byllm = "none"     # use "none" to skip installation (will insall elvant byllm version)
-```
-
-When not specified, defaults to `"latest"` for all packages.
 
 ## jac-scale 0.1.1 (Latest Release)
 
