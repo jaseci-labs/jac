@@ -64,11 +64,6 @@ impl check(
                 total_files += 1;
                 print('Checking ' + path + ' ...');
                 (success, errs, warns) = check_single_file(prog, path);
-                (success, errs, warns) = check_single_file(prog, path);
-                (success, errs, warns) = check_single_file(prog, path);
-                (success, errs, warns) = check_single_file(prog, path);
-                (success, errs, warns) = check_single_file(prog, path);
-                (success, errs, warns) = check_single_file(prog, path);
                 total_errors += errs;
                 total_warnings += warns;
                 if not success {

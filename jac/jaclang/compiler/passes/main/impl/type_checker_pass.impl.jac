@@ -111,19 +111,6 @@ impl TypeCheckPass.exit_import(self: TypeCheckPass, <>node: uni.Import) -> None 
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 """Enter an ability node."""
 impl TypeCheckPass.enter_ability(self: TypeCheckPass, <>node: uni.Ability) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
