@@ -101,10 +101,11 @@ class Constants(StrEnum):
 
 
 class CodeContext(Enum):
-    """Code execution context for client/server separation."""
+    """Code execution context for client/server/native separation."""
 
     SERVER = "server"  # Default: runs on server (Python)
     CLIENT = "client"  # Runs on client (JavaScript/browser)
+    NATIVE = "native"  # Runs as native binary (LLVM IR)
 
     def __str__(self) -> str:
         """Return the string representation of the context."""
@@ -119,6 +120,11 @@ class CodeContext(Enum):
     def is_client(self) -> bool:
         """Check if this is client context."""
         return self == CodeContext.CLIENT
+
+    @property
+    def is_native(self) -> bool:
+        """Check if this is native context."""
+        return self == CodeContext.NATIVE
 
 
 class EdgeDir(Enum):
@@ -264,6 +270,7 @@ class Tokens(str, Enum):
     KW_DEFAULT = "KW_DEFAULT"
     KW_CLIENT = "KW_CLIENT"
     KW_SERVER = "KW_SERVER"
+    KW_NATIVE = "KW_NATIVE"
     PLUS = "PLUS"
     MINUS = "MINUS"
     STAR_MUL = "STAR_MUL"

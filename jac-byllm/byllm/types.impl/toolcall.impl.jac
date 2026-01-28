@@ -9,10 +9,7 @@ impl ToolCall.__call__ -> ToolCallResultMsg {
         raise ValueError("args is None, Expected a dictionary") ;
     }
     return ToolCallResultMsg(
-        role=MessageRole.TOOL,
-        content=str(result),
-        tool_call_id=self.call_id,
-        name=self.tool.get_name(),
+        content=str(result), tool_call_id=self.call_id, name=self.tool.get_name(),
     );
 }
 

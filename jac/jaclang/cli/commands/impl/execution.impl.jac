@@ -29,7 +29,7 @@ the jac.toml in /path/to/project/ is found and used for plugin configuration.
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig, set_config }
-    import from jaclang.project.dependencies { add_packages_to_path }
+    import from jaclang.project.dependencies { add_venv_to_path }
 
     file_path = Path(filename).resolve();
     file_dir = file_path.parent;
@@ -38,7 +38,7 @@ def _discover_config_from_file(filename: str) -> None {
     config = JacConfig.discover(start_path=file_dir);
     if config is not None {
         set_config(config);
-        add_packages_to_path(config);
+        add_venv_to_path(config);
     }
 }
 
@@ -310,6 +310,7 @@ impl start(
 def _check_watchdog_available -> bool {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
+    import from jaclang.project.dependencies { get_venv_site_packages }
 
     config = get_config();
     if config is None {
@@ -321,13 +322,13 @@ def _check_watchdog_available -> bool {
             return False;
         }
     }
-    # Check if watchdog is installed in the project's packages directory
-    packages_dir = config.get_packages_dir();
-    if packages_dir.exists() {
-        # Add packages dir to path temporarily to check
+    # Check if watchdog is installed in the project's venv
+    site_packages = get_venv_site_packages(config.get_venv_dir());
+    if site_packages.exists() {
+        # Add site-packages to path temporarily to check
         import sys;
         original_path = sys.path.copy();
-        sys.path.insert(0, str(packages_dir));
+        sys.path.insert(0, str(site_packages));
         try {
             import watchdog;
             return True;

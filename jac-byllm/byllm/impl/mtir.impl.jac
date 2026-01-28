@@ -14,29 +14,69 @@ glob SYSTEM_PERSONA = """\
 Builds the message history with system persona, user input, and any media.
 Prepares tools including the finish_tool for ReAct-style interactions.
 """
-impl MTRuntime.factory(
-    caller: Callable, args: dict[int | str, object], call_params: dict[str, object]
-) -> MTRuntime {
+impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare the tools for the LLM call.
-    tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
+    caller = mtir.caller;
+    args = mtir.args;
+    call_params = mtir.call_params;
+    ir_info = mtir.ir_info;
+    # Check if we have MTIR info (Jac mode) or need runtime introspection (Python lib mode)
+    has_mtir = ir_info is not None;
+    # Prepare tools with or without MTIR info
+    if has_mtir {
+        tools = [
+            Tool(func, info=ir_info.tools[i] if i < len(ir_info.tools) else None)
+            for (i, func) in enumerate(call_params.get("tools", []))
+        ];  # type: ignore
+    } else {
+        # Python library mode: create tools without MTIR info
+        tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
+    }
     # Construct the input information from the arguments.
-    param_names = list(inspect.signature(caller).parameters.keys());
     inputs_detail: list[str] = [];
-    media_inputs: list[Media] = [];
-    for (key, value) in args.items() {
-        if isinstance(value, Media) {
-            media_inputs.append(value);
-            continue;
-        }
+    media_inputs: list = [];  # Can be list[Media] or list[tuple[Media, str]] depending on mode
+    if has_mtir {
+        # MTIR mode: use compile-time extracted param info with semantic strings
+        params = [param for param in ir_info.params];
+        for (key, value) in args.items() {
+            idx = list(args.keys()).index(key);
+            if isinstance(value, Media) {
+                media_inputs.append((value, params[idx].semstr or ""));
+                continue;
+            }
 
-        if isinstance(key, str) {
-            inputs_detail.append(f"{key} = {value}");
-        } else {
-            # TODO: Handle *args, **kwargs properly.
-            if key < len(param_names) {
-                inputs_detail.append(f"{param_names[key]} = {value}");
+            if isinstance(key, str) {
+                inputs_detail.append(f"{key} = {(value, params[idx].semstr or "")}");
             } else {
-                inputs_detail.append(f"arg = {value}");
+                # TODO: Handle *args, **kwargs properly.
+                if key < len(params) {
+                    inputs_detail.append(
+                        f"{params[key].name} = {(value, params[idx].semstr or "")}"
+                    );
+                } else {
+                    inputs_detail.append(f"arg = {(value, params[idx].semstr or "")}");
+                }
+            }
+        }
+    } else {
+        # Python library mode: use runtime introspection (old behavior)
+        param_names = list(inspect.signature(caller).parameters.keys());
+        for (key, value) in args.items() {
+            if isinstance(value, Media) {
+                # Use tuple format for consistency, but without semantic strings
+                media_inputs.append((value, ""));
+                continue;
+            }
+
+            if isinstance(key, str) {
+                inputs_detail.append(f"{key} = {value}");
+            } else {
+                # TODO: Handle *args, **kwargs properly.
+                if key < len(param_names) {
+                    inputs_detail.append(f"{param_names[key]} = {value}");
+                } else {
+                    inputs_detail.append(f"arg = {value}");
+                }
             }
         }
     }
@@ -44,14 +84,29 @@ impl MTRuntime.factory(
     if incl_info and isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
             if isinstance(value, Media) {
-                media_inputs.append(value);
+                # Always use tuple format for consistency
+                media_inputs.append((value, ""));
             } else {
-                inputs_detail.append(f"{key} = {value}");
+                if has_mtir {
+                    inputs_detail.append(f"{key} = {(value, "")}");
+                } else {
+                    inputs_detail.append(f"{key} = {value}");
+                }
             }
         }
     }
     if isinstance(caller, MethodType) {
-        inputs_detail.insert(0, f"self = {caller.__self__}");
+        if has_mtir {
+            inputs_detail.insert(
+                0,
+                f"self = {(
+                    caller.__self__,
+                    ir_info.parent_class.semstr if ir_info.parent_class else ''
+                )}"
+            );
+        } else {
+            inputs_detail.insert(0, f"self = {caller.__self__}");
+        }
     }
     # System prompt: Config from jac.toml or default SYSTEM_PERSONA
     system_content = SYSTEM_PERSONA;
@@ -107,6 +162,7 @@ impl MTRuntime.factory(
         resp_type=return_type,
         stream=is_streaming,
         call_params=call_params,
+        mtir=mtir
     );
 }
 
@@ -175,7 +231,11 @@ impl MTRuntime.get_output_schema -> dict | None {
             return None;  # Strings are default and not using a schema.
 
         }
-        return type_to_schema(self.resp_type);
+        # Use MTIR info if available, otherwise None (Python library mode)
+        return_type_info = (
+            self.mtir.ir_info.return_type if self.mtir.ir_info else None
+        );
+        return type_to_schema(resp_type=self.resp_type, info=return_type_info);
     }
     # If the are tools, the final output will be sent to the finish_tool
     # thus there is no output schema.

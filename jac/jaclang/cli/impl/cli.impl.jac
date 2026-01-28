@@ -78,13 +78,13 @@ impl start_cli -> None {
 def _load_project_config -> None {
     try {
         import from jaclang.project.config { get_config, set_config }
-        import from jaclang.project.dependencies { add_packages_to_path }
+        import from jaclang.project.dependencies { add_venv_to_path }
 
         # Auto-discover jac.toml
         config = get_config();
         if config is not None {
-            # Add packages/ directory to Python path
-            add_packages_to_path(config);
+            # Add venv site-packages to Python path
+            add_venv_to_path(config);
         }
 
         # Initialize plugin-registered dependency types
