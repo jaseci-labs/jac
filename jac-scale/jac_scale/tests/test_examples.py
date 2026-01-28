@@ -19,6 +19,8 @@ JacClientExamples = (
     / "examples"
 )
 
+JacScaleFixtures = Path(__file__).parent / "fixtures"
+
 
 def get_free_port() -> int:
     """Get a free port by binding to port 0 and releasing it."""
@@ -511,75 +513,6 @@ class TestJacClientExamples:
                 == "Static file not found"
             )
 
-            # ================================================================
-            # Storage API Tests - File Upload, List, Delete
-            # ================================================================
-            # Register a user to get auth token
-            runner.create_user("storage_test_user", "testpass123")
-
-            # Test file upload
-            test_content = b"Test content for storage API in all-in-one example"
-            upload_result = runner.upload_file(
-                walker_name="upload_file",
-                file_field="file",
-                filename="test_upload.txt",
-                content=test_content,
-                content_type="text/plain",
-                extra_data={"folder": "test_documents"},
-            )
-            reports = upload_result.get("reports", [])
-            assert len(reports) > 0, "Upload should return reports"
-            file_info = reports[0]
-            assert file_info["success"] is True
-            assert file_info["original_filename"] == "test_upload.txt"
-            assert "storage_path" in file_info
-            uploaded_path = file_info["storage_path"]
-            assert uploaded_path.startswith("test_documents/")
-            assert file_info["size"] == len(test_content)
-
-            # Test list files
-            list_result = runner.spawn_walker(  # type: ignore[arg-type]
-                "list_uploaded_files", folder="", recursive=True
-            )
-            reports = list_result.get("reports", [])
-            assert len(reports) > 0, "List should return reports"
-            list_info = reports[0]
-            assert "files" in list_info
-            assert "count" in list_info
-            assert list_info["count"] >= 1
-            file_paths = [f["path"] for f in list_info["files"]]
-            assert uploaded_path in file_paths
-
-            # Test delete file
-            delete_result = runner.spawn_walker(  # type: ignore[arg-type]
-                "delete_uploaded_file", path=uploaded_path
-            )
-            reports = delete_result.get("reports", [])
-            assert len(reports) > 0, "Delete should return reports"
-            delete_info = reports[0]
-            assert delete_info["success"] is True
-            assert delete_info["path"] == uploaded_path
-
-            # Verify file is deleted
-            list_result = runner.spawn_walker(  # type: ignore[arg-type]
-                "list_uploaded_files", folder="", recursive=True
-            )
-            reports = list_result.get("reports", [])
-            if reports:
-                list_info = reports[0]
-                file_paths = [f["path"] for f in list_info.get("files", [])]
-                assert uploaded_path not in file_paths
-
-            # Test delete nonexistent file
-            delete_result = runner.spawn_walker(  # type: ignore[arg-type]
-                "delete_uploaded_file", path="nonexistent/file.txt"
-            )
-            reports = delete_result.get("reports", [])
-            assert len(reports) > 0
-            delete_info = reports[0]
-            assert delete_info["success"] is False
-            assert delete_info["error"] == "File not found"
-
     def test_js_styling(self) -> None:
         """Test JS and styling example file."""
         # Point to your example file
@@ -618,3 +551,113 @@ class TestJacClientExamples:
         ) as runner:
             assert "/static/client.js" in runner.request_raw("GET", "/cl/app")
             assert "import styled from" in runner.request_raw("GET", "/styled.js")
+
+
+class TestJacScaleFeatures:
+    """Test jac-scale specific features using dedicated fixtures."""
+
+    def test_storage_api(self) -> None:
+        """Test Storage API with file upload, list, download, copy, move, delete."""
+        example_file = JacScaleFixtures / "scale-feats" / "main.jac"
+        with JacScaleTestRunner(
+            example_file, session_name="storage_api_test", setup_npm=False
+        ) as runner:
+            # Health check
+            health = runner.spawn_walker("health")
+            assert health.get("reports", [[]])[0].get("status") == "ok"
+
+            # Register user for auth
+            runner.create_user("storage_user", "testpass123")
+
+            # Test file upload
+            test_content = b"Test content for storage API"
+            upload_result = runner.upload_file(
+                walker_name="upload_file",
+                file_field="file",
+                filename="test_file.txt",
+                content=test_content,
+                content_type="text/plain",
+                extra_data={"folder": "test_docs"},
+            )
+            reports = upload_result.get("reports", [])
+            assert len(reports) > 0, "Upload should return reports"
+            file_info = reports[0]
+            assert file_info["success"] is True
+            assert file_info["original_filename"] == "test_file.txt"
+            assert "storage_path" in file_info
+            uploaded_path = file_info["storage_path"]
+            assert uploaded_path.startswith("test_docs/")
+            assert file_info["size"] == len(test_content)
+
+            # Test file exists
+            exists_result = runner.spawn_walker("file_exists", path=uploaded_path)
+            reports = exists_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["exists"] is True
+
+            # Test list files
+            list_result = runner.spawn_walker("list_files", folder="", recursive=True)
+            reports = list_result.get("reports", [])
+            assert len(reports) > 0
+            list_info = reports[0]
+            assert "files" in list_info
+            assert list_info["count"] >= 1
+            file_paths = [f["path"] for f in list_info["files"]]
+            assert uploaded_path in file_paths
+
+            # Test download file
+            download_result = runner.spawn_walker("download_file", path=uploaded_path)
+            reports = download_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["success"] is True
+            assert reports[0]["content_length"] == len(test_content)
+
+            # Test copy file
+            copy_dest = "test_docs/copied_file.txt"
+            copy_result = runner.spawn_walker(
+                "copy_file", source=uploaded_path, destination=copy_dest
+            )
+            reports = copy_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["success"] is True
+
+            # Verify copy exists
+            exists_result = runner.spawn_walker("file_exists", path=copy_dest)
+            assert exists_result.get("reports", [[]])[0]["exists"] is True
+
+            # Test move file
+            move_dest = "test_docs/moved_file.txt"
+            move_result = runner.spawn_walker(
+                "move_file", source=copy_dest, destination=move_dest
+            )
+            reports = move_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["success"] is True
+
+            # Verify move: source gone, dest exists
+            exists_result = runner.spawn_walker("file_exists", path=copy_dest)
+            assert exists_result.get("reports", [[]])[0]["exists"] is False
+            exists_result = runner.spawn_walker("file_exists", path=move_dest)
+            assert exists_result.get("reports", [[]])[0]["exists"] is True
+
+            # Test delete file
+            delete_result = runner.spawn_walker("delete_file", path=uploaded_path)
+            reports = delete_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["success"] is True
+
+            # Verify deleted
+            exists_result = runner.spawn_walker("file_exists", path=uploaded_path)
+            assert exists_result.get("reports", [[]])[0]["exists"] is False
+
+            # Test delete nonexistent file
+            delete_result = runner.spawn_walker(
+                "delete_file", path="nonexistent/file.txt"
+            )
+            reports = delete_result.get("reports", [])
+            assert len(reports) > 0
+            assert reports[0]["success"] is False
+            assert reports[0]["error"] == "File not found"
+
+            # Cleanup: delete moved file
+            runner.spawn_walker("delete_file", path=move_dest)

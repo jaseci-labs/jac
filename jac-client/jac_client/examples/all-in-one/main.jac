@@ -1,8 +1,4 @@
 import from datetime { datetime, timedelta }
-import from fastapi { UploadFile }
-import from uuid { uuid4 }
-
-glob storage = get_storage({'base_path': './uploads'});
 
 #
 # Basic backend walkers
@@ -33,69 +29,9 @@ walker:pub get_server_message {
     }
 }
 
-# Walker: File upload demonstration
-walker:pub upload_file {
-    has file: UploadFile,
-        folder: str = "documents";
-
-    can process with `root entry {
-        # Generate unique filename
-        ext = self.file.filename.rsplit('.', 1)[-1]
-        if '.' in self.file.filename
-        else '';
-        unique_name = f"{uuid4()}.{ext}" if ext else str(uuid4());
-        path = f"{self.folder}/{unique_name}";
-
-        # Upload file to storage
-        storage.upload(self.file.file, path);
-
-        # Get metadata
-        metadata = storage.get_metadata(path);
-
-        report {
-            "success": True,
-            "original_filename": self.file.filename,
-            "storage_path": path,
-            "size": metadata['size'],
-            "content_type": self.file.content_type
-        };
-    }
-}
-
-# Walker: List uploaded files
-walker:pub list_uploaded_files {
-    has folder: str = "",
-        recursive: bool = False;
-
-    can process with `root entry {
-        files = [];
-        for path in storage.list_files(self.folder, self.recursive) {
-            metadata = storage.get_metadata(path);
-            files.append(
-                {
-                    "path": path,
-                    "size": metadata['size'],
-                    "modified": str(metadata['modified'])
-                }
-            );
-        }
-        report {"files": files, "count": len(files)};
-    }
-}
-
-# Walker: Delete uploaded file
-walker:pub delete_uploaded_file {
-    has path: str;
-
-    can process with `root entry {
-        if not storage.exists(self.path) {
-            report {"success": False, "error": "File not found"};
-            return;
-        }
-        deleted = storage.delete(self.path);
-        report {"success": deleted, "path": self.path};
-    }
-}
+# Note: File upload walkers (upload_file, list_uploaded_files, delete_uploaded_file)
+# require jac-scale for FastAPI/UploadFile support.
+# See jac-scale/jac_scale/tests/fixtures/scale-feats/ for storage examples.
 
 #
 # Combined example: auth + routing + CSS styling + asset serving + nested folder imports
