@@ -5,8 +5,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.4.16 (Unreleased)
 
 - **MTIR-Powered Schema Generation**: `MTRuntime` now uses compile-time MTIR info for generating JSON schemas with semantic descriptions. Tool and return type schemas include semstrings extracted at compile time, providing richer context for LLM calls.
-
 - **Python Library Fallback Mode**: When MTIR is unavailable (e.g., using byLLM as a Python library without Jac compilation), the runtime gracefully falls back to introspection-based schema generation, maintaining backward compatibility.
+- **Internal**: Explicitly declared all postinit fields across the codebase.
+
+- **Internal refactors**: Removed orphaned files, etc.
 
 ## byllm 0.4.15 (Latest Release)
 
