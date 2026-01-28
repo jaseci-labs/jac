@@ -716,56 +716,6 @@ impl CompilationWorker.clear_cancellation -> None {
     }
 }
 
-impl CompilationWorker._make_pong_response(request_id: str) -> dict {
-    return {'request_id': request_id, 'success': True};
-}
-
-impl CompilationWorker._make_error_response(request_id: str, error_message: str) -> dict {
-    return {'request_id': request_id, 'success': False, 'error_message': error_message};
-}
-
-impl CompilationWorker._make_cancelled_response(request_id: str) -> dict {
-    return {'request_id': request_id, 'success': False, 'cancelled': True};
-}
-
-impl CompilationWorker.handle_compile_all_dict(request_dict: dict, program: Any, sem_managers: dict) -> dict {
-    # Lightweight response - just diagnostics, no AST transfer
-    all_diagnostics = {
-        'errors': [],
-        'warnings': []
-    };
-    for err in program.errors_had {
-        if err?.loc {
-            all_diagnostics['errors'].append({
-                'message': str(err.msg) if hasattr(err, 'msg') else str(err),
-                'file_path': err.loc.mod_path,
-                'line': err.loc.first_line - 1,
-                'character': err.loc.col_start - 1,
-                'end_line': err.loc.last_line - 1,
-                'end_character': err.loc.col_end - 1
-            });
-        }
-    }
-    for warn in program.warnings_had {
-        if warn?.loc {
-            all_diagnostics['warnings'].append({
-                'message': str(warn.msg) if hasattr(warn, 'msg') else str(warn),
-                'file_path': warn.loc.mod_path,
-                'line': warn.loc.first_line - 1,
-                'character': warn.loc.col_start - 1,
-                'end_line': warn.loc.last_line - 1,
-                'end_character': warn.loc.col_end - 1
-            });
-        }
-    }
-    return {
-        'request_id': request_dict.get('request_id', ''),
-        'success': True,
-        'diagnostics': all_diagnostics,
-        'hub_files': list(program.mod.hub.keys())
-    };
-}
-
 # ============== WorkerManager (runs in main process) ==============
 
 impl WorkerManager.postinit -> None {
@@ -780,7 +730,6 @@ impl WorkerManager.postinit -> None {
     self._timer_lock = threading.Lock();
     self._last_activity = 0;
     self._analysis_in_progress = False;
-    self._health_status = WorkerHealth.DEAD;
     self._foreground_queue = None;
 }
 
@@ -814,7 +763,6 @@ impl WorkerManager.start -> None {
     );
     self._process.start();
     self._running = True;
-    self._health_status = WorkerHealth.HEALTHY;
 }
 
 impl WorkerManager.stop -> None {
@@ -856,10 +804,6 @@ impl WorkerManager.schedule_file(file_uri: str) -> None {
 
 impl WorkerManager.has_pending -> bool {
     return self._pending_uri is not None;
-}
-
-impl WorkerManager.is_analyzing -> bool {
-    return self._analysis_in_progress;
 }
 
 impl WorkerManager.is_busy -> bool {
@@ -945,18 +889,6 @@ impl WorkerManager.compile_file(file_uri: str, callback: Optional[Callable] = No
     print(f"[WorkerMgr] compile_file: putting request {request_id} in queue", file=sys.stderr);
     self._request_queue.put(request);
     print(f"[WorkerMgr] compile_file: request queued", file=sys.stderr);
-    return request_id;
-}
-
-impl WorkerManager.compile_all(callback: Optional[Callable] = None) -> str {
-    if not self.is_running() {
-        self.start();
-    }
-    request_id = self._next_request_id();
-    self._request_queue.put({'request_type': 'COMPILE_ALL', 'request_id': request_id});
-    if callback {
-        self._pending_requests[request_id] = callback;
-    }
     return request_id;
 }
 
@@ -1107,7 +1039,6 @@ impl WorkerManager.process_pending_responses -> None {
     }
     if self._process and not self._process.is_alive() and self._running {
         self._running = False;
-        self._health_status = WorkerHealth.DEAD;
     }
 }
 
@@ -1178,32 +1109,6 @@ impl WorkerManager._handle_response(response: dict) -> None {
 
 impl WorkerManager.set_diagnostics_callback(callback: Callable) -> None {
     self._diagnostics_callback = callback;
-}
-
-impl WorkerManager.poll_responses -> list {
-    responses = [];
-    while True {
-        try {
-            responses.append(self._response_queue.get_nowait());
-        } except Empty {
-            break;
-        }
-    }
-    return responses;
-}
-
-impl WorkerManager._process_response_dict(response_dict: dict) -> None {
-    self._handle_response(response_dict);
-}
-
-impl WorkerManager._handle_crash -> None {
-    self._running = False;
-    self._health_status = WorkerHealth.DEAD;
-}
-
-
-impl WorkerManager.get_health -> WorkerHealth {
-    return self._health_status;
 }
 
 impl WorkerManager.ping(timeout_ms: float = 1000) -> bool {

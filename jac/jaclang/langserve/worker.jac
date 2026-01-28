@@ -18,7 +18,6 @@ import from typing { Optional, Callable, Any }
 enum RequestType {
     # Compilation
     COMPILE_FILE,
-    COMPILE_ALL,
     SHUTDOWN,
     # Foreground LSP requests (high priority - interrupt compilation)
     HOVER,
@@ -103,25 +102,11 @@ obj CompilationWorker {
     """Handle format request."""
     def handle_format(request: dict, program: Any) -> dict;
 
-    """Handle compile all request (dict-based)."""
-    def handle_compile_all_dict(
-        request_dict: dict, program: Any, sem_managers: dict
-    ) -> dict;
-
     """Check if cancelled."""
     def is_cancelled -> bool;
 
     """Clear cancellation flag."""
     def clear_cancellation -> None;
-
-    """Create pong response dict."""
-    def _make_pong_response(request_id: str) -> dict;
-
-    """Create error response dict."""
-    def _make_error_response(request_id: str, error_message: str) -> dict;
-
-    """Create cancelled response dict."""
-    def _make_cancelled_response(request_id: str) -> dict;
 
     # Helper methods for LSP features
     """Get token at position from semantic manager."""
@@ -145,14 +130,6 @@ obj CompilationWorker {
 
     """Get completion items for a scope."""
     def _get_completion_for_scope(scope_node: Any) -> list;
-}
-
-"""Worker health status."""
-enum WorkerHealth {
-    HEALTHY,
-    UNHEALTHY,
-    DEAD,
-    RESTARTING
 }
 
 """Manages worker process with debounce scheduling.
@@ -180,8 +157,7 @@ obj WorkerManager {
         _timer_lock: threading.Lock | None = None,
         _last_activity: float = 0,
         _analysis_in_progress: bool = False,
-        _diagnostics_callback: Callable | None = None,
-        _health_status: WorkerHealth = WorkerHealth.DEAD;
+        _diagnostics_callback: Callable | None = None;
 
     def postinit -> None;
     """Generate next request ID."""
@@ -203,9 +179,6 @@ obj WorkerManager {
     """Check if there is pending work."""
     def has_pending -> bool;
 
-    """Check if analysis is in progress."""
-    def is_analyzing -> bool;
-
     """Check if busy (pending, timer active, or analyzing)."""
     def is_busy -> bool;
 
@@ -214,9 +187,6 @@ obj WorkerManager {
         file_uri: str,
         callback: Optional[Callable] = None
     ) -> str;
-
-    """Send compile all request."""
-    def compile_all(callback: Optional[Callable] = None) -> str;
 
     """Cancel current compilation."""
     def cancel_current -> None;
@@ -253,17 +223,11 @@ obj WorkerManager {
     """Internal: send foreground request and wait for response."""
     def _send_foreground_request(request: dict, timeout_ms: float) -> dict | None;
 
-    """Poll for responses."""
-    def poll_responses -> list;
-
     """Process all pending responses (call from async loop)."""
     def process_pending_responses -> None;
 
     """Handle a single response from worker."""
     def _handle_response(response: dict) -> None;
-
-    """Process a response dict."""
-    def _process_response_dict(response_dict: dict) -> None;
 
     """Handle timer expiry - start analysis."""
     def _on_timer_expired -> None;
@@ -277,14 +241,8 @@ obj WorkerManager {
     """Process pending file."""
     def _process_pending -> None;
 
-    """Handle worker crash."""
-    def _handle_crash -> None;
-
     """Set diagnostics callback."""
     def set_diagnostics_callback(callback: Callable) -> None;
-
-    """Get current worker health."""
-    def get_health -> WorkerHealth;
 
     """Ping worker."""
     def ping(timeout_ms: float = 1000) -> bool;

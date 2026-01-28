@@ -41,8 +41,3 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> None 
 
     jac_logger.info(f"Logging configured: level={level}, file={log_file}");
 }
-
-"""Re-export key components."""
-import from .engine { JacLangServer }
-import from .worker { WorkerManager, WorkerConfig, WorkerHealth }
-import from .cancellation { OperationCancelledException, CancellationToken, CancellationTokenSource }
