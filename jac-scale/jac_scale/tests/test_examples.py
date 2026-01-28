@@ -373,7 +373,7 @@ class JacScaleTestRunner:
         return f"Request failed after {max_retries} retries (all timeouts)"
 
     def spawn_walker(
-        self, walker_name: str, **kwargs: dict[str, Any]
+        self, walker_name: str, **kwargs: Any
     ) -> dict[str, Any]:
         """Spawn a walker with the given parameters.
 
@@ -455,7 +455,7 @@ class JacScaleTestRunner:
         return json_response  # type: ignore[return-value]
 
     def call_function(
-        self, function_name: str, **kwargs: dict[str, Any]
+        self, function_name: str, **kwargs: Any
     ) -> dict[str, Any]:
         """Call a function with the given parameters.
 
@@ -538,7 +538,7 @@ class TestJacClientExamples:
             assert file_info["size"] == len(test_content)
 
             # Test list files
-            list_result = runner.spawn_walker(
+            list_result = runner.spawn_walker(  # type: ignore[arg-type]
                 "list_uploaded_files", folder="", recursive=True
             )
             reports = list_result.get("reports", [])
@@ -551,7 +551,7 @@ class TestJacClientExamples:
             assert uploaded_path in file_paths
 
             # Test delete file
-            delete_result = runner.spawn_walker(
+            delete_result = runner.spawn_walker(  # type: ignore[arg-type]
                 "delete_uploaded_file", path=uploaded_path
             )
             reports = delete_result.get("reports", [])
@@ -561,7 +561,7 @@ class TestJacClientExamples:
             assert delete_info["path"] == uploaded_path
 
             # Verify file is deleted
-            list_result = runner.spawn_walker(
+            list_result = runner.spawn_walker(  # type: ignore[arg-type]
                 "list_uploaded_files", folder="", recursive=True
             )
             reports = list_result.get("reports", [])
@@ -571,7 +571,7 @@ class TestJacClientExamples:
                 assert uploaded_path not in file_paths
 
             # Test delete nonexistent file
-            delete_result = runner.spawn_walker(
+            delete_result = runner.spawn_walker(  # type: ignore[arg-type]
                 "delete_uploaded_file", path="nonexistent/file.txt"
             )
             reports = delete_result.get("reports", [])

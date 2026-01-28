@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 try:
-    from jaclang.runtimelib.storage import LocalStorage
+    from jaclang.runtimelib.storage import LocalStorage  # type: ignore[attr-defined]
 except ImportError as e:
     pytest.skip(f"Jac modules not compiled: {e}", allow_module_level=True)
 
