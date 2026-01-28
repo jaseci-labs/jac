@@ -155,8 +155,8 @@ def _register_default_template(registry: TemplateRegistry) -> None {
             },
             "directories": [".jac"],
             "gitignore_entries": [
-                "# Ignore all build artifacts in .jac directory",
-                "*"
+                "# Add patterns here for files to ignore in .jac/ directory",
+                "# Example: dist/, node_modules/, *.log",
             ]
         }
     );

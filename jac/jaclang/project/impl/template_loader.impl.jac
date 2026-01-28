@@ -85,7 +85,11 @@ impl load_template_from_directory(
     options = jacpackk_section.get("options", {});
     directories = options.get("directories", []);
     gitignore_entries = options.get(
-        "gitignore_entries", ["# Ignore all build artifacts in .jac directory", "*"]
+        "gitignore_entries",
+        [
+            "# Add patterns here for files to ignore in .jac/ directory",
+            "# Example: dist/, node_modules/, *.log",
+        ]
     );
     root_gitignore_entries = options.get("root_gitignore_entries", []);
     # Resolve post_create hook if specified

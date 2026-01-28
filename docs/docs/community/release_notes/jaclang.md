@@ -10,6 +10,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Ensurepip Error Handling**: Added a clear error message when venv creation fails due to missing `ensurepip` (common on Debian/Ubuntu where `python3-venv` is a separate package), with platform-specific install instructions.
 - **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
 - **Internal**: Explicitly declared all postinit fields across the codebase.
+- **Build (jacpack)**: `.jac/.gitignore` now contains only a comment (not `*`), so compiled assets (e.g., `compiled/`) aren't ignored and Tailwind builds correctly.
 
 ## jaclang 0.9.11 (Latest Release)
 
