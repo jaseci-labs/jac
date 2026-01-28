@@ -110,17 +110,13 @@ impl references(ls: JacLangServer, params: lspt.ReferenceParams) -> list[lspt.Lo
 impl document_symbol(
     ls: JacLangServer, params: lspt.DocumentSymbolParams
 ) -> list[lspt.DocumentSymbol] {
-    return ls.get_document_symbols(
-        uris.to_fs_path(params.text_document.uri)
-    );
+    return ls.get_document_symbols(uris.to_fs_path(params.text_document.uri));
 }
 
 impl semantic_tokens_full(
     ls: JacLangServer, params: lspt.SemanticTokensParams
 ) -> lspt.SemanticTokens {
-    return ls.get_semantic_tokens(
-        uris.to_fs_path(params.text_document.uri)
-    );
+    return ls.get_semantic_tokens(uris.to_fs_path(params.text_document.uri));
 }
 
 impl rename(
@@ -151,13 +147,14 @@ impl formatting(
 ) -> list[lspt.TextEdit] {
     document = ls.workspace.get_text_document(params.text_document.uri);
     return ls.format_document(
-        uris.to_fs_path(params.text_document.uri),
-        document.source
+        uris.to_fs_path(params.text_document.uri), document.source
     );
 }
 
 # ============== File Event Handlers ==============
-impl did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None {
+impl did_delete_files(
+    ls: JacLangServer, params: lspt.DeleteFilesParams
+) -> None {
     for file in params.files {
         ls.delete_module(file.uri);
     }

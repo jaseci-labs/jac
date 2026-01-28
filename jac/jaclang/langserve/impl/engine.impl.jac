@@ -215,9 +215,7 @@ impl JacLangServer.get_references(
     return [];
 }
 
-impl JacLangServer.get_document_symbols(
-    file_path: str
-) -> list[lspt.DocumentSymbol] {
+impl JacLangServer.get_document_symbols(file_path: str) -> list[lspt.DocumentSymbol] {
     self.debug(f"get_document_symbols: {file_path}");
     if self._worker_manager and self._worker_manager.is_running() {
         response = self._worker_manager.request_outline(file_path, timeout_ms=2000);
@@ -226,12 +224,12 @@ impl JacLangServer.get_document_symbols(
     return [];
 }
 
-impl JacLangServer.get_semantic_tokens(
-    file_path: str
-) -> lspt.SemanticTokens {
+impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     self.debug(f"get_semantic_tokens: {file_path}");
     if self._worker_manager and self._worker_manager.is_running() {
-        response = self._worker_manager.request_semantic_tokens(file_path, timeout_ms=2000);
+        response = self._worker_manager.request_semantic_tokens(
+            file_path, timeout_ms=2000
+        );
         return utils.response_to_semantic_tokens(response);
     }
     return lspt.SemanticTokens(data=[]);
@@ -254,7 +252,9 @@ impl JacLangServer.get_rename(
 impl JacLangServer.get_completion(
     file_path: str, line: int, character: int, trigger: str | None
 ) -> lspt.CompletionList {
-    self.debug(f"get_completion: {file_path} at {line}:{character} (trigger='{trigger}')");
+    self.debug(
+        f"get_completion: {file_path} at {line}:{character} (trigger='{trigger}')"
+    );
     if self._worker_manager and self._worker_manager.is_running() {
         response = self._worker_manager.request_completion(
             file_path, line, character, trigger, timeout_ms=2000
@@ -264,9 +264,7 @@ impl JacLangServer.get_completion(
     return lspt.CompletionList(is_incomplete=False, items=[]);
 }
 
-impl JacLangServer.format_document(
-    file_path: str, source: str
-) -> list[lspt.TextEdit] {
+impl JacLangServer.format_document(file_path: str, source: str) -> list[lspt.TextEdit] {
     self.debug(f"format_document: {file_path}");
     try {
         if self._worker_manager and self._worker_manager.is_running() {

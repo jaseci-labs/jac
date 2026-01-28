@@ -9,9 +9,7 @@ import os
 import tempfile
 
 from tests.langserve.server_test.utils import load_jac_template
-
 from tests.langserve.test_server import LspTestClient, create_client
-
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
 # obj Circle(Shape) {
@@ -272,9 +270,7 @@ def test_multifile_workspace():
         )
 
         # Change first file
-        changed_code = load_jac_template(
-            _template_path(GLOB_TEMPLATE), "glob x = 90;"
-        )
+        changed_code = load_jac_template(_template_path(GLOB_TEMPLATE), "glob x = 90;")
         with open(temp1, "w") as f:
             f.write(changed_code)
         client.compile_file(temp1)

@@ -258,8 +258,11 @@ impl CompilationWorker._compile_file(
     cancel_token = self._cancel_event;
     # Compile with cancel_token for interruptibility
     module = program.compile(
-        file_path=file_path, use_str=source, type_check=True,
-        no_cgen=True, cancel_token=cancel_token
+        file_path=file_path,
+        use_str=source,
+        type_check=True,
+        no_cgen=True,
+        cancel_token=cancel_token
     );
     # Collect errors from internal_program (compiler routes jaclang/* files there)
     self._collect_internal_errors(program, file_path);

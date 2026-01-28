@@ -76,9 +76,7 @@ class LspTestClient:
         self, file_path: str, line: int, character: int, trigger: str = "."
     ) -> dict | None:
         """Request completions at a position. Returns response dict or None."""
-        return self._wm.request_completion(
-            file_path, line, character, trigger=trigger
-        )
+        return self._wm.request_completion(file_path, line, character, trigger=trigger)
 
     def shutdown(self) -> None:
         """Stop the worker process."""
@@ -207,10 +205,9 @@ def test_impl_stay_connected(fixture_path: Callable[[str], str]) -> None:
         assert resp is not None and resp.get("hover_text"), (
             f"Expected hover text, got: {resp}"
         )
-        assert (
-            "ability) calculate_area\n( radius : float ) -> float"
-            in resp["hover_text"].replace("'", "")
-        )
+        assert "ability) calculate_area\n( radius : float ) -> float" in resp[
+            "hover_text"
+        ].replace("'", "")
     finally:
         client.shutdown()
 
@@ -226,10 +223,9 @@ def test_impl_auto_discover(fixture_path: Callable[[str], str]) -> None:
         assert resp is not None and resp.get("hover_text"), (
             f"Expected hover text, got: {resp}"
         )
-        assert (
-            "(public ability) calculate_area\n( radius : float ) -> float"
-            in resp["hover_text"].replace("'", "")
-        )
+        assert "(public ability) calculate_area\n( radius : float ) -> float" in resp[
+            "hover_text"
+        ].replace("'", "")
     finally:
         client.shutdown()
 
@@ -338,9 +334,7 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
         # fmt: on
 
         for line, char, expected in positions:
-            result = fmt_location(
-                client.definition(import_path, line - 1, char - 1)
-            )
+            result = fmt_location(client.definition(import_path, line - 1, char - 1))
             assert expected in result, (
                 f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
@@ -376,9 +370,7 @@ def test_go_to_definition_connect_filter(
         # fmt: on
 
         for line, char, expected in positions:
-            result = fmt_location(
-                client.definition(import_path, line - 1, char - 1)
-            )
+            result = fmt_location(client.definition(import_path, line - 1, char - 1))
             assert expected in result, (
                 f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
@@ -404,9 +396,7 @@ def test_go_to_definition_atom_trailer(fixture_path: Callable[[str], str]) -> No
         # fmt: on
 
         for line, char, expected in positions:
-            result = fmt_location(
-                client.definition(import_path, line - 1, char - 1)
-            )
+            result = fmt_location(client.definition(import_path, line - 1, char - 1))
             assert expected in result, (
                 f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
@@ -488,9 +478,7 @@ def test_go_to_def_import_star(
     """Test that go to definition works with import star."""
     client = create_client()
     try:
-        import_star_path = passes_main_fixture_abs_path(
-            "checker_import_star/main.jac"
-        )
+        import_star_path = passes_main_fixture_abs_path("checker_import_star/main.jac")
         client.compile_file(import_star_path)
 
         # fmt: off
@@ -656,9 +644,7 @@ def test_go_to_definition_impl_body_self_attr(
     """
     client = create_client()
     try:
-        impl_path = passes_main_fixture_abs_path(
-            "impl_symbol_resolution.impl.jac"
-        )
+        impl_path = passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
         client.compile_file(impl_path)
 
         # fmt: off
@@ -689,9 +675,7 @@ def test_go_to_definition_impl_body_self_attr(
         # fmt: on
 
         for line, char, expected in positions:
-            result = fmt_location(
-                client.definition(impl_path, line - 1, char - 1)
-            )
+            result = fmt_location(client.definition(impl_path, line - 1, char - 1))
             assert result is not None and result != "", (
                 f"Expected definition at line {line}, char {char}, got None"
             )
