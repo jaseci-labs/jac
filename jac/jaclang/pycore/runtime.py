@@ -2339,8 +2339,8 @@ class JacRuntimeInterface(
         Returns:
             Storage instance (LocalStorage by default)
         """
-        from jaclang.runtimelib.storage import ( # type: ignore[attr-defined]
-            LocalStorage,  
+        from jaclang.runtimelib.storage import (  # type: ignore[attr-defined]
+            LocalStorage,
         )
 
         return LocalStorage(base_path=base_path, create_dirs=create_dirs)
