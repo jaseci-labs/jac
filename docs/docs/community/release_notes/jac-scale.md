@@ -18,6 +18,7 @@ Introduced a pluggable storage abstraction layer for file operations.
 - **LocalStorage**: Default local filesystem implementation in `jaclang.runtimelib.storage`
 - **`store()` builtin**: Hookable function that returns a configured `Storage` instance
 - **Configuration**: Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` env vars
+- **jac destroy command wait till fully removal of resources**
 
 ### PyPI Installation by Default
 
@@ -52,6 +53,13 @@ jac_byllm = "none"     # use "none" to skip installation (will insall elvant byl
 ```
 
 When not specified, defaults to `"latest"` for all packages.
+
+### Enhanced `restspec` Decorator
+
+The `@restspec` decorator now supports custom HTTP methods and custom endpoint paths for both walkers and functions.
+
+- **Custom Methods**: Use `method=HTTPMethod.GET`, `method=HTTPMethod.PUT`, etc.
+- **Custom Paths**: Use `path="/my/custom/path"` to override the default routing.
 
 ## jac-scale 0.1.1 (Latest Release)
 

@@ -18,10 +18,6 @@ def _type_to_schema(
     ty: type, title: str = "", desc: str = "", info: Info = None
 ) -> dict;
 
-def _logged_type_to_schema(
-    ty: type, title: str = "", desc: str = "", info: Info = None, lineno: int = -1
-) -> dict;
-
 def _name_of_type(ty: type, info: Info) -> str;
 def _convert_dict_to_schema(ty_dict: type) -> dict;
 def _decode_dict(json_obj: dict) -> dict;
