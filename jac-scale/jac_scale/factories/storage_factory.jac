@@ -1,7 +1,6 @@
 """Factory for creating storage instances."""
 import from typing { Any }
 import os;
-import from enum { Enum }
 import from jaclang.runtimelib.storage { Storage }
 import from jaclang.project.config { get_config }
 
