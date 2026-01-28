@@ -72,6 +72,26 @@ obj PrefetchedTypes {
         walker_class: TypeBase | None = None;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 """Represents a single entry in the symbol resolution stack."""
 obj SymbolResolutionStackEntry {
     has symbol: uni.Symbol,

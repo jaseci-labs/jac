@@ -782,8 +782,12 @@ impl TypeEvaluator._prefetch_types{
 
 """Load and return builtins stub module."""
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
+    # # Return cached stub module if already loaded
+    # if path in self.program.mod.hub {
+    #     return self.program.mod.hub[path];
+    # }
     if not os.path.exists(path) {
-        raise FileNotFoundError(f"Stub file not found at {path}") ;
+        raise FileNotFoundError(f"Stub file not found at {path}");
     }
     file_content = read_file_with_encoding(path);
     uni_source = uni.Source(file_content, path);
@@ -805,7 +809,7 @@ on a node and from that node it does lookup for the builtins scope
 and does the prefetch once, however if we forgot to call prefetch
 in some place then it will not be available in the evaluator, So we
 are prefetching the builtins at the constructor level once.
-"""
+""" 
 impl TypeEvaluator.init(program: "JacProgram") -> None {
     # Initialize constants that have defaults in the class definition
     self._BUILTINS_STUB_FILE_PATH: str = os.path.join(

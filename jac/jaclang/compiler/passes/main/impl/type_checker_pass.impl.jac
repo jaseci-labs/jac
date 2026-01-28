@@ -111,6 +111,19 @@ impl TypeCheckPass.exit_import(self: TypeCheckPass, <>node: uni.Import) -> None 
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 """Enter an ability node."""
 impl TypeCheckPass.enter_ability(self: TypeCheckPass, <>node: uni.Ability) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
@@ -248,11 +261,20 @@ impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, <>node: uni.ImplDef) -> No
             }
         }
         # Also process return type annotation
-        if sig.return_type and isinstance(sig.return_type, uni.Name) {
+        if sig.return_type and isinstance(sig.return_type, uni.Name) { 
             self.evaluator.get_type_of_expression(sig.return_type);
         }
     }
 }
+
+
+
+
+
+
+
+
+
 
 impl TypeCheckPass._insert_builtin_symbols(self: TypeCheckPass) -> None {
     if (self.ir_in == self.evaluator.builtins_module) {

@@ -4,8 +4,6 @@ Type checker pass.
 This will perform type checking on the Jac program and accumulate any type
 errors found during the process in the pass's had_errors, had_warnings list.
 
-
-
 Reference:
     Pyright: packages/pyright-internal/src/analyzer/checker.ts
     craizy_type_expr branch: type_checker_pass.py

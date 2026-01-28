@@ -103,11 +103,6 @@ obj CompilationWorker {
     """Handle format request."""
     def handle_format(request: dict, program: Any) -> dict;
 
-    """Handle compile file request (dict-based)."""
-    def handle_compile_file_dict(
-        request_dict: dict, program: Any, sem_managers: dict
-    ) -> dict;
-
     """Handle compile all request (dict-based)."""
     def handle_compile_all_dict(
         request_dict: dict, program: Any, sem_managers: dict

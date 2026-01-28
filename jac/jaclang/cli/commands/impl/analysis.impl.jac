@@ -62,6 +62,12 @@ impl check(
         if path.endswith('.jac') {
             if not ignore_check(path, ignore_list) {
                 total_files += 1;
+                print('Checking ' + path + ' ...');
+                (success, errs, warns) = check_single_file(prog, path);
+                (success, errs, warns) = check_single_file(prog, path);
+                (success, errs, warns) = check_single_file(prog, path);
+                (success, errs, warns) = check_single_file(prog, path);
+                (success, errs, warns) = check_single_file(prog, path);
                 (success, errs, warns) = check_single_file(prog, path);
                 total_errors += errs;
                 total_warnings += warns;

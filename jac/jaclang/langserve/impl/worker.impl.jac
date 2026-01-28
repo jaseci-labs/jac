@@ -115,9 +115,9 @@ impl CompilationWorker.process_foreground_requests(program: Any, sem_managers: d
     while True {
         try {
             request = self._foreground_queue.get_nowait();
-        } except Empty {
+        } except Empty { 
             break;
-        }
+        } 
 
         request_id = request.get('request_id', '');
         request_type = request.get('request_type', '');
@@ -706,10 +706,6 @@ impl CompilationWorker._make_error_response(request_id: str, error_message: str)
 
 impl CompilationWorker._make_cancelled_response(request_id: str) -> dict {
     return {'request_id': request_id, 'success': False, 'cancelled': True};
-}
-
-impl CompilationWorker.handle_compile_file_dict(request_dict: dict, program: Any, sem_managers: dict) -> dict {
-    return self._compile_file(request_dict, program, sem_managers);
 }
 
 impl CompilationWorker.handle_compile_all_dict(request_dict: dict, program: Any, sem_managers: dict) -> dict {
