@@ -12,7 +12,6 @@ The [jacpackk] section contains:
 The [jacpackk.options] section contains:
 - directories: Extra directories to create
 - files: Glob patterns for files to include (auto-discovers if not specified)
-- gitignore_entries: Entries for .jac/.gitignore
 - root_gitignore_entries: Entries for project root .gitignore
 - post_create_hook: Module path to post-create hook function
 """
@@ -84,10 +83,26 @@ impl load_template_from_directory(
     # Get options from [template.options]
     options = jacpackk_section.get("options", {});
     directories = options.get("directories", []);
-    gitignore_entries = options.get(
-        "gitignore_entries", ["# Ignore all build artifacts in .jac directory", "*"]
-    );
     root_gitignore_entries = options.get("root_gitignore_entries", []);
+    gitignore_path = template_dir / ".gitignore";
+    if gitignore_path.exists() {
+        try {
+            gitignore_content = gitignore_path.read_text().strip();
+            if gitignore_content {
+                for line in gitignore_content.split("\n") {
+                    line = line.strip();
+                    if line and not line.startswith("#") {
+                        if line not in root_gitignore_entries {
+                            root_gitignore_entries = root_gitignore_entries + [line];
+                        }
+                    }
+                }
+            }
+        } except Exception { }
+    }
+    if ".jac/" not in root_gitignore_entries {
+        root_gitignore_entries = root_gitignore_entries + [".jac/"];
+    }
     # Resolve post_create hook if specified
     hook = post_create_hook;
     if hook is None and "post_create_hook" in options {
@@ -126,7 +141,6 @@ impl load_template_from_directory(
         config=config,
         files=files,
         directories=directories,
-        gitignore_entries=gitignore_entries,
         root_gitignore_entries=root_gitignore_entries,
         post_create=hook
     );
@@ -202,7 +216,6 @@ impl load_template_from_json(
         config=data.get("config", {}),
         files=data.get("files", {}),
         directories=data.get("directories", []),
-        gitignore_entries=data.get("gitignore_entries", []),
         root_gitignore_entries=data.get("root_gitignore_entries", []),
         post_create=hook
     );

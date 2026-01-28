@@ -2284,7 +2284,6 @@ class JacPluginConfig:
                 - config: dict for jac.toml content (with {{name}} placeholders)
                 - files: dict[path, content] with {{name}} placeholders
                 - directories: list of directories to create
-                - gitignore_entries: list of .gitignore entries
                 - post_create: optional callable(project_path, project_name)
         """
         return None
@@ -2327,9 +2326,7 @@ class JacRuntimeInterface(
         return UserManager(base_path=base_path)
 
     @staticmethod
-    def store(
-        base_path: str = "./storage", create_dirs: bool = True
-    ) -> Any:  # noqa: ANN401
+    def store(base_path: str = "./storage", create_dirs: bool = True) -> Any:  # noqa: ANN401
         """Get storage backend instance (hookable for plugins).
 
         Default returns LocalStorage. Plugins (like jac-scale) can override
@@ -2342,7 +2339,9 @@ class JacRuntimeInterface(
         Returns:
             Storage instance (LocalStorage by default)
         """
-        from jaclang.runtimelib.storage import LocalStorage  # type: ignore[attr-defined]
+        from jaclang.runtimelib.storage import (
+            LocalStorage,  # type: ignore[attr-defined]
+        )
 
         return LocalStorage(base_path=base_path, create_dirs=create_dirs)
 

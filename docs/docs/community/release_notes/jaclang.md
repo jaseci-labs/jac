@@ -17,6 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Custom Paths**: Use `path="/my/custom/path"` to override the default routing.
 
 - **Internal**: Explicitly declared all postinit fields across the codebase.
+- **Build (jacpack)**: `.jac/.gitignore` now contains only a comment (not `*`), so compiled assets (e.g., `compiled/`) aren't ignored and Tailwind builds correctly.
 - **Support Go to Definition for Nested Unpacking Assignments**: Fixed symbol table generation to support recursive nested unpacking (e.g., `[a, [b, c]] = val`) ensuring all inner variables are registered.
 
 ## jaclang 0.9.11 (Latest Release)

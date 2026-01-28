@@ -720,7 +720,6 @@ version = "0.1.0"
 
 [jacpack.options]
 directories = [".jac"]
-gitignore_entries = ["*"]
 root_gitignore_entries = [".jac/"]
 ```
 
