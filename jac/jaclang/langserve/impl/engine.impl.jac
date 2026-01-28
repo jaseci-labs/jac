@@ -268,11 +268,14 @@ impl JacLangServer.get_definition(
     if self._worker_manager and self._worker_manager.is_running() {
         try {
             response = self._worker_manager.request_definition(fs_path, position.line, position.character, timeout_ms=2000);
+            self.debug(f"Definition response: {response}");
             if response and response.get('success') {
                 loc = response.get('location');
                 if loc {
+                    uri = uris.from_fs_path(loc.get('uri', ''));
+                    self.debug(f"Definition uri: {uri}");
                     return lspt.Location(
-                        uri=uris.from_fs_path(loc.get('uri', '')),
+                        uri=uri,
                         range=lspt.Range(
                             start=lspt.Position(line=loc.get('line', 0), character=loc.get('character', 0)),
                             end=lspt.Position(line=loc.get('end_line', 0), character=loc.get('end_character', 0))
@@ -280,7 +283,9 @@ impl JacLangServer.get_definition(
                     );
                 }
             }
-        } except Exception { }
+        } except Exception as e {
+            self.debug(f"Definition error: {e}");
+        }
     }
     return None;
 }

@@ -323,37 +323,45 @@ impl CompilationWorker.handle_hover(request: dict, program: Any, sem_managers: d
     return {'request_id': request_id, 'success': True, 'hover_text': None};
 }
 
+"""Return definition location for a file."""
 impl CompilationWorker.handle_definition(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle definition request - returns location of definition
     request_id = request.get('request_id', '');
     file_path = request.get('file_path', '');
     line = request.get('line', 0);
     character = request.get('character', 0);
 
     hub = program.mod.hub;
-    sym_node = self._get_token_at_position(file_path, line, character, sem_managers, hub);
+    node_selected = self._get_token_at_position(file_path, line, character, sem_managers, hub);
 
-    if not sym_node {
+    if not node_selected {
         return {'request_id': request_id, 'success': True, 'location': None};
     }
 
-    node_type = sym_node.type if hasattr(sym_node, 'type') else None;
-    parent = sym_node.parent if hasattr(sym_node, 'parent') else None;
+    node_type = node_selected.type;
+    parent = node_selected.parent;
+    # debug print
+    print(f"[Worker] Definition request: {file_path} ({line},{character}) - Node: {type(node_selected).__name__}, Type: {type(node_type).__name__ if node_type else 'None'}", file=sys.stderr);
+    
 
-    # Handle impl linking
-    if parent and isinstance(parent, uni.AstImplNeedingNode) and parent.body {
+    ####################################################################
+    ##         Check for impl body first (stub -> impl navigation)    ##
+    ####################################################################
+    if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
         if isinstance(parent.body, uni.ImplDef) {
-            decl = parent.body.sym.decl;
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': self._make_location_dict(decl)
+                'location': self._make_location_dict(parent.body.sym.decl)
             };
         }
     }
 
+    ####################################################################
+    ##          Handle go to def for types and variables              ##
+    ####################################################################
     if node_type {
         if isinstance(node_type, ModuleType) {
+            # For module types, go to the module file
             return {
                 'request_id': request_id,
                 'success': True,
@@ -365,23 +373,35 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
                     'end_character': 0
                 }
             };
-        } elif isinstance(node_type, ClassType) and hasattr(sym_node, 'sym') and sym_node.sym {
+        } elif isinstance(node_type, ClassType) {
+            print(f"[Worker] ClassType - sym: {node_selected.sym}, decl: {node_selected.sym.decl if node_selected.sym else 'N/A'}", file=sys.stderr);
+            loc = self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None;
+            print(f"[Worker] ClassType location: {loc}", file=sys.stderr);
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': self._make_location_dict(sym_node.sym.decl)
+                'location': loc
             };
-        } elif isinstance(node_type, (FunctionType, OverloadedType)) and hasattr(sym_node, 'sym') and sym_node.sym {
+        } elif isinstance(node_type, (FunctionType, OverloadedType)) {
+            print(f"[Worker] FunctionType/OverloadedType - sym: {node_selected.sym}, decl: {node_selected.sym.decl if node_selected.sym else 'N/A'}", file=sys.stderr);
+            loc = self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None;
+            print(f"[Worker] FunctionType/OverloadedType location: {loc}", file=sys.stderr);
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': self._make_location_dict(sym_node.sym.decl)
+                'location': loc
             };
         }
     }
 
-    # Impl link
-    if parent and isinstance(parent, uni.ImplDef) and parent.decl_link {
+    ####################################################################
+    ##         Ad-hoc handling for impl-def go to def                 ##
+    ####################################################################
+    if not parent {
+        return {'request_id': request_id, 'success': True, 'location': None};
+    }
+
+    if isinstance(parent, uni.ImplDef) and parent.decl_link {
         return {
             'request_id': request_id,
             'success': True,
@@ -389,13 +409,18 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
         };
     }
 
-    # Fallback to sym.defn
-    if hasattr(sym_node, 'sym') and sym_node.sym and sym_node.sym.defn {
+    ####################################################################
+    ##         Fallback: use symbol resolution if available           ##
+    ####################################################################
+    # Even if type is not available, we can still navigate using the symbol
+    # reference. This is important for symbols resolved in impl bodies where
+    # type inference may not have run yet.
+    if node_selected.sym and node_selected.sym.defn {
         try {
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': self._make_location_dict(sym_node.sym.defn[0])
+                'location': self._make_location_dict(node_selected.sym.defn[0])
             };
         } except Exception { }
     }
@@ -405,16 +430,29 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
 
 impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
     # Create a location dict from an AST node
-    if not ast_node or not hasattr(ast_node, 'loc') or not ast_node.loc {
+    import os;
+    if not ast_node {
+        print(f"[Worker] _make_location_dict: ast_node is None", file=sys.stderr);
+        return None;
+    }
+    if not hasattr(ast_node, 'loc') {
+        print(f"[Worker] _make_location_dict: ast_node has no 'loc' attr, type={type(ast_node).__name__}", file=sys.stderr);
+        return None;
+    }
+    if not ast_node.loc {
+        print(f"[Worker] _make_location_dict: ast_node.loc is None/empty", file=sys.stderr);
         return None;
     }
     loc = ast_node.loc;
+    # Normalize the path to resolve any ../.. components
+    mod_path = os.path.normpath(loc.mod_path) if loc.mod_path else '';
+    print(f"[Worker] _make_location_dict: mod_path={mod_path}, line={loc.first_line}", file=sys.stderr);
     return {
-        'uri': loc.mod_path,
-        'line': loc.first_line - 1,  # Convert to 0-indexed
-        'character': loc.col_start - 1,
-        'end_line': loc.last_line - 1,
-        'end_character': loc.col_end - 1
+        'uri': mod_path,
+        'line': max(0, loc.first_line - 1),  # Convert to 0-indexed, ensure >= 0
+        'character': max(0, loc.col_start - 1),  # Ensure >= 0
+        'end_line': max(0, loc.last_line - 1),
+        'end_character': max(0, loc.col_end - 1)
     };
 }
 

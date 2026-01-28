@@ -47,8 +47,7 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    # Only analyze on save - ignore changes for now
-    # This reduces IPC overhead since we don't need to pass source
+    # TODO: integrate Semantic Tokens delta updates here without analysis
     debug(f"did_change: {params.text_document.uri} (ignored - only analyze on save)");
 }
 
