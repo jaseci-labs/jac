@@ -10,9 +10,7 @@ import asyncio;
 import logging;
 import sys;
 import time;
-import from typing { Optional }
 
-import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.program { JacProgram }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
@@ -41,16 +39,15 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     # Logging
     def debug(msg: str) -> None;
-    def log_py(message: str) -> None;
     def log_info(message: str) -> None;
     def log_warning(message: str) -> None;
     def log_error(message: str) -> None;
 
     # Analysis scheduling
     def schedule_analysis(file_uri: str) -> None;
-    def type_check(file_uri: str) -> None;
+
+    # Testing utilities (used by test_server.py and server_test/utils.py)
     def type_check_file(file_uri: str) -> bool;
-    async def wait_till_idle -> None;
     def wait_till_idle_sync -> None;
 
     # File events

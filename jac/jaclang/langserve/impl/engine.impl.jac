@@ -7,7 +7,6 @@ Handles:
 - Response polling
 """
 
-import threading;
 import time;
 import logging;
 
@@ -53,10 +52,6 @@ impl JacLangServer.debug(msg: str) -> None {
     print(f"[Engine] {msg}", file=sys.stderr);
 }
 
-impl JacLangServer.log_py(message: str) -> None {
-    logging.info(message);
-}
-
 impl JacLangServer.log_info(message: str) -> None {
     self.show_message_log(message, lspt.MessageType.Info);
 }
@@ -89,15 +84,8 @@ impl JacLangServer.on_file_closed(file_uri: str) -> None {
 impl JacLangServer.on_file_focused(file_uri: str) -> None {
 }
 
-# ============== Type Check Methods (for testing) ==============
-
-impl JacLangServer.type_check(file_uri: str) -> None {
-    try {
-        self.schedule_analysis(file_uri);
-    } except Exception as e {
-        self.debug(f"Error in type_check: {e}");
-    }
-}
+# ============== Testing Utilities ==============
+# Used by: tests/langserve/test_server.py, tests/langserve/server_test/utils.py
 
 impl JacLangServer.type_check_file(file_uri: str) -> bool {
     try {
@@ -107,14 +95,6 @@ impl JacLangServer.type_check_file(file_uri: str) -> bool {
     } except Exception as e {
         self.debug(f"Error in type_check_file: {e}");
         return False;
-    }
-}
-
-impl JacLangServer.wait_till_idle -> None {
-    if self._worker_manager is not None {
-        while self._worker_manager.is_busy() {
-            await asyncio.sleep(0.05);
-        }
     }
 }
 
