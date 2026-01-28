@@ -101,3 +101,10 @@ repos:
         language: pygrep
         entry: '—'
         types: [markdown]
+
+      - id: check-release-notes
+        name: Check release notes updated
+        language: script
+        entry: scripts/check-release-notes.sh
+        always_run: true
+        pass_filenames: false
