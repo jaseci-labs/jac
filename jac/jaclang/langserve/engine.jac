@@ -61,15 +61,12 @@ obj JacLangServer(JacProgram, LanguageServer) {
     ) -> lspt.Location | None;
 
     def get_hover(file_path: str, line: int, character: int) -> lspt.Hover | None;
-
     def get_references(
         file_path: str, line: int, character: int
     ) -> list[lspt.Location];
 
     def get_document_symbols(file_path: str) -> list[lspt.DocumentSymbol];
-
     def get_semantic_tokens(file_path: str) -> lspt.SemanticTokens;
-
     def get_rename(
         file_path: str, line: int, character: int, new_name: str
     ) -> lspt.WorkspaceEdit | None;
