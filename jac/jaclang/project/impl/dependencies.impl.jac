@@ -17,6 +17,22 @@ impl DependencyInstaller.postinit -> None {
 impl DependencyInstaller.ensure_venv -> None {
     import venv;
     import sys;
+    def _create_venv(target: Path) -> None {
+        builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
+        try {
+            builder.create(str(target));
+        } except Exception as e {
+            err_msg = str(e).lower();
+            if "ensurepip" in err_msg or "no module named" in err_msg {
+                raise RuntimeError(
+                    "Failed to create virtual environment: ensurepip is not available.\n"
+                    "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+                    "On Fedora/RHEL: sudo dnf install python3-libs"
+                ) from e ;
+            }
+            raise ;
+        }
+    }
     if self.venv_dir.exists() {
         # Validate the venv is not corrupted by checking for pyvenv.cfg and python binary
         pyvenv_cfg = self.venv_dir / "pyvenv.cfg";
@@ -32,10 +48,7 @@ impl DependencyInstaller.ensure_venv -> None {
                 print(f"Recreating corrupted venv at {self.venv_dir}");
             }
             shutil.rmtree(self.venv_dir);
-            builder = venv.EnvBuilder(
-                with_pip=True, symlinks=(sys.platform != "win32")
-            );
-            builder.create(str(self.venv_dir));
+            _create_venv(self.venv_dir);
         }
     } else {
         # Create new venv
@@ -43,8 +56,7 @@ impl DependencyInstaller.ensure_venv -> None {
             print(f"Creating venv at {self.venv_dir}");
         }
         self.venv_dir.parent.mkdir(parents=True, exist_ok=True);
-        builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
-        builder.create(str(self.venv_dir));
+        _create_venv(self.venv_dir);
     }
     # Add venv site-packages to sys.path
     site_packages = str(get_venv_site_packages(self.venv_dir));

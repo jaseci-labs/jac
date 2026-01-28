@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pre-commit hook to check that release notes are updated when code changes.
-# Mirrors the logic in .github/workflows/check-release-notes.yml but runs
-# against the files staged for the current commit.
+# Works in two modes:
+#   - Local commit: uses git diff --cached to get staged files
+#   - CI (pre-commit.ci / GitHub Actions): uses git diff against main branch
 
 set -euo pipefail
 
@@ -13,8 +14,27 @@ declare -A FOLDER_TO_NOTES=(
     ["jac-super/"]="docs/docs/community/release_notes/jac-super.md"
 )
 
-# Staged files are passed as arguments by pre-commit
-STAGED_FILES=("$@")
+# Determine changed files based on context
+if [ -n "${CI:-}" ] || [ -n "${PRE_COMMIT_FROM_REF:-}" ]; then
+    # CI mode: compare against main branch
+    if [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+        CHANGED_FILES=$(git diff --name-only "$PRE_COMMIT_FROM_REF"..."$PRE_COMMIT_TO_REF" 2>/dev/null || true)
+    else
+        # Fallback: compare against origin/main
+        MERGE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo "")
+        if [ -z "$MERGE_BASE" ]; then
+            exit 0
+        fi
+        CHANGED_FILES=$(git diff --name-only "$MERGE_BASE"...HEAD 2>/dev/null || true)
+    fi
+else
+    # Local mode: check staged files
+    CHANGED_FILES=$(git diff --cached --name-only 2>/dev/null || true)
+fi
+
+if [ -z "$CHANGED_FILES" ]; then
+    exit 0
+fi
 
 MISSING_NOTES=()
 
@@ -23,15 +43,15 @@ for folder in "${!FOLDER_TO_NOTES[@]}"; do
     folder_changed=false
     notes_changed=false
 
-    for file in "${STAGED_FILES[@]}"; do
-        # Check if file is in the monitored folder (but not the release notes itself)
+    while IFS= read -r file; do
+        [ -z "$file" ] && continue
         if [[ "$file" == "${folder}"* ]]; then
             folder_changed=true
         fi
         if [[ "$file" == "$notes_file" ]]; then
             notes_changed=true
         fi
-    done
+    done <<< "$CHANGED_FILES"
 
     if $folder_changed && ! $notes_changed; then
         MISSING_NOTES+=("${folder} -> ${notes_file}")

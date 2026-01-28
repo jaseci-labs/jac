@@ -107,4 +107,4 @@ repos:
         language: script
         entry: scripts/check-release-notes.sh
         always_run: true
-        pass_filenames: true
+        pass_filenames: false
