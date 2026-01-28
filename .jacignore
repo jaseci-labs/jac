@@ -186,6 +186,7 @@ memory.impl.jac
 memory_hierarchy.mongo.impl.jac
 method_tool.jac
 model.impl.jac
+module_manager.impl.jac
 mtir.impl.jac
 multiple_syntax_errors.jac
 multistatement_lambda.jac
@@ -266,6 +267,7 @@ web_target.impl.jac
 wire_visualization.impl.jac
 with_context.jac
 with_llm_method.jac
+worker.impl.jac
 finding_common_interests.jac
 pet_records_with_access_control.jac
 gradeBook_object.jac
