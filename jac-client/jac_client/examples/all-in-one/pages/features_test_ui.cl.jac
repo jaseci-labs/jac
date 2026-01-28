@@ -317,13 +317,14 @@ def:pub FeaturesTest -> any {
             # Get auth token from localStorage
             token = localStorage.getItem("token");
 
-            response = await fetch("/walker/upload_file", {
-                "method": "POST",
-                "headers": {
-                    "Authorization": "Bearer " + token
-                },
-                "body": formData
-            });
+            response = await fetch(
+                "/walker/upload_file",
+                {
+                    "method": "POST",
+                    "headers": {"Authorization": "Bearer " + token},
+                    "body": formData
+                }
+            );
 
             data = await response.json();
             # Handle wrapped response: data.data.reports or data.reports
@@ -351,14 +352,17 @@ def:pub FeaturesTest -> any {
         loading = true;
         try {
             token = localStorage.getItem("token");
-            response = await fetch("/walker/list_uploaded_files", {
-                "method": "POST",
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token
-                },
-                "body": JSON.stringify({"folder": "", "recursive": True})
-            });
+            response = await fetch(
+                "/walker/list_uploaded_files",
+                {
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    "body": JSON.stringify({"folder": "", "recursive": True})
+                }
+            );
             data = await response.json();
             # Handle wrapped response: data.data.reports or data.reports
             reports = (data.data and data.data.reports) or data.reports;
@@ -382,14 +386,17 @@ def:pub FeaturesTest -> any {
         loading = true;
         try {
             token = localStorage.getItem("token");
-            response = await fetch("/walker/delete_uploaded_file", {
-                "method": "POST",
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Authorization": "Bearer " + token
-                },
-                "body": JSON.stringify({"path": filePath})
-            });
+            response = await fetch(
+                "/walker/delete_uploaded_file",
+                {
+                    "method": "POST",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    "body": JSON.stringify({"path": filePath})
+                }
+            );
             data = await response.json();
             # Handle wrapped response: data.data.reports or data.reports
             reports = (data.data and data.data.reports) or data.reports;
@@ -852,7 +859,7 @@ def:pub FeaturesTest -> any {
                             Last Upload:
                         </strong>
                         <span style={{"marginLeft": "8px", "color": "#047857"}}>
-                            {uploadResult.original_filename} → {uploadResult.storage_path}
+                            {uploadResult.original_filename}→ {uploadResult.storage_path}
                         </span>
                     </div>}
                     # File list
@@ -898,7 +905,9 @@ def:pub FeaturesTest -> any {
                                     </div>
                                     <TestButton
                                         text="Delete"
-                                        onClick={lambda -> None { handleDeleteFile(file.path);}}
+                                        onClick={lambda -> None { handleDeleteFile(
+                                            file.path
+                                        );}}
                                         variant="secondary"
                                     />
                                 </div>; }
