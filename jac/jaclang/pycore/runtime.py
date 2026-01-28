@@ -2327,7 +2327,7 @@ class JacRuntimeInterface(
         return UserManager(base_path=base_path)
 
     @staticmethod
-    def get_storage(config: dict | None = None) -> Any:  # noqa: ANN401
+    def store(config: dict | None = None) -> Any:  # noqa: ANN401
         """Get storage backend instance (hookable for plugins).
 
         Default returns LocalStorage. Plugins (like jac-scale) can override

@@ -7,7 +7,7 @@ import from jaclang.runtimelib.storage.storage { Storage }
 """Local filesystem storage provider.
 
 This is the default storage implementation that stores files on the local
-filesystem. Plugins like jac-scale can override get_storage() to provide
+filesystem. Plugins like jac-scale can override store() to provide
 cloud storage backends instead.
 """
 class LocalStorage(Storage) {

@@ -1,13 +1,13 @@
 # Storage Abstraction
 
-Jac provides a storage abstraction layer for managing file uploads and storage operations. The `get_storage()` builtin returns a `Storage` instance configured from your project settings, and plugins like jac-scale can override it to provide cloud backends.
+Jac provides a storage abstraction layer for managing file uploads and storage operations. The `store()` builtin returns a `Storage` instance configured from your project settings, and plugins like jac-scale can override it to provide cloud backends.
 
 ## Quick Start
 
 ```jac
 with entry {
     # Get storage (uses jac.toml / env vars / defaults)
-    storage = get_storage({'base_path': './uploads'});
+    storage = store({'base_path': './uploads'});
 
     # Upload a file
     storage.upload('/path/to/file.txt', 'documents/file.txt');
@@ -27,15 +27,15 @@ with entry {
 
 ## Getting a Storage Instance
 
-The recommended way to get storage is via the `get_storage()` builtin, which respects your project configuration:
+The recommended way to get storage is via the `store()` builtin, which respects your project configuration:
 
 ```jac
 with entry {
     # Default storage (reads jac.toml, then env vars, then defaults to local)
-    storage = get_storage();
+    storage = store();
 
     # With explicit config
-    storage = get_storage({'base_path': './uploads', 'create_dirs': True});
+    storage = store({'base_path': './uploads', 'create_dirs': True});
 }
 ```
 
@@ -59,7 +59,7 @@ Upload a file to storage.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
 
     # From file path
     storage.upload('/tmp/myfile.txt', 'documents/myfile.txt');
@@ -83,7 +83,7 @@ Download a file from storage.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
 
     # Get file content as bytes
     content = storage.download('documents/file.txt');
@@ -106,7 +106,7 @@ Delete a file from storage.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
     deleted = storage.delete('documents/file.txt');
     if deleted {
         print("File deleted");
@@ -122,7 +122,7 @@ Check if a file exists.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
     if storage.exists('documents/file.txt') {
         print("File exists");
     }
@@ -137,7 +137,7 @@ List files in a directory.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
 
     # List files in a folder
     for file in storage.list_files('documents/') {
@@ -164,7 +164,7 @@ Get file metadata.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
     metadata = storage.get_metadata('documents/file.txt');
     print(f"Size: {metadata['size']} bytes");
     print(f"Modified: {metadata['modified']}");
@@ -179,7 +179,7 @@ Copy or move files within storage.
 
 ```jac
 with entry {
-    storage = get_storage();
+    storage = store();
 
     # Copy a file
     storage.copy('documents/file.txt', 'backup/file.txt');
@@ -199,7 +199,7 @@ Here's a complete example of a file upload walker using the storage abstraction:
 import from fastapi { UploadFile }
 import from uuid { uuid4 }
 
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker upload_document {
     has document: UploadFile;
@@ -243,7 +243,7 @@ import from fastapi { UploadFile }
 import from uuid { uuid4 }
 import from datetime { datetime }
 
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker upload_image {
     has image: UploadFile;
@@ -274,7 +274,7 @@ walker upload_image {
 ## List and Delete Files
 
 ```jac
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker list_files {
     has folder: str = "";
@@ -328,7 +328,7 @@ create_dirs = true
 
 ### Configuration Priority
 
-When you call `get_storage()`, configuration is resolved in this order:
+When you call `store()`, configuration is resolved in this order:
 
 1. **jac.toml** - Project-level configuration
 2. **Environment variables** - System/deployment configuration
@@ -348,7 +348,7 @@ enum StorageType {
 }
 ```
 
-The `get_storage()` builtin uses `StorageFactory` internally to create the appropriate storage instance based on configuration.
+The `store()` builtin uses `StorageFactory` internally to create the appropriate storage instance based on configuration.
 
 ### Direct Construction
 

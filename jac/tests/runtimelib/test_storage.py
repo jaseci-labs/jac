@@ -157,24 +157,24 @@ class TestLocalStorage:
         assert metadata["name"] == "meta.txt"
 
 
-class TestGetStorageBuiltin:
-    """Tests for the get_storage builtin function."""
+class TestStoreBuiltin:
+    """Tests for the store builtin function."""
 
-    def test_get_storage_default(self) -> None:
-        """Test get_storage returns LocalStorage by default."""
-        from jaclang.runtimelib.builtin import get_storage
+    def test_store_default(self) -> None:
+        """Test store returns LocalStorage by default."""
+        from jaclang.runtimelib.builtin import store
         from jaclang.runtimelib.storage import (  # type: ignore[attr-defined]
             LocalStorage,
         )
 
-        storage = get_storage()
+        storage = store()
         assert isinstance(storage, LocalStorage)
 
-    def test_get_storage_with_config(self, temp_storage_dir: str) -> None:
-        """Test get_storage with custom config."""
-        from jaclang.runtimelib.builtin import get_storage
+    def test_store_with_config(self, temp_storage_dir: str) -> None:
+        """Test store with custom config."""
+        from jaclang.runtimelib.builtin import store
 
-        storage = get_storage({"base_path": temp_storage_dir})
+        storage = store({"base_path": temp_storage_dir})
         assert storage.base_path == temp_storage_dir
 
 

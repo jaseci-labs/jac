@@ -12,12 +12,12 @@ Handle file uploads, downloads, and storage operations in your Jac full-stack ap
 
 ## Overview
 
-Jac provides a storage abstraction layer through `get_storage()`. By default, files are stored locally, but with `jac-scale` you can configure cloud backends (S3, GCS, Azure).
+Jac provides a storage abstraction layer through `store()`. By default, files are stored locally, but with `jac-scale` you can configure cloud backends (S3, GCS, Azure).
 
 ```
 ┌─────────────┐     multipart      ┌─────────────┐     storage     ┌─────────────┐
 │  Frontend   │ ─────────────────→ │   Walker    │ ───────────────→ │   Storage   │
-│  FormData   │     POST file      │   upload    │   get_storage()  │   Backend   │
+│  FormData   │     POST file      │   upload    │   store()  │   Backend   │
 └─────────────┘                    └─────────────┘                  └─────────────┘
 ```
 
@@ -60,7 +60,7 @@ Create a walker that handles file uploads:
 import from fastapi { UploadFile }
 import from uuid { uuid4 }
 
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker:pub upload_file {
     has file: UploadFile;
@@ -94,7 +94,7 @@ walker:pub upload_file {
 ## Backend: List and Delete
 
 ```jac
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker:pub list_files {
     has folder: str = "";
@@ -276,7 +276,7 @@ import from fastapi { UploadFile }
 import from uuid { uuid4 }
 import from datetime { datetime }
 
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 walker:pub upload_image {
     has image: UploadFile;
@@ -310,7 +310,7 @@ walker:pub upload_image {
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `get_storage(config?)` | Get storage instance | Storage |
+| `store(config?)` | Get storage instance | Storage |
 | `storage.upload(source, dest)` | Upload file | path string |
 | `storage.download(source, dest?)` | Download file | bytes or None |
 | `storage.delete(path)` | Delete file | bool |
@@ -352,7 +352,7 @@ create_dirs = true
 import from fastapi { UploadFile }
 import from uuid { uuid4 }
 
-glob storage = get_storage({'base_path': './uploads'});
+glob storage = store({'base_path': './uploads'});
 
 # Backend walkers
 walker:pub upload_file {
@@ -465,7 +465,7 @@ cl {
 
 | Concept | Usage |
 |---------|-------|
-| Get storage | `storage = get_storage({'base_path': './uploads'})` |
+| Get storage | `storage = store({'base_path': './uploads'})` |
 | Upload file | `storage.upload(file_obj, 'path/to/file')` |
 | File parameter | `has file: UploadFile` in walker |
 | Frontend upload | Use `FormData` with `fetch()` |

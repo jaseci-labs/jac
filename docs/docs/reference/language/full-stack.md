@@ -148,7 +148,7 @@ Jac provides a storage abstraction layer for file uploads and storage operations
 ```jac
 with entry {
     # Get storage (uses jac.toml / env vars / defaults)
-    storage = get_storage({'base_path': './uploads'});
+    storage = store({'base_path': './uploads'});
 
     # Upload a file
     storage.upload('/path/to/file.txt', 'documents/file.txt');

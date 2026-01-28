@@ -232,11 +232,11 @@ class JacScalePlugin {
 
     """Provide jac-scale's storage backend.
 
-    This overrides the core get_storage() to use jac-scale's StorageFactory,
+    This overrides the core store() to use jac-scale's StorageFactory,
     which supports cloud backends (S3, GCS, Azure) via configuration.
     """
     @hookimpl
-    static def get_storage(config: (dict | None) = None) -> Storage {
+    static def store(config: (dict | None) = None) -> Storage {
         import from .factories.storage_factory { StorageFactory }
         return StorageFactory.get_default(config);
     }

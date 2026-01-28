@@ -86,8 +86,8 @@ impl __getattr__(name: str) -> object {
         return _get_save();
     } elif (name == 'commit') {
         return _get_commit();
-    } elif (name == 'get_storage') {
-        return _get_storage();
+    } elif (name == 'store') {
+        return _get_store();
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}") ;
 }
@@ -98,8 +98,8 @@ impl _get_commit -> Callable[..., Any] {
 }
 
 """Get storage backend lazily."""
-impl _get_storage -> Callable[..., Any] {
-    return _get_jac().get_storage;
+impl _get_store -> Callable[..., Any] {
+    return _get_jac().store;
 }
 
 """Get save lazily."""

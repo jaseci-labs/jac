@@ -16,7 +16,7 @@ Introduced a pluggable storage abstraction layer for file operations.
 
 - **Abstract Storage Interface**: Base `Storage` class defining standard file operations (upload, download, delete, list, copy, move, get_metadata)
 - **LocalStorage**: Default local filesystem implementation in `jaclang.runtimelib.storage`
-- **`get_storage()` builtin**: Hookable function that returns a configured `Storage` instance
+- **`store()` builtin**: Hookable function that returns a configured `Storage` instance
 - **Configuration**: Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` env vars
 
 ### PyPI Installation by Default
