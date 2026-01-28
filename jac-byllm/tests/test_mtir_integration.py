@@ -508,9 +508,7 @@ class TestScopeNameConsistency:
 
             # Find matching scopes
             matching_scopes = [
-                scope
-                for scope in mtir_map.keys()
-                if expected_scope_pattern in scope
+                scope for scope in mtir_map.keys() if expected_scope_pattern in scope
             ]
 
             assert len(matching_scopes) > 0, (
