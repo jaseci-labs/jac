@@ -2,7 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.2 (Unreleased)
+## jac-scale 0.1.3 (Unreleased)
+
+- **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.
+
+- **Internal**: Explicitly declared all postinit fields across the codebase.
 
 ### New Features
 
@@ -44,7 +48,7 @@ Added `plugin_versions` configuration in `jac.toml` to pin specific package vers
 jaclang = "0.1.5"      # or "latest"
 jac_scale = "0.1.1"    # or "latest"
 jac_client = "0.1.0"   # or "latest"
-jac_byllm = "none"     # use "none" to skip installation
+jac_byllm = "none"     # use "none" to skip installation (will insall elvant byllm version)
 ```
 
 When not specified, defaults to `"latest"` for all packages.

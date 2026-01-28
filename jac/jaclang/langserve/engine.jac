@@ -33,8 +33,8 @@ import from .module_manager { ModuleManager }
 
 obj Task {
     has file_uri: str,
-        task_id: int = 0,
-        cancel_token: threading.Event | None = None;
+        task_id: int by postinit,
+        cancel_token: threading.Event | None by postinit;
 
     static has _task_id: int = 0;
 
@@ -44,9 +44,9 @@ obj Task {
 """Jac Language Server, manages JacProgram and LSP."""
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
-        module_manager: ModuleManager | None = None,
+        module_manager: ModuleManager | None by postinit,
         queue: Queue = Queue(),
-        worker_future: Future | None = None,
+        worker_future: Future | None by postinit,
         last_task: Task | None = None,
         _shutdown_called: bool = False;
 

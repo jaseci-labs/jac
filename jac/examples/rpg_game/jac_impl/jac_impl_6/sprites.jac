@@ -12,7 +12,8 @@ include settings.map;
 Object for impoting sprite character images.
 """
 obj Spritesheet {
-    has file: str;
+    has file: str,
+        sheet: pygame.Surface by postinit;
 
     def postinit;
     def get_sprite(x: int, y: int, width: int, height: int) -> pygame.Surface;
@@ -25,13 +26,16 @@ obj Player(pygame.sprite.Sprite) {
     has game: Game,
         x: int,
         y: int,
-        _layer: int = PLAYER_LAYER,
+        _layer: int by postinit,
         width: int = TILESIZE,
         height: int = TILESIZE,
         x_change: int = 0,
         y_change: int = 0,
         facing: str = 'down',
-        animation_loop: float = 1;
+        animation_loop: float = 1,
+        _groups: AbstractGroup by postinit,
+        image: pygame.Surface by postinit,
+        rect: pygame.Rect by postinit;
 
     def postinit;
     def update;
@@ -49,12 +53,17 @@ obj Enemy(pygame.sprite.Sprite) {
         x: int,
         y: int,
         _layer: int = ENEMY_LAYER,
-        width: inr = TILESIZE,
+        width: int = TILESIZE,
         height: int = TILESIZE,
         x_change: int = 0,
         y_change: int = 0,
         animation_loop: float = 0,
-        movement_loop: int = 0;
+        movement_loop: int = 0,
+        _groups: tuple by postinit,
+        image: pygame.Surface by postinit,
+        facing: str by postinit,
+        max_travel: int by postinit,
+        rect: pygame.Rect by postinit;
 
     def postinit;
     def update;
@@ -72,7 +81,10 @@ obj Block(pygame.sprite.Sprite) {
         y: int,
         _layer: int = BLOCK_LAYER,
         width: int = TILESIZE,
-        height: int = TILESIZE;
+        height: int = TILESIZE,
+        _groups: tuple by postinit,
+        image: pygame.Surface by postinit,
+        rect: pygame.Rect by postinit;
 
     def postinit;
 }
@@ -86,7 +98,10 @@ obj Ground(pygame.sprite.Sprite) {
         y: int,
         _layer: int = GROUND_LAYER,
         width: int = TILESIZE,
-        height: int = TILESIZE;
+        height: int = TILESIZE,
+        _groups: AbstractGroup by postinit,
+        image: pygame.Surface by postinit,
+        rect: pygame.Rect by postinit;
 
     def postinit;
 }
@@ -101,7 +116,10 @@ obj Attack(pygame.sprite.Sprite) {
         _layer: int = ATTACK_LAYER,
         width: int = TILESIZE,
         height: int = TILESIZE,
-        animation_loop: float = 0;
+        animation_loop: float = 0,
+        _groups: tuple by postinit,
+        image: pygame.Surface by postinit,
+        rect: pygame.Rect by postinit;
 
     def postinit;
     def update;
@@ -120,7 +138,12 @@ obj Button {
         fg: tuple,
         bg: tuple,
         content: str,
-        fontsize: int;
+        fontsize: int,
+        font: pygame.font.Font by postinit,
+        image: pygame.Surface by postinit,
+        rect: pygame.Rect by postinit,
+        text: pygame.Surface by postinit,
+        text_rect: pygame.Rect by postinit;
 
     def postinit;
     def is_pressed(pos: tuple, pressed: tuple) -> bool;

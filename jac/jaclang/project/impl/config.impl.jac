@@ -208,9 +208,9 @@ impl JacConfig.get_cache_dir -> Path {
     return self.get_build_dir() / "cache";
 }
 
-"""Get the Python packages directory (.jac/packages)."""
-impl JacConfig.get_packages_dir -> Path {
-    return self.get_build_dir() / "packages";
+"""Get the virtual environment directory (.jac/venv)."""
+impl JacConfig.get_venv_dir -> Path {
+    return self.get_build_dir() / "venv";
 }
 
 """Get the data directory for runtime artifacts (.jac/data)."""

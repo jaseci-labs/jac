@@ -56,15 +56,15 @@ obj BaseLLM {
         call_params: dict[(str, object)] = {};
 
     def __call__(**kwargs: object) -> BaseLLM;
-    def invoke(mtir: MTRuntime) -> object;
-    def make_model_params(mtir: MTRuntime) -> dict;
+    def invoke(mt_run: MTRuntime) -> object;
+    def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;
-    def dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult;
-    def dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None];
+    def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
+    def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[str, None, None];
-    def _stream_final_answer(mtir: MTRuntime) -> Generator[str, None, None];
+    def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
 """Mock LLM connector that simulates responses for testing.
@@ -74,8 +74,8 @@ Configure outputs via the 'outputs' kwarg to control mock responses.
 """
 obj MockLLM(BaseLLM) {
     def postinit -> None;
-    override def dispatch_no_streaming(mtir: MTRuntime) -> CompletionResult;
-    override def dispatch_streaming(mtir: MTRuntime) -> Generator[str, None, None];
+    override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
+    override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
 """Primary LLM connector that abstracts LiteLLM functionality.
@@ -91,7 +91,7 @@ obj Model(BaseLLM) {
         _mock_delegate: MockLLM | None = None;
 
     def postinit -> None;
-    override def invoke(mtir: MTRuntime) -> object;
+    override def invoke(mt_run: MTRuntime) -> object;
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict);
     def model_call_http(
