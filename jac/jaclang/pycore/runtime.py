@@ -2344,7 +2344,9 @@ class JacRuntimeInterface(
         import os
 
         from jaclang.project.config import get_config
-        from jaclang.runtimelib.storage import LocalStorage  # type: ignore[attr-defined]
+        from jaclang.runtimelib.storage import (
+            LocalStorage,  # type: ignore[attr-defined]
+        )
 
         cfg = config or {}
         jac_config = get_config()
