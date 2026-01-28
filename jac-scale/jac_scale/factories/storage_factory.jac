@@ -61,16 +61,15 @@ class StorageFactory {
             );
             storage_type = StorageType(storage_type_str);
             base_path = os.environ.get("JAC_STORAGE_PATH", base_path);
-            create_dirs_str = os.environ.get("JAC_STORAGE_CREATE_DIRS", str(create_dirs));
+            create_dirs_str = os.environ.get(
+                "JAC_STORAGE_CREATE_DIRS", str(create_dirs)
+            );
             create_dirs = create_dirs_str.lower() == "true";
         } else {
             storage_type = StorageType.LOCAL;
         }
 
-        storage_config = {
-            "base_path": base_path,
-            "create_dirs": create_dirs
-        };
+        storage_config = {"base_path": base_path, "create_dirs": create_dirs};
         return StorageFactory.create(storage_type, storage_config);
     }
 }
