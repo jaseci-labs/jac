@@ -116,6 +116,9 @@ obj CompilationWorker {
     """Process all pending foreground requests."""
     def process_foreground_requests(program: Any, sem_managers: dict) -> None;
 
+    """Dispatch foreground request to handler."""
+    def _dispatch_foreground(request_type: str, request: dict, program: Any, sem_managers: dict) -> dict;
+
     """Internal compile file method."""
     def _compile_file(request: dict, program: Any, sem_managers: dict) -> dict;
 

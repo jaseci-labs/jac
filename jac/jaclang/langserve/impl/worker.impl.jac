@@ -108,44 +108,31 @@ impl CompilationWorker.initialize(
 impl CompilationWorker.run -> None {
     import from jaclang.pycore.program { JacProgram }
     import traceback;
-    import hashlib;
 
-    print("[Worker] Starting worker process", file=sys.stderr);
     program = JacProgram();
     sem_managers: dict = {};
     poll_interval = self._config.poll_interval_ms / 1000.0;
 
     while not self._shutdown_event.is_set() {
-        # First, check for foreground requests (high priority)
         self.process_foreground_requests(program, sem_managers);
-
-        # Then check for compilation requests
         try {
             request = self._request_queue.get(timeout=poll_interval);
         } except Empty {
             continue;
         }
-
-        print(f"[Worker] Got request: {request.get('request_type')} {request.get('request_id')}", file=sys.stderr);
         self.clear_cancellation();
         request_id = request.get('request_id', '');
         request_type = request.get('request_type', '');
-
         try {
             if request_type == 'SHUTDOWN' {
-                print("[Worker] Shutdown requested", file=sys.stderr);
                 break;
             } elif request_type == 'COMPILE_FILE' {
-                response = self._compile_file(request, program, sem_managers);
-                print(f"[Worker] Sending response: success={response.get('success')}", file=sys.stderr);
-                self._response_queue.put(response);
+                self._response_queue.put(self._compile_file(request, program, sem_managers));
             }
         } except Exception as e {
-            print(f"[Worker] Exception: {e}", file=sys.stderr);
             self._response_queue.put(_error(request_id, str(e), traceback.format_exc()));
         }
     }
-    print("[Worker] Exiting worker loop", file=sys.stderr);
 }
 
 impl CompilationWorker.has_foreground_request -> bool {
@@ -160,52 +147,37 @@ impl CompilationWorker.has_foreground_request -> bool {
 }
 
 impl CompilationWorker.process_foreground_requests(program: Any, sem_managers: dict) -> None {
-    # Process all pending foreground requests (hover, definition, etc.)
     import traceback;
-
-    if self._foreground_queue is None {
-        return;
-    }
+    if self._foreground_queue is None { return; }
 
     while True {
         try {
             request = self._foreground_queue.get_nowait();
-        } except Empty { 
-            break;
-        } 
+        } except Empty { break; }
 
         request_id = request.get('request_id', '');
         request_type = request.get('request_type', '');
-        print(f"[Worker] Foreground request: {request_type} {request_id}", file=sys.stderr);
-
         try {
-            response: dict = {};
-            if request_type == 'HOVER' {
-                response = self.handle_hover(request, program, sem_managers);
-            } elif request_type == 'DEFINITION' {
-                response = self.handle_definition(request, program, sem_managers);
-            } elif request_type == 'REFERENCES' {
-                response = self.handle_references(request, program, sem_managers);
-            } elif request_type == 'COMPLETION' {
-                response = self.handle_completion(request, program, sem_managers);
-            } elif request_type == 'OUTLINE' {
-                response = self.handle_outline(request, program, sem_managers);
-            } elif request_type == 'SEMANTIC_TOKENS' {
-                response = self.handle_semantic_tokens(request, program, sem_managers);
-            } elif request_type == 'RENAME' {
-                response = self.handle_rename(request, program, sem_managers);
-            } elif request_type == 'FORMAT' {
-                response = self.handle_format(request, program);
-            } else {
-                response = _error(request_id, f'Unknown request type: {request_type}');
-            }
+            response = self._dispatch_foreground(request_type, request, program, sem_managers);
             self._response_queue.put(response);
         } except Exception as e {
-            print(f"[Worker] Foreground request error: {e}", file=sys.stderr);
-            print(traceback.format_exc(), file=sys.stderr);
             self._response_queue.put(_error(request_id, str(e), traceback.format_exc()));
         }
     }
+}
+
+impl CompilationWorker._dispatch_foreground(
+    request_type: str, request: dict, program: Any, sem_managers: dict
+) -> dict {
+    if request_type == 'HOVER' { return self.handle_hover(request, program, sem_managers); }
+    elif request_type == 'DEFINITION' { return self.handle_definition(request, program, sem_managers); }
+    elif request_type == 'REFERENCES' { return self.handle_references(request, program, sem_managers); }
+    elif request_type == 'COMPLETION' { return self.handle_completion(request, program, sem_managers); }
+    elif request_type == 'OUTLINE' { return self.handle_outline(request, program, sem_managers); }
+    elif request_type == 'SEMANTIC_TOKENS' { return self.handle_semantic_tokens(request, program, sem_managers); }
+    elif request_type == 'RENAME' { return self.handle_rename(request, program, sem_managers); }
+    elif request_type == 'FORMAT' { return self.handle_format(request, program); }
+    else { return _error(request.get('request_id', ''), f'Unknown: {request_type}'); }
 }
 
 impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: dict) -> dict {
@@ -237,19 +209,11 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     existing_module = program.mod.hub.get(file_path);
     if existing_module and hasattr(existing_module, 'source') and existing_module.source {
         if existing_module.source.hash == source_hash {
-            # Source unchanged - return cached diagnostics
-            print(f"[Worker] Skipping (unchanged): {file_uri}", file=sys.stderr);
-            return _success(request_id,
-                file_path=file_path,
+            return _success(request_id, file_path=file_path,
                 diagnostics=self._serialize_diagnostics(file_path, program),
-                hub_files=list(program.mod.hub.keys()),
-                duration_ms=(time.time() - start) * 1000,
-                cached=True
-            );
+                hub_files=list(program.mod.hub.keys()), duration_ms=(time.time() - start) * 1000, cached=True);
         }
     }
-
-    print(f"[Worker] Compiling: {file_uri} ({len(source)} chars)", file=sys.stderr);
 
     # Clear old errors for this file
     program.errors_had = [e for e in program.errors_had if not (e?.loc?.mod_path == file_path)];
@@ -308,37 +272,18 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
 }
 
 impl CompilationWorker._serialize_diagnostics(file_path: str, program: Any) -> dict {
-    # Serialize diagnostics for a file (lightweight - no AST)
-    errors = [];
-    warnings = [];
-
-    for e in program.errors_had {
-        if e?.loc {
-            errors.append({
-                'message': e.msg,
-                'mod_path': e.loc.mod_path,
-                'line': e.loc.first_line,
-                'col': e.loc.col_start,
-                'end_line': e.loc.last_line,
-                'end_col': e.loc.col_end
-            });
+    def serialize_item(item: Any) -> dict | None {
+        if item?.loc {
+            return {'message': item.msg, 'mod_path': item.loc.mod_path,
+                'line': item.loc.first_line, 'col': item.loc.col_start,
+                'end_line': item.loc.last_line, 'end_col': item.loc.col_end};
         }
+        return None;
     }
-
-    for w in program.warnings_had {
-        if w?.loc {
-            warnings.append({
-                'message': w.msg,
-                'mod_path': w.loc.mod_path,
-                'line': w.loc.first_line,
-                'col': w.loc.col_start,
-                'end_line': w.loc.last_line,
-                'end_col': w.loc.col_end
-            });
-        }
-    }
-
-    return {'errors': errors, 'warnings': warnings};
+    return {
+        'errors': [d for e in program.errors_had if (d := serialize_item(e))],
+        'warnings': [d for w in program.warnings_had if (d := serialize_item(w))]
+    };
 }
 
 # ============== Foreground Request Handlers ==============
@@ -730,18 +675,10 @@ impl WorkerManager.is_running -> bool {
 }
 
 impl WorkerManager.schedule_file(file_uri: str) -> None {
-    # Only pass file_uri - worker reads source from disk
-    print(f"[WorkerMgr] schedule_file: {file_uri}", file=sys.stderr);
-    if not self._running {
-        print("[WorkerMgr] Worker not running, starting...", file=sys.stderr);
-        self.start();
-    }
+    if not self._running { self.start(); }
     self._last_activity = time.time();
     self._pending_uri = file_uri;
-    if self._analysis_in_progress {
-        print("[WorkerMgr] Cancelling in-progress analysis", file=sys.stderr);
-        self.cancel_current();
-    }
+    if self._analysis_in_progress { self.cancel_current(); }
     self._reset_timer();
 }
 
@@ -777,13 +714,9 @@ impl WorkerManager._cancel_timer -> None {
 }
 
 impl WorkerManager._on_timer_expired -> None {
-    if not self._running {
-        print("[WorkerMgr] Timer expired but not running", file=sys.stderr);
-        return;
-    }
+    if not self._running { return; }
     elapsed = (time.time() - self._last_activity) * 1000;
     if elapsed < self._config.debounce_ms {
-        print(f"[WorkerMgr] Timer: {elapsed:.0f}ms < {self._config.debounce_ms}ms, rescheduling", file=sys.stderr);
         with self._timer_lock {
             self._timer = threading.Timer((self._config.debounce_ms - elapsed) / 1000.0, self._on_timer_expired);
             self._timer.daemon = True;
@@ -791,47 +724,25 @@ impl WorkerManager._on_timer_expired -> None {
         }
         return;
     }
-    print(f"[WorkerMgr] Timer expired after {elapsed:.0f}ms, processing pending", file=sys.stderr);
     self._process_pending();
 }
 
 impl WorkerManager._process_pending -> None {
-    print(f"[WorkerMgr] _process_pending: running={self._running}, pending_uri={self._pending_uri}", file=sys.stderr);
-    if not self._running or self._pending_uri is None {
-        print("[WorkerMgr] _process_pending: early return", file=sys.stderr);
-        return;
-    }
+    if not self._running or self._pending_uri is None { return; }
     file_uri = self._pending_uri;
     self._pending_uri = None;
     self._analysis_in_progress = True;
-    print(f"[WorkerMgr] _process_pending: calling compile_file", file=sys.stderr);
     self.compile_file(file_uri);
 }
 
 impl WorkerManager.compile_file(file_uri: str, callback: Optional[Callable] = None) -> str {
-    # Only pass file_uri - worker reads source from disk (saved files only)
-    print(f"[WorkerMgr] compile_file: {file_uri}", file=sys.stderr);
-    if not self.is_running() {
-        print("[WorkerMgr] compile_file: worker not running, starting", file=sys.stderr);
-        self.start();
-    }
-    if self._current_request_id {
-        print(f"[WorkerMgr] compile_file: cancelling {self._current_request_id}", file=sys.stderr);
-        self.cancel_current();
-    }
+    if not self.is_running() { self.start(); }
+    if self._current_request_id { self.cancel_current(); }
     request_id = self._next_request_id();
     self._current_request_id = request_id;
-    request = {
-        'request_type': 'COMPILE_FILE',
-        'request_id': request_id,
-        'file_uri': file_uri
-    };
-    if callback {
-        self._pending_requests[request_id] = callback;
-    }
-    print(f"[WorkerMgr] compile_file: putting request {request_id} in queue", file=sys.stderr);
+    request = {'request_type': 'COMPILE_FILE', 'request_id': request_id, 'file_uri': file_uri};
+    if callback { self._pending_requests[request_id] = callback; }
     self._request_queue.put(request);
-    print(f"[WorkerMgr] compile_file: request queued", file=sys.stderr);
     return request_id;
 }
 
@@ -845,33 +756,16 @@ impl WorkerManager.cancel_current -> None {
 # ============== Foreground Request Methods (blocking) ==============
 
 impl WorkerManager._send_foreground_request(request: dict, timeout_ms: float) -> dict | None {
-    # Send a foreground request and wait for the response
-    if not self.is_running() {
-        self.start();
-    }
-
-    # Cancel any ongoing compilation so foreground request gets handled quickly
+    if not self.is_running() { self.start(); }
     self.cancel_current();
-
-    # Send to foreground queue (high priority)
-    print(f"[WorkerMgr] Sending foreground request: {request.get('request_type')}", file=sys.stderr);
     self._foreground_queue.put(request);
-
-    # Wait for response with timeout
     timeout_sec = timeout_ms / 1000.0;
     try {
         response = self._response_queue.get(timeout=timeout_sec);
-        # Make sure we got the right response
-        if response.get('request_id') == request.get('request_id') {
-            return response;
-        }
-        # If we got a different response, process it and try again
+        if response.get('request_id') == request.get('request_id') { return response; }
         self._handle_response(response);
         return self._response_queue.get(timeout=timeout_sec / 2);
-    } except Empty {
-        print(f"[WorkerMgr] Foreground request timed out", file=sys.stderr);
-        return None;
-    }
+    } except Empty { return None; }
 }
 
 impl WorkerManager.request_hover(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None {
@@ -947,66 +841,29 @@ impl WorkerManager.process_pending_responses -> None {
 
 impl WorkerManager._handle_response(response: dict) -> None {
     request_id = response.get('request_id', '');
-    print(f"[WorkerMgr] Response received: {request_id}, success={response.get('success')}", file=sys.stderr);
-
-    if self._current_request_id == request_id {
-        self._current_request_id = None;
-    }
+    if self._current_request_id == request_id { self._current_request_id = None; }
 
     if response.get('cancelled', False) {
-        print(f"[WorkerMgr] Request {request_id} was cancelled", file=sys.stderr);
         self._pending_requests.pop(request_id, None);
-        # If there's pending work, schedule it
-        if self._pending_uri {
-            self._reset_timer();
-        }
+        if self._pending_uri { self._reset_timer(); }
         return;
     }
 
-    if response.get('error_message') {
-        print(f"[WorkerMgr] Error: {response.get('error_message')}", file=sys.stderr);
-        if response.get('error_traceback') {
-            print(f"[WorkerMgr] Traceback: {response.get('error_traceback')}", file=sys.stderr);
-        }
-    }
-
-    # Call callback if registered
     if request_id in self._pending_requests {
-        try {
-            self._pending_requests.pop(request_id)(response);
-        } except Exception as e {
-            print(f"[WorkerMgr] Callback error: {e}", file=sys.stderr);
-        }
+        try { self._pending_requests.pop(request_id)(response); }
+        except Exception { }
     }
 
-    # Handle compilation response with lightweight diagnostics
     if response.get('success', False) and response.get('diagnostics') {
         self._analysis_in_progress = False;
-        diagnostics = response.get('diagnostics');
-        file_path = response.get('file_path');
-        hub_files = response.get('hub_files', []);
-
-        print(f"[WorkerMgr] Compilation done: {file_path}, {len(hub_files)} files in hub", file=sys.stderr);
-        print(f"[WorkerMgr] Diagnostics: {len(diagnostics.get('errors', []))} errors, {len(diagnostics.get('warnings', []))} warnings", file=sys.stderr);
-
-        # Call diagnostics callback with lightweight diagnostics dict
         if self._diagnostics_callback {
-            try {
-                self._diagnostics_callback(response);
-            } except Exception as e {
-                print(f"[WorkerMgr] Diagnostics callback error: {e}", file=sys.stderr);
-            }
+            try { self._diagnostics_callback(response); }
+            except Exception { }
         }
-
-        if self._pending_uri {
-            self._reset_timer();
-        }
+        if self._pending_uri { self._reset_timer(); }
     } elif not response.get('success', False) {
         self._analysis_in_progress = False;
-        print(f"[WorkerMgr] Request failed, analysis_in_progress reset", file=sys.stderr);
-        if self._pending_uri {
-            self._reset_timer();
-        }
+        if self._pending_uri { self._reset_timer(); }
     }
 }
 
@@ -1019,21 +876,11 @@ impl worker_process_main(
     shutdown_event: Any, cancel_event: Any, config_dict: dict,
     foreground_queue: Any | None = None
 ) -> None {
-    import traceback;
-    try {
-        print("[Worker] worker_process_main starting", file=sys.stderr);
-        config = WorkerConfig(
-            poll_interval_ms=config_dict.get('poll_interval_ms', 100),
-            shutdown_timeout_ms=config_dict.get('shutdown_timeout_ms', 5000)
-        );
-        worker = CompilationWorker();
-        worker.initialize(
-            request_queue, response_queue, shutdown_event, cancel_event, config,
-            foreground_queue=foreground_queue
-        );
-        worker.run();
-    } except Exception as e {
-        print(f"[Worker] FATAL ERROR: {e}", file=sys.stderr);
-        print(traceback.format_exc(), file=sys.stderr);
-    }
+    config = WorkerConfig(
+        poll_interval_ms=config_dict.get('poll_interval_ms', 100),
+        shutdown_timeout_ms=config_dict.get('shutdown_timeout_ms', 5000)
+    );
+    worker = CompilationWorker();
+    worker.initialize(request_queue, response_queue, shutdown_event, cancel_event, config, foreground_queue);
+    worker.run();
 }
