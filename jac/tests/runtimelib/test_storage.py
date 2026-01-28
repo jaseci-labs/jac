@@ -174,7 +174,7 @@ class TestStoreBuiltin:
         """Test store with custom config."""
         from jaclang.runtimelib.builtin import store
 
-        storage = store({"base_path": temp_storage_dir})
+        storage = store(base_path=temp_storage_dir)
         assert storage.base_path == temp_storage_dir
 
 
