@@ -236,9 +236,11 @@ class JacScalePlugin {
     which supports cloud backends (S3, GCS, Azure) via configuration.
     """
     @hookimpl
-    static def store(config: (dict | None) = None) -> Storage {
+    static def store(
+        base_path: str = "./storage", create_dirs: bool = True
+    ) -> Storage {
         import from .factories.storage_factory { StorageFactory }
-        return StorageFactory.get_default(config);
+        return StorageFactory.get_default(base_path, create_dirs);
     }
 }
 

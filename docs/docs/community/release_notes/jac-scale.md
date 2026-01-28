@@ -6,7 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.
 
-- **Storage Abstraction**: Introduced a pluggable storage abstraction layer for file operations. Includes an abstract `Storage` interface defining standard operations (upload, download, delete, list, copy, move, get_metadata), a default `LocalStorage` implementation in `jaclang.runtimelib.storage`, and a hookable `store()` builtin that returns a configured `Storage` instance. Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` environment variables.
+- **Storage Abstraction**: Introduced a pluggable storage abstraction layer for file operations. Includes an abstract `Storage` interface defining standard operations (upload, download, delete, list, copy, move, get_metadata), a default `LocalStorage` implementation in `jaclang.runtimelib.storage`, and a hookable `store(base_path, create_dirs)` builtin that returns a configured `Storage` instance. Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` environment variables.
 
 - **PyPI Installation by Default**: Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments. Use `jac start app.jac --scale` for default behavior, or `jac start app.jac --scale --experimental` to fall back to repo clone.
 

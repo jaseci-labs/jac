@@ -45,29 +45,32 @@ class StorageFactory {
         raise ValueError(f"Unsupported storage type: {storage_type}") ;
     }
 
-    static def get_default(config: (dict[str, Any] | None) = None) -> Storage {
+    static def get_default(
+        base_path: str = "./storage", create_dirs: bool = True
+    ) -> Storage {
         # Get config from jac.toml if available
         jac_config = get_config();
 
-        # Config priority: jac.toml > env var > default
+        # Config priority: jac.toml > env var > parameter
         if jac_config and jac_config.storage {
             storage_type = StorageType(jac_config.storage.storage_type);
             base_path = jac_config.storage.base_path;
             create_dirs = jac_config.storage.create_dirs;
-        } else {
+        } elif os.environ.get("JAC_STORAGE_TYPE") or os.environ.get("JAC_STORAGE_PATH") {
             storage_type_str = os.environ.get(
                 "JAC_STORAGE_TYPE", StorageType.LOCAL.value
             );
             storage_type = StorageType(storage_type_str);
-            base_path = os.environ.get("JAC_STORAGE_PATH", "./storage");
-            create_dirs_str = os.environ.get("JAC_STORAGE_CREATE_DIRS", "true");
+            base_path = os.environ.get("JAC_STORAGE_PATH", base_path);
+            create_dirs_str = os.environ.get("JAC_STORAGE_CREATE_DIRS", str(create_dirs));
             create_dirs = create_dirs_str.lower() == "true";
+        } else {
+            storage_type = StorageType.LOCAL;
         }
 
         storage_config = {
             "base_path": base_path,
-            "create_dirs": create_dirs,
-            ** (config or {})
+            "create_dirs": create_dirs
         };
         return StorageFactory.create(storage_type, storage_config);
     }

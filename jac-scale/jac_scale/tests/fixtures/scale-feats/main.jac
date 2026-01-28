@@ -9,7 +9,7 @@ import from fastapi { UploadFile }
 import from uuid { uuid4 }
 
 # Initialize storage with custom base path
-glob storage = store({"base_path": "./uploads"});
+glob storage = store(base_path="./uploads");
 
 # ============================================================================
 # Storage API Walkers
