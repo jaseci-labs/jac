@@ -629,6 +629,5 @@ cl {
 - [Components Tutorial](../../tutorials/fullstack/components.md)
 - [State Management Tutorial](../../tutorials/fullstack/state.md)
 - [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
-- [File Storage Tutorial](../../tutorials/fullstack/storage.md)
 - [Authentication Tutorial](../../tutorials/fullstack/auth.md)
 - [Routing Tutorial](../../tutorials/fullstack/routing.md)
