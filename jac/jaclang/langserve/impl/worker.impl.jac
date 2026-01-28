@@ -339,9 +339,7 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
 
     node_type = node_selected.type;
     parent = node_selected.parent;
-    # debug print
-    print(f"[Worker] Definition request: {file_path} ({line},{character}) - Node: {type(node_selected).__name__}, Type: {type(node_type).__name__ if node_type else 'None'}", file=sys.stderr);
-    
+
 
     ####################################################################
     ##         Check for impl body first (stub -> impl navigation)    ##
@@ -374,22 +372,16 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
                 }
             };
         } elif isinstance(node_type, ClassType) {
-            print(f"[Worker] ClassType - sym: {node_selected.sym}, decl: {node_selected.sym.decl if node_selected.sym else 'N/A'}", file=sys.stderr);
-            loc = self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None;
-            print(f"[Worker] ClassType location: {loc}", file=sys.stderr);
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': loc
+                'location': self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None
             };
         } elif isinstance(node_type, (FunctionType, OverloadedType)) {
-            print(f"[Worker] FunctionType/OverloadedType - sym: {node_selected.sym}, decl: {node_selected.sym.decl if node_selected.sym else 'N/A'}", file=sys.stderr);
-            loc = self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None;
-            print(f"[Worker] FunctionType/OverloadedType location: {loc}", file=sys.stderr);
             return {
                 'request_id': request_id,
                 'success': True,
-                'location': loc
+                'location': self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None
             };
         }
     }
@@ -429,24 +421,14 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
 }
 
 impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
-    # Create a location dict from an AST node
+    """Create a location dict from an AST node."""
     import os;
-    if not ast_node {
-        print(f"[Worker] _make_location_dict: ast_node is None", file=sys.stderr);
-        return None;
-    }
-    if not hasattr(ast_node, 'loc') {
-        print(f"[Worker] _make_location_dict: ast_node has no 'loc' attr, type={type(ast_node).__name__}", file=sys.stderr);
-        return None;
-    }
-    if not ast_node.loc {
-        print(f"[Worker] _make_location_dict: ast_node.loc is None/empty", file=sys.stderr);
+    if not ast_node or not hasattr(ast_node, 'loc') or not ast_node.loc {
         return None;
     }
     loc = ast_node.loc;
     # Normalize the path to resolve any ../.. components
     mod_path = os.path.normpath(loc.mod_path) if loc.mod_path else '';
-    print(f"[Worker] _make_location_dict: mod_path={mod_path}, line={loc.first_line}", file=sys.stderr);
     return {
         'uri': mod_path,
         'line': max(0, loc.first_line - 1),  # Convert to 0-indexed, ensure >= 0

@@ -69,20 +69,9 @@ def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
 """Provide completion."""
-async def completion(
+def completion(
     ls: JacLangServer, params: lspt.CompletionParams
-) -> lspt.CompletionList {
-    file_path = params.text_document.uri;
-    trigger = params.context.trigger_character if params.context else None;
-    debug(f"completion: {file_path} at {params.position} (trigger='{trigger}')");
-    result = await ls.get_completion(
-        params.text_document.uri,
-        params.position,
-        trigger
-    );
-    debug(f"completion: returning {len(result.items)} items");
-    return result;
-}
+) -> lspt.CompletionList;
 
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams

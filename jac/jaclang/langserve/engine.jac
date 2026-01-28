@@ -66,17 +66,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def stop_response_polling -> None;
     async def _response_polling_loop -> None;
 
-    # LSP features (forward to worker)
-    def get_semantic_tokens(file_path: str) -> lspt.SemanticTokens;
-    async def get_completion(file_uri: str, position: lspt.Position, completion_trigger: Optional[str]) -> lspt.CompletionList;
-    def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];
-    def get_definition(file_path: str, position: lspt.Position) -> Optional[lspt.Location];
-    def get_references(file_path: str, position: lspt.Position) -> list[lspt.Location];
-    def rename_symbol(file_path: str, position: lspt.Position, new_name: str) -> Optional[lspt.WorkspaceEdit];
-    def get_outline(file_path: str) -> list[lspt.DocumentSymbol];
-    def _convert_outline_dict_to_lsp(symbols_data: list) -> list[lspt.DocumentSymbol];
-    def formatted_jac(file_path: str) -> list[lspt.TextEdit];
-
     # Module management
     def delete_module(uri: str) -> None;
     def rename_module(old_path: str, new_path: str) -> None;
