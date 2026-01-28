@@ -43,6 +43,12 @@ glob registry = get_registry();
             help="Only check syntax (skip type checking)",
             short="p"
         ),
+        Arg.create(
+            "nowarn",
+            typ=bool,
+            default=False,
+            help="Suppress warning output (warnings are still counted)"
+        ),
 
     ],
     examples=[
@@ -55,6 +61,7 @@ glob registry = get_registry();
             "jac check myprogram.jac --parse-only",
             "Only check syntax, skip type checking"
         ),
+        ("jac check myprogram.jac --nowarn", "Check without warnings"),
 
     ],
     group="analysis"
@@ -64,7 +71,8 @@ def check(
     print_errs: bool = True,
     warnonly: bool = False,
     ignore: str = "",
-    parse_only: bool = False
+    parse_only: bool = False,
+    nowarn: bool = False
 ) -> int;
 
 """Format .jac files with improved code style."""
