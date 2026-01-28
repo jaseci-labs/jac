@@ -91,6 +91,19 @@ class TestDependencyInstaller:
             # Should recreate since venv is corrupted
             mock_builder.create.assert_called_once_with(str(venv_dir))
 
+    def test_ensure_venv_ensurepip_missing(self, temp_project: Path) -> None:
+        """Test that a clear error is raised when ensurepip is not available."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        with patch("venv.EnvBuilder") as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder.create.side_effect = Exception("No module named 'ensurepip'")
+            mock_builder_class.return_value = mock_builder
+
+            with pytest.raises(RuntimeError, match="sudo apt install python3-venv"):
+                installer.ensure_venv()
+
     def test_install_package_success(self, temp_project: Path) -> None:
         """Test successful package installation."""
         config = JacConfig.load(temp_project / "jac.toml")
