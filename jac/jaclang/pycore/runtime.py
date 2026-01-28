@@ -2284,7 +2284,6 @@ class JacPluginConfig:
                 - config: dict for jac.toml content (with {{name}} placeholders)
                 - files: dict[path, content] with {{name}} placeholders
                 - directories: list of directories to create
-                - gitignore_entries: list of .gitignore entries
                 - post_create: optional callable(project_path, project_name)
         """
         return None
