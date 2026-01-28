@@ -78,8 +78,9 @@ def add_unique_text_edit(
 
 # ============== Worker Response to LSP Type Converters ==============
 # These utilities convert worker response dicts to LSP types for the server
-
-def response_to_location(response: dict) -> Optional[lspt.Location];
+def response_to_location(
+    response: dict
+) -> Optional[lspt.Location];
 
 def response_to_locations(response: dict) -> list[lspt.Location];
 
@@ -91,6 +92,8 @@ def response_to_document_symbols(response: dict) -> list[lspt.DocumentSymbol];
 
 def response_to_semantic_tokens(response: dict) -> lspt.SemanticTokens;
 
-def response_to_workspace_edit(response: dict, new_name: str) -> Optional[lspt.WorkspaceEdit];
+def response_to_workspace_edit(
+    response: dict, new_name: str
+) -> Optional[lspt.WorkspaceEdit];
 
 def response_to_text_edits(response: dict, source: str) -> list[lspt.TextEdit];

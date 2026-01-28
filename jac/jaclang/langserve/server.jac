@@ -69,9 +69,7 @@ def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
 """Provide completion."""
-def completion(
-    ls: JacLangServer, params: lspt.CompletionParams
-) -> lspt.CompletionList;
+def completion(ls: JacLangServer, params: lspt.CompletionParams) -> lspt.CompletionList;
 
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams

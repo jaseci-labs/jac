@@ -36,7 +36,6 @@ enum RequestType {
 }
 
 # ============== Request Parameter Containers ==============
-
 """Parameters for position-based requests (hover, definition, references, etc.)."""
 obj PositionParams {
     has request_id: str,
@@ -56,7 +55,6 @@ obj FileParams {
 }
 
 # ============== Response Builders ==============
-
 """Build a success response with optional data."""
 def _success(request_id: str, **data: dict) -> dict;
 
@@ -70,11 +68,9 @@ def _cancelled(request_id: str) -> dict;
 def _location_response(request_id: str, location: dict | None) -> dict;
 
 # ============== Request Builders ==============
-
 """Build a position-based request dict."""
 def _build_position_request(
-    request_type: str, request_id: str,
-    file_path: str, line: int, character: int
+    request_type: str, request_id: str, file_path: str, line: int, character: int
 ) -> dict;
 
 """Build a file-only request dict."""
@@ -109,38 +105,61 @@ obj CompilationWorker {
     def has_foreground_request -> bool;
 
     """Process all pending foreground requests."""
-    def process_foreground_requests(program: JacProgram, sem_managers: dict[str, SemTokManager]) -> None;
+    def process_foreground_requests(
+        program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> None;
 
     """Dispatch foreground request to handler."""
-    def _dispatch_foreground(request_type: str, request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def _dispatch_foreground(
+        request_type: str,
+        request: dict,
+        program: JacProgram,
+        sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Internal compile file method."""
-    def _compile_file(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def _compile_file(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Serialize diagnostics for a file into lightweight dict."""
     def _serialize_diagnostics(file_path: str, program: JacProgram) -> dict;
 
     # Foreground request handlers
     """Handle hover request."""
-    def handle_hover(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_hover(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle definition request."""
-    def handle_definition(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_definition(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle references request."""
-    def handle_references(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_references(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle completion request."""
-    def handle_completion(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_completion(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle outline request."""
-    def handle_outline(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_outline(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle semantic tokens request."""
-    def handle_semantic_tokens(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_semantic_tokens(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle rename request."""
-    def handle_rename(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
+    def handle_rename(
+        request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
+    ) -> dict;
 
     """Handle format request."""
     def handle_format(request: dict, program: JacProgram) -> dict;
@@ -157,7 +176,11 @@ obj CompilationWorker {
     # Helper methods for LSP features
     """Get token at position from semantic manager."""
     def _get_token_at_position(
-        file_path: str, line: int, character: int, sem_managers: dict[str, SemTokManager], hub: dict
+        file_path: str,
+        line: int,
+        character: int,
+        sem_managers: dict[str, SemTokManager],
+        hub: dict
     ) -> uni.AstSymbolNode | None;
 
     """Get node info for hover."""
@@ -209,10 +232,13 @@ obj WorkerManager {
     def postinit -> None;
     """Generate next request ID."""
     def _next_request_id -> str;
+
     """Start the worker process."""
     def start -> None;
+
     """Stop the worker process."""
     def stop -> None;
+
     """Check if worker is running."""
     def is_running -> bool;
 
@@ -230,42 +256,57 @@ obj WorkerManager {
     def is_busy -> bool;
 
     """Send compile request immediately (no debounce). Worker reads source from disk."""
-    def compile_file(
-        file_uri: str,
-        callback: Optional[Callable] = None
-    ) -> str;
+    def compile_file(file_uri: str, callback: Optional[Callable] = None) -> str;
 
     """Cancel current compilation."""
     def cancel_current -> None;
 
     # Foreground LSP request methods (blocking - wait for response)
     """Send hover request and wait for response."""
-    def request_hover(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+    def request_hover(
+        file_path: str, line: int, character: int, timeout_ms: float = 5000
+    ) -> dict | None;
 
     """Send definition request and wait for response."""
-    def request_definition(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+    def request_definition(
+        file_path: str, line: int, character: int, timeout_ms: float = 5000
+    ) -> dict | None;
 
     """Send references request and wait for response."""
-    def request_references(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+    def request_references(
+        file_path: str, line: int, character: int, timeout_ms: float = 5000
+    ) -> dict | None;
 
     """Send completion request and wait for response."""
     def request_completion(
-        file_path: str, line: int, character: int, trigger: str | None = None, timeout_ms: float = 5000
+        file_path: str,
+        line: int,
+        character: int,
+        trigger: str | None = None,
+        timeout_ms: float = 5000
     ) -> dict | None;
 
     """Send outline request and wait for response."""
     def request_outline(file_path: str, timeout_ms: float = 5000) -> dict | None;
 
     """Send semantic tokens request and wait for response."""
-    def request_semantic_tokens(file_path: str, timeout_ms: float = 5000) -> dict | None;
+    def request_semantic_tokens(
+        file_path: str, timeout_ms: float = 5000
+    ) -> dict | None;
 
     """Send rename request and wait for response."""
     def request_rename(
-        file_path: str, line: int, character: int, new_name: str, timeout_ms: float = 5000
+        file_path: str,
+        line: int,
+        character: int,
+        new_name: str,
+        timeout_ms: float = 5000
     ) -> dict | None;
 
     """Send format request and wait for response."""
-    def request_format(file_path: str, source: str, timeout_ms: float = 5000) -> dict | None;
+    def request_format(
+        file_path: str, source: str, timeout_ms: float = 5000
+    ) -> dict | None;
 
     """Internal: send foreground request and wait for response."""
     def _send_foreground_request(request: dict, timeout_ms: float) -> dict | None;

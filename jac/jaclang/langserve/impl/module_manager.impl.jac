@@ -18,7 +18,11 @@ impl ModuleManager.clear_alerts_for_file(file_path_fs: str) -> None {
         for w in self.program.warnings_had
         if w.loc.mod_path != file_path_fs
     ];
-    _modmgr_debug(f"clear_alerts_for_file: {file_path_fs} - cleared {old_errors - len(self.program.errors_had)} errors, {old_warnings - len(self.program.warnings_had)} warnings");
+    _modmgr_debug(
+        f"clear_alerts_for_file: {file_path_fs} - cleared {old_errors - len(
+            self.program.errors_had
+        )} errors, {old_warnings - len(self.program.warnings_had)} warnings"
+    );
 }
 
 """Update modules in JacProgram's hub and semantic managers."""

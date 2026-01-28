@@ -13,18 +13,14 @@ import logging;
 impl JacLangServer.postinit -> None {
     LanguageServer.__init__(self, 'jac-lsp', 'v0.1');
     JacProgram.__init__(self);
-
     self._logger = logging.getLogger("jac.lsp");
     self.debug("Initializing JacLangServer...");
-
     self.module_manager = ModuleManager(self, self.sem_managers);
-
     config = WorkerConfig.default();
     self.debug(f"Worker config: debounce={config.debounce_ms}ms");
     self._worker_manager = WorkerManager(_config=config);
     self._worker_manager.set_diagnostics_callback(self._on_worker_diagnostics);
     self._worker_manager.start();
-
     self.debug("JacLangServer ready");
 }
 
@@ -34,7 +30,6 @@ impl JacLangServer.shutdown -> None {
     }
     self._shutdown_called = True;
     self.debug("Shutting down...");
-
     try {
         self.stop_response_polling();
         if self._worker_manager is not None {
@@ -47,7 +42,6 @@ impl JacLangServer.shutdown -> None {
 }
 
 # ============== Logging ==============
-
 impl JacLangServer.debug(msg: str) -> None {
     print(f"[Engine] {msg}", file=sys.stderr);
 }
@@ -65,8 +59,9 @@ impl JacLangServer.log_error(message: str) -> None {
 }
 
 # ============== File Event Coordination ==============
-
-impl JacLangServer.schedule_analysis(file_uri: str) -> None {
+impl JacLangServer.schedule_analysis(
+    file_uri: str
+) -> None {
     if self._worker_manager is not None {
         self._worker_manager.schedule_file(file_uri);
     }
@@ -78,16 +73,15 @@ impl JacLangServer.on_file_opened(file_uri: str) -> None {
     }
 }
 
-impl JacLangServer.on_file_closed(file_uri: str) -> None {
-}
+impl JacLangServer.on_file_closed(file_uri: str) -> None { }
 
-impl JacLangServer.on_file_focused(file_uri: str) -> None {
-}
+impl JacLangServer.on_file_focused(file_uri: str) -> None { }
 
 # ============== Testing Utilities ==============
 # Used by: tests/langserve/test_server.py, tests/langserve/server_test/utils.py
-
-impl JacLangServer.type_check_file(file_uri: str) -> bool {
+impl JacLangServer.type_check_file(
+    file_uri: str
+) -> bool {
     try {
         self.schedule_analysis(file_uri);
         self.wait_till_idle_sync();
@@ -107,19 +101,17 @@ impl JacLangServer.wait_till_idle_sync -> None {
 }
 
 # ============== Diagnostics Callback ==============
-
-impl JacLangServer._on_worker_diagnostics(response: dict) -> None {
-    if not hasattr(self, 'lsp') or not self.lsp {
+impl JacLangServer._on_worker_diagnostics(
+    response: dict
+) -> None {
+    if not self?.lsp or not self.lsp {
         self.debug("Server not ready yet, skipping diagnostics");
         return;
     }
-
     diagnostics_data = response.get('diagnostics', {});
     file_path = response.get('file_path', '');
     hub_files = response.get('hub_files', []);
-
     self.debug(f"Diagnostics received: {file_path}, {len(hub_files)} files in hub");
-
     if file_path {
         uri = uris.from_fs_path(file_path);
         diagnostics = utils.gen_diagnostics_from_dict(file_path, diagnostics_data);
@@ -127,7 +119,6 @@ impl JacLangServer._on_worker_diagnostics(response: dict) -> None {
             self.publish_diagnostics(uri, diagnostics);
         } except Exception { }
     }
-
     all_paths = set();
     for e in diagnostics_data.get('errors', []) {
         if e.get('mod_path') {
@@ -148,14 +139,12 @@ impl JacLangServer._on_worker_diagnostics(response: dict) -> None {
             } except Exception { }
         }
     }
-
     try {
         self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
     } except Exception { }
 }
 
 # ============== Response Polling ==============
-
 impl JacLangServer.start_response_polling -> None {
     if self._polling_task is not None {
         return;
@@ -190,8 +179,9 @@ impl JacLangServer._response_polling_loop -> None {
 }
 
 # ============== Module Management ==============
-
-impl JacLangServer.delete_module(uri: str) -> None {
+impl JacLangServer.delete_module(
+    uri: str
+) -> None {
     if uri in self.mod.hub {
         del (self.mod.hub[uri], );
     }

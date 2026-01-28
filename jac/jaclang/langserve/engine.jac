@@ -20,7 +20,7 @@ import from . { utils }
 import from .module_manager { ModuleManager }
 import from .worker { WorkerManager, WorkerConfig }
 
-with entry{
+with entry {
     logging.getLogger().setLevel(logging.CRITICAL);
 }
 
@@ -36,33 +36,26 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     def postinit -> None;
     def shutdown -> None;
-
     # Logging
     def debug(msg: str) -> None;
     def log_info(message: str) -> None;
     def log_warning(message: str) -> None;
     def log_error(message: str) -> None;
-
     # Analysis scheduling
     def schedule_analysis(file_uri: str) -> None;
-
     # Testing utilities (used by test_server.py and server_test/utils.py)
     def type_check_file(file_uri: str) -> bool;
     def wait_till_idle_sync -> None;
-
     # File events
     def on_file_opened(file_uri: str) -> None;
     def on_file_closed(file_uri: str) -> None;
     def on_file_focused(file_uri: str) -> None;
-
     # Worker diagnostics
     def _on_worker_diagnostics(response: dict) -> None;
-
     # Response polling
     def start_response_polling -> None;
     def stop_response_polling -> None;
     async def _response_polling_loop -> None;
-
     # Module management
     def delete_module(uri: str) -> None;
     def rename_module(old_path: str, new_path: str) -> None;

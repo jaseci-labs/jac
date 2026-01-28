@@ -10,10 +10,8 @@ impl run_lang_server -> None {
     log_level = os.environ.get("JAC_LSP_LOG_LEVEL", "INFO");
     log_file = os.environ.get("JAC_LSP_LOG_FILE", None);
     configure_logging(level=log_level, log_file=log_file);
-
     debug(f"Starting JacLang Language Server (log_level={log_level})");
     server = JacLangServer();
-
     # Register file event handlers
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
@@ -78,7 +76,6 @@ impl run_lang_server -> None {
 }
 
 # ============== LSP Request Handlers (direct worker access) ==============
-
 """Provide definition - go to definition."""
 impl definition(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
@@ -152,12 +149,18 @@ impl semantic_tokens_full(
 impl rename(
     ls: JacLangServer, params: lspt.RenameParams
 ) -> Optional[lspt.WorkspaceEdit] {
-    debug(f"rename: {params.text_document.uri} at {params.position} -> '{params.new_name}'");
+    debug(
+        f"rename: {params.text_document.uri} at {params.position} -> '{params.new_name}'"
+    );
     ls.log_warning('Auto Rename is Experimental, Please use with caution.');
     fs_path = uris.to_fs_path(params.text_document.uri);
     if ls._worker_manager and ls._worker_manager.is_running() {
         response = ls._worker_manager.request_rename(
-            fs_path, params.position.line, params.position.character, params.new_name, timeout_ms=3000
+            fs_path,
+            params.position.line,
+            params.position.character,
+            params.new_name,
+            timeout_ms=3000
         );
         return utils.response_to_workspace_edit(response, params.new_name);
     }
@@ -169,11 +172,17 @@ impl completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
     trigger = params.context.trigger_character if params.context else None;
-    debug(f"completion: {params.text_document.uri} at {params.position} (trigger='{trigger}')");
+    debug(
+        f"completion: {params.text_document.uri} at {params.position} (trigger='{trigger}')"
+    );
     fs_path = uris.to_fs_path(params.text_document.uri);
     if ls._worker_manager and ls._worker_manager.is_running() {
         response = ls._worker_manager.request_completion(
-            fs_path, params.position.line, params.position.character, trigger, timeout_ms=2000
+            fs_path,
+            params.position.line,
+            params.position.character,
+            trigger,
+            timeout_ms=2000
         );
         return utils.response_to_completion_list(response);
     }
@@ -189,7 +198,9 @@ impl formatting(
         document = ls.workspace.get_text_document(params.text_document.uri);
         fs_path = uris.to_fs_path(params.text_document.uri);
         if ls._worker_manager and ls._worker_manager.is_running() {
-            response = ls._worker_manager.request_format(fs_path, document.source, timeout_ms=5000);
+            response = ls._worker_manager.request_format(
+                fs_path, document.source, timeout_ms=5000
+            );
             return utils.response_to_text_edits(response, document.source);
         }
         return [];
@@ -199,7 +210,6 @@ impl formatting(
 }
 
 # ============== File Event Handlers ==============
-
 """Check syntax on file delete."""
 impl did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None {
     debug(f"did_delete_files: {len(params.files)} files");

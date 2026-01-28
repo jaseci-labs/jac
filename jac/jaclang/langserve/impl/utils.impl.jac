@@ -471,50 +471,58 @@ impl gen_diagnostics_from_dict(
     from_path: str, diagnostics: dict
 ) -> list[lspt.Diagnostic] {
     result: list[lspt.Diagnostic] = [];
-
     for error in diagnostics.get('errors', []) {
         if error.get('mod_path') == from_path {
-            result.append(lspt.Diagnostic(
-                range=lspt.Range(
-                    start=lspt.Position(
-                        line=max(0, error.get('line', 1) - 1),
-                        character=max(0, error.get('col', 1) - 1)
+            result.append(
+                lspt.Diagnostic(
+                    range=lspt.Range(
+                        start=lspt.Position(
+                            line=max(0, error.get('line', 1) - 1),
+                            character=max(0, error.get('col', 1) - 1)
+                        ),
+                        end=lspt.Position(
+                            line=max(
+                                0, error.get('end_line', error.get('line', 1)) - 1
+                            ),
+                            character=max(
+                                0, error.get('end_col', error.get('col', 1)) - 1
+                            )
+                        )
                     ),
-                    end=lspt.Position(
-                        line=max(0, error.get('end_line', error.get('line', 1)) - 1),
-                        character=max(0, error.get('end_col', error.get('col', 1)) - 1)
-                    )
-                ),
-                message=error.get('message', ''),
-                severity=lspt.DiagnosticSeverity.Error
-            ));
+                    message=error.get('message', ''),
+                    severity=lspt.DiagnosticSeverity.Error
+                )
+            );
         }
     }
-
     for warning in diagnostics.get('warnings', []) {
         if warning.get('mod_path') == from_path {
-            result.append(lspt.Diagnostic(
-                range=lspt.Range(
-                    start=lspt.Position(
-                        line=max(0, warning.get('line', 1) - 1),
-                        character=max(0, warning.get('col', 1) - 1)
+            result.append(
+                lspt.Diagnostic(
+                    range=lspt.Range(
+                        start=lspt.Position(
+                            line=max(0, warning.get('line', 1) - 1),
+                            character=max(0, warning.get('col', 1) - 1)
+                        ),
+                        end=lspt.Position(
+                            line=max(
+                                0, warning.get('end_line', warning.get('line', 1)) - 1
+                            ),
+                            character=max(
+                                0, warning.get('end_col', warning.get('col', 1)) - 1
+                            )
+                        )
                     ),
-                    end=lspt.Position(
-                        line=max(0, warning.get('end_line', warning.get('line', 1)) - 1),
-                        character=max(0, warning.get('end_col', warning.get('col', 1)) - 1)
-                    )
-                ),
-                message=warning.get('message', ''),
-                severity=lspt.DiagnosticSeverity.Warning
-            ));
+                    message=warning.get('message', ''),
+                    severity=lspt.DiagnosticSeverity.Warning
+                )
+            );
         }
     }
-
     return result;
 }
 
 # ============== Worker Response to LSP Type Converters ==============
-
 """Convert worker definition response to LSP Location."""
 impl response_to_location(response: dict) -> Optional[lspt.Location] {
     if not response or not response.get('success') {
@@ -527,8 +535,12 @@ impl response_to_location(response: dict) -> Optional[lspt.Location] {
     return lspt.Location(
         uri=uris.from_fs_path(loc.get('uri', '')),
         range=lspt.Range(
-            start=lspt.Position(line=loc.get('line', 0), character=loc.get('character', 0)),
-            end=lspt.Position(line=loc.get('end_line', 0), character=loc.get('end_character', 0))
+            start=lspt.Position(
+                line=loc.get('line', 0), character=loc.get('character', 0)
+            ),
+            end=lspt.Position(
+                line=loc.get('end_line', 0), character=loc.get('end_character', 0)
+            )
         )
     );
 }
@@ -543,8 +555,12 @@ impl response_to_locations(response: dict) -> list[lspt.Location] {
         lspt.Location(
             uri=uris.from_fs_path(loc.get('uri', '')),
             range=lspt.Range(
-                start=lspt.Position(line=loc.get('line', 0), character=loc.get('character', 0)),
-                end=lspt.Position(line=loc.get('end_line', 0), character=loc.get('end_character', 0))
+                start=lspt.Position(
+                    line=loc.get('line', 0), character=loc.get('character', 0)
+                ),
+                end=lspt.Position(
+                    line=loc.get('end_line', 0), character=loc.get('end_character', 0)
+                )
             )
         ) for loc in locations
     ];
@@ -575,8 +591,14 @@ impl response_to_completion_list(response: dict) -> lspt.CompletionList {
         items=[
             lspt.CompletionItem(
                 label=item.get('label', ''),
-                kind=lspt.CompletionItemKind(item.get('kind', 1)) if item.get('kind') else None,
-                label_details=lspt.CompletionItemLabelDetails(detail=item.get('detail')) if item.get('detail') else None
+                kind=lspt.CompletionItemKind(item.get('kind', 1))
+                if item.get('kind')
+                else None,
+                label_details=lspt.CompletionItemLabelDetails(
+                    detail=item.get('detail')
+                )
+                if item.get('detail')
+                else None
             ) for item in items
         ]
     );
@@ -596,17 +618,23 @@ def _convert_symbols_recursive(symbols_data: list) -> list[lspt.DocumentSymbol] 
     for sym in symbols_data {
         rng = sym.get('range', {});
         pos = lspt.Range(
-            start=lspt.Position(line=rng.get('start_line', 0), character=rng.get('start_char', 0)),
-            end=lspt.Position(line=rng.get('end_line', 0), character=rng.get('end_char', 0))
+            start=lspt.Position(
+                line=rng.get('start_line', 0), character=rng.get('start_char', 0)
+            ),
+            end=lspt.Position(
+                line=rng.get('end_line', 0), character=rng.get('end_char', 0)
+            )
         );
         children = _convert_symbols_recursive(sym.get('children', []));
-        result.append(lspt.DocumentSymbol(
-            name=sym.get('name', ''),
-            kind=lspt.SymbolKind(sym.get('kind', 13)),
-            range=pos,
-            selection_range=pos,
-            children=children
-        ));
+        result.append(
+            lspt.DocumentSymbol(
+                name=sym.get('name', ''),
+                kind=lspt.SymbolKind(sym.get('kind', 13)),
+                range=pos,
+                selection_range=pos,
+                children=children
+            )
+        );
     }
     return result;
 }
@@ -621,7 +649,9 @@ impl response_to_semantic_tokens(response: dict) -> lspt.SemanticTokens {
 }
 
 """Convert worker rename response to LSP WorkspaceEdit."""
-impl response_to_workspace_edit(response: dict, new_name: str) -> Optional[lspt.WorkspaceEdit] {
+impl response_to_workspace_edit(
+    response: dict, new_name: str
+) -> Optional[lspt.WorkspaceEdit] {
     if not response or not response.get('success') {
         return None;
     }
@@ -635,8 +665,13 @@ impl response_to_workspace_edit(response: dict, new_name: str) -> Optional[lspt.
         for edit in file_edits {
             new_edit = lspt.TextEdit(
                 range=lspt.Range(
-                    start=lspt.Position(line=edit.get('line', 0), character=edit.get('character', 0)),
-                    end=lspt.Position(line=edit.get('end_line', 0), character=edit.get('end_character', 0))
+                    start=lspt.Position(
+                        line=edit.get('line', 0), character=edit.get('character', 0)
+                    ),
+                    end=lspt.Position(
+                        line=edit.get('end_line', 0),
+                        character=edit.get('end_character', 0)
+                    )
                 ),
                 new_text=edit.get('new_text', new_name)
             );
