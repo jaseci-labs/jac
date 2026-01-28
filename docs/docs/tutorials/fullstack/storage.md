@@ -21,8 +21,6 @@ Jac provides a storage abstraction layer through `get_storage()`. By default, fi
 └─────────────┘                    └─────────────┘                  └─────────────┘
 ```
 
-> **Important**: Multipart/form-data file uploads require `jac-scale`. The basic `jac start` command does not support file uploads.
-
 ---
 
 ## Setup
