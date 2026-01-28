@@ -129,9 +129,6 @@ impl initialize_template_registry -> None {
     }
 }
 
-# ===============================================================================
-# Default Template
-# ===============================================================================
 """Register the default Jac project template."""
 def _register_default_template(registry: TemplateRegistry) -> None {
     registry.register(
@@ -151,8 +148,12 @@ def _register_default_template(registry: TemplateRegistry) -> None {
             "files": {
                 "main.jac": '"""Main entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n'
             },
-            "root_gitignore_entries": [".jac/"]
+            "root_gitignore_entries": [".jac/"],
             "directories": [".jac"],
+
         }
     );
 }
+# ===============================================================================
+# Default Template
+# ===============================================================================

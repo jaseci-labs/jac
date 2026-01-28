@@ -84,7 +84,6 @@ impl load_template_from_directory(
     options = jacpackk_section.get("options", {});
     directories = options.get("directories", []);
     root_gitignore_entries = options.get("root_gitignore_entries", []);
-    
     gitignore_path = template_dir / ".gitignore";
     if gitignore_path.exists() {
         try {
@@ -99,9 +98,8 @@ impl load_template_from_directory(
                     }
                 }
             }
-        } except Exception {}
+        } except Exception { }
     }
-    
     if ".jac/" not in root_gitignore_entries {
         root_gitignore_entries = root_gitignore_entries + [".jac/"];
     }
