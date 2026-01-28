@@ -5,7 +5,10 @@ import from enum { Enum }
 import from jaclang.runtimelib.storage { Storage }
 import from jaclang.project.config { get_config }
 
-enum StorageType { LOCAL = 'local', S3 = 's3', GCS = 'gcs', AZURE = 'azure' }
+enum StorageType {
+    LOCAL = "local"
+    # Future: S3, GCS, AZURE - add when implemented
+}
 
 """Factory for creating storage instances.
 
@@ -35,14 +38,11 @@ class StorageFactory {
             import from jaclang.runtimelib.storage { LocalStorage }
             cfg = config or {};
             return LocalStorage(
-                base_path=cfg.get('base_path', './storage'),
-                create_dirs=cfg.get('create_dirs', True)
+                base_path=cfg.get("base_path", "./storage"),
+                create_dirs=cfg.get("create_dirs", True)
             );
-        } elif storage_type == StorageType.S3 {
-            raise NotImplementedError("S3 storage not yet implemented") ;
-        } else {
-            raise ValueError(f"Unsupported storage type: {storage_type}") ;
         }
+        raise ValueError(f"Unsupported storage type: {storage_type}") ;
     }
 
     static def get_default(config: (dict[str, Any] | None) = None) -> Storage {
@@ -56,17 +56,17 @@ class StorageFactory {
             create_dirs = jac_config.storage.create_dirs;
         } else {
             storage_type_str = os.environ.get(
-                'JAC_STORAGE_TYPE', StorageType.LOCAL.value
+                "JAC_STORAGE_TYPE", StorageType.LOCAL.value
             );
             storage_type = StorageType(storage_type_str);
-            base_path = os.environ.get('JAC_STORAGE_PATH', './storage');
-            create_dirs_str = os.environ.get('JAC_STORAGE_CREATE_DIRS', 'true');
-            create_dirs = create_dirs_str.lower() == 'true';
+            base_path = os.environ.get("JAC_STORAGE_PATH", "./storage");
+            create_dirs_str = os.environ.get("JAC_STORAGE_CREATE_DIRS", "true");
+            create_dirs = create_dirs_str.lower() == "true";
         }
 
         storage_config = {
-            'base_path': base_path,
-            'create_dirs': create_dirs,
+            "base_path": base_path,
+            "create_dirs": create_dirs,
             ** (config or {})
         };
         return StorageFactory.create(storage_type, storage_config);

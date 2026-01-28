@@ -9,7 +9,7 @@ import from fastapi { UploadFile }
 import from uuid { uuid4 }
 
 # Initialize storage with custom base path
-glob storage = store({'base_path': './uploads'});
+glob storage = store({"base_path": "./uploads"});
 
 # ============================================================================
 # Storage API Walkers
@@ -22,7 +22,7 @@ walker:pub upload_file {
 
     can process with `root entry {
         # Generate unique filename
-        ext = self.file.filename.rsplit('.', 1)[-1] if '.' in self.file.filename else '';
+        ext = self.file.filename.rsplit(".", 1)[-1] if "." in self.file.filename else "";
         unique_name = f"{uuid4()}.{ext}" if ext else str(uuid4());
         path = f"{self.folder}/{unique_name}";
 
@@ -36,7 +36,7 @@ walker:pub upload_file {
             "success": True,
             "original_filename": self.file.filename,
             "storage_path": path,
-            "size": metadata['size'],
+            "size": metadata["size"],
             "content_type": self.file.content_type
         };
     }
@@ -53,8 +53,8 @@ walker:pub list_files {
             metadata = storage.get_metadata(path);
             files.append({
                 "path": path,
-                "size": metadata['size'],
-                "modified": str(metadata['modified'])
+                "size": metadata["size"],
+                "modified": str(metadata["modified"])
             });
         }
         report {"files": files, "count": len(files)};
@@ -89,7 +89,7 @@ walker:pub download_file {
         report {
             "success": True,
             "path": self.path,
-            "size": metadata['size'],
+            "size": metadata["size"],
             "content_length": len(content) if content else 0
         };
     }

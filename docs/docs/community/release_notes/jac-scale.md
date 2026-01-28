@@ -13,7 +13,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 #### Storage Abstraction
 
 Introduced a pluggable storage abstraction layer for file operations.
-
 - **Abstract Storage Interface**: Base `Storage` class defining standard file operations (upload, download, delete, list, copy, move, get_metadata)
 - **LocalStorage**: Default local filesystem implementation in `jaclang.runtimelib.storage`
 - **`store()` builtin**: Hookable function that returns a configured `Storage` instance
