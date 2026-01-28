@@ -12,16 +12,13 @@ import sys;
 import time;
 import threading;
 import multiprocessing;
-import logging;
 import from typing { Optional, Callable, Any }
 import from queue { Empty }
 import from jaclang.langserve.sem_manager { SemTokManager }
 import from jaclang.langserve { utils }
-import from jaclang.vendor.pygls { uris }
-import lsprotocol.types as lspt;
 import jaclang.pycore.unitree as uni;
 import from jaclang.compiler.type_system.types {
-    ClassType, FunctionType, OverloadedType, ModuleType, TypeBase
+    ClassType, FunctionType, OverloadedType, ModuleType
 }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.pycore.unitree { UniScopeNode }
@@ -371,13 +368,7 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
                     'end_character': 0
                 }
             };
-        } elif isinstance(node_type, ClassType) {
-            return {
-                'request_id': request_id,
-                'success': True,
-                'location': self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None
-            };
-        } elif isinstance(node_type, (FunctionType, OverloadedType)) {
+        } elif isinstance(node_type, (ClassType, FunctionType, OverloadedType)) {
             return {
                 'request_id': request_id,
                 'success': True,
@@ -467,7 +458,6 @@ impl CompilationWorker.handle_completion(request: dict, program: Any, sem_manage
     file_path = request.get('file_path', '');
     line = request.get('line', 0);
     character = request.get('character', 0);
-    trigger = request.get('trigger', None);
 
     hub = program.mod.hub;
     items = [];
@@ -1109,10 +1099,6 @@ impl WorkerManager._handle_response(response: dict) -> None {
 
 impl WorkerManager.set_diagnostics_callback(callback: Callable) -> None {
     self._diagnostics_callback = callback;
-}
-
-impl WorkerManager.ping(timeout_ms: float = 1000) -> bool {
-    return self.is_running();
 }
 
 impl worker_process_main(

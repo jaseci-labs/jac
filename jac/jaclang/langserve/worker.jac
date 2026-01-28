@@ -243,9 +243,6 @@ obj WorkerManager {
 
     """Set diagnostics callback."""
     def set_diagnostics_callback(callback: Callable) -> None;
-
-    """Ping worker."""
-    def ping(timeout_ms: float = 1000) -> bool;
 }
 
 """Entry point for worker process."""
