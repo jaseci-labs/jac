@@ -30,6 +30,51 @@ enum RequestType {
     FORMAT
 }
 
+# ============== Request Parameter Containers ==============
+
+"""Parameters for position-based requests (hover, definition, references, etc.)."""
+obj PositionParams {
+    has request_id: str,
+        file_path: str,
+        line: int = 0,
+        character: int = 0;
+
+    static def from_request(request: dict) -> PositionParams;
+}
+
+"""Parameters for file-only requests (outline, semantic_tokens)."""
+obj FileParams {
+    has request_id: str,
+        file_path: str;
+
+    static def from_request(request: dict) -> FileParams;
+}
+
+# ============== Response Builders ==============
+
+"""Build a success response with optional data."""
+def _success(request_id: str, **data: dict) -> dict;
+
+"""Build an error response."""
+def _error(request_id: str, msg: str, tb: str | None = None) -> dict;
+
+"""Build a cancelled response."""
+def _cancelled(request_id: str) -> dict;
+
+"""Build a success response with location."""
+def _location_response(request_id: str, location: dict | None) -> dict;
+
+# ============== Request Builders ==============
+
+"""Build a position-based request dict."""
+def _build_position_request(
+    request_type: str, request_id: str,
+    file_path: str, line: int, character: int
+) -> dict;
+
+"""Build a file-only request dict."""
+def _build_file_request(request_type: str, request_id: str, file_path: str) -> dict;
+
 """Configuration for worker process."""
 obj WorkerConfig {
     has poll_interval_ms: float = 100,

@@ -27,6 +27,69 @@ impl WorkerConfig.default -> WorkerConfig {
     return WorkerConfig();
 }
 
+# ============== Request Parameter Containers ==============
+
+impl PositionParams.from_request(request: dict) -> PositionParams {
+    return PositionParams(
+        request_id=request.get('request_id', ''),
+        file_path=request.get('file_path', ''),
+        line=request.get('line', 0),
+        character=request.get('character', 0)
+    );
+}
+
+impl FileParams.from_request(request: dict) -> FileParams {
+    return FileParams(
+        request_id=request.get('request_id', ''),
+        file_path=request.get('file_path', '')
+    );
+}
+
+# ============== Response Builders ==============
+
+impl _success(request_id: str, **data: dict) -> dict {
+    return {'request_id': request_id, 'success': True, **data};
+}
+
+impl _error(request_id: str, msg: str, tb: str | None = None) -> dict {
+    result = {'request_id': request_id, 'success': False, 'error_message': msg};
+    if tb {
+        result['error_traceback'] = tb;
+    }
+    return result;
+}
+
+impl _cancelled(request_id: str) -> dict {
+    return {'request_id': request_id, 'success': False, 'cancelled': True};
+}
+
+impl _location_response(request_id: str, location: dict | None) -> dict {
+    return {'request_id': request_id, 'success': True, 'location': location};
+}
+
+# ============== Request Builders ==============
+
+impl _build_position_request(
+    request_type: str, request_id: str,
+    file_path: str, line: int, character: int
+) -> dict {
+    return {
+        'request_type': request_type,
+        'request_id': request_id,
+        'file_path': file_path,
+        'line': line,
+        'character': character
+    };
+}
+
+impl _build_file_request(request_type: str, request_id: str, file_path: str) -> dict {
+    return {
+        'request_type': request_type,
+        'request_id': request_id,
+        'file_path': file_path
+    };
+}
+
 # ============== CompilationWorker (runs in separate process) ==============
 
 impl CompilationWorker.initialize(
@@ -79,12 +142,7 @@ impl CompilationWorker.run -> None {
             }
         } except Exception as e {
             print(f"[Worker] Exception: {e}", file=sys.stderr);
-            self._response_queue.put({
-                'request_id': request_id,
-                'success': False,
-                'error_message': str(e),
-                'error_traceback': traceback.format_exc()
-            });
+            self._response_queue.put(_error(request_id, str(e), traceback.format_exc()));
         }
     }
     print("[Worker] Exiting worker loop", file=sys.stderr);
@@ -139,18 +197,13 @@ impl CompilationWorker.process_foreground_requests(program: Any, sem_managers: d
             } elif request_type == 'FORMAT' {
                 response = self.handle_format(request, program);
             } else {
-                response = {'request_id': request_id, 'success': False, 'error': f'Unknown request type: {request_type}'};
+                response = _error(request_id, f'Unknown request type: {request_type}');
             }
             self._response_queue.put(response);
         } except Exception as e {
             print(f"[Worker] Foreground request error: {e}", file=sys.stderr);
             print(traceback.format_exc(), file=sys.stderr);
-            self._response_queue.put({
-                'request_id': request_id,
-                'success': False,
-                'error_message': str(e),
-                'error_traceback': traceback.format_exc()
-            });
+            self._response_queue.put(_error(request_id, str(e), traceback.format_exc()));
         }
     }
 }
@@ -167,7 +220,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     file_path = file_uri[7:] if file_uri.startswith("file://") else file_uri;
 
     if not file_path {
-        return {'request_id': request_id, 'success': False, 'error_message': 'Missing file_uri'};
+        return _error(request_id, 'Missing file_uri');
     }
 
     # Read source from disk (saved files only)
@@ -176,7 +229,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
             source = f.read();
         }
     } except Exception as e {
-        return {'request_id': request_id, 'success': False, 'error_message': f'Cannot read file: {e}'};
+        return _error(request_id, f'Cannot read file: {e}');
     }
 
     # Check if source has changed using module.source.hash from hub
@@ -186,16 +239,13 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
         if existing_module.source.hash == source_hash {
             # Source unchanged - return cached diagnostics
             print(f"[Worker] Skipping (unchanged): {file_uri}", file=sys.stderr);
-            diagnostics_data = self._serialize_diagnostics(file_path, program);
-            return {
-                'request_id': request_id,
-                'success': True,
-                'file_path': file_path,
-                'diagnostics': diagnostics_data,
-                'hub_files': list(program.mod.hub.keys()),
-                'duration_ms': (time.time() - start) * 1000,
-                'cached': True
-            };
+            return _success(request_id,
+                file_path=file_path,
+                diagnostics=self._serialize_diagnostics(file_path, program),
+                hub_files=list(program.mod.hub.keys()),
+                duration_ms=(time.time() - start) * 1000,
+                cached=True
+            );
         }
     }
 
@@ -206,7 +256,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     program.warnings_had = [w for w in program.warnings_had if not (w?.loc?.mod_path == file_path)];
 
     if self.is_cancelled() or self.has_foreground_request() {
-        return {'request_id': request_id, 'success': False, 'cancelled': True};
+        return _cancelled(request_id);
     }
 
     # Create cancel token from our cancel event for fine-grained cancellation
@@ -220,7 +270,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     );
 
     if self.is_cancelled() or self.has_foreground_request() {
-        return {'request_id': request_id, 'success': False, 'cancelled': True};
+        return _cancelled(request_id);
     }
 
     if module?.loc {
@@ -249,17 +299,12 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
         } except Exception { }
     }
 
-    # Only send diagnostics, not full AST (lightweight response)
-    diagnostics_data = self._serialize_diagnostics(file_path, program);
-
-    return {
-        'request_id': request_id,
-        'success': True,
-        'file_path': file_path,
-        'diagnostics': diagnostics_data,
-        'hub_files': list(program.mod.hub.keys()),  # Just the file list, not the AST
-        'duration_ms': (time.time() - start) * 1000
-    };
+    return _success(request_id,
+        file_path=file_path,
+        diagnostics=self._serialize_diagnostics(file_path, program),
+        hub_files=list(program.mod.hub.keys()),
+        duration_ms=(time.time() - start) * 1000
+    );
 }
 
 impl CompilationWorker._serialize_diagnostics(file_path: str, program: Any) -> dict {
@@ -299,116 +344,62 @@ impl CompilationWorker._serialize_diagnostics(file_path: str, program: Any) -> d
 # ============== Foreground Request Handlers ==============
 
 impl CompilationWorker.handle_hover(request: dict, program: Any, sem_managers: dict) -> dict {
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-    line = request.get('line', 0);
-    character = request.get('character', 0);
-
-    hub = program.mod.hub;
-    sym_node = self._get_token_at_position(file_path, line, character, sem_managers, hub);
-
+    p = PositionParams.from_request(request);
+    sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
     if sym_node {
-        hover_text = self._get_node_info(sym_node);
-        if hover_text {
-            return {
-                'request_id': request_id,
-                'success': True,
-                'hover_text': hover_text
-            };
+        if hover_text := self._get_node_info(sym_node) {
+            return _success(p.request_id, hover_text=hover_text);
         }
     }
-    return {'request_id': request_id, 'success': True, 'hover_text': None};
+    return _success(p.request_id, hover_text=None);
 }
 
 """Return definition location for a file."""
 impl CompilationWorker.handle_definition(request: dict, program: Any, sem_managers: dict) -> dict {
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-    line = request.get('line', 0);
-    character = request.get('character', 0);
-
-    hub = program.mod.hub;
-    node_selected = self._get_token_at_position(file_path, line, character, sem_managers, hub);
+    p = PositionParams.from_request(request);
+    node_selected = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
 
     if not node_selected {
-        return {'request_id': request_id, 'success': True, 'location': None};
+        return _location_response(p.request_id, None);
     }
 
     node_type = node_selected.type;
     parent = node_selected.parent;
 
-
-    ####################################################################
-    ##         Check for impl body first (stub -> impl navigation)    ##
-    ####################################################################
+    # Check for impl body first (stub -> impl navigation)
     if isinstance(parent, uni.AstImplNeedingNode) and parent.body {
         if isinstance(parent.body, uni.ImplDef) {
-            return {
-                'request_id': request_id,
-                'success': True,
-                'location': self._make_location_dict(parent.body.sym.decl)
-            };
+            return _location_response(p.request_id, self._make_location_dict(parent.body.sym.decl));
         }
     }
 
-    ####################################################################
-    ##          Handle go to def for types and variables              ##
-    ####################################################################
+    # Handle go to def for types and variables
     if node_type {
         if isinstance(node_type, ModuleType) {
-            # For module types, go to the module file
-            return {
-                'request_id': request_id,
-                'success': True,
-                'location': {
-                    'uri': str(node_type.file_uri),
-                    'line': 0,
-                    'character': 0,
-                    'end_line': 0,
-                    'end_character': 0
-                }
-            };
+            return _location_response(p.request_id, {
+                'uri': str(node_type.file_uri), 'line': 0, 'character': 0, 'end_line': 0, 'end_character': 0
+            });
         } elif isinstance(node_type, (ClassType, FunctionType, OverloadedType)) {
-            return {
-                'request_id': request_id,
-                'success': True,
-                'location': self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None
-            };
+            return _location_response(p.request_id, self._make_location_dict(node_selected.sym.decl) if node_selected.sym else None);
         }
     }
 
-    ####################################################################
-    ##         Ad-hoc handling for impl-def go to def                 ##
-    ####################################################################
+    # Ad-hoc handling for impl-def go to def
     if not parent {
-        return {'request_id': request_id, 'success': True, 'location': None};
+        return _location_response(p.request_id, None);
     }
-
     if isinstance(parent, uni.ImplDef) and parent.decl_link {
-        return {
-            'request_id': request_id,
-            'success': True,
-            'location': self._make_location_dict(parent.decl_link.sym.decl)
-        };
+        return _location_response(p.request_id, self._make_location_dict(parent.decl_link.sym.decl));
     }
 
-    ####################################################################
-    ##         Fallback: use symbol resolution if available           ##
-    ####################################################################
-    # Even if type is not available, we can still navigate using the symbol
-    # reference. This is important for symbols resolved in impl bodies where
-    # type inference may not have run yet.
+    # Fallback: use symbol resolution if available
     if node_selected.sym and node_selected.sym.defn {
         try {
-            return {
-                'request_id': request_id,
-                'success': True,
-                'location': self._make_location_dict(node_selected.sym.defn[0])
-            };
+            return _location_response(p.request_id, self._make_location_dict(node_selected.sym.defn[0]));
         } except Exception { }
     }
 
-    return {'request_id': request_id, 'success': True, 'location': None};
+    return _location_response(p.request_id, None);
 }
 
 impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
@@ -430,45 +421,30 @@ impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
 }
 
 impl CompilationWorker.handle_references(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle references request - returns all usages of a symbol
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-    line = request.get('line', 0);
-    character = request.get('character', 0);
-
-    hub = program.mod.hub;
-    sym_node = self._get_token_at_position(file_path, line, character, sem_managers, hub);
+    p = PositionParams.from_request(request);
+    sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
 
     locations = [];
     if sym_node and hasattr(sym_node, 'sym') and sym_node.sym {
         for use_node in sym_node.sym.uses {
-            loc = self._make_location_dict(use_node);
-            if loc {
+            if loc := self._make_location_dict(use_node) {
                 locations.append(loc);
             }
         }
     }
-
-    return {'request_id': request_id, 'success': True, 'locations': locations};
+    return _success(p.request_id, locations=locations);
 }
 
 impl CompilationWorker.handle_completion(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle completion request - returns completion items
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-    line = request.get('line', 0);
-    character = request.get('character', 0);
-
-    hub = program.mod.hub;
+    p = PositionParams.from_request(request);
     items = [];
 
     try {
-        tok = self._get_node_at_position(file_path, line, character - 1, hub);
+        tok = self._get_node_at_position(p.file_path, p.line, p.character - 1, program.mod.hub);
         if tok and isinstance(tok, uni.Token) {
             if tok.name == "DOT" {
-                member_access = tok.parent;
-                if isinstance(member_access, uni.AtomTrailer) {
-                    items = self._get_completion_for_node(member_access.target, program);
+                if isinstance(tok.parent, uni.AtomTrailer) {
+                    items = self._get_completion_for_node(tok.parent.target, program);
                 }
             } elif tok.name == "NAME" {
                 if tok.parent and isinstance(tok.parent, uni.AtomTrailer) {
@@ -480,7 +456,7 @@ impl CompilationWorker.handle_completion(request: dict, program: Any, sem_manage
         }
     } except Exception { }
 
-    return {'request_id': request_id, 'success': True, 'items': items};
+    return _success(p.request_id, items=items);
 }
 
 impl CompilationWorker._get_completion_for_node(expr_node: Any, program: Any) -> list {
@@ -520,58 +496,39 @@ impl CompilationWorker._get_completion_for_scope(scope_node: Any) -> list {
 }
 
 impl CompilationWorker.handle_outline(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle outline request - returns document symbols
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-
-    hub = program.mod.hub;
+    f = FileParams.from_request(request);
     symbols = [];
-
-    if file_path in hub {
-        module = hub[file_path];
+    if f.file_path in program.mod.hub {
+        module = program.mod.hub[f.file_path];
         if module and hasattr(module, 'sym_tab') and module.sym_tab {
             symbols = utils.get_symbols_for_outline_dict(module.sym_tab);
         }
     }
-
-    return {'request_id': request_id, 'success': True, 'symbols': symbols};
+    return _success(f.request_id, symbols=symbols);
 }
 
 impl CompilationWorker.handle_semantic_tokens(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle semantic tokens request
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-
+    f = FileParams.from_request(request);
     tokens = [];
-    if file_path in sem_managers {
-        sem_mgr = sem_managers[file_path];
-        if sem_mgr {
+    if f.file_path in sem_managers {
+        if sem_mgr := sem_managers[f.file_path] {
             tokens = sem_mgr.sem_tokens;
         }
     }
-
-    return {'request_id': request_id, 'success': True, 'tokens': tokens};
+    return _success(f.request_id, tokens=tokens);
 }
 
 impl CompilationWorker.handle_rename(request: dict, program: Any, sem_managers: dict) -> dict {
-    # Handle rename request - returns workspace edits
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
-    line = request.get('line', 0);
-    character = request.get('character', 0);
+    p = PositionParams.from_request(request);
     new_name = request.get('new_name', '');
+    sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
 
-    hub = program.mod.hub;
-    sym_node = self._get_token_at_position(file_path, line, character, sem_managers, hub);
-
-    edits = {};  # uri -> list of edits
+    edits = {};
     if sym_node and hasattr(sym_node, 'sym') and sym_node.sym {
-        # Collect all uses and the definition
         all_nodes = [*sym_node.sym.uses];
         if sym_node.sym.defn {
             all_nodes.append(sym_node.sym.defn[0]);
         }
-
         for edit_node in all_nodes {
             if edit_node and hasattr(edit_node, 'loc') and edit_node.loc {
                 uri = edit_node.loc.mod_path;
@@ -588,24 +545,20 @@ impl CompilationWorker.handle_rename(request: dict, program: Any, sem_managers: 
             }
         }
     }
-
-    return {'request_id': request_id, 'success': True, 'edits': edits};
+    return _success(p.request_id, edits=edits);
 }
 
 impl CompilationWorker.handle_format(request: dict, program: Any) -> dict {
-    # Handle format request - returns formatted source
     import from jaclang.pycore.program { JacProgram }
-
-    request_id = request.get('request_id', '');
-    file_path = request.get('file_path', '');
+    f = FileParams.from_request(request);
     source = request.get('source', '');
 
     try {
-        prog = JacProgram.jac_str_formatter(source_str=source, file_path=file_path);
+        prog = JacProgram.jac_str_formatter(source_str=source, file_path=f.file_path);
         formatted = prog.mod.main.gen.jac if not prog.errors_had else source;
-        return {'request_id': request_id, 'success': True, 'formatted': formatted};
+        return _success(f.request_id, formatted=formatted);
     } except Exception {
-        return {'request_id': request_id, 'success': True, 'formatted': source};
+        return _success(f.request_id, formatted=source);
     }
 }
 
@@ -922,100 +875,60 @@ impl WorkerManager._send_foreground_request(request: dict, timeout_ms: float) ->
 }
 
 impl WorkerManager.request_hover(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None {
-    # Send hover request and wait for response
-    request = {
-        'request_type': 'HOVER',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'line': line,
-        'character': character
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    return self._send_foreground_request(
+        _build_position_request('HOVER', self._next_request_id(), file_path, line, character),
+        timeout_ms
+    );
 }
 
 impl WorkerManager.request_definition(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None {
-    # Send definition request and wait for response
-    request = {
-        'request_type': 'DEFINITION',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'line': line,
-        'character': character
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    return self._send_foreground_request(
+        _build_position_request('DEFINITION', self._next_request_id(), file_path, line, character),
+        timeout_ms
+    );
 }
 
 impl WorkerManager.request_references(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None {
-    # Send references request and wait for response
-    request = {
-        'request_type': 'REFERENCES',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'line': line,
-        'character': character
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    return self._send_foreground_request(
+        _build_position_request('REFERENCES', self._next_request_id(), file_path, line, character),
+        timeout_ms
+    );
 }
 
 impl WorkerManager.request_completion(
     file_path: str, line: int, character: int, trigger: str | None = None, timeout_ms: float = 5000
 ) -> dict | None {
-    # Send completion request and wait for response
-    request = {
-        'request_type': 'COMPLETION',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'line': line,
-        'character': character,
-        'trigger': trigger
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    req = _build_position_request('COMPLETION', self._next_request_id(), file_path, line, character);
+    req['trigger'] = trigger;
+    return self._send_foreground_request(req, timeout_ms);
 }
 
 impl WorkerManager.request_outline(file_path: str, timeout_ms: float = 5000) -> dict | None {
-    # Send outline request and wait for response
-    request = {
-        'request_type': 'OUTLINE',
-        'request_id': self._next_request_id(),
-        'file_path': file_path
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    return self._send_foreground_request(
+        _build_file_request('OUTLINE', self._next_request_id(), file_path),
+        timeout_ms
+    );
 }
 
 impl WorkerManager.request_semantic_tokens(file_path: str, timeout_ms: float = 5000) -> dict | None {
-    # Send semantic tokens request and wait for response
-    request = {
-        'request_type': 'SEMANTIC_TOKENS',
-        'request_id': self._next_request_id(),
-        'file_path': file_path
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    return self._send_foreground_request(
+        _build_file_request('SEMANTIC_TOKENS', self._next_request_id(), file_path),
+        timeout_ms
+    );
 }
 
 impl WorkerManager.request_rename(
     file_path: str, line: int, character: int, new_name: str, timeout_ms: float = 5000
 ) -> dict | None {
-    # Send rename request and wait for response
-    request = {
-        'request_type': 'RENAME',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'line': line,
-        'character': character,
-        'new_name': new_name
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    req = _build_position_request('RENAME', self._next_request_id(), file_path, line, character);
+    req['new_name'] = new_name;
+    return self._send_foreground_request(req, timeout_ms);
 }
 
 impl WorkerManager.request_format(file_path: str, source: str, timeout_ms: float = 5000) -> dict | None {
-    # Send format request and wait for response
-    request = {
-        'request_type': 'FORMAT',
-        'request_id': self._next_request_id(),
-        'file_path': file_path,
-        'source': source
-    };
-    return self._send_foreground_request(request, timeout_ms);
+    req = _build_file_request('FORMAT', self._next_request_id(), file_path);
+    req['source'] = source;
+    return self._send_foreground_request(req, timeout_ms);
 }
 
 impl WorkerManager.process_pending_responses -> None {
