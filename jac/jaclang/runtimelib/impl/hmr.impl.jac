@@ -350,12 +350,8 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
 
 """Create export statement for recompiled JS code."""
 impl HotReloader._create_export_statement(js_code: str, client_manifest: Any) -> str {
-    exports_list = list(client_manifest.exports)
-    if client_manifest.exports
-    else [];
-    globals_list = list(client_manifest.globals)
-    if client_manifest.globals
-    else [];
+    exports_list = list(client_manifest.exports) if client_manifest.exports else [];
+    globals_list = list(client_manifest.globals) if client_manifest.globals else [];
     module_export_names = sorted(set(exports_list + globals_list));
     if module_export_names {
         import re;
