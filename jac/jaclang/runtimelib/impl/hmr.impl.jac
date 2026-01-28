@@ -191,6 +191,12 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
 
+        # Handle exports: extract from manifest and add comprehensive export statement
+        client_manifest = mod.gen.client_manifest if mod else None;
+        if client_manifest {
+            js_code = self._create_export_statement(js_code, client_manifest);
+        }
+
         # Write the JS code
         output_path.write_text(js_code, encoding='utf-8');
 
@@ -340,6 +346,25 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
     } except Exception as e {
         print(f"[HMR] Error copying frontend file {file_path}: {e}", flush=True);
     }
+}
+
+"""Create export statement for recompiled JS code."""
+impl HotReloader._create_export_statement(js_code: str, client_manifest: Any) -> str {
+    exports_list = list(client_manifest.exports) if client_manifest.exports else [];
+    globals_list = list(client_manifest.globals) if client_manifest.globals else [];
+    module_export_names = sorted(set(exports_list + globals_list));
+    if module_export_names {
+        import re;
+        # Strip any existing export declarations to avoid duplicates
+        clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', js_code);
+        clean_js = re.sub(
+            r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_js
+        );
+        # Add comprehensive export statement at the end
+        export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
+        return clean_js + export_stmt;
+    }
+    return js_code;
 }
 
 """Update the entry point to reflect changes in modules."""
