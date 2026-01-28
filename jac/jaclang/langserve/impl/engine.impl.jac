@@ -2,7 +2,9 @@
 
 Single worker process architecture:
 - WorkerManager handles compilation with debounce scheduling
-- Immutable snapshots enable lock-free foreground queries
+- Worker reads source from disk (saved files only)
+- Foreground queries (hover, definition) handled in worker process
+- Only lightweight diagnostics sent back to main process
 """
 
 import threading;
@@ -11,15 +13,14 @@ import logging;
 
 
 impl JacLangServer.postinit -> None {
-    LanguageServer.init(self, 'jac-lsp', 'v0.1');
-    JacProgram.init(self);
+    # Must call Python __init__ directly for parent classes
+    LanguageServer.__init__(self, 'jac-lsp', 'v0.1');
+    JacProgram.__init__(self);
 
     self._logger = logging.getLogger("jac.lsp");
     self.debug("Initializing JacLangServer...");
 
     self.module_manager = ModuleManager(self, self.sem_managers);
-    self._pending_requests = {};
-    self._pending_requests_lock = threading.Lock();
 
     # Initialize and start worker
     config = WorkerConfig.default();
@@ -69,9 +70,10 @@ impl JacLangServer.log_error(message: str) -> None {
     self.show_message_log(message, lspt.MessageType.Error);
 }
 
-impl JacLangServer.schedule_analysis(file_uri: str, source: str) -> None {
+impl JacLangServer.schedule_analysis(file_uri: str) -> None {
+    # Worker reads source from disk (saved files only)
     if self._worker_manager is not None {
-        self._worker_manager.schedule_file(file_uri, source);
+        self._worker_manager.schedule_file(file_uri);
     }
 }
 
@@ -82,19 +84,14 @@ impl JacLangServer.on_file_opened(file_uri: str) -> None {
 }
 
 impl JacLangServer.on_file_closed(file_uri: str) -> None {
-    pass;
 }
 
 impl JacLangServer.on_file_focused(file_uri: str) -> None {
-    pass;
 }
 
 impl JacLangServer.type_check(file_uri: str) -> None {
     try {
-        document = self.workspace.get_text_document(file_uri);
-        if document and document.source {
-            self.schedule_analysis(file_uri, document.source);
-        }
+        self.schedule_analysis(file_uri);
     } except Exception as e {
         self.debug(f"Error in type_check: {e}");
     }
@@ -102,13 +99,9 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 
 impl JacLangServer.type_check_file(file_uri: str) -> bool {
     try {
-        document = self.workspace.get_text_document(file_uri);
-        if document and document.source {
-            self.schedule_analysis(file_uri, document.source);
-            self.wait_till_idle_sync();
-            return True;
-        }
-        return False;
+        self.schedule_analysis(file_uri);
+        self.wait_till_idle_sync();
+        return True;
     } except Exception as e {
         self.debug(f"Error in type_check_file: {e}");
         return False;
@@ -131,43 +124,55 @@ impl JacLangServer.wait_till_idle_sync -> None {
     }
 }
 
-impl JacLangServer._on_worker_diagnostics(snapshot: ProgramSnapshot) -> None {
-    self.debug(f"Snapshot v{snapshot.version}: {len(snapshot.hub)} files, {len(snapshot.errors)} errors");
+impl JacLangServer._on_worker_diagnostics(response: dict) -> None {
+    # Check if server is ready to publish (lsp attribute must exist)
+    if not hasattr(self, 'lsp') or not self.lsp {
+        self.debug("Server not ready yet, skipping diagnostics");
+        return;
+    }
 
-    # Sync to main process state
-    self._sync_snapshot_to_state(snapshot);
+    # Handle lightweight dict format from worker
+    diagnostics_data = response.get('diagnostics', {});
+    file_path = response.get('file_path', '');
+    hub_files = response.get('hub_files', []);
 
-    # Publish diagnostics
-    for file_path in snapshot.hub.keys() {
+    self.debug(f"Diagnostics received: {file_path}, {len(hub_files)} files in hub");
+
+    # Publish diagnostics for the compiled file
+    if file_path {
         uri = uris.from_fs_path(file_path);
-        diagnostics = utils.gen_diagnostics(file_path, snapshot.errors, snapshot.warnings);
-        self.publish_diagnostics(uri, diagnostics);
+        diagnostics = utils.gen_diagnostics_from_dict(file_path, diagnostics_data);
+        try {
+            self.publish_diagnostics(uri, diagnostics);
+        } except Exception { }
+    }
+
+    # Also publish for any other files that have diagnostics
+    all_paths = set();
+    for e in diagnostics_data.get('errors', []) {
+        if e.get('mod_path') {
+            all_paths.add(e.get('mod_path'));
+        }
+    }
+    for w in diagnostics_data.get('warnings', []) {
+        if w.get('mod_path') {
+            all_paths.add(w.get('mod_path'));
+        }
+    }
+    for path in all_paths {
+        if path != file_path {
+            uri = uris.from_fs_path(path);
+            diagnostics = utils.gen_diagnostics_from_dict(path, diagnostics_data);
+            try {
+                self.publish_diagnostics(uri, diagnostics);
+            } except Exception { }
+        }
     }
 
     # Refresh semantic tokens
     try {
         self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
     } except Exception { }
-}
-
-impl JacLangServer._sync_snapshot_to_state(snapshot: ProgramSnapshot) -> None {
-    try {
-        for (path, module) in snapshot.hub.items() {
-            self.mod.hub[path] = module;
-            self.sem_managers[path] = SemTokManager(ir=module, hub=self.mod.hub);
-        }
-        self.errors_had = list(snapshot.errors);
-        self.warnings_had = list(snapshot.warnings);
-    } except Exception as e {
-        self.debug(f"Error syncing snapshot: {e}");
-    }
-}
-
-impl JacLangServer.get_current_snapshot -> Optional[ProgramSnapshot] {
-    if self._worker_manager is not None {
-        return self._worker_manager.get_snapshot();
-    }
-    return None;
 }
 
 # Response polling
@@ -204,35 +209,21 @@ impl JacLangServer._response_polling_loop -> None {
     }
 }
 
-# LSP request cancellation
-impl JacLangServer.register_request(request_id: str) -> CancellationToken {
-    source = CancellationTokenSource();
-    with self._pending_requests_lock {
-        self._pending_requests[request_id] = source;
-    }
-    return source.token;
-}
-
-impl JacLangServer.unregister_request(request_id: str) -> None {
-    with self._pending_requests_lock {
-        if request_id in self._pending_requests {
-            source = self._pending_requests.pop(request_id);
-            source.dispose();
-        }
-    }
-}
-
-impl JacLangServer.cancel_request(request_id: str) -> None {
-    with self._pending_requests_lock {
-        if request_id in self._pending_requests {
-            self._pending_requests[request_id].cancel();
-        }
-    }
-}
-
 # LSP features
 impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_semantic_tokens(fs_path, timeout_ms=2000);
+            if response and response.get('success') and response.get('tokens') {
+                return lspt.SemanticTokens(data=response.get('tokens'));
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     try {
         sem_mgr = self.sem_managers.get(fs_path);
         if sem_mgr {
@@ -245,6 +236,31 @@ impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
 impl JacLangServer.get_completion(
     file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
 ) -> lspt.CompletionList {
+    fs_path = uris.to_fs_path(file_uri);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_completion(
+                fs_path, position.line, position.character, completion_trigger, timeout_ms=2000
+            );
+            if response and response.get('success') {
+                items = response.get('items', []);
+                return lspt.CompletionList(
+                    is_incomplete=False,
+                    items=[
+                        lspt.CompletionItem(
+                            label=item.get('label', ''),
+                            kind=lspt.CompletionItemKind(item.get('kind', 1)) if item.get('kind') else None,
+                            label_details=lspt.CompletionItemLabelDetails(detail=item.get('detail')) if item.get('detail') else None
+                        ) for item in items
+                    ]
+                );
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     await self.wait_till_idle();
     try {
         file_path = uris.to_fs_path(file_uri);
@@ -271,21 +287,61 @@ impl JacLangServer.get_completion(
 impl JacLangServer.get_hover_info(
     file_path: str, position: lspt.Position
 ) -> Optional[lspt.Hover] {
-    node_selected = self.get_token_at_position(file_path, position);
-    if node_selected {
-        value = self.get_node_info(node_selected);
-        if value {
-            return lspt.Hover(
-                contents=lspt.MarkupContent(kind=lspt.MarkupKind.PlainText, value=value)
-            );
-        }
+    fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_hover(fs_path, position.line, position.character, timeout_ms=2000);
+            if response and response.get('success') {
+                hover_text = response.get('hover_text');
+                if hover_text {
+                    return lspt.Hover(
+                        contents=lspt.MarkupContent(kind=lspt.MarkupKind.PlainText, value=hover_text)
+                    );
+                }
+            }
+        } except Exception { }
     }
+
+    # # Fallback to local
+    # node_selected = self.get_token_at_position(file_path, position);
+    # if node_selected {
+    #     value = self.get_node_info(node_selected);
+    #     if value {
+    #         return lspt.Hover(
+    #             contents=lspt.MarkupContent(kind=lspt.MarkupKind.PlainText, value=value)
+    #         );
+    #     }
+    # }
     return None;
 }
 
 impl JacLangServer.get_definition(
     file_path: str, position: lspt.Position
 ) -> Optional[lspt.Location] {
+    fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_definition(fs_path, position.line, position.character, timeout_ms=2000);
+            if response and response.get('success') {
+                loc = response.get('location');
+                if loc {
+                    return lspt.Location(
+                        uri=uris.from_fs_path(loc.get('uri', '')),
+                        range=lspt.Range(
+                            start=lspt.Position(line=loc.get('line', 0), character=loc.get('character', 0)),
+                            end=lspt.Position(line=loc.get('end_line', 0), character=loc.get('end_character', 0))
+                        )
+                    );
+                }
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     def make_location(node_: uni.UniNode, is_module: bool = False) -> lspt.Location {
         mod_path = node_.type.file_uri if is_module else node_.loc.mod_path;
         decl_range = (
@@ -337,6 +393,28 @@ impl JacLangServer.get_definition(
 impl JacLangServer.get_references(
     file_path: str, position: lspt.Position
 ) -> list[lspt.Location] {
+    fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_references(fs_path, position.line, position.character, timeout_ms=2000);
+            if response and response.get('success') {
+                locations = response.get('locations', []);
+                return [
+                    lspt.Location(
+                        uri=uris.from_fs_path(loc.get('uri', '')),
+                        range=lspt.Range(
+                            start=lspt.Position(line=loc.get('line', 0), character=loc.get('character', 0)),
+                            end=lspt.Position(line=loc.get('end_line', 0), character=loc.get('end_character', 0))
+                        )
+                    ) for loc in locations
+                ];
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
         return [
@@ -352,6 +430,38 @@ impl JacLangServer.get_references(
 impl JacLangServer.rename_symbol(
     file_path: str, position: lspt.Position, new_name: str
 ) -> Optional[lspt.WorkspaceEdit] {
+    fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_rename(
+                fs_path, position.line, position.character, new_name, timeout_ms=3000
+            );
+            if response and response.get('success') {
+                edits = response.get('edits', {});
+                if edits {
+                    changes: dict[(str, list[lspt.TextEdit])] = {};
+                    for (uri_path, file_edits) in edits.items() {
+                        key = uris.from_fs_path(uri_path);
+                        for edit in file_edits {
+                            new_edit = lspt.TextEdit(
+                                range=lspt.Range(
+                                    start=lspt.Position(line=edit.get('line', 0), character=edit.get('character', 0)),
+                                    end=lspt.Position(line=edit.get('end_line', 0), character=edit.get('end_character', 0))
+                                ),
+                                new_text=edit.get('new_text', new_name)
+                            );
+                            utils.add_unique_text_edit(changes, key, new_edit);
+                        }
+                    }
+                    return lspt.WorkspaceEdit(changes=changes);
+                }
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
         changes: dict[(str, list[lspt.TextEdit])] = {};
@@ -367,17 +477,65 @@ impl JacLangServer.rename_symbol(
 
 impl JacLangServer.get_outline(file_path: str) -> list[lspt.DocumentSymbol] {
     fs_path = uris.to_fs_path(file_path);
+
+    # Try worker first
+    if self._worker_manager and self._worker_manager.is_running() {
+        try {
+            response = self._worker_manager.request_outline(fs_path, timeout_ms=2000);
+            if response and response.get('success') {
+                symbols_data = response.get('symbols', []);
+                return self._convert_outline_dict_to_lsp(symbols_data);
+            }
+        } except Exception { }
+    }
+
+    # Fallback to local
     if fs_path in self.mod.hub and (root_node := self.mod.hub[fs_path].sym_tab) {
         return utils.get_symbols_for_outline(root_node);
     }
     return [];
 }
 
+impl JacLangServer._convert_outline_dict_to_lsp(symbols_data: list) -> list[lspt.DocumentSymbol] {
+    # Convert outline dict format to LSP DocumentSymbol objects
+    result = [];
+    for sym in symbols_data {
+        rng = sym.get('range', {});
+        pos = lspt.Range(
+            start=lspt.Position(line=rng.get('start_line', 0), character=rng.get('start_char', 0)),
+            end=lspt.Position(line=rng.get('end_line', 0), character=rng.get('end_char', 0))
+        );
+        children = self._convert_outline_dict_to_lsp(sym.get('children', []));
+        result.append(lspt.DocumentSymbol(
+            name=sym.get('name', ''),
+            kind=lspt.SymbolKind(sym.get('kind', 13)),  # 13 = Variable as default
+            range=pos,
+            selection_range=pos,
+            children=children
+        ));
+    }
+    return result;
+}
+
 impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
     try {
         document = self.workspace.get_text_document(file_path);
-        prog = JacProgram.jac_str_formatter(source_str=document.source, file_path=document.path);
-        formatted_text = prog.mod.main.gen.jac if not prog.errors_had else document.source;
+        fs_path = uris.to_fs_path(file_path);
+        formatted_text = document.source;
+
+        # Try worker first
+        if self._worker_manager and self._worker_manager.is_running() {
+            try {
+                response = self._worker_manager.request_format(fs_path, document.source, timeout_ms=5000);
+                if response and response.get('success') {
+                    formatted_text = response.get('formatted', document.source);
+                }
+            } except Exception { }
+        } else {
+            # Fallback to local
+            prog = JacProgram.jac_str_formatter(source_str=document.source, file_path=document.path);
+            formatted_text = prog.mod.main.gen.jac if not prog.errors_had else document.source;
+        }
     } except Exception {
         formatted_text = document.source;
     }

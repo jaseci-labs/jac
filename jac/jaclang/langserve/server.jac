@@ -2,9 +2,9 @@
 
 Production-grade LSP implementation with:
 - Multiprocess architecture for GIL-free compilation
-- Intelligent scheduling with user-activity backoff
-- Full request cancellation support
-- Immutable snapshots for lock-free queries
+- Intelligent debounce scheduling
+- Foreground request handling in worker process
+- Lightweight diagnostics-only IPC (no full AST transfer)
 """
 
 import asyncio;
@@ -25,49 +25,31 @@ import lsprotocol.types as lspt;
 
 def debug(msg: str) -> None;
 
-"""Handle LSP request cancellation ($/cancelRequest).
-
-Cancels in-flight requests when the client sends a cancellation.
-Critical for responsive UX when user types quickly.
-"""
-def cancel_request(ls: JacLangServer, params: lspt.CancelParams) -> None;
-
 """Handle file open - track file and schedule initial analysis."""
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
     uri = params.text_document.uri;
-    source = params.text_document.text;
-    debug(f"did_open: {uri} ({len(source)} chars)");
+    debug(f"did_open: {uri}");
     ls.on_file_opened(uri);
     ls.on_file_focused(uri);
-    ls.schedule_analysis(uri, source);
+    # Only analyze saved files - schedule analysis to read from disk
+    ls.schedule_analysis(uri);
 }
 
-"""Handle file save."""
+"""Handle file save - schedule reanalysis."""
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
-    debug(f"did_save: {params.text_document.uri}");
-    ls.type_check(params.text_document.uri);
+    uri = params.text_document.uri;
+    debug(f"did_save: {uri}");
+    # File saved to disk - schedule analysis
+    ls.schedule_analysis(uri);
 }
 
-"""Handle file change - schedule reanalysis with debouncing."""
+"""Handle file change - ignored for now (only analyze on save)."""
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    uri = params.text_document.uri;
-    debug(f"did_change: {uri} ({len(params.content_changes)} changes)");
-    # Get the full text from content changes
-    source = None;
-    for change in params.content_changes {
-        if change?.text {
-            source = change.text;
-        }
-    }
-    if source is not None {
-        debug(f"did_change: Scheduling analysis ({len(source)} chars)");
-        ls.schedule_analysis(uri, source);
-    } else {
-        debug("did_change: No source, falling back to type_check");
-        ls.type_check(uri);
-    }
+    # Only analyze on save - ignore changes for now
+    # This reduces IPC overhead since we don't need to pass source
+    debug(f"did_change: {params.text_document.uri} (ignored - only analyze on save)");
 }
 
 """Handle file close - stop tracking file."""

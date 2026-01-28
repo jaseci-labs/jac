@@ -12,10 +12,6 @@ impl run_lang_server -> None {
     debug(f"Starting JacLang Language Server (log_level={log_level})");
     server = JacLangServer();
 
-    # Register cancellation handler ($/cancelRequest)
-    # This is critical for responsive UX when user types quickly
-    server.feature(lspt.CANCEL_REQUEST)(cancel_request);
-
     # Register file event handlers
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
@@ -156,15 +152,4 @@ impl formatting(
 
 impl debug(msg: str) -> None {
     print(f"[SERVER] {msg}", file=sys.stderr);
-}
-
-"""Handle LSP request cancellation ($/cancelRequest).
-
-When the client cancels a request, we cancel any in-flight work
-associated with that request ID.
-"""
-impl cancel_request(ls: JacLangServer, params: lspt.CancelParams) -> None {
-    request_id = str(params.id);
-    debug(f"Cancel request received for: {request_id}");
-    ls.cancel_request(request_id);
 }

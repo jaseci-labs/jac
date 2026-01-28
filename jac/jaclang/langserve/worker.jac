@@ -1,45 +1,57 @@
-"""Worker process for background compilation.
+"""Worker process for background compilation and LSP queries.
 
 Runs in a separate process to bypass Python's GIL for CPU-bound
-compilation work. Includes debounce scheduling and snapshot management.
+compilation work. Handles both compilation AND foreground LSP requests
+(hover, definition, etc.) to avoid heavy IPC overhead.
+
+Architecture:
+- Worker keeps JacProgram and all AST/type info
+- Main process forwards LSP requests to worker
+- Only small responses sent back (hover text, locations, diagnostics)
+- Foreground requests cancel ongoing compilation, get handled, then compilation restarts
 """
 
-import multiprocessing;
 import threading;
-import logging;
-import time;
 import from typing { Optional, Callable, Any }
-import from queue { Empty }
 
-import from .snapshot { ProgramSnapshot, SnapshotManager }
-import from .sem_manager { SemTokManager }
+"""Request types for worker IPC."""
+enum RequestType {
+    # Compilation
+    COMPILE_FILE,
+    COMPILE_ALL,
+    SHUTDOWN,
+    # Foreground LSP requests (high priority - interrupt compilation)
+    HOVER,
+    DEFINITION,
+    REFERENCES,
+    COMPLETION,
+    OUTLINE,
+    SEMANTIC_TOKENS,
+    RENAME,
+    FORMAT
+}
 
 """Configuration for worker process."""
 obj WorkerConfig {
     has poll_interval_ms: float = 100,
         shutdown_timeout_ms: float = 5000,
-        restart_on_crash: bool = True,
-        max_restart_attempts: int = 3,
-        cancel_check_interval_ms: float = 50,
-        # Debounce
-        debounce_ms: float = 250,
-        # Health monitoring
-        health_check_interval_ms: float = 5000,
-        health_check_timeout_ms: float = 2000;
+        debounce_ms: float = 250;
 
-    """Return default config."""
     static def default -> WorkerConfig;
 }
 
-"""Compilation worker that runs in a separate process."""
+"""Compilation worker that runs in a separate process.
+
+Handles both compilation AND foreground LSP requests (hover, definition, etc.).
+Keeps JacProgram persistent - no AST serialization needed for queries.
+"""
 obj CompilationWorker {
     has _request_queue: Any | None = None,
         _response_queue: Any | None = None,
         _shutdown_event: Any | None = None,
         _cancel_event: Any | None = None,
         _config: WorkerConfig | None = None,
-        _logger: Any | None = None,
-        _current_request_id: str | None = None;
+        _foreground_queue: Any | None = None;
 
     """Initialize worker (called in worker process)."""
     def initialize(
@@ -47,14 +59,49 @@ obj CompilationWorker {
         response_queue: Any,
         shutdown_event: Any,
         cancel_event: Any,
-        config: WorkerConfig
+        config: WorkerConfig,
+        foreground_queue: Any | None = None
     ) -> None;
 
     """Main worker loop."""
     def run -> None;
 
+    """Check if there are pending foreground requests."""
+    def has_foreground_request -> bool;
+
+    """Process all pending foreground requests."""
+    def process_foreground_requests(program: Any, sem_managers: dict) -> None;
+
     """Internal compile file method."""
     def _compile_file(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Serialize diagnostics for a file into lightweight dict."""
+    def _serialize_diagnostics(file_path: str, program: Any) -> dict;
+
+    # Foreground request handlers
+    """Handle hover request."""
+    def handle_hover(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle definition request."""
+    def handle_definition(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle references request."""
+    def handle_references(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle completion request."""
+    def handle_completion(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle outline request."""
+    def handle_outline(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle semantic tokens request."""
+    def handle_semantic_tokens(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle rename request."""
+    def handle_rename(request: dict, program: Any, sem_managers: dict) -> dict;
+
+    """Handle format request."""
+    def handle_format(request: dict, program: Any) -> dict;
 
     """Handle compile file request (dict-based)."""
     def handle_compile_file_dict(
@@ -65,9 +112,6 @@ obj CompilationWorker {
     def handle_compile_all_dict(
         request_dict: dict, program: Any, sem_managers: dict
     ) -> dict;
-
-    """Create snapshot from program state."""
-    def create_snapshot(program: Any, sem_managers: dict) -> ProgramSnapshot;
 
     """Check if cancelled."""
     def is_cancelled -> bool;
@@ -83,6 +127,29 @@ obj CompilationWorker {
 
     """Create cancelled response dict."""
     def _make_cancelled_response(request_id: str) -> dict;
+
+    # Helper methods for LSP features
+    """Get token at position from semantic manager."""
+    def _get_token_at_position(
+        file_path: str, line: int, character: int, sem_managers: dict, hub: dict
+    ) -> Any | None;
+
+    """Get node info for hover."""
+    def _get_node_info(sym_node: Any) -> str | None;
+
+    """Get node at position from AST."""
+    def _get_node_at_position(
+        file_path: str, line: int, col: int, hub: dict
+    ) -> Any | None;
+
+    """Create location dict from AST node."""
+    def _make_location_dict(ast_node: Any) -> dict | None;
+
+    """Get completion items for a node's type."""
+    def _get_completion_for_node(expr_node: Any, program: Any) -> list;
+
+    """Get completion items for a scope."""
+    def _get_completion_for_scope(scope_node: Any) -> list;
 }
 
 """Worker health status."""
@@ -98,39 +165,28 @@ enum WorkerHealth {
 Combines worker lifecycle management with intelligent scheduling:
 - Debounces rapid edits (waits 250ms after user stops typing)
 - Cancels in-progress work when new edits arrive
-- Manages snapshots and diagnostics callbacks
+- Forwards foreground LSP requests to worker (hover, definition, etc.)
+- Manages diagnostics callbacks (no more full AST snapshots)
 """
 obj WorkerManager {
     has _process: Any | None = None,
         _request_queue: Any | None = None,
         _response_queue: Any | None = None,
+        _foreground_queue: Any | None = None,
         _shutdown_event: Any | None = None,
         _cancel_event: Any | None = None,
         _config: WorkerConfig | None = None,
         _request_counter: int = 0,
         _pending_requests: dict | None = None,
         _current_request_id: str | None = None,
-        _restart_count: int = 0,
-        _logger: Any | None = None,
-        _response_thread: threading.Thread | None = None,
-        _health_thread: threading.Thread | None = None,
         _running: bool = False,
-        # Debounce scheduling
         _pending_uri: str | None = None,
-        _pending_source: str | None = None,
         _timer: threading.Timer | None = None,
         _timer_lock: threading.Lock | None = None,
         _last_activity: float = 0,
         _analysis_in_progress: bool = False,
-        # Snapshots
-        _snapshot_manager: SnapshotManager | None = None,
-        _snapshot_callback: Callable | None = None,
         _diagnostics_callback: Callable | None = None,
-        # Health monitoring
-        _health_status: WorkerHealth = WorkerHealth.DEAD,
-        _last_health_check: float = 0,
-        _consecutive_failures: int = 0,
-        _health_callback: Callable | None = None;
+        _health_status: WorkerHealth = WorkerHealth.DEAD;
 
     def postinit -> None;
     """Generate next request ID."""
@@ -147,7 +203,7 @@ obj WorkerManager {
     Waits for user to stop typing before starting analysis.
     Cancels any in-progress work when new edit arrives.
     """
-    def schedule_file(file_uri: str, source: str) -> None;
+    def schedule_file(file_uri: str) -> None;
 
     """Check if there is pending work."""
     def has_pending -> bool;
@@ -158,10 +214,9 @@ obj WorkerManager {
     """Check if busy (pending, timer active, or analyzing)."""
     def is_busy -> bool;
 
-    """Send compile request immediately (no debounce)."""
+    """Send compile request immediately (no debounce). Worker reads source from disk."""
     def compile_file(
         file_uri: str,
-        source: str,
         callback: Optional[Callable] = None
     ) -> str;
 
@@ -170,6 +225,38 @@ obj WorkerManager {
 
     """Cancel current compilation."""
     def cancel_current -> None;
+
+    # Foreground LSP request methods (blocking - wait for response)
+    """Send hover request and wait for response."""
+    def request_hover(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+
+    """Send definition request and wait for response."""
+    def request_definition(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+
+    """Send references request and wait for response."""
+    def request_references(file_path: str, line: int, character: int, timeout_ms: float = 5000) -> dict | None;
+
+    """Send completion request and wait for response."""
+    def request_completion(
+        file_path: str, line: int, character: int, trigger: str | None = None, timeout_ms: float = 5000
+    ) -> dict | None;
+
+    """Send outline request and wait for response."""
+    def request_outline(file_path: str, timeout_ms: float = 5000) -> dict | None;
+
+    """Send semantic tokens request and wait for response."""
+    def request_semantic_tokens(file_path: str, timeout_ms: float = 5000) -> dict | None;
+
+    """Send rename request and wait for response."""
+    def request_rename(
+        file_path: str, line: int, character: int, new_name: str, timeout_ms: float = 5000
+    ) -> dict | None;
+
+    """Send format request and wait for response."""
+    def request_format(file_path: str, source: str, timeout_ms: float = 5000) -> dict | None;
+
+    """Internal: send foreground request and wait for response."""
+    def _send_foreground_request(request: dict, timeout_ms: float) -> dict | None;
 
     """Poll for responses."""
     def poll_responses -> list;
@@ -195,35 +282,14 @@ obj WorkerManager {
     """Process pending file."""
     def _process_pending -> None;
 
-    """Handle snapshot from worker."""
-    def _on_snapshot_received(snapshot: ProgramSnapshot) -> None;
-
-    """Background response processor (DEPRECATED)."""
-    def _response_processor -> None;
-
-    """Background health checker."""
-    def _health_checker -> None;
-
-    """Notify health callback."""
-    def _notify_health_change(status: WorkerHealth) -> None;
-
     """Handle worker crash."""
     def _handle_crash -> None;
-
-    """Set snapshot update callback."""
-    def set_snapshot_callback(callback: Callable[[ProgramSnapshot], None]) -> None;
 
     """Set diagnostics callback."""
     def set_diagnostics_callback(callback: Callable) -> None;
 
-    """Set health status callback."""
-    def set_health_callback(callback: Callable[[WorkerHealth], None]) -> None;
-
     """Get current worker health."""
     def get_health -> WorkerHealth;
-
-    """Get current snapshot."""
-    def get_snapshot -> Optional[ProgramSnapshot];
 
     """Ping worker."""
     def ping(timeout_ms: float = 1000) -> bool;
@@ -235,5 +301,6 @@ def worker_process_main(
     response_queue: Any,
     shutdown_event: Any,
     cancel_event: Any,
-    config_dict: dict
+    config_dict: dict,
+    foreground_queue: Any | None = None
 ) -> None;

@@ -22,6 +22,10 @@ def gen_diagnostics(
     from_path: str, errors: list[Alert], warnings: list[Alert]
 ) -> list[lspt.Diagnostic];
 
+def gen_diagnostics_from_dict(
+    from_path: str, diagnostics: dict
+) -> list[lspt.Diagnostic];
+
 def debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]];
 
 def sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode];
@@ -35,6 +39,8 @@ def position_within_node(n: uni.UniNode, line: int, character: int) -> bool;
 def find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int];
 
 def get_symbols_for_outline(<>node: UniScopeNode) -> list[lspt.DocumentSymbol];
+
+def get_symbols_for_outline_dict(<>node: UniScopeNode) -> list[dict];
 
 def owner_sym(table: UniScopeNode) -> Optional[Symbol];
 

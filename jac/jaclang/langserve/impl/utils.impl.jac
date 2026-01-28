@@ -295,6 +295,59 @@ impl get_symbols_for_outline(<>node: UniScopeNode) -> list[lspt.DocumentSymbol] 
     return symbols;
 }
 
+"""Recursively collect symbols from the AST as dicts (for IPC serialization)."""
+impl get_symbols_for_outline_dict(<>node: UniScopeNode) -> list[dict] {
+    symbols = [];
+    for (key, item) in <>node.names_in_scope.items() {
+        if key in dir(builtins)
+        or item in [owner_sym(tab) for tab in <>node.kid_scope]
+        or item.decl.loc.mod_path != <>node.loc.mod_path {
+            continue;
+        }
+        loc = item.decl.loc;
+        symbol = {
+            'name': key,
+            'kind': kind_map(item.decl).value,
+            'range': {
+                'start_line': loc.first_line - 1,
+                'start_char': loc.col_start - 1,
+                'end_line': loc.last_line - 1,
+                'end_char': loc.col_end - 1
+            },
+            'children': []
+        };
+        symbols.append(symbol);
+    }
+    for sub_tab in [
+        i
+        for i in <>node.kid_scope
+        if i.loc.mod_path == <>node.loc.mod_path
+    ] {
+        sub_symbols = get_symbols_for_outline_dict(sub_tab);
+        if isinstance(
+            sub_tab,
+            (uni.IfStmt, uni.ElseStmt, uni.WhileStmt, uni.IterForStmt, uni.InForStmt)
+        ) {
+            symbols.extend(sub_symbols);
+        } else {
+            loc = sub_tab.loc;
+            symbol = {
+                'name': sub_tab.scope_name,
+                'kind': kind_map(sub_tab).value,
+                'range': {
+                    'start_line': loc.first_line - 1,
+                    'start_char': loc.col_start - 1,
+                    'end_line': loc.last_line - 1,
+                    'end_char': loc.col_end - 1
+                },
+                'children': sub_symbols
+            };
+            symbols.append(symbol);
+        }
+    }
+    return symbols;
+}
+
 """Find index."""
 impl find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int] {
     index = None;
@@ -411,4 +464,51 @@ impl gen_diagnostics(
         for warning in warnings
         if warning.loc.mod_path == from_path
     ];
+}
+
+"""Return diagnostics from dict format (for IPC responses)."""
+impl gen_diagnostics_from_dict(
+    from_path: str, diagnostics: dict
+) -> list[lspt.Diagnostic] {
+    result: list[lspt.Diagnostic] = [];
+
+    for error in diagnostics.get('errors', []) {
+        if error.get('mod_path') == from_path {
+            result.append(lspt.Diagnostic(
+                range=lspt.Range(
+                    start=lspt.Position(
+                        line=max(0, error.get('line', 1) - 1),
+                        character=max(0, error.get('col', 1) - 1)
+                    ),
+                    end=lspt.Position(
+                        line=max(0, error.get('end_line', error.get('line', 1)) - 1),
+                        character=max(0, error.get('end_col', error.get('col', 1)) - 1)
+                    )
+                ),
+                message=error.get('message', ''),
+                severity=lspt.DiagnosticSeverity.Error
+            ));
+        }
+    }
+
+    for warning in diagnostics.get('warnings', []) {
+        if warning.get('mod_path') == from_path {
+            result.append(lspt.Diagnostic(
+                range=lspt.Range(
+                    start=lspt.Position(
+                        line=max(0, warning.get('line', 1) - 1),
+                        character=max(0, warning.get('col', 1) - 1)
+                    ),
+                    end=lspt.Position(
+                        line=max(0, warning.get('end_line', warning.get('line', 1)) - 1),
+                        character=max(0, warning.get('end_col', warning.get('col', 1)) - 1)
+                    )
+                ),
+                message=warning.get('message', ''),
+                severity=lspt.DiagnosticSeverity.Warning
+            ));
+        }
+    }
+
+    return result;
 }

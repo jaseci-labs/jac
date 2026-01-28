@@ -1,12 +1,9 @@
-"""Living Workspace of Jac project.
+"""Jac Language Server.
 
-Simplified LSP server with single worker process architecture.
-
-Architecture:
-- Main Process: LSP handlers, query dispatch
-- Worker Process: Compilation with debounce scheduling
-- IPC: multiprocessing.Queue for request/response
-- Sync: Immutable snapshots + atomic swap (no locking for reads)
+Single worker process architecture:
+- Main Process: LSP handlers, response polling
+- Worker Process: Compilation with debounce, foreground LSP requests
+- IPC: multiprocessing.Queue (lightweight diagnostics only)
 """
 
 import asyncio;
@@ -38,28 +35,18 @@ import lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
 import from .worker { WorkerManager, WorkerConfig }
-import from .snapshot { ProgramSnapshot }
-import from .cancellation { CancellationToken, CancellationTokenSource }
 
 with entry{
     logging.getLogger().setLevel(logging.CRITICAL);
 }
 
-"""Jac Language Server, manages JacProgram and LSP.
-
-Uses single worker process architecture:
-- Worker: Background process with debounce scheduling
-- Snapshots: Immutable state for lock-free foreground queries
-"""
+"""Jac Language Server with single worker process architecture."""
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
         module_manager: ModuleManager | None = None,
         _shutdown_called: bool = False,
         # Worker-based analysis
         _worker_manager: WorkerManager | None = None,
-        # LSP request tracking for cancellation
-        _pending_requests: Dict[str, CancellationTokenSource] | None = None,
-        _pending_requests_lock: threading.Lock | None = None,
         # Logger
         _logger: logging.Logger | None = None,
         # Async response polling task
@@ -109,6 +96,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];
     def get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str];
     def get_outline(file_path: str) -> list[lspt.DocumentSymbol];
+    def _convert_outline_dict_to_lsp(symbols_data: list) -> list[lspt.DocumentSymbol];
     def get_definition(
         file_path: str, position: lspt.Position
     ) -> Optional[lspt.Location];
@@ -125,8 +113,8 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def log_py(message: str) -> None;
     def shutdown -> None;
 
-    """Schedule a file for analysis."""
-    def schedule_analysis(file_uri: str, source: str) -> None;
+    """Schedule a file for analysis. Worker reads source from disk."""
+    def schedule_analysis(file_uri: str) -> None;
 
     """Mark a file as opened in editor."""
     def on_file_opened(file_uri: str) -> None;
@@ -138,23 +126,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def on_file_focused(file_uri: str) -> None;
 
     """Handle diagnostics from worker."""
-    def _on_worker_diagnostics(snapshot: ProgramSnapshot) -> None;
-
-    """Sync snapshot data to main process state."""
-    def _sync_snapshot_to_state(snapshot: ProgramSnapshot) -> None;
-
-    # LSP Request cancellation support
-    """Register a pending LSP request."""
-    def register_request(request_id: str) -> CancellationToken;
-
-    """Unregister a completed LSP request."""
-    def unregister_request(request_id: str) -> None;
-
-    """Cancel a pending LSP request."""
-    def cancel_request(request_id: str) -> None;
-
-    """Get current snapshot."""
-    def get_current_snapshot -> Optional[ProgramSnapshot];
+    def _on_worker_diagnostics(response: dict) -> None;
 
     # Async response polling
     """Start the async response polling task."""

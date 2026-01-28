@@ -4,12 +4,12 @@ Simplified Language Server Protocol implementation for Jaclang.
 
 Architecture:
 - Single worker process with debounce scheduling
-- Immutable snapshots for lock-free foreground queries
+- Foreground LSP requests handled in worker (hover, definition, etc.)
+- Lightweight diagnostics-only IPC (no full AST transfer)
 
 Components:
 - JacLangServer: Main LSP server (engine.jac)
 - WorkerManager: Background compilation with debounce (worker.jac)
-- ProgramSnapshot: Immutable program state (snapshot.jac)
 """
 
 import logging;
@@ -45,5 +45,4 @@ def configure_logging(level: str = "INFO", log_file: str | None = None) -> None 
 """Re-export key components."""
 import from .engine { JacLangServer }
 import from .worker { WorkerManager, WorkerConfig, WorkerHealth }
-import from .snapshot { ProgramSnapshot, SnapshotManager }
 import from .cancellation { OperationCancelledException, CancellationToken, CancellationTokenSource }
