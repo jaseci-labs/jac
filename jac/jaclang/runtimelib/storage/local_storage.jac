@@ -14,7 +14,9 @@ class LocalStorage(Storage) {
     has base_path: str = "./storage",
         create_dirs: bool = True;
 
-    def init(self: LocalStorage, base_path: str = "./storage", create_dirs: bool = True) -> None {
+    def init(
+        self: LocalStorage, base_path: str = "./storage", create_dirs: bool = True
+    ) -> None {
         self.base_path = base_path;
         self.create_dirs = create_dirs;
         if self.create_dirs {
