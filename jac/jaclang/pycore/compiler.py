@@ -271,10 +271,6 @@ class JacCompiler:
         """Compile a Jac file into module AST."""
         actual_program = self._resolve_program(file_path, target_program)
 
-        # Return cached module if already compiled (unless source string override)
-        if use_str is None and file_path in actual_program.mod.hub:
-            return actual_program.mod.hub[file_path]
-
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(
             keep_str, file_path, actual_program, cancel_token=cancel_token
