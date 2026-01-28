@@ -1,16 +1,11 @@
 """Jaclang Language Server.
 
-Production-grade LSP implementation with:
-- Multiprocess architecture for GIL-free compilation
-- Intelligent debounce scheduling
-- Foreground request handling in worker process
-- Lightweight diagnostics-only IPC (no full AST transfer)
+Thin routing layer: registers LSP handlers and delegates to JacLangServer (engine).
+All request logic lives in the engine.
 """
 
 import asyncio;
 import sys;
-import time;
-import logging;
 
 import from typing { Optional }
 

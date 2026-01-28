@@ -7,7 +7,6 @@ Handles:
 - Response polling
 """
 
-import time;
 import logging;
 
 impl JacLangServer.postinit -> None {
@@ -76,29 +75,6 @@ impl JacLangServer.on_file_opened(file_uri: str) -> None {
 impl JacLangServer.on_file_closed(file_uri: str) -> None { }
 
 impl JacLangServer.on_file_focused(file_uri: str) -> None { }
-
-# ============== Testing Utilities ==============
-# Used by: tests/langserve/test_server.py, tests/langserve/server_test/utils.py
-impl JacLangServer.type_check_file(
-    file_uri: str
-) -> bool {
-    try {
-        self.schedule_analysis(file_uri);
-        self.wait_till_idle_sync();
-        return True;
-    } except Exception as e {
-        self.debug(f"Error in type_check_file: {e}");
-        return False;
-    }
-}
-
-impl JacLangServer.wait_till_idle_sync -> None {
-    if self._worker_manager is not None {
-        while self._worker_manager.is_busy() {
-            time.sleep(0.05);
-        }
-    }
-}
 
 # ============== Diagnostics Callback ==============
 impl JacLangServer._on_worker_diagnostics(
@@ -196,5 +172,111 @@ impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
         self.sem_managers[new_path] = self.sem_managers[old_path];
         del (self.mod.hub[old_path], );
         del (self.sem_managers[old_path], );
+    }
+}
+
+# ============== LSP Request Handlers ==============
+impl JacLangServer.get_definition(
+    file_path: str, line: int, character: int
+) -> lspt.Location | None {
+    self.debug(f"get_definition: {file_path} at {line}:{character}");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_definition(
+            file_path, line, character, timeout_ms=2000
+        );
+        return utils.response_to_location(response);
+    }
+    return None;
+}
+
+impl JacLangServer.get_hover(
+    file_path: str, line: int, character: int
+) -> lspt.Hover | None {
+    self.debug(f"get_hover: {file_path} at {line}:{character}");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_hover(
+            file_path, line, character, timeout_ms=2000
+        );
+        return utils.response_to_hover(response);
+    }
+    return None;
+}
+
+impl JacLangServer.get_references(
+    file_path: str, line: int, character: int
+) -> list[lspt.Location] {
+    self.debug(f"get_references: {file_path} at {line}:{character}");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_references(
+            file_path, line, character, timeout_ms=2000
+        );
+        return utils.response_to_locations(response);
+    }
+    return [];
+}
+
+impl JacLangServer.get_document_symbols(
+    file_path: str
+) -> list[lspt.DocumentSymbol] {
+    self.debug(f"get_document_symbols: {file_path}");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_outline(file_path, timeout_ms=2000);
+        return utils.response_to_document_symbols(response);
+    }
+    return [];
+}
+
+impl JacLangServer.get_semantic_tokens(
+    file_path: str
+) -> lspt.SemanticTokens {
+    self.debug(f"get_semantic_tokens: {file_path}");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_semantic_tokens(file_path, timeout_ms=2000);
+        return utils.response_to_semantic_tokens(response);
+    }
+    return lspt.SemanticTokens(data=[]);
+}
+
+impl JacLangServer.get_rename(
+    file_path: str, line: int, character: int, new_name: str
+) -> lspt.WorkspaceEdit | None {
+    self.debug(f"get_rename: {file_path} at {line}:{character} -> '{new_name}'");
+    self.log_warning('Auto Rename is Experimental, Please use with caution.');
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_rename(
+            file_path, line, character, new_name, timeout_ms=3000
+        );
+        return utils.response_to_workspace_edit(response, new_name);
+    }
+    return None;
+}
+
+impl JacLangServer.get_completion(
+    file_path: str, line: int, character: int, trigger: str | None
+) -> lspt.CompletionList {
+    self.debug(f"get_completion: {file_path} at {line}:{character} (trigger='{trigger}')");
+    if self._worker_manager and self._worker_manager.is_running() {
+        response = self._worker_manager.request_completion(
+            file_path, line, character, trigger, timeout_ms=2000
+        );
+        return utils.response_to_completion_list(response);
+    }
+    return lspt.CompletionList(is_incomplete=False, items=[]);
+}
+
+impl JacLangServer.format_document(
+    file_path: str, source: str
+) -> list[lspt.TextEdit] {
+    self.debug(f"format_document: {file_path}");
+    try {
+        if self._worker_manager and self._worker_manager.is_running() {
+            response = self._worker_manager.request_format(
+                file_path, source, timeout_ms=5000
+            );
+            return utils.response_to_text_edits(response, source);
+        }
+        return [];
+    } except Exception {
+        return [];
     }
 }

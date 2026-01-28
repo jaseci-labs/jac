@@ -224,6 +224,12 @@ impl CompilationWorker._compile_file(
     existing_module = program.mod.hub.get(file_path);
     if existing_module and existing_module?.source and existing_module.source {
         if existing_module.source.hash == source_hash {
+            # Ensure sem_managers entry exists even for cached modules
+            if file_path not in sem_managers and existing_module?.loc {
+                sem_managers[file_path] = SemTokManager(
+                    ir=existing_module, hub=program.mod.hub
+                );
+            }
             return _success(
                 request_id,
                 file_path=file_path,
@@ -292,6 +298,14 @@ impl CompilationWorker._compile_file(
                 program.mod.hub[parent_path] = parent_module;
                 sem_managers[parent_path] = SemTokManager(
                     ir=parent_module, hub=program.mod.hub
+                );
+            }
+            # Refresh impl file sem_managers after parent compilation
+            # (parent compilation may update the impl module's AST)
+            impl_module = program.mod.hub.get(file_path);
+            if impl_module?.loc {
+                sem_managers[file_path] = SemTokManager(
+                    ir=impl_module, hub=program.mod.hub
                 );
             }
         } except Exception { }

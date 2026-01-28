@@ -1,9 +1,12 @@
-"""Run the language server - simplified architecture with direct worker access."""
+"""Run the language server - thin routing layer.
+
+All LSP request logic lives in JacLangServer (engine).
+This module registers handlers and delegates to engine methods.
+"""
 
 import os;
 import from . { configure_logging }
 import from jaclang.vendor.pygls { uris }
-import from jaclang.langserve { utils }
 
 impl run_lang_server -> None {
     # Configure logging from environment or defaults
@@ -75,158 +78,94 @@ impl run_lang_server -> None {
     server.start_io();
 }
 
-# ============== LSP Request Handlers (direct worker access) ==============
-"""Provide definition - go to definition."""
+# ============== LSP Request Handlers (thin wrappers) ==============
 impl definition(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Location] {
-    debug(f"definition: {params.text_document.uri} at {params.position}");
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_definition(
-            fs_path, params.position.line, params.position.character, timeout_ms=2000
-        );
-        return utils.response_to_location(response);
-    }
-    return None;
+    return ls.get_definition(
+        uris.to_fs_path(params.text_document.uri),
+        params.position.line,
+        params.position.character
+    );
 }
 
-"""Provide hover information."""
 impl hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Hover] {
-    debug(f"hover: {params.text_document.uri} at {params.position}");
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_hover(
-            fs_path, params.position.line, params.position.character, timeout_ms=2000
-        );
-        return utils.response_to_hover(response);
-    }
-    return None;
+    return ls.get_hover(
+        uris.to_fs_path(params.text_document.uri),
+        params.position.line,
+        params.position.character
+    );
 }
 
-"""Provide references."""
 impl references(ls: JacLangServer, params: lspt.ReferenceParams) -> list[lspt.Location] {
-    debug(f"references: {params.text_document.uri} at {params.position}");
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_references(
-            fs_path, params.position.line, params.position.character, timeout_ms=2000
-        );
-        return utils.response_to_locations(response);
-    }
-    return [];
+    return ls.get_references(
+        uris.to_fs_path(params.text_document.uri),
+        params.position.line,
+        params.position.character
+    );
 }
 
-"""Provide document symbols (outline)."""
 impl document_symbol(
     ls: JacLangServer, params: lspt.DocumentSymbolParams
 ) -> list[lspt.DocumentSymbol] {
-    debug(f"document_symbol: {params.text_document.uri}");
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_outline(fs_path, timeout_ms=2000);
-        return utils.response_to_document_symbols(response);
-    }
-    return [];
+    return ls.get_document_symbols(
+        uris.to_fs_path(params.text_document.uri)
+    );
 }
 
-"""Provide semantic tokens."""
 impl semantic_tokens_full(
     ls: JacLangServer, params: lspt.SemanticTokensParams
 ) -> lspt.SemanticTokens {
-    debug(f"semantic_tokens_full: {params.text_document.uri}");
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_semantic_tokens(fs_path, timeout_ms=2000);
-        return utils.response_to_semantic_tokens(response);
-    }
-    return lspt.SemanticTokens(data=[]);
+    return ls.get_semantic_tokens(
+        uris.to_fs_path(params.text_document.uri)
+    );
 }
 
-"""Rename symbol."""
 impl rename(
     ls: JacLangServer, params: lspt.RenameParams
 ) -> Optional[lspt.WorkspaceEdit] {
-    debug(
-        f"rename: {params.text_document.uri} at {params.position} -> '{params.new_name}'"
+    return ls.get_rename(
+        uris.to_fs_path(params.text_document.uri),
+        params.position.line,
+        params.position.character,
+        params.new_name
     );
-    ls.log_warning('Auto Rename is Experimental, Please use with caution.');
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_rename(
-            fs_path,
-            params.position.line,
-            params.position.character,
-            params.new_name,
-            timeout_ms=3000
-        );
-        return utils.response_to_workspace_edit(response, params.new_name);
-    }
-    return None;
 }
 
-"""Provide completion."""
 impl completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
     trigger = params.context.trigger_character if params.context else None;
-    debug(
-        f"completion: {params.text_document.uri} at {params.position} (trigger='{trigger}')"
+    return ls.get_completion(
+        uris.to_fs_path(params.text_document.uri),
+        params.position.line,
+        params.position.character,
+        trigger
     );
-    fs_path = uris.to_fs_path(params.text_document.uri);
-    if ls._worker_manager and ls._worker_manager.is_running() {
-        response = ls._worker_manager.request_completion(
-            fs_path,
-            params.position.line,
-            params.position.character,
-            trigger,
-            timeout_ms=2000
-        );
-        return utils.response_to_completion_list(response);
-    }
-    return lspt.CompletionList(is_incomplete=False, items=[]);
 }
 
-"""Format the given document."""
 impl formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit] {
-    debug(f"formatting: {params.text_document.uri}");
-    try {
-        document = ls.workspace.get_text_document(params.text_document.uri);
-        fs_path = uris.to_fs_path(params.text_document.uri);
-        if ls._worker_manager and ls._worker_manager.is_running() {
-            response = ls._worker_manager.request_format(
-                fs_path, document.source, timeout_ms=5000
-            );
-            return utils.response_to_text_edits(response, document.source);
-        }
-        return [];
-    } except Exception {
-        return [];
-    }
+    document = ls.workspace.get_text_document(params.text_document.uri);
+    return ls.format_document(
+        uris.to_fs_path(params.text_document.uri),
+        document.source
+    );
 }
 
 # ============== File Event Handlers ==============
-"""Check syntax on file delete."""
 impl did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None {
-    debug(f"did_delete_files: {len(params.files)} files");
     for file in params.files {
-        debug(f"  Deleting: {file.uri}");
         ls.delete_module(file.uri);
     }
 }
 
-"""Check syntax on file rename."""
 impl did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None {
-    debug(f"did_rename_files: {len(params.files)} files");
-    new_uris = [file.new_uri for file in params.files];
-    old_uris = [file.old_uri for file in params.files];
-    for i in range(len(new_uris)) {
-        debug(f"  Renaming: {old_uris[i]} -> {new_uris[i]}");
-        ls.rename_module(old_uris[i], new_uris[i]);
+    for file in params.files {
+        ls.rename_module(file.old_uri, file.new_uri);
     }
 }
 

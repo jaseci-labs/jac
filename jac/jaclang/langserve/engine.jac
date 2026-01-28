@@ -9,7 +9,6 @@ Single worker process architecture:
 import asyncio;
 import logging;
 import sys;
-import time;
 
 import from jaclang.pycore.program { JacProgram }
 import from jaclang.vendor.pygls { uris }
@@ -43,9 +42,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def log_error(message: str) -> None;
     # Analysis scheduling
     def schedule_analysis(file_uri: str) -> None;
-    # Testing utilities (used by test_server.py and server_test/utils.py)
-    def type_check_file(file_uri: str) -> bool;
-    def wait_till_idle_sync -> None;
     # File events
     def on_file_opened(file_uri: str) -> None;
     def on_file_closed(file_uri: str) -> None;
@@ -59,4 +55,29 @@ obj JacLangServer(JacProgram, LanguageServer) {
     # Module management
     def delete_module(uri: str) -> None;
     def rename_module(old_path: str, new_path: str) -> None;
+    # LSP request handlers
+    def get_definition( 
+        file_path: str, line: int, character: int
+    ) -> lspt.Location | None;
+    def get_hover(  
+        file_path: str, line: int, character: int
+    ) -> lspt.Hover | None;
+    def get_references(
+        file_path: str, line: int, character: int
+    ) -> list[lspt.Location];
+    def get_document_symbols(
+        file_path: str
+    ) -> list[lspt.DocumentSymbol];
+    def get_semantic_tokens(
+        file_path: str
+    ) -> lspt.SemanticTokens;
+    def get_rename(
+        file_path: str, line: int, character: int, new_name: str
+    ) -> lspt.WorkspaceEdit | None;
+    def get_completion(
+        file_path: str, line: int, character: int, trigger: str | None
+    ) -> lspt.CompletionList;
+    def format_document(
+        file_path: str, source: str
+    ) -> list[lspt.TextEdit];
 }

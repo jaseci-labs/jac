@@ -1,21 +1,17 @@
-"""Test suite for Jac language server features."""
+"""Test suite for Jac language server features.
 
-# Import jaclang first to set up vendor path for lsprotocol
-from lsprotocol.types import (
-    DocumentFormattingParams,
-    FormattingOptions,
-    TextDocumentIdentifier,
-    TextEdit,
-)
-from tests.langserve.server_test.utils import (
-    JacTestFile,
-    LanguageServerTestHelper,
-    create_ls_with_workspace,
-    load_jac_template,
-)
+Tests the real multiprocessing worker architecture:
+main process sends requests via queues, worker process handles
+compilation, diagnostics, semantic tokens, and formatting.
+"""
 
-from jaclang.langserve.server import formatting
-from jaclang.vendor.pygls.uris import from_fs_path
+import os
+import tempfile
+
+from tests.langserve.server_test.utils import load_jac_template
+
+from tests.langserve.test_server import LspTestClient, create_client
+
 
 # NOTE: circle.jac emits a spurious type error at the call to super.init:
 # obj Circle(Shape) {
@@ -34,191 +30,265 @@ EXPECTED_GLOB_TOKEN_COUNT = 15
 EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15
 
 
+def _template_path(template_name: str) -> str:
+    """Get absolute path to test template file."""
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), template_name))
+
+
+def _create_temp_jac(content: str) -> str:
+    """Create a temporary .jac file with the given content, return its path."""
+    with tempfile.NamedTemporaryFile(
+        delete=False, suffix=".jac", mode="w", encoding="utf-8"
+    ) as f:
+        f.write(content)
+        return f.name
+
+
+def _get_diagnostics(response: dict) -> dict:
+    """Extract diagnostics from a compile response."""
+    return response.get("diagnostics", {"errors": [], "warnings": []})
+
+
+def _count_errors(response: dict) -> int:
+    """Count error diagnostics from a compile response."""
+    return len(_get_diagnostics(response).get("errors", []))
+
+
+def _has_error_message(response: dict, message_contains: str) -> bool:
+    """Check if any error diagnostic contains the given message substring."""
+    errors = _get_diagnostics(response).get("errors", [])
+    return any(message_contains in e.get("message", "") for e in errors)
+
+
+def _error_at(response: dict, index: int) -> dict:
+    """Get error at index from compile response."""
+    return _get_diagnostics(response).get("errors", [])[index]
+
+
+def _sem_token_count(client: LspTestClient, file_path: str) -> int:
+    """Get semantic token count for a file via the worker."""
+    tok_resp = client._wm.request_semantic_tokens(file_path)
+    if tok_resp and tok_resp.get("tokens"):
+        return len(tok_resp["tokens"])
+    return 0
+
+
 def test_open_valid_file_no_diagnostics():
-    """Test opening a valid Jac file produces no diagnostics."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
-    uri, ls = create_ls_with_workspace(test_file.path)
-    test_file.uri = uri
-    helper = LanguageServerTestHelper(ls, test_file)
+    """Test compiling a valid Jac file produces expected diagnostics."""
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE))
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 1, (
+            f"Expected 1 error, got {_count_errors(response)}: "
+            f"{_get_diagnostics(response)}"
+        )
+        assert _has_error_message(
+            response,
+            "Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_open_with_syntax_error():
-    """Test opening a Jac file with syntax error produces diagnostics."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE, "error")
-    uri, ls = create_ls_with_workspace(test_file.path)
-    if uri:
-        test_file.uri = uri
-    helper = LanguageServerTestHelper(ls, test_file)
+    """Test compiling a Jac file with syntax error produces diagnostics."""
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE), "error")
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        helper.open_document()
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 2, (
+            f"Expected 2 errors, got {_count_errors(response)}: "
+            f"{_get_diagnostics(response)}"
+        )
+        assert _has_error_message(response, "Unexpected token")
 
-        diagnostics = helper.get_diagnostics()
-        assert str(diagnostics[0].range) == "57:0-57:5"
+        err = _error_at(response, 0)
+        # Diagnostics use 1-indexed line/col from the compiler
+        assert err["line"] == 58 and err["col"] == 1, (
+            f"Expected error at line 58, col 1, got line {err['line']}, col {err['col']}"
+        )
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_did_open_and_simple_syntax_error():
     """Test diagnostics evolution from valid to invalid code."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
-    uri, ls = create_ls_with_workspace(test_file.path)
-    test_file.uri = uri
-    helper = LanguageServerTestHelper(ls, test_file)
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE))
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        # Open valid file
-        print("Opening valid file...")
-        helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
+        # Compile valid file
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 1
+        assert _has_error_message(
+            response,
+            "Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
-        # Introduce syntax error
-        broken_code = load_jac_template(
-            test_file._get_template_path(CIRCLE_TEMPLATE), "error"
+        # Introduce syntax error by rewriting file
+        broken_code = load_jac_template(_template_path(CIRCLE_TEMPLATE), "error")
+        with open(temp_path, "w") as f:
+            f.write(broken_code)
+
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 2
+
+        token_count = _sem_token_count(client, temp_path)
+        assert token_count == EXPECTED_CIRCLE_TOKEN_COUNT_ERROR, (
+            f"Expected {EXPECTED_CIRCLE_TOKEN_COUNT_ERROR} tokens, got {token_count}"
         )
-        helper.change_document(broken_code)
-        helper.assert_has_diagnostics(count=2)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_did_save():
-    """Test saving a Jac file triggers appropriate diagnostics."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
-    uri, ls = create_ls_with_workspace(test_file.path)
-    if uri:
-        test_file.uri = uri
-    helper = LanguageServerTestHelper(ls, test_file)
+    """Test recompiling after save triggers appropriate diagnostics."""
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE))
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        helper.open_document()
-        helper.save_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
+        # Initial compile
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 1
+        assert _has_error_message(
+            response,
+            "Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
+        # Recompile (simulates save without changes)
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 1
+
         # Save with syntax error
-        broken_code = load_jac_template(
-            test_file._get_template_path(CIRCLE_TEMPLATE), "error"
+        broken_code = load_jac_template(_template_path(CIRCLE_TEMPLATE), "error")
+        with open(temp_path, "w") as f:
+            f.write(broken_code)
+
+        response = client.compile_file(temp_path)
+        token_count = _sem_token_count(client, temp_path)
+        assert token_count == EXPECTED_CIRCLE_TOKEN_COUNT_ERROR, (
+            f"Expected {EXPECTED_CIRCLE_TOKEN_COUNT_ERROR} tokens, got {token_count}"
         )
-        helper.save_document(broken_code)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        assert _count_errors(response) == 2
+        assert _has_error_message(response, "Unexpected token")
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_did_change():
-    """Test changing a Jac file triggers diagnostics."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
-    uri, ls = create_ls_with_workspace(test_file.path)
-    if uri:
-        test_file.uri = uri
-    helper = LanguageServerTestHelper(ls, test_file)
+    """Test recompiling after content change triggers diagnostics."""
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE))
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        helper.open_document()
+        # Initial compile
+        client.compile_file(temp_path)
 
-        # Change without error
-        helper.change_document("\n" + test_file.code)
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
+        # Change without error (prepend newline)
+        with open(temp_path, "w") as f:
+            f.write("\n" + code)
+        response = client.compile_file(temp_path)
+        assert _count_errors(response) == 1
+        assert _has_error_message(
+            response,
+            "Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
         )
 
         # Change with syntax error
-        helper.change_document("\nerror" + test_file.code)
-        helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
-        helper.assert_has_diagnostics(
-            count=2, message_contains="Unexpected token 'error'"
+        with open(temp_path, "w") as f:
+            f.write("\nerror" + code)
+        response = client.compile_file(temp_path)
+        token_count = _sem_token_count(client, temp_path)
+        assert token_count == EXPECTED_CIRCLE_TOKEN_COUNT, (
+            f"Expected {EXPECTED_CIRCLE_TOKEN_COUNT} tokens, got {token_count}"
         )
+        assert _count_errors(response) == 2
+        assert _has_error_message(response, "Unexpected token 'error'")
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_vsce_formatting():
     """Test formatting a Jac file returns valid edits."""
-    test_file = JacTestFile.from_template(CIRCLE_TEMPLATE)
-    uri, ls = create_ls_with_workspace(test_file.path)
+    code = load_jac_template(_template_path(CIRCLE_TEMPLATE))
+    temp_path = _create_temp_jac(code)
+    client = create_client()
 
     try:
-        params = DocumentFormattingParams(
-            text_document=TextDocumentIdentifier(uri=uri or ""),
-            options=FormattingOptions(tab_size=4, insert_spaces=True),
+        resp = client._wm.request_format(temp_path, code)
+        assert resp is not None, "Format response should not be None"
+        assert resp.get("success"), f"Format should succeed, got: {resp}"
+        formatted = resp.get("formatted", "")
+        assert len(formatted) > 100, (
+            f"Formatted output too short ({len(formatted)} chars)"
         )
-        edits = formatting(ls, params)
-
-        assert isinstance(edits, list)
-        assert len(edits) > 0
-        assert isinstance(edits[0], TextEdit)
-        assert len(edits[0].new_text) > 100
     finally:
-        ls.shutdown()
-        test_file.cleanup()
+        client.shutdown()
+        os.remove(temp_path)
 
 
 def test_multifile_workspace():
-    """Test opening multiple Jac files in a workspace."""
-    file1 = JacTestFile.from_template(GLOB_TEMPLATE)
-    file2 = JacTestFile.from_template(GLOB_TEMPLATE, "error")
+    """Test compiling multiple Jac files."""
+    code1 = load_jac_template(_template_path(GLOB_TEMPLATE))
+    code2 = load_jac_template(_template_path(GLOB_TEMPLATE), "error")
 
-    uri1, ls = create_ls_with_workspace(file1.path)
-    if uri1:
-        file1.uri = uri1
-    file2_uri = from_fs_path(file2.path)
-    if file2_uri:
-        file2.uri = file2_uri
-
-    helper1 = LanguageServerTestHelper(ls, file1)
-    helper2 = LanguageServerTestHelper(ls, file2)
+    temp1 = _create_temp_jac(code1)
+    temp2 = _create_temp_jac(code2)
+    client = create_client()
 
     try:
-        # Open both files
-        helper1.open_document()
-        helper2.open_document()
+        # Compile both files
+        resp1 = client.compile_file(temp1)
+        resp2 = client.compile_file(temp2)
 
         # Verify initial state
-        helper1.assert_no_diagnostics()
-        helper2.assert_has_diagnostics(count=1, message_contains="Unexpected token")
+        assert _count_errors(resp1) == 0, (
+            f"Expected no errors for file1, got: {_get_diagnostics(resp1)}"
+        )
+        assert _count_errors(resp2) == 1
+        assert _has_error_message(resp2, "Unexpected token")
 
-        # Check semantic tokens before change
-        helper1.assert_semantic_tokens_count(EXPECTED_GLOB_TOKEN_COUNT)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
+        # Check semantic tokens
+        tok1 = _sem_token_count(client, temp1)
+        tok2 = _sem_token_count(client, temp2)
+        assert tok1 == EXPECTED_GLOB_TOKEN_COUNT, (
+            f"Expected {EXPECTED_GLOB_TOKEN_COUNT} tokens for file1, got {tok1}"
+        )
+        assert tok2 == EXPECTED_GLOB_ERROR_TOKEN_COUNT, (
+            f"Expected {EXPECTED_GLOB_ERROR_TOKEN_COUNT} tokens for file2, got {tok2}"
+        )
 
         # Change first file
         changed_code = load_jac_template(
-            file1._get_template_path(GLOB_TEMPLATE), "glob x = 90;"
+            _template_path(GLOB_TEMPLATE), "glob x = 90;"
         )
-        helper1.change_document(changed_code)
+        with open(temp1, "w") as f:
+            f.write(changed_code)
+        client.compile_file(temp1)
 
         # Verify semantic tokens after change
-        helper1.assert_semantic_tokens_count(20)
-        helper2.assert_semantic_tokens_count(EXPECTED_GLOB_ERROR_TOKEN_COUNT)
+        tok1_after = _sem_token_count(client, temp1)
+        tok2_after = _sem_token_count(client, temp2)
+        assert tok1_after == 20, (
+            f"Expected 20 tokens for changed file1, got {tok1_after}"
+        )
+        assert tok2_after == EXPECTED_GLOB_ERROR_TOKEN_COUNT, (
+            f"Expected {EXPECTED_GLOB_ERROR_TOKEN_COUNT} tokens for file2, got {tok2_after}"
+        )
     finally:
-        ls.shutdown()
-        file1.cleanup()
-        file2.cleanup()
+        client.shutdown()
+        os.remove(temp1)
+        os.remove(temp2)

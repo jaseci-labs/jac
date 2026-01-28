@@ -3,15 +3,11 @@ import inspect
 import os
 import sys
 from collections.abc import Callable, Generator
-from dataclasses import dataclass
 from pathlib import Path
 
-import lsprotocol.types as lspt
 import pytest
 
-from jaclang.langserve.engine import JacLangServer
-from jaclang.vendor.pygls import uris
-from jaclang.vendor.pygls.workspace import Workspace
+from jaclang.langserve.worker import WorkerConfig, WorkerManager
 
 
 def _clear_jac_modules() -> None:
@@ -26,23 +22,122 @@ def _clear_jac_modules() -> None:
         sys.modules.pop(mod, None)
 
 
-# Track all servers created during a test for cleanup
-_active_servers: list[JacLangServer] = []
+# Track all clients created during a test for cleanup
+_active_clients: list["LspTestClient"] = []
+
+
+class LspTestClient:
+    """Test client that communicates with a real worker process.
+
+    Simulates the real LSP two-process architecture:
+    main process sends requests via queues, worker process handles
+    compilation and LSP queries, sends responses back.
+    """
+
+    def __init__(self) -> None:
+        config = WorkerConfig.default()
+        self._wm = WorkerManager(_config=config)
+        self._wm.start()
+        self._last_compile_response: dict | None = None
+
+    def compile_file(self, file_path: str) -> dict:
+        """Compile a file and block until the worker finishes.
+
+        Args:
+            file_path: Absolute filesystem path to the .jac file.
+
+        Returns:
+            The compilation response dict from the worker.
+        """
+        self._wm.compile_file(file_path)
+        # Block until worker sends back compilation result
+        response = self._wm._response_queue.get(timeout=60)
+        self._wm._handle_response(response)
+        self._last_compile_response = response
+        return response
+
+    def hover(self, file_path: str, line: int, character: int) -> dict | None:
+        """Request hover info at a position. Returns response dict or None."""
+        return self._wm.request_hover(file_path, line, character)
+
+    def definition(self, file_path: str, line: int, character: int) -> dict | None:
+        """Request go-to-definition at a position. Returns response dict or None."""
+        return self._wm.request_definition(file_path, line, character)
+
+    def references(self, file_path: str, line: int, character: int) -> dict | None:
+        """Request find-references at a position. Returns response dict or None."""
+        return self._wm.request_references(file_path, line, character)
+
+    def outline(self, file_path: str) -> dict | None:
+        """Request document outline. Returns response dict or None."""
+        return self._wm.request_outline(file_path)
+
+    def completion(
+        self, file_path: str, line: int, character: int, trigger: str = "."
+    ) -> dict | None:
+        """Request completions at a position. Returns response dict or None."""
+        return self._wm.request_completion(
+            file_path, line, character, trigger=trigger
+        )
+
+    def shutdown(self) -> None:
+        """Stop the worker process."""
+        self._wm.stop()
+
+
+def fmt_location(resp: dict | None) -> str:
+    """Format a definition response as 'uri:line:char-endline:endchar'.
+
+    Matches the format used in test assertions like:
+        "fixtures/circle_pure.impl.jac:8:5-8:19"
+    """
+    if resp is None:
+        return ""
+    loc = resp.get("location")
+    if loc is None:
+        return ""
+    return (
+        f"{loc['uri']}:{loc['line']}:{loc['character']}"
+        f"-{loc['end_line']}:{loc['end_character']}"
+    )
+
+
+def fmt_locations(resp: dict | None) -> str:
+    """Format a references response (list of locations) as a string."""
+    if resp is None:
+        return "[]"
+    locs = resp.get("locations", [])
+    parts = []
+    for loc in locs:
+        parts.append(
+            f"{loc['uri']}:{loc['line']}:{loc['character']}"
+            f"-{loc['end_line']}:{loc['end_character']}"
+        )
+    return str(parts)
+
+
+def fmt_warning(w: dict) -> str:
+    """Format a diagnostics warning dict as a readable string."""
+    return f"{w.get('mod_path', '')}, line {w.get('line', 0)}, col {w.get('col', 0)}: {w.get('message', '')}"
+
+
+def create_client() -> LspTestClient:
+    """Create an LspTestClient and track it for cleanup."""
+    client = LspTestClient()
+    _active_clients.append(client)
+    return client
 
 
 @pytest.fixture(autouse=True)
 def reset_jac_machine(fresh_jac_context: Path) -> Generator[None, None, None]:
     """Reset Jac machine before each test to avoid state pollution."""
     _clear_jac_modules()
-    _active_servers.clear()
+    _active_clients.clear()
     yield
-    # Clear type system state from all servers created during the test
-    for server in _active_servers:
-        # Ensure worker thread is stopped to avoid cross-test interference.
+    for client in _active_clients:
         with contextlib.suppress(Exception):
-            server.shutdown()
-        server.clear_type_system(clear_hub=True)
-    _active_servers.clear()
+            client.shutdown()
+    _active_clients.clear()
     _clear_jac_modules()
 
 
@@ -93,133 +188,131 @@ def passes_main_fixture_abs_path() -> Callable[[str], str]:
     return _passes_main_fixture_abs_path
 
 
-def create_server(
-    workspace_path: str | None, fixture_path_func: Callable[[str], str]
-) -> JacLangServer:
-    """Create a JacLangServer wired to the given workspace."""
-    lsp = JacLangServer()
-    workspace_root = workspace_path or fixture_path_func("")
-    workspace = Workspace(workspace_root, lsp)
-    lsp.lsp._workspace = workspace
-    # Track server for cleanup in reset_jac_machine fixture
-    _active_servers.append(lsp)
-    return lsp
-
-
 def test_impl_stay_connected(fixture_path: Callable[[str], str]) -> None:
-    """Test that the server doesn't run if there is a syntax error."""
-    lsp = create_server(None, fixture_path)
+    """Test that hover works across stub and impl files."""
+    client = create_client()
     try:
-        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
-        circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"))
-        lsp.type_check_file(circle_file)
-        pos = lspt.Position(20, 8)
-        assert (
-            "Circle class inherits from Shape."
-            in lsp.get_hover_info(circle_file, pos).contents.value
+        circle_path = fixture_path("circle_pure.jac")
+        circle_impl_path = fixture_path("circle_pure.impl.jac")
+
+        client.compile_file(circle_path)
+        resp = client.hover(circle_path, 20, 8)
+        assert resp is not None and resp.get("hover_text"), (
+            f"Expected hover text, got: {resp}"
         )
-        lsp.type_check_file(circle_impl_file)
-        pos = lspt.Position(8, 11)
+        assert "Circle class inherits from Shape." in resp["hover_text"]
+
+        client.compile_file(circle_impl_path)
+        resp = client.hover(circle_impl_path, 8, 11)
+        assert resp is not None and resp.get("hover_text"), (
+            f"Expected hover text, got: {resp}"
+        )
         assert (
             "ability) calculate_area\n( radius : float ) -> float"
-            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+            in resp["hover_text"].replace("'", "")
         )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_impl_auto_discover(fixture_path: Callable[[str], str]) -> None:
-    """Test that the server doesn't run if there is a syntax error."""
-    lsp = create_server(None, fixture_path)
+    """Test that impl files auto-discover their parent module."""
+    client = create_client()
     try:
-        circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"))
-        lsp.type_check_file(circle_impl_file)
-        pos = lspt.Position(8, 11)
+        circle_impl_path = fixture_path("circle_pure.impl.jac")
+        client.compile_file(circle_impl_path)
+
+        resp = client.hover(circle_impl_path, 8, 11)
+        assert resp is not None and resp.get("hover_text"), (
+            f"Expected hover text, got: {resp}"
+        )
         assert (
             "(public ability) calculate_area\n( radius : float ) -> float"
-            in lsp.get_hover_info(circle_impl_file, pos).contents.value.replace("'", "")
+            in resp["hover_text"].replace("'", "")
         )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_outline_symbols(fixture_path: Callable[[str], str]) -> None:
     """Test that the outline symbols are correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
-        lsp.type_check_file(circle_file)
-        assert len(lsp.get_outline(circle_file)) == 8
+        circle_path = fixture_path("circle_pure.jac")
+        client.compile_file(circle_path)
+
+        resp = client.outline(circle_path)
+        assert resp is not None
+        symbols = resp.get("symbols", [])
+        assert len(symbols) == 8, f"Expected 8 symbols, got {len(symbols)}: {symbols}"
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition(fixture_path: Callable[[str], str]) -> None:
     """Test that the go to definition is correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"))
-        lsp.type_check_file(circle_file)
-        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in str(
-            lsp.get_definition(circle_file, lspt.Position(9, 16))
+        circle_path = fixture_path("circle_pure.jac")
+        client.compile_file(circle_path)
+
+        assert "fixtures/circle_pure.impl.jac:8:5-8:19" in fmt_location(
+            client.definition(circle_path, 9, 16)
         )
-        assert "fixtures/circle_pure.jac:13:11-13:16" in str(
-            lsp.get_definition(circle_file, lspt.Position(20, 16))
+        assert "fixtures/circle_pure.jac:13:11-13:16" in fmt_location(
+            client.definition(circle_path, 20, 16)
         )
 
-        goto_defs_file = uris.from_fs_path(fixture_path("goto_def_tests.jac"))
-        lsp.type_check_file(goto_defs_file)
+        goto_defs_path = fixture_path("goto_def_tests.jac")
+        client.compile_file(goto_defs_path)
 
-        # Test if the visistor keyword goes to the walker definition
-        assert "fixtures/goto_def_tests.jac:8:7-8:17" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(4, 14))
+        # Test if the visitor keyword goes to the walker definition
+        assert "fixtures/goto_def_tests.jac:8:7-8:17" in fmt_location(
+            client.definition(goto_defs_path, 4, 14)
         )
-        # Test if the here keywrod goes to the node definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(10, 14))
+        # Test if the here keyword goes to the node definition
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in fmt_location(
+            client.definition(goto_defs_path, 10, 14)
         )
         # Test the SomeNode node inside the visit statement goes to its definition
-        assert "fixtures/goto_def_tests.jac:0:5-0:13" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(11, 21))
+        assert "fixtures/goto_def_tests.jac:0:5-0:13" in fmt_location(
+            client.definition(goto_defs_path, 11, 21)
         )
-
-        # Test when the left of assignment is a list.
-        assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
-            lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
+        # Test when the left of assignment is a list
+        assert "fixtures/goto_def_tests.jac:16:5-16:8" in fmt_location(
+            client.definition(goto_defs_path, 17, 10)
         )
-
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition_method_manual_impl(
     examples_abs_path: Callable[[str], str],
 ) -> None:
     """Test that the go to definition is correct."""
-    lsp = create_server(None, lambda x: "")
+    client = create_client()
     try:
-        decldef_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.impl.jac")
-        )
-        lsp.type_check_file(decldef_file)
-        decldef_main_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.jac")
-        )
-        lsp.type_check_file(decldef_main_file)
-        lsp.type_check_file(decldef_file)
-        assert "decl_defs_main.jac:7:8-7:17" in str(
-            lsp.get_definition(decldef_file, lspt.Position(2, 20))
+        decldef_impl_path = examples_abs_path("micro/decl_defs_main.impl.jac")
+        decldef_main_path = examples_abs_path("micro/decl_defs_main.jac")
+
+        client.compile_file(decldef_impl_path)
+        client.compile_file(decldef_main_path)
+        client.compile_file(decldef_impl_path)
+
+        assert "decl_defs_main.jac:7:8-7:17" in fmt_location(
+            client.definition(decldef_impl_path, 2, 20)
         )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
     """Test that the go to definition is correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        import_file = uris.from_fs_path(fixture_path("md_path.jac"))
-        lsp.type_check_file(import_file)
+        import_path = fixture_path("md_path.jac")
+        client.compile_file(import_path)
+
         # fmt: off
         # Updated line numbers after fixture reformatting
         positions = [
@@ -245,23 +338,25 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
         # fmt: on
 
         for line, char, expected in positions:
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+            result = fmt_location(
+                client.definition(import_path, line - 1, char - 1)
+            )
+            assert expected in result, (
+                f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition_connect_filter(
     passes_main_fixture_abs_path: Callable[[str], str],
 ) -> None:
     """Test that the go to definition is correct."""
-    lsp = create_server(None, lambda x: "")
+    client = create_client()
     try:
-        import_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("checker_connect_filter.jac")
-        )
-        lsp.type_check_file(import_file)
+        import_path = passes_main_fixture_abs_path("checker_connect_filter.jac")
+        client.compile_file(import_path)
+
         # fmt: off
         # Line numbers are 1-indexed for test input, expected results are 0-indexed
         positions = [
@@ -281,19 +376,23 @@ def test_go_to_definition_connect_filter(
         # fmt: on
 
         for line, char, expected in positions:
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+            result = fmt_location(
+                client.definition(import_path, line - 1, char - 1)
+            )
+            assert expected in result, (
+                f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition_atom_trailer(fixture_path: Callable[[str], str]) -> None:
     """Test that the go to definition is correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        import_file = uris.from_fs_path(fixture_path("user.jac"))
-        lsp.type_check_file(import_file)
+        import_path = fixture_path("user.jac")
+        client.compile_file(import_path)
+
         # fmt: off
         # Line 12: a.try_to_greet().pass_message("World");
         # try_to_greet is at char 7 (1-indexed)
@@ -305,98 +404,95 @@ def test_go_to_definition_atom_trailer(fixture_path: Callable[[str], str]) -> No
         # fmt: on
 
         for line, char, expected in positions:
-            assert expected in str(
-                lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+            result = fmt_location(
+                client.definition(import_path, line - 1, char - 1)
+            )
+            assert expected in result, (
+                f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_missing_mod_warning(fixture_path: Callable[[str], str]) -> None:
     """Test that the missing module warning is correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        import_file = uris.from_fs_path(fixture_path("md_path.jac"))
-        lsp.type_check_file(import_file)
+        import_path = fixture_path("md_path.jac")
+        response = client.compile_file(import_path)
+
+        warnings = response.get("diagnostics", {}).get("warnings", [])
+        warnings_str = [fmt_warning(w) for w in warnings]
 
         expected_warnings = [
             "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
             "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
         ]
-        warnings_str = [str(w) for w in lsp.warnings_had]
         for expected in expected_warnings:
             assert any(expected in w for w in warnings_str), (
                 f"Expected warning '{expected}' not found in {warnings_str}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_completion(fixture_path: Callable[[str], str]) -> None:
     """Test that the completions are correct."""
-    import asyncio
-
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        base_module_file = uris.from_fs_path(fixture_path("completion_test_err.jac"))
-        lsp.type_check_file(base_module_file)
+        base_module_path = fixture_path("completion_test_err.jac")
+        client.compile_file(base_module_path)
 
-        @dataclass
-        class Case:
-            pos: lspt.Position
-            expected: list[str]
-            trigger: str = "."
-
-        test_cases: list[Case] = [
-            Case(
-                lspt.Position(8, 8),
-                ["bar", "baz"],
-            ),
+        test_cases = [
+            # (line, char, trigger, expected_labels)
+            (8, 8, ".", ["bar", "baz"]),
         ]
-        for case in test_cases:
-            results = asyncio.run(
-                lsp.get_completion(
-                    base_module_file, case.pos, completion_trigger=case.trigger
+        for line, char, trigger, expected in test_cases:
+            resp = client.completion(base_module_path, line, char, trigger=trigger)
+            assert resp is not None, f"Expected completion response at ({line},{char})"
+            items = resp.get("items", [])
+            for label in expected:
+                assert label in str(items), (
+                    f"Expected '{label}' in completions, got: {items}"
                 )
-            )
-            completions = results.items
-            for completion in case.expected:
-                assert completion in str(completions)
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_reference(fixture_path: Callable[[str], str]) -> None:
     """Test that the go to reference is correct."""
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        circle_file = uris.from_fs_path(fixture_path("circle.jac"))
-        lsp.type_check_file(circle_file)
-        # Using 0-indexed line/char (passed directly to lspt.Position)
+        circle_path = fixture_path("circle.jac")
+        client.compile_file(circle_path)
+
+        # Using 0-indexed line/char
         # Line 45 = `    c = Circle(RAD);`, char 4 = start of `c`
         # References to `c` found at: 45:4-45:5, 51:23-51:24, 51:75-51:76
         test_cases = [
             (45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]),
         ]
         for line, char, expected_refs in test_cases:
-            references = str(lsp.get_references(circle_file, lspt.Position(line, char)))
+            result = fmt_locations(client.references(circle_path, line, char))
             for expected in expected_refs:
-                assert expected in references
+                assert expected in result, (
+                    f"Expected '{expected}' in references, got: {result}"
+                )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_def_import_star(
     passes_main_fixture_abs_path: Callable[[str], str],
 ) -> None:
-    """Test that the go to reference is correct."""
-    lsp = create_server(None, lambda x: "")
+    """Test that go to definition works with import star."""
+    client = create_client()
     try:
-        import_star_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("checker_import_star/main.jac")
+        import_star_path = passes_main_fixture_abs_path(
+            "checker_import_star/main.jac"
         )
+        client.compile_file(import_star_path)
 
-        lsp.type_check_file(import_star_file)
         # fmt: off
         positions = [
             (5, 16, "import_star_mod_py.py:0:0-2:2"),
@@ -408,11 +504,14 @@ def test_go_to_def_import_star(
         # fmt: on
 
         for line, char, expected in positions:
-            assert expected in str(
-                lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
+            result = fmt_location(
+                client.definition(import_star_path, line - 1, char - 1)
+            )
+            assert expected in result, (
+                f"Expected '{expected}' at ({line},{char}), got: {result}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> None:
@@ -423,12 +522,11 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
     2. Hover on type annotations in impl files works
     3. Go-to-definition on method stubs (init, process) navigates to impl file
     """
-    lsp = create_server(None, fixture_path)
+    client = create_client()
     try:
-        test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
+        test_path = fixture_path("stub_hover.jac")
         impl_file_path = fixture_path("stub_hover.impl.jac")
-        impl_file = uris.from_fs_path(impl_file_path)
-        lsp.type_check_file(test_file)
+        client.compile_file(test_path)
 
         # ================================================================
         # Test hover on type annotations in stub file
@@ -436,18 +534,22 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
 
         # Hover on MyServer in: def process(self: MyServer, data: str) -> str;
         # Line 13 (0-indexed: 12), MyServer starts at column 22
-        hover = lsp.get_hover_info(test_file, lspt.Position(12, 24))
-        assert hover is not None, "Hover should return info for self type annotation"
-        assert "MyServer" in hover.contents.value, (
-            f"Hover should show MyServer info, got: {hover.contents.value}"
+        resp = client.hover(test_path, 12, 24)
+        assert resp is not None and resp.get("hover_text"), (
+            "Hover should return info for self type annotation"
+        )
+        assert "MyServer" in resp["hover_text"], (
+            f"Hover should show MyServer info, got: {resp['hover_text']}"
         )
 
         # Hover on MyServer in: def handle(self: MyServer, request: int) -> None;
         # Line 14 (0-indexed: 13), MyServer starts at column 21
-        hover2 = lsp.get_hover_info(test_file, lspt.Position(13, 23))
-        assert hover2 is not None, "Hover should return info for self type annotation"
-        assert "MyServer" in hover2.contents.value, (
-            f"Hover should show MyServer info, got: {hover2.contents.value}"
+        resp2 = client.hover(test_path, 13, 23)
+        assert resp2 is not None and resp2.get("hover_text"), (
+            "Hover should return info for self type annotation"
+        )
+        assert "MyServer" in resp2["hover_text"], (
+            f"Hover should show MyServer info, got: {resp2['hover_text']}"
         )
 
         # ================================================================
@@ -456,11 +558,13 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
 
         # Hover on MyServer in impl file: impl MyServer.handle(self: MyServer, ...)
         # Line 15 (0-indexed: 14), MyServer in self type annotation starts at column 27
-        lsp.type_check_file(impl_file)
-        hover3 = lsp.get_hover_info(impl_file, lspt.Position(14, 29))
-        assert hover3 is not None, "Hover should return info for self type in impl file"
-        assert "MyServer" in hover3.contents.value, (
-            f"Hover should show MyServer info in impl, got: {hover3.contents.value}"
+        client.compile_file(impl_file_path)
+        resp3 = client.hover(impl_file_path, 14, 29)
+        assert resp3 is not None and resp3.get("hover_text"), (
+            "Hover should return info for self type in impl file"
+        )
+        assert "MyServer" in resp3["hover_text"], (
+            f"Hover should show MyServer info in impl, got: {resp3['hover_text']}"
         )
 
         # ================================================================
@@ -468,25 +572,27 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
         # ================================================================
 
         # Goto def on 'init' stub (line 12, col 10) -> should go to impl line 5
-        # def init(self: MyServer, name: str) -> None;
-        defn = lsp.get_definition(test_file, lspt.Position(11, 10))
+        defn = client.definition(test_path, 11, 10)
         assert defn is not None, "Definition should be found for init stub"
-        assert impl_file_path in defn.uri, (
-            f"Definition should point to impl file, got: {defn.uri}"
+        loc = defn.get("location")
+        assert loc is not None, "Definition location should not be None"
+        assert impl_file_path in loc["uri"], (
+            f"Definition should point to impl file, got: {loc['uri']}"
         )
-        assert defn.range.start.line == 4, (
-            f"Definition should be at line 5 (0-indexed: 4), got: {defn.range.start.line}"
+        assert loc["line"] == 4, (
+            f"Definition should be at line 5 (0-indexed: 4), got: {loc['line']}"
         )
 
         # Goto def on 'process' stub (line 13, col 10) -> should go to impl line 11
-        # def process(self: MyServer, data: str) -> str;
-        defn2 = lsp.get_definition(test_file, lspt.Position(12, 10))
+        defn2 = client.definition(test_path, 12, 10)
         assert defn2 is not None, "Definition should be found for process stub"
-        assert impl_file_path in defn2.uri, (
-            f"Definition should point to impl file, got: {defn2.uri}"
+        loc2 = defn2.get("location")
+        assert loc2 is not None, "Definition location should not be None"
+        assert impl_file_path in loc2["uri"], (
+            f"Definition should point to impl file, got: {loc2['uri']}"
         )
-        assert defn2.range.start.line == 10, (
-            f"Definition should be at line 11 (0-indexed: 10), got: {defn2.range.start.line}"
+        assert loc2["line"] == 10, (
+            f"Definition should be at line 11 (0-indexed: 10), got: {loc2['line']}"
         )
 
         # ================================================================
@@ -495,49 +601,48 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
 
         # Goto def on '_counter' in 'MyServer._counter' (line 7, col 31)
         # Should go to static has declaration in stub file (line 10)
-        defn3 = lsp.get_definition(impl_file, lspt.Position(6, 33))
+        defn3 = client.definition(impl_file_path, 6, 33)
         assert defn3 is not None, "Definition should be found for static field _counter"
-        assert "stub_hover.jac" in defn3.uri, (
-            f"Definition should point to declaration file, got: {defn3.uri}"
+        loc3 = defn3.get("location")
+        assert loc3 is not None, "Definition location should not be None"
+        assert "stub_hover.jac" in loc3["uri"], (
+            f"Definition should point to declaration file, got: {loc3['uri']}"
         )
-        assert defn3.range.start.line == 9, (
-            f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
+        assert loc3["line"] == 9, (
+            f"Definition should be at line 10 (0-indexed: 9), got: {loc3['line']}"
         )
 
         # ================================================================
         # Test hover and go-to-definition for Python type methods in impl bodies
-        # This tests the fix for type resolution in impl bodies where
-        # Python type methods (like Thread.start) should be properly resolved.
         # ================================================================
 
         # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
-        # Line 23 (0-indexed: 22): `    self.worker.start();`
-        # 'start' starts at column 17 (0-indexed: 16)
-        hover_start = lsp.get_hover_info(impl_file, lspt.Position(22, 17))
-        assert hover_start is not None, (
+        hover_start = client.hover(impl_file_path, 22, 17)
+        assert hover_start is not None and hover_start.get("hover_text"), (
             "Hover should return info for Thread.start method in impl body"
         )
 
         # Hover on 'worker' in 'self.worker.start()' (line 23, col 10)
-        hover_worker = lsp.get_hover_info(impl_file, lspt.Position(22, 10))
-        assert hover_worker is not None, (
+        hover_worker = client.hover(impl_file_path, 22, 10)
+        assert hover_worker is not None and hover_worker.get("hover_text"), (
             "Hover should return info for worker field in impl body"
         )
-        assert "Thread" in hover_worker.contents.value, (
-            f"Hover should show Thread type, got: {hover_worker.contents.value}"
+        assert "Thread" in hover_worker["hover_text"], (
+            f"Hover should show Thread type, got: {hover_worker['hover_text']}"
         )
 
         # Go-to-definition on 'start' should go to Python threading module
-        defn_start = lsp.get_definition(impl_file, lspt.Position(22, 17))
+        defn_start = client.definition(impl_file_path, 22, 17)
         assert defn_start is not None, (
             "Definition should be found for Thread.start method"
         )
-        assert "threading" in defn_start.uri, (
-            f"Definition should point to threading module, got: {defn_start.uri}"
+        loc_start = defn_start.get("location")
+        assert loc_start is not None, "Definition location should not be None"
+        assert "threading" in loc_start["uri"], (
+            f"Definition should point to threading module, got: {loc_start['uri']}"
         )
-
     finally:
-        lsp.shutdown()
+        client.shutdown()
 
 
 def test_go_to_definition_impl_body_self_attr(
@@ -549,12 +654,12 @@ def test_go_to_definition_impl_body_self_attr(
     'self.count' in an impl body should navigate to the 'has count' declaration
     in the base .jac file.
     """
-    lsp = create_server(None, lambda x: "")
+    client = create_client()
     try:
-        impl_file = uris.from_fs_path(
-            passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
+        impl_path = passes_main_fixture_abs_path(
+            "impl_symbol_resolution.impl.jac"
         )
-        lsp.type_check_file(impl_file)
+        client.compile_file(impl_path)
 
         # fmt: off
         # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
@@ -575,13 +680,15 @@ def test_go_to_definition_impl_body_self_attr(
         # fmt: on
 
         for line, char, expected in positions:
-            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
-            assert result is not None, (
+            result = fmt_location(
+                client.definition(impl_path, line - 1, char - 1)
+            )
+            assert result is not None and result != "", (
                 f"Expected definition at line {line}, char {char}, got None"
             )
-            assert expected in str(result), (
+            assert expected in result, (
                 f"Expected '{expected}' in definition for line {line}, char {char}, "
                 f"got: {result}"
             )
     finally:
-        lsp.shutdown()
+        client.shutdown()
