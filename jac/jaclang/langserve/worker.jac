@@ -12,6 +12,8 @@ Architecture:
 """
 
 import threading;
+import from multiprocessing { Queue as MpQueue }
+import from multiprocessing.synchronize { Event as MpEvent }
 import from typing { Optional, Callable, Any }
 
 """Request types for worker IPC."""
@@ -90,22 +92,12 @@ Handles both compilation AND foreground LSP requests (hover, definition, etc.).
 Keeps JacProgram persistent - no AST serialization needed for queries.
 """
 obj CompilationWorker {
-    has _request_queue: Any | None = None,
-        _response_queue: Any | None = None,
-        _shutdown_event: Any | None = None,
-        _cancel_event: Any | None = None,
-        _config: WorkerConfig | None = None,
-        _foreground_queue: Any | None = None;
-
-    """Initialize worker (called in worker process)."""
-    def initialize(
-        request_queue: Any,
-        response_queue: Any,
-        shutdown_event: Any,
-        cancel_event: Any,
-        config: WorkerConfig,
-        foreground_queue: Any | None = None
-    ) -> None;
+    has _request_queue: MpQueue,
+        _response_queue: MpQueue,
+        _shutdown_event: MpEvent,
+        _cancel_event: MpEvent,
+        _config: WorkerConfig,
+        _foreground_queue: MpQueue | None = None;
 
     """Main worker loop."""
     def run -> None;
@@ -299,10 +291,10 @@ obj WorkerManager {
 
 """Entry point for worker process."""
 def worker_process_main(
-    request_queue: Any,
-    response_queue: Any,
-    shutdown_event: Any,
-    cancel_event: Any,
+    request_queue: MpQueue,
+    response_queue: MpQueue,
+    shutdown_event: MpEvent,
+    cancel_event: MpEvent,
     config_dict: dict,
-    foreground_queue: Any | None = None
+    foreground_queue: MpQueue | None = None
 ) -> None;

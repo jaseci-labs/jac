@@ -12,6 +12,8 @@ import sys;
 import time;
 import threading;
 import multiprocessing;
+import from multiprocessing { Queue as MpQueue }
+import from multiprocessing.synchronize { Event as MpEvent }
 import from typing { Optional, Callable, Any }
 import from queue { Empty }
 import from jaclang.langserve.sem_manager { SemTokManager }
@@ -92,18 +94,7 @@ impl _build_file_request(request_type: str, request_id: str, file_path: str) -> 
 
 # ============== CompilationWorker (runs in separate process) ==============
 
-impl CompilationWorker.initialize(
-    request_queue: Any, response_queue: Any,
-    shutdown_event: Any, cancel_event: Any, config: WorkerConfig,
-    foreground_queue: Any | None = None
-) -> None {
-    self._request_queue = request_queue;
-    self._response_queue = response_queue;
-    self._shutdown_event = shutdown_event;
-    self._cancel_event = cancel_event;
-    self._config = config;
-    self._foreground_queue = foreground_queue;
-}
+"""CompilationWorker fields are set directly via constructor kwargs."""
 
 impl CompilationWorker.run -> None {
     import from jaclang.pycore.program { JacProgram }
@@ -914,15 +905,21 @@ impl WorkerManager.set_diagnostics_callback(callback: Callable) -> None {
 }
 
 impl worker_process_main(
-    request_queue: Any, response_queue: Any,
-    shutdown_event: Any, cancel_event: Any, config_dict: dict,
-    foreground_queue: Any | None = None
+    request_queue: MpQueue, response_queue: MpQueue,
+    shutdown_event: MpEvent, cancel_event: MpEvent, config_dict: dict,
+    foreground_queue: MpQueue | None = None
 ) -> None {
     config = WorkerConfig(
         poll_interval_ms=config_dict.get('poll_interval_ms', 100),
         shutdown_timeout_ms=config_dict.get('shutdown_timeout_ms', 5000)
     );
-    worker = CompilationWorker();
-    worker.initialize(request_queue, response_queue, shutdown_event, cancel_event, config, foreground_queue);
+    worker = CompilationWorker(
+        _request_queue=request_queue,
+        _response_queue=response_queue,
+        _shutdown_event=shutdown_event,
+        _cancel_event=cancel_event,
+        _config=config,
+        _foreground_queue=foreground_queue
+    );
     worker.run();
 }
