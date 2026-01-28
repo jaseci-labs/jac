@@ -1,0 +1,34 @@
+name: Jac Type Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  jac-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -e ./jac
+          pip install -e ./jac-scale
+          pip install -e ./jac-client
+          pip install -e ./jac-byllm
+          pip install -e ./jac-super
+
+      - name: Run jac check (using .jacignore)
+        run: |
+          IGNORE_LIST=$(paste -sd, .jacignore)
+          jac check . --ignore "$IGNORE_LIST" --nowarn

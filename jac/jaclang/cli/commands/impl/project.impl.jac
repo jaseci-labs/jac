@@ -44,7 +44,7 @@ impl create(
     # Resolve template from --use (supports: registered names, file paths, URLs)
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
-        console.error(f"Unknown template: {template}");
+        console.error(f"Unknown template: {use}");
         console.print(
             "Use --list-templates to see available templates.", style="muted"
         );

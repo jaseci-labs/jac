@@ -6,10 +6,6 @@ exclude: |
         ^$
     )
 
-# Skip jac-check on pre-commit.ci - it times out (180s limit) due to cold cache.
-# Type checking should run in GitHub Actions instead where we control caching.
-ci:
-  skip: [jac-check]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -56,15 +52,6 @@ repos:
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
         additional_dependencies: [llvmlite>=0.43.0]
-      - id: jac-check
-        name: jac-check
-        description: Type check Jac files
-        entry: env PYTHONPATH=jac python3 -m jaclang check --warnonly
-        language: system
-        types: [file]
-        files: \.jac$
-        require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
   - repo: local
     hooks:
       - id: check-no-binary-files

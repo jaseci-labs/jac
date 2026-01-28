@@ -486,10 +486,17 @@ impl JacAPIServer.render_base_route_callback(
 
 impl JacAPIServer.register_functions_endpoints -> None {
     for func_name in self.get_functions() {
+        func_obj = self.get_functions()[func_name];
+        restspec = func_obj.restspec if func_obj?.restspec else None;
+        spec_method = restspec.method if restspec else HTTPMethod.POST;
+        spec_path = restspec.path if restspec else None;
+
+        final_path = spec_path or f"/function/{func_name}";
+
         self.server.add_endpoint(
             JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"/function/{func_name}",
+                method=spec_method,
+                path=final_path,
                 callback=self.create_function_callback(func_name),
                 parameters=self.create_function_parameters(func_name),
                 response_model=None,
@@ -600,10 +607,15 @@ impl JacAPIServer.create_function_callback(
 
 impl JacAPIServer.register_walkers_endpoints -> None {
     for walker_name in self.get_walkers() {
+        walker_cls = self.get_walkers()[walker_name];
+        restspec = walker_cls.restspec if walker_cls?.restspec else None;
+        spec_method = restspec.method if restspec?.method else HTTPMethod.POST;
+        spec_path = restspec.path if restspec?.path else f"/walker/{walker_name}";
+
         self.server.add_endpoint(
             JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"/walker/{walker_name}/{{node}}",
+                method=spec_method,
+                path=f"{spec_path}/{{node}}",
                 callback=self.create_walker_callback(walker_name, has_node_param=True),
                 parameters=self.create_walker_parameters(
                     walker_name, invoke_on_root=False
@@ -616,8 +628,8 @@ impl JacAPIServer.register_walkers_endpoints -> None {
         );
         self.server.add_endpoint(
             JEndPoint(
-                method=HTTPMethod.POST,
-                path=f"/walker/{walker_name}",
+                method=spec_method,
+                path=spec_path,
                 callback=self.create_walker_callback(walker_name, has_node_param=False),
                 parameters=self.create_walker_parameters(
                     walker_name, invoke_on_root=True
