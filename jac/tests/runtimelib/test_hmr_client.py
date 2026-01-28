@@ -682,7 +682,6 @@ class TestHMRAssetServing:
         )
 
         reloader._copy_frontend_files(str(image_file))
-
         output_file = (
             temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
         )
@@ -705,9 +704,7 @@ class TestHMRAssetServing:
             temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
         )
         assert output_file.exists(), "Asset file was not copied to compiled directory"
-
         image_file.unlink()
-
         reloader._copy_frontend_files(str(image_file))
         assert not output_file.exists(), (
             "Compiled asset was not deleted when source was deleted"
@@ -746,7 +743,6 @@ export default Button;
         )
 
         reloader._copy_frontend_files(str(tsx_file))
-
         output_file = (
             temp_project / ".jac" / "client" / "compiled" / "components" / "Button.tsx"
         )
@@ -777,9 +773,7 @@ const Button: React.FC<ButtonProps> = ({ children, onClick, variant = 'primary' 
 export default Button;
 """
         tsx_file.write_text(updated_content)
-
         reloader._copy_frontend_files(str(tsx_file))
-
         assert output_file.exists(), (
             "TSX component file should still exist after update"
         )
