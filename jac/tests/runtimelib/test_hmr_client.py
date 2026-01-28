@@ -672,7 +672,7 @@ class TestHMRAssetServing:
         """Test that image assets are correctly copied to compiled directory when added."""
         # Create a sample image file (mock as a small binary file)
         image_file = temp_project / "assets" / "logo.png"
-        image_content = b"fake_png_data"  # In real test, use actual image bytes
+        image_content = b"fake_png_data"  
         image_file.write_bytes(image_content)
 
         watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
@@ -688,7 +688,6 @@ class TestHMRAssetServing:
 
     def test_image_asset_deleted_when_source_deleted(self, temp_project: Path) -> None:
         """Test that compiled asset is deleted when source asset is deleted."""
-        # Create a sample image file
         image_file = temp_project / "assets" / "logo.png"
         image_content = b"fake_png_data"
         image_file.write_bytes(image_content)
@@ -698,16 +697,74 @@ class TestHMRAssetServing:
             base_path=str(temp_project), module_name="app", watcher=watcher
         )
 
-        # Copy the file
         reloader._copy_frontend_files(str(image_file))
         output_file = temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
         assert output_file.exists(), "Asset file was not copied to compiled directory"
 
-        # Delete the source file
         image_file.unlink()
 
-        # Call copy again, which should detect deletion and remove output
         reloader._copy_frontend_files(str(image_file))
         assert not output_file.exists(), "Compiled asset was not deleted when source was deleted"
 
- 
+    def test_tsx_component_copied_and_updated_on_change(self, temp_project: Path) -> None:
+        """Test that .tsx component files are copied and updated in compiled directory during HMR."""
+        components_dir = temp_project / "components"
+        components_dir.mkdir(parents=True, exist_ok=True)
+
+        tsx_file = components_dir / "Button.tsx"
+        initial_content = """import React from 'react';
+
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+}
+
+const Button: React.FC<ButtonProps> = ({ children, onClick }) => {
+  return (
+    <button onClick={onClick} className="btn">
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+"""
+        tsx_file.write_text(initial_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._copy_frontend_files(str(tsx_file))
+
+        output_file = temp_project / ".jac" / "client" / "compiled" / "components" / "Button.tsx"
+        assert output_file.exists(), "TSX component file was not copied to compiled directory"
+        assert output_file.read_text() == initial_content, "TSX component content does not match"
+
+        # Modify the .tsx file content
+        updated_content = """import React from 'react';
+
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary';
+}
+
+const Button: React.FC<ButtonProps> = ({ children, onClick, variant = 'primary' }) => {
+  return (
+    <button onClick={onClick} className={`btn btn-${variant}`}>
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+"""
+        tsx_file.write_text(updated_content)
+
+        reloader._copy_frontend_files(str(tsx_file))
+
+        assert output_file.exists(), "TSX component file should still exist after update"
+        assert output_file.read_text() == updated_content, "TSX component content was not updated in compiled directory"
+
