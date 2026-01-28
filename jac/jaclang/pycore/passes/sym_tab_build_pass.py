@@ -83,20 +83,8 @@ class SymTabBuildPass(UniPass):
     def exit_assignment(self, node: uni.Assignment) -> None:
         for i in node.target:
             if isinstance(i, uni.AstSymbolNode):
-                # Handle -> [a, b] = ...
-                # TODO: This can be recursive for nested structures
-                # example: [a, b, (c, d['e'], [f, g])] = [1, 2, (3, 4, [5, 6])]
-                if isinstance(i, uni.ListVal):
-                    for elem in i.values:
-                        if isinstance(elem, uni.AstSymbolNode):
-                            if (
-                                sym := elem.sym_tab.lookup(elem.sym_name, deep=False)
-                            ) is None:
-                                elem.sym_tab.def_insert(elem, single_decl="local var")
-                            else:
-                                sym.add_use(elem.name_spec)
-                # Case 2: a = b # NOTE: we're not considering the fact that the node could also be a complex
-                # expression like foo.bar() and assuming that it'll be just a name, this needs to be fixed.
+                if isinstance(i, (uni.ListVal, uni.TupleVal)):
+                    self._def_insert_unpacking(i, i.sym_tab)
                 elif (sym := i.sym_tab.lookup(i.sym_name, deep=False)) is None:
                     i.sym_tab.def_insert(i, single_decl="local var")
                 else:
