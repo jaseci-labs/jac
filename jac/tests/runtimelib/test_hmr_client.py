@@ -652,6 +652,7 @@ cl {
             f"File incorrectly written to {wrong_output} instead of {correct_output}"
         )
 
+
 class TestHMRAssetServing:
     """Tests for HMR handling of static assets like images."""
 
@@ -659,7 +660,7 @@ class TestHMRAssetServing:
     def temp_project(self, tmp_path: Path) -> Generator[Path, None, None]:
         """Create a temporary project with asset structure."""
         import uuid
-        
+
         unique_dir = tmp_path / f"project_{uuid.uuid4().hex[:8]}"
         unique_dir.mkdir(parents=True, exist_ok=True)
         assets_dir = unique_dir / "assets"
@@ -672,7 +673,7 @@ class TestHMRAssetServing:
         """Test that image assets are correctly copied to compiled directory when added."""
         # Create a sample image file (mock as a small binary file)
         image_file = temp_project / "assets" / "logo.png"
-        image_content = b"fake_png_data"  
+        image_content = b"fake_png_data"
         image_file.write_bytes(image_content)
 
         watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
@@ -682,7 +683,9 @@ class TestHMRAssetServing:
 
         reloader._copy_frontend_files(str(image_file))
 
-        output_file = temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        )
         assert output_file.exists(), "Asset file was not copied to compiled directory"
         assert output_file.read_bytes() == image_content, "Asset content does not match"
 
@@ -698,15 +701,21 @@ class TestHMRAssetServing:
         )
 
         reloader._copy_frontend_files(str(image_file))
-        output_file = temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        )
         assert output_file.exists(), "Asset file was not copied to compiled directory"
 
         image_file.unlink()
 
         reloader._copy_frontend_files(str(image_file))
-        assert not output_file.exists(), "Compiled asset was not deleted when source was deleted"
+        assert not output_file.exists(), (
+            "Compiled asset was not deleted when source was deleted"
+        )
 
-    def test_tsx_component_copied_and_updated_on_change(self, temp_project: Path) -> None:
+    def test_tsx_component_copied_and_updated_on_change(
+        self, temp_project: Path
+    ) -> None:
         """Test that .tsx component files are copied and updated in compiled directory during HMR."""
         components_dir = temp_project / "components"
         components_dir.mkdir(parents=True, exist_ok=True)
@@ -738,9 +747,15 @@ export default Button;
 
         reloader._copy_frontend_files(str(tsx_file))
 
-        output_file = temp_project / ".jac" / "client" / "compiled" / "components" / "Button.tsx"
-        assert output_file.exists(), "TSX component file was not copied to compiled directory"
-        assert output_file.read_text() == initial_content, "TSX component content does not match"
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "components" / "Button.tsx"
+        )
+        assert output_file.exists(), (
+            "TSX component file was not copied to compiled directory"
+        )
+        assert output_file.read_text() == initial_content, (
+            "TSX component content does not match"
+        )
 
         # Modify the .tsx file content
         updated_content = """import React from 'react';
@@ -765,6 +780,9 @@ export default Button;
 
         reloader._copy_frontend_files(str(tsx_file))
 
-        assert output_file.exists(), "TSX component file should still exist after update"
-        assert output_file.read_text() == updated_content, "TSX component content was not updated in compiled directory"
-
+        assert output_file.exists(), (
+            "TSX component file should still exist after update"
+        )
+        assert output_file.read_text() == updated_content, (
+            "TSX component content was not updated in compiled directory"
+        )
