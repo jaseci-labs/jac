@@ -613,7 +613,8 @@ impl WorkerManager.postinit -> None {
     self._running = False;
     self._diagnostics_callback = None;
     self._current_request_id = None;
-    self._pending_uri = None;
+    self._dirty_files = set();
+    self._compiling_uri = None;
     self._timer = None;
     self._timer_lock = threading.Lock();
     self._last_activity = 0;
@@ -677,13 +678,13 @@ impl WorkerManager.is_running -> bool {
 impl WorkerManager.schedule_file(file_uri: str) -> None {
     if not self._running { self.start(); }
     self._last_activity = time.time();
-    self._pending_uri = file_uri;
+    self._dirty_files.add(file_uri);
     if self._analysis_in_progress { self.cancel_current(); }
     self._reset_timer();
 }
 
 impl WorkerManager.has_pending -> bool {
-    return self._pending_uri is not None;
+    return len(self._dirty_files) > 0;
 }
 
 impl WorkerManager.is_busy -> bool {
@@ -728,9 +729,8 @@ impl WorkerManager._on_timer_expired -> None {
 }
 
 impl WorkerManager._process_pending -> None {
-    if not self._running or self._pending_uri is None { return; }
-    file_uri = self._pending_uri;
-    self._pending_uri = None;
+    if not self._running or not self._dirty_files { return; }
+    file_uri = self._dirty_files.pop();
     self._analysis_in_progress = True;
     self.compile_file(file_uri);
 }
@@ -740,6 +740,7 @@ impl WorkerManager.compile_file(file_uri: str, callback: Optional[Callable] = No
     if self._current_request_id { self.cancel_current(); }
     request_id = self._next_request_id();
     self._current_request_id = request_id;
+    self._compiling_uri = file_uri;
     request = {'request_type': 'COMPILE_FILE', 'request_id': request_id, 'file_uri': file_uri};
     if callback { self._pending_requests[request_id] = callback; }
     self._request_queue.put(request);
@@ -845,7 +846,12 @@ impl WorkerManager._handle_response(response: dict) -> None {
 
     if response.get('cancelled', False) {
         self._pending_requests.pop(request_id, None);
-        if self._pending_uri { self._reset_timer(); }
+        # Reschedule the cancelled compilation
+        if self._compiling_uri {
+            self._dirty_files.add(self._compiling_uri);
+        }
+        self._compiling_uri = None;
+        if self._dirty_files { self._reset_timer(); }
         return;
     }
 
@@ -856,14 +862,17 @@ impl WorkerManager._handle_response(response: dict) -> None {
 
     if response.get('success', False) and response.get('diagnostics') {
         self._analysis_in_progress = False;
+        self._compiling_uri = None;
         if self._diagnostics_callback {
             try { self._diagnostics_callback(response); }
             except Exception { }
         }
-        if self._pending_uri { self._reset_timer(); }
+        # Process next dirty file if any
+        if self._dirty_files { self._reset_timer(); }
     } elif not response.get('success', False) {
         self._analysis_in_progress = False;
-        if self._pending_uri { self._reset_timer(); }
+        self._compiling_uri = None;
+        if self._dirty_files { self._reset_timer(); }
     }
 }
 
