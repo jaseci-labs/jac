@@ -267,6 +267,15 @@ cl {
 
 ## Backend Integration
 
+> **Note: File Uploads**
+>
+> Multipart/form-data file uploads require `jac-scale` (which provides a FastAPI-based server).
+> The basic `jac start` command does not support multipart requests. To enable file uploads:
+>
+> 1. Install jac-scale: `pip install jac-scale`
+> 2. Use walkers with `UploadFile` parameters
+> 3. See [Storage Abstraction](jac-scale.md#storage) for the storage API
+
 ### useWalker Hook
 
 Fetch data from walkers:
@@ -629,5 +638,6 @@ cl {
 - [Components Tutorial](../../tutorials/fullstack/components.md)
 - [State Management Tutorial](../../tutorials/fullstack/state.md)
 - [Backend Integration Tutorial](../../tutorials/fullstack/backend.md)
+- [File Storage Tutorial](../../tutorials/fullstack/storage.md)
 - [Authentication Tutorial](../../tutorials/fullstack/auth.md)
 - [Routing Tutorial](../../tutorials/fullstack/routing.md)

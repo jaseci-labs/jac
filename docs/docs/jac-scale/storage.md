@@ -322,8 +322,33 @@ create_dirs = true
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `JAC_STORAGE_TYPE` | Storage backend type (`local`, `s3`, `gcs`, `azure`) | `local` |
 | `JAC_STORAGE_PATH` | Base path for local storage | `./storage` |
 | `JAC_STORAGE_CREATE_DIRS` | Auto-create directories | `true` |
+
+### Configuration Priority
+
+When you call `get_storage()`, configuration is resolved in this order:
+
+1. **jac.toml** - Project-level configuration
+2. **Environment variables** - System/deployment configuration
+3. **Defaults** - Local storage in `./storage`
+
+### Storage Types
+
+With jac-scale installed, you can configure different storage backends:
+
+```jac
+# The StorageType enum defines available backends
+enum StorageType {
+    LOCAL = 'local',   # Local filesystem (default)
+    S3 = 's3',         # AWS S3 (coming soon)
+    GCS = 'gcs',       # Google Cloud Storage (coming soon)
+    AZURE = 'azure'    # Azure Blob Storage (coming soon)
+}
+```
+
+The `get_storage()` builtin uses `StorageFactory` internally to create the appropriate storage instance based on configuration.
 
 ### Direct Construction
 

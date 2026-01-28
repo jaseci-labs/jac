@@ -157,7 +157,11 @@ def:pub FeaturesTest -> any {
         numberList: str = "1,2,3,4,5",
         listResult: any = None,
         complexResult: any = None,
-        loading: bool = false;
+        loading: bool = false,
+        # File upload state
+        uploadedFiles: list = [],
+        uploadResult: any = None,
+        selectedFolder: str = "documents";
 
     # Load test data on mount
     async can with entry {
@@ -290,6 +294,132 @@ def:pub FeaturesTest -> any {
             alert("Error processing complex data: " + e.toString());
         }
         loading = false;
+    }
+
+    # ========================================================================
+    # FILE UPLOAD HANDLERS
+    # ========================================================================
+
+    # Handle file upload - uses FormData for multipart/form-data
+    async def handleFileUpload(event: any) -> None {
+        file = event.target.files[0];
+        if not file {
+            return;
+        }
+
+        loading = true;
+        try {
+            # File uploads require multipart/form-data, not JSON
+            formData = Reflect.construct(FormData, []);
+            formData.append("file", file);
+            formData.append("folder", selectedFolder);
+
+            # Get auth token from localStorage
+            token = localStorage.getItem("token");
+
+            response = await fetch("/walker/upload_file", {
+                "method": "POST",
+                "headers": {
+                    "Authorization": "Bearer " + token
+                },
+                "body": formData
+            });
+
+            data = await response.json();
+            # Handle wrapped response: data.data.reports or data.reports
+            reports = (data.data and data.data.reports) or data.reports;
+            if reports and reports.length > 0 {
+                result = reports[0];
+                uploadResult = result;
+                if result.success {
+                    # Refresh file list
+                    await handleListFiles();
+                    alert("File uploaded successfully!");
+                }
+            }
+        } except Exception as e {
+            console.error("Error uploading file:", e);
+            alert("Error uploading file: " + e.toString());
+        }
+        loading = false;
+        # Reset the file input
+        event.target.value = "";
+    }
+
+    # List uploaded files - uses HTTP endpoint since walker is in main.jac
+    async def handleListFiles -> None {
+        loading = true;
+        try {
+            token = localStorage.getItem("token");
+            response = await fetch("/walker/list_uploaded_files", {
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+                "body": JSON.stringify({"folder": "", "recursive": True})
+            });
+            data = await response.json();
+            # Handle wrapped response: data.data.reports or data.reports
+            reports = (data.data and data.data.reports) or data.reports;
+            if reports and reports.length > 0 {
+                result = reports[0];
+                uploadedFiles = result.files or [];
+            }
+        } except Exception as e {
+            console.error("Error listing files:", e);
+            uploadedFiles = [];
+        }
+        loading = false;
+    }
+
+    # Delete uploaded file - uses HTTP endpoint since walker is in main.jac
+    async def handleDeleteFile(filePath: str) -> None {
+        if not confirm("Are you sure you want to delete this file?") {
+            return;
+        }
+
+        loading = true;
+        try {
+            token = localStorage.getItem("token");
+            response = await fetch("/walker/delete_uploaded_file", {
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+                "body": JSON.stringify({"path": filePath})
+            });
+            data = await response.json();
+            # Handle wrapped response: data.data.reports or data.reports
+            reports = (data.data and data.data.reports) or data.reports;
+            if reports and reports.length > 0 {
+                result = reports[0];
+                if result.success {
+                    uploadedFiles = uploadedFiles.filter(
+                        lambda f: any  -> bool { return f.path != filePath; }
+                    );
+                    alert("File deleted successfully!");
+                } else {
+                    alert("Error: " + result.error);
+                }
+            }
+        } except Exception as e {
+            console.error("Error deleting file:", e);
+            alert("Error deleting file: " + e.toString());
+        }
+        loading = false;
+    }
+
+    # Format file size for display
+    def formatFileSize(bytes: any) -> any {
+        if bytes < 1024 {
+            return bytes + " B";
+        } elif bytes < 1024 * 1024 {
+            return (bytes / 1024).toFixed(1) + " KB";
+        } else {
+            return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        }
     }
 
     # ========================================================================
@@ -656,6 +786,126 @@ def:pub FeaturesTest -> any {
                     />}
                 </div>
             </TestCard>
+            # # Section 7: File Upload
+            <TestCard title="7. File Upload (Storage API)" color="#fef3c7">
+                <div>
+                    <p style={{"color": "#4b5563", "marginBottom": "15px"}}>
+                        Upload, list, and delete files using the Storage abstraction layer.
+                    </p>
+                    # Upload section
+                    <div
+                        style={{
+                            "display": "flex",
+                            "gap": "10px",
+                            "alignItems": "center",
+                            "marginBottom": "15px"
+                        }}
+                    >
+                        <select
+                            value={selectedFolder}
+                            onChange={lambda e: any  -> None { selectedFolder = e.target.value;}}
+                            style={{
+                                "padding": "10px",
+                                "border": "1px solid #d1d5db",
+                                "borderRadius": "6px",
+                                "fontSize": "14px"
+                            }}
+                        >
+                            <option value="documents">
+                                documents
+                            </option>
+                            <option value="images">
+                                images
+                            </option>
+                            <option value="uploads">
+                                uploads
+                            </option>
+                        </select>
+                        <input
+                            type="file"
+                            onChange={lambda e: any  -> None { handleFileUpload(e);}}
+                            style={{
+                                "flex": "1",
+                                "padding": "8px",
+                                "border": "1px solid #d1d5db",
+                                "borderRadius": "6px",
+                                "fontSize": "14px"
+                            }}
+                        />
+                        <TestButton
+                            text="Refresh List"
+                            onClick={lambda -> None { handleListFiles();}}
+                            variant="secondary"
+                        />
+                    </div>
+                    # Upload result
+                    {uploadResult
+                    and <div
+                        style={{
+                            "backgroundColor": "#d1fae5",
+                            "padding": "10px",
+                            "borderRadius": "6px",
+                            "marginBottom": "15px"
+                        }}
+                    >
+                        <strong style={{"color": "#065f46"}}>
+                            Last Upload:
+                        </strong>
+                        <span style={{"marginLeft": "8px", "color": "#047857"}}>
+                            {uploadResult.original_filename} → {uploadResult.storage_path}
+                        </span>
+                    </div>}
+                    # File list
+                    <div style={{"marginTop": "15px"}}>
+                        <strong style={{"color": "#374151"}}>
+                            Uploaded Files ({uploadedFiles.length}):
+                        </strong>
+                        {uploadedFiles.length == 0
+                        and <p style={{"color": "#9ca3af", "fontStyle": "italic"}}>
+                            No files uploaded yet. Upload a file to get started!
+                        </p>}
+                        {uploadedFiles.map(
+                            lambda file: any  -> any { return
+                                <div
+                                    key={file.path}
+                                    style={{
+                                        "backgroundColor": "#f9fafb",
+                                        "padding": "12px",
+                                        "borderRadius": "6px",
+                                        "marginTop": "8px",
+                                        "display": "flex",
+                                        "justifyContent": "space-between",
+                                        "alignItems": "center"
+                                    }}
+                                >
+                                    <div>
+                                        <div
+                                            style={{
+                                                "fontWeight": "600",
+                                                "color": "#1f2937"
+                                            }}
+                                        >
+                                            {file.path}
+                                        </div>
+                                        <div
+                                            style={{
+                                                "fontSize": "12px",
+                                                "color": "#6b7280"
+                                            }}
+                                        >
+                                            Size: {formatFileSize(file.size)}
+                                        </div>
+                                    </div>
+                                    <TestButton
+                                        text="Delete"
+                                        onClick={lambda -> None { handleDeleteFile(file.path);}}
+                                        variant="secondary"
+                                    />
+                                </div>; }
+                        )}
+                    </div>
+                </div>
+            </TestCard>
             # Footer
             <div
                 style={{
@@ -668,7 +918,7 @@ def:pub FeaturesTest -> any {
                 }}
             >
                 <p style={{"margin": "0"}}>
-                    ✅ All features tested: Props, Exports, CL Files, TypeScript, JavaScript, JAC Imports, String Methods, Walker Spawning
+                    ✅ All features tested: Props, Exports, CL Files, TypeScript, JavaScript, JAC Imports, String Methods, Walker Spawning, File Upload
                 </p>
             </div>
         </div>;

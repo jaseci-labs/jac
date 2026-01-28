@@ -141,6 +141,49 @@ The transport layer handles HTTP request/response:
 import from jaclang.transport { BaseTransport, HTTPTransport }
 ```
 
+### 5 Storage Abstraction
+
+Jac provides a storage abstraction layer for file uploads and storage operations:
+
+```jac
+with entry {
+    # Get storage (uses jac.toml / env vars / defaults)
+    storage = get_storage({'base_path': './uploads'});
+
+    # Upload a file
+    storage.upload('/path/to/file.txt', 'documents/file.txt');
+
+    # Download a file
+    content = storage.download('documents/file.txt');
+
+    # Check existence and delete
+    if storage.exists('documents/file.txt') {
+        storage.delete('documents/file.txt');
+    }
+
+    # List files
+    for path in storage.list_files('documents/', recursive=True) {
+        metadata = storage.get_metadata(path);
+        print(f"File: {path}, Size: {metadata['size']}");
+    }
+}
+```
+
+**Storage API:**
+
+| Method | Description |
+|--------|-------------|
+| `upload(source, dest)` | Upload file to storage |
+| `download(source, dest?)` | Download file (returns bytes if no dest) |
+| `delete(path)` | Delete a file |
+| `exists(path)` | Check if file exists |
+| `list_files(prefix, recursive?)` | List files in directory |
+| `get_metadata(path)` | Get file size, modified time, etc. |
+| `copy(src, dest)` | Copy file within storage |
+| `move(src, dest)` | Move file within storage |
+
+See [Storage Reference](../plugins/jac-scale.md#storage) for cloud storage backends.
+
 ---
 
 ## Client-Side Development (JSX)
@@ -527,6 +570,7 @@ Provides:
 - [Full-Stack Project Setup](../../tutorials/fullstack/setup.md) - Create your first full-stack project
 - [React-Style Components](../../tutorials/fullstack/components.md) - Build UI components
 - [Backend Integration](../../tutorials/fullstack/backend.md) - Connect frontend to walkers
+- [File Storage](../../tutorials/fullstack/storage.md) - Handle file uploads and storage
 - [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Complete example
 
 **Related Reference:**

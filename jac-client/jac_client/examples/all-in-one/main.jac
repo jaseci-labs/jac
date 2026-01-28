@@ -1,4 +1,8 @@
 import from datetime { datetime, timedelta }
+import from fastapi { UploadFile }
+import from uuid { uuid4 }
+
+glob storage = get_storage({'base_path': './uploads'});
 
 #
 # Basic backend walkers
@@ -29,130 +33,63 @@ walker:pub get_server_message {
     }
 }
 
-# Features Test Page - Backend Logic
-# This file is intentionally kept empty to demonstrate the separation of concerns
-# where UI logic resides in .cl.jac files and backend walker logic in app.jac
-
-# All walker implementations for this feature are in main.jac
-# This demonstrates that you can have separate .jac files for different purposes
-# Features Test - Backend Walkers
-# This file demonstrates walker functionality for testing various JAC features
-
-# Node definition for storing test data
-node TestData {
-    has message: str,
-        count: int = 0,
-        created_at: str = "";
-}
-
-# Walker: Create test data
-walker create_test_data {
-    has message: str;
-
-    can create with `root entry {
-        new_data = here ++> TestData(
-            message=self.message,
-            count=1,
-            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        );
-        report new_data;
-    }
-}
-
-# Walker: Read all test data
-walker read_test_data {
-    can read with `root entry {
-        visit [-->(`?TestData)];
-    }
-
-    can report_data with exit {
-        report here;
-    }
-}
-
-# Walker: Update test data
-walker update_test_data {
-    has new_message: str;
-
-    can update with TestData entry {
-        here.message = self.new_message;
-        here.count = here.count + 1;
-        report here;
-    }
-}
-
-# Walker: Delete test data
-walker delete_test_data {
-    can delete with TestData entry {
-        del here;
-        report {"status": "deleted"};
-    }
-}
-
-# Walker: String manipulation test
-walker test_string_methods {
-    has input_text: str;
+# Walker: File upload demonstration
+walker:pub upload_file {
+    has file: UploadFile;
+    has folder: str = "documents";
 
     can process with `root entry {
-        result = {
-            "original": self.input_text,
-            "uppercase": self.input_text.upper(),
-            "lowercase": self.input_text.lower(),
-            "capitalized": self.input_text.capitalize(),
-            "reversed": self.input_text[::-1],
-            "length": len(self.input_text),
-            "words": self.input_text.split(),
-            "trimmed": self.input_text.strip(),
-            "replaced": self.input_text.replace("test", "demo")
+        # Generate unique filename
+        ext = self.file.filename.rsplit('.', 1)[-1] if '.' in self.file.filename else '';
+        unique_name = f"{uuid4()}.{ext}" if ext else str(uuid4());
+        path = f"{self.folder}/{unique_name}";
+
+        # Upload file to storage
+        storage.upload(self.file.file, path);
+
+        # Get metadata
+        metadata = storage.get_metadata(path);
+
+        report {
+            "success": True,
+            "original_filename": self.file.filename,
+            "storage_path": path,
+            "size": metadata['size'],
+            "content_type": self.file.content_type
         };
-        report result;
     }
 }
 
-# Walker: Array/List operations test
-walker test_list_operations {
-    has numbers: list;
+# Walker: List uploaded files
+walker:pub list_uploaded_files {
+    has folder: str = "";
+    has recursive: bool = False;
 
     can process with `root entry {
-        result = {
-            "original": self.numbers,
-            "sorted": sorted(self.numbers),
-            "reversed": list(reversed(self.numbers)),
-            "sum": sum(self.numbers),
-            "max": max(self.numbers) if len(self.numbers) > 0 else 0,
-            "min": min(self.numbers) if len(self.numbers) > 0 else 0,
-            "length": len(self.numbers),
-            "doubled": [x * 2 for x in self.numbers]
-        };
-        report result;
-    }
-}
-
-# Walker: Complex data processing
-walker process_complex_data {
-    has items: list;
-
-    can process with `root entry {
-        processed = [];
-        for item in self.items {
-            processed.append(
-                {
-                    "id": item.get("id", 0),
-                    "name": item.get("name", "").upper(),
-                    "value": item.get("value", 0) * 2,
-                    "processed_at": datetime.now().strftime("%H:%M:%S")
-                }
-            );
+        files = [];
+        for path in storage.list_files(self.folder, self.recursive) {
+            metadata = storage.get_metadata(path);
+            files.append({
+                "path": path,
+                "size": metadata['size'],
+                "modified": str(metadata['modified'])
+            });
         }
+        report {"files": files, "count": len(files)};
+    }
+}
 
-        result = {
-            "original_count": len(self.items),
-            "processed_count": len(processed),
-            "items": processed,
-            "total_value": sum([p["value"] for p in processed])
-        };
+# Walker: Delete uploaded file
+walker:pub delete_uploaded_file {
+    has path: str;
 
-        report result;
+    can process with `root entry {
+        if not storage.exists(self.path) {
+            report {"success": False, "error": "File not found"};
+            return;
+        }
+        deleted = storage.delete(self.path);
+        report {"success": deleted, "path": self.path};
     }
 }
 
