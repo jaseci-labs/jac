@@ -53,7 +53,7 @@ from jaclang.pycore.constructs import (
     WalkerArchetype,
 )
 from jaclang.pycore.modresolver import infer_language
-from jaclang.pycore.mtp import MTIR, MTRuntime
+from jaclang.pycore.mtp import MTIR, Info, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
@@ -1843,12 +1843,8 @@ class JacByLLM:
         return decorator
 
     @staticmethod
-    def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
-        """Call the LLM model.
-
-        This is the fallback implementation when no LLM plugin (like byllm) is installed.
-        It uses NonGPT to generate random values matching the return type.
-        """
+    def call_llm(model: object, mt_run: MTRuntime) -> Any:  # noqa: ANN401
+        """Call the LLM model."""
         from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
         try:
@@ -1863,13 +1859,13 @@ class JacByLLM:
 
         try:
             type_hints = get_type_hints(
-                mtir.caller,
-                globalns=getattr(mtir.caller, "__globals__", {}),
+                mt_run.caller,
+                globalns=getattr(mt_run.caller, "__globals__", {}),
                 localns=None,
                 include_extras=True,
             )
         except Exception:
-            type_hints = getattr(mtir.caller, "__annotations__", {})
+            type_hints = getattr(mt_run.caller, "__annotations__", {})
         return_type = type_hints.get("return", Any)
 
         # Generate and return a random value matching the return type
@@ -1886,14 +1882,14 @@ class JacByLLM:
                     invoke_args[i] = arg
                 for key, value in kwargs.items():
                     invoke_args[key] = value
-                mtir = JacRuntime.get_mtir(
+                mt_run = JacRuntime.get_mtir(
                     caller=caller,
                     args=invoke_args,
                     call_params=(
                         model.call_params if hasattr(model, "call_params") else {}
                     ),
                 )
-                return JacRuntime.call_llm(model, mtir)
+                return JacRuntime.call_llm(model, mt_run)
 
             return _wrapped_caller
 
@@ -1940,6 +1936,22 @@ class JacByLLM:
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."
         )
+
+    @staticmethod
+    def add_mtir_to_map(scope: str, mtir: Info) -> None:
+        """Add MTIR to the node's MTIR map."""
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
+        JacRuntime.program.mtir_map[scope] = mtir
+
+    @staticmethod
+    def get_mtir_from_map(scope: str) -> Info | None:
+        """Get MTIR from the node's MTIR map."""
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
+        if scope not in JacRuntime.program.mtir_map:
+            raise KeyError(f"MTIR not found for scope {scope}")
+        return JacRuntime.program.mtir_map[scope]
 
 
 class JacUtils:

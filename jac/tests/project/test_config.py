@@ -470,23 +470,14 @@ dir = ".build"
 
         assert cache_dir == Path("/home/user/myproject/.jac/cache")
 
-    def test_get_packages_dir(self) -> None:
-        """Test packages dir is build_dir/packages."""
+    def test_get_venv_dir(self) -> None:
+        """Test venv dir is build_dir/venv."""
         config = JacConfig()
         config.project_root = Path("/home/user/myproject")
 
-        packages_dir = config.get_packages_dir()
+        venv_dir = config.get_venv_dir()
 
-        assert packages_dir == Path("/home/user/myproject/.jac/packages")
-
-    def test_get_packages_dir_no_root(self) -> None:
-        """Test getting packages directory with no project root."""
-        config = JacConfig()
-        config.project_root = None
-
-        packages_dir = config.get_packages_dir()
-
-        assert packages_dir == Path.cwd() / ".jac" / "packages"
+        assert venv_dir == Path("/home/user/myproject/.jac/venv")
 
     def test_get_data_dir(self) -> None:
         """Test data dir is build_dir/data."""
@@ -520,7 +511,7 @@ dir = ".custom-build"
 
         assert config.get_build_dir() == Path("/project/.custom-build")
         assert config.get_cache_dir() == Path("/project/.custom-build/cache")
-        assert config.get_packages_dir() == Path("/project/.custom-build/packages")
+        assert config.get_venv_dir() == Path("/project/.custom-build/venv")
         assert config.get_data_dir() == Path("/project/.custom-build/data")
         assert config.get_client_dir() == Path("/project/.custom-build/client")
 

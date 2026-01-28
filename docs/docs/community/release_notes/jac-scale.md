@@ -6,6 +6,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.
 
+- **Internal**: Explicitly declared all postinit fields across the codebase.
+
 ### PyPI Installation by Default
 
 Kubernetes deployments now install Jaseci packages from PyPI by default instead of cloning the entire repository. This provides faster startup times and more reproducible deployments.

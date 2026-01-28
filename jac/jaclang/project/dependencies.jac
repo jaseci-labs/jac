@@ -22,13 +22,12 @@ obj ResolvedDependency {
 """Manages installation of dependencies for Jac projects."""
 obj DependencyInstaller {
     has config: JacConfig | None = None,
-        packages_dir: Path | None = None,
+        venv_dir: Path | None = None,
         verbose: bool = False;
 
     def postinit -> None;
-    def ensure_packages_dir -> None;
+    def ensure_venv -> None;
     def _run_pip(args: list[str]) -> tuple[int, str, str];
-    def _cleanup_old_package(name: str) -> None;
     def install_all(include_dev: bool = False) -> bool;
     def install_package(name: str, version: str = "") -> bool;
     def install_git_package(name: str, git_url: str, branch: str = "") -> bool;
@@ -46,8 +45,10 @@ obj DependencyResolver {
     def resolve(include_dev: bool = False) -> list[ResolvedDependency];
 }
 
-def add_packages_to_path(config: JacConfig | None = None) -> None;
+def get_venv_site_packages(venv_dir: Path) -> Path;
 
-def remove_packages_from_path(config: JacConfig | None = None) -> None;
+def add_venv_to_path(config: JacConfig | None = None) -> None;
 
-def is_packages_in_path(config: JacConfig | None = None) -> bool;
+def remove_venv_from_path(config: JacConfig | None = None) -> None;
+
+def is_venv_in_path(config: JacConfig | None = None) -> bool;

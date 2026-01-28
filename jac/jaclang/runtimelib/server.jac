@@ -66,8 +66,8 @@ obj JacSerializer {
 """Manage users and their persistent roots (SQLite-backed)."""
 obj UserManager {
     has base_path: str,
-        _db_path: str = "",
-        _conn: Any = None;
+        _db_path: str by postinit,
+        _conn: Any by postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -112,7 +112,7 @@ obj ModuleIntrospector {
         _client_manifest: dict[(str, Any)] = {},
         _bundle: Any = None,
         _bundle_error: (str | None) = None,
-        _bundle_builder: Any = None,
+        _bundle_builder: Any by postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {};
 
@@ -213,7 +213,15 @@ obj ExecutionHandler {
 obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
-        base_path: str = "";
+        base_path: str = "",
+        user_manager: UserManager by postinit,
+        execution_manager: ExecutionManager by postinit,
+        introspector: ModuleIntrospector by postinit,
+        auth_handler: AuthHandler by postinit,
+        introspection_handler: IntrospectionHandler by postinit,
+        execution_handler: ExecutionHandler by postinit,
+        transport: BaseTransport by postinit,
+        server: Any by postinit;
 
     obj RestSpecs {
         has method: str;

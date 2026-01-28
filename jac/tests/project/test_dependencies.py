@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -13,9 +13,10 @@ from jaclang.project.dependencies import (
     DependencyInstaller,
     DependencyResolver,
     ResolvedDependency,
-    add_packages_to_path,
-    is_packages_in_path,
-    remove_packages_from_path,
+    add_venv_to_path,
+    get_venv_site_packages,
+    is_venv_in_path,
+    remove_venv_from_path,
 )
 
 
@@ -28,52 +29,90 @@ class TestDependencyInstaller:
         installer = DependencyInstaller(config=config)
 
         assert installer.config == config
-        assert installer.packages_dir == temp_project / ".jac" / "packages"
+        assert installer.venv_dir == temp_project / ".jac" / "venv"
 
     def test_init_without_config_fails(self) -> None:
         """Test that init without discoverable config fails."""
         with pytest.raises(ValueError, match="No jac.toml found"):
             DependencyInstaller()
 
-    def test_ensure_packages_dir_creates(self, temp_project: Path) -> None:
-        """Test that ensure_packages_dir creates the directory."""
+    def test_ensure_venv_creates(self, temp_project: Path) -> None:
+        """Test that ensure_venv creates the venv directory."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        # Remove packages dir if it exists
-        packages_dir = temp_project / ".jac" / "packages"
-        if packages_dir.exists():
-            packages_dir.rmdir()
+        venv_dir = temp_project / ".jac" / "venv"
+        assert not venv_dir.exists()
 
-        installer.ensure_packages_dir()
+        with patch("venv.EnvBuilder") as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder_class.return_value = mock_builder
 
-        assert packages_dir.exists()
+            installer.ensure_venv()
 
-    def test_ensure_packages_dir_adds_to_path(self, temp_project: Path) -> None:
-        """Test that ensure_packages_dir adds to sys.path."""
+            mock_builder_class.assert_called_once()
+            mock_builder.create.assert_called_once_with(str(venv_dir))
+
+    def test_ensure_venv_skips_existing_valid(self, temp_project: Path) -> None:
+        """Test that ensure_venv does not recreate a valid venv."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        packages_str = str(temp_project / ".jac" / "packages")
+        # Create a fake valid venv structure
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin")
+        bin_dir = venv_dir / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        (bin_dir / "python").write_text("#!/usr/bin/env python")
 
-        # Remove from path if present
-        if packages_str in sys.path:
-            sys.path.remove(packages_str)
+        with patch("venv.EnvBuilder") as mock_builder_class:
+            installer.ensure_venv()
+            # Should NOT call create since venv is valid
+            mock_builder_class.return_value.create.assert_not_called()
 
-        installer.ensure_packages_dir()
+    def test_ensure_venv_recreates_corrupted(self, temp_project: Path) -> None:
+        """Test that ensure_venv recreates a corrupted venv."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config, verbose=True)
 
-        assert packages_str in sys.path
+        # Create a corrupted venv (missing python binary)
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
+        (venv_dir / "pyvenv.cfg").write_text("home = /usr/bin")
+        # Deliberately NOT creating bin/python
 
-        # Cleanup
-        sys.path.remove(packages_str)
+        with patch("venv.EnvBuilder") as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder_class.return_value = mock_builder
+
+            installer.ensure_venv()
+
+            # Should recreate since venv is corrupted
+            mock_builder.create.assert_called_once_with(str(venv_dir))
+
+    def test_ensure_venv_ensurepip_missing(self, temp_project: Path) -> None:
+        """Test that a clear error is raised when ensurepip is not available."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        with patch("venv.EnvBuilder") as mock_builder_class:
+            mock_builder = MagicMock()
+            mock_builder.create.side_effect = Exception("No module named 'ensurepip'")
+            mock_builder_class.return_value = mock_builder
+
+            with pytest.raises(RuntimeError, match="sudo apt install python3-venv"):
+                installer.ensure_venv()
 
     def test_install_package_success(self, temp_project: Path) -> None:
         """Test successful package installation."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config, verbose=False)
 
-        # Mock pip to avoid actual installation
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (0, "Successfully installed", "")
 
             result = installer.install_package("requests", ">=2.28.0")
@@ -82,15 +121,20 @@ class TestDependencyInstaller:
             mock_pip.assert_called_once()
             call_args = mock_pip.call_args[0][0]
             assert "install" in call_args
-            assert "--target" in call_args
+            assert "--upgrade" in call_args
             assert "requests>=2.28.0" in call_args
+            # Should NOT use --target
+            assert "--target" not in call_args
 
     def test_install_package_failure(self, temp_project: Path) -> None:
         """Test failed package installation."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (1, "", "Package not found")
 
             result = installer.install_package("nonexistent-package")
@@ -102,7 +146,10 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (0, "", "")
 
             installer.install_package("requests")
@@ -117,7 +164,10 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (0, "", "")
 
             result = installer.install_git_package(
@@ -133,7 +183,10 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (0, "", "")
 
             result = installer.install_all(include_dev=False)
@@ -147,7 +200,10 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        with patch.object(installer, "_run_pip") as mock_pip:
+        with (
+            patch.object(installer, "ensure_venv"),
+            patch.object(installer, "_run_pip") as mock_pip,
+        ):
             mock_pip.return_value = (0, "", "")
 
             result = installer.install_all(include_dev=True)
@@ -161,119 +217,95 @@ class TestDependencyInstaller:
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        # Create fake installed package structure
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
-        fake_pkg = packages_dir / "requests"
-        fake_pkg.mkdir()
-        fake_dist_info = packages_dir / "requests-2.28.0.dist-info"
-        fake_dist_info.mkdir()
+        # Create a fake venv dir so the check doesn't short-circuit
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
 
-        assert installer.is_installed("requests") is True
-        assert installer.is_installed("nonexistent") is False
+        with patch.object(installer, "_run_pip") as mock_pip:
+            # Simulate installed package
+            mock_pip.return_value = (0, "Name: requests\nVersion: 2.28.0", "")
+            assert installer.is_installed("requests") is True
+            mock_pip.assert_called_with(["show", "requests"])
+
+            # Simulate not installed
+            mock_pip.return_value = (
+                1,
+                "",
+                "WARNING: Package(s) not found: nonexistent",
+            )
+            assert installer.is_installed("nonexistent") is False
 
     def test_list_installed(self, temp_project: Path) -> None:
         """Test listing installed packages."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
-        # Create fake dist-info directories
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
-        (packages_dir / "requests-2.28.0.dist-info").mkdir()
-        (packages_dir / "numpy-1.24.0.dist-info").mkdir()
+        # Create a fake venv dir
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
 
-        installed = installer.list_installed()
+        with patch.object(installer, "_run_pip") as mock_pip:
+            mock_pip.return_value = (
+                0,
+                '[{"name":"requests","version":"2.28.0"},'
+                '{"name":"numpy","version":"1.24.0"},'
+                '{"name":"pip","version":"23.0"},'
+                '{"name":"setuptools","version":"67.0"}]',
+                "",
+            )
 
-        assert "requests" in installed
-        assert "numpy" in installed
+            installed = installer.list_installed()
 
-    def test_uninstall_package_comprehensive(self, temp_project: Path) -> None:
-        """Comprehensive test for uninstall_package covering all scenarios."""
+            assert "requests" in installed
+            assert "numpy" in installed
+            # Infrastructure packages should be filtered out
+            assert "pip" not in installed
+            assert "setuptools" not in installed
+            mock_pip.assert_called_with(["list", "--format=json"])
+
+    def test_uninstall_package(self, temp_project: Path) -> None:
+        """Test uninstalling a package via pip uninstall."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config, verbose=True)
 
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
+        # Create a fake venv dir
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
 
-        # === Scenario 1: Full RECORD-based removal ===
-        # Create package structure
-        pkg_dir = packages_dir / "testpkg"
-        pkg_dir.mkdir()
-        (pkg_dir / "__init__.py").write_text("# test package")
-        (pkg_dir / "module.py").write_text("def func(): pass")
+        with patch.object(installer, "_run_pip") as mock_pip:
+            mock_pip.return_value = (0, "Successfully uninstalled testpkg-1.0.0", "")
+            result = installer.uninstall_package("testpkg")
 
-        pkg_data = packages_dir / "testpkg.data"
-        pkg_data.mkdir()
+            assert result is True
+            mock_pip.assert_called_once_with(["uninstall", "-y", "testpkg"])
 
-        # Create .dist-info directory with RECORD
-        dist_info = packages_dir / "testpkg-1.0.0.dist-info"
-        dist_info.mkdir()
+    def test_uninstall_package_not_installed(self, temp_project: Path) -> None:
+        """Test uninstalling a package that is not installed."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
 
-        # Create RECORD file listing all package files
-        record_content = """testpkg/__init__.py,sha256=abc123,15
-testpkg/module.py,sha256=def456,20
-testpkg.data,sha256=,0
-testpkg-1.0.0.dist-info/METADATA,sha256=xyz789,100
-testpkg-1.0.0.dist-info/RECORD,,
-"""
-        (dist_info / "RECORD").write_text(record_content)
-        (dist_info / "METADATA").write_text("Name: testpkg\nVersion: 1.0.0")
+        # Create a fake venv dir
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create bin script (tests ../ path handling)
-        bin_dir = packages_dir / "bin"
-        bin_dir.mkdir()
-        (bin_dir / "testpkg-script").write_text("#!/usr/bin/env python")
+        with patch.object(installer, "_run_pip") as mock_pip:
+            mock_pip.return_value = (
+                1,
+                "",
+                "WARNING: Skipping testpkg as it is not installed.",
+            )
+            result = installer.uninstall_package("testpkg")
 
-        # Add bin script to RECORD with ../ path
-        (dist_info / "RECORD").write_text(
-            record_content + "../../bin/testpkg-script,sha256=script123,25\n"
-        )
+            assert result is False
 
-        # Uninstall the package
+    def test_uninstall_package_no_venv(self, temp_project: Path) -> None:
+        """Test uninstalling when no venv exists."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
         result = installer.uninstall_package("testpkg")
 
-        assert result is True
-        assert not pkg_dir.exists()
-        assert not pkg_data.exists()
-        assert not dist_info.exists()
-        assert not (bin_dir / "testpkg-script").exists()
-        assert not bin_dir.exists()
-
-        # === Scenario 2: Prefer .dist-info over .egg-info ===
-        dist_info2 = packages_dir / "pkg2-1.0.0.dist-info"
-        dist_info2.mkdir()
-        (dist_info2 / "RECORD").write_text("pkg2/__init__.py,sha256=abc,10\n")
-
-        egg_info2 = packages_dir / "pkg2-1.0.0.egg-info"
-        egg_info2.mkdir()
-        assert egg_info2.exists()
-
-        pkg2_dir = packages_dir / "pkg2"
-        pkg2_dir.mkdir()
-        (pkg2_dir / "__init__.py").write_text("")
-
-        result = installer.uninstall_package("pkg2")
-
-        assert result is True
-        assert not dist_info2.exists()
-        assert not pkg2_dir.exists()
-        assert not egg_info2.exists()
-
-        # === Scenario 3: Fallback to .egg-info ===
-        egg_info3 = packages_dir / "oldpkg-0.5.0.egg-info"
-        egg_info3.mkdir()
-
-        pkg3_dir = packages_dir / "oldpkg"
-        pkg3_dir.mkdir()
-        (pkg3_dir / "__init__.py").write_text("")
-
-        result = installer.uninstall_package("oldpkg")
-
-        assert result is True
-        assert not egg_info3.exists()
-        # Package dir remains , because if dist-info files remains in package dir
-        assert pkg3_dir.exists()
+        assert result is False
 
 
 class TestDependencyResolver:
@@ -380,77 +412,73 @@ class TestResolvedDependency:
 class TestPathManagement:
     """Tests for sys.path management functions."""
 
-    def test_add_packages_to_path(self, temp_project: Path) -> None:
-        """Test adding packages directory to sys.path."""
+    def test_add_venv_to_path(self, temp_project: Path) -> None:
+        """Test adding venv site-packages to sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
+        site_packages = get_venv_site_packages(config.get_venv_dir())
+        site_packages.mkdir(parents=True, exist_ok=True)
 
-        packages_str = str(packages_dir)
-        if packages_str in sys.path:
-            sys.path.remove(packages_str)
+        site_str = str(site_packages)
+        if site_str in sys.path:
+            sys.path.remove(site_str)
 
-        add_packages_to_path(config)
+        add_venv_to_path(config)
 
-        assert packages_str in sys.path
+        assert site_str in sys.path
 
         # Cleanup
-        sys.path.remove(packages_str)
+        sys.path.remove(site_str)
 
-    def test_remove_packages_from_path(self, temp_project: Path) -> None:
-        """Test removing packages directory from sys.path."""
+    def test_remove_venv_from_path(self, temp_project: Path) -> None:
+        """Test removing venv site-packages from sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
+        site_packages = get_venv_site_packages(config.get_venv_dir())
+        site_packages.mkdir(parents=True, exist_ok=True)
 
-        packages_str = str(packages_dir)
-        if packages_str not in sys.path:
-            sys.path.insert(0, packages_str)
+        site_str = str(site_packages)
+        if site_str not in sys.path:
+            sys.path.insert(0, site_str)
 
-        remove_packages_from_path(config)
+        remove_venv_from_path(config)
 
-        assert packages_str not in sys.path
+        assert site_str not in sys.path
 
-    def test_is_packages_in_path(self, temp_project: Path) -> None:
-        """Test checking if packages directory is in sys.path."""
+    def test_is_venv_in_path(self, temp_project: Path) -> None:
+        """Test checking if venv site-packages is in sys.path."""
         config = JacConfig.load(temp_project / "jac.toml")
-        packages_dir = temp_project / ".jac" / "packages"
-        packages_dir.mkdir(parents=True, exist_ok=True)
+        site_packages = get_venv_site_packages(config.get_venv_dir())
+        site_packages.mkdir(parents=True, exist_ok=True)
 
-        packages_str = str(packages_dir)
+        site_str = str(site_packages)
 
         # Remove first
-        if packages_str in sys.path:
-            sys.path.remove(packages_str)
+        if site_str in sys.path:
+            sys.path.remove(site_str)
 
-        assert is_packages_in_path(config) is False
+        assert is_venv_in_path(config) is False
 
-        sys.path.insert(0, packages_str)
+        sys.path.insert(0, site_str)
 
-        assert is_packages_in_path(config) is True
+        assert is_venv_in_path(config) is True
 
         # Cleanup
-        sys.path.remove(packages_str)
+        sys.path.remove(site_str)
 
-    def test_add_packages_no_config(self) -> None:
-        """Test add_packages_to_path with no config (no-op)."""
+    def test_add_venv_no_config(self) -> None:
+        """Test add_venv_to_path with no config (no-op)."""
         # Should not raise
-        add_packages_to_path(None)
+        add_venv_to_path(None)
 
-    def test_add_packages_dir_not_exists(self, temp_project: Path) -> None:
-        """Test that nonexistent packages dir is not added to path."""
+    def test_add_venv_dir_not_exists(self, temp_project: Path) -> None:
+        """Test that nonexistent site-packages dir is not added to path."""
         config = JacConfig.load(temp_project / "jac.toml")
 
-        # Remove packages directory
-        packages_dir = temp_project / ".jac" / "packages"
-        if packages_dir.exists():
-            packages_dir.rmdir()
+        site_packages = get_venv_site_packages(config.get_venv_dir())
+        site_str = str(site_packages)
+        if site_str in sys.path:
+            sys.path.remove(site_str)
 
-        packages_str = str(packages_dir)
-        if packages_str in sys.path:
-            sys.path.remove(packages_str)
-
-        add_packages_to_path(config)
+        add_venv_to_path(config)
 
         # Should not be added since dir doesn't exist
-        assert packages_str not in sys.path
+        assert site_str not in sys.path

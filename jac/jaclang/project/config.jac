@@ -152,7 +152,7 @@ obj JacConfig {
     def get_plugin_config(plugin_name: str) -> dict[str, Any];
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
-    def get_packages_dir -> Path;
+    def get_venv_dir -> Path;
     def get_data_dir -> Path;
     def get_client_dir -> Path;
     def is_valid -> bool;

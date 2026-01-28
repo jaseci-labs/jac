@@ -14,8 +14,8 @@ import lsprotocol.types as lspt;
 obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
-        sem_tokens: List[int] = [],
-        static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] = [];
+        sem_tokens: List[int] by postinit,
+        static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 
     def postinit -> None;
     def gen_sem_tokens(ir: uni.Module) -> list[int];
