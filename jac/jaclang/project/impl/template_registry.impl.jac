@@ -157,6 +157,7 @@ def _register_default_template(registry: TemplateRegistry) -> None {
             "gitignore_entries": [
                 "# Add patterns here for files to ignore in .jac/ directory",
                 "# Example: dist/, node_modules/, *.log",
+
             ]
         }
     );

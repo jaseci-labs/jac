@@ -89,6 +89,7 @@ impl load_template_from_directory(
         [
             "# Add patterns here for files to ignore in .jac/ directory",
             "# Example: dist/, node_modules/, *.log",
+
         ]
     );
     root_gitignore_entries = options.get("root_gitignore_entries", []);
