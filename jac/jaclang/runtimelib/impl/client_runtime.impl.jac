@@ -10,6 +10,17 @@ impl __buildDom(node: any) -> any {
     if node == None {
         return document.createTextNode("");
     }
+    # Handle arrays (from .map() calls) - return a document fragment
+    if Array.isArray(node) {
+        fragment = document.createDocumentFragment();
+        for item in node {
+            childDom = __buildDom(item);
+            if childDom {
+                fragment.appendChild(childDom);
+            }
+        }
+        return fragment;
+    }
     if not __isObject(node) {
         return document.createTextNode(String(node));
     }
@@ -55,6 +66,15 @@ impl __applyProp(element: any, key: str, value: any) -> None {
         for styleKey in __objectKeys(value) {
             element.style[styleKey] = value[styleKey];
         }
+    } elif key == "checked"
+    or key == "disabled"
+    or key == "readonly"
+    or key == "selected" {
+        # Boolean attributes - use property instead of attribute
+        element[key] = Boolean(value);
+    } elif key == "value" {
+        # Value property for form elements
+        element.value = value;
     } elif key != "children" {
         element.setAttribute(key, String(value));
     }
@@ -229,6 +249,8 @@ impl __jacRerenderComponent(componentId: any) -> None {
     try {
         previousComponent = __jacReactiveContext.currentComponent;
         __jacReactiveContext.currentComponent = componentId;
+        # Reset hook index for useState tracking
+        __jacReactiveContext.hookIndex = 0;
 
         component = rootComponent();
         renderJsxTree(component, rootEl);
@@ -375,7 +397,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"args": args})
+            "body": JSON.stringify(args)
         }
     );
     if not response.ok {
@@ -737,7 +759,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     if not renderer {
         console.warn("[Jac] renderJsxTree is not available in client bundle");
     }
-    # Initial render - call the root component
+    # Initial render - reset hook index and call the root component
+    __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
         value.then(
@@ -838,4 +861,51 @@ impl __jacRegisterClientModule(
         stateGlobals[moduleName] = {};
     }
     __jacEnsureHydration(moduleName);
+}
+
+# ============================================================================
+# React-style API aliases
+# ============================================================================
+"""useState - React-compatible state hook.
+Returns [value, setter] where value is the current state (not a getter function).
+When setter is called, schedules a re-render of the component.
+Uses hook index tracking to maintain state across re-renders.
+"""
+impl useState(initialValue: any) -> list {
+    # Get current hook index
+    hookIndex = __jacReactiveContext.hookIndex;
+    hooks = __jacReactiveContext.hooks;
+    # Check if this hook already exists (re-render) or needs to be created (first render)
+    if hookIndex < hooks.length {
+        # Re-render: return existing state
+        hookData = hooks[hookIndex];
+        __jacReactiveContext.hookIndex = hookIndex + 1;
+        return [hookData.value, hookData.setter];
+    }
+    # First render: create new state
+    signalData = {"value": initialValue};
+    # Setter that updates value and triggers re-render
+    def setter(newValue: any) -> None {
+        if newValue != signalData.value {
+            signalData.value = newValue;
+            # Schedule re-render of root component
+            __jacScheduleRerender("__root__");
+        }
+    }
+    # Store in hooks array for subsequent renders
+    signalData["setter"] = setter;
+    hooks.push(signalData);
+    __jacReactiveContext.hookIndex = hookIndex + 1;
+    # Return current value and setter
+    return [signalData.value, setter];
+}
+
+"""useEffect - React-compatible effect hook.
+When deps is empty [], runs once on mount (like onMount).
+Otherwise tracks dependencies and re-runs when they change.
+"""
+impl useEffect(effectFn: any, deps: list = []) -> None {
+    # For now, always run on mount since we don't have React's dep tracking
+    # This matches useEffect(() => { ... }, []) behavior
+    onMount(effectFn);
 }

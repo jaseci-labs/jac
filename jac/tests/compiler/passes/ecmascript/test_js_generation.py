@@ -11,6 +11,7 @@ import pytest
 from jaclang.compiler.passes.ecmascript import EsastGenPass
 from jaclang.compiler.passes.ecmascript.es_unparse import es_to_js
 from jaclang.compiler.passes.ecmascript.estree import Node as EsNode
+from jaclang.pycore.modresolver import convert_to_js_import_path
 from jaclang.pycore.program import JacProgram
 
 
@@ -107,10 +108,14 @@ def test_core_fixture_emits_expected_constructs(
         "function greet",
         "function fibonacci",
         "for (const i of array)",
-        "for (let i = 0; i < limit; i += 1)",
-        "while (counter > 0)",
+        "for (let i = 0; (i < limit); i += 1)",
+        "while ((counter > 0))",
     ]:
         assert pattern in js_code
+
+    # Expressions with parentheses
+    for expr in ["(items.length + 1)", "(Math.round((divided * 10)) / 10)"]:
+        assert expr in js_code
 
     # Operators
     for op in ["===", "!==", "&&", "||"]:
@@ -160,7 +165,7 @@ def test_advanced_fixture_emits_expected_constructs(
         "function spread_and_rest_examples",
         "...defaults",
         "function template_literal_examples",
-        'score >= 60 ? "pass" : "fail"',
+        '((score >= 60) ? "pass" : "fail")',
         "function do_while_simulation",
         "function build_advanced_report",
         "function pattern_matching_examples",
@@ -217,12 +222,14 @@ def test_iife_fixture_generates_function_expressions(
     for pattern in [
         "function get_value()",
         "function calculate(x, y)",
-        "}();",
+        "})();",  # Properly parenthesized IIFE
         "function outer()",
         "All client-side IIFE tests completed!",
     ]:
         assert pattern in js_code
-    assert "return () => {\n    count = count + 1;\n    return count;\n  };" in js_code
+    assert (
+        "return () => {\n    count = (count + 1);\n    return count;\n  };" in js_code
+    )
 
 
 def test_cli_js_command_outputs_js(fixture_path: Callable[[str], str]) -> None:
@@ -341,7 +348,7 @@ def test_category1_named_imports_generate_correct_js(
         'import { helper } from "./utils.js";',
         'import { formatter as format } from "../lib.js";',
         'import { settings } from "../../config.js";',
-        'import { renderJsxTree, jacLogin, jacLogout } from "client_runtime";',
+        'import { renderJsxTree, jacLogin, jacLogout } from "@jac/runtime";',
     ]
     for pattern in imports:
         assert pattern in js_code
@@ -583,9 +590,9 @@ cl def conditional_message(score: int) -> str {
             "`",
             "${x}",
             "${y}",
-            "${x + y}",
+            "${(x + y)}",
             "${score}",
-            "${score >= 60}",
+            "${(score >= 60)}",
             "The sum of",
             "and",
             "is",
@@ -723,3 +730,27 @@ def test_separated_files(fixture_path: Callable[[str], str]) -> None:
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code
     assert '__jacSpawn("create_todo", "", {"text": input.trim()});' in js_code
+
+
+def test_convert_to_js_import_path_preserves_js_format() -> None:
+    """Test that paths already in JS format are not double-converted.
+
+    This ensures Vite error messages map back to correct source locations
+    by preventing path corruption like .//styles.css from ./styles.css.
+    """
+    # Paths already in JavaScript format should pass through unchanged
+    assert convert_to_js_import_path("./styles.css") == "./styles.css"
+    assert convert_to_js_import_path("../lib/utils.js") == "../lib/utils.js"
+    assert convert_to_js_import_path("../../config.json") == "../../config.json"
+
+    # Jac-style paths should still be converted correctly
+    assert convert_to_js_import_path(".utils") == "./utils.js"
+    assert convert_to_js_import_path("..lib") == "../lib.js"
+    assert convert_to_js_import_path("...config") == "../../config.js"
+
+    # CSS imports in Jac format should convert correctly
+    assert convert_to_js_import_path(".styles.css") == "./styles.css"
+
+    # NPM packages should pass through unchanged
+    assert convert_to_js_import_path("react") == "react"
+    assert convert_to_js_import_path("lodash") == "lodash"

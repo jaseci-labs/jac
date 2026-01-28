@@ -45,7 +45,6 @@ cache = true
 
 [scripts]
 test = "jac test"
-build = "jac build main.jac"
 """)
 
     # Create src directory with main.jac

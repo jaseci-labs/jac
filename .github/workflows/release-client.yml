@@ -26,7 +26,3 @@ jobs:
         run: |
           python -m build
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
-      # - run: pip install githubrelease
-      # - run: python scripts/gh_release.py
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

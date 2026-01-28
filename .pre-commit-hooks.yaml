@@ -6,12 +6,3 @@
   types: [file]
   files: \.jac$
   require_serial: true
-
-- id: jac-check
-  name: jac-check
-  description: Type check Jac files
-  entry: jac check
-  language: python
-  types: [file]
-  files: \.jac$
-  require_serial: true

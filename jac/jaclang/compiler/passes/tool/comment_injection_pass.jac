@@ -42,7 +42,9 @@ obj CommentInfo {
 """Efficient bookkeeping for inline and standalone comments."""
 obj CommentStore {
     has _inline: dict[(int, list[CommentInfo])],
-        _standalone: list[CommentInfo];
+        _standalone: list[CommentInfo],
+        _standalone_lines: list[int] by postinit,
+        _used: set by postinit;
 
     def postinit -> None;
     static def from_module(module: uni.Module) -> CommentStore;

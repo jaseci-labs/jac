@@ -1,56 +1,40 @@
-"""Standard logger implementation using Python logging."""
-import logging;
+"""Standard logger implementation using jac console."""
 import from typing { Any }
 import from jac_scale.abstractions.logger { Logger }
+import from jaclang.cli.console { console }
 
-"""Standard logger using Python's logging module."""
+"""Standard logger using jac console for Rich-styled output."""
 class StandardLogger(Logger) {
-    has logger: logging.Logger;
-
-    def init(self: StandardLogger, config: dict[str, Any] = {}) -> None {
-        name = config.get('name', 'jac_scale');
-        level = config.get('level', 'INFO');
-        self.logger = logging.getLogger(name);
-        self.logger.setLevel(getattr(logging, level.upper(), logging.INFO));
-        if not self.logger.handlers {
-            handler = logging.StreamHandler();
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            );
-            handler.setFormatter(formatter);
-            self.logger.addHandler(handler);
-        }
-    }
-
+    def init(self: StandardLogger, config: dict[str, Any] = {}) -> None { }
     def info(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
         if context {
-            self.logger.info(f"{message} | Context: {context}");
+            console.info(f"{message} | Context: {context}");
         } else {
-            self.logger.info(message);
+            console.info(message);
         }
     }
 
     def error(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
         if context {
-            self.logger.error(f"{message} | Context: {context}");
+            console.error(f"{message} | Context: {context}");
         } else {
-            self.logger.error(message);
+            console.error(message);
         }
     }
 
     def warn(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
         if context {
-            self.logger.warn(f"{message} | Context: {context}");
+            console.warning(f"{message} | Context: {context}");
         } else {
-            self.logger.warn(message);
+            console.warning(message);
         }
     }
 
     def debug(self: StandardLogger, message: str, context: dict[str, Any] = {}) -> None {
         if context {
-            self.logger.debug(f"{message} | Context: {context}");
+            console.print(f"[DEBUG] {message} | Context: {context}", style="muted");
         } else {
-            self.logger.debug(message);
+            console.print(f"[DEBUG] {message}", style="muted");
         }
     }
 }

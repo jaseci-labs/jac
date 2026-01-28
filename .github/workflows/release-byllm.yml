@@ -26,8 +26,3 @@ jobs:
       - name: Publish package
         run: |
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
-        continue-on-error: true
-      # - run: pip install githubrelease markdown-to-json
-      # - run: python scripts/gh_release.py
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

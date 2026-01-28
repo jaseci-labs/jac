@@ -25,6 +25,13 @@
 
 Whether you're developing locally with `jac start` or deploying to production with `jac start --scale`, you get the same powerful features with the flexibility to choose your deployment strategy.
 
+### 4. Single Sign-On (SSO) Support
+
+- **Google SSO**: Built-in support for Google Sign-In out of the box
+- **Extensible Architecture**: Easily add other providers (GitHub, Microsoft, etc.)
+- **Secure Authentication**: Integrated with JWT for secure session management
+- **User Management**: Automatic account creation and linking
+
 ## Prerequisites
 
 - kubenetes(K8s) installed
@@ -422,6 +429,24 @@ jac destroy app.jac
 - Deletes all Kubernetes deployments, services, and StatefulSets
 - Removes persistent volumes and claims
 - Cleans up the namespace (if custom namespace was used)
+
+## Async Walkers
+
+JAC Scale supports async walkers for non-blocking operations like external API calls, database queries, and file I/O.
+
+```
+import asyncio;
+
+async walker FetchData {
+    has url: str;
+
+    async can fetch with `root entry {
+        report {"status": "fetching"};
+        await asyncio.sleep(0.1);  # Simulate API call
+        report {"status": "completed", "data": "result"};
+    }
+}
+```
 
 ## Configuration Options
 

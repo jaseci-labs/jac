@@ -99,8 +99,7 @@ impl sync_code_to_pvc(
     import tempfile;
     import from pathlib { Path }
     sync_pod_name = f"{app_name}-code-sync";
-    parent_dir = pathlib.Path(code_folder).parent;
-    toml_path = os.path.join(parent_dir, 'jac.toml');
+    same_directory_toml_path = os.path.join(code_folder, 'jac.toml');
     pod_body = {
         'apiVersion': 'v1',
         'kind': 'Pod',
@@ -172,7 +171,7 @@ impl sync_code_to_pvc(
             ]
         );
 
-        if os.path.isfile(toml_path) {
+        if os.path.isfile(same_directory_toml_path) {
             run_kubectl_command(
                 [
                     'cp',
@@ -181,8 +180,10 @@ impl sync_code_to_pvc(
                     "jac.toml",
                     f"{sync_pod_name}:/data/workspace/jac.toml"
                 ],
-                cwd=parent_dir
+                cwd=code_folder
             );
+        } else {
+            print("jac.toml file not found");
         }
     } finally {
         temp_tar_path.unlink(missing_ok=True);
@@ -354,9 +355,8 @@ impl cluster_type -> str {
 impl check_deployment_status(
     node_port: int,
     path: str = '/docs',
-    initial_wait: int = 60,
-    interval: int = 30,
-    max_retries: int = 10,
+    interval: int = 15,
+    max_retries: int = 30,
     nlb_url: (str | None) = None
 ) -> bool {
     if nlb_url {
@@ -364,7 +364,6 @@ impl check_deployment_status(
     } else {
         url = f"http://localhost:{node_port}{path}";
     }
-    time.sleep(initial_wait);
     for attempt in range(1, (max_retries + 1)) {
         try {
             response = requests.get(url, timeout=10);

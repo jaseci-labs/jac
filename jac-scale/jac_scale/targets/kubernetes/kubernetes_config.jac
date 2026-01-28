@@ -34,12 +34,12 @@ class KubernetesConfig(BaseConfig) {
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
         workspace_path: str = '/code/workspace',
-        # Runtime environment (defaults to official Jaseci repo)
         jaseci_repo_url: str = 'https://github.com/jaseci-labs/jaseci.git',
         jaseci_branch: str = 'main',
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
-        additional_packages: list[str] = [];
+        additional_packages: list[str] = [],
+        plugin_versions: dict[str, str] = {};
 
     def init(
         self: KubernetesConfig,
@@ -75,12 +75,8 @@ class KubernetesConfig(BaseConfig) {
         jaseci_branch: str = 'main',
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
-        additional_packages: list[str] = []
-        # Runtime configuration
-        # Storage configuration
-        # Timing configuration
-        # Paths
-        # Runtime environment
+        additional_packages: list[str] = [],
+        plugin_versions: dict[str, str] = {}
     ) -> None {
         self.app_name = app_name;
         self.namespace = namespace;
@@ -121,6 +117,7 @@ class KubernetesConfig(BaseConfig) {
         self.jaseci_commit = jaseci_commit;
         self.install_jaseci = install_jaseci;
         self.additional_packages = additional_packages;
+        self.plugin_versions = plugin_versions;
     }
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
@@ -162,7 +159,8 @@ class KubernetesConfig(BaseConfig) {
                 'jaseci_branch': self.jaseci_branch,
                 'jaseci_commit': self.jaseci_commit,
                 'install_jaseci': self.install_jaseci,
-                'additional_packages': self.additional_packages
+                'additional_packages': self.additional_packages,
+                'plugin_versions': self.plugin_versions
             }
         );
         return base;
@@ -204,12 +202,8 @@ class KubernetesConfig(BaseConfig) {
             jaseci_branch=config.get('jaseci_branch', 'main'),
             jaseci_commit=config.get('jaseci_commit'),
             install_jaseci=config.get('install_jaseci', True),
-            additional_packages=config.get('additional_packages', [])
-            # Runtime configuration
-            # Storage configuration
-            # Timing configuration
-            # Paths
-            # Runtime environment
+            additional_packages=config.get('additional_packages', []),
+            plugin_versions=config.get('plugin_versions', {})
         );
     }
 }

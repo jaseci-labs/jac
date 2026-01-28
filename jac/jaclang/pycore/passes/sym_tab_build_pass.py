@@ -19,7 +19,7 @@ type checking, and semantic analysis throughout the compilation process.
 """
 
 import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import SymbolAccess
+from jaclang.pycore.constant import SymbolAccess, Tokens
 from jaclang.pycore.passes.uni_pass import UniPass
 from jaclang.pycore.unitree import UniScopeNode
 
@@ -83,20 +83,8 @@ class SymTabBuildPass(UniPass):
     def exit_assignment(self, node: uni.Assignment) -> None:
         for i in node.target:
             if isinstance(i, uni.AstSymbolNode):
-                # Handle -> [a, b] = ...
-                # TODO: This can be recursive for nested structures
-                # example: [a, b, (c, d['e'], [f, g])] = [1, 2, (3, 4, [5, 6])]
-                if isinstance(i, uni.ListVal):
-                    for elem in i.values:
-                        if isinstance(elem, uni.AstSymbolNode):
-                            if (
-                                sym := elem.sym_tab.lookup(elem.sym_name, deep=False)
-                            ) is None:
-                                elem.sym_tab.def_insert(elem, single_decl="local var")
-                            else:
-                                sym.add_use(elem.name_spec)
-                # Case 2: a = b # NOTE: we're not considering the fact that the node could also be a complex
-                # expression like foo.bar() and assuming that it'll be just a name, this needs to be fixed.
+                if isinstance(i, (uni.ListVal, uni.TupleVal)):
+                    self._def_insert_unpacking(i, i.sym_tab)
                 elif (sym := i.sym_tab.lookup(i.sym_name, deep=False)) is None:
                     i.sym_tab.def_insert(i, single_decl="local var")
                 else:
@@ -331,6 +319,8 @@ class SymTabBuildPass(UniPass):
 
     def enter_except(self, node: uni.Except) -> None:
         self.push_scope_and_link(node)
+        if node.name:
+            node.sym_tab.def_insert(node.name, single_decl="local var")
 
     def exit_except(self, node: uni.Except) -> None:
         self.pop_scope()
@@ -347,13 +337,20 @@ class SymTabBuildPass(UniPass):
     def exit_iter_for_stmt(self, node: uni.IterForStmt) -> None:
         self.pop_scope()
 
+    def _def_insert_unpacking(self, node: uni.Expr, sym_tab: UniScopeNode) -> None:
+        """Recursively define symbols in unpacking expressions."""
+        if isinstance(node, uni.Name):
+            sym_tab.def_insert(node, single_decl="iterator")
+        elif isinstance(node, (uni.TupleVal, uni.ListVal)):
+            for target_var in node.values:
+                if isinstance(target_var, uni.Expr):
+                    self._def_insert_unpacking(target_var, sym_tab)
+        elif isinstance(node, uni.UnaryExpr) and node.op.name == Tokens.STAR_MUL:
+            self._def_insert_unpacking(node.operand, sym_tab)
+
     def enter_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.push_scope_and_link(node)
-        # 1. for <name> in collection
-        if isinstance(node.target, uni.Name):
-            node.sym_tab.def_insert(node.target, single_decl="iterator")
-        # 2. for (<name> (, <name> ...)*) in collection
-        # TODO:
+        self._def_insert_unpacking(node.target, node.sym_tab)
 
     def exit_in_for_stmt(self, node: uni.InForStmt) -> None:
         self.pop_scope()
@@ -380,16 +377,34 @@ class SymTabBuildPass(UniPass):
     def exit_lambda_expr(self, node: uni.LambdaExpr) -> None:
         self.pop_scope()
 
-    def enter_inner_compr(self, node: uni.InnerCompr) -> None:
+    def enter_list_compr(self, node: uni.ListCompr) -> None:
         self.push_scope_and_link(node)
-        if isinstance(node.target, uni.Name):
-            node.sym_tab.def_insert(node.target, single_decl="iterator")
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
-    def exit_inner_compr(self, node: uni.InnerCompr) -> None:
+    def exit_list_compr(self, node: uni.ListCompr) -> None:
+        self.pop_scope()
+
+    def enter_set_compr(self, node: uni.SetCompr) -> None:
+        self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
+
+    def exit_set_compr(self, node: uni.SetCompr) -> None:
+        self.pop_scope()
+
+    def enter_gen_compr(self, node: uni.GenCompr) -> None:
+        self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
+
+    def exit_gen_compr(self, node: uni.GenCompr) -> None:
         self.pop_scope()
 
     def enter_dict_compr(self, node: uni.DictCompr) -> None:
         self.push_scope_and_link(node)
+        for i in node.compr:
+            self._def_insert_unpacking(i.target, node.sym_tab)
 
     def exit_dict_compr(self, node: uni.DictCompr) -> None:
         self.pop_scope()

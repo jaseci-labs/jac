@@ -24,6 +24,7 @@ select = [
     "ANN",    # flake8-annotations
     "SIM",    # flake8-simplify
     "UP",     # pyupgrade
+    "T201",   # print statements - use console abstraction instead
 ]
 
 # TODO: Make strict: Ignore E501 (line too long) - let formatter handle code, accept long strings/comments
@@ -37,3 +38,13 @@ known-first-party = ["jaclang", "jac_client", "jac_scale", "byllm"]
 
 [lint.flake8-annotations]
 suppress-none-returning = true
+
+[lint.per-file-ignores]
+# Allow print in tests (for debugging output), scripts, and test fixtures
+"**/tests/**/*.py" = ["T201"]
+"**/fixtures/**/*.py" = ["T201"]
+"scripts/**/*.py" = ["T201"]
+"docs/scripts/**/*.py" = ["T201"]
+# Bootstrap/low-level files that run before console is available
+"jac/jaclang/compiler/__init__.py" = ["T201"]
+"jac/jaclang/pycore/tsparser.py" = ["T201"]

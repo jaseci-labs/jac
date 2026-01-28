@@ -13,7 +13,7 @@ You can wrap any section of your component hierarchy with `JacClientErrorBoundar
 `JacClientErrorBoundary` is bundled with Jac Client. Import and wrap it around any subtree where you want to catch render-time errors:
 
 ```jsx
-cl import from "@jac-client/utils" {JacClientErrorBoundary, ErrorFallback }
+cl import from "@jac/runtime" {JacClientErrorBoundary, ErrorFallback }
 
 cl{
     def:pub app -> any {

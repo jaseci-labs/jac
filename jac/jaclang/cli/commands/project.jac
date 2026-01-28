@@ -17,7 +17,7 @@ glob registry = get_registry();
             "name",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Project name (uses current directory if empty)"
+            help="Project name (defaults to 'jactastic' with incrementing number if exists)"
         ),
         Arg.create(
             "force",
@@ -29,26 +29,29 @@ glob registry = get_registry();
         Arg.create(
             "use",
             default="default",
-            help="Jacpac template: name, file path, or URL",
+            help="Jacpack template: name, file path, or URL",
             short="u"
         ),
         Arg.create(
-            "list_jacpacs",
+            "list_jacpacks",
             typ=bool,
             default=False,
-            help="List available jacpac templates",
+            help="List available jacpack templates",
             short="l"
         ),
 
     ],
     examples=[
-        ("jac create", "Create project in current directory"),
+        (
+            "jac create",
+            "Create new jactastic/ directory (or jactastic1/, jactastic2/, etc.)"
+        ),
         ("jac create myapp", "Create new myapp/ directory"),
         ("jac create --force", "Reinitialize existing project"),
-        ("jac create myapp --use client", "Create with client jacpac template"),
-        ("jac create --use ./my.jacpac", "Create from local .jacpac file"),
-        ("jac create --use https://example.com/t.jacpac", "Create from URL"),
-        ("jac create --list-jacpacs", "List available jacpac templates"),
+        ("jac create myapp --use client", "Create with client jacpack template"),
+        ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
+        ("jac create --use https://example.com/t.jacpack", "Create from URL"),
+        ("jac create --list-jacpacks", "List available jacpack templates"),
 
     ],
     group="project"
@@ -57,7 +60,7 @@ def create(
     name: str = "",
     force: bool = False,
     use: str = "default",
-    list_jacpacs: bool = False
+    list_jacpacks: bool = False
 ) -> int;
 
 """Install all dependencies from jac.toml."""
@@ -95,7 +98,6 @@ def install(dev: bool = False, verbose: bool = False) -> int;
             "dev", typ=bool, default=False, help="Add as dev dependency", short="d"
         ),
         Arg.create("git", default="", help="Git repository URL", short="g"),
-        Arg.create("cl", typ=bool, default=False, help="Add as client-side dependency"),
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
@@ -111,11 +113,7 @@ def install(dev: bool = False, verbose: bool = False) -> int;
     group="project"
 )
 def add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = "",
-    cl: bool = False,
-    verbose: bool = False
+    packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
 ) -> int;
 
 """Remove dependencies from the project."""
@@ -133,7 +131,6 @@ def add(
             help="Remove from dev dependencies",
             short="d"
         ),
-        Arg.create("cl", typ=bool, default=False, help="Remove client-side dependency"),
 
     ],
     examples=[
@@ -143,7 +140,7 @@ def add(
     ],
     group="project"
 )
-def remove(packages: list = [], dev: bool = False, cl: bool = False) -> int;
+def remove(packages: list = [], dev: bool = False) -> int;
 
 """Run custom scripts defined in jac.toml."""
 @registry.command(
@@ -201,7 +198,7 @@ def script(name: str = "", list_scripts: bool = False) -> int;
             "packages",
             typ=bool,
             default=False,
-            help="Clean packages directory (.jac/packages)",
+            help="Clean virtual environment (.jac/venv)",
             short="p"
         ),
         Arg.create(
@@ -230,10 +227,10 @@ def clean(
     force: bool = False
 ) -> int;
 
-"""Bundle a template directory into a distributable .jacpac file."""
+"""Bundle a template directory into a distributable .jacpack file."""
 @registry.command(
-    name="jacpac",
-    help="Manage project templates (.jacpac files)",
+    name="jacpack",
+    help="Manage project templates (.jacpack files)",
     args=[
         Arg.create(
             "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
@@ -242,7 +239,7 @@ def clean(
             "path",
             kind=ArgKind.POSITIONAL,
             default="",
-            help="Template directory path (for pack) or .jacpac path (for info)"
+            help="Template directory path (for pack) or .jacpack path (for info)"
         ),
         Arg.create(
             "output",
@@ -254,12 +251,12 @@ def clean(
     ],
     examples=[
         (
-            "jac jacpac pack ./my-template -o my-template.jacpac",
+            "jac jacpack pack ./my-template -o my-template.jacpack",
             "Bundle a template directory"
         ),
-        ("jac jacpac list", "List available templates"),
+        ("jac jacpack list", "List available templates"),
 
     ],
     group="project"
 )
-def jacpac(action: str = "", path: str = "", output: str = "") -> int;
+def jacpack(action: str = "", path: str = "", output: str = "") -> int;

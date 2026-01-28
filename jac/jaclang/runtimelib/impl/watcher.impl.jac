@@ -1,10 +1,13 @@
 """File system watcher implementation using watchdog library."""
 
 import fnmatch;
+import logging;
 import threading;
 import time;
 import from pathlib { Path }
 import from typing { Any }
+
+glob logger = logging.getLogger(__name__);
 
 """Start watching for file changes."""
 impl JacFileWatcher.start -> None {
@@ -55,7 +58,7 @@ impl JacFileWatcher.start -> None {
     }
     flush_thread = threading.Thread(target=flush_loop, daemon=True);
     flush_thread.start();
-    print(f"[HMR] Watching for changes in: {self.watch_paths}", flush=True);
+    logger.debug(f"Watching for changes in: {self.watch_paths}");
 }
 
 """Stop watching for file changes."""
@@ -69,7 +72,7 @@ impl JacFileWatcher.stop -> None {
         self._observer.join(timeout=2.0);
         self._observer = None;
     }
-    print("[HMR] File watcher stopped", flush=True);
+    logger.debug("File watcher stopped");
 }
 
 """Add a callback to be invoked on file changes."""
@@ -90,7 +93,11 @@ impl JacFileWatcher.remove_callback(
 
 """Internal: Handle a file change event from watchdog."""
 impl JacFileWatcher._on_change(path: str, change_type: ChangeType) -> None {
-    # Only process .jac files
+    # Ignore files in .jac directory to prevent infinite loops
+    if '/.jac/' in path or '\\.jac\\' in path {
+        return;
+    }
+    # Only process .jac files and additional patterns
     if not self._matches_pattern(path) {
         return;
     }
@@ -114,7 +121,7 @@ impl JacFileWatcher._debounce_flush -> None {
     }
     # Remove flushed events
     for path in paths_to_remove {
-        del self._pending_events[path] ;
+        del self._pending_events[path];
     }
     # Notify callbacks
     for event in events_to_flush {
@@ -125,8 +132,8 @@ impl JacFileWatcher._debounce_flush -> None {
 """Internal: Check if a path matches the watch pattern."""
 impl JacFileWatcher._matches_pattern(path: str) -> bool {
     filename = Path(path).name;
-    # *.jac matches both .jac and .cl.jac since .cl.jac ends with .jac
-    return fnmatch.fnmatch(filename, self.pattern);
+    patterns = (self.pattern, *self.additional_patterns);
+    return any(fnmatch.fnmatch(filename, p) for p in patterns);
 }
 
 """Internal: Notify all callbacks of an event."""

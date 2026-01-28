@@ -4,22 +4,16 @@ cl import from ...ButtonRoot { ButtonRoot }
 cl import from ..ButtonSecondL { ButtonSecondL }
 
 cl def:pub ButtonThirdL -> any {
-    return <div>
-        <Button
-            type="dashed"
-            size="large"
-        >
-            Third Level Button (imports from root and second level)
-        </Button>
-        <div
-            style={{marginTop: "10px"}}
-        >
-            <ButtonRoot />
-        </div>
-        <div
-            style={{marginTop: "10px"}}
-        >
-            <ButtonSecondL />
-        </div>
-    </div>;
+    return
+        <div>
+            <Button type="dashed" size="large">
+                Third Level Button (imports from root and second level)
+            </Button>
+            <div style={{marginTop: "10px"}}>
+                <ButtonRoot />
+            </div>
+            <div style={{marginTop: "10px"}}>
+                <ButtonSecondL />
+            </div>
+        </div>;
 }

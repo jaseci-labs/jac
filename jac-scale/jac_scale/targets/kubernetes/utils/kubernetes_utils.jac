@@ -45,9 +45,8 @@ def create_or_update_configmap(
 def check_deployment_status(
     node_port: int,
     path: str = '/docs',
-    initial_wait: int = 60,
-    interval: int = 30,
-    max_retries: int = 10,
+    interval: int = 15,
+    max_retries: int = 30,
     nlb_url: (str | None) = None
 ) -> bool;
 

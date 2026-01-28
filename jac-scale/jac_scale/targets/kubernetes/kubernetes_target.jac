@@ -41,6 +41,7 @@ class KubernetesTarget(DeploymentTarget) {
     ) -> None {
         self.config = config;
         self.k8s_config = config;
+        self.env_list = [];
         if logger {
             self.logger = logger;
         }
@@ -173,10 +174,7 @@ class KubernetesTarget(DeploymentTarget) {
         return service;
     }
 
-    """Build the bash command for setting up Jaseci runtime environment.
-
-    This replaces the hard-coded command with a configurable version.
-    """
+    """Build the bash command for setting up Jaseci runtime environment."""
     def _build_runtime_setup_command(
         self: KubernetesTarget, app_config: AppConfig
     ) -> list[str] {
@@ -187,36 +185,61 @@ class KubernetesTarget(DeploymentTarget) {
         commands.append('export DEBIAN_FRONTEND=noninteractive');
         commands.append('apt-get update');
 
-        # Install base packages
-        base_packages = ['git', 'npm', 'nodejs'];
+        # Install base packages (curl and unzip needed for Bun installation)
+        base_packages = ['git', 'curl', 'unzip'];
         if config.additional_packages {
             base_packages.extend(config.additional_packages);
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
 
-        # Clone and setup Jaseci if enabled
-        if config.install_jaseci {
+        # Install Bun (required for jac-client frontend builds)
+        commands.append('curl -fsSL https://bun.sh/install | bash');
+        commands.append('export BUN_INSTALL="$HOME/.bun"');
+        commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
+
+        if app_config.experimental {
             commands.append('rm -rf jaseci');
-            # Clone repository
             clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
-            # Checkout specific commit if provided
             if config.jaseci_commit {
                 commands.append(f"git checkout {config.jaseci_commit}");
             }
-            # Update submodules
             commands.append('git submodule update --init --recursive');
-            # Setup virtual environment
-            commands.append('python -m venv venv');
-            commands.append('source venv/bin/activate');
-            # Install Jaseci components
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
             commands.append('cd ..');
+        } else {
+            packages = config.plugin_versions or {};
+            jaclang_v = packages.get('jaclang', 'latest');
+            scale_v = packages.get('jac_scale', 'latest');
+            client_v = packages.get('jac_client', 'latest');
+            byllm_v = packages.get('jac_byllm', 'latest');
+            if jaclang_v == 'latest' {
+                commands.append('pip install jaclang');
+            } else {
+                commands.append(f'pip install jaclang=={jaclang_v}');
+            }
+            if scale_v == 'latest' {
+                commands.append('pip install jac-scale');
+            } else {
+                commands.append(f'pip install jac-scale=={scale_v}');
+            }
+            if client_v == 'latest' {
+                commands.append('pip install jac-client');
+            } else {
+                commands.append(f'pip install jac-client=={client_v}');
+            }
+            if byllm_v and byllm_v != 'none' {
+                if byllm_v == 'latest' {
+                    commands.append('pip install byllm');
+                } else {
+                    commands.append(f'pip install byllm=={byllm_v}');
+                }
+            }
         }
 
         # Change to app directory (project is already copied there via volume mount)
@@ -226,7 +249,7 @@ class KubernetesTarget(DeploymentTarget) {
         commands.append('jac add');
 
         # Install Node requirements
-        commands.append('jac add --cl');
+        commands.append('jac add --npm');
 
         # Start the application
         commands.append(f"jac start {app_config.file_name}");
@@ -242,7 +265,6 @@ class KubernetesTarget(DeploymentTarget) {
         self: KubernetesTarget,
         app_name: str,
         image: str,
-        env_list: list[dict[(str, Any)]],
         probe_configs: dict[(str, Any)],
         resources_config: dict[(str, Any)],
         command: (list[str] | None) = None,
@@ -253,7 +275,7 @@ class KubernetesTarget(DeploymentTarget) {
             'name': app_name,
             'image': image,
             'ports': [{'containerPort': self.k8s_config.container_port}],
-            'env': env_list,
+            'env': self.env_list,
             'readinessProbe': probe_configs['readiness'],
             'livenessProbe': probe_configs['liveness']
         };
@@ -300,7 +322,7 @@ class KubernetesTarget(DeploymentTarget) {
             'command': [
                 'sh',
                 '-c',
-                f"mkdir -p {self.k8s_config.app_mount_path} && rm -rf {self.k8s_config.app_mount_path}/* && rsync -av --exclude='.jac' {self.k8s_config.workspace_path}/ {self.k8s_config.app_mount_path}/"
+                f"apt-get update && apt-get install -y rsync &&  mkdir -p {self.k8s_config.app_mount_path} && rm -rf {self.k8s_config.app_mount_path}/* && rsync -av --exclude='.jac' {self.k8s_config.workspace_path}/ {self.k8s_config.app_mount_path}/"
             ],
             'volumeMounts': [
                 {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path},
@@ -331,6 +353,9 @@ class KubernetesTarget(DeploymentTarget) {
                 'kubernetes_mongo', self, {'app_name': app_name}
             );
             mongo_result = mongo_provider.deploy({});
+            self.env_list.append(
+                {'name': 'MONGODB_URI', 'value': mongo_result['connection_string']}
+            );
             try {
                 apps_v1.read_namespaced_stateful_set(
                     name=mongodb_name, namespace=namespace
@@ -366,6 +391,9 @@ class KubernetesTarget(DeploymentTarget) {
                 'kubernetes_redis', self, {'app_name': app_name}
             );
             redis_result = redis_provider.deploy({});
+            self.env_list.append(
+                {'name': 'REDIS_URL', 'value': redis_result['connection_string']}
+            );
             try {
                 apps_v1.read_namespaced_deployment(
                     name=redis_name, namespace=namespace
@@ -429,19 +457,26 @@ class KubernetesTarget(DeploymentTarget) {
                     self.logger.warn(f"Could not retrieve NLB endpoint: {e}");
                 }
             }
-            if (
-                nlb_url
-                and check_deployment_status(
+            if (nlb_url) {
+                deployment_status = check_deployment_status(
                     self.k8s_config.node_port, path, nlb_url=nlb_url
-                )
-            ) {
+                );
+                if not (deployment_status) {
+                    raise Exception("Deployment failed: Application failed to deploy.") ;
+                }
                 if self.logger {
                     self.logger.info(
                         f"Deployment complete! Access Jaseci-app at {nlb_url}{path}"
                     );
                 }
             }
-        } elif check_deployment_status(self.k8s_config.node_port, path) {
+        } else {
+            deployment_status = check_deployment_status(
+                self.k8s_config.node_port, path
+            );
+            if deployment_status is False {
+                raise Exception("Deployment failed: Application failed to deploy.") ;
+            }
             if self.logger {
                 self.logger.info(
                     f"Deployment complete! Access Jaseci-app at http://localhost:{self.k8s_config.node_port}{path}"
@@ -508,7 +543,7 @@ class KubernetesTarget(DeploymentTarget) {
         ensure_namespace_exists(namespace);
 
         # 3. Load environment variables
-        env_list = load_env_variables(app_config.code_folder);
+        self.env_list = load_env_variables(app_config.code_folder);
 
         # 4. Determine cluster type
         cluster_env = cluster_type();
@@ -533,7 +568,7 @@ class KubernetesTarget(DeploymentTarget) {
 
         # 9. Build container configuration
         container_config = self._build_container_config(
-            app_name, repository_name, env_list, probe_configs, resources_config
+            app_name, repository_name, probe_configs, resources_config
         );
 
         # 10. Handle volumes and build container if not building image
@@ -549,7 +584,6 @@ class KubernetesTarget(DeploymentTarget) {
             container_config = self._build_container_config(
                 app_name,
                 self.k8s_config.python_image,
-                env_list,
                 probe_configs,
                 resources_config,
                 command=command,
@@ -590,12 +624,6 @@ class KubernetesTarget(DeploymentTarget) {
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );
-        delete_if_exists(
-            core_v1.delete_namespaced_service,
-            f"{app_name}-service",
-            namespace,
-            'Service'
-        );
         time.sleep(self.k8s_config.resource_deletion_wait);
 
         # 13. Deploy databases
@@ -606,7 +634,17 @@ class KubernetesTarget(DeploymentTarget) {
             self.logger.info(f'Deploying Jaseci-app app...');
         }
         apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment);
-        core_v1.create_namespaced_service(namespace=namespace, body=service);
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{app_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if (e.status == 404) {
+                core_v1.create_namespaced_service(namespace=namespace, body=service);
+            } else {
+                raise ;
+            }
+        }
 
         # 15. Wait for deployment and get service URL
         self._wait_for_deployment(app_name, namespace, health_check_path, is_aws);
@@ -623,6 +661,135 @@ class KubernetesTarget(DeploymentTarget) {
             service_url=service_url,
             message=f"Application '{app_name}' deployed successfully"
         );
+    }
+
+    """Wait for resources to be completely deleted."""
+    def _wait_for_deletion(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any,
+        max_wait: int = 60,
+        poll_interval: float = 1.0
+    ) -> None {
+        elapsed = 0.0;
+        while elapsed < max_wait {
+            resources_exist = False;
+
+            # Check deployment
+            try {
+                apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace);
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check service
+            try {
+                core_v1.read_namespaced_service(
+                    name=f"{app_name}-service", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check MongoDB resources if enabled
+            if self.k8s_config.mongodb_enabled {
+                mongodb_name = f"{app_name}-mongodb";
+                try {
+                    apps_v1.read_namespaced_stateful_set(
+                        name=mongodb_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{mongodb_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check Redis resources if enabled
+            if self.k8s_config.redis_enabled {
+                redis_name = f"{app_name}-redis";
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=redis_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{redis_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check PVCs
+            try {
+                pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
+                for pvc in pvcs.items {
+                    if pvc.metadata.name.startswith(app_name) {
+                        resources_exist = True;
+                        break;
+                    }
+                }
+            } except Exception { }
+
+            # Check code sync pod
+            try {
+                core_v1.read_namespaced_pod(
+                    name=f"{app_name}-code-sync", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # If no resources exist, deletion is complete
+            if not resources_exist {
+                if self.logger {
+                    self.logger.info(
+                        f"All resources for '{app_name}' have been deleted"
+                    );
+                }
+                return;
+            }
+            time.sleep(poll_interval);
+            elapsed = elapsed + poll_interval;
+        }
+
+        if self.logger {
+            self.logger.warn(
+                f"Timeout waiting for resources to be deleted after {max_wait} seconds"
+            );
+        }
     }
 
     """Destroy all enabled databases."""
@@ -710,6 +877,14 @@ class KubernetesTarget(DeploymentTarget) {
                     } except Exception { }
                 }
             }
+
+            # Wait for all resources to be completely deleted
+            if self.logger {
+                self.logger.info(
+                    f"Waiting for all resources to be deleted for '{app_name}'..."
+                );
+            }
+            self._wait_for_deletion(app_name, namespace, apps_v1, core_v1);
 
             if self.logger {
                 self.logger.info(f"Application '{app_name}' destroyed successfully");

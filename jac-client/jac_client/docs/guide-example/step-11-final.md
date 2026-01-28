@@ -18,7 +18,7 @@ cl import from react {
     useState,
     useEffect
 }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
@@ -861,23 +861,10 @@ You've completed the tutorial! Here are some ideas to continue learning:
 
 **Deployment options:**
 
-- Jac Cloud (easiest)
 - Vercel
 - Netlify
 - Digital Ocean
 - AWS
-
-**Steps:**
-
-```bash
-# Install Jac Cloud
-pip install jac-cloud
-
-# Deploy
-jac cloud deploy app.jac
-
-# Your app is now live!
-```
 
 ### 4. Learn Advanced Jac Features
 

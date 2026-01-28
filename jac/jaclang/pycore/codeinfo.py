@@ -48,6 +48,8 @@ class CodeGenTarget:
         self.py_ast: list[ast3.AST] = []
         self.py_bytecode: bytes | None = None
         self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None
+        self.llvm_ir: Any = None
+        self.native_engine: Any = None
 
     @property
     def doc_ir(self) -> Doc:

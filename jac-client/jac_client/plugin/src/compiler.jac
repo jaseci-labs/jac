@@ -6,7 +6,6 @@ import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .asset_processor { AssetProcessor }
-import from .babel_processor { BabelProcessor }
 import from .import_processor { ImportProcessor }
 import from .jac_to_js { JacToJSCompiler }
 import from .vite_bundler { ViteBundler }

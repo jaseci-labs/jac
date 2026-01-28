@@ -1,7 +1,7 @@
 [project]
 name = "jaclang"
-version = "0.9.8"
-description = "Jac is a unique and powerful programming language that extends Python, offering an unprecedented level of awesomenss."
+version = "0.9.11"
+description = "Jac programming language - a superset of both Python and TypeScript/JavaScript with novel constructs for AI-integrated programming."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 license = "MIT"
@@ -16,7 +16,9 @@ keywords = [
     "artificial-intelligence",
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "llvmlite>=0.43.0",
+]
 # Note: lark, interegular, pluggy, pygls are vendored
 
 [project.urls]

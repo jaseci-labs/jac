@@ -227,6 +227,22 @@ impl UserManager.close -> None {
     }
 }
 
+"""Collect reports from function, spawn execution asynchronously."""
+impl ExecutionManager.report_collector(call_state: CallState) -> dict[str, JsonValue] {
+    final_reports = [];
+    while True {
+        report_item = await call_state.reports.get();
+        if report_item is call_state._sentinel {
+            call_state.reports.task_done();
+            return final_reports;
+        } elif isgenerator(report_item) or isinstance(report_item, AsyncGenerator) {
+            return report_item;
+        } else {
+            final_reports.append(report_item);
+        }
+    }
+}
+
 """Execute a function in user's context."""
 impl ExecutionManager.execute_function(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
@@ -238,16 +254,30 @@ impl ExecutionManager.execute_function(
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
-    ctx.reports = [];  # Clear reports for this request
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
     try {
-        result = func(**args);
+        func_result = func(**args);
+        if iscoroutine(func_result) {
+            result = await func_result;
+        } else {
+            result = func_result;
+        }
+        call_state.reports.put_nowait(call_state._sentinel);
+        reports = await self.report_collector(call_state);
         Jac.commit();
-        return {
-            'result': JacSerializer.serialize(result),
-            'reports': JacSerializer.serialize(ctx.reports)
-        };
+        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+            return reports;
+        } else {
+            return {
+                'result': JacSerializer.serialize(result),
+                'reports': JacSerializer.serialize(reports)
+            };
+        }
     } except Exception as e {
         return {'error': str(e)};
+    } finally {
+        ctx.call_state.reset(call_token);
     }
 }
 
@@ -256,7 +286,6 @@ impl ExecutionManager.spawn_walker(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     import from jaclang.pycore.constructs { NodeArchetype }
-    import from inspect { iscoroutine }
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
@@ -265,7 +294,8 @@ impl ExecutionManager.spawn_walker(
     # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
-    ctx.reports = [];  # Clear reports for this request
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
     try {
         <>walker = walker_cls(**fields);
         if target_node_id {
@@ -277,18 +307,28 @@ impl ExecutionManager.spawn_walker(
             target_node = ctx.get_root();
         }
         spawn_result = Jac.spawn(<>walker, target_node);
+        task_report = self.report_collector(call_state);
         # Handle async walkers - await the coroutine if spawn returns one
         if iscoroutine(spawn_result) {
-            await spawn_result;
+            (result, reports) = await asyncio.gather(spawn_result, task_report);
+        } else {
+            result = spawn_result;
+            reports = await task_report;
         }
         Jac.commit();  # Persist changes
-        return {
-            'result': JacSerializer.serialize(<>walker),
-            'reports': JacSerializer.serialize(ctx.reports)
-        };
+        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+            return reports;
+        } else {
+            return {
+                'result': JacSerializer.serialize(result),
+                'reports': JacSerializer.serialize(reports)
+            };
+        }
     } except Exception as e {
         import traceback;
         return {'error': str(e), 'traceback': traceback.format_exc()};
+    } finally {
+        ctx.call_state.reset(call_token);
     }
 }
 
@@ -432,20 +472,8 @@ impl ModuleIntrospector._extract_access_levels -> None {
                 self._walker_access[name] = True;
                 continue;
             }
-            # Convert Python file path to Jac file path if needed
-            # Generated Python files are in __jac_gen__ directory
-            jac_source_file = source_file;
-            if "__jac_gen__" in source_file and source_file.endswith(".py") {
-                jac_source_file = source_file.replace("__jac_gen__", "").replace(
-                    ".py", ".jac"
-                );
-            }
             # Try to get the AST from the source module
-            source_ast = get_module_ast(jac_source_file);
-            if not source_ast {
-                # Try the original path as fallback
-                source_ast = get_module_ast(source_file);
-            }
+            source_ast = get_module_ast(source_file);
             if source_ast {
                 access_level = find_walker_access_in_ast(source_ast, name);
                 if access_level is not None {
@@ -609,23 +637,40 @@ impl ModuleIntrospector.introspect_walker(
 ) -> dict[str, Any] {
     try {
         sig = inspect.signature(walker_cls.init);
-        type_hints = get_type_hints(walker_cls.init);
+        try {
+            type_hints = get_type_hints(walker_cls.init);
+        } except Exception {
+            type_hints = {};
+        }
     } except Exception {
         return {'fields': {}};
     }
-    fields = {
-        name: {
-            'type': getattr(
-                type_hints.get(name, Any), '__name__', str(type_hints.get(name, Any))
-            ),
+    fields: dict[str, dict[str, Any]] = {};
+    for (name, param) in sig.parameters.items() {
+        if (name in ('self', 'args', 'kwargs')) {
+            continue;
+        }
+        # Try to get type from type_hints first
+        type_obj = type_hints.get(name, None);
+        if type_obj is not None {
+            type_name = getattr(type_obj, '__name__', str(type_obj));
+        } else {
+            # Fall back to parameter annotation
+            annotation = param.annotation;
+            if (annotation != inspect.Parameter.empty) {
+                type_name = getattr(annotation, '__name__', str(annotation));
+            } else {
+                type_name = 'Any';
+            }
+        }
+        fields[name] = {
+            'type': type_name,
             'required': (param.default == inspect.Parameter.empty),
             'default': None
             if (param.default == inspect.Parameter.empty)
             else param.default
-        }
-        for (name, param) in sig.parameters.items()
-        if (name not in ('self', 'args', 'kwargs'))
-    };
+        };
+    }
     fields['_jac_spawn_node'] = {
         'type': 'str (node ID, optional)',
         'required': False,
@@ -1004,7 +1049,9 @@ impl ExecutionHandler.call_function(
             meta=Meta(extra={'http_status': 404})
         );
     }
-    result = self.execution_manager.execute_function(functions[name], args, username);
+    result = await self.execution_manager.execute_function(
+        functions[name], args, username
+    );
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );
@@ -1031,7 +1078,7 @@ impl ExecutionHandler.spawn_walker(
 
 """Initialize the API server."""
 impl JacAPIServer.postinit -> None {
-    self.user_manager = UserManager(base_path=self.base_path);
+    self.user_manager = Jac.get_user_manager(base_path=self.base_path);
     self.introspector = ModuleIntrospector(self.module_name, self.base_path);
     self.execution_manager = ExecutionManager(
         base_path=self.base_path, user_manager=self.user_manager
@@ -1426,8 +1473,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         }
                     }
                 }
-                response = server.execution_handler.call_function(
-                    name, data.get('args', {}), username
+                response = asyncio.run(
+                    server.execution_handler.call_function(name, data, username)
                 );
                 self._send_response(response);
             } elif path.startswith('/walker/') {
@@ -1453,7 +1500,6 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                 }
                 fields = data | {'_jac_spawn_node': node_id};
-                import asyncio;
                 response = asyncio.run(
                     server.execution_handler.spawn_walker(name, fields, username)
                 );
@@ -1566,30 +1612,22 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(watch: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in watch mode)
-    if not watch {
+    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    bundle_error = None;
+    if not dev {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
-            import time;
-            print("Building client bundle...", flush=True);
-            start_time = time.time();
             try {
+                # ViteBundler.build() handles its own progress messages
                 self.introspector.ensure_bundle();
-                elapsed = time.time() - start_time;
-                print(f"Client bundle ready ({elapsed:.1f}s).");
-            } except Exception as e {
-                import sys;
-                import traceback;
-                print(f"\n[ERROR] Failed to build client bundle:", file=sys.stderr);
-                print(f"{e}", file=sys.stderr);
-                print("\nFull traceback:", file=sys.stderr);
-                traceback.print_exc(file=sys.stderr);
                 print(
-                    f"\nClient pages will not be available until this is fixed.\n",
-                    file=sys.stderr
+                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n",
+                    flush=True
                 );
+            } except Exception as e {
+                bundle_error = str(e);
             }
         }
     }
@@ -1618,6 +1656,21 @@ impl JacAPIServer.start(watch: bool = False) -> None {
             print(f'\nBase route (/) configured to serve: {base_route_app}');
         }
         print('\nPress Ctrl+C to stop the server');
+        # Display bundle error after endpoints if one occurred
+        if bundle_error {
+            import from jaclang.cli.console { console }
+            import sys;
+            console.print('\n' + '=' * 70, file=sys.stderr);
+            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
+            console.print('=' * 70, file=sys.stderr);
+            console.print(file=sys.stderr);
+            console.print(bundle_error, file=sys.stderr);
+            console.print(file=sys.stderr);
+            console.warning(
+                'Client pages will not be available until this is fixed.', emoji=True
+            );
+            console.print('=' * 70 + '\n', file=sys.stderr);
+        }
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {

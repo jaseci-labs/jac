@@ -54,8 +54,37 @@ impl ClientBundleBuilder._process_imports(
     bundled_module_names: set[str] = <>set();
     if (manifest and manifest.imports) {
         for (import_name, import_path) in manifest.imports.items() {
-            bundled_module_names.add(import_name);
             import_path_obj = Path(import_path);
+            # Handle @jac/ runtime imports - compile and inline
+            if import_name.startswith('@jac/') {
+                bundled_module_names.add(import_name);
+                if import_path_obj.exists() and str(import_path_obj).endswith('.jac') {
+                    try {
+                        (runtime_js, _) = self._compile_to_js(import_path_obj);
+                        import_pieces.append(f"// {import_name}");
+                        import_pieces.append(runtime_js);
+                        import_pieces.append('');
+                    } except ClientBundleError as e {
+                        import_pieces.append(
+                            f"// Warning: Could not compile {import_name}: {e}"
+                        );
+                    }
+                }
+                continue;
+            }
+            # Only add local files (.jac or JS variants) to bundled_module_names.
+            # NPM packages (like 'react') should NOT be bundled - they're external.
+            if import_path_obj.suffix in [
+                '.jac',
+                '.js',
+                '.jsx',
+                '.ts',
+                '.tsx',
+                '.mjs',
+                '.cjs'
+            ] {
+                bundled_module_names.add(import_name);
+            }
             if (import_path_obj.suffix == '.js') {
                 try {
                     with open(import_path_obj, encoding='utf-8') as f {

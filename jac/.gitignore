@@ -7,9 +7,7 @@ db.sqlite3
 media
 migrations
 venv
-__jac_gen__/
 .jaccache/
-*.jir
 *.jbc
 
 # Distribution / packaging

@@ -206,6 +206,40 @@ class JacParser(Transform[uni.Source, uni.Module]):
         module.normalize(deep=False)
         cls._recalculate_parents(module)
 
+    @classmethod
+    def _coerce_native_module(cls, module: uni.Module) -> None:
+        """Treat a `.na.jac` file as native code.
+
+        All top-level statements default to NATIVE context.
+        Explicit sv{} or cl{} blocks can override to include server/client code.
+        """
+        elements: list[uni.ElementStmt] = []
+        for stmt in module.body:
+            if isinstance(stmt, uni.NativeBlock):
+                elements.extend(stmt.body)
+            elif isinstance(stmt, (uni.ServerBlock, uni.ClientBlock)):
+                # Keep ServerBlocks/ClientBlocks - they retain their context
+                elements.append(stmt)
+            elif isinstance(stmt, uni.ElementStmt):
+                elements.append(stmt)
+
+        # Mark all top-level statements as NATIVE context,
+        # except for ServerBlocks and ClientBlocks which keep their context.
+        for elem in elements:
+            if isinstance(elem, (uni.ServerBlock, uni.ClientBlock)):
+                continue
+            if isinstance(elem, uni.ContextAwareNode):
+                elem.code_context = CodeContext.NATIVE
+                if isinstance(elem, uni.ModuleCode) and elem.body:
+                    for inner in elem.body:
+                        if isinstance(inner, uni.ContextAwareNode):
+                            inner.code_context = CodeContext.NATIVE
+
+        # Keep elements as direct module children (no NativeBlock wrapper)
+        module.body = elements
+        module.normalize(deep=False)
+        cls._recalculate_parents(module)
+
     def __init__(
         self, root_ir: uni.Source, prog: JacProgram, cancel_token: Event | None = None
     ) -> None:
@@ -240,6 +274,8 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 self._coerce_client_module(mod)
             elif ir_in.file_path.endswith(".sv.jac"):
                 self._coerce_server_module(mod)
+            elif ir_in.file_path.endswith(".na.jac"):
+                self._coerce_native_module(mod)
             self.ir_out = mod
             return mod
         except jl.UnexpectedInput as e:
@@ -604,31 +640,51 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def toplevel_stmt(self, _: None) -> uni.ElementStmt | list[uni.ElementStmt]:
             """Grammar rule.
 
-            toplevel_stmt: (KW_CLIENT | KW_SERVER)? onelang_stmt
-                | (KW_CLIENT | KW_SERVER) LBRACE onelang_stmt* RBRACE
+            toplevel_stmt: (KW_CLIENT | KW_SERVER | KW_NATIVE)? onelang_stmt
+                | (KW_CLIENT | KW_SERVER | KW_NATIVE) LBRACE onelang_stmt* RBRACE
                 | py_code_block
             """
             # Check for context keywords (mutually exclusive)
             client_tok = self.match_token(Tok.KW_CLIENT)
             server_tok = self.match_token(Tok.KW_SERVER) if not client_tok else None
+            native_tok = (
+                self.match_token(Tok.KW_NATIVE)
+                if not client_tok and not server_tok
+                else None
+            )
 
-            if client_tok or server_tok:
+            if client_tok or server_tok or native_tok:
                 # Determine context
-                context = CodeContext.CLIENT if client_tok else CodeContext.SERVER
-                context_tok = client_tok if client_tok else server_tok
-                assert context_tok is not None  # One must be set due to if condition
+                if client_tok:
+                    context = CodeContext.CLIENT
+                    context_tok = client_tok
+                elif server_tok:
+                    context = CodeContext.SERVER
+                    context_tok = server_tok
+                else:
+                    context = CodeContext.NATIVE
+                    assert native_tok is not None
+                    context_tok = native_tok
 
                 lbrace = self.match_token(Tok.LBRACE)
                 if lbrace:
-                    # Create a ClientBlock or ServerBlock to wrap the statements
+                    # Create a ClientBlock, ServerBlock, or NativeBlock
                     elements: list[uni.ElementStmt] = []
                     while elem := self.match(uni.ElementStmt):
                         # VALIDATION: Prevent nested context blocks
-                        if isinstance(elem, (uni.ClientBlock, uni.ServerBlock)):
-                            opposite = (
-                                "sv" if isinstance(elem, uni.ClientBlock) else "cl"
+                        if isinstance(
+                            elem,
+                            (uni.ClientBlock, uni.ServerBlock, uni.NativeBlock),
+                        ):
+                            if isinstance(elem, uni.ClientBlock):
+                                opposite = "cl"
+                            elif isinstance(elem, uni.ServerBlock):
+                                opposite = "sv"
+                            else:
+                                opposite = "na"
+                            current = (
+                                "cl" if client_tok else "sv" if server_tok else "na"
                             )
-                            current = "cl" if client_tok else "sv"
                             self.error(
                                 elem,
                                 f"Cannot nest {opposite} blocks inside {current} blocks. "
@@ -650,13 +706,18 @@ class JacParser(Transform[uni.Source, uni.Module]):
                             body=elements,
                             kid=self.flat_cur_nodes,
                         )
-                    else:  # server_tok
+                    elif server_tok:
                         return uni.ServerBlock(
                             body=elements,
                             kid=self.flat_cur_nodes,
                         )
+                    else:  # native_tok
+                        return uni.NativeBlock(
+                            body=elements,
+                            kid=self.flat_cur_nodes,
+                        )
                 else:
-                    # Single statement: cl/sv import foo;
+                    # Single statement: cl/sv/na import foo;
                     element = self.consume(uni.ElementStmt)
                     if isinstance(element, uni.ContextAwareNode):
                         element.code_context = context
@@ -810,34 +871,17 @@ class JacParser(Transform[uni.Source, uni.Module]):
         def import_path(self, _: None) -> uni.ModulePath:
             """Grammar rule.
 
-            import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
+            import_path: (dotted_name | STRING) (KW_AS NAME)?
             """
-            # The grammar can produce: [NAME, COLON, list, KW_AS, NAME]
-            # or just: [list, KW_AS, NAME]
+            # The grammar can produce: [list, KW_AS, NAME]
             # or just: [list]
-            # or: [NAME, COLON, String, KW_AS, NAME]
             # or: [String, KW_AS, NAME]
             # or: [String]
 
-            prefix = None
-
-            # Check if first element is a NAME followed by COLON (prefix case)
-            if (
-                self.cur_nodes
-                and isinstance(self.cur_nodes[0], uni.Name)
-                and len(self.cur_nodes) > 1
-                and isinstance(self.cur_nodes[1], uni.Token)
-                and self.cur_nodes[1].name == Tok.COLON
-            ):
-                # We have a prefix
-                prefix = self.consume(uni.Name)
-                self.consume_token(Tok.COLON)
-
-            # Now consume either String or dotted_name list
-            # Check if we have a String node first
+            # Consume either String or dotted_name list
             valid_path: list[uni.Name | uni.String]
             if self.cur_nodes and isinstance(self.cur_nodes[0], uni.String):
-                # Handle string literal import path
+                # Handle string literal import path (e.g., "@jac/runtime")
                 string_node = self.consume(uni.String)
                 valid_path = [string_node]
             else:
@@ -852,7 +896,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 level=0,
                 alias=alias,
                 kid=self.flat_cur_nodes,
-                prefix=prefix,
             )
 
         def dotted_name(self, _: None) -> list[uni.UniNode]:

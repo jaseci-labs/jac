@@ -14,6 +14,7 @@ import pytest
 
 from jaclang import JacRuntime as Jac
 from jaclang.cli.commands import execution, transform  # type: ignore[attr-defined]
+from jaclang.pycore.bccache import get_global_cache_dir
 from jaclang.pycore.program import JacProgram
 from jaclang.runtimelib.utils import read_file_with_encoding
 
@@ -334,10 +335,10 @@ def test_deep_imports_interp_mode(
     for mod_name in list(sys.modules.keys()):
         if "deep_import_interp" in mod_name:
             del sys.modules[mod_name]
-    # Delete bytecode cache files to force recompilation
-    cache_dir = Path.cwd() / ".jac" / "cache"
+    # Delete bytecode cache files to force recompilation (from global cache dir)
+    cache_dir = get_global_cache_dir()
     if cache_dir.exists():
-        for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
+        for cache_file in cache_dir.glob("*deep_import*"):
             cache_file.unlink()
 
     with capture_stdout() as captured_output:

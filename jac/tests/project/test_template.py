@@ -10,16 +10,16 @@ import pytest
 
 
 class TestBundleTemplate:
-    """Tests for bundling templates from directory to .jacpac."""
+    """Tests for bundling templates from directory to .jacpack."""
 
     def test_bundle_creates_jacpac_file(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundle_template creates a .jacpac file."""
+        """Test that bundle_template creates a .jacpack file."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -29,11 +29,11 @@ class TestBundleTemplate:
     def test_bundle_contains_required_fields(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac contains all required fields."""
+        """Test that bundled .jacpack contains all required fields."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -45,16 +45,15 @@ class TestBundleTemplate:
         assert "config" in data
         assert "files" in data
         assert "directories" in data
-        assert "gitignore_entries" in data
 
     def test_bundle_includes_version_metadata(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac includes jaclang and plugin versions."""
+        """Test that bundled .jacpack includes jaclang and plugin versions."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -70,11 +69,11 @@ class TestBundleTemplate:
     def test_bundle_embeds_file_contents(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that bundled .jacpac embeds file contents correctly."""
+        """Test that bundled .jacpack embeds file contents correctly."""
         from jaclang.project.template_loader import bundle_template
 
         template_dir = Path(fixture_path("templates/minimal"))
-        output_path = temp_dir / "minimal.jacpac"
+        output_path = temp_dir / "minimal.jacpack"
 
         bundle_template(template_dir, output_path)
 
@@ -90,21 +89,76 @@ class TestBundleTemplate:
         from jaclang.project.template_loader import bundle_template
 
         with pytest.raises(ValueError, match="Template directory not found"):
-            bundle_template(temp_dir / "nonexistent", temp_dir / "out.jacpac")
+            bundle_template(temp_dir / "nonexistent", temp_dir / "out.jacpack")
 
     def test_bundle_missing_manifest_raises(self, temp_dir: Path) -> None:
-        """Test that bundling without jacpac.toml raises ValueError."""
+        """Test that bundling without jac.toml raises ValueError."""
         from jaclang.project.template_loader import bundle_template
 
         empty_dir = temp_dir / "empty"
         empty_dir.mkdir()
 
-        with pytest.raises(ValueError, match="No jacpac.toml found"):
-            bundle_template(empty_dir, temp_dir / "out.jacpac")
+        with pytest.raises(ValueError, match="No jac.toml found"):
+            bundle_template(empty_dir, temp_dir / "out.jacpack")
+
+    def test_bundle_handles_binary_files(self, temp_dir: Path) -> None:
+        """Test that bundling correctly handles binary files (PNG, WASM, etc)."""
+        import base64
+
+        from jaclang.project.template_loader import bundle_template
+
+        # Create a template directory with binary file
+        template_dir = temp_dir / "binary_template"
+        template_dir.mkdir()
+        assets_dir = template_dir / "assets"
+        assets_dir.mkdir()
+
+        # Create jac.toml with [jacpack] section
+        jac_toml = template_dir / "jac.toml"
+        jac_toml.write_text("""[project]
+name = "{{name}}"
+version = "0.1.0"
+entry-point = "main.jac"
+
+[jacpack]
+name = "binary-test"
+description = "Template with binary files"
+jaclang = "0.9.0"
+""")
+
+        # Create a text file
+        main_jac = template_dir / "main.jac"
+        main_jac.write_text('print("Hello");')
+
+        # Create a binary file (simulated PNG header + random bytes)
+        binary_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256))
+        binary_file = assets_dir / "test.png"
+        binary_file.write_bytes(binary_content)
+
+        # Bundle the template
+        output_path = temp_dir / "binary-test.jacpack"
+        bundle_template(template_dir, output_path)
+
+        # Load and verify the bundled content
+        with open(output_path) as f:
+            data = json.load(f)
+
+        # Text file should be plain text
+        assert "main.jac" in data["files"]
+        assert not data["files"]["main.jac"].startswith("base64:")
+
+        # Binary file should be base64 encoded with prefix
+        assert "assets/test.png" in data["files"]
+        assert data["files"]["assets/test.png"].startswith("base64:")
+
+        # Verify round-trip: decode and compare
+        encoded = data["files"]["assets/test.png"][7:]  # Strip "base64:" prefix
+        decoded = base64.b64decode(encoded)
+        assert decoded == binary_content
 
 
 class TestLoadTemplateFromJson:
-    """Tests for loading templates from bundled .jacpac files."""
+    """Tests for loading templates from bundled .jacpack files."""
 
     def test_load_returns_project_template(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
@@ -117,10 +171,10 @@ class TestLoadTemplateFromJson:
         from jaclang.project.template_registry import ProjectTemplate
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
-        bundle_template(template_dir, jacpac_path)
+        jacpack_path = temp_dir / "minimal.jacpack"
+        bundle_template(template_dir, jacpack_path)
 
-        template = load_template_from_json(jacpac_path)
+        template = load_template_from_json(jacpack_path)
 
         assert isinstance(template, ProjectTemplate)
         assert template.name == "minimal"
@@ -136,20 +190,20 @@ class TestLoadTemplateFromJson:
         )
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
-        bundle_template(template_dir, jacpac_path)
+        jacpack_path = temp_dir / "minimal.jacpack"
+        bundle_template(template_dir, jacpack_path)
 
-        template = load_template_from_json(jacpac_path)
+        template = load_template_from_json(jacpack_path)
 
         assert "main.jac" in template.files
         assert "README.md" in template.files
 
     def test_load_missing_file_raises(self, temp_dir: Path) -> None:
-        """Test that loading missing .jacpac raises ValueError."""
+        """Test that loading missing .jacpack raises ValueError."""
         from jaclang.project.template_loader import load_template_from_json
 
         with pytest.raises(ValueError, match="Template JSON not found"):
-            load_template_from_json(temp_dir / "nonexistent.jacpac")
+            load_template_from_json(temp_dir / "nonexistent.jacpack")
 
 
 class TestLoadTemplateFromDirectory:
@@ -192,14 +246,14 @@ class TestRoundTrip:
         )
 
         template_dir = Path(fixture_path("templates/minimal"))
-        jacpac_path = temp_dir / "minimal.jacpac"
+        jacpack_path = temp_dir / "minimal.jacpack"
 
         # Load directly
         original = load_template_from_directory(template_dir)
 
         # Bundle and reload
-        bundle_template(template_dir, jacpac_path)
-        loaded = load_template_from_json(jacpac_path)
+        bundle_template(template_dir, jacpack_path)
+        loaded = load_template_from_json(jacpack_path)
 
         # Compare
         assert original.name == loaded.name
@@ -207,7 +261,6 @@ class TestRoundTrip:
         assert original.config == loaded.config
         assert original.files == loaded.files
         assert original.directories == loaded.directories
-        assert original.gitignore_entries == loaded.gitignore_entries
         assert original.root_gitignore_entries == loaded.root_gitignore_entries
 
 
@@ -230,7 +283,6 @@ class TestProjectTemplateToDict:
         assert "config" in data
         assert "files" in data
         assert "directories" in data
-        assert "gitignore_entries" in data
         assert "root_gitignore_entries" in data
 
     def test_to_dict_excludes_post_create(

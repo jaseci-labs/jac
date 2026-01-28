@@ -2,8 +2,10 @@
 
 This module provides disk-based caching for compiled Jac bytecode,
 similar to Python's __pycache__ mechanism. Cache files are stored
-in the .jac/cache/ directory within the project, configurable via
-jac.toml [build] section.
+in a global user cache directory following platform conventions:
+- Linux:   ~/.cache/jac/bytecode/
+- macOS:   ~/Library/Caches/jac/bytecode/
+- Windows: %LOCALAPPDATA%/jac/cache/bytecode/
 """
 
 from __future__ import annotations
@@ -11,14 +13,38 @@ from __future__ import annotations
 import hashlib
 import marshal
 import os
+import pickle
 import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from jaclang.project.config import JacConfig
+
+
+def get_global_cache_dir() -> Path:
+    """Get the platform-appropriate global cache directory for Jac bytecode.
+
+    Returns:
+        Path to the global cache directory:
+        - Linux:   ~/.cache/jac/bytecode/ (respects XDG_CACHE_HOME)
+        - macOS:   ~/Library/Caches/jac/bytecode/
+        - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
+    """
+    if sys.platform == "win32":
+        # Windows: Use LOCALAPPDATA
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "jac" / "cache" / "bytecode"
+    elif sys.platform == "darwin":
+        # macOS: Use ~/Library/Caches
+        return Path.home() / "Library" / "Caches" / "jac" / "bytecode"
+    else:
+        # Linux/Unix: Follow XDG Base Directory Specification
+        xdg_cache = os.environ.get("XDG_CACHE_HOME")
+        base = Path(xdg_cache) if xdg_cache else Path.home() / ".cache"
+        return base / "jac" / "bytecode"
 
 
 def discover_annex_files(source_path: str, suffix: str = ".impl.jac") -> list[str]:
@@ -116,21 +142,26 @@ class BytecodeCache:
 
 
 class DiskBytecodeCache(BytecodeCache):
-    """Disk-based bytecode cache using the .jac/cache/ directory.
+    """Disk-based bytecode cache using a global user cache directory.
 
-    Cache files are stored in the project's .jac/cache/ directory
-    (configurable via jac.toml [build].dir), with filenames that include
-    a path hash, Python version, and compilation mode to avoid conflicts.
+    Cache files are stored in a platform-appropriate global location:
+    - Linux:   ~/.cache/jac/bytecode/
+    - macOS:   ~/Library/Caches/jac/bytecode/
+    - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
+
+    Filenames include a path hash, Python version, and compilation mode
+    to ensure uniqueness across different projects and avoid conflicts.
 
     Example:
         source:  /project/src/main.jac
-        cache:   .jac/cache/main.a1b2c3d4.cpython-312.jbc
-                 .jac/cache/main.a1b2c3d4.cpython-312.minimal.jbc
+        cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
+                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
+                 ~/.cache/jac/cache/main.a1b2c3d4.cpython-312.mtir.pkl
     """
 
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
-    FALLBACK_CACHE_DIR: Final[str] = ".jac/cache"
+    MTIR_EXTENSION: Final[str] = ".mtir.pkl"
 
     def __init__(self, config: JacConfig | None = None) -> None:
         """Initialize the cache with optional config."""
@@ -138,28 +169,11 @@ class DiskBytecodeCache(BytecodeCache):
         self._cache_dir: Path | None = None
 
     def _get_cache_dir(self) -> Path:
-        """Get the cache directory, using config if available."""
+        """Get the global cache directory."""
         if self._cache_dir is not None:
             return self._cache_dir
 
-        # Try to get from provided config
-        if self._config is not None:
-            self._cache_dir = self._config.get_cache_dir()
-            return self._cache_dir
-
-        # Try to discover project config
-        try:
-            from jaclang.project.config import get_config
-
-            config = get_config()
-            if config is not None:
-                self._cache_dir = config.get_cache_dir()
-                return self._cache_dir
-        except ImportError:
-            pass
-
-        # Fallback to default
-        self._cache_dir = Path.cwd() / self.FALLBACK_CACHE_DIR
+        self._cache_dir = get_global_cache_dir()
         return self._cache_dir
 
     def _get_cache_path(self, key: CacheKey) -> Path:
@@ -237,6 +251,56 @@ class DiskBytecodeCache(BytecodeCache):
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_bytes(bytecode)
         except OSError:
+            pass  # Silently ignore write failures
+
+    def _get_mtir_cache_path(self, key: CacheKey) -> Path:
+        """Generate the MTIR cache file path for a given key.
+
+        MTIR cache is stored alongside bytecode cache with .mtir.pkl extension.
+        """
+        source = Path(key.source_path).resolve()
+        cache_dir = self._get_cache_dir()
+
+        # Create a short hash of the full path for uniqueness
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+
+        major, minor = key.python_version
+        py_version = f"cpython-{major}{minor}"
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.MTIR_EXTENSION}"
+
+        return cache_dir / cache_name
+
+    def get_mtir(self, key: CacheKey) -> dict[str, Any] | None:
+        """Retrieve cached MTIR map if valid.
+
+        Returns the mtir_map dictionary that maps scope strings to MTIR objects.
+        """
+        mtir_cache_path = self._get_mtir_cache_path(key)
+
+        # Use same validation as bytecode cache
+        if not self._is_valid(key, mtir_cache_path):
+            return None
+
+        try:
+            with open(mtir_cache_path, "rb") as f:
+                return pickle.load(f)
+        except (OSError, pickle.PickleError, EOFError):
+            return None
+
+    def put_mtir(self, key: CacheKey, mtir_map: dict[str, Any]) -> None:
+        """Store MTIR map in the cache.
+
+        Args:
+            key: Cache key identifying the source file
+            mtir_map: Dictionary mapping scope strings to MTIR objects
+        """
+        mtir_cache_path = self._get_mtir_cache_path(key)
+
+        try:
+            mtir_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(mtir_cache_path, "wb") as f:
+                pickle.dump(mtir_map, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except (OSError, pickle.PickleError):
             pass  # Silently ignore write failures
 
 

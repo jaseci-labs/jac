@@ -7,7 +7,6 @@ db.sqlite3
 media
 migrations
 venv
-__jac_gen__/
 .jac/
 *.jir
 *.jbc

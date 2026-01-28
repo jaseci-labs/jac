@@ -590,13 +590,8 @@ impl TypeEvaluator.get_type_of_magic_method_call(
                     }
                 }
                 # If we reached here, none of the overloads matched.
-                if node_for_error {
-                    self.add_diagnostic(
-                        node_for_error,
-                        f'No matching overload found for method "{method_name}" with the given arguments',
-                    );
-                }
-                return types.UnknownType();
+                # Return None to allow fallback to reverse magic method (e.g., __radd__).
+                return None;
             }
             # If we reached here, magic method is not a function.
             # 1. recursively check __call__() on the type, TODO

@@ -8,13 +8,13 @@ import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run the specified .jac, .jir, or .py file."""
+"""Run the specified .jac or .py file."""
 @registry.command(
     name="run",
     help="Run a Jac program",
     args=[
         Arg.create(
-            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac, .jir, or .py file"
+            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .py file"
         ),
         Arg.create(
             "main", typ=bool, default=True, help="Treat module as __main__", short="m"
@@ -38,9 +38,7 @@ def run(filename: str, main: bool = True, cache: bool = True) -> int;
     name="enter",
     help="Run a specific entrypoint in a Jac program",
     args=[
-        Arg.create(
-            "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .jir file"
-        ),
+        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
         Arg.create(
             "entrypoint", kind=ArgKind.POSITIONAL, help="Function/walker to invoke"
         ),
@@ -87,11 +85,11 @@ def enter(
             short="f"
         ),
         Arg.create(
-            "watch",
+            "dev",
             typ=bool,
             default=False,
             help="Enable HMR (Hot Module Replacement) mode",
-            short="w"
+            short="d"
         ),
         Arg.create(
             "api_port",
@@ -112,8 +110,8 @@ def enter(
         ("jac start app.jac", "Start server with specific file"),
         ("jac start --port 3000", "Start main.jac on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start --watch", "Start with hot module replacement"),
-        ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
+        ("jac start --dev", "Start with hot module replacement"),
+        ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
 
     ],
     group="execution"
@@ -123,7 +121,7 @@ def start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    watch: bool = False,
+    dev: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int;

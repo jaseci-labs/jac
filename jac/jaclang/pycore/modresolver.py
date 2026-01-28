@@ -51,6 +51,8 @@ def _candidate_from(base: str, parts: list[str]) -> tuple[str, str] | None:
         return candidate + ".jac", "jac"
     if os.path.isfile(candidate + ".sv.jac"):
         return candidate + ".sv.jac", "jac"
+    if os.path.isfile(candidate + ".na.jac"):
+        return candidate + ".na.jac", "jac"
     if os.path.isfile(candidate + ".cl.jac"):
         return candidate + ".cl.jac", "jac"
     if os.path.isfile(candidate + ".py"):
@@ -174,6 +176,10 @@ def convert_to_js_import_path(path: str) -> str:
         JavaScript-style import path with .js extension for relative imports
     """
     if not path:
+        return path
+
+    # If path is already in JavaScript format (starts with ./ or ../), return as-is
+    if path.startswith("./") or path.startswith("../"):
         return path
 
     # Count leading dots

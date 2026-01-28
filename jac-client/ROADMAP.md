@@ -18,7 +18,7 @@
 - **Backend**: `jacSpawn` for walker communication
 - **Auth**: Built-in helpers (jacLogin, jacSignup, jacLogout)
 - **Bundler**: Vite + Babel
-- **CLI**: `jac create --cl`, `jac start`
+- **CLI**: `jac create --use client`, `jac start`
 
 ---
 
@@ -33,7 +33,7 @@
 - Full React hooks support (useState, useEffect, useReducer, useContext, useMemo, useCallback, useRef)
 - Event handling (onClick, onChange, onSubmit, onKeyPress, etc.)
 
-### Routing (@jac-client/utils)
+### Routing (@jac/runtime)
 
 - Declarative components: `<Router>`, `<Routes>`, `<Route>`, `<Link>`, `<Navigate>`
 - Routing hooks: `useNavigate()`, `useLocation()`, `useRouter()`
@@ -44,7 +44,7 @@
 - ⏳ URL params, query strings - Planned
 - ⏳ Nested routes - Planned
 
-### Backend Communication (@jac-client/utils)
+### Backend Communication (@jac/runtime)
 
 - `jacSpawn(walker, node_id, params)` - Walker calling
 - Automatic JWT token injection
@@ -53,7 +53,7 @@
 - ⏳ Timeouts - Planned
 - ⏳ Request cancellation - Planned
 
-### Authentication (@jac-client/utils)
+### Authentication (@jac/runtime)
 
 - `jacLogin(username, password)`
 - `jacSignup(username, password)`
@@ -69,12 +69,12 @@
 - Babel compilation
 - Tree-shaking and optimization (vite)
 - External library support (npm packages)
-- `@jac-client/utils` alias resolution
+- `@jac/runtime` alias resolution
 - Production builds with hashing
 
 ### CLI
 
-- `jac create --cl <name>` - Project scaffolding with organized folder structure
+- `jac create --use client <name>` - Project scaffolding with organized folder structure
 - `jac start <file.jac>` - Dev server
 - Automatic bundling
 - ⏳ HMR (Hot Module Replacement) - Planned
