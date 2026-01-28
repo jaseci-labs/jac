@@ -374,7 +374,7 @@ class JacScaleTestRunner:
             return response.text
         return f"Request failed after {max_retries} retries (all timeouts)"
 
-    def spawn_walker(self, walker_name: str, **kwargs: Any) -> dict[str, Any]:
+    def spawn_walker(self, walker_name: str, **kwargs: object) -> dict[str, Any]:
         """Spawn a walker with the given parameters.
 
         Args:
@@ -454,7 +454,7 @@ class JacScaleTestRunner:
 
         return json_response  # type: ignore[return-value]
 
-    def call_function(self, function_name: str, **kwargs: Any) -> dict[str, Any]:
+    def call_function(self, function_name: str, **kwargs: object) -> dict[str, Any]:
         """Call a function with the given parameters.
 
         Args:
