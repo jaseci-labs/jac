@@ -14,7 +14,9 @@ class LocalStorage(Storage) {
     has base_path: str = "./storage",
         create_dirs: bool = True;
 
-    def postinit(self: LocalStorage) -> None {
+    def init(self: LocalStorage, base_path: str = "./storage", create_dirs: bool = True) -> None {
+        self.base_path = base_path;
+        self.create_dirs = create_dirs;
         if self.create_dirs {
             Path(self.base_path).mkdir(parents=True, exist_ok=True);
         }
