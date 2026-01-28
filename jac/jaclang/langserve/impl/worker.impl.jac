@@ -232,6 +232,8 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
         type_check=True,
         cancel_token=cancel_token
     );
+    # Collect errors from internal_program (compiler routes jaclang/* files there)
+    self._collect_internal_errors(program, file_path);
 
     if self.is_cancelled() or self.has_foreground_request() {
         return _cancelled(request_id);
@@ -256,6 +258,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
                 type_check=True, no_cgen=True,
                 cancel_token=cancel_token
             );
+            self._collect_internal_errors(program, parent_path);
             if parent_module?.loc {
                 program.mod.hub[parent_path] = parent_module;
                 sem_managers[parent_path] = SemTokManager(ir=parent_module, hub=program.mod.hub);
@@ -347,8 +350,8 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
     return _location_response(p.request_id, None);
 }
 
+"""Create a location dict from an AST node."""
 impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
-    """Create a location dict from an AST node."""
     import os;
     if not ast_node or not hasattr(ast_node, 'loc') or not ast_node.loc {
         return None;
@@ -601,6 +604,36 @@ impl CompilationWorker.is_cancelled -> bool {
 impl CompilationWorker.clear_cancellation -> None {
     if self._cancel_event {
         self._cancel_event.clear();
+    }
+}
+
+"""Collect errors from compiler's internal_program for jaclang/* files.
+
+The compiler routes jaclang/* files to a separate internal_program,
+so errors end up there instead of the target program the LSP checks.
+"""
+impl CompilationWorker._collect_internal_errors(program: Any, file_path: str) -> None {
+    try {
+        compiler = program._get_compiler();
+        internal = compiler._internal_program;
+        if internal is None or internal is program {
+            return;
+        }
+        for e in internal.errors_had {
+            if e?.loc?.mod_path == file_path {
+                program.errors_had.append(e);
+            }
+        }
+        for w in internal.warnings_had {
+            if w?.loc?.mod_path == file_path {
+                program.warnings_had.append(w);
+            }
+        }
+        # Clear collected errors from internal_program to avoid duplicates on recompile
+        internal.errors_had = [e for e in internal.errors_had if not (e?.loc?.mod_path == file_path)];
+        internal.warnings_had = [w for w in internal.warnings_had if not (w?.loc?.mod_path == file_path)];
+    } except Exception as e {
+        print(f"[Worker] _collect_internal_errors failed: {e}", file=sys.stderr);
     }
 }
 

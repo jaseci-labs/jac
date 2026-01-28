@@ -156,6 +156,9 @@ obj CompilationWorker {
     """Clear cancellation flag."""
     def clear_cancellation -> None;
 
+    """Collect errors from compiler's internal_program for jaclang/* files."""
+    def _collect_internal_errors(program: Any, file_path: str) -> None;
+
     # Helper methods for LSP features
     """Get token at position from semantic manager."""
     def _get_token_at_position(
