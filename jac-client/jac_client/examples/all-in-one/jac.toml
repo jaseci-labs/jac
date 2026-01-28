@@ -7,10 +7,16 @@ entry-point = "main.jac"
 [serve]
 base_route_app = "app"
 
+[plugins.client]
+# Vite bundler configuration (optional overrides)
+# vite.plugins = []
+# vite.build = {}
+
 [plugins.client.app_meta_data]
 title = "All-In-One"
 icon = ".assets/burger.png"
 author = "Jaseci"
+# meta_color_scheme = "dark"
 
 [plugins.client.vite]
 plugins = ["tailwindcss()"]
@@ -19,12 +25,9 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
-[dependencies]
-uuid = ">=0.0.0"
-
 [dependencies.npm]
 antd = "^6.0.0"
-jac-client-node = "1.0.4"
+"jac-client-node" = "1.0.4"
 recharts = "latest"
 tailwindcss = "latest"
 
@@ -33,5 +36,5 @@ tailwindcss = "latest"
 "@tailwindcss/vite" = "^4.1.17"
 
 [environments.response.headers]
-Cross-Origin-Opener-Policy = "same-origin"
-Cross-Origin-Embedder-Policy = "require-corp"
+"Cross-Origin-Opener-Policy" = "same-origin"
+"Cross-Origin-Embedder-Policy" = "require-corp"
