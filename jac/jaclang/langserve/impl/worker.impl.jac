@@ -12,9 +12,9 @@ import sys;
 import time;
 import threading;
 import multiprocessing;
-import from multiprocessing { Queue as MpQueue }
+import from multiprocessing { Queue as MpQueue, Process }
 import from multiprocessing.synchronize { Event as MpEvent }
-import from typing { Optional, Callable, Any }
+import from typing { Optional, Callable }
 import from queue { Empty }
 import from jaclang.langserve.sem_manager { SemTokManager }
 import from jaclang.langserve { utils }
@@ -24,6 +24,8 @@ import from jaclang.compiler.type_system.types {
 }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.pycore.unitree { UniScopeNode }
+import from jaclang.pycore.passes { Alert }
+import from jaclang.pycore.program { JacProgram }
 
 impl WorkerConfig.default -> WorkerConfig {
     return WorkerConfig();
@@ -101,7 +103,7 @@ impl CompilationWorker.run -> None {
     import traceback;
 
     program = JacProgram();
-    sem_managers: dict = {};
+    sem_managers: dict[str, SemTokManager] = {};
     poll_interval = self._config.poll_interval_ms / 1000.0;
 
     while not self._shutdown_event.is_set() {
@@ -137,7 +139,7 @@ impl CompilationWorker.has_foreground_request -> bool {
     }
 }
 
-impl CompilationWorker.process_foreground_requests(program: Any, sem_managers: dict) -> None {
+impl CompilationWorker.process_foreground_requests(program: JacProgram, sem_managers: dict[str, SemTokManager]) -> None {
     import traceback;
     if self._foreground_queue is None { return; }
 
@@ -158,7 +160,7 @@ impl CompilationWorker.process_foreground_requests(program: Any, sem_managers: d
 }
 
 impl CompilationWorker._dispatch_foreground(
-    request_type: str, request: dict, program: Any, sem_managers: dict
+    request_type: str, request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]
 ) -> dict {
     if request_type == 'HOVER' { return self.handle_hover(request, program, sem_managers); }
     elif request_type == 'DEFINITION' { return self.handle_definition(request, program, sem_managers); }
@@ -171,7 +173,7 @@ impl CompilationWorker._dispatch_foreground(
     else { return _error(request.get('request_id', ''), f'Unknown: {request_type}'); }
 }
 
-impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker._compile_file(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     import from threading { Event }
     import hashlib;
 
@@ -265,8 +267,8 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     );
 }
 
-impl CompilationWorker._serialize_diagnostics(file_path: str, program: Any) -> dict {
-    def serialize_item(item: Any) -> dict | None {
+impl CompilationWorker._serialize_diagnostics(file_path: str, program: JacProgram) -> dict {
+    def serialize_item(item: Alert) -> dict | None {
         if item?.loc {
             return {'message': item.msg, 'mod_path': item.loc.mod_path,
                 'line': item.loc.first_line, 'col': item.loc.col_start,
@@ -282,7 +284,7 @@ impl CompilationWorker._serialize_diagnostics(file_path: str, program: Any) -> d
 
 # ============== Foreground Request Handlers ==============
 
-impl CompilationWorker.handle_hover(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_hover(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     p = PositionParams.from_request(request);
     sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
     if sym_node {
@@ -294,7 +296,7 @@ impl CompilationWorker.handle_hover(request: dict, program: Any, sem_managers: d
 }
 
 """Return definition location for a file."""
-impl CompilationWorker.handle_definition(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_definition(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     p = PositionParams.from_request(request);
     node_selected = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
 
@@ -342,7 +344,7 @@ impl CompilationWorker.handle_definition(request: dict, program: Any, sem_manage
 }
 
 """Create a location dict from an AST node."""
-impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
+impl CompilationWorker._make_location_dict(ast_node: uni.UniNode) -> dict | None {
     import os;
     if not ast_node or not hasattr(ast_node, 'loc') or not ast_node.loc {
         return None;
@@ -359,7 +361,7 @@ impl CompilationWorker._make_location_dict(ast_node: Any) -> dict | None {
     };
 }
 
-impl CompilationWorker.handle_references(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_references(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     p = PositionParams.from_request(request);
     sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
 
@@ -374,7 +376,7 @@ impl CompilationWorker.handle_references(request: dict, program: Any, sem_manage
     return _success(p.request_id, locations=locations);
 }
 
-impl CompilationWorker.handle_completion(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_completion(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     p = PositionParams.from_request(request);
     items = [];
 
@@ -398,7 +400,7 @@ impl CompilationWorker.handle_completion(request: dict, program: Any, sem_manage
     return _success(p.request_id, items=items);
 }
 
-impl CompilationWorker._get_completion_for_node(expr_node: Any, program: Any) -> list {
+impl CompilationWorker._get_completion_for_node(expr_node: uni.Expr, program: JacProgram) -> list {
     # Get completion items for a node's type
     items = [];
     try {
@@ -419,7 +421,7 @@ impl CompilationWorker._get_completion_for_node(expr_node: Any, program: Any) ->
     return items;
 }
 
-impl CompilationWorker._get_completion_for_scope(scope_node: Any) -> list {
+impl CompilationWorker._get_completion_for_scope(scope_node: uni.UniScopeNode) -> list {
     # Get completion items for a scope
     items = [];
     try {
@@ -434,7 +436,7 @@ impl CompilationWorker._get_completion_for_scope(scope_node: Any) -> list {
     return items;
 }
 
-impl CompilationWorker.handle_outline(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_outline(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     f = FileParams.from_request(request);
     symbols = [];
     if f.file_path in program.mod.hub {
@@ -446,7 +448,7 @@ impl CompilationWorker.handle_outline(request: dict, program: Any, sem_managers:
     return _success(f.request_id, symbols=symbols);
 }
 
-impl CompilationWorker.handle_semantic_tokens(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_semantic_tokens(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     f = FileParams.from_request(request);
     tokens = [];
     if f.file_path in sem_managers {
@@ -457,7 +459,7 @@ impl CompilationWorker.handle_semantic_tokens(request: dict, program: Any, sem_m
     return _success(f.request_id, tokens=tokens);
 }
 
-impl CompilationWorker.handle_rename(request: dict, program: Any, sem_managers: dict) -> dict {
+impl CompilationWorker.handle_rename(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict {
     p = PositionParams.from_request(request);
     new_name = request.get('new_name', '');
     sym_node = self._get_token_at_position(p.file_path, p.line, p.character, sem_managers, program.mod.hub);
@@ -487,7 +489,7 @@ impl CompilationWorker.handle_rename(request: dict, program: Any, sem_managers: 
     return _success(p.request_id, edits=edits);
 }
 
-impl CompilationWorker.handle_format(request: dict, program: Any) -> dict {
+impl CompilationWorker.handle_format(request: dict, program: JacProgram) -> dict {
     import from jaclang.pycore.program { JacProgram }
     f = FileParams.from_request(request);
     source = request.get('source', '');
@@ -504,8 +506,8 @@ impl CompilationWorker.handle_format(request: dict, program: Any) -> dict {
 # ============== Helper Methods ==============
 
 impl CompilationWorker._get_token_at_position(
-    file_path: str, line: int, character: int, sem_managers: dict, hub: dict
-) -> Any | None {
+    file_path: str, line: int, character: int, sem_managers: dict[str, SemTokManager], hub: dict
+) -> uni.AstSymbolNode | None {
     # Get the AST token at the given position
     if file_path not in hub {
         return None;
@@ -526,7 +528,7 @@ impl CompilationWorker._get_token_at_position(
     return None;
 }
 
-impl CompilationWorker._get_node_at_position(file_path: str, line: int, col: int, hub: dict) -> Any | None {
+impl CompilationWorker._get_node_at_position(file_path: str, line: int, col: int, hub: dict) -> uni.Token | None {
     # Get AST node at position by walking the tree
     if file_path not in hub {
         return None;
@@ -548,7 +550,7 @@ impl CompilationWorker._get_node_at_position(file_path: str, line: int, col: int
     return None;
 }
 
-impl CompilationWorker._get_node_info(sym_node: Any) -> str | None {
+impl CompilationWorker._get_node_info(sym_node: uni.AstSymbolNode) -> str | None {
     # Get hover information for a symbol node
     try {
         if isinstance(sym_node, uni.NameAtom) {
@@ -603,7 +605,7 @@ impl CompilationWorker.clear_cancellation -> None {
 The compiler routes jaclang/* files to a separate internal_program,
 so errors end up there instead of the target program the LSP checks.
 """
-impl CompilationWorker._collect_internal_errors(program: Any, file_path: str) -> None {
+impl CompilationWorker._collect_internal_errors(program: JacProgram, file_path: str) -> None {
     try {
         compiler = program._get_compiler();
         internal = compiler._internal_program;

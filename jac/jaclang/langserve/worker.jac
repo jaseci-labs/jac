@@ -12,9 +12,12 @@ Architecture:
 """
 
 import threading;
-import from multiprocessing { Queue as MpQueue }
+import from multiprocessing { Queue as MpQueue, Process }
 import from multiprocessing.synchronize { Event as MpEvent }
-import from typing { Optional, Callable, Any }
+import from typing { Optional, Callable }
+import from jaclang.langserve.sem_manager { SemTokManager }
+import from jaclang.pycore.program { JacProgram }
+import jaclang.pycore.unitree as uni;
 
 """Request types for worker IPC."""
 enum RequestType {
@@ -100,47 +103,47 @@ obj CompilationWorker {
         _foreground_queue: MpQueue | None = None;
 
     """Main worker loop."""
-    def run -> None;
+    def run;
 
     """Check if there are pending foreground requests."""
     def has_foreground_request -> bool;
 
     """Process all pending foreground requests."""
-    def process_foreground_requests(program: Any, sem_managers: dict) -> None;
+    def process_foreground_requests(program: JacProgram, sem_managers: dict[str, SemTokManager]) -> None;
 
     """Dispatch foreground request to handler."""
-    def _dispatch_foreground(request_type: str, request: dict, program: Any, sem_managers: dict) -> dict;
+    def _dispatch_foreground(request_type: str, request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Internal compile file method."""
-    def _compile_file(request: dict, program: Any, sem_managers: dict) -> dict;
+    def _compile_file(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Serialize diagnostics for a file into lightweight dict."""
-    def _serialize_diagnostics(file_path: str, program: Any) -> dict;
+    def _serialize_diagnostics(file_path: str, program: JacProgram) -> dict;
 
     # Foreground request handlers
     """Handle hover request."""
-    def handle_hover(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_hover(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle definition request."""
-    def handle_definition(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_definition(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle references request."""
-    def handle_references(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_references(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle completion request."""
-    def handle_completion(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_completion(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle outline request."""
-    def handle_outline(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_outline(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle semantic tokens request."""
-    def handle_semantic_tokens(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_semantic_tokens(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle rename request."""
-    def handle_rename(request: dict, program: Any, sem_managers: dict) -> dict;
+    def handle_rename(request: dict, program: JacProgram, sem_managers: dict[str, SemTokManager]) -> dict;
 
     """Handle format request."""
-    def handle_format(request: dict, program: Any) -> dict;
+    def handle_format(request: dict, program: JacProgram) -> dict;
 
     """Check if cancelled."""
     def is_cancelled -> bool;
@@ -149,30 +152,30 @@ obj CompilationWorker {
     def clear_cancellation -> None;
 
     """Collect errors from compiler's internal_program for jaclang/* files."""
-    def _collect_internal_errors(program: Any, file_path: str) -> None;
+    def _collect_internal_errors(program: JacProgram, file_path: str) -> None;
 
     # Helper methods for LSP features
     """Get token at position from semantic manager."""
     def _get_token_at_position(
-        file_path: str, line: int, character: int, sem_managers: dict, hub: dict
-    ) -> Any | None;
+        file_path: str, line: int, character: int, sem_managers: dict[str, SemTokManager], hub: dict
+    ) -> uni.AstSymbolNode | None;
 
     """Get node info for hover."""
-    def _get_node_info(sym_node: Any) -> str | None;
+    def _get_node_info(sym_node: uni.AstSymbolNode) -> str | None;
 
     """Get node at position from AST."""
     def _get_node_at_position(
         file_path: str, line: int, col: int, hub: dict
-    ) -> Any | None;
+    ) -> uni.Token | None;
 
     """Create location dict from AST node."""
-    def _make_location_dict(ast_node: Any) -> dict | None;
+    def _make_location_dict(ast_node: uni.UniNode) -> dict | None;
 
     """Get completion items for a node's type."""
-    def _get_completion_for_node(expr_node: Any, program: Any) -> list;
+    def _get_completion_for_node(expr_node: uni.Expr, program: JacProgram) -> list;
 
     """Get completion items for a scope."""
-    def _get_completion_for_scope(scope_node: Any) -> list;
+    def _get_completion_for_scope(scope_node: uni.UniScopeNode) -> list;
 }
 
 """Manages worker process with debounce scheduling.
@@ -184,12 +187,12 @@ Combines worker lifecycle management with intelligent scheduling:
 - Manages diagnostics callbacks (no more full AST snapshots)
 """
 obj WorkerManager {
-    has _process: Any | None = None,
-        _request_queue: Any | None = None,
-        _response_queue: Any | None = None,
-        _foreground_queue: Any | None = None,
-        _shutdown_event: Any | None = None,
-        _cancel_event: Any | None = None,
+    has _process: Process | None = None,
+        _request_queue: MpQueue | None = None,
+        _response_queue: MpQueue | None = None,
+        _foreground_queue: MpQueue | None = None,
+        _shutdown_event: MpEvent | None = None,
+        _cancel_event: MpEvent | None = None,
         _config: WorkerConfig | None = None,
         _request_counter: int = 0,
         _pending_requests: dict | None = None,
