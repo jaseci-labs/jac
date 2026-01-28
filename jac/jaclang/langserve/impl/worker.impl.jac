@@ -229,7 +229,7 @@ impl CompilationWorker._compile_file(request: dict, program: Any, sem_managers: 
     # Compile with cancel_token for interruptibility
     module = program.compile(
         file_path=file_path, use_str=source,
-        type_check=True, no_cgen=True,
+        type_check=True,
         cancel_token=cancel_token
     );
 
