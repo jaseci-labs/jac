@@ -416,6 +416,125 @@ max_failures = 10
 
 ---
 
+## JacTestClient
+
+`JacTestClient` provides an in-process HTTP client for testing Jac API endpoints without starting a real server or opening network ports.
+
+### Import
+
+```python
+from jaclang.runtimelib.testing import JacTestClient
+```
+
+### Creating a Client
+
+```python
+# Create from a .jac file
+client = JacTestClient.from_file("app.jac")
+
+# With a custom base path (useful for temp directories in tests)
+client = JacTestClient.from_file("app.jac", base_path="/tmp/test")
+```
+
+### Authentication
+
+```python
+# Register a test user
+response = client.register_user("testuser", "password123")
+
+# Login
+response = client.login("testuser", "password123")
+
+# Manually set auth token
+client.set_auth_token("eyJ...")
+
+# Clear auth
+client.clear_auth()
+```
+
+### Making Requests
+
+```python
+# GET request
+response = client.get("/walker/get_users")
+
+# POST request with JSON body
+response = client.post("/walker/create_user", json={"name": "Alice"})
+
+# PUT request
+response = client.put("/walker/update_user", json={"name": "Bob"})
+
+# Generic request
+response = client.request("DELETE", "/walker/delete_user", json={"id": "123"})
+
+# With custom headers
+response = client.get("/walker/data", headers={"X-Custom": "value"})
+```
+
+### TestResponse
+
+Responses from `JacTestClient` are `TestResponse` objects:
+
+| Property/Method | Type | Description |
+|----------------|------|-------------|
+| `status_code` | `int` | HTTP status code |
+| `headers` | `dict` | Response headers |
+| `text` | `str` | Raw response body |
+| `json()` | `dict` | Parse body as JSON |
+| `ok` | `bool` | `True` if status is 2xx |
+| `data` | `dict \| None` | Unwrapped data from TransportResponse envelope |
+
+### Full Example
+
+```python
+import pytest
+from jaclang.runtimelib.testing import JacTestClient
+
+def test_task_crud(tmp_path):
+    client = JacTestClient.from_file("app.jac", base_path=str(tmp_path))
+
+    # Register and authenticate
+    client.register_user("testuser", "password123")
+
+    # Create
+    resp = client.post("/walker/CreateTask", json={"title": "My Task"})
+    assert resp.status_code == 200
+    assert resp.ok
+
+    # Read
+    resp = client.post("/walker/GetTasks")
+    data = resp.json()
+    assert len(data["reports"]) == 1
+
+    # Cleanup
+    client.close()
+```
+
+### HMR Testing
+
+Test hot module replacement behavior:
+
+```python
+def test_hmr(tmp_path):
+    client = JacTestClient.from_file("app.jac", base_path=str(tmp_path))
+    client.register_user("user", "pass")
+
+    # Initial state
+    resp = client.post("/walker/get_data")
+    assert resp.ok
+
+    # Simulate file change and reload
+    client.reload()
+
+    # Verify after reload
+    resp = client.post("/walker/get_data")
+    assert resp.ok
+
+    client.close()
+```
+
+---
+
 ## Best Practices
 
 ### 1. Descriptive Names
