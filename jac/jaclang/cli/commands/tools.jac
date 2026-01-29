@@ -104,19 +104,27 @@ def lsp -> int;
             "shell",
             typ=str,
             default="bash",
-            help="Shell to generate completions for (bash, zsh, tcsh, fish, powershell)",
+            help="Shell to generate completions for (bash, zsh, fish)",
             short="s"
+        ),
+        Arg.create(
+            "install",
+            typ=bool,
+            default=False,
+            help="Install completions to shell config file (~/.bashrc, ~/.zshrc, etc.)",
+            short="i"
         ),
 
     ],
     examples=[
-        ("jac completions --shell bash", "Generate bash completions"),
+        ("jac completions --install", "Install bash completions to ~/.bashrc"),
         (
-            "eval \"$(jac completions --shell bash)\"",
-            "Activate completions in current session"
+            "jac completions --shell zsh --install",
+            "Install zsh completions to ~/.zshrc"
         ),
+        ("jac completions --shell bash", "Print bash completions to stdout"),
 
     ],
     group="tools"
 )
-def completions(shell: str = "bash") -> int;
+def completions(shell: str = "bash", install: bool = False) -> int;

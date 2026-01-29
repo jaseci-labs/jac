@@ -134,10 +134,74 @@ impl lsp -> int {
 }
 
 """Generate shell completion script."""
-impl completions(shell: str = "bash") -> int {
+impl completions(shell: str = "bash", install: bool = False) -> int {
     import from jaclang.vendor { jaccomplete }
+    import re;
     try {
-        print(jaccomplete.shellcode(executables=["jac"], shell=shell));
+        completion_code = jaccomplete.shellcode(executables=["jac"], shell=shell);
+
+        if not install {
+            # Just print the completion code
+            print(completion_code);
+            return 0;
+        }
+
+        # Determine the config file based on shell
+        home = os.path.expanduser("~");
+        if shell == "bash" {
+            config_file = os.path.join(home, ".bashrc");
+        } elif shell == "zsh" {
+            config_file = os.path.join(home, ".zshrc");
+        } elif shell == "fish" {
+            config_file = os.path.join(home, ".config", "fish", "config.fish");
+        } else {
+            print(f"--install not supported for shell: {shell}", file=sys.stderr);
+            print(
+                "Please manually add the output of 'jac completions' to your shell config."
+            );
+            return 1;
+        }
+
+        # Markers for the completion block
+        start_marker = "# >>> jac completion >>>";
+        end_marker = "# <<< jac completion <<<";
+
+        # Read existing config
+        if os.path.exists(config_file) {
+            with open(config_file, "r") as f {
+                content = f.read();
+            }
+        } else {
+            content = "";
+        }
+
+        # Build the new completion block
+        new_block = f"{start_marker}\n{completion_code}{end_marker}\n";
+
+        # Check if markers already exist
+        pattern = re.compile(
+            rf"{re.escape(start_marker)}.*?{re.escape(end_marker)}\n?", re.DOTALL
+        );
+
+        if pattern.search(content) {
+            # Replace existing block
+            new_content = pattern.sub(new_block, content);
+            action = "Updated";
+        } else {
+            # Append new block
+            new_content = content.rstrip() + "\n\n" + new_block
+            if content.strip()
+            else new_block;
+            action = "Added";
+        }
+
+        # Write back
+        with open(config_file, "w") as f {
+            f.write(new_content);
+        }
+
+        print(f"{action} jac completions in {config_file}");
+        print(f"Run 'source {config_file}' or restart your shell to activate.");
         return 0;
     } except Exception as e {
         print(f"Error generating completions: {e}", file=sys.stderr);
