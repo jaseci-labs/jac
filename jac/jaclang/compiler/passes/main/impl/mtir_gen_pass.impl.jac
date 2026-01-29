@@ -314,7 +314,6 @@ impl MTIRGenPass._get_scope_str(node: uni.UniScopeNode) -> str {
         # Fallback to scope_name if base_path is not available
         return node.scope_name;
     }
-
     self_name = node.scope_name;
     if node.parent_scope and isinstance(node.parent_scope, uni.UniScopeNode) {
         parent_scope_str = self._get_scope_str(node.parent_scope);

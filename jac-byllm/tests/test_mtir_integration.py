@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from jaclang import JacRuntime, JacRuntimeInterface as Jac
+from jaclang import JacRuntime
+from jaclang import JacRuntimeInterface as Jac
 from jaclang.pycore.mtp import (
     ClassInfo,
     FieldInfo,
@@ -608,7 +609,10 @@ class TestScopeNameConsistency:
         )
 
         # Verify the scope contains the full module name (importable_schema, not importable_schem)
-        assert "MTIR_TEST: Has correct scope with 'importable_schema': True" in stdout_value, (
+        assert (
+            "MTIR_TEST: Has correct scope with 'importable_schema': True"
+            in stdout_value
+        ), (
             f"MTIR scope does not contain 'importable_schema'. "
             f"This indicates the module name 'importable_schema' (ending with 'a') "
             f"was truncated during compilation. Output:\n{stdout_value}"
