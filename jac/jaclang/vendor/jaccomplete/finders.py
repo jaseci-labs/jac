@@ -564,20 +564,3 @@ class CompletionFinder(object):
                     escaped_completions[0] += " "
 
         return escaped_completions
-
-
-
-class ExclusiveCompletionFinder(CompletionFinder):
-    @staticmethod
-    def _action_allowed(action, parser):
-        if not CompletionFinder._action_allowed(action, parser):
-            return False
-
-        append_classes = (argparse._AppendAction, argparse._AppendConstAction)
-        if action._orig_class in append_classes:
-            return True
-
-        if action not in parser._seen_non_default_actions:
-            return True
-
-        return False
