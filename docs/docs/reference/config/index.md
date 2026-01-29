@@ -187,6 +187,37 @@ enabled = true      # Enable caching
 
 ---
 
+### [storage]
+
+File storage configuration:
+
+```toml
+[storage]
+storage_type = "local"       # Storage backend (local)
+base_path = "./storage"      # Base directory for files
+create_dirs = true           # Auto-create directories
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `storage_type` | Storage backend type | `"local"` |
+| `base_path` | Base directory for file storage | `"./storage"` |
+| `create_dirs` | Automatically create directories | `true` |
+
+**Environment Variable Overrides:**
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_STORAGE_TYPE` | Storage type (overrides config) |
+| `JAC_STORAGE_PATH` | Base directory (overrides config) |
+| `JAC_STORAGE_CREATE_DIRS` | Auto-create directories (`"true"`/`"false"`) |
+
+Configuration priority: `jac.toml` > environment variables > defaults.
+
+See [Storage Reference](../plugins/jac-scale.md#storage) for the full storage API.
+
+---
+
 ### [plugins]
 
 Plugin configuration:
@@ -202,7 +233,23 @@ disabled = []           # Explicitly disabled
 model = "gpt-4"
 temperature = 0.7
 api_key = "${OPENAI_API_KEY}"
+
+# Webhook settings (jac-scale)
+[plugins.scale.webhook]
+secret = "your-webhook-secret-key"
+signature_header = "X-Webhook-Signature"
+verify_signature = true
+api_key_expiry_days = 365
+
+# Kubernetes version pinning (jac-scale)
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "latest"
+jac_scale = "latest"
+jac_client = "latest"
+jac_byllm = "none"           # Use "none" to skip installation
 ```
+
+See [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for details.
 
 ---
 
@@ -341,8 +388,88 @@ format = "jac format . --fix"
 
 ---
 
+## .jacignore
+
+The `.jacignore` file controls which Jac files are excluded from compilation and analysis. Place it in the project root.
+
+### Format
+
+One pattern per line, similar to `.gitignore`:
+
+```
+# Comments start with #
+vite_client_bundle.impl.jac
+test_fixtures/
+*.generated.jac
+```
+
+Each line is a filename or pattern that should be skipped during Jac compilation passes (type checking, formatting, etc.).
+
+---
+
+## Environment Variables
+
+### General
+
+| Variable | Description |
+|----------|-------------|
+| `NO_COLOR` | Disable colored terminal output |
+| `NO_EMOJI` | Disable emoji in terminal output |
+| `JAC_PROFILE` | Activate a configuration profile (e.g., `production`) |
+| `JAC_BASE_PATH` | Override base directory for data/storage |
+
+### Storage
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_STORAGE_TYPE` | Storage backend type |
+| `JAC_STORAGE_PATH` | Base directory for file storage |
+| `JAC_STORAGE_CREATE_DIRS` | Auto-create directories |
+
+### jac-scale: Database
+
+| Variable | Description |
+|----------|-------------|
+| `MONGODB_URI` | MongoDB connection URI |
+| `REDIS_URL` | Redis connection URL |
+
+### jac-scale: Authentication
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET` | Secret key for JWT signing | `supersecretkey` |
+| `JWT_ALGORITHM` | JWT algorithm | `HS256` |
+| `JWT_EXP_DELTA_DAYS` | Token expiration in days | `7` |
+| `SSO_HOST` | SSO callback host URL | `http://localhost:8000/sso` |
+| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | None |
+| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | None |
+
+### jac-scale: Webhooks
+
+| Variable | Description |
+|----------|-------------|
+| `WEBHOOK_SECRET` | Secret for webhook HMAC signatures |
+| `WEBHOOK_SIGNATURE_HEADER` | Header name for signature |
+| `WEBHOOK_VERIFY_SIGNATURE` | Enable signature verification |
+| `WEBHOOK_API_KEY_EXPIRY_DAYS` | API key expiry in days |
+
+### jac-scale: Kubernetes
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP_NAME` | Application name for K8s resources | `jaseci` |
+| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
+| `K8s_NODE_PORT` | External NodePort | `30001` |
+| `K8s_CPU_REQUEST` | CPU resource request | None |
+| `K8s_CPU_LIMIT` | CPU resource limit | None |
+| `K8s_MEMORY_REQUEST` | Memory resource request | None |
+| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
+| `DOCKER_USERNAME` | DockerHub username | None |
+| `DOCKER_PASSWORD` | DockerHub password/token | None |
+
+---
+
 ## See Also
 
-- [CLI Reference](../cli/index.md) - Command-line interface documentation
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
 - [Plugin Management](../cli/index.md#plugin-management) - Managing plugins
