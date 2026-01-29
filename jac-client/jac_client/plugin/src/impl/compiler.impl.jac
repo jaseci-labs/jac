@@ -187,20 +187,7 @@ impl ViteCompiler.compile_dependencies_recursively(
         output_path = self.compiled_dir / name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
-    # Add source file header comment for better error messages
     source_header = f"/* Source: {module_path} */\n";
-    # Add ES module exports so Vite can resolve named imports between modules
-    module_export_names = sorted(set(exports_list + list(non_root_globals.keys())));
-    if module_export_names {
-        import re;
-        # Strip any existing export declarations to avoid duplicates
-        clean_combined_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', combined_js);
-        clean_combined_js = re.sub(
-            r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_combined_js
-        );
-        export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
-        combined_js = clean_combined_js + export_stmt;
-    }
     output_path.write_text(source_header + combined_js, encoding='utf-8');
     if (not manifest or not manifest.imports) {
         return;
@@ -240,34 +227,15 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     runtimeutils_exports_list = self.jac_compiler.extract_exports(
         runtimeutils_manifest
     );
-    # Include both function exports and glob exports (e.g., useState, useEffect)
     glob_names = list(runtimeutils_manifest.globals) if runtimeutils_manifest else [];
     all_exports = sorted(
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
     );
-    # Strip all existing export statements from compiled JS to avoid duplicates.
-    # The codegen produces `export let`, `export function`, `export class`, and
-    # `export { ... }` forms. We remove the export keyword from declarations and
-    # remove export blocks entirely, then add one comprehensive export at the end.
-    import re;
-    clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', runtimeutils_js);
-    clean_js = re.sub(r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_js);
-    # Append single comprehensive ES module export for Vite to resolve @jac/runtime
-    export_names = [
-        e
-        for e in all_exports
-        if not e.startswith('_')
-    ];
-    # Also include internal names that are imported by compiled modules
-    internal_exports = ['__jacJsx', '__jacSpawn', '__jacCallFunction'];
-    all_export_names = sorted(set(export_names + internal_exports));
-    export_stmt = f"\nexport {{ {', '.join(all_export_names)} }};\n";
-    combined_runtime_utils_js = clean_js + export_stmt;
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
     (self.compiled_dir / 'client_runtime.js').write_text(
-        combined_runtime_utils_js, encoding='utf-8'
+        runtimeutils_js, encoding='utf-8'
     );
-    return (combined_runtime_utils_js, all_exports);
+    return (runtimeutils_js, all_exports);
 }
 
 """Initialize the Vite compiler."""
