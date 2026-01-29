@@ -315,24 +315,24 @@ def test_compiler_generates_export_statements() -> None:
 
 def test_pub_keyword_required_for_exports() -> None:
     """Test that only :pub declarations are exported, not all client declarations."""
-    test_code = '''
-    cl { 
-        glob PRIVATE_VAR: str = "private"; 
-        glob:pub PUBLIC_VAR: str = "public"; 
-        
-        def private_helper() -> str { 
-            return "private"; 
+    test_code = """
+    cl {
+        glob PRIVATE_VAR: str = "private";
+        glob:pub PUBLIC_VAR: str = "public";
+
+        def private_helper() -> str {
+            return "private";
         }
-        obj PrivateClass { 
-            has value: int = 0; 
-        }
-        def:pub public_app() -> any { 
-            return <div>{private_helper()}</div>; 
-        } 
-        obj:pub PublicClass { 
+        obj PrivateClass {
             has value: int = 0;
-        } 
-    }'''
+        }
+        def:pub public_app() -> any {
+            return <div>{private_helper()}</div>;
+        }
+        obj:pub PublicClass {
+            has value: int = 0;
+        }
+    }"""
 
     with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
         f.write(test_code)
@@ -346,26 +346,35 @@ def test_pub_keyword_required_for_exports() -> None:
         # Only :pub items should be in manifest
         assert "public_app" in manifest.exports and "PublicClass" in manifest.exports
         assert "PUBLIC_VAR" in manifest.globals
-        assert "private_helper" not in manifest.exports and "PrivateClass" not in manifest.exports
+        assert (
+            "private_helper" not in manifest.exports
+            and "PrivateClass" not in manifest.exports
+        )
         assert "PRIVATE_VAR" not in manifest.globals
 
         # Only :pub items should be in export statement
         export_start = js.index("export {")
-        export_statement = js[export_start:js.index("};", export_start) + 2]
-        assert all(name in export_statement for name in ["PUBLIC_VAR", "public_app", "PublicClass"])
-        assert all(name not in export_statement for name in ["PRIVATE_VAR", "private_helper", "PrivateClass"])
+        export_statement = js[export_start : js.index("};", export_start) + 2]
+        assert all(
+            name in export_statement
+            for name in ["PUBLIC_VAR", "public_app", "PublicClass"]
+        )
+        assert all(
+            name not in export_statement
+            for name in ["PRIVATE_VAR", "private_helper", "PrivateClass"]
+        )
 
         os.unlink(f.name)
 
 
 def test_no_exports_without_pub_keyword() -> None:
     """Test that modules without :pub declarations have no export statement."""
-    test_code = '''
-    cl { 
+    test_code = """
+    cl {
         glob INTERNAL_VAR: str = "internal";
         def helper() -> str { return "helper"; }
-        def app() -> any { return <div>{helper()}</div>; } 
-    }'''
+        def app() -> any { return <div>{helper()}</div>; }
+    }"""
 
     with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
         f.write(test_code)
@@ -383,12 +392,12 @@ def test_no_exports_without_pub_keyword() -> None:
 
 def test_single_component_export_generation() -> None:
     """Test export generation for a simple single-component module."""
-    test_code = '''
+    test_code = """
     cl {
         def:pub Button(label: str) -> any {
             return <button>{label}</button>;
         }
-    }'''
+    }"""
 
     with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
         f.write(test_code)
@@ -406,13 +415,13 @@ def test_single_component_export_generation() -> None:
 
 def test_mixed_exports_and_globals() -> None:
     """Test export generation with both function exports and global variables."""
-    test_code = '''
-    cl { 
-        glob API_URL: str = "https://example.com"; 
-        glob MAX_ITEMS: int = 100; 
-        def:pub fetchData() -> any { return API_URL; } 
-        def:pub getLimit() -> int { return MAX_ITEMS; } 
-    }'''
+    test_code = """
+    cl {
+        glob API_URL: str = "https://example.com";
+        glob MAX_ITEMS: int = 100;
+        def:pub fetchData() -> any { return API_URL; }
+        def:pub getLimit() -> int { return MAX_ITEMS; }
+    }"""
 
     with NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f:
         f.write(test_code)
@@ -423,9 +432,13 @@ def test_mixed_exports_and_globals() -> None:
 
         assert module.gen.js.count("export {") == 1
         export_start = module.gen.js.index("export {")
-        export_statement = module.gen.js[export_start:module.gen.js.index("};", export_start) + 2]
+        export_statement = module.gen.js[
+            export_start : module.gen.js.index("};", export_start) + 2
+        ]
 
-        expected = set(module.gen.client_manifest.exports + module.gen.client_manifest.globals)
+        expected = set(
+            module.gen.client_manifest.exports + module.gen.client_manifest.globals
+        )
         assert all(name in export_statement for name in expected)
 
         os.unlink(f.name)
@@ -437,22 +450,22 @@ def test_private_items_not_importable() -> None:
 
     with TemporaryDirectory() as tmpdir:
         provider = Path(tmpdir) / "provider.jac"
-        provider.write_text('''
-        cl { 
-            glob:pub PUBLIC_CONST: str = "public"; 
-            glob PRIVATE_CONST: str = "private"; 
-            def:pub publicFunc() -> str { return "public"; } 
-            def privateFunc() -> str { return "private"; } 
-        }''')
+        provider.write_text("""
+        cl {
+            glob:pub PUBLIC_CONST: str = "public";
+            glob PRIVATE_CONST: str = "private";
+            def:pub publicFunc() -> str { return "public"; }
+            def privateFunc() -> str { return "private"; }
+        }""")
 
         consumer = Path(tmpdir) / "consumer.jac"
-        consumer.write_text('''
-        cl { 
-            import from provider { publicFunc, PUBLIC_CONST } 
-            def:pub app() -> any { 
-                return <div>{publicFunc()} {PUBLIC_CONST}</div>; 
-            } 
-        }''')
+        consumer.write_text("""
+        cl {
+            import from provider { publicFunc, PUBLIC_CONST }
+            def:pub app() -> any {
+                return <div>{publicFunc()} {PUBLIC_CONST}</div>;
+            }
+        }""")
 
         prog = JacProgram()
         provider_mod = prog.compile(str(provider))
@@ -469,4 +482,7 @@ def test_private_items_not_importable() -> None:
 
         # Consumer can import :pub items
         consumer_mod = prog.compile(str(consumer))
-        assert "publicFunc" in consumer_mod.gen.js and "PUBLIC_CONST" in consumer_mod.gen.js
+        assert (
+            "publicFunc" in consumer_mod.gen.js
+            and "PUBLIC_CONST" in consumer_mod.gen.js
+        )
