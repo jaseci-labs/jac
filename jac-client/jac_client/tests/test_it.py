@@ -778,3 +778,202 @@ def test_default_client_app_renders() -> None:
             print(f"[DEBUG] Restoring working directory to {original_cwd}")
             os.chdir(original_cwd)
             gc.collect()
+
+
+def test_configurable_api_base_url_in_bundle() -> None:
+    """Test that [plugins.client.api] base_url is baked into the served JS bundle.
+
+    End-to-end verification of the configurable API base URL feature:
+    1. Creates a client app using the all-in-one example (which uses walkers/auth)
+    2. Injects [plugins.client.api] base_url into jac.toml
+    3. Starts the server and waits for the bundle to build
+    4. Fetches the served JS bundle
+    5. Asserts the configured URL appears in the bundled JavaScript
+    """
+    import re
+    import tomllib
+
+    print("[DEBUG] Starting test_configurable_api_base_url_in_bundle")
+
+    # Resolve the all-in-one example (uses walkers/auth so base URL won't be tree-shaken)
+    tests_dir = os.path.dirname(__file__)
+    jac_client_root = os.path.dirname(tests_dir)
+    all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one")
+
+    print(f"[DEBUG] Resolved all-in-one source path: {all_in_one_path}")
+    assert os.path.isdir(all_in_one_path), "all-in-one example directory missing"
+
+    app_name = "e2e-api-base-url"
+    configured_base_url = "http://my-custom-backend:9000"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # 1. Create a client app and copy all-in-one into it
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            print(f"[DEBUG] Running 'jac create --use client {app_name}'")
+            process = Popen(
+                [*jac_cmd, "create", "--use", "client", app_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                env=env,
+            )
+            stdout, stderr = process.communicate()
+            returncode = process.returncode
+
+            print(
+                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}\n"
+            )
+
+            if returncode != 0 and "unrecognized arguments: --use" in stderr:
+                pytest.fail(
+                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                )
+
+            assert returncode == 0, (
+                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+            )
+
+            project_path = os.path.join(temp_dir, app_name)
+            assert os.path.isdir(project_path)
+
+            # Copy all-in-one contents (which uses walkers, auth, etc.)
+            print("[DEBUG] Copying @all-in-one contents into created Jac app")
+            for entry in os.listdir(all_in_one_path):
+                src = os.path.join(all_in_one_path, entry)
+                dst = os.path.join(project_path, entry)
+                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
+                    continue
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src, dst)
+
+            # 2. Inject [plugins.client.api] base_url into jac.toml
+            jac_toml_path = os.path.join(project_path, "jac.toml")
+            assert os.path.isfile(jac_toml_path), "jac.toml should exist"
+
+            with open(jac_toml_path, "rb") as f:
+                original_config = tomllib.load(f)
+            print(f"[DEBUG] Original jac.toml keys: {list(original_config.keys())}")
+
+            # Append api config (the all-in-one jac.toml may already have [plugins.client])
+            with open(jac_toml_path, "a") as f:
+                f.write(f'\n[plugins.client.api]\nbase_url = "{configured_base_url}"\n')
+
+            with open(jac_toml_path, "rb") as f:
+                updated_config = tomllib.load(f)
+            api_base = (
+                updated_config.get("plugins", {})
+                .get("client", {})
+                .get("api", {})
+                .get("base_url", "")
+            )
+            print(f"[DEBUG] Verified jac.toml base_url = {api_base!r}")
+            assert api_base == configured_base_url
+
+            # 3. Install packages
+            print("[DEBUG] Running 'jac add --npm' to install packages")
+            jac_add_result = run(
+                [*jac_cmd, "add", "--npm"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            print(
+                f"[DEBUG] 'jac add --npm' returncode={jac_add_result.returncode}\n"
+                f"STDOUT (truncated):\n{jac_add_result.stdout[:1000]}\n"
+                f"STDERR (truncated):\n{jac_add_result.stderr[:1000]}\n"
+            )
+            if jac_add_result.returncode != 0:
+                pytest.fail(
+                    f"jac add --npm failed\n"
+                    f"STDOUT:\n{jac_add_result.stdout}\n"
+                    f"STDERR:\n{jac_add_result.stderr}\n"
+                )
+
+            # 4. Start the server
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            try:
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # 5. Fetch root HTML to find the JS bundle path
+                try:
+                    root_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}",
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8", errors="ignore")
+                    print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
+                    assert "<html" in root_body.lower(), "Root should return HTML"
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    pytest.fail(f"Failed to GET root endpoint: {exc}")
+
+                # 6. Extract JS bundle path and fetch it
+                # URL format is /static/client.js?hash=... or /static/client.HASH.js
+                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
+                assert script_match, (
+                    f"Could not find client JS bundle path in HTML:\n{root_body[:1000]}"
+                )
+
+                js_path = script_match.group(1)
+                js_url = f"http://127.0.0.1:{server_port}{js_path}"
+                print(f"[DEBUG] Fetching JS bundle from {js_url}")
+
+                with urlopen(js_url, timeout=30) as resp:
+                    js_body = resp.read().decode("utf-8", errors="ignore")
+                    assert resp.status == 200, "JS bundle should return 200"
+                    assert len(js_body) > 0, "JS bundle should not be empty"
+                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
+
+                # 7. Assert the configured base URL is baked into the bundle
+                assert configured_base_url in js_body, (
+                    f"Expected configured base_url '{configured_base_url}' to appear "
+                    f"in the bundled JavaScript, but it was not found.\n"
+                    f"Bundle size: {len(js_body)} bytes"
+                )
+                print(f"[DEBUG] Confirmed '{configured_base_url}' found in JS bundle")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                        print("[DEBUG] Server terminated cleanly")
+                    except Exception:
+                        print("[DEBUG] Server did not terminate cleanly, killing")
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            print(f"[DEBUG] Restoring working directory to {original_cwd}")
+            os.chdir(original_cwd)
+            gc.collect()
