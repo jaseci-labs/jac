@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.13 (Unreleased)
 
 - **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
+- **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
 
 ## jaclang 0.9.12 (Latest Release)
 
