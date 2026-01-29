@@ -47,6 +47,8 @@ nav:
       - Troubleshooting: "tutorials/troubleshooting.md"
 
   - Reference:
+      - CLI Reference: "reference/cli/index.md"
+      - Configuration: "reference/config/index.md"
       - Language Reference:
           - Overview: "reference/language/index.md"
           - "Part I: Foundation": "reference/language/foundation.md"
@@ -66,14 +68,10 @@ nav:
           - Quick Reference:
               - Walker Responses: "reference/language/walker-responses.md"
               - Graph Operations: "reference/language/graph-operations.md"
-      - CLI Reference: "reference/cli/index.md"
-      - Configuration: "reference/config/index.md"
+      - AI-Programming Reference: "reference/plugins/byllm.md"
+      - Full-Stack Reference: "reference/plugins/jac-client.md"
+      - Cloud-Scale Reference: "reference/plugins/jac-scale.md"
       - Testing: "reference/testing.md"
-      - Plugin Reference:
-          - Overview: "reference/plugins/index.md"
-          - byLLM: "reference/plugins/byllm.md"
-          - jac-client: "reference/plugins/jac-client.md"
-          - jac-scale: "reference/plugins/jac-scale.md"
 
   - Community:
       - Contributing: "community/contributing.md"
