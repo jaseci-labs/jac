@@ -3,21 +3,21 @@ from shlex import quote
 bashcode = r"""#compdef %(executables)s
 # Run something, muting output or redirecting it to the debug stream
 # depending on the value of _ARC_DEBUG.
-# If ARGCOMPLETE_USE_TEMPFILES is set, use tempfiles for IPC.
-__python_jaccomplete_run() {
-    if [[ -z "${ARGCOMPLETE_USE_TEMPFILES-}" ]]; then
-        __python_jaccomplete_run_inner "$@"
+# If JAC_COMPLETE_USE_TEMPFILES is set, use tempfiles for IPC.
+__jac_complete_run() {
+    if [[ -z "${JAC_COMPLETE_USE_TEMPFILES-}" ]]; then
+        __jac_complete_run_inner "$@"
         return
     fi
     local tmpfile="$(mktemp)"
-    _ARGCOMPLETE_STDOUT_FILENAME="$tmpfile" __python_jaccomplete_run_inner "$@"
+    _JAC_COMPLETE_STDOUT_FILENAME="$tmpfile" __jac_complete_run_inner "$@"
     local code=$?
     cat "$tmpfile"
     rm "$tmpfile"
     return $code
 }
 
-__python_jaccomplete_run_inner() {
+__jac_complete_run_inner() {
     if [[ -z "${_ARC_DEBUG-}" ]]; then
         "$@" 8>&1 9>&2 1>/dev/null 2>&1 </dev/null
     else
@@ -25,7 +25,7 @@ __python_jaccomplete_run_inner() {
     fi
 }
 
-_python_jaccomplete%(function_suffix)s() {
+_jac_complete%(function_suffix)s() {
     local IFS=$'\013'
     local script="%(jaccomplete_script)s"
     if [[ -n "${ZSH_VERSION-}" ]]; then
@@ -33,10 +33,10 @@ _python_jaccomplete%(function_suffix)s() {
         completions=($(IFS="$IFS" \
             COMP_LINE="$BUFFER" \
             COMP_POINT="$CURSOR" \
-            _ARGCOMPLETE=1 \
-            _ARGCOMPLETE_SHELL="zsh" \
-            _ARGCOMPLETE_SUPPRESS_SPACE=1 \
-            __python_jaccomplete_run ${script:-${words[1]}}))
+            _JAC_COMPLETE=1 \
+            _JAC_COMPLETE_SHELL="zsh" \
+            _JAC_COMPLETE_SUPPRESS_SPACE=1 \
+            __jac_complete_run ${script:-${words[1]}}))
         local nosort=()
         local nospace=()
         if is-at-least 5.8; then
@@ -55,11 +55,11 @@ _python_jaccomplete%(function_suffix)s() {
             COMP_LINE="$COMP_LINE" \
             COMP_POINT="$COMP_POINT" \
             COMP_TYPE="$COMP_TYPE" \
-            _ARGCOMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
-            _ARGCOMPLETE=1 \
-            _ARGCOMPLETE_SHELL="bash" \
-            _ARGCOMPLETE_SUPPRESS_SPACE=$SUPPRESS_SPACE \
-            __python_jaccomplete_run ${script:-$1}))
+            _JAC_COMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
+            _JAC_COMPLETE=1 \
+            _JAC_COMPLETE_SHELL="bash" \
+            _JAC_COMPLETE_SUPPRESS_SPACE=$SUPPRESS_SPACE \
+            __jac_complete_run ${script:-$1}))
         if [[ $? != 0 ]]; then
             unset COMPREPLY
         elif [[ $SUPPRESS_SPACE == 1 ]] && [[ "${COMPREPLY-}" =~ [=/:]$ ]]; then
@@ -68,7 +68,7 @@ _python_jaccomplete%(function_suffix)s() {
     fi
 }
 if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete %(complete_opts)s -F _python_jaccomplete%(function_suffix)s %(executables)s
+    complete %(complete_opts)s -F _jac_complete%(function_suffix)s %(executables)s
 else
     # When called by the Zsh completion system, this will end with
     # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
@@ -76,24 +76,24 @@ else
     # completion system
     autoload is-at-least
     if [[ $zsh_eval_context == *func ]]; then
-        _python_jaccomplete%(function_suffix)s "$@"
+        _jac_complete%(function_suffix)s "$@"
     else
-        compdef _python_jaccomplete%(function_suffix)s %(executables)s
+        compdef _jac_complete%(function_suffix)s %(executables)s
     fi
 fi
 """
 
 tcshcode = """\
-complete "%(executable)s" 'p@*@`python-jaccomplete-tcsh "%(jaccomplete_script)s"`@' ;
+complete "%(executable)s" 'p@*@`jac-complete-tcsh "%(jaccomplete_script)s"`@' ;
 """
 
 fishcode = r"""
 function __fish_%(function_name)s_complete
-    set -lx _ARGCOMPLETE 1
-    set -lx _ARGCOMPLETE_DFS \t
-    set -lx _ARGCOMPLETE_IFS \n
-    set -lx _ARGCOMPLETE_SUPPRESS_SPACE 1
-    set -lx _ARGCOMPLETE_SHELL fish
+    set -lx _JAC_COMPLETE 1
+    set -lx _JAC_COMPLETE_DFS \t
+    set -lx _JAC_COMPLETE_IFS \n
+    set -lx _JAC_COMPLETE_SUPPRESS_SPACE 1
+    set -lx _JAC_COMPLETE_SHELL fish
     set -lx COMP_LINE (commandline -p)
     set -lx COMP_POINT (string length (commandline -cp))
     set -lx COMP_TYPE
@@ -110,20 +110,20 @@ powershell_code = r"""
 Register-ArgumentCompleter -Native -CommandName %(executable)s -ScriptBlock {
     param($commandName, $wordToComplete, $cursorPosition)
     $completion_file = New-TemporaryFile
-    $env:ARGCOMPLETE_USE_TEMPFILES = 1
-    $env:_ARGCOMPLETE_STDOUT_FILENAME = $completion_file
+    $env:JAC_COMPLETE_USE_TEMPFILES = 1
+    $env:_JAC_COMPLETE_STDOUT_FILENAME = $completion_file
     $env:COMP_LINE = $wordToComplete
     $env:COMP_POINT = $cursorPosition
-    $env:_ARGCOMPLETE = 1
-    $env:_ARGCOMPLETE_SUPPRESS_SPACE = 0
-    $env:_ARGCOMPLETE_IFS = "`n"
-    $env:_ARGCOMPLETE_SHELL = "powershell"
+    $env:_JAC_COMPLETE = 1
+    $env:_JAC_COMPLETE_SUPPRESS_SPACE = 0
+    $env:_JAC_COMPLETE_IFS = "`n"
+    $env:_JAC_COMPLETE_SHELL = "powershell"
     %(jaccomplete_script)s 2>&1 | Out-Null
 
     Get-Content $completion_file | ForEach-Object {
         [System.Management.Automation.CompletionResult]::new($_, $_, "ParameterValue", $_)
     }
-    Remove-Item $completion_file, Env:\_ARGCOMPLETE_STDOUT_FILENAME, Env:\ARGCOMPLETE_USE_TEMPFILES, Env:\COMP_LINE, Env:\COMP_POINT, Env:\_ARGCOMPLETE, Env:\_ARGCOMPLETE_SUPPRESS_SPACE, Env:\_ARGCOMPLETE_IFS, Env:\_ARGCOMPLETE_SHELL
+    Remove-Item $completion_file, Env:\_JAC_COMPLETE_STDOUT_FILENAME, Env:\JAC_COMPLETE_USE_TEMPFILES, Env:\COMP_LINE, Env:\COMP_POINT, Env:\_JAC_COMPLETE, Env:\_JAC_COMPLETE_SUPPRESS_SPACE, Env:\_JAC_COMPLETE_IFS, Env:\_JAC_COMPLETE_SHELL
 }
 """  # noqa: E501
 

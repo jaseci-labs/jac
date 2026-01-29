@@ -54,7 +54,7 @@ class CompletionFinder(object):
         self._display_completions: Dict[str, str] = {}
         self.default_completer = default_completer
         if append_space is None:
-            append_space = os.environ.get("_ARGCOMPLETE_SUPPRESS_SPACE") != "1"
+            append_space = os.environ.get("_JAC_COMPLETE_SUPPRESS_SPACE") != "1"
         self.append_space = append_space
 
     def __call__(
@@ -95,7 +95,7 @@ class CompletionFinder(object):
 
         Produces tab completions for ``argument_parser``. See module docs for more info.
 
-        Argcomplete only executes actions if their class is known not to have side effects. Custom action classes can be
+        Jaccomplete only executes actions if their class is known not to have side effects. Custom action classes can be
         added to jaccomplete.safe_actions, if their values are wanted in the ``parsed_args`` completer argument, or
         their execution is otherwise desirable.
         """
@@ -109,14 +109,14 @@ class CompletionFinder(object):
             default_completer=default_completer,
         )
 
-        if "_ARGCOMPLETE" not in os.environ:
+        if "_JAC_COMPLETE" not in os.environ:
             # not an argument completion invocation
             return
 
         self._init_debug_stream()
 
         if output_stream is None:
-            filename = os.environ.get("_ARGCOMPLETE_STDOUT_FILENAME")
+            filename = os.environ.get("_JAC_COMPLETE_STDOUT_FILENAME")
             if filename is not None:
                 debug("Using output file {}".format(filename))
                 output_stream = open(filename, "w")
@@ -130,12 +130,12 @@ class CompletionFinder(object):
 
         assert output_stream is not None
 
-        ifs = os.environ.get("_ARGCOMPLETE_IFS", "\013")
+        ifs = os.environ.get("_JAC_COMPLETE_IFS", "\013")
         if len(ifs) != 1:
             debug("Invalid value for IFS, quitting [{v}]".format(v=ifs))
             exit_method(1)
 
-        dfs = os.environ.get("_ARGCOMPLETE_DFS")
+        dfs = os.environ.get("_JAC_COMPLETE_DFS")
         if dfs and len(dfs) != 1:
             debug("Invalid value for DFS, quitting [{v}]".format(v=dfs))
             exit_method(1)
@@ -145,12 +145,12 @@ class CompletionFinder(object):
 
         cword_prequote, cword_prefix, cword_suffix, comp_words, last_wordbreak_pos = split_line(comp_line, comp_point)
 
-        # _ARGCOMPLETE is set by the shell script to tell us where comp_words
+        # _JAC_COMPLETE is set by the shell script to tell us where comp_words
         # should start, based on what we're completing.
         # 1: <script> [args]
         # 2: python <script> [args]
         # 3: python -m <module> [args]
-        start = int(os.environ["_ARGCOMPLETE"]) - 1
+        start = int(os.environ["_JAC_COMPLETE"]) - 1
         comp_words = comp_words[start:]
 
         if cword_prefix and cword_prefix[0] in self._parser.prefix_chars and "=" in cword_prefix:
@@ -175,7 +175,7 @@ class CompletionFinder(object):
             }
             completions = [dfs.join((key, display_completions.get(key) or "")) for key in completions]
 
-        if os.environ.get("_ARGCOMPLETE_SHELL") == "zsh":
+        if os.environ.get("_JAC_COMPLETE_SHELL") == "zsh":
             completions = [f"{c}:{self._display_completions.get(c)}" for c in completions]
 
         debug("\nReturning completions:", completions)
@@ -526,7 +526,7 @@ class CompletionFinder(object):
         elif cword_prequote == '"':
             special_chars += '"`$!'
 
-        if os.environ.get("_ARGCOMPLETE_SHELL") in ("tcsh", "fish"):
+        if os.environ.get("_JAC_COMPLETE_SHELL") in ("tcsh", "fish"):
             # tcsh and fish escapes special characters itself.
             special_chars = ""
         elif cword_prequote == "'":
@@ -536,12 +536,12 @@ class CompletionFinder(object):
             completions = [c.replace("'", r"'\''") for c in completions]
 
         # PowerShell uses ` as escape character.
-        if os.environ.get("_ARGCOMPLETE_SHELL") == "powershell":
+        if os.environ.get("_JAC_COMPLETE_SHELL") == "powershell":
             escape_char = '`'
             special_chars = special_chars.replace('`', '')
         else:
             escape_char = "\\"
-            if os.environ.get("_ARGCOMPLETE_SHELL") == "zsh":
+            if os.environ.get("_JAC_COMPLETE_SHELL") == "zsh":
                 # zsh uses colon as a separator between a completion and its description.
                 special_chars += ":"
 

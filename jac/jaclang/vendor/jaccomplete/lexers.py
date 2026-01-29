@@ -1,6 +1,6 @@
 import os
 
-from .exceptions import ArgcompleteException
+from .exceptions import JacCompleteException
 from .io import debug
 from .packages import _shlex
 
@@ -11,7 +11,7 @@ def split_line(line, point=None):
     line = line[:point]
     lexer = _shlex.shlex(line, posix=True)
     lexer.whitespace_split = True
-    lexer.wordbreaks = os.environ.get("_ARGCOMPLETE_COMP_WORDBREAKS", "")
+    lexer.wordbreaks = os.environ.get("_JAC_COMPLETE_COMP_WORDBREAKS", "")
     words = []
 
     def split_word(word):
@@ -39,7 +39,7 @@ def split_line(line, point=None):
             word = lexer.get_token()
             if word == lexer.eof:
                 # TODO: check if this is ever unsafe
-                # raise ArgcompleteException("Unexpected end of input")
+                # raise JacCompleteException("Unexpected end of input")
                 return "", "", "", words, None
             if lexer.instream.tell() >= point:
                 debug("word", word, "split, lexer state: '{s}'".format(s=lexer.state))
@@ -52,6 +52,6 @@ def split_line(line, point=None):
             else:
                 msg = (
                     "Unexpected internal state. "
-                    "Please report this bug at https://github.com/kislyuk/jaccomplete/issues."
+                    "Please report this bug at https://github.com/Jaseci-Labs/jaseci/issues."
                 )
-                raise ArgcompleteException(msg)
+                raise JacCompleteException(msg)

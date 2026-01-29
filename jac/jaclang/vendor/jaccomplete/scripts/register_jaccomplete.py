@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# JAC_ARGCOMPLETE_OK
+# JAC_COMPLETE_OK
 
 """
 Register a Python executable for use with the jaccomplete module.
