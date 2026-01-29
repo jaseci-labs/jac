@@ -1,6 +1,3 @@
-# Copyright 2012-2023, Andrey Kislyuk and jaccomplete contributors.
-# Licensed under the Apache License. See https://github.com/kislyuk/jaccomplete for more info.
-
 from . import completers
 from .completers import ChoicesCompleter, DirectoriesCompleter, EnvironCompleter, FilesCompleter, SuppressCompleter
 from .exceptions import ArgcompleteException

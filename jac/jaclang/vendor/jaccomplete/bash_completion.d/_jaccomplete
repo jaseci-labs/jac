@@ -1,9 +1,6 @@
 #compdef -default-
 
 # jaccomplete global completion loader for zsh and bash
-# Copyright 2012-2023, Andrey Kislyuk and jaccomplete contributors.
-# Licensed under the Apache License. See https://github.com/kislyuk/jaccomplete for more info.
-
 # Note: both the leading underscore in the name of this file and the first line (compdef) are required by zsh
 
 # In zsh, this file is autoloaded and used as the default completer (_default).

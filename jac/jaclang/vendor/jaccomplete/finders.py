@@ -1,8 +1,3 @@
-# Copyright 2012-2023, Andrey Kislyuk and jaccomplete contributors. Licensed under the terms of the
-# `Apache License, Version 2.0 <http://www.apache.org/licenses/LICENSE-2.0>`_. Distribution of the LICENSE and NOTICE
-# files with source copies of this package and derivative works is **REQUIRED** as specified by the Apache License.
-# See https://github.com/kislyuk/jaccomplete for more info.
-
 import argparse
 import os
 import sys

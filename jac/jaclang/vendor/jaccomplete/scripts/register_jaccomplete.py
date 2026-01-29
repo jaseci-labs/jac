@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 # JAC_ARGCOMPLETE_OK
 
-# Copyright 2012-2023, Andrey Kislyuk and jaccomplete contributors.
-# Licensed under the Apache License. See https://github.com/kislyuk/jaccomplete for more info.
-
 """
 Register a Python executable for use with the jaccomplete module.
 
