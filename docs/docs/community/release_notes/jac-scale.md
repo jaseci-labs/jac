@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.4 (Unreleased)
 
+- **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
+
 ## jac-scale 0.1.3 (Latest Release)
 
 - **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.

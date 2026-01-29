@@ -352,6 +352,9 @@ class TestServerClientMigrated:
         assert response2.ok
         data2 = response2.data
         assert "result" in data2 or "reports" in data2
+        report = data2.get("reports", "")[0]
+        assert "Test Task" in report[0].get("title", "")
+        assert report[0].get("completed", False) is True
 
         # Get Task node using GetTask walker
         if jid:

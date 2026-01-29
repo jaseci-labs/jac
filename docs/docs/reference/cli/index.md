@@ -31,6 +31,8 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac tool` | Language tools (IR, AST) |
 | `jac lsp` | Language server |
 | `jac js` | JavaScript output |
+| `jac build` | Build for target platform (jac-client) |
+| `jac setup` | Setup build target (jac-client) |
 
 ---
 
@@ -860,6 +862,68 @@ Start the Language Server Protocol server (for IDE integration).
 ```bash
 jac lsp
 ```
+
+---
+
+## Plugin Commands
+
+Plugins can add new commands and extend existing ones. These commands are available when the corresponding plugin is installed.
+
+### jac-client Commands
+
+Requires: `pip install jac-client`
+
+#### jac build
+
+Build a Jac application for a specific target.
+
+```bash
+jac build [filename] [--client TARGET] [-p PLATFORM]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to .jac file | `main.jac` |
+| `--client` | Build target (`web`, `desktop`) | `web` |
+| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+
+**Examples:**
+
+```bash
+# Build web target (default)
+jac build
+
+# Build desktop app
+jac build --client desktop
+
+# Build for Windows
+jac build --client desktop --platform windows
+```
+
+#### jac setup
+
+One-time initialization for a build target.
+
+```bash
+jac setup <target>
+```
+
+**Examples:**
+
+```bash
+# Setup Tauri for desktop builds
+jac setup desktop
+```
+
+#### Extended Flags
+
+| Base Command | Added Flag | Description |
+|-------------|-----------|-------------|
+| `jac create` | `--use client` | Create full-stack project template |
+| `jac create` | `--skip` | Skip npm package installation |
+| `jac start` | `--client <target>` | Client build target for dev server |
+| `jac add` | `--npm` | Add npm (client-side) dependency |
+| `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
 

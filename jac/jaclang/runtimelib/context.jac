@@ -36,9 +36,7 @@ obj ExecutionContext {
         system_root: NodeAnchor | None by postinit,
         user_root: NodeAnchor | None by postinit,
         entry_node: NodeAnchor | None by postinit,
-        call_state: ContextVar[CallState] = ContextVar(
-            'call_state', default=CallState()
-        );
+        call_state: ContextVar[CallState] = ContextVar('call_state');
 
     def postinit -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;

@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.13 (Unreleased)
 
 - **Automatic Version Pinning in `jac.toml`**: When running `jac add <package_name>` without specifying a version, the detected installed version is automatically added to `jac.toml`, falling back to `>=0.0.0` if detection fails.
+- **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
 
 ## jaclang 0.9.12 (Latest Release)
 

@@ -19,6 +19,7 @@ class JacClientConfig(PluginConfigBase) {
     override def get_default_config(self: JacClientConfig) -> dict[str, Any];
     override def load(self: JacClientConfig) -> dict[str, Any];
     def save(self: JacClientConfig) -> None;
+    def get_api_config(self: JacClientConfig) -> dict[str, Any];
     def get_vite_config(self: JacClientConfig) -> dict[str, Any];
     def get_ts_config(self: JacClientConfig) -> dict[str, Any];
     def get_configs(self: JacClientConfig) -> dict[str, Any];

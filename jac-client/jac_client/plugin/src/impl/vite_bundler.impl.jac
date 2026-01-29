@@ -231,6 +231,8 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
+    api_config_data = self.config_loader.get_api_config();
+    api_base_url = api_config_data.get('base_url', '');
     config_path = configs_dir / 'vite.config.js';
     # TypeScript is always enabled by default
     try {
@@ -355,6 +357,9 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [
     jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
@@ -564,6 +569,9 @@ impl ViteBundler.create_dev_vite_config(
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     config_path = configs_dir / 'vite.dev.config.js';
+    # Get API base URL from config (empty = same origin with proxy)
+    api_config_data = self.config_loader.get_api_config();
+    api_base_url = api_config_data.get('base_url', '');
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();
@@ -599,6 +607,9 @@ const projectRoot = path.resolve(__dirname, "../../..");
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [react()],
   root: buildDir,
   publicDir: false,
