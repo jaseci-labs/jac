@@ -208,48 +208,38 @@ def test_fstring_generates_template_literal(fixture_path: Callable[[str], str]) 
 def test_export_semantics_for_pub_declarations(
     fixture_path: Callable[[str], str],
 ) -> None:
-    """Test that :pub annotated declarations generate comprehensive export statement."""
+    """Test comprehensive export: single export {} at end with all :pub items, no inline exports."""
     es_ast = compile_to_esast(fixture_path("export_semantics.jac"))
     js_code = es_to_js(es_ast)
 
-    # Verify single comprehensive ExportNamedDeclaration exists
+    # Single comprehensive export statement at the end
     export_decls = [
         node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
     ]
-    assert len(export_decls) == 1, "Expected single comprehensive export statement"
+    assert len(export_decls) == 1, "Should have exactly one export statement"
+    assert es_ast.body[-1] == export_decls[0], "Export statement should be at the end"
 
-    # Verify the comprehensive export statement contains all :pub items
-    assert "export {" in js_code, "Should have comprehensive export statement"
-    export_start = js_code.index("export {")
-    export_end = js_code.index("};", export_start) + 2
-    export_stmt = js_code[export_start:export_end]
+    # Extract the export statement (should be at the end of the file)
+    assert js_code.strip().endswith(
+        ";"
+    ), "JS should end with semicolon from export statement"
+    lines = js_code.strip().split("\n")
+    last_line = lines[-1]
+    assert last_line.startswith("export {"), "Last line should be export statement"
 
-    # All :pub items should be in the export statement
-    assert "PUBLIC_API_URL" in export_stmt, ":pub global should be exported"
-    assert "PublicClass" in export_stmt, ":pub class should be exported"
-    assert "public_function" in export_stmt, ":pub function should be exported"
-    assert "PublicStatus" in export_stmt, ":pub enum should be exported"
+    # All :pub items in export, private items excluded
+    pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"]
+    priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"]
+    assert all(item in last_line for item in pub_items), "All :pub items should be exported"
+    assert all(
+        item not in last_line for item in priv_items
+    ), "Private items should NOT be exported"
 
-    # Private items should NOT be in the export statement
-    assert "PRIVATE_SECRET" not in export_stmt, "Private global should NOT be exported"
-    assert "PrivateClass" not in export_stmt, "Private class should NOT be exported"
-    assert "private_function" not in export_stmt, (
-        "Private function should NOT be exported"
-    )
-    assert "PrivateStatus" not in export_stmt, "Private enum should NOT be exported"
-
-    # Verify declarations exist in code without inline export keywords
-    assert (
-        "let PUBLIC_API_URL" in js_code and "export let PUBLIC_API_URL" not in js_code
-    )
-    assert "class PublicClass" in js_code and "export class PublicClass" not in js_code
-    assert (
-        "function public_function" in js_code
-        and "export function public_function" not in js_code
-    )
-    assert (
-        "const PublicStatus" in js_code and "export const PublicStatus" not in js_code
-    )
+    # No inline export keywords - declarations should be plain
+    assert "let PUBLIC_API_URL" in js_code and "export let" not in js_code
+    assert "class PublicClass" in js_code and "export class" not in js_code
+    assert "function public_function" in js_code and "export function" not in js_code
+    assert "const PublicStatus" in js_code and "export const PublicStatus" not in js_code
 
 
 def test_reactive_state_generates_use_state(
