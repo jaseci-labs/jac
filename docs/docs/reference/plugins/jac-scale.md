@@ -458,11 +458,33 @@ curl -X POST "http://localhost:8000/webhook/PaymentReceived" \
 
 ## Storage
 
-jac-scale provides a storage abstraction for file and blob operations. The core runtime includes a local filesystem implementation, and jac-scale extends it with cloud storage backends.
+Jac provides a built-in storage abstraction for file and blob operations. The core runtime ships with a local filesystem implementation, and jac-scale can override it with cloud storage backends -- all through the same `store()` builtin.
+
+### The `store()` Builtin
+
+The recommended way to get a storage instance is the `store()` builtin. It requires no imports and is automatically hookable by plugins:
+
+```jac
+# Get a storage instance (no imports needed)
+glob storage = store();
+
+# With custom base path
+glob storage = store(base_path="./uploads");
+
+# With all options
+glob storage = store(base_path="./uploads", create_dirs=True);
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `base_path` | `str` | `"./storage"` | Root directory for all files |
+| `create_dirs` | `bool` | `True` | Create base directory if it doesn't exist |
+
+Without jac-scale, `store()` returns a `LocalStorage` instance. With jac-scale installed, it returns a configuration-driven backend (reading from `jac.toml` and environment variables).
 
 ### Storage Interface
 
-All storage implementations provide these methods:
+All storage instances provide these methods:
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -474,6 +496,68 @@ All storage implementations provide these methods:
 | `get_metadata` | `get_metadata(path) -> dict` | Get file metadata (size, modified, created, is_dir, name) |
 | `copy` | `copy(source, destination) -> bool` | Copy a file within storage |
 | `move` | `move(source, destination) -> bool` | Move a file within storage |
+
+### Usage Example
+
+```jac
+import from http { UploadFile }
+import from uuid { uuid4 }
+
+glob storage = store(base_path="./uploads");
+
+walker :pub upload_file {
+    has file: UploadFile;
+    has folder: str = "documents";
+
+    can process with `root entry {
+        unique_name = f"{uuid4()}.dat";
+        path = f"{self.folder}/{unique_name}";
+
+        # Upload file
+        storage.upload(self.file.file, path);
+
+        # Get metadata
+        metadata = storage.get_metadata(path);
+
+        report {
+            "success": True,
+            "storage_path": path,
+            "size": metadata["size"]
+        };
+    }
+}
+
+walker :pub list_files {
+    has folder: str = "documents";
+    has recursive: bool = False;
+
+    can process with `root entry {
+        files = [];
+        for path in storage.list_files(self.folder, self.recursive) {
+            metadata = storage.get_metadata(path);
+            files.append({
+                "path": path,
+                "size": metadata["size"],
+                "name": metadata["name"]
+            });
+        }
+        report {"files": files};
+    }
+}
+
+walker :pub download_file {
+    has path: str;
+
+    can process with `root entry {
+        if not storage.exists(self.path) {
+            report {"error": "File not found"};
+            return;
+        }
+        content = storage.download(self.path);
+        report {"content": content, "size": len(content)};
+    }
+}
+```
 
 ### Configuration
 
@@ -502,9 +586,9 @@ create_dirs = true           # Auto-create directories
 
 Configuration priority: `jac.toml` > environment variables > defaults.
 
-### StorageFactory
+### StorageFactory (Advanced)
 
-Use `StorageFactory` to create storage instances:
+For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
 
 ```jac
 import from jac_scale.factories.storage_factory { StorageFactory }
@@ -518,51 +602,6 @@ storage = StorageFactory.create("local", {
 # Create using jac.toml / env var / defaults
 storage = StorageFactory.get_default();
 ```
-
-### Usage Example
-
-```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
-
-walker upload_file {
-    has filename: str;
-    has content: bytes;
-
-    can process with `root entry {
-        storage = StorageFactory.get_default();
-
-        # Upload
-        path = storage.upload(source_path, f"uploads/{self.filename}");
-
-        # Check existence
-        assert storage.exists(f"uploads/{self.filename}");
-
-        # List files
-        for f in storage.list_files("uploads/", recursive=True) {
-            print(f);
-        }
-
-        # Get metadata
-        meta = storage.get_metadata(f"uploads/{self.filename}");
-        report {"path": path, "size": meta["size"]};
-    }
-}
-```
-
-### LocalStorage
-
-The default storage implementation uses the local filesystem:
-
-```jac
-import from jaclang.runtimelib.storage { LocalStorage }
-
-storage = LocalStorage(base_path="./data", create_dirs=True);
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `base_path` | `str` | `"./storage"` | Root directory for all files |
-| `create_dirs` | `bool` | `True` | Create base directory if it doesn't exist |
 
 ---
 
