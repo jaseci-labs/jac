@@ -3,11 +3,22 @@
 Handles primitive types, Union types, lists, tuples, sets, dicts,
 dataclasses, enums, and functions.
 """
-impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
+impl _type_to_schema(
+    ty: type, title: str = "", desc: str = "", info: Info | None = None
+) -> dict {
     title = title.replace("_", " ").title();
     context = ({"title": title} if title else {}) | (
         {"description": desc} if desc else {}
     );
+    if info?.type_info {
+        info_type: str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
+        info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
+    } elif isinstance(info, tuple) {
+        info_type = info[0];
+        info = info[1];
+    } else {
+        info_type = "";
+    }
     semstr: str = ty?._jac_semstr or "";
     semstr = semstr or ty?.__doc__ or "";  # type: ignore
     semstr_inner: dict[str, str] = ty?._jac_semstr_inner or {};
@@ -37,12 +48,37 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     # Handle Union
     if get_origin(ty) in (Union, UnionType) {
         args = get_args(ty);
-        return {"anyOf": [_type_to_schema(arg) for arg in args], "title": title,} | context;
+        return {
+            "anyOf": [
+                _type_to_schema(
+                    arg,
+                    info=(
+                        info.type_info[i + 1]
+                        if (
+                            info
+                            and info?.type_info
+                            and info.type_info
+                            and isinstance(info.type_info, (list, tuple))
+                            and len(info.type_info) > i + 1
+                        )
+                        else None
+                    ),
+                ) for (i, arg) in enumerate(args)
+            ],
+            "title": title,
+
+        } | context;
     }
     # Handle annotated list
     if get_origin(ty) is list {
         item_type: type = get_args(ty)[0];
-        return {"type": "array", "items": _type_to_schema(item_type),} | context;
+        return {
+            "type": "array",
+            "items": _type_to_schema(
+                item_type, info=info if info_type == "list" else None
+            ),
+
+        } | context;
     }
     # Handle annotated tuple/set
     if get_origin(ty) in (tuple, set) {
@@ -50,7 +86,13 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
         args = get_args(ty);
         if len(args) == 2 and args[1] is Ellipsis {
             item_type = args[0];
-            return {"type": "array", "items": _type_to_schema(item_type),} | context;
+            return {
+                "type": "array",
+                "items": _type_to_schema(
+                    item_type, info=info[1] if info[0] == "tuple" else None
+                ),
+
+            } | context;
         }
         raise ValueError(
             f"Unsupported {origin} type for schema generation: {ty}. Only {origin} of the form {origin}[T, ...] are supported."
@@ -67,18 +109,31 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
             for (name, type) in get_type_hints(ty).items()
             if not name.startswith("_")
         };
+        if isinstance(info, FieldInfo) {
+            info_fields = info.type_info.fields if info else [];
+            ;
+        } else {
+            info_fields = info.fields if info else [];
+        }
+        # Build a map of field info by name for quick lookup
+        info_fields_map = {field.name: field for field in info_fields};
+        # Build properties for ALL fields (including inherited), using MTIR info when available
         properties = {
-            name: _type_to_schema(
-                type, name, semstr_inner.get(name, "")
-            )  # type: ignore
-             for (name, type) in fields.items()
+            field_name: _type_to_schema(
+                field_type,
+                field_name,
+                info_fields_map[field_name].semstr
+                if field_name in info_fields_map
+                else "",
+                info=info_fields_map.get(field_name)
+            ) for (field_name, field_type) in fields.items()
         };
         return {
             "title": title or ty.__name__,
             "description": semstr,
             "type": "object",
             "properties": properties,
-            "required": list(fields.keys()),
+            "required": list(properties.keys()),
             "additionalProperties": False,
 
         };
@@ -116,10 +171,20 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
     if isinstance(ty, (FunctionType, MethodType)) {
         hints = get_type_hints(ty);
         hints.pop("return", None);
-        params = {
-            name: _type_to_schema(type, name, semstr_inner.get(name, ""))
-            for (name, type) in hints.items()
-        };
+        # Use MTIR info if available, otherwise fall back to introspection
+        if info and info?.params and info.params {
+            params = {
+                param.name: _type_to_schema(
+                    hints[param.name], param.name, param.semstr, info=param
+                ) for param in info.params
+            };
+        } else {
+            # Fall back to introspecting the function's type hints
+            params = {
+                param_name: _type_to_schema(param_type, param_name)
+                for (param_name, param_type) in hints.items()
+            };
+        }
         return {
             "title": title or ty.__name__,
             "type": "function",
@@ -136,7 +201,7 @@ impl _type_to_schema(ty: type, title: str = "", desc: str = "") -> dict {
 }
 
 """Get a string name for a type, handling Union types specially."""
-impl _name_of_type(ty: type) -> str {
+impl _name_of_type(ty: type, info: Info = None) -> str {
     if get_origin(ty) in (Union, UnionType) {
         names = [_name_of_type(arg) for arg in get_args(ty)];
         return "_or_".join(names);
@@ -215,9 +280,9 @@ impl _unwrap_from_object(json_obj: dict) -> dict {
 }
 
 """Return the JSON schema for a response type, formatted for LLM APIs."""
-impl type_to_schema(resp_type: type) -> dict[str, object] {
-    type_name = _name_of_type(resp_type);
-    schema = _type_to_schema(resp_type, type_name);
+impl type_to_schema(resp_type: type, info: Info) -> dict[str, object] {
+    type_name = _name_of_type(resp_type, info=info);
+    schema = _type_to_schema(resp_type, type_name, info=info);
     schema = _wrap_to_object(schema);
     return {
         "type": "json_schema",
@@ -228,9 +293,9 @@ impl type_to_schema(resp_type: type) -> dict[str, object] {
 
 """Return the JSON schema for a tool function, formatted for LLM APIs."""
 impl tool_to_schema(
-    func: Callable, description: str, params_desc: dict[str, str]
+    func: Callable, description: str, params_desc: dict[str, str], info: Info
 ) -> dict[str, object] {
-    schema = _type_to_schema(func);  # type: ignore
+    schema = _type_to_schema(func, info=info);  # type: ignore
     properties: dict[str, object] = schema.get("properties", {});  # type: ignore
     required: list[str] = schema.get("required", []);  # type: ignore
     for (param_name, param_info) in properties.items() {

@@ -6,10 +6,6 @@ exclude: |
         ^$
     )
 
-# Skip jac-check on pre-commit.ci - it times out (180s limit) due to cold cache.
-# Type checking should run in GitHub Actions instead where we control caching.
-ci:
-  skip: [jac-check]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -28,7 +24,7 @@ repos:
     - id: markdownlint-cli2
       args: [--fix]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.11
+    rev: v0.14.14
     hooks:
       - id: ruff
         args: [--fix]
@@ -49,21 +45,13 @@ repos:
         name: jac-format
         description: Format Jac files with consistent code style
         entry: env PYTHONPATH=jac python3 -m jaclang format
-        language: system
+        language: python
         types: [file]
         args: [--fix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
-      - id: jac-check
-        name: jac-check
-        description: Type check Jac files
-        entry: env PYTHONPATH=jac python3 -m jaclang check --warnonly
-        language: system
-        types: [file]
-        files: \.jac$
-        require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|jac-client/jac_client/examples/)
+        additional_dependencies: [llvmlite>=0.43.0]
   - repo: local
     hooks:
       - id: check-no-binary-files
@@ -74,39 +62,10 @@ repos:
         exclude: |
           (?x)(
               ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
-              ^docs/docs/assets/debug_mode\.jpg$|
-              ^docs/docs/assets/examples/jac_book/node1\.png$|
-              ^docs/docs/assets/examples/jac_book/node2\.png$|
-              ^docs/docs/assets/examples/jac_book/node3\.png$|
-              ^docs/docs/assets/examples/jac_book/with_entry\.png$|
-              ^docs/docs/assets/jac_cloud_example\.jpg$|
               ^docs/docs/assets/logo\.png$|
               ^docs/docs/assets/org1_logo\.png$|
               ^docs/docs/assets/org2_logo\.png$|
               ^docs/docs/assets/org3_logo\.png$|
-              ^docs/docs/assets/visualizer\.jpg$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-breakpoint\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-options\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function-run\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-complex_function\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-extension\.png$|
-              ^docs/docs/learn/assets/debugger/debugger-visualization-open-tool\.png$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-create-session\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-download\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-explore-graphs\.gif$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-logo\.png$|
-              ^docs/docs/learn/assets/jac-lens/jac-lens-modify-graph\.gif$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-agentic\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp-unconnected_graph\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-osp_diagram\.png$|
-              ^docs/docs/learn/examples/EmailBuddy/assets/EmailBuddy-scale-native-FastAPI-Docs\.png$|
-              ^docs/docs/learn/examples/agentic_ai/aider-genius-lite/aider\.png$|
-              ^docs/docs/learn/examples/agentic_ai/friendzone-lite/friendzone\.png$|
-              ^docs/docs/learn/examples/agentic_ai/task-manager-lite/task\ manager\.png$|
-              ^docs/docs/learn/examples/littleX/src/front_end\.png$|
-              ^docs/docs/learn/examples/rag_chatbot/images/chatbot\.jpg$|
-              ^docs/docs/learn/examples/rag_chatbot/images/image_chat\.jpg$|
-              ^jac-byllm/examples/agentic_ai/task-manager-lite/task_manager\.png$|
               ^jac-byllm/examples/vision/math_question\.jpg$|
               ^jac-byllm/examples/vision/mugen\.mp4$|
               ^jac-byllm/examples/vision/person\.png$|
@@ -129,3 +88,10 @@ repos:
         language: pygrep
         entry: '—'
         types: [markdown]
+
+      - id: check-release-notes
+        name: Check release notes updated
+        language: script
+        entry: scripts/check-release-notes.sh
+        always_run: true
+        pass_filenames: false

@@ -45,7 +45,6 @@ class TestBundleTemplate:
         assert "config" in data
         assert "files" in data
         assert "directories" in data
-        assert "gitignore_entries" in data
 
     def test_bundle_includes_version_metadata(
         self, temp_dir: Path, fixture_path: Callable[[str], str]
@@ -262,7 +261,6 @@ class TestRoundTrip:
         assert original.config == loaded.config
         assert original.files == loaded.files
         assert original.directories == loaded.directories
-        assert original.gitignore_entries == loaded.gitignore_entries
         assert original.root_gitignore_entries == loaded.root_gitignore_entries
 
 
@@ -285,7 +283,6 @@ class TestProjectTemplateToDict:
         assert "config" in data
         assert "files" in data
         assert "directories" in data
-        assert "gitignore_entries" in data
         assert "root_gitignore_entries" in data
 
     def test_to_dict_excludes_post_create(

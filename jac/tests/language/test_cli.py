@@ -1117,7 +1117,7 @@ version = "0.1.0"
 
             # Create all .jac subdirectories with content
             jac_dir = os.path.join(project_path, ".jac")
-            dirs_to_create = ["data", "cache", "packages", "client"]
+            dirs_to_create = ["data", "cache", "venv", "client"]
             for dir_name in dirs_to_create:
                 dir_path = os.path.join(jac_dir, dir_name)
                 os.makedirs(dir_path, exist_ok=True)
@@ -1158,9 +1158,9 @@ version = "0.1.0"
             jac_dir = os.path.join(project_path, ".jac")
             data_dir = os.path.join(jac_dir, "data")
             cache_dir = os.path.join(jac_dir, "cache")
-            packages_dir = os.path.join(jac_dir, "packages")
+            venv_dir = os.path.join(jac_dir, "venv")
 
-            for dir_path in [data_dir, cache_dir, packages_dir]:
+            for dir_path in [data_dir, cache_dir, venv_dir]:
                 os.makedirs(dir_path, exist_ok=True)
                 with open(os.path.join(dir_path, "test.txt"), "w") as f:
                     f.write("test")
@@ -1181,8 +1181,8 @@ version = "0.1.0"
             assert result == 0
             assert "Removed data:" in stdout
             assert "Removed cache:" in stdout
-            # Packages should NOT be removed
-            assert os.path.exists(packages_dir)
+            # Venv should NOT be removed
+            assert os.path.exists(venv_dir)
             assert not os.path.exists(data_dir)
             assert not os.path.exists(cache_dir)
 

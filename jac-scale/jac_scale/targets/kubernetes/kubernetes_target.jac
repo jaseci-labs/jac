@@ -663,6 +663,135 @@ class KubernetesTarget(DeploymentTarget) {
         );
     }
 
+    """Wait for resources to be completely deleted."""
+    def _wait_for_deletion(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any,
+        max_wait: int = 60,
+        poll_interval: float = 1.0
+    ) -> None {
+        elapsed = 0.0;
+        while elapsed < max_wait {
+            resources_exist = False;
+
+            # Check deployment
+            try {
+                apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace);
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check service
+            try {
+                core_v1.read_namespaced_service(
+                    name=f"{app_name}-service", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check MongoDB resources if enabled
+            if self.k8s_config.mongodb_enabled {
+                mongodb_name = f"{app_name}-mongodb";
+                try {
+                    apps_v1.read_namespaced_stateful_set(
+                        name=mongodb_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{mongodb_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check Redis resources if enabled
+            if self.k8s_config.redis_enabled {
+                redis_name = f"{app_name}-redis";
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=redis_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{redis_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check PVCs
+            try {
+                pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
+                for pvc in pvcs.items {
+                    if pvc.metadata.name.startswith(app_name) {
+                        resources_exist = True;
+                        break;
+                    }
+                }
+            } except Exception { }
+
+            # Check code sync pod
+            try {
+                core_v1.read_namespaced_pod(
+                    name=f"{app_name}-code-sync", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # If no resources exist, deletion is complete
+            if not resources_exist {
+                if self.logger {
+                    self.logger.info(
+                        f"All resources for '{app_name}' have been deleted"
+                    );
+                }
+                return;
+            }
+            time.sleep(poll_interval);
+            elapsed = elapsed + poll_interval;
+        }
+
+        if self.logger {
+            self.logger.warn(
+                f"Timeout waiting for resources to be deleted after {max_wait} seconds"
+            );
+        }
+    }
+
     """Destroy all enabled databases."""
     def _destroy_databases(
         self: KubernetesTarget,
@@ -748,6 +877,14 @@ class KubernetesTarget(DeploymentTarget) {
                     } except Exception { }
                 }
             }
+
+            # Wait for all resources to be completely deleted
+            if self.logger {
+                self.logger.info(
+                    f"Waiting for all resources to be deleted for '{app_name}'..."
+                );
+            }
+            self._wait_for_deletion(app_name, namespace, apps_v1, core_v1);
 
             if self.logger {
                 self.logger.info(f"Application '{app_name}' destroyed successfully");

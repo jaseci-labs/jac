@@ -42,8 +42,12 @@ impl PluginConfigBase.load -> dict[str, Any] {
     # Get plugin config from [plugins.<plugin_name>] section
     plugin_name = self.get_plugin_name();
     plugin_config = jac_config.get_plugin_config(plugin_name);
-    # Deep merge defaults with user configuration
-    self._config = deep_merge(default_config, plugin_config);
+    # Deep merge defaults with user configuration (handle None plugin_config)
+    if plugin_config is not None {
+        self._config = deep_merge(default_config, plugin_config);
+    } else {
+        self._config = default_config;
+    }
     return self._config;
 }
 

@@ -1,5 +1,7 @@
 """Execution context for Jac Language."""
 
+import from asyncio { Queue }
+import from contextvars { ContextVar }
 import from dataclasses { MISSING }
 import from typing { Any, cast }
 import from uuid { UUID }
@@ -9,6 +11,12 @@ import from jaclang.pycore.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
 glob __all__ = ['ExecutionContext'];
+
+"""Call State for managing function, spawn calls."""
+obj CallState {
+    has reports: Queue = Queue(),
+        _sentinel: object = object();
+}
 
 """Execution Context.
 
@@ -22,12 +30,15 @@ Fields:
 - entry_node: Where walkers start traversal (defaults to user_root)
 """
 obj ExecutionContext {
-    has mem: Memory | None = None,
+    has mem: Memory | None by postinit,
         reports: list[Any] = [],
         custom: Any = MISSING,
-        system_root: NodeAnchor | None = None,
-        user_root: NodeAnchor | None = None,
-        entry_node: NodeAnchor | None = None;
+        system_root: NodeAnchor | None by postinit,
+        user_root: NodeAnchor | None by postinit,
+        entry_node: NodeAnchor | None by postinit,
+        call_state: ContextVar[CallState] = ContextVar(
+            'call_state', default=CallState()
+        );
 
     def postinit -> None;
     def _get_anchor(anchor_id: str) -> NodeAnchor;

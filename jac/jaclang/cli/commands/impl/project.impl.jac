@@ -44,7 +44,7 @@ impl create(
     # Resolve template from --use (supports: registered names, file paths, URLs)
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
-        console.error(f"Unknown template: {template}");
+        console.error(f"Unknown template: {use}");
         console.print(
             "Use --list-templates to see available templates.", style="muted"
         );
@@ -114,10 +114,7 @@ impl create(
             console.print(f"  ✔ {file_path}", style="success");
         }
     }
-    # Create .gitignore files from template
-    if tmpl.gitignore_entries {
-        _create_jac_gitignore(project_path, tmpl.gitignore_entries);
-    }
+    # Create .gitignore file from template
     if tmpl.root_gitignore_entries {
         _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
     }
@@ -341,19 +338,6 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
     return "\n".join(lines);
 }
 
-"""Create .jac/.gitignore with entries."""
-def _create_jac_gitignore(project_path: Path, entries: list[str]) -> None {
-    import from jaclang.cli.console { console }
-    jac_dir = project_path / ".jac";
-    if jac_dir.exists() {
-        jac_gitignore = jac_dir / ".gitignore";
-        with open(jac_gitignore, "w") as f {
-            f.write("\n".join(entries) + "\n");
-        }
-        console.print(f"  ✔ .jac/.gitignore", style="success");
-    }
-}
-
 """Create project-root .gitignore with entries."""
 def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
     import from jaclang.cli.console { console }
@@ -380,7 +364,7 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
         f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
         style="bold"
     );
-    console.print(f"  Packages directory: {config.get_packages_dir()}", style="muted");
+    console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
     installer = DependencyInstaller(config=config, verbose=verbose);
     with console.status("[cyan]Installing packages...[/cyan]", spinner="dots") as status {
@@ -587,7 +571,7 @@ impl clean(
     if all {
         dirs_to_clean.append(("data", config.get_data_dir()));
         dirs_to_clean.append(("cache", config.get_cache_dir()));
-        dirs_to_clean.append(("packages", config.get_packages_dir()));
+        dirs_to_clean.append(("venv", config.get_venv_dir()));
         dirs_to_clean.append(("client", config.get_client_dir()));
     } else {
         # If specific flags are set, use them
@@ -598,7 +582,7 @@ impl clean(
             dirs_to_clean.append(("cache", config.get_cache_dir()));
         }
         if packages {
-            dirs_to_clean.append(("packages", config.get_packages_dir()));
+            dirs_to_clean.append(("venv", config.get_venv_dir()));
         }
         # If no specific flags, default to cleaning data directory
         if not dirs_to_clean {
