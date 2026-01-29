@@ -144,15 +144,13 @@ impl _type_to_schema(
         enum_info_to_use = None;
         if isinstance(info, EnumInfo) {
             enum_info_to_use = info;
-        } elif info and hasattr(info, "type_info") and isinstance(info.type_info, EnumInfo) {
+        } elif info and info?.type_info and isinstance(info.type_info, EnumInfo) {
             enum_info_to_use = info.type_info;
         }
-
         if enum_info_to_use and enum_info_to_use.members {
             enum_type = None;
             enum_names = [];
             enum_values = [];
-
             for member in enum_info_to_use.members {
                 enum_names.append(member.name);
 
@@ -179,10 +177,8 @@ impl _type_to_schema(
                     ;
                 }
             }
-
             # Default to int if no type was determined
             enum_type = enum_type or "int";
-
             # Validate supported types
             if enum_type not in ("int", "str") {
                 raise ValueError(
@@ -190,7 +186,6 @@ impl _type_to_schema(
                     "Only int and str enums are supported for schema generation."
                 ) ;
             }
-
             # Build description
             names_str = ", ".join(enum_names);
             if enum_values {
@@ -198,14 +193,20 @@ impl _type_to_schema(
             } else {
                 enum_desc = f"\nThe value *should* be one of the following the names are [{names_str}].";
             }
-
-            enum_semstr = [member.semstr for member in enum_info_to_use.members if member.semstr];
+            enum_semstr = [
+                member.semstr
+                for member in enum_info_to_use.members
+                if member.semstr
+            ];
             if enum_semstr {
                 enum_desc += "\nDetails:\n" + "\n".join(
-                    [f"- {member.name}: {member.semstr}" for member in enum_info_to_use.members if member.semstr]
+                    [
+                        f"- {member.name}: {member.semstr}"
+                        for member in enum_info_to_use.members
+                        if member.semstr
+                    ]
                 );
             }
-
             base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";
             return {
@@ -214,7 +215,6 @@ impl _type_to_schema(
 
             };
         }
-
         # Fallback to runtime introspection if EnumInfo not available
         enum_type = None;
         enum_values = [];

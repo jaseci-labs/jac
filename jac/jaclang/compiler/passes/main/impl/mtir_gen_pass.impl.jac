@@ -99,7 +99,6 @@ impl MTIRGenPass._parse_type_expr(
     sym = self._extract_type_symbol(type_expr, scope);
     if sym {
         if sym and sym.sym_type.value == 'enum' {
-
             enum_info = self._extract_enum_info(sym);
             return enum_info;
         } else {
@@ -112,7 +111,6 @@ impl MTIRGenPass._parse_type_expr(
             }
         }
     }
-    
     return None;
 }
 
@@ -135,11 +133,10 @@ impl MTIRGenPass._extract_type_symbol(
 impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
     decl = symbol.decl;
     if not isinstance(decl.name_of, uni.Enum) {
-        raise Exception(f"Symbol {symbol} is not an Enum.");
+        raise Exception(f"Symbol {symbol} is not an Enum.") ;
     }
     enum_node = decl.name_of;
-    members:list[FieldInfo] = [];
-
+    members: list[FieldInfo] = [];
     # Check if enum has a body and it's a Sequence
     if enum_node.body and isinstance(enum_node.body, Sequence) {
         for enum_stmt in enum_node.body {
@@ -150,7 +147,6 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                     target = enum_stmt.target[0];
                     if isinstance(target, uni.NameAtom) or isinstance(target, uni.Name) {
                         member_name = target.value;
-
                         # Determine type from the assigned value
                         type_info = None;
                         if enum_stmt.value {
@@ -169,22 +165,20 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                             } else {
                                 # Non-allowed type for enum value
                                 raise Exception(
-                                    f"Enum member '{member_name}' has invalid value type: {type(enum_stmt.value).__name__}. "
+                                    f"Enum member '{member_name}' has invalid value type: {type(
+                                        enum_stmt.value
+                                    ).__name__}. "
                                     f"Only int, str, float, and bool literals are allowed."
-                                );
+                                ) ;
                             }
                         }
-
                         # Get semantic string from symbol if available
                         semstr_val = None;
                         if target?.sym and target.sym {
                             semstr_val = target.sym.semstr;
                         }
-
                         field_info = FieldInfo(
-                            name=member_name,
-                            semstr=semstr_val,
-                            type_info=type_info
+                            name=member_name, semstr=semstr_val, type_info=type_info
                         );
                         members.append(field_info);
                     }
@@ -193,13 +187,11 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
             # Handle NameAtom nodes (simple enum members like RED, BLUE)
             elif isinstance(enum_stmt, uni.NameAtom) and enum_stmt.is_enum_stmt {
                 member_name = enum_stmt.value;
-
                 # Get semantic string from symbol if available
                 semstr_val = None;
                 if enum_stmt?.sym and enum_stmt.sym {
                     semstr_val = enum_stmt.sym.semstr;
                 }
-
                 field_info = FieldInfo(
                     name=member_name,
                     semstr=semstr_val,
@@ -209,14 +201,12 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
             }
         }
     }
-
     return EnumInfo(
         name=enum_node.name.value,
         semstr=symbol.semstr or enum_node.doc.lit_value if enum_node.doc else None,
         members=members
     );
 }
-
 
 """Extract class structure information from a symbol."""
 impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {

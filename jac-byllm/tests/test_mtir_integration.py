@@ -687,9 +687,9 @@ class TestEnumExtraction:
         assert personality_field is not None, "Person should have personality field"
 
         # The type_info should be an EnumInfo
-        assert isinstance(
-            personality_field.type_info, EnumInfo
-        ), f"Expected EnumInfo, got {type(personality_field.type_info)}"
+        assert isinstance(personality_field.type_info, EnumInfo), (
+            f"Expected EnumInfo, got {type(personality_field.type_info)}"
+        )
 
         personality_enum = personality_field.type_info
         assert personality_enum.name == "Personality"
@@ -781,9 +781,9 @@ class TestEnumExtraction:
         assert isinstance(func_info, FunctionInfo)
 
         # The return type should be EnumInfo (Tell)
-        assert isinstance(
-            func_info.return_type, EnumInfo
-        ), f"Expected EnumInfo, got {type(func_info.return_type)}"
+        assert isinstance(func_info.return_type, EnumInfo), (
+            f"Expected EnumInfo, got {type(func_info.return_type)}"
+        )
 
         tell_enum = func_info.return_type
         assert tell_enum.name == "Tell"
@@ -841,14 +841,20 @@ class TestEnumExtraction:
         )
         assert introvert is not None
         assert introvert.semstr is not None
-        assert "reserved" in introvert.semstr.lower() or "reflective" in introvert.semstr.lower()
+        assert (
+            "reserved" in introvert.semstr.lower()
+            or "reflective" in introvert.semstr.lower()
+        )
 
         extrovert = next(
             (m for m in personality_enum.members if m.name == "EXTROVERT"), None
         )
         assert extrovert is not None
         assert extrovert.semstr is not None
-        assert "outgoing" in extrovert.semstr.lower() or "interaction" in extrovert.semstr.lower()
+        assert (
+            "outgoing" in extrovert.semstr.lower()
+            or "interaction" in extrovert.semstr.lower()
+        )
 
     def test_enum_in_schema_generation(
         self, fixture_path: Callable[[str], str]
@@ -866,10 +872,10 @@ class TestEnumExtraction:
             jac_import("enum_with_semstr", base_path=fixture_path("./"))
 
             # Now import byllm.schema to test schema generation
-            from byllm import schema
-
             # Get the Person class and Personality enum from the compiled module
-            from enum_with_semstr import Personality, Person
+            from enum_with_semstr import Person
+
+            from byllm import schema
 
             # Generate schema for Person which includes Personality enum
             person_schema = schema.type_to_schema(Person, info=None)

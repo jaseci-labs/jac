@@ -110,6 +110,7 @@ class FunctionInfo(Info):
 class MethodInfo(FunctionInfo):
     parent_class: ClassInfo | None = None
 
+
 # Minimal, backward-compatible helpers for representing generic/collection types
 # without introducing a new dataclass. These use simple tuple encodings:
 #  - list[T]  -> ("list", T)
