@@ -70,6 +70,11 @@ class FieldInfo(VarInfo):
 
 
 @dataclass
+class EnumInfo(Info):
+    members: list[FieldInfo]
+
+
+@dataclass
 class ClassInfo(Info):
     fields: list[FieldInfo]
     base_classes: list[ClassInfo]
@@ -104,7 +109,6 @@ class FunctionInfo(Info):
 @dataclass
 class MethodInfo(FunctionInfo):
     parent_class: ClassInfo | None = None
-
 
 # Minimal, backward-compatible helpers for representing generic/collection types
 # without introducing a new dataclass. These use simple tuple encodings:
