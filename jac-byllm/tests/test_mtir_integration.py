@@ -875,7 +875,7 @@ class TestEnumExtraction:
             # Get the Person class and Personality enum from the compiled module
             from enum_with_semstr import Person
 
-            from byllm import schema
+            from byllm import schema  # type: ignore[attr-defined]
 
             # Generate schema for Person which includes Personality enum
             person_schema = schema.type_to_schema(Person, info=None)
@@ -911,6 +911,5 @@ class TestEnumExtraction:
         finally:
             sys.stdout = sys.__stdout__
 
-        output = captured_output.getvalue()
         # If verbose is enabled, output should contain schema information
         # This verifies the enum information flows through to schema generation
