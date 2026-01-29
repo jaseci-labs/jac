@@ -21,11 +21,12 @@ walker CreateTask {
 
     can create with `root entry {
         task_list = here ++> Task(title=self.title, priority=self.priority);
-        task = task_list[0] if task_list else None;
+        task = task_list[0];
         if task {
             print("Created task: " + task.title);
             report task ;
         }
+        root spawn CompleteTask(title=self.title);
     }
 }
 
@@ -35,10 +36,27 @@ walker ListTasks {
 
     can collect with `root entry {
         visit [-->];
+        completed_tasks_walker = root spawn ListCompletedTasks();
+        report completed_tasks_walker.completed_tasks;
     }
 
     can gather with Task entry {
         print("Found task: " + here.title);
+    }
+}
+
+# Define a walker to List completed Tasks
+walker ListCompletedTasks {
+    has completed_tasks: list = [];
+
+    can collect with `root entry {
+        visit [-->];
+    }
+    can gather with Task entry {
+        if here.completed {
+            self.completed_tasks += [here];
+            print("Found Completed task: " + here.title);
+        }
     }
 }
 

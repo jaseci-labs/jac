@@ -1268,3 +1268,18 @@ def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[3].pretty_print(),
     )
+
+
+def test_postinit_fields_not_required_in_constructor(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that fields marked with 'by postinit' are not required as constructor arguments."""
+    program = JacProgram()
+    path = fixture_path("checker_postinit_fields.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - postinit fields should not be required in constructor
+    assert len(program.errors_had) == 0, (
+        f"Expected no type checking errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
