@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.3 (Unreleased)
+## jac-scale 0.1.4 (Unreleased)
+
+## jac-scale 0.1.3 (Latest Release)
 
 - **Streaming Response Support**: Streaming responses are supported with walker spawn calls and function calls.
 
@@ -57,7 +59,7 @@ The `@restspec` decorator now supports custom HTTP methods and custom endpoint p
 - **Custom Methods**: Use `method=HTTPMethod.GET`, `method=HTTPMethod.PUT`, etc.
 - **Custom Paths**: Use `path="/my/custom/path"` to override the default routing.
 
-## jac-scale 0.1.1 (Latest Release)
+## jac-scale 0.1.1
 
 ## jac-scale 0.1.0
 

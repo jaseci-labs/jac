@@ -2,12 +2,14 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.12 (Unreleased)
+## jac-client 0.2.13 (Unreleased)
+
+## jac-client 0.2.12 (Latest Release)
 
 - **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.
 - **Auto-Prompt for Missing Client Dependencies**: When running `jac start` on a project without npm dependencies configured (no `jac.toml` or empty `[dependencies.npm]`), the CLI now detects the missing dependencies and interactively prompts the user to install the default jac-client packages (react, vite, etc.). Accepting writes the defaults to `jac.toml` and proceeds with the build. This follows the same pattern as the existing Bun auto-install prompt and eliminates the cryptic "Cannot find package 'vite'" error that previously occurred. Additionally, stale `node_modules` directories from prior failed installs are now automatically detected and cleaned up before reinstalling.
 
-## jac-client 0.2.11 (Latest Release)
+## jac-client 0.2.11
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
