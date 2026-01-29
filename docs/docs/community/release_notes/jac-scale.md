@@ -12,6 +12,8 @@ This document provides a summary of new features, improvements, and bug fixes in
   - Hookable `store(base_path, create_dirs)` builtin that returns a configured `Storage` instance
   - Configure via `jac.toml [storage]` section or `JAC_STORAGE_PATH` / `JAC_STORAGE_CREATE_DIRS` environment variables
 
+- **jac destroy** command wait till fully removal of resources
+
 - **Internal**: Explicitly declared all postinit fields across the codebase.
 
 ### PyPI Installation by Default

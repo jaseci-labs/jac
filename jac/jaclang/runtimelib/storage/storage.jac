@@ -21,7 +21,7 @@ class Storage {
         self: Storage,
         source: (str | BinaryIO),
         destination: str,
-        metadata: dict[str, str] = {}
+        metadata: (dict[str, str] | None) = None
     ) -> str abs;
 
     """Download a file from storage.

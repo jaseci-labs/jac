@@ -33,7 +33,7 @@ class LocalStorage(Storage) {
         self: LocalStorage,
         source: (str | BinaryIO),
         destination: str,
-        metadata: dict[str, str] = {}
+        metadata: (dict[str, str] | None) = None
     ) -> str {
         dest_path = self._resolve_path(destination);
         dest_path.parent.mkdir(parents=True, exist_ok=True);
