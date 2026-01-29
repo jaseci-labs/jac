@@ -570,39 +570,6 @@ class CompletionFinder(object):
 
         return escaped_completions
 
-    def rl_complete(self, text, state):
-        """
-        Alternate entry point for using the jaccomplete completer in a readline-based REPL. See also
-        `rlcompleter <https://docs.python.org/3/library/rlcompleter.html#completer-objects>`_.
-        Usage:
-
-        .. code-block:: python
-
-            import jaccomplete, argparse, readline
-            parser = argparse.ArgumentParser()
-            ...
-            completer = jaccomplete.CompletionFinder(parser)
-            readline.set_completer_delims("")
-            readline.set_completer(completer.rl_complete)
-            readline.parse_and_bind("tab: complete")
-            result = input("prompt> ")
-        """
-        if state == 0:
-            cword_prequote, cword_prefix, cword_suffix, comp_words, first_colon_pos = split_line(text)
-            comp_words.insert(0, sys.argv[0])
-            matches = self._get_completions(comp_words, cword_prefix, cword_prequote, first_colon_pos)
-            self._rl_matches = [text + match[len(cword_prefix) :] for match in matches]
-
-        if state < len(self._rl_matches):
-            return self._rl_matches[state]
-        else:
-            return None
-
-    def get_display_completions(self):
-        """
-        This function returns a mapping of completions to their help strings for displaying to the user.
-        """
-        return self._display_completions
 
 
 class ExclusiveCompletionFinder(CompletionFinder):
