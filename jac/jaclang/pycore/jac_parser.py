@@ -355,10 +355,12 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
             # Special case for bare except
-            if Tok.KW_EXCEPT.name and Tok.LBRACE.name or Tok.RBRACE.name in e.accepts:
+            if Tok.KW_EXCEPT.name and (
+                (Tok.LBRACE.name in e.accepts) or (Tok.RBRACE.name in e.accepts)
+            ):
                 error_tok = self.error_to_token(e)
                 error_tok.line_no = e.line - 1
-                if Tok.LBRACE.name:
+                if Tok.LBRACE.name in e.accepts:
                     error_tok.c_start = e.column + 5
 
                 error_tok.end_line = error_tok.line_no
