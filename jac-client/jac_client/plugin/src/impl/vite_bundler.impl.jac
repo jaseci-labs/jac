@@ -308,6 +308,20 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
+// Strips the compiled glob declaration so Vite's define can replace the free identifier
+function jacApiBaseUrlInjector() {{
+  return {{
+    name: 'jac-api-base-url-injector',
+    enforce: 'pre',
+    transform(code, id) {{
+      if (id.includes('/compiled/client_runtime') && id.endsWith('.js')) {{
+        return code.replace(/let __JAC_API_BASE_URL__\\s*=\\s*"[^"]*";\\n?/, '');
+      }}
+      return null;
+    }}
+  }};
+}}
+
 // Jac source mapper plugin - maps errors back to original .jac files
 function jacSourceMapper() {{
   const sourceMap = new Map(); // compiled path -> original jac path
@@ -361,6 +375,7 @@ export default defineConfig({{
     '__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
   plugins: [
+    jacApiBaseUrlInjector(),
     jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
@@ -602,6 +617,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
+// Strips the compiled glob declaration so Vite's define can replace the free identifier
+function jacApiBaseUrlInjector() {{
+  return {{
+    name: 'jac-api-base-url-injector',
+    enforce: 'pre',
+    transform(code, id) {{
+      if (id.includes('/compiled/client_runtime') && id.endsWith('.js')) {{
+        return code.replace(/let __JAC_API_BASE_URL__\\s*=\\s*"[^"]*";\\n?/, '');
+      }}
+      return null;
+    }}
+  }};
+}}
+
 /**
  * Vite DEV configuration for HMR mode
  * Proxies API routes to Python server at localhost:{api_port}
@@ -610,7 +639,7 @@ export default defineConfig({{
   define: {{
     '__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
-  plugins: [react()],
+  plugins: [jacApiBaseUrlInjector(), react()],
   root: buildDir,
   publicDir: false,
   build: {{
