@@ -6,6 +6,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **MTIR-Powered Schema Generation**: `MTRuntime` now uses compile-time MTIR info for generating JSON schemas with semantic descriptions. Tool and return type schemas include semstrings extracted at compile time, providing richer context for LLM calls.
 - **Python Library Fallback Mode**: When MTIR is unavailable (e.g., using byLLM as a Python library without Jac compilation), the runtime gracefully falls back to introspection-based schema generation, maintaining backward compatibility.
+- **Schema Generation Fixes**: Fixed several issues in schema generation that were exposed when MTIR data became correctly available:
+  - **Union Type Null Safety**: Fixed `NoneType has no attribute 'type_info'` errors when processing Union types like `str | None`.
+  - **Dataclass Inherited Fields**: Schema now correctly includes inherited fields from base classes (e.g., `Dog | Cat` union now includes `name`, `age` from `Pet` base class).
+  - **Required Fields Validation**: Fixed OpenAI schema validation error ("Extra required key supplied") by only listing fields that actually exist in `properties`.
+  - **Function Schema Fallback**: Dynamically created tools (like `finish_tool`) now work correctly even without MTIR info by falling back to function introspection.
 - **Internal**: Explicitly declared all postinit fields across the codebase.
 
 - **Internal refactors**: Removed orphaned files, etc.

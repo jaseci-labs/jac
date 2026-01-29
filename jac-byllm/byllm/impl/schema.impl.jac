@@ -13,6 +13,9 @@ impl _type_to_schema(
     if info?.type_info {
         info_type: str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
         info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
+    } elif isinstance(info, tuple) {
+        info_type = info[0];
+        info = info[1];
     } else {
         info_type = "";
     }
@@ -47,8 +50,20 @@ impl _type_to_schema(
         args = get_args(ty);
         return {
             "anyOf": [
-                _type_to_schema(arg, info=info.type_info[i + 1])
-                for (i, arg) in enumerate(args)
+                _type_to_schema(
+                    arg,
+                    info=(
+                        info.type_info[i + 1]
+                        if (
+                            info
+                            and info?.type_info
+                            and info.type_info
+                            and isinstance(info.type_info, (list, tuple))
+                            and len(info.type_info) > i + 1
+                        )
+                        else None
+                    ),
+                ) for (i, arg) in enumerate(args)
             ],
             "title": title,
 
@@ -100,21 +115,25 @@ impl _type_to_schema(
         } else {
             info_fields = info.fields if info else [];
         }
+        # Build a map of field info by name for quick lookup
+        info_fields_map = {field.name: field for field in info_fields};
+        # Build properties for ALL fields (including inherited), using MTIR info when available
         properties = {
-            field.name: _type_to_schema(
-                fields[field.name],
-                field.name,
-                field.semstr if semstr is not None else "",
-                info=field
-            )  # type: ignore
-             for field in info_fields
+            field_name: _type_to_schema(
+                field_type,
+                field_name,
+                info_fields_map[field_name].semstr
+                if field_name in info_fields_map
+                else "",
+                info=info_fields_map.get(field_name)
+            ) for (field_name, field_type) in fields.items()
         };
         return {
             "title": title or ty.__name__,
             "description": semstr,
             "type": "object",
             "properties": properties,
-            "required": list(fields.keys()),
+            "required": list(properties.keys()),
             "additionalProperties": False,
 
         };
@@ -150,16 +169,22 @@ impl _type_to_schema(
     }
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {
-        print(ty);
         hints = get_type_hints(ty);
         hints.pop("return", None);
-        params = {
-            param.name: _type_to_schema(
-                hints[param.name], param.name, param.semstr, info=param
-            ) for param in info.params
+        # Use MTIR info if available, otherwise fall back to introspection
+        if info and info?.params and info.params {
+            params = {
+                param.name: _type_to_schema(
+                    hints[param.name], param.name, param.semstr, info=param
+                ) for param in info.params
+            };
+        } else {
+            # Fall back to introspecting the function's type hints
+            params = {
+                param_name: _type_to_schema(param_type, param_name)
+                for (param_name, param_type) in hints.items()
+            };
         }
-        if info
-        else {};
         return {
             "title": title or ty.__name__,
             "type": "function",

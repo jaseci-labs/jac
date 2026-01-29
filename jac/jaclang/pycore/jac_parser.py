@@ -602,7 +602,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     flat_kids.append(node)
 
             mod = uni.Module(
-                name=self.parse_ref.mod_path.split(os.path.sep)[-1].rstrip(".jac"),
+                name=self.parse_ref.mod_path.split(os.path.sep)[-1].removesuffix(
+                    ".jac"
+                ),
                 source=self.parse_ref.ir_in,
                 doc=doc,
                 body=body,
