@@ -208,62 +208,47 @@ def test_fstring_generates_template_literal(fixture_path: Callable[[str], str]) 
 def test_export_semantics_for_pub_declarations(
     fixture_path: Callable[[str], str],
 ) -> None:
-    """Test that :pub annotated declarations generate JavaScript exports."""
+    """Test that :pub annotated declarations generate comprehensive export statement."""
     es_ast = compile_to_esast(fixture_path("export_semantics.jac"))
     js_code = es_to_js(es_ast)
 
-    # Verify ExportNamedDeclaration nodes exist in AST
-    # Note: cl functions no longer use ES exports — they're registered via
-    # __jacRegisterClientModule instead, so only 3 exports (global, class, enum)
+    # Verify single comprehensive ExportNamedDeclaration exists
     export_decls = [
         node for node in es_ast.body if isinstance(node, es.ExportNamedDeclaration)
     ]
-    assert len(export_decls) == 3, "Expected 3 exports (global, class, enum)"
+    assert len(export_decls) == 1, "Expected single comprehensive export statement"
 
-    # Check that public global is exported
-    assert "export let PUBLIC_API_URL" in js_code, (
-        "Public global should have export keyword"
+    # Verify the comprehensive export statement contains all :pub items
+    assert "export {" in js_code, "Should have comprehensive export statement"
+    export_start = js_code.index("export {")
+    export_end = js_code.index("};", export_start) + 2
+    export_stmt = js_code[export_start:export_end]
+
+    # All :pub items should be in the export statement
+    assert "PUBLIC_API_URL" in export_stmt, ":pub global should be exported"
+    assert "PublicClass" in export_stmt, ":pub class should be exported"
+    assert "public_function" in export_stmt, ":pub function should be exported"
+    assert "PublicStatus" in export_stmt, ":pub enum should be exported"
+
+    # Private items should NOT be in the export statement
+    assert "PRIVATE_SECRET" not in export_stmt, "Private global should NOT be exported"
+    assert "PrivateClass" not in export_stmt, "Private class should NOT be exported"
+    assert "private_function" not in export_stmt, (
+        "Private function should NOT be exported"
     )
+    assert "PrivateStatus" not in export_stmt, "Private enum should NOT be exported"
 
-    # Check that private global is NOT exported
-    assert "let PRIVATE_SECRET" in js_code
-    assert "export let PRIVATE_SECRET" not in js_code, (
-        "Private global should NOT have export keyword"
+    # Verify declarations exist in code without inline export keywords
+    assert (
+        "let PUBLIC_API_URL" in js_code and "export let PUBLIC_API_URL" not in js_code
     )
-
-    # Check that public class is exported
-    assert "export class PublicClass" in js_code, (
-        "Public class should have export keyword"
+    assert "class PublicClass" in js_code and "export class PublicClass" not in js_code
+    assert (
+        "function public_function" in js_code
+        and "export function public_function" not in js_code
     )
-
-    # Check that private class is NOT exported
-    assert "class PrivateClass" in js_code
-    assert "export class PrivateClass" not in js_code, (
-        "Private class should NOT have export keyword"
-    )
-
-    # cl functions don't use ES exports — they're registered via
-    # __jacRegisterClientModule for global scope compatibility
-    assert "function public_function" in js_code
-    assert "export function public_function" not in js_code, (
-        "cl functions should not have export keyword (uses registration instead)"
-    )
-
-    # Check that private function is NOT exported
-    assert "function private_function" in js_code
-    assert "export function private_function" not in js_code, (
-        "Private function should NOT have export keyword"
-    )
-
-    # Check that public enum is exported
-    assert "export const PublicStatus" in js_code, (
-        "Public enum should have export keyword"
-    )
-
-    # Check that private enum is NOT exported
-    assert "const PrivateStatus" in js_code
-    assert "export const PrivateStatus" not in js_code, (
-        "Private enum should NOT have export keyword"
+    assert (
+        "const PublicStatus" in js_code and "export const PublicStatus" not in js_code
     )
 
 
