@@ -6,7 +6,9 @@ import from pathlib { Path }
 import from pydantic { BaseModel, Field }
 import from typing { Any }
 import jwt;
+import json;
 import from os { getenv }
+import from fastapi { Request }
 import from fastapi.middleware.cors { CORSMiddleware }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response, RedirectResponse }
 import from jac_scale.jserver.jfast_api { JFastApiServer }
@@ -24,6 +26,7 @@ import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
 import from fastapi.responses { StreamingResponse }
@@ -41,10 +44,13 @@ enum Platforms ( StrEnum ) { GOOGLE = 'google' }
 
 enum Operations ( StrEnum ) { LOGIN = 'login', REGISTER = 'register' }
 
+enum TransportType ( StrEnum ) { HTTP = 'http', WEBHOOK = 'webhook' }
+
 obj JacAPIServer(JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _hot_reloader: Any | None = None;
+        _hot_reloader: Any | None = None,
+        _api_key_manager: ApiKeyManager | None = None;
 
     def postinit -> None;
     def login(username: str, password: str) -> TransportResponse;
@@ -95,6 +101,23 @@ obj JacAPIServer(JServer) {
     def register_dynamic_walker_endpoint -> None;
     def register_dynamic_function_endpoint -> None;
     def register_dynamic_introspection_endpoints -> None;
+    # Webhook support methods
+    def get_api_key_manager -> ApiKeyManager;
+    def create_api_key(
+        name: str, expiry_days: int | None = None, Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def list_api_keys(Authorization: str | None = None) -> TransportResponse;
+    def revoke_api_key(
+        api_key_id: str, Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def register_api_key_endpoints -> None;
+    def register_webhook_endpoints -> None;
+    def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
+    def create_webhook_parameters(walker_name: str) -> list[APIParameter];
+    def register_dynamic_webhook_endpoint -> None;
+    def get_transport_type_for_walker(walker_name: str) -> str;
 }
 
 class UpdateUsernameRequest(BaseModel) {

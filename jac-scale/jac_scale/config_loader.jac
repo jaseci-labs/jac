@@ -12,7 +12,7 @@ import os;
 
 """Scale-specific configuration loader.
 
-Provides access to jwt, sso, database, kubernetes, and server configuration
+Provides access to jwt, sso, database, kubernetes, server and webhook configuration
 from the [plugins.scale] section of jac.toml.
 """
 class JacScaleConfig(PluginConfigBase) {
@@ -23,6 +23,7 @@ class JacScaleConfig(PluginConfigBase) {
     def get_database_config(self: JacScaleConfig) -> dict[str, Any];
     def get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any];
     def get_server_config(self: JacScaleConfig) -> dict[str, Any];
+    def get_webhook_config(self: JacScaleConfig) -> dict[str, Any];
 }
 
 glob _scale_config_instance: JacScaleConfig | None = None;
