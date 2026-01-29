@@ -1,6 +1,6 @@
 """Test reactive state management primitives."""
 
-cl import from jac:client_runtime { createSignal, createState, createEffect, }
+cl import from "@jac/runtime" { createSignal, createState, createEffect, }
 
 cl {
     # Test 1: Basic signal get/set

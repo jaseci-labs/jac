@@ -4,6 +4,7 @@ import pathlib;
 import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
+import from jaclang.cli.console { console }
 import from jaclang.pycore.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
@@ -17,6 +18,7 @@ import from .factories.utility_factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
+import from jaclang.runtimelib.storage { Storage }
 
 """Pre-hook for jac start command to handle --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
@@ -25,6 +27,7 @@ def _scale_pre_hook(context: HookContext) -> None {
         # Handle deployment instead of local server
         filename = context.get_arg("filename");
         build = context.get_arg("build", False);
+        experimental = context.get_arg("experimental", False);
         target = context.get_arg("target", "kubernetes");
         registry = context.get_arg("registry", "dockerhub");
         if not os.path.exists(filename) {
@@ -59,15 +62,27 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
         # Create app config
         app_config = AppConfig(
-            code_folder=code_folder, file_name=base_file_path, build=build
+            code_folder=code_folder,
+            file_name=base_file_path,
+            build=build,
+            experimental=experimental
         );
+        if experimental {
+            console.print(
+                "Installing Jaseci packages from repository (experimental mode)..."
+            );
+        } else {
+            console.print("Installing Jaseci packages from PyPI...");
+        }
         # Deploy
         result = deployment_target.deploy(app_config);
         if not result.success {
             raise RuntimeError(result.message or "Deployment failed") ;
         }
         if result.service_url {
-            print(f"Deployment complete! Service available at: {result.service_url}");
+            console.print(
+                f"Deployment complete! Service available at: {result.service_url}"
+            );
         }
         # Cancel normal start execution since we handled it
         context.set_data("cancel_execution", True);
@@ -100,6 +115,13 @@ class JacCmd {
                     default=False,
                     help="Build and push Docker image (with --scale)",
                     short="b"
+                ),
+                Arg.create(
+                    "experimental",
+                    typ=bool,
+                    default=False,
+                    help="Use experimental mode (install from repo instead of PyPI)",
+                    short="e"
                 ),
                 Arg.create(
                     "target",
@@ -168,7 +190,9 @@ class JacCmd {
             app_name = os.getenv('APP_NAME') or target_config.get('app_name', 'jaseci');
             deployment_target.destroy(app_name);
 
-            print(f"Successfully destroyed deployment '{app_name}' from {target}");
+            console.print(
+                f"Successfully destroyed deployment '{app_name}' from {target}"
+            );
             return 0;
         }
     }
@@ -204,6 +228,17 @@ class JacScalePlugin {
     @hookimpl
     static def get_user_manager(base_path: str) -> UserManager {
         return JacScaleUserManager(base_path=base_path);
+    }
+
+    """Provide jac-scale's storage backend.
+
+    This overrides the core store() to use jac-scale's StorageFactory,
+    which supports cloud backends (S3, GCS, Azure) via configuration.
+    """
+    @hookimpl
+    static def store(base_path: str = "./storage", create_dirs: bool = True) -> Storage {
+        import from .factories.storage_factory { StorageFactory }
+        return StorageFactory.get_default(base_path, create_dirs);
     }
 }
 

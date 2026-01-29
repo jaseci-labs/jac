@@ -1,6 +1,4 @@
 # Todo App
-cl import from react { useEffect }
-
 node Todo {
     has text: str,
         done: bool = False;
@@ -38,13 +36,10 @@ cl {
             inputValue: str = "",
             filter: str = "all";
 
-        useEffect(
-            lambda -> None { async def loadTodos -> None {
-                result = root spawn read_todos();
-                todos = result.reports;
-            } loadTodos();},
-            []
-        );
+        async can with entry {
+            result = root spawn read_todos();
+            todos = result.reports;
+        }
 
         # Add a new todo
         async def addTodo -> None {
@@ -337,7 +332,7 @@ cl {
                         }}
                     >
                         <span style={{"color": "#6b7280", "fontSize": "14px"}}>
-                            {activeCount} {"item" if activeCount == 1 else "items"} left
+                            {activeCount}{"item" if activeCount == 1 else "items"}left
                         </span>
                         {(
                             <button

@@ -283,16 +283,6 @@ def test_pass_keyword_errors(fixture_path: Callable[[str], str]) -> None:
         assert expected in pretty
 
 
-def test_report_yield(fixture_path: Callable[[str], str]) -> None:
-    """Parse report yield jac file."""
-    captured_output = io.StringIO()
-    sys.stdout = captured_output
-    prog = JacProgram()
-    prog.compile(fixture_path("report_yield.jac"))
-    sys.stdout = sys.__stdout__
-    assert len(prog.errors_had) == 0
-
-
 def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
     """Parse multiple syntax errors jac file."""
     captured_output = io.StringIO()
@@ -595,16 +585,16 @@ walker MyWalker {
     assert name1 != name2
 
 
-def test_cl_import_with_prefix() -> None:
-    """Test that cl import with jac: prefix is properly parsed.
+def test_cl_import_with_jac_runtime() -> None:
+    """Test that cl import with @jac/runtime path is properly parsed.
 
     Tests:
-    - cl import from jac:client_runtime syntax
-    - Prefix field is captured in ModulePath
+    - cl import from "@jac/runtime" syntax
     - Import is marked as client-side
+    - String path is properly captured
     """
     source = """
-cl import from jac:client_runtime {
+cl import from "@jac/runtime" {
     jacLogin,
     jacLogout,
     renderJsxTree,
@@ -626,14 +616,12 @@ cl import from jac:client_runtime {
         "Import should be marked as client-side"
     )
 
-    # Check the from_loc has the prefix
+    # Check the from_loc path
     assert import_stmt.from_loc is not None, "Import should have from_loc"
-    assert import_stmt.from_loc.prefix is not None, "ModulePath should have prefix"
-    assert import_stmt.from_loc.prefix.value == "jac", "Prefix should be 'jac'"
 
-    # Check the module path
-    assert import_stmt.from_loc.dot_path_str == "client_runtime", (
-        "Module path should be 'client_runtime'"
+    # Check the module path (string literal)
+    assert import_stmt.from_loc.dot_path_str == "@jac/runtime", (
+        "Module path should be '@jac/runtime'"
     )
 
     # Check the imported items

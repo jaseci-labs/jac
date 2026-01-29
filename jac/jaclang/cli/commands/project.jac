@@ -198,7 +198,7 @@ def script(name: str = "", list_scripts: bool = False) -> int;
             "packages",
             typ=bool,
             default=False,
-            help="Clean packages directory (.jac/packages)",
+            help="Clean virtual environment (.jac/venv)",
             short="p"
         ),
         Arg.create(

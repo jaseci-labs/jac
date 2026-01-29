@@ -175,14 +175,48 @@ def get_type_of_binary_operation(
             );
         }
         # TODO: In strict mode, UnknownType, AnyType, TypeVarType, and object should be errors
-        if (
-            not right_type.is_any_type()
-            and (
-                not isinstance(right_type, jtypes.ClassType)
-                or not right_type.is_node_type()
-                or not right_type.is_instance()
-            )
-        ) {
+        # Check if right operand is a node instance or a collection of node instances
+        def is_node_type_instance(t: jtypes.TypeBase) -> bool {
+            return (
+                isinstance(t, jtypes.ClassType)
+                and t.is_node_type()
+                and t.is_instance()
+            );
+        }
+        # TODO: VERY TEMPORARY WORKAROUND, need proper typechecking to support
+        # list[NodeAnchors/NodeArchiteypes] requirement
+        def is_valid_right_operand(t: jtypes.TypeBase) -> bool {
+            if t.is_any_type() {
+                return True;
+            }
+            if not isinstance(t, jtypes.ClassType) {
+                return False;
+            }
+            # Direct node instance
+            if is_node_type_instance(t) {
+                return True;
+            }
+            # Collection of node instances (list, tuple, set, frozenset)
+            if (
+                t.is_builtin()
+                and t.shared.class_name in ("list", "tuple", "set", "frozenset")
+            ) {
+                # If type_args are available, check them
+                if (t.private.type_args is not None and len(t.private.type_args) > 0) {
+                    elem_type = t.private.type_args[0];
+                    if is_node_type_instance(elem_type) {
+                        return True;
+                    }
+                } else {
+                    # Unparameterized collection - allow it since element type
+                    # inference for list literals is not yet implemented (TODO).
+                    # In strict mode, this should be an error.
+                    return True;
+                }
+            }
+            return False;
+        }
+        if not is_valid_right_operand(right_type) {
             evaluator.add_diagnostic(
                 expr.right, 'Connection right operand must be a node instance'
             );

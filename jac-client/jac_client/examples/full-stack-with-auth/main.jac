@@ -3,7 +3,7 @@ cl import from react {
     useState,
     useEffect
 }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
@@ -653,7 +653,7 @@ cl {
                             "color": "#666"
                         }}
                     >
-                        {activeCount} {"item" if activeCount == 1 else "items"} left
+                        {activeCount}{"item" if activeCount == 1 else "items"}left
                     </div>
                 )
                 if todos.length > 0

@@ -32,7 +32,8 @@ obj Game {
         go_background: pygame.surface.Surface = pygame.image.load(
             '../img/gameover.png'
         ),
-        GameMap: Map = Map();
+        GameMap: Map = Map(),
+        font: pygame.font.Font by postinit;
 
     def postinit;
     def createTilemap;

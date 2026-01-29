@@ -6,8 +6,8 @@ module: (toplevel_stmt (tl_stmt_with_doc | toplevel_stmt)*)?
 
 tl_stmt_with_doc: STRING toplevel_stmt
 
-toplevel_stmt: (KW_CLIENT | KW_SERVER)? onelang_stmt
-       | (KW_CLIENT | KW_SERVER) LBRACE onelang_stmt* RBRACE
+toplevel_stmt: (KW_CLIENT | KW_SERVER | KW_NATIVE)? onelang_stmt
+       | (KW_CLIENT | KW_SERVER | KW_NATIVE) LBRACE onelang_stmt* RBRACE
        | py_code_block
 
 onelang_stmt: import_stmt
@@ -27,7 +27,7 @@ import_stmt: KW_IMPORT KW_FROM from_path LBRACE import_items RBRACE
 from_path: (DOT | ELLIPSIS)* import_path
          | (DOT | ELLIPSIS)+
 
-import_path: (NAME COLON)? (dotted_name | STRING) (KW_AS NAME)?
+import_path: (dotted_name | STRING) (KW_AS NAME)?
 import_items: (import_item COMMA)* import_item COMMA?
 import_item: (KW_DEFAULT | STAR_MUL | named_ref) (KW_AS NAME)?
 dotted_name: named_ref (DOT named_ref)*
@@ -212,7 +212,7 @@ assert_stmt: KW_ASSERT expression (COMMA expression)?
 delete_stmt: KW_DELETE expression
 
 // [Heading]: Report statements.
-report_stmt: KW_REPORT (expression | yield_expr)
+report_stmt: KW_REPORT expression
 
 // [Heading]: Control statements.
 ctrl_stmt: KW_SKIP | KW_BREAK | KW_CONTINUE
@@ -615,6 +615,7 @@ KW_CASE: "case"
 KW_DEFAULT: "default"
 KW_CLIENT: "cl"
 KW_SERVER: "sv"
+KW_NATIVE: "na"
 
 KW_INIT: "init"
 KW_POST_INIT: "postinit"
@@ -780,7 +781,7 @@ JSX_NAME: /[A-Z_a-z][A-Z_a-z0-9\-]*/
 
 // JSX text content (anything except < > { } and must not start/end with whitespace-only)
 // Using negative priority so it's only matched as last resort within JSX
-JSX_TEXT.-1: /[^<>{}\n]+/
+JSX_TEXT.-10: /[^<>{}\n]+/
 
 
 // ************************************************************************* //

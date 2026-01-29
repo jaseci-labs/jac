@@ -22,11 +22,11 @@ impl Model.postinit -> None {
 }
 
 """Invoke the LLM, delegating to MockLLM if applicable."""
-impl Model.invoke(mtir: MTRuntime) -> object {
+impl Model.invoke(mt_run: MTRuntime) -> object {
     if self._mock_delegate {
-        return self._mock_delegate.invoke(mtir);
+        return self._mock_delegate.invoke(mt_run);
     }
-    return super.invoke(mtir);
+    return super.invoke(mt_run);
 }
 
 """Make a direct model call without streaming.

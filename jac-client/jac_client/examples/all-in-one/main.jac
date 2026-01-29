@@ -160,7 +160,7 @@ walker process_complex_data {
 # Combined example: auth + routing + CSS styling + asset serving + nested folder imports
 #
 cl import from react { useEffect, useRef }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
@@ -217,9 +217,9 @@ cl {
             serverMessage: str = "",
             lastTodoMessage: str = "";
 
-        useEffect(
-            lambda -> None { console.log("Home count changed: ", count);}, [count]
-        );
+        can with count entry {
+            console.log("Home count changed: ", count);
+        }
 
         # Call simple backend walkers
         async def handlePing -> None {
@@ -246,7 +246,9 @@ cl {
             }
         }
 
-        useEffect(lambda -> None { loadServerMessage();}, []);
+        async can with entry {
+            await loadServerMessage();
+        }
 
         # Initialize a Web Worker and handle message-based communication
         workerRef = useRef(None);
@@ -286,7 +288,7 @@ cl {
                     </strong>
                     {" "}
                     <strong>
-                        static assets
+                        staticassets
                     </strong>
                     {" "}
                     and

@@ -1,4 +1,3 @@
-cl import from react { useEffect }
 cl import from '@mui/material/Button' { default as Button }
 cl import from '@mui/material/Card' { default as Card }
 cl import from '@mui/material/CardContent' { default as CardContent }
@@ -15,7 +14,9 @@ cl {
     def:pub app -> any {
         has count: int = 0;
 
-        useEffect(lambda -> None { console.log("Count changed: ", count);}, [count]);
+        can with count entry {
+            console.log("Count changed: ", count);
+        }
 
         handleIncrement = lambda e: any  -> None { count = count + 1;};
 

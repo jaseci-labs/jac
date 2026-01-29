@@ -13,7 +13,6 @@ impl ProjectTemplate.to_dict -> dict[str, Any] {
         "config": self.config,
         "files": self.files,
         "directories": self.directories,
-        "gitignore_entries": self.gitignore_entries,
         "root_gitignore_entries": self.root_gitignore_entries
     };
 }
@@ -43,7 +42,6 @@ impl TemplateRegistry.register(template_info: dict[str, Any]) -> None {
         config=config,
         files=template_info.get("files", {}),
         directories=template_info.get("directories", []),
-        gitignore_entries=template_info.get("gitignore_entries", []),
         root_gitignore_entries=template_info.get("root_gitignore_entries", []),
         post_create=template_info.get("post_create")
     );
@@ -131,9 +129,6 @@ impl initialize_template_registry -> None {
     }
 }
 
-# ===============================================================================
-# Default Template
-# ===============================================================================
 """Register the default Jac project template."""
 def _register_default_template(registry: TemplateRegistry) -> None {
     registry.register(
@@ -153,11 +148,12 @@ def _register_default_template(registry: TemplateRegistry) -> None {
             "files": {
                 "main.jac": '"""Main entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n'
             },
+            "root_gitignore_entries": [".jac/"],
             "directories": [".jac"],
-            "gitignore_entries": [
-                "# Ignore all build artifacts in .jac directory",
-                "*"
-            ]
+
         }
     );
 }
+# ===============================================================================
+# Default Template
+# ===============================================================================

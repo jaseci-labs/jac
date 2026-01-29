@@ -41,8 +41,8 @@ import from .utils { helper_function }
 import from react { useState, useEffect }
 import from "@mui/material" { Button, TextField }
 
-# Named prefix imports (jac: for runtime modules)
-import from jac:client_runtime { renderJsxTree, jacLogin }
+# Scoped package imports (@jac/ for runtime modules)
+import from "@jac/runtime" { renderJsxTree, jacLogin }
 ```
 
 ### 2 Include Statements

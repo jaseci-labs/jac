@@ -11,22 +11,70 @@ impl DependencyInstaller.postinit -> None {
     if self.config is None {
         raise ValueError("No jac.toml found. Run 'jac init' to create a project.") ;
     }
-    self.packages_dir = self.config.get_packages_dir();
+    self.venv_dir = self.config.get_venv_dir();
 }
 
-impl DependencyInstaller.ensure_packages_dir -> None {
+impl DependencyInstaller.ensure_venv -> None {
+    import venv;
     import sys;
-    self.packages_dir.mkdir(parents=True, exist_ok=True);
-    packages_str = str(self.packages_dir);
-    if packages_str not in sys.path {
-        sys.path.insert(0, packages_str);
+    def _create_venv(target: Path) -> None {
+        builder = venv.EnvBuilder(with_pip=True, symlinks=(sys.platform != "win32"));
+        try {
+            builder.create(str(target));
+        } except Exception as e {
+            err_msg = str(e).lower();
+            if "ensurepip" in err_msg or "no module named" in err_msg {
+                raise RuntimeError(
+                    "Failed to create virtual environment: ensurepip is not available.\n"
+                    "On Debian/Ubuntu, install it with: sudo apt install python3-venv\n"
+                    "On Fedora/RHEL: sudo dnf install python3-libs"
+                ) from e ;
+            }
+            raise ;
+        }
+    }
+    if self.venv_dir.exists() {
+        # Validate the venv is not corrupted by checking for pyvenv.cfg and python binary
+        pyvenv_cfg = self.venv_dir / "pyvenv.cfg";
+        if sys.platform == "win32" {
+            python_path = self.venv_dir / "Scripts" / "python.exe";
+        } else {
+            python_path = self.venv_dir / "bin" / "python";
+        }
+        if not pyvenv_cfg.exists() or not python_path.exists() {
+            # Corrupted venv - recreate
+            import shutil;
+            if self.verbose {
+                print(f"Recreating corrupted venv at {self.venv_dir}");
+            }
+            shutil.rmtree(self.venv_dir);
+            _create_venv(self.venv_dir);
+        }
+    } else {
+        # Create new venv
+        if self.verbose {
+            print(f"Creating venv at {self.venv_dir}");
+        }
+        self.venv_dir.parent.mkdir(parents=True, exist_ok=True);
+        _create_venv(self.venv_dir);
+    }
+    # Add venv site-packages to sys.path
+    site_packages = str(get_venv_site_packages(self.venv_dir));
+    if site_packages not in sys.path {
+        sys.path.insert(0, site_packages);
     }
 }
 
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     import subprocess;
     import sys;
-    cmd = [sys.executable, "-m", "pip"] + args;
+    # Use the venv's own Python to run pip
+    if sys.platform == "win32" {
+        venv_python = str(self.venv_dir / "Scripts" / "python.exe");
+    } else {
+        venv_python = str(self.venv_dir / "bin" / "python");
+    }
+    cmd = [venv_python, "-m", "pip"] + args;
     if self.verbose {
         print(f"Running: {' '.join(cmd)}");
     }
@@ -39,8 +87,7 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
 }
 
 impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
-    import sys;
-    self.ensure_packages_dir();
+    self.ensure_venv();
     all_success = True;
     for (name, version) in self.config.dependencies.items() {
         if not self.install_package(name, version) {
@@ -66,24 +113,9 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     return all_success;
 }
 
-"""Remove old package files and metadata to prevent version conflicts.
-
-When using pip install --target, old versions can accumulate. This function
-removes all traces of a package before reinstalling to ensure a clean state.
-"""
-impl DependencyInstaller._cleanup_old_package(name: str) -> None {
-    # Temporarily disable verbose to avoid duplicate messages
-    old_verbose = self.verbose;
-    self.verbose = False;
-    self.uninstall_package(name);
-    self.verbose = old_verbose;
-}
-
 impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     import sys;
-    self.ensure_packages_dir();
-    # Clean up old package files before installing to prevent version conflicts
-    self._cleanup_old_package(name);
+    self.ensure_venv();
     if version {
         if version.startswith(("=", ">", "<", "~", "!")) {
             spec = f"{name}{version}";
@@ -94,9 +126,7 @@ impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
         spec = name;
     }
     print(f"Installing {spec}...");
-    (returncode, stdout, stderr) = self._run_pip(
-        ["install", "--target", str(self.packages_dir), "--upgrade", spec]
-    );
+    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
     if returncode == 0 {
         print(f"  {name} installed successfully");
         return True;
@@ -110,18 +140,14 @@ impl DependencyInstaller.install_git_package(
     name: str, git_url: str, branch: str = ""
 ) -> bool {
     import sys;
-    self.ensure_packages_dir();
-    # Clean up old package files before installing to prevent version conflicts
-    self._cleanup_old_package(name);
+    self.ensure_venv();
     if branch {
         spec = f"git+{git_url}@{branch}";
     } else {
         spec = f"git+{git_url}";
     }
     print(f"Installing {name} from git...");
-    (returncode, stdout, stderr) = self._run_pip(
-        ["install", "--target", str(self.packages_dir), "--upgrade", spec]
-    );
+    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
     if returncode == 0 {
         print(f"  {name} installed successfully from git");
         return True;
@@ -132,110 +158,58 @@ impl DependencyInstaller.install_git_package(
 }
 
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
-    import shutil;
     import sys;
-    if not self.packages_dir or not self.packages_dir.exists() {
-        print(f"  Package {name} not found in packages directory", file=sys.stderr);
+    if not self.venv_dir or not self.venv_dir.exists() {
         return False;
     }
-    normalized_name = name.lower().replace("-", "_");
-    to_remove: list[Path] = [];
-    for item in self.packages_dir.iterdir() {
-        if not item.is_dir() {
-            continue;
-        }
-        item_name_lower = item.name.lower().replace("-", "_");
-        # Check for exact package directory match
-        if item_name_lower == normalized_name {
-            to_remove.append(item);
-            continue;
-        }
-        # Check for versioned metadata directories (.dist-info, .egg-info, .data)
-        if item.suffix in (".dist-info", ".egg-info", ".data") {
-            # Normalize stem: replace - with _ for package name comparison
-            item_stem_lower = item.stem.lower().replace("-", "_");
-            if item_stem_lower.startswith(f"{normalized_name}_") {
-                to_remove.append(item);
-            }
-            # Also check original name with hyphens (legacy installations)
-            elif name.lower() != normalized_name {
-                item_stem_original = item.stem.lower();
-                if item_stem_original.startswith(f"{name.lower()}-") {
-                    to_remove.append(item);
-                }
-            }
-        }
-    }
-    if not to_remove {
-        print(f"  Package {name} not found in packages directory", file=sys.stderr);
-        return False;
-    }
-    print(f"Removing {name}...");
-    for item in to_remove {
-        try {
-            shutil.rmtree(item);
+    print(f"Uninstalling {name}...");
+    (returncode, stdout, stderr) = self._run_pip(["uninstall", "-y", name]);
+    if returncode == 0 {
+        print(f"  {name} uninstalled successfully");
+        return True;
+    } else {
+        if "not installed" in stderr.lower() or "not installed" in stdout.lower() {
             if self.verbose {
-                print(f"  Removed: {item.name}");
+                print(f"  {name} was not installed");
             }
-        } except Exception as e {
-            print(f"  Failed to remove {item.name}: {e}", file=sys.stderr);
+            return False;
         }
+        print(f"  Failed to uninstall {name}: {stderr}", file=sys.stderr);
+        return False;
     }
-    print(f"  {name} removed successfully");
-    return True;
 }
 
 impl DependencyInstaller.is_installed(name: str) -> bool {
-    if not self.packages_dir.exists() {
+    if not self.venv_dir or not self.venv_dir.exists() {
         return False;
     }
-    normalized_name = name.lower().replace("-", "_");
-    for item in self.packages_dir.iterdir() {
-        item_name = item.name.lower().replace("-", "_");
-        if item_name == normalized_name {
-            return True;
-        }
-        if item_name.startswith(f"{normalized_name}_")
-        and item.name.endswith(".dist-info") {
-            return True;
-        }
-    }
-    return False;
+    (returncode, stdout, stderr) = self._run_pip(["show", name]);
+    return returncode == 0;
 }
 
 impl DependencyInstaller.list_installed -> list[str] {
-    if not self.packages_dir.exists() {
+    import json;
+    if not self.venv_dir or not self.venv_dir.exists() {
         return [];
     }
-    packages = [];
-    seen: set[str] = set();
-    for item in self.packages_dir.iterdir() {
-        if item.name.endswith(".dist-info") {
-            # Strip .dist-info suffix first, then get package name
-            stem = item.name[:-10];  # len(".dist-info") == 10
-            # Package name is everything before the version (first -)
-            parts = stem.split("-");
-            if len(parts) >= 2 {
-                # Handle package names with hyphens
-                # Version starts with a digit, so find the first part that starts with digit
-                name_parts = [];
-                for (i, part) in enumerate(parts) {
-                    if part and part[0].isdigit() {
-                        break;
-                    }
-                    name_parts.append(part);
-                }
-                name = "-".join(name_parts) if name_parts else parts[0];
-            } else {
-                name = stem;
-            }
-            if name and name not in seen {
-                seen.add(name);
-                packages.append(name);
-            }
-        }
+    (returncode, stdout, stderr) = self._run_pip(["list", "--format=json"]);
+    if returncode != 0 {
+        return [];
     }
-    return sorted(packages);
+    try {
+        packages_data = json.loads(stdout);
+        # Filter out venv infrastructure packages
+        infrastructure = {"pip","setuptools","wheel"};
+        return sorted(
+            [
+                pkg["name"]
+                for pkg in packages_data
+                if pkg["name"].lower() not in infrastructure
+            ]
+        );
+    } except (json.JSONDecodeError, KeyError) {
+        return [];
+    }
 }
 
 # ===============================================================================
@@ -303,9 +277,23 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
 }
 
 # ===============================================================================
-# Package Search Path Management Implementation
+# Venv Site-Packages Helper
 # ===============================================================================
-impl add_packages_to_path(
+impl get_venv_site_packages(
+    venv_dir: Path
+) -> Path {
+    import sys;
+    if sys.platform == "win32" {
+        return venv_dir / "Lib" / "site-packages";
+    } else {
+        return venv_dir / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages";
+    }
+}
+
+# ===============================================================================
+# Venv Path Management Implementation
+# ===============================================================================
+impl add_venv_to_path(
     config: JacConfig | None = None
 ) -> None {
     import sys;
@@ -316,14 +304,14 @@ impl add_packages_to_path(
     if config is None {
         return;
     }
-    packages_dir = config.get_packages_dir();
-    packages_str = str(packages_dir);
-    if packages_dir.exists() and packages_str not in sys.path {
-        sys.path.insert(0, packages_str);
+    site_packages = get_venv_site_packages(config.get_venv_dir());
+    site_str = str(site_packages);
+    if site_packages.exists() and site_str not in sys.path {
+        sys.path.insert(0, site_str);
     }
 }
 
-impl remove_packages_from_path(config: JacConfig | None = None) -> None {
+impl remove_venv_from_path(config: JacConfig | None = None) -> None {
     import sys;
     import from jaclang.project.config { get_config }
     if config is None {
@@ -332,14 +320,14 @@ impl remove_packages_from_path(config: JacConfig | None = None) -> None {
     if config is None {
         return;
     }
-    packages_dir = config.get_packages_dir();
-    packages_str = str(packages_dir);
-    if packages_str in sys.path {
-        sys.path.remove(packages_str);
+    site_packages = get_venv_site_packages(config.get_venv_dir());
+    site_str = str(site_packages);
+    if site_str in sys.path {
+        sys.path.remove(site_str);
     }
 }
 
-impl is_packages_in_path(config: JacConfig | None = None) -> bool {
+impl is_venv_in_path(config: JacConfig | None = None) -> bool {
     import sys;
     import from jaclang.project.config { get_config }
     if config is None {
@@ -348,6 +336,6 @@ impl is_packages_in_path(config: JacConfig | None = None) -> bool {
     if config is None {
         return False;
     }
-    packages_dir = config.get_packages_dir();
-    return str(packages_dir) in sys.path;
+    site_packages = get_venv_site_packages(config.get_venv_dir());
+    return str(site_packages) in sys.path;
 }

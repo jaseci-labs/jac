@@ -97,10 +97,12 @@ def test_deploy_all_in_one():
     )
 
     # Create app config
+    # Use experimental=True to install from repo (PyPI packages may not be available)
     app_config = AppConfig(
         code_folder=todo_app_path,
         file_name="main.jac",
         build=False,
+        experimental=True,
     )
 
     # Deploy using new architecture
@@ -172,7 +174,6 @@ def test_deploy_all_in_one():
 
     # Cleanup using new architecture
     deployment_target.destroy(app_name)
-    time.sleep(60)  # Wait for deletion to propagate
 
     # Verify cleanup - resources should no longer exist
     try:

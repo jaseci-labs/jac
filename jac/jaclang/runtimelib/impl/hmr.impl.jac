@@ -7,6 +7,7 @@ import logging;
 import os;
 import sys;
 import time;
+import shutil;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.constant { CodeContext }
@@ -164,7 +165,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         }
 
         # Ensure __jacJsx import is present (required for client-side rendering)
-        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";';
+        jac_runtime_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
         if '__jacJsx' in js_code and jac_runtime_import not in js_code {
             # Add import at the beginning of the file
             js_code = jac_runtime_import + '\n' + js_code;
@@ -189,6 +190,12 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Generate output filename (foo.jac -> foo.js, foo.cl.jac -> foo.js)
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
+
+        # Handle exports: extract from manifest and add comprehensive export statement
+        client_manifest = mod.gen.client_manifest if mod else None;
+        if client_manifest {
+            js_code = self._create_export_statement(js_code, client_manifest);
+        }
 
         # Write the JS code
         output_path.write_text(js_code, encoding='utf-8');
@@ -295,7 +302,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     output_dir.mkdir(parents=True, exist_ok=True);
     js_filename = "_entry.js";
     output_path = output_dir / js_filename;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
     # Update the entry point to show the error overlay
     output_path.write_text(entry_content, encoding='utf-8');
     # Mark that have an overlay entry
@@ -332,9 +339,8 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
             if self._overlay_entry {
                 self._update_entry_point();
             }
-            ts_code = source_path.read_text(encoding='utf-8');
             output_path.parent.mkdir(parents=True, exist_ok=True);
-            output_path.write_text(ts_code, encoding='utf-8');
+            shutil.copy2(source_path, output_path);
         } except (FileNotFoundError, OSError) { }
         print(f"[HMR] Copied frontend file: {file_path} -> {output_path}", flush=True);
     } except Exception as e {
@@ -342,12 +348,31 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
     }
 }
 
+"""Create export statement for recompiled JS code."""
+impl HotReloader._create_export_statement(js_code: str, client_manifest: Any) -> str {
+    exports_list = list(client_manifest.exports) if client_manifest.exports else [];
+    globals_list = list(client_manifest.globals) if client_manifest.globals else [];
+    module_export_names = sorted(set(exports_list + globals_list));
+    if module_export_names {
+        import re;
+        # Strip any existing export declarations to avoid duplicates
+        clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', js_code);
+        clean_js = re.sub(
+            r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_js
+        );
+        # Add comprehensive export statement at the end
+        export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
+        return clean_js + export_stmt;
+    }
+    return js_code;
+}
+
 """Update the entry point to reflect changes in modules."""
 impl HotReloader._update_entry_point -> None {
     output_base = Path(self.base_path) / self._client_output_dir;
     output_base.mkdir(parents=True, exist_ok=True);
     output_path = output_base / "_entry.js";
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac-client/utils";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
+    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
     output_path.write_text(entry_content, encoding='utf-8');
     print(f"[HMR] Update entry: {output_path}", flush=True);
     self._overlay_entry = False;

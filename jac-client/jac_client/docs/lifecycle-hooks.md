@@ -189,7 +189,7 @@ The most common use case is loading data when a component mounts:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 cl {
     def TodoApp() -> any {
@@ -265,7 +265,7 @@ Load user-specific data when a component mounts:
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 cl {
     def ProfileView() -> any {
@@ -365,7 +365,7 @@ cl {
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 cl {
     def app() -> any {
@@ -479,7 +479,7 @@ cl {
 
 ```jac
 cl import from react { useState, useEffect }
-cl import from '@jac-client/utils' { jacSpawn }
+cl import from '@jac/runtime' { jacSpawn }
 
 cl {
     def Dashboard() -> any {

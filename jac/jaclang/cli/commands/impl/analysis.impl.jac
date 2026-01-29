@@ -13,7 +13,8 @@ impl check(
     print_errs: bool = True,
     warnonly: bool = False,
     ignore: str = "",
-    parse_only: bool = False
+    parse_only: bool = False,
+    nowarn: bool = False
 ) -> int {
     import from jaclang.pycore.program { JacProgram }
     if isinstance(paths, str) {
@@ -46,15 +47,37 @@ impl check(
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
+            # Filter out errors/warnings from ignored files
+            def filter_issues(issues: list) -> list {
+                return [
+                    i
+                    for i in issues
+                    if not (
+                        i.loc
+                        and i.loc.mod_path
+                        and any(p in i.loc.mod_path for p in ignore_list)
+                    )
+                ];
+            }
+            filtered_errors = filter_issues(new_errors);
+            filtered_warnings = filter_issues(new_warnings);
+
             if print_errs {
-                for e in new_errors {
+                for e in filtered_errors {
                     console.error(f"{e}");
                 }
-                for w in new_warnings {
-                    console.warning(f"{w}");
+                if not nowarn {
+                    for w in filtered_warnings {
+                        console.warning(f"{w}");
+                    }
                 }
             }
-            return ((len(new_errors) == 0), len(new_errors), len(new_warnings));
+
+            return (
+                (len(filtered_errors) == 0),
+                len(filtered_errors),
+                len(filtered_warnings)
+            );
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0);

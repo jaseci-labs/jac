@@ -1,6 +1,6 @@
 """Test fixture for reactive effects with dependencies (can with [deps] entry in client context).
 
-Note: useEffect import is auto-injected from @jac-client/utils when `can with entry/exit` is used.
+Note: useEffect import is auto-injected from @jac/runtime when `can with entry/exit` is used.
 """
 
 cl {

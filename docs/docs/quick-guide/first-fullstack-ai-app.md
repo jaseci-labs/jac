@@ -130,25 +130,22 @@ cl def:pub app -> any {
                     Add
                 </button>
             </div>
-            {items.map(
-                lambda t: any  -> any { return
-                    <div key={t.id} class="todo-item">
-                        <input
-                            type="checkbox"
-                            checked={t.done}
-                            onChange={lambda -> None { toggle(t.id);}}
-                        />
-                        <span class={"todo-title " + ("todo-done" if t.done else "")}>
-                            {t.title}
-                        </span>
-                        <button
-                            class="btn-delete"
-                            onClick={lambda -> None { remove(t.id);}}
-                        >
-                            X
-                        </button>
-                    </div>; }
-            )}
+            {[<div key={t.id} class="todo-item">
+                <input
+                    type="checkbox"
+                    checked={t.done}
+                    onChange={lambda -> None { toggle(t.id);}}
+                />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>
+                    {t.title}
+                </span>
+                <button
+                    class="btn-delete"
+                    onClick={lambda -> None { remove(t.id);}}
+                >
+                    X
+                </button>
+            </div> for t in items]}
         </div>;
 }
 ```
@@ -183,7 +180,7 @@ Update `main.jac` - just add the AI parts:
 
 ```jac
 import from uuid { uuid4 }
-import from byllm { Model }
+import from byllm.lib { Model }
 
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -272,14 +269,12 @@ cl {
                     placeholder="What needs to be done?" />
                 <button class="btn-add" onClick={add}>Add</button>
             </div>
-            {items.map(lambda t: any -> any {
-                return <div key={t.id} class="todo-item">
-                    <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
-                    <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
-                    <span class="category">{t.category}</span>
-                    <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
-                </div>;
-            })}
+            {[<div key={t.id} class="todo-item">
+                <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
+                <span class="category">{t.category}</span>
+                <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
+            </div> for t in items]}
         </div>;
     }
 }
@@ -313,7 +308,7 @@ Update `main.jac`:
 
 ```jac
 import from uuid { uuid4 }
-import from byllm { Model }
+import from byllm.lib { Model }
 
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 
@@ -374,7 +369,7 @@ walker:priv DeleteTodo {
 
 cl {
     import from react { useEffect }
-    import from "@jac-client/utils" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
+    import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
     import "./styles.css";
 
     def:pub app -> any {
@@ -467,14 +462,12 @@ cl {
                     placeholder="What needs to be done?" />
                 <button class="btn-add" onClick={add}>Add</button>
             </div>
-            {items.map(lambda t: any -> any {
-                return <div key={t.id} class="todo-item">
-                    <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
-                    <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
-                    <span class="category">{t.category}</span>
-                    <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
-                </div>;
-            })}
+            {[<div key={t.id} class="todo-item">
+                <input type="checkbox" checked={t.done} onChange={lambda -> None { toggle(t.id); }} />
+                <span class={"todo-title " + ("todo-done" if t.done else "")}>{t.title}</span>
+                <span class="category">{t.category}</span>
+                <button class="btn-delete" onClick={lambda -> None { remove(t.id); }}>X</button>
+            </div> for t in items]}
         </div>;
     }
 }
@@ -529,6 +522,28 @@ You built the same app three ways:
 
 ## Next Steps
 
-- **Deploy**: `jac start main.jac --scale` for Kubernetes
+### Deploy to Kubernetes
+
+```bash
+# Default deployment (installs packages from PyPI)
+jac start main.jac --scale
+
+# Experimental mode (install from repo instead of PyPI)
+jac start main.jac --scale --experimental
+```
+
+Pin package versions in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes.plugin_versions]
+jaclang = "0.1.5"
+jac_scale = "latest"
+jac_client = "0.1.0"
+jac_byllm = "none"  # skip if not needed
+```
+
+### Learn More
+
 - **Advanced AI**: Structured outputs, agents - see [ByLLM Guide](../tutorials/ai/quickstart.md)
 - **Graph patterns**: Edges, complex traversals - see [OSP Guide](../tutorials/language/osp.md)
+- **Deployment details**: See [jac-scale Reference](../reference/plugins/jac-scale.md)

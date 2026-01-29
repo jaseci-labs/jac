@@ -53,7 +53,7 @@ from jaclang.pycore.constructs import (
     WalkerArchetype,
 )
 from jaclang.pycore.modresolver import infer_language
-from jaclang.pycore.mtp import MTIR, MTRuntime
+from jaclang.pycore.mtp import MTIR, Info, MTRuntime
 from jaclang.vendor import pluggy
 
 if TYPE_CHECKING:
@@ -577,7 +577,7 @@ class JacWalker:
 
         # Capture reports starting index to track reports from this spawn
         ctx = JacRuntimeInterface.get_context()
-        reports_start_idx = len(ctx.reports)
+        call_state = ctx.call_state.get()
 
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
@@ -586,7 +586,8 @@ class JacWalker:
             if walker.disengaged:
                 walker.ignores = []
                 # Capture reports generated during this spawn
-                warch.reports = ctx.reports[reports_start_idx:]
+                warch.reports = call_state.reports
+                call_state.reports.put_nowait(call_state._sentinel)
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -609,7 +610,8 @@ class JacWalker:
 
         walker.ignores = []
         # Capture reports generated during this spawn
-        warch.reports = ctx.reports[reports_start_idx:]
+        warch.reports = call_state.reports
+        call_state.reports.put_nowait(call_state._sentinel)
         return warch
 
     @staticmethod
@@ -771,7 +773,7 @@ class JacWalker:
 
         # Capture reports starting index to track reports from this spawn
         ctx = JacRuntimeInterface.get_context()
-        reports_start_idx = len(ctx.reports)
+        call_state = ctx.call_state.get()
 
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
@@ -782,7 +784,8 @@ class JacWalker:
             if walker.disengaged:
                 walker.ignores = []
                 # Capture reports generated during this spawn
-                warch.reports = ctx.reports[reports_start_idx:]
+                warch.reports = call_state.reports
+                call_state.reports.put_nowait(call_state._sentinel)
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -809,7 +812,8 @@ class JacWalker:
 
         walker.ignores = []
         # Capture reports generated during this spawn
-        warch.reports = ctx.reports[reports_start_idx:]
+        warch.reports = call_state.reports
+        call_state.reports.put_nowait(call_state._sentinel)
         return warch
 
     @staticmethod
@@ -1425,12 +1429,7 @@ class JacBasics:
             ctx.custom = expr
         else:
             JacConsole.get_console().print(expr)
-            ctx.reports.append(expr)
-
-    @staticmethod
-    def log_report_yield(expr: Any, custom: bool = False) -> None:  # noqa: ANN401
-        """Jac's async report stmt feature."""
-        pass
+            ctx.call_state.get().reports.put_nowait(expr)
 
     @staticmethod
     def refs(
@@ -1844,12 +1843,8 @@ class JacByLLM:
         return decorator
 
     @staticmethod
-    def call_llm(model: object, mtir: MTRuntime) -> Any:  # noqa: ANN401
-        """Call the LLM model.
-
-        This is the fallback implementation when no LLM plugin (like byllm) is installed.
-        It uses NonGPT to generate random values matching the return type.
-        """
+    def call_llm(model: object, mt_run: MTRuntime) -> Any:  # noqa: ANN401
+        """Call the LLM model."""
         from jaclang.utils import NonGPT  # type: ignore[attr-defined]
 
         try:
@@ -1864,13 +1859,13 @@ class JacByLLM:
 
         try:
             type_hints = get_type_hints(
-                mtir.caller,
-                globalns=getattr(mtir.caller, "__globals__", {}),
+                mt_run.caller,
+                globalns=getattr(mt_run.caller, "__globals__", {}),
                 localns=None,
                 include_extras=True,
             )
         except Exception:
-            type_hints = getattr(mtir.caller, "__annotations__", {})
+            type_hints = getattr(mt_run.caller, "__annotations__", {})
         return_type = type_hints.get("return", Any)
 
         # Generate and return a random value matching the return type
@@ -1887,14 +1882,14 @@ class JacByLLM:
                     invoke_args[i] = arg
                 for key, value in kwargs.items():
                     invoke_args[key] = value
-                mtir = JacRuntime.get_mtir(
+                mt_run = JacRuntime.get_mtir(
                     caller=caller,
                     args=invoke_args,
                     call_params=(
                         model.call_params if hasattr(model, "call_params") else {}
                     ),
                 )
-                return JacRuntime.call_llm(model, mtir)
+                return JacRuntime.call_llm(model, mt_run)
 
             return _wrapped_caller
 
@@ -1941,6 +1936,22 @@ class JacByLLM:
             "The 'by' operator is not yet implemented. "
             "This feature is reserved for future use."
         )
+
+    @staticmethod
+    def add_mtir_to_map(scope: str, mtir: Info) -> None:
+        """Add MTIR to the node's MTIR map."""
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
+        JacRuntime.program.mtir_map[scope] = mtir
+
+    @staticmethod
+    def get_mtir_from_map(scope: str) -> Info | None:
+        """Get MTIR from the node's MTIR map."""
+        if JacRuntime.program is None:
+            raise AttributeError("JacRuntime.program is not initialized")
+        if scope not in JacRuntime.program.mtir_map:
+            raise KeyError(f"MTIR not found for scope {scope}")
+        return JacRuntime.program.mtir_map[scope]
 
 
 class JacUtils:
@@ -2273,7 +2284,6 @@ class JacPluginConfig:
                 - config: dict for jac.toml content (with {{name}} placeholders)
                 - files: dict[path, content] with {{name}} placeholders
                 - directories: list of directories to create
-                - gitignore_entries: list of .gitignore entries
                 - post_create: optional callable(project_path, project_name)
         """
         return None
@@ -2314,6 +2324,26 @@ class JacRuntimeInterface(
         from jaclang.runtimelib.server import UserManager
 
         return UserManager(base_path=base_path)
+
+    @staticmethod
+    def store(base_path: str = "./storage", create_dirs: bool = True) -> Any:  # noqa: ANN401
+        """Get storage backend instance (hookable for plugins).
+
+        Default returns LocalStorage. Plugins (like jac-scale) can override
+        to provide cloud storage backends with full config support.
+
+        Args:
+            base_path: Base directory for file storage.
+            create_dirs: Whether to auto-create directories.
+
+        Returns:
+            Storage instance (LocalStorage by default)
+        """
+        from jaclang.runtimelib.storage import (  # type: ignore[attr-defined]
+            LocalStorage,
+        )
+
+        return LocalStorage(base_path=base_path, create_dirs=create_dirs)
 
 
 def generate_plugin_helpers(

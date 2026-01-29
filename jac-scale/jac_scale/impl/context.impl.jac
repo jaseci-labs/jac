@@ -21,4 +21,7 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     # Default user_root and entry_node to system_root
     self.user_root = self.system_root;
     self.entry_node = self.system_root;
+    self.call_state: ContextVar[CallState] = ContextVar(
+        'call_state', default=CallState()
+    );
 }

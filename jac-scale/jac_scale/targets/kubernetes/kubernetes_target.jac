@@ -174,10 +174,7 @@ class KubernetesTarget(DeploymentTarget) {
         return service;
     }
 
-    """Build the bash command for setting up Jaseci runtime environment.
-
-    This replaces the hard-coded command with a configurable version.
-    """
+    """Build the bash command for setting up Jaseci runtime environment."""
     def _build_runtime_setup_command(
         self: KubernetesTarget, app_config: AppConfig
     ) -> list[str] {
@@ -200,29 +197,49 @@ class KubernetesTarget(DeploymentTarget) {
         commands.append('export BUN_INSTALL="$HOME/.bun"');
         commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
-        # Clone and setup Jaseci if enabled
-        if config.install_jaseci {
+        if app_config.experimental {
             commands.append('rm -rf jaseci');
-            # Clone repository
             clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
-            # Checkout specific commit if provided
             if config.jaseci_commit {
                 commands.append(f"git checkout {config.jaseci_commit}");
             }
-            # Update submodules
             commands.append('git submodule update --init --recursive');
-            # Setup virtual environment
-            commands.append('python -m venv venv');
-            commands.append('source venv/bin/activate');
-            # Install Jaseci components
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
             commands.append('pip install -e ./jac-scale');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
             commands.append('cd ..');
+        } else {
+            packages = config.plugin_versions or {};
+            jaclang_v = packages.get('jaclang', 'latest');
+            scale_v = packages.get('jac_scale', 'latest');
+            client_v = packages.get('jac_client', 'latest');
+            byllm_v = packages.get('jac_byllm', 'latest');
+            if jaclang_v == 'latest' {
+                commands.append('pip install jaclang');
+            } else {
+                commands.append(f'pip install jaclang=={jaclang_v}');
+            }
+            if scale_v == 'latest' {
+                commands.append('pip install jac-scale');
+            } else {
+                commands.append(f'pip install jac-scale=={scale_v}');
+            }
+            if client_v == 'latest' {
+                commands.append('pip install jac-client');
+            } else {
+                commands.append(f'pip install jac-client=={client_v}');
+            }
+            if byllm_v and byllm_v != 'none' {
+                if byllm_v == 'latest' {
+                    commands.append('pip install byllm');
+                } else {
+                    commands.append(f'pip install byllm=={byllm_v}');
+                }
+            }
         }
 
         # Change to app directory (project is already copied there via volume mount)
@@ -646,6 +663,135 @@ class KubernetesTarget(DeploymentTarget) {
         );
     }
 
+    """Wait for resources to be completely deleted."""
+    def _wait_for_deletion(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any,
+        max_wait: int = 60,
+        poll_interval: float = 1.0
+    ) -> None {
+        elapsed = 0.0;
+        while elapsed < max_wait {
+            resources_exist = False;
+
+            # Check deployment
+            try {
+                apps_v1.read_namespaced_deployment(name=app_name, namespace=namespace);
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check service
+            try {
+                core_v1.read_namespaced_service(
+                    name=f"{app_name}-service", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check MongoDB resources if enabled
+            if self.k8s_config.mongodb_enabled {
+                mongodb_name = f"{app_name}-mongodb";
+                try {
+                    apps_v1.read_namespaced_stateful_set(
+                        name=mongodb_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{mongodb_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check Redis resources if enabled
+            if self.k8s_config.redis_enabled {
+                redis_name = f"{app_name}-redis";
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=redis_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{redis_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check PVCs
+            try {
+                pvcs = core_v1.list_namespaced_persistent_volume_claim(namespace);
+                for pvc in pvcs.items {
+                    if pvc.metadata.name.startswith(app_name) {
+                        resources_exist = True;
+                        break;
+                    }
+                }
+            } except Exception { }
+
+            # Check code sync pod
+            try {
+                core_v1.read_namespaced_pod(
+                    name=f"{app_name}-code-sync", namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # If no resources exist, deletion is complete
+            if not resources_exist {
+                if self.logger {
+                    self.logger.info(
+                        f"All resources for '{app_name}' have been deleted"
+                    );
+                }
+                return;
+            }
+            time.sleep(poll_interval);
+            elapsed = elapsed + poll_interval;
+        }
+
+        if self.logger {
+            self.logger.warn(
+                f"Timeout waiting for resources to be deleted after {max_wait} seconds"
+            );
+        }
+    }
+
     """Destroy all enabled databases."""
     def _destroy_databases(
         self: KubernetesTarget,
@@ -731,6 +877,14 @@ class KubernetesTarget(DeploymentTarget) {
                     } except Exception { }
                 }
             }
+
+            # Wait for all resources to be completely deleted
+            if self.logger {
+                self.logger.info(
+                    f"Waiting for all resources to be deleted for '{app_name}'..."
+                );
+            }
+            self._wait_for_deletion(app_name, namespace, apps_v1, core_v1);
 
             if self.logger {
                 self.logger.info(f"Application '{app_name}' destroyed successfully");

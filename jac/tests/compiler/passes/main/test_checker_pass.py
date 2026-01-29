@@ -738,6 +738,16 @@ def test_connect_any_type(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 0
 
 
+def test_connect_node_collection(fixture_path: Callable[[str], str]) -> None:
+    """Test that connection operations accept collections (list, tuple) of nodes."""
+    program = JacProgram()
+    path = fixture_path("checker_connect_node_collection.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - collections of nodes are valid connection operands
+    assert len(program.errors_had) == 0
+
+
 def test_root_type(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_root_type.jac")
@@ -1257,4 +1267,19 @@ def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
         wrong_val: str = bar_obj.value;  # <-- Error (int assigned to str)
     """,
         program.errors_had[3].pretty_print(),
+    )
+
+
+def test_postinit_fields_not_required_in_constructor(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that fields marked with 'by postinit' are not required as constructor arguments."""
+    program = JacProgram()
+    path = fixture_path("checker_postinit_fields.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - postinit fields should not be required in constructor
+    assert len(program.errors_had) == 0, (
+        f"Expected no type checking errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
     )
