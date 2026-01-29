@@ -1,13 +1,16 @@
 """Fixture with function that can be imported - module name ends with 'a'."""
 
-import from byllm.lib { Model }
+import from byllm.lib { MockLLM }
 import from jaclang { JacRuntime }
-
-glob llm = Model(model_name="gpt-4o-mini");
 
 obj ImportedData {
     has name: str;
 }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [ImportedData(name="test_import")], "verbose": False}
+);
 
 def get_imported_data(txt: str) -> ImportedData by llm();
 
