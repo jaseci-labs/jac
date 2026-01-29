@@ -1,0 +1,70 @@
+name: Release Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to release"
+        required: true
+        type: choice
+        options:
+          - jaclang
+          - jac-byllm
+          - jac-client
+          - jac-scale
+          - jac-super
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run release script
+        id: release
+        run: python scripts/release.py --package ${{ inputs.package }} --bump ${{ inputs.bump }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch and commit
+        run: |
+          git checkout -b ${{ steps.release.outputs.branch_name }}
+          git add ${{ steps.release.outputs.modified_files }}
+          git commit -m "${{ steps.release.outputs.pr_title }}"
+          git push origin ${{ steps.release.outputs.branch_name }}
+
+      - name: Create PR and enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+            --title "${{ steps.release.outputs.pr_title }}" \
+            --body "${{ steps.release.outputs.pr_body }}" \
+            --label "release" \
+            --base main \
+            --head "${{ steps.release.outputs.branch_name }}")
+          echo "Created PR: $PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
