@@ -2,7 +2,7 @@ from shlex import quote
 
 bashcode = r"""#compdef %(executables)s
 # Run something, muting output or redirecting it to the debug stream
-# depending on the value of _ARC_DEBUG.
+# depending on the value of _JAC_DEBUG.
 # If JAC_COMPLETE_USE_TEMPFILES is set, use tempfiles for IPC.
 __jac_complete_run() {
     if [[ -z "${JAC_COMPLETE_USE_TEMPFILES-}" ]]; then
@@ -18,7 +18,7 @@ __jac_complete_run() {
 }
 
 __jac_complete_run_inner() {
-    if [[ -z "${_ARC_DEBUG-}" ]]; then
+    if [[ -z "${_JAC_DEBUG-}" ]]; then
         "$@" 8>&1 9>&2 1>/dev/null 2>&1 </dev/null
     else
         "$@" 8>&1 9>&2 1>&9 2>&1 </dev/null
@@ -97,7 +97,7 @@ function __fish_%(function_name)s_complete
     set -lx COMP_LINE (commandline -p)
     set -lx COMP_POINT (string length (commandline -cp))
     set -lx COMP_TYPE
-    if set -q _ARC_DEBUG
+    if set -q _JAC_DEBUG
         %(jaccomplete_script)s 8>&1 9>&2 1>&9 2>&1
     else
         %(jaccomplete_script)s 8>&1 9>&2 1>/dev/null 2>&1
