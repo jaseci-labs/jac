@@ -95,3 +95,28 @@ def dot(
     group="tools"
 )
 def lsp -> int;
+
+@registry.command(
+    name="completions",
+    help="Generate shell completion script",
+    args=[
+        Arg.create(
+            "shell",
+            typ=str,
+            default="bash",
+            help="Shell to generate completions for (bash, zsh, tcsh, fish, powershell)",
+            short="s"
+        ),
+
+    ],
+    examples=[
+        ("jac completions --shell bash", "Generate bash completions"),
+        (
+            "eval \"$(jac completions --shell bash)\"",
+            "Activate completions in current session"
+        ),
+
+    ],
+    group="tools"
+)
+def completions(shell: str = "bash") -> int;

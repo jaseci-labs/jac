@@ -132,3 +132,15 @@ impl lsp -> int {
         return 1;
     }
 }
+
+"""Generate shell completion script."""
+impl completions(shell: str = "bash") -> int {
+    import from jaclang.vendor { jaccomplete }
+    try {
+        print(jaccomplete.shellcode(executables=["jac"], shell=shell));
+        return 0;
+    } except Exception as e {
+        print(f"Error generating completions: {e}", file=sys.stderr);
+        return 1;
+    }
+}
