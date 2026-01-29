@@ -289,5 +289,3 @@ def test_jac_call_function_sends_params_directly() -> None:
     assert "JSON.stringify(args)" in content, (
         "client_runtime should send params directly with JSON.stringify(args)"
     )
-
-

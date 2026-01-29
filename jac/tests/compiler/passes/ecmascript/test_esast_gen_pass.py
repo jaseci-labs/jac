@@ -220,9 +220,9 @@ def test_export_semantics_for_pub_declarations(
     assert es_ast.body[-1] == export_decls[0], "Export statement should be at the end"
 
     # Extract the export statement (should be at the end of the file)
-    assert js_code.strip().endswith(
-        ";"
-    ), "JS should end with semicolon from export statement"
+    assert js_code.strip().endswith(";"), (
+        "JS should end with semicolon from export statement"
+    )
     lines = js_code.strip().split("\n")
     last_line = lines[-1]
     assert last_line.startswith("export {"), "Last line should be export statement"
@@ -230,16 +230,20 @@ def test_export_semantics_for_pub_declarations(
     # All :pub items in export, private items excluded
     pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"]
     priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"]
-    assert all(item in last_line for item in pub_items), "All :pub items should be exported"
-    assert all(
-        item not in last_line for item in priv_items
-    ), "Private items should NOT be exported"
+    assert all(item in last_line for item in pub_items), (
+        "All :pub items should be exported"
+    )
+    assert all(item not in last_line for item in priv_items), (
+        "Private items should NOT be exported"
+    )
 
     # No inline export keywords - declarations should be plain
     assert "let PUBLIC_API_URL" in js_code and "export let" not in js_code
     assert "class PublicClass" in js_code and "export class" not in js_code
     assert "function public_function" in js_code and "export function" not in js_code
-    assert "const PublicStatus" in js_code and "export const PublicStatus" not in js_code
+    assert (
+        "const PublicStatus" in js_code and "export const PublicStatus" not in js_code
+    )
 
 
 def test_reactive_state_generates_use_state(
