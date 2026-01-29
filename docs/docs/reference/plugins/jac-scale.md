@@ -594,13 +594,11 @@ For advanced use cases, you can use `StorageFactory` directly instead of the `st
 import from jac_scale.factories.storage_factory { StorageFactory }
 
 # Create with explicit type and config
-storage = StorageFactory.create("local", {
-    "base_path": "./my-files",
-    "create_dirs": True
-});
+glob config = {"base_path": "./my-files", "create_dirs": True};
+glob storage = StorageFactory.create("local", config);
 
 # Create using jac.toml / env var / defaults
-storage = StorageFactory.get_default();
+glob default_storage = StorageFactory.get_default();
 ```
 
 ---
