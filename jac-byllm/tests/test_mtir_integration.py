@@ -429,9 +429,7 @@ class TestScopeNameConsistency:
         mtir_map = JacRuntime.program.mtir_map
 
         # The module name should be "basic" (not "basi")
-        scopes_with_get_basic = [
-            scope for scope in mtir_map if "get_basic" in scope
-        ]
+        scopes_with_get_basic = [scope for scope in mtir_map if "get_basic" in scope]
 
         assert len(scopes_with_get_basic) > 0, (
             f"Should find get_basic in MTIR map. "
