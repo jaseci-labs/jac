@@ -140,6 +140,76 @@ impl _type_to_schema(
     }
     # Handle enums
     if isinstance(ty, type) and issubclass(ty, Enum) {
+        # Try to use EnumInfo from compiler pass if available
+        if isinstance(info.type_info, EnumInfo) {
+            info = info.type_info;
+            enum_type = None;
+            enum_names = [];
+            enum_values = [];
+
+            for member in info.members {
+                enum_names.append(member.name);
+
+                # Determine type from type_info (can be "int", "str", "float", "bool", or None)
+                if member.type_info {
+                    member_type_str = member.type_info;
+                    if enum_type is None {
+                        enum_type = member_type_str;
+                    } elif member_type_str != enum_type {
+                        raise ValueError(
+                            f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
+                        ) ;
+                    }
+                }
+
+                # Try to get the actual runtime value for the description
+                try {
+                    runtime_member = ty.__members__.get(member.name);
+                    if runtime_member {
+                        enum_values.append(runtime_member.value);
+                    }
+                } except Exception {
+                    # If runtime introspection fails, skip adding the value
+                    ;
+                }
+            }
+
+            # Default to int if no type was determined
+            enum_type = enum_type or "int";
+
+            # Validate supported types
+            if enum_type not in ("int", "str") {
+                raise ValueError(
+                    f"Enum {ty.__name__} has unsupported type {enum_type}. "
+                    "Only int and str enums are supported for schema generation."
+                ) ;
+            }
+
+            # Build description
+            names_str = ", ".join(enum_names);
+            if enum_values {
+                enum_desc = f"\nThe value *should* be one in this list: {enum_values} where the names are [{names_str}].";
+            } else {
+                enum_desc = f"\nThe value *should* be one of the following the names are [{names_str}].";
+            }
+
+            enum_semstr = [member.semstr for member in info.members if member.semstr];
+            if enum_semstr {
+                enum_desc += "\nDetails:\n" + "\n".join(
+                    [f"- {member.name}: {member.semstr}" for member in info.members if member.semstr]
+                );
+            }
+
+            base_desc = info.semstr or semstr or "";
+            full_desc = f"{base_desc}{enum_desc}";
+            return {
+                "description": full_desc,
+                "type": "integer" if enum_type == "int" else "string",
+
+            };
+        }
+
+        # Fallback to runtime introspection if EnumInfo not available
         enum_type = None;
         enum_values = [];
         for member in ty.__members__.values() {
