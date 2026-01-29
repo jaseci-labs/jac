@@ -159,6 +159,9 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                                 type_info = "int";
                             } elif isinstance(enum_stmt.value, uni.String) {
                                 type_info = "str";
+                            } elif isinstance(enum_stmt.value, uni.MultiString) {
+                                # MultiString is used for string literals in some contexts
+                                type_info = "str";
                             } elif isinstance(enum_stmt.value, uni.Float) {
                                 type_info = "float";
                             } elif isinstance(enum_stmt.value, uni.Bool) {
@@ -166,7 +169,7 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                             } else {
                                 # Non-allowed type for enum value
                                 raise Exception(
-                                    f"Enum member '{member_name}' has invalid value type. "
+                                    f"Enum member '{member_name}' has invalid value type: {type(enum_stmt.value).__name__}. "
                                     f"Only int, str, float, and bool literals are allowed."
                                 );
                             }

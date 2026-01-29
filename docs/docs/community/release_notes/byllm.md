@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.17 (Unreleased)
 
+- **Enum Semantic Strings in Schema**: Added support for extracting semantic strings from enum members at compile time. Enum member descriptions (e.g., `sem Personality.INTROVERT = "Person who is reserved..."`) are now included in LLM schemas, providing richer context for enum selection.
+
 ## byllm 0.4.16 (Latest Release)
 
 - **MTIR-Powered Schema Generation**: `MTRuntime` now uses compile-time MTIR info for generating JSON schemas with semantic descriptions. Tool and return type schemas include semstrings extracted at compile time, providing richer context for LLM calls.

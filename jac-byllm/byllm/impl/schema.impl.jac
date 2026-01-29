@@ -141,13 +141,19 @@ impl _type_to_schema(
     # Handle enums
     if isinstance(ty, type) and issubclass(ty, Enum) {
         # Try to use EnumInfo from compiler pass if available
-        if isinstance(info.type_info, EnumInfo) {
-            info = info.type_info;
+        enum_info_to_use = None;
+        if isinstance(info, EnumInfo) {
+            enum_info_to_use = info;
+        } elif info and hasattr(info, "type_info") and isinstance(info.type_info, EnumInfo) {
+            enum_info_to_use = info.type_info;
+        }
+
+        if enum_info_to_use and enum_info_to_use.members {
             enum_type = None;
             enum_names = [];
             enum_values = [];
 
-            for member in info.members {
+            for member in enum_info_to_use.members {
                 enum_names.append(member.name);
 
                 # Determine type from type_info (can be "int", "str", "float", "bool", or None)
@@ -193,14 +199,14 @@ impl _type_to_schema(
                 enum_desc = f"\nThe value *should* be one of the following the names are [{names_str}].";
             }
 
-            enum_semstr = [member.semstr for member in info.members if member.semstr];
+            enum_semstr = [member.semstr for member in enum_info_to_use.members if member.semstr];
             if enum_semstr {
                 enum_desc += "\nDetails:\n" + "\n".join(
-                    [f"- {member.name}: {member.semstr}" for member in info.members if member.semstr]
+                    [f"- {member.name}: {member.semstr}" for member in enum_info_to_use.members if member.semstr]
                 );
             }
 
-            base_desc = info.semstr or semstr or "";
+            base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";
             return {
                 "description": full_desc,
