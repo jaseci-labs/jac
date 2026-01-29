@@ -15,10 +15,6 @@ import from 'react-router-dom' {
 }
 import from 'react-error-boundary' { ErrorBoundary }
 
-# API base URL injected by Vite at build time (empty string = same origin)
-glob __JAC_API_BASE_URL__:
-         str = "";
-
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
 
 # React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects

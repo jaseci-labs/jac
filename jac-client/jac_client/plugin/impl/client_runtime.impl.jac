@@ -46,9 +46,9 @@ impl navigate(path: str) -> None {
 }
 
 impl __getApiBaseUrl -> str {
-    # __JAC_API_BASE_URL__ is injected by Vite at build time via define
-    # Returns empty string for same-origin (default), or configured URL
-    return __JAC_API_BASE_URL__;
+    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
+    # Falls back to empty string (same-origin) when not configured.
+    return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
