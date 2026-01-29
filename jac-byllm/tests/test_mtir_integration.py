@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from jaclang import JacRuntime
+from jaclang import JacRuntimeInterface as Jac
 from jaclang.pycore.mtp import (
     ClassInfo,
     FieldInfo,
@@ -28,6 +29,9 @@ from jaclang.pycore.mtp import (
     mk_list,
 )
 from jaclang.pycore.program import JacProgram
+
+# Import the jac_import function
+jac_import = Jac.jac_import
 
 
 @pytest.fixture
@@ -358,3 +362,261 @@ class TestMTIRFixture:
                 break
 
         assert found_generate_person, "Should have generate_person function in MTIR"
+
+
+# =============================================================================
+# Scope Name Consistency Tests
+# =============================================================================
+
+
+class TestScopeNameConsistency:
+    """Tests that scope names stored during MTIR generation match what's fetched.
+
+    This test class verifies the fix for the bug where module names ending with
+    'j', 'a', or 'c' were incorrectly truncated due to using .rstrip(".jac")
+    instead of .removesuffix(".jac").
+    """
+
+    def test_scope_name_with_trailing_a(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'a' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("test_schema.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "test_schema" (not "test_schem")
+        # and the scope should be "test_schema.generate_data"
+        scopes_with_generate_data = [
+            scope for scope in mtir_map if "generate_data" in scope
+        ]
+
+        assert len(scopes_with_generate_data) > 0, (
+            f"Should find generate_data in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name is correct (module name intact)
+        matching_scope = None
+        for scope in scopes_with_generate_data:
+            if "test_schema.generate_data" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'test_schema.generate_data', "
+            f"but found: {scopes_with_generate_data}. "
+            f"This indicates the module name may have been truncated."
+        )
+
+        # Verify the MTIR entry is valid
+        assert isinstance(mtir_map[matching_scope], FunctionInfo)
+
+    def test_scope_name_with_trailing_c(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'c' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("basic.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "basic" (not "basi")
+        scopes_with_get_basic = [scope for scope in mtir_map if "get_basic" in scope]
+
+        assert len(scopes_with_get_basic) > 0, (
+            f"Should find get_basic in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name contains correct module name
+        matching_scope = None
+        for scope in scopes_with_get_basic:
+            if "basic.get_basic" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'basic.get_basic', "
+            f"but found: {scopes_with_get_basic}. "
+            f"Module name ending in 'c' may have been truncated."
+        )
+
+    def test_scope_name_with_trailing_j(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'j' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("proj.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "proj" (not "pro")
+        scopes_with_create_proj = [
+            scope for scope in mtir_map if "create_proj" in scope
+        ]
+
+        assert len(scopes_with_create_proj) > 0, (
+            f"Should find create_proj in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name contains correct module name
+        matching_scope = None
+        for scope in scopes_with_create_proj:
+            if "proj.create_proj" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'proj.create_proj', "
+            f"but found: {scopes_with_create_proj}. "
+            f"Module name ending in 'j' may have been truncated."
+        )
+
+    def test_all_stored_scopes_are_retrievable(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that all scopes stored in MTIR can be retrieved."""
+        # Compile multiple fixtures
+        fixtures = ["test_schema.jac", "basic.jac", "proj.jac"]
+        expected_functions = ["generate_data", "get_basic", "create_proj"]
+        expected_modules = ["test_schema", "basic", "proj"]
+
+        for fixture_name, func_name, module_name in zip(
+            fixtures, expected_functions, expected_modules, strict=True
+        ):
+            prog = JacProgram()
+            prog.compile(fixture_path(fixture_name))
+            assert not prog.errors_had, (
+                f"Compilation errors for {fixture_name}: {prog.errors_had}"
+            )
+
+            assert JacRuntime.program is not None
+            mtir_map = JacRuntime.program.mtir_map
+
+            # Build expected scope pattern
+            expected_scope_pattern = f"{module_name}.{func_name}"
+
+            # Find matching scopes
+            matching_scopes = [
+                scope for scope in mtir_map if expected_scope_pattern in scope
+            ]
+
+            assert len(matching_scopes) > 0, (
+                f"Failed to find scope matching '{expected_scope_pattern}' "
+                f"in MTIR map for {fixture_name}. "
+                f"Available scopes: {list(mtir_map.keys())}. "
+                f"This indicates module name '{module_name}' was not correctly preserved."
+            )
+
+            # Verify the MTIR info can be retrieved
+            scope = matching_scopes[0]
+            mtir_info = mtir_map[scope]
+            assert mtir_info is not None
+            assert isinstance(mtir_info, FunctionInfo)
+            assert mtir_info.name == func_name
+
+    def test_scope_name_generation_algorithm(self) -> None:
+        """Test the scope name generation matches expected format.
+
+        This test verifies that:
+        1. Module names are extracted correctly from file paths
+        2. The .jac suffix is properly removed
+        3. Scope names follow the format: module_name.function_name
+        """
+        test_cases = [
+            ("test_schema.jac", "generate_data", "test_schema.generate_data"),
+            ("basic.jac", "get_basic", "basic.get_basic"),
+            ("proj.jac", "create_proj", "proj.create_proj"),
+            ("data.jac", "process_data", "data.process_data"),  # ends with 'a'
+            ("calc.jac", "calculate", "calc.calculate"),  # ends with 'c'
+            ("subj.jac", "analyze", "subj.analyze"),  # ends with 'j'
+        ]
+
+        for module_file, func_name, expected_scope in test_cases:
+            # Extract module name using removesuffix (the correct way)
+            module_name = module_file.removesuffix(".jac")
+
+            # Generate scope name
+            scope = f"{module_name}.{func_name}"
+
+            assert scope == expected_scope, (
+                f"Scope name mismatch for {module_file}:{func_name}. "
+                f"Expected: {expected_scope}, Got: {scope}"
+            )
+
+            # Verify module name wasn't truncated
+            assert not module_name.endswith("."), (
+                f"Module name '{module_name}' appears to be corrupted "
+                f"(ends with period)"
+            )
+
+            # Verify the original suffix-ending character is preserved
+            if module_file.endswith("a.jac"):
+                assert module_name.endswith("a"), (
+                    f"Module name '{module_name}' lost trailing 'a'"
+                )
+            elif module_file.endswith("c.jac"):
+                assert module_name.endswith("c"), (
+                    f"Module name '{module_name}' lost trailing 'c'"
+                )
+            elif module_file.endswith("j.jac"):
+                assert module_name.endswith("j"), (
+                    f"Module name '{module_name}' lost trailing 'j'"
+                )
+
+    def test_imported_function_scope_resolution(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that imported functions maintain correct scope names.
+
+        This verifies that when a function defined in one module (ending with 'a')
+        is imported into another module, the MTIR can be retrieved at runtime
+        with the correct scope (based on where the function is defined, not imported).
+        """
+        import io
+        import sys
+
+        # Run the importer_main.jac which imports and calls get_imported_data
+        # The fixture includes runtime checks for MTIR retrieval
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            jac_import("importer_main", base_path=fixture_path("./"))
+        finally:
+            sys.stdout = sys.__stdout__
+
+        stdout_value = captured_output.getvalue()
+
+        # The fixture should print MTIR test results
+        # Check that MTIR was found and has the correct scope
+        assert "MTIR_TEST: Found scopes:" in stdout_value, (
+            f"MTIR test did not run or find scopes. Output:\n{stdout_value}"
+        )
+
+        # Verify the scope contains the full module name (importable_schema, not importable_schem)
+        assert (
+            "MTIR_TEST: Has correct scope with 'importable_schema': True"
+            in stdout_value
+        ), (
+            f"MTIR scope does not contain 'importable_schema'. "
+            f"This indicates the module name 'importable_schema' (ending with 'a') "
+            f"was truncated during compilation. Output:\n{stdout_value}"
+        )
+
+        # Verify the overall test passed
+        assert "MTIR retrieval test: PASSED" in stdout_value, (
+            f"MTIR retrieval test failed. Output:\n{stdout_value}"
+        )

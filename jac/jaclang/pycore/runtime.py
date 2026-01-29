@@ -2325,6 +2325,26 @@ class JacRuntimeInterface(
 
         return UserManager(base_path=base_path)
 
+    @staticmethod
+    def store(base_path: str = "./storage", create_dirs: bool = True) -> Any:  # noqa: ANN401
+        """Get storage backend instance (hookable for plugins).
+
+        Default returns LocalStorage. Plugins (like jac-scale) can override
+        to provide cloud storage backends with full config support.
+
+        Args:
+            base_path: Base directory for file storage.
+            create_dirs: Whether to auto-create directories.
+
+        Returns:
+            Storage instance (LocalStorage by default)
+        """
+        from jaclang.runtimelib.storage import (  # type: ignore[attr-defined]
+            LocalStorage,
+        )
+
+        return LocalStorage(base_path=base_path, create_dirs=create_dirs)
+
 
 def generate_plugin_helpers(
     plugin_class: type[Any],

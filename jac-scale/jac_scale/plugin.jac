@@ -18,6 +18,7 @@ import from .factories.utility_factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
+import from jaclang.runtimelib.storage { Storage }
 
 """Pre-hook for jac start command to handle --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
@@ -227,6 +228,17 @@ class JacScalePlugin {
     @hookimpl
     static def get_user_manager(base_path: str) -> UserManager {
         return JacScaleUserManager(base_path=base_path);
+    }
+
+    """Provide jac-scale's storage backend.
+
+    This overrides the core store() to use jac-scale's StorageFactory,
+    which supports cloud backends (S3, GCS, Azure) via configuration.
+    """
+    @hookimpl
+    static def store(base_path: str = "./storage", create_dirs: bool = True) -> Storage {
+        import from .factories.storage_factory { StorageFactory }
+        return StorageFactory.get_default(base_path, create_dirs);
     }
 }
 

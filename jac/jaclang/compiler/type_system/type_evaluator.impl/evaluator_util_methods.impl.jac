@@ -5,6 +5,10 @@ impl TypeEvaluator._create_dataclass_init_method(
     for cls in class_type.shared.mro[::-1] {
         # Iterate over the has vars and create parameters.
         for has_var in cls.shared.symbol_table.get_has_vars() {
+            # Skip fields marked with 'by postinit' - they are initialized in postinit method
+            if has_var.defer {
+                continue;
+            }
             # Get parameter type.
             param_type: TypeBase | None = None;
             if has_var.type_tag {
