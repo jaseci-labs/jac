@@ -392,7 +392,7 @@ class TestScopeNameConsistency:
         # The module name should be "test_schema" (not "test_schem")
         # and the scope should be "test_schema.generate_data"
         scopes_with_generate_data = [
-            scope for scope in mtir_map.keys() if "generate_data" in scope
+            scope for scope in mtir_map if "generate_data" in scope
         ]
 
         assert len(scopes_with_generate_data) > 0, (
@@ -430,7 +430,7 @@ class TestScopeNameConsistency:
 
         # The module name should be "basic" (not "basi")
         scopes_with_get_basic = [
-            scope for scope in mtir_map.keys() if "get_basic" in scope
+            scope for scope in mtir_map if "get_basic" in scope
         ]
 
         assert len(scopes_with_get_basic) > 0, (
@@ -465,7 +465,7 @@ class TestScopeNameConsistency:
 
         # The module name should be "proj" (not "pro")
         scopes_with_create_proj = [
-            scope for scope in mtir_map.keys() if "create_proj" in scope
+            scope for scope in mtir_map if "create_proj" in scope
         ]
 
         assert len(scopes_with_create_proj) > 0, (
@@ -496,7 +496,7 @@ class TestScopeNameConsistency:
         expected_modules = ["test_schema", "basic", "proj"]
 
         for fixture_name, func_name, module_name in zip(
-            fixtures, expected_functions, expected_modules
+            fixtures, expected_functions, expected_modules, strict=True
         ):
             prog = JacProgram()
             prog.compile(fixture_path(fixture_name))
@@ -512,7 +512,7 @@ class TestScopeNameConsistency:
 
             # Find matching scopes
             matching_scopes = [
-                scope for scope in mtir_map.keys() if expected_scope_pattern in scope
+                scope for scope in mtir_map if expected_scope_pattern in scope
             ]
 
             assert len(matching_scopes) > 0, (
