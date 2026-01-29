@@ -5,8 +5,8 @@ on:
     types: [closed]
     branches: [main]
 
-permissions:
-  contents: write
+# Deny all permissions by default; grant only at job level.
+permissions: {}
 
 jobs:
   publish:
@@ -14,6 +14,8 @@ jobs:
       github.event.pull_request.merged == true &&
       contains(github.event.pull_request.labels.*.name, 'release')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Extract package info from PR title
         id: info
@@ -35,9 +37,11 @@ jobs:
           fi
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
+          fetch-depth: 0
+          persist-credentials: true
           submodules: true
 
       - name: Determine package directory
@@ -66,7 +70,7 @@ jobs:
           git push origin "${{ steps.info.outputs.tag }}"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.12"
 
