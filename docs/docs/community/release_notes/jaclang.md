@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Internal**: Explicitly declared all postinit fields across the codebase.
 - **Build (jacpack)**: `.jac/.gitignore` now contains only a comment (not `*`), so compiled assets (e.g., `compiled/`) aren't ignored and Tailwind builds correctly.
 - **Support Go to Definition for Nested Unpacking Assignments**: Fixed symbol table generation to support recursive nested unpacking (e.g., `[a, [b, c]] = val`) ensuring all inner variables are registered.
+- **Fix: Module Name Truncation in MTIR Scope Resolution**: Fixed a bug where module names ending with 'j', 'a', or 'c' were incorrectly truncated due to using `.rstrip(".jac")` instead of `.removesuffix(".jac")`. This caused MTIR lookup failures and degraded functionality when the runtime tried to fetch metadata with the correct module name but found truncated keys (e.g., `test_schema` → `test_schem`).
 
 ## jaclang 0.9.11 (Latest Release)
 
