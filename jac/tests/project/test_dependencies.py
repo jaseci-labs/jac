@@ -292,6 +292,15 @@ class TestDependencyInstaller:
             version = installer.get_installed_version("nonexistent")
             assert version is None
 
+            # Test pip show succeeds but no Version line present
+            mock_pip.return_value = (
+                0,
+                "Name: strange-pkg\nSummary: Missing version field\n",
+                "",
+            )
+            version = installer.get_installed_version("strange-pkg")
+            assert version is None
+
     def test_uninstall_package(self, temp_project: Path) -> None:
         """Test uninstalling a package via pip uninstall."""
         config = JacConfig.load(temp_project / "jac.toml")
