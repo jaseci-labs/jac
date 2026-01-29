@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from jaclang import JacRuntime
+from jaclang import JacRuntime, JacRuntimeInterface as Jac
 from jaclang.pycore.mtp import (
     ClassInfo,
     FieldInfo,
@@ -28,6 +28,9 @@ from jaclang.pycore.mtp import (
     mk_list,
 )
 from jaclang.pycore.program import JacProgram
+
+# Import the jac_import function
+jac_import = Jac.jac_import
 
 
 @pytest.fixture
@@ -573,3 +576,45 @@ class TestScopeNameConsistency:
                 assert module_name.endswith("j"), (
                     f"Module name '{module_name}' lost trailing 'j'"
                 )
+
+    def test_imported_function_scope_resolution(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that imported functions maintain correct scope names.
+
+        This verifies that when a function defined in one module (ending with 'a')
+        is imported into another module, the MTIR can be retrieved at runtime
+        with the correct scope (based on where the function is defined, not imported).
+        """
+        import io
+        import sys
+
+        # Run the importer_main.jac which imports and calls get_imported_data
+        # The fixture includes runtime checks for MTIR retrieval
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            jac_import("importer_main", base_path=fixture_path("./"))
+        finally:
+            sys.stdout = sys.__stdout__
+
+        stdout_value = captured_output.getvalue()
+
+        # The fixture should print MTIR test results
+        # Check that MTIR was found and has the correct scope
+        assert "MTIR_TEST: Found scopes:" in stdout_value, (
+            f"MTIR test did not run or find scopes. Output:\n{stdout_value}"
+        )
+
+        # Verify the scope contains the full module name (importable_schema, not importable_schem)
+        assert "MTIR_TEST: Has correct scope with 'importable_schema': True" in stdout_value, (
+            f"MTIR scope does not contain 'importable_schema'. "
+            f"This indicates the module name 'importable_schema' (ending with 'a') "
+            f"was truncated during compilation. Output:\n{stdout_value}"
+        )
+
+        # Verify the overall test passed
+        assert "MTIR retrieval test: PASSED" in stdout_value, (
+            f"MTIR retrieval test failed. Output:\n{stdout_value}"
+        )
