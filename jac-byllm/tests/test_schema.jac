@@ -137,9 +137,9 @@ test bool_return {
 # Case: Enum (auto/int)
 # =============================================================================
 enum Color {
-    Red,
-    Green,
-    Blue,
+    RED,
+    GREEN,
+    BLUE,
 }
 
 def get_random_color -> Color by llm();

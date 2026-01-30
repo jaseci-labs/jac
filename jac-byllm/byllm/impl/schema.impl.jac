@@ -13,6 +13,9 @@ impl _type_to_schema(
     if info?.type_info {
         info_type: str = info.type_info[0] if isinstance(info.type_info, tuple) else "";
         info = info.type_info[1] if isinstance(info.type_info, tuple) else info;
+    } elif isinstance(info, tuple) {
+        info_type = info[0];
+        info = info[1];
     } else {
         info_type = "";
     }
@@ -47,8 +50,20 @@ impl _type_to_schema(
         args = get_args(ty);
         return {
             "anyOf": [
-                _type_to_schema(arg, info=info.type_info[i + 1])
-                for (i, arg) in enumerate(args)
+                _type_to_schema(
+                    arg,
+                    info=(
+                        info.type_info[i + 1]
+                        if (
+                            info
+                            and info?.type_info
+                            and info.type_info
+                            and isinstance(info.type_info, (list, tuple))
+                            and len(info.type_info) > i + 1
+                        )
+                        else None
+                    ),
+                ) for (i, arg) in enumerate(args)
             ],
             "title": title,
 
@@ -100,27 +115,107 @@ impl _type_to_schema(
         } else {
             info_fields = info.fields if info else [];
         }
+        # Build a map of field info by name for quick lookup
+        info_fields_map = {field.name: field for field in info_fields};
+        # Build properties for ALL fields (including inherited), using MTIR info when available
         properties = {
-            field.name: _type_to_schema(
-                fields[field.name],
-                field.name,
-                field.semstr if semstr is not None else "",
-                info=field
-            )  # type: ignore
-             for field in info_fields
+            field_name: _type_to_schema(
+                field_type,
+                field_name,
+                info_fields_map[field_name].semstr
+                if field_name in info_fields_map
+                else "",
+                info=info_fields_map.get(field_name)
+            ) for (field_name, field_type) in fields.items()
         };
         return {
             "title": title or ty.__name__,
             "description": semstr,
             "type": "object",
             "properties": properties,
-            "required": list(fields.keys()),
+            "required": list(properties.keys()),
             "additionalProperties": False,
 
         };
     }
     # Handle enums
     if isinstance(ty, type) and issubclass(ty, Enum) {
+        # Try to use EnumInfo from compiler pass if available
+        enum_info_to_use = None;
+        if isinstance(info, EnumInfo) {
+            enum_info_to_use = info;
+        } elif info and info?.type_info and isinstance(info.type_info, EnumInfo) {
+            enum_info_to_use = info.type_info;
+        }
+        if enum_info_to_use and enum_info_to_use.members {
+            enum_type = None;
+            enum_names = [];
+            enum_values = [];
+            for member in enum_info_to_use.members {
+                enum_names.append(member.name);
+
+                # Determine type from type_info (can be "int", "str", "float", "bool", or None)
+                if member.type_info {
+                    member_type_str = member.type_info;
+                    if enum_type is None {
+                        enum_type = member_type_str;
+                    } elif member_type_str != enum_type {
+                        raise ValueError(
+                            f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
+                        ) ;
+                    }
+                }
+
+                # Try to get the actual runtime value for the description
+                try {
+                    runtime_member = ty.__members__.get(member.name);
+                    if runtime_member {
+                        enum_values.append(runtime_member.value);
+                    }
+                } except Exception {
+                    # If runtime introspection fails, skip adding the value
+                    ;
+                }
+            }
+            # Default to int if no type was determined
+            enum_type = enum_type or "int";
+            # Validate supported types
+            if enum_type not in ("int", "str") {
+                raise ValueError(
+                    f"Enum {ty.__name__} has unsupported type {enum_type}. "
+                    "Only int and str enums are supported for schema generation."
+                ) ;
+            }
+            # Build description
+            names_str = ", ".join(enum_names);
+            if enum_values {
+                enum_desc = f"\nThe value *should* be one in this list: {enum_values} where the names are [{names_str}].";
+            } else {
+                enum_desc = f"\nThe value *should* be one of the following the names are [{names_str}].";
+            }
+            enum_semstr = [
+                member.semstr
+                for member in enum_info_to_use.members
+                if member.semstr
+            ];
+            if enum_semstr {
+                enum_desc += "\nDetails:\n" + "\n".join(
+                    [
+                        f"- {member.name}: {member.semstr}"
+                        for member in enum_info_to_use.members
+                        if member.semstr
+                    ]
+                );
+            }
+            base_desc = enum_info_to_use.semstr or semstr or "";
+            full_desc = f"{base_desc}{enum_desc}";
+            return {
+                "description": full_desc,
+                "type": "integer" if enum_type == "int" else "string",
+
+            };
+        }
+        # Fallback to runtime introspection if EnumInfo not available
         enum_type = None;
         enum_values = [];
         for member in ty.__members__.values() {
@@ -150,16 +245,22 @@ impl _type_to_schema(
     }
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {
-        print(ty);
         hints = get_type_hints(ty);
         hints.pop("return", None);
-        params = {
-            param.name: _type_to_schema(
-                hints[param.name], param.name, param.semstr, info=param
-            ) for param in info.params
+        # Use MTIR info if available, otherwise fall back to introspection
+        if info and info?.params and info.params {
+            params = {
+                param.name: _type_to_schema(
+                    hints[param.name], param.name, param.semstr, info=param
+                ) for param in info.params
+            };
+        } else {
+            # Fall back to introspecting the function's type hints
+            params = {
+                param_name: _type_to_schema(param_type, param_name)
+                for (param_name, param_type) in hints.items()
+            };
         }
-        if info
-        else {};
         return {
             "title": title or ty.__name__,
             "type": "function",

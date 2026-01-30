@@ -174,7 +174,6 @@ def test_deploy_all_in_one():
 
     # Cleanup using new architecture
     deployment_target.destroy(app_name)
-    time.sleep(60)  # Wait for deletion to propagate
 
     # Verify cleanup - resources should no longer exist
     try:

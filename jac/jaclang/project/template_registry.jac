@@ -20,7 +20,6 @@ obj ProjectTemplate {
         config: dict[str, Any],  # JacConfig-compatible dict for jac.toml
         files: dict[str, str],  # path -> content (with {{name}} placeholders)
         directories: list[str] = [],  # directories to create
-        gitignore_entries: list[str] = [],  # entries for .jac/.gitignore
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create: Callable | None = None;  # optional callback(project_path, project_name)
 

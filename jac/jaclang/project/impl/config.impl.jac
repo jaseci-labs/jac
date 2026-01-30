@@ -582,6 +582,14 @@ impl _parse_toml_data(
             dir=cache_data.get("dir", ".jac_cache")
         );
     }
+    if "storage" in data {
+        storage_data = data["storage"];
+        config.storage = StorageConfig(
+            storage_type=storage_data.get("type", "local"),
+            base_path=storage_data.get("base_path", "./storage"),
+            create_dirs=storage_data.get("create_dirs", True)
+        );
+    }
     if "plugins" in data {
         plugins_data = data["plugins"];
         config.plugins_config = PluginsConfig(

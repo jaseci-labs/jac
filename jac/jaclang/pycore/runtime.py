@@ -577,7 +577,7 @@ class JacWalker:
 
         # Capture reports starting index to track reports from this spawn
         ctx = JacRuntimeInterface.get_context()
-        call_state = ctx.call_state.get()
+        call_state = ctx.call_state.get(None)
 
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
@@ -586,8 +586,8 @@ class JacWalker:
             if walker.disengaged:
                 walker.ignores = []
                 # Capture reports generated during this spawn
-                warch.reports = call_state.reports
-                call_state.reports.put_nowait(call_state._sentinel)
+                if call_state:
+                    warch.reports = call_state.reports
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -610,8 +610,8 @@ class JacWalker:
 
         walker.ignores = []
         # Capture reports generated during this spawn
-        warch.reports = call_state.reports
-        call_state.reports.put_nowait(call_state._sentinel)
+        if call_state:
+            warch.reports = call_state.reports
         return warch
 
     @staticmethod
@@ -773,7 +773,7 @@ class JacWalker:
 
         # Capture reports starting index to track reports from this spawn
         ctx = JacRuntimeInterface.get_context()
-        call_state = ctx.call_state.get()
+        call_state = ctx.call_state.get(None)
 
         # Walker ability on any entry (runs once at spawn, before traversal)
         for i in warch._jac_entry_funcs_:
@@ -784,8 +784,8 @@ class JacWalker:
             if walker.disengaged:
                 walker.ignores = []
                 # Capture reports generated during this spawn
-                warch.reports = call_state.reports
-                call_state.reports.put_nowait(call_state._sentinel)
+                if call_state:
+                    warch.reports = call_state.reports
                 return warch
 
         # Traverse recursively (walker.next is already set by spawn())
@@ -812,8 +812,8 @@ class JacWalker:
 
         walker.ignores = []
         # Capture reports generated during this spawn
-        warch.reports = call_state.reports
-        call_state.reports.put_nowait(call_state._sentinel)
+        if call_state:
+            warch.reports = call_state.reports
         return warch
 
     @staticmethod
@@ -1429,7 +1429,9 @@ class JacBasics:
             ctx.custom = expr
         else:
             JacConsole.get_console().print(expr)
-            ctx.call_state.get().reports.put_nowait(expr)
+            call_state = ctx.call_state.get(None)
+            if call_state:
+                call_state.reports.put_nowait(expr)
 
     @staticmethod
     def refs(
@@ -2284,7 +2286,6 @@ class JacPluginConfig:
                 - config: dict for jac.toml content (with {{name}} placeholders)
                 - files: dict[path, content] with {{name}} placeholders
                 - directories: list of directories to create
-                - gitignore_entries: list of .gitignore entries
                 - post_create: optional callable(project_path, project_name)
         """
         return None
@@ -2325,6 +2326,26 @@ class JacRuntimeInterface(
         from jaclang.runtimelib.server import UserManager
 
         return UserManager(base_path=base_path)
+
+    @staticmethod
+    def store(base_path: str = "./storage", create_dirs: bool = True) -> Any:  # noqa: ANN401
+        """Get storage backend instance (hookable for plugins).
+
+        Default returns LocalStorage. Plugins (like jac-scale) can override
+        to provide cloud storage backends with full config support.
+
+        Args:
+            base_path: Base directory for file storage.
+            create_dirs: Whether to auto-create directories.
+
+        Returns:
+            Storage instance (LocalStorage by default)
+        """
+        from jaclang.runtimelib.storage import (  # type: ignore[attr-defined]
+            LocalStorage,
+        )
+
+        return LocalStorage(base_path=base_path, create_dirs=create_dirs)
 
 
 def generate_plugin_helpers(

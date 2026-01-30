@@ -696,6 +696,7 @@ def Navigation() -> any {
 Routing in Jac is simple, powerful, and production-ready!
 
 > **Note for static deployments**: When deploying a Jac app as a static site (via `jac build --target web`), your hosting provider must be configured to serve `index.html` for all paths (SPA fallback). For example:
+>
 > - **Netlify**: Add a `_redirects` file with `/* /index.html 200`
 > - **Vercel**: Add a `rewrites` rule in `vercel.json`
 > - **Nginx**: Use `try_files $uri /index.html`

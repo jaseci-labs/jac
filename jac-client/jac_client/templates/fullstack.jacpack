@@ -36,10 +36,6 @@
     ".jac",
     "assets"
   ],
-  "gitignore_entries": [
-    "# Ignore all build artifacts in .jac directory",
-    "*"
-  ],
   "root_gitignore_entries": [
     "# Jac build artifacts",
     ".jac/",

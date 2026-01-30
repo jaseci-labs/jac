@@ -224,8 +224,9 @@ obj JacAPIServer {
         server: Any by postinit;
 
     obj RestSpecs {
-        has method: str,
-            path: str = "";
+        has method: str = "",
+            path: str = "",
+            webhook: bool = False;
     }
 
     def postinit -> None;
