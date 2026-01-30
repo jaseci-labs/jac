@@ -1120,3 +1120,75 @@ class TestCommentPreservation:
         assert final_comment_pos > len(formatted) * 0.5, (
             "Final comment should be near the end of file, not moved earlier"
         )
+
+    def test_no_print_warning(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that bare print() calls produce warnings with no-print rule."""
+        from jaclang.project.config import (
+            CheckConfig,
+            JacConfig,
+            LintConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        # no-print is opt-in, so explicitly enable it
+        config = JacConfig()
+        config.check = CheckConfig(lint=LintConfig(select=["all", "no-print"]))
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        # Should have warnings for bare print() calls
+        warning_msgs = [w.msg for w in prog.warnings_had]
+        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
+        # There are 2 bare print() calls in the fixture
+        assert len(no_print_warnings) == 2, (
+            f"Expected 2 no-print warnings, got {len(no_print_warnings)}: {no_print_warnings}"
+        )
+
+    def test_no_print_ignores_qualified_calls(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that qualified calls like console.print() are not flagged."""
+        from jaclang.project.config import (
+            CheckConfig,
+            JacConfig,
+            LintConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        # no-print is opt-in, so explicitly enable it
+        config = JacConfig()
+        config.check = CheckConfig(lint=LintConfig(select=["all", "no-print"]))
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        # Should NOT flag console.print()
+        warning_msgs = [w.msg for w in prog.warnings_had]
+        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
+        # Only the 2 bare print() calls, not the console.print() call
+        assert len(no_print_warnings) == 2
+
+    def test_no_print_disabled_by_default(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that no-print rule is not active by default."""
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+
+        warning_msgs = [w.msg for w in prog.warnings_had]
+        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
+        assert len(no_print_warnings) == 0, (
+            f"Expected no no-print warnings by default, got: {no_print_warnings}"
+        )

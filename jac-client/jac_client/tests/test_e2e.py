@@ -144,14 +144,14 @@ class TestAuthenticationE2E:
 
     def _signup(self, page: Page, base_url: str, username: str, password: str) -> None:
         """Navigate to signup, fill form, and submit."""
-        page.goto(f"{base_url}#/signup", wait_until="networkidle", timeout=60000)
+        page.goto(f"{base_url}/signup", wait_until="networkidle", timeout=60000)
         page.wait_for_selector('input[type="text"]', timeout=30000)
         self._fill_auth_form(page, username, password)
         self._submit_form(page)
 
     def _login(self, page: Page, base_url: str, username: str, password: str) -> None:
         """Navigate to login, fill form, and submit."""
-        page.goto(f"{base_url}#/login", wait_until="networkidle", timeout=30000)
+        page.goto(f"{base_url}/login", wait_until="networkidle", timeout=30000)
         page.wait_for_selector('input[type="text"]', timeout=30000)
         self._fill_auth_form(page, username, password)
         self._submit_form(page)
@@ -166,10 +166,10 @@ class TestAuthenticationE2E:
     def test_navigate_without_auth(self, running_server: dict, page: Page) -> None:
         """Visiting protected route without auth should redirect to login."""
         page.goto(
-            f"{running_server['url']}#/nested", wait_until="networkidle", timeout=60000
+            f"{running_server['url']}/nested", wait_until="networkidle", timeout=60000
         )
         page.wait_for_timeout(2000)
-        assert "#/login" in page.url.lower()
+        assert "/login" in page.url.lower()
 
     def test_signup_form_submission(self, running_server: dict, page: Page) -> None:
         """Signup via UI should redirect away from signup page on success."""
@@ -179,7 +179,7 @@ class TestAuthenticationE2E:
             f"e2e_signup_{int(time.time())}",
             "test_pass_123",
         )
-        assert "#/signup" not in page.url.lower()
+        assert "/signup" not in page.url.lower()
 
     def test_login_with_valid_credentials(
         self, running_server: dict, page: Page
@@ -192,7 +192,7 @@ class TestAuthenticationE2E:
         self._logout(page)
         self._login(page, base_url, username, password)
 
-        assert "#/login" not in page.url.lower() and "#/signup" not in page.url.lower()
+        assert "/login" not in page.url.lower() and "/signup" not in page.url.lower()
 
     def test_login_with_invalid_credentials(
         self, running_server: dict, page: Page
@@ -200,7 +200,7 @@ class TestAuthenticationE2E:
         """Verify login fails for invalid credentials (stays or shows error)."""
         self._login(page, running_server["url"], "nonexistent_999", "wrong_pass")
 
-        assert "#/login" in page.url.lower()
+        assert "/login" in page.url.lower()
         assert page.locator("text=/Invalid credentials/i").first.is_visible()
 
     def test_logout_functionality(self, running_server: dict, page: Page) -> None:
@@ -214,7 +214,7 @@ class TestAuthenticationE2E:
         logout_btn.click()
         page.wait_for_timeout(1500)
 
-        assert "#/login" in page.url.lower() and not logout_btn.is_visible(timeout=5000)
+        assert "/login" in page.url.lower() and not logout_btn.is_visible(timeout=5000)
 
     def test_complete_auth_flow(self, running_server: dict, page: Page) -> None:
         """Integration: signup -> logout -> login -> access protected route."""
@@ -222,11 +222,11 @@ class TestAuthenticationE2E:
         username, password = f"e2e_complete_{int(time.time())}", "complete_pass_123"
 
         self._signup(page, base_url, username, password)
-        assert "#/signup" not in page.url.lower()
+        assert "/signup" not in page.url.lower()
 
         self._logout(page)
         self._login(page, base_url, username, password)
-        assert "#/login" not in page.url.lower()
+        assert "/login" not in page.url.lower()
 
-        page.goto(f"{base_url}#/nested", wait_until="networkidle", timeout=30000)
-        assert "#/nested" in page.url.lower()
+        page.goto(f"{base_url}/nested", wait_until="networkidle", timeout=30000)
+        assert "/nested" in page.url.lower()

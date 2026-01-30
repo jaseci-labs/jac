@@ -63,4 +63,8 @@ class ViteCompiler {
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];
+
+    def compile(
+        self: ViteCompiler, module: ModuleType, module_path: Path
+    ) -> tuple[list[str], list[str]];
 }

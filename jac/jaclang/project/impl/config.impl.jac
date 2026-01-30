@@ -559,9 +559,18 @@ impl _parse_toml_data(
     }
     if "check" in data {
         check_data = data["check"];
+        lint_config = LintConfig();
+        if "lint" in check_data {
+            lint_data = check_data["lint"];
+            lint_config = LintConfig(
+                select=lint_data.get("select", ["all"]),
+                ignore=lint_data.get("ignore", [])
+            );
+        }
         config.check = CheckConfig(
             print_errs=check_data.get("print_errs", True),
-            warnonly=check_data.get("warnonly", False)
+            warnonly=check_data.get("warnonly", False),
+            lint=lint_config
         );
     }
     if "dot" in data {
