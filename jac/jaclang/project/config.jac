@@ -85,14 +85,17 @@ enum LintRule {
 """Lint rule configuration from [check.lint] section.
 
 Rules use a select/ignore model:
-- select: list of rule names to enable (default ["all"] enables everything)
+- select: list of rule names to enable
+  - "default": code-transforming rules only
+  - "all": every rule including warning-only rules
+  - individual rule names can be listed explicitly
 - ignore: list of rule names to skip even if selected
 
 Rule names are the kebab-case values of LintRule enum members,
 e.g. "no-print", "combine-has", etc.
 """
 obj LintConfig {
-    has select: list[str] = ["all"],
+    has select: list[str] = ["default"],
         ignore: list[str] = [];
 }
 

@@ -9,17 +9,20 @@ impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
 impl JacAutoLintPass._load_lint_config -> None {
     import from jaclang.project.config { get_config, LintRule as LR }
     rule_by_name: dict[str, LR] = {r.value: r for r in LR};
-    # Rules that require explicit opt-in (not included in "all")
-    opt_in_only: set[LR] = {LR.NO_PRINT};
-    default_rules: set[LR] = set(LR) - opt_in_only;
+    # Warning-only rules not included in "default" (but included in "all")
+    non_default: set[LR] = {LR.NO_PRINT};
+    default_rules: set[LR] = set(LR) - non_default;
+    all_rules: set[LR] = set(LR);
     config = get_config();
     if config is not None {
         lint = config.check.lint;
         if "all" in lint.select {
+            self._enabled_rules = set(all_rules);
+        } elif "default" in lint.select {
             self._enabled_rules = set(default_rules);
-            # Allow explicit opt-in alongside "all"
+            # Allow adding specific rules alongside "default"
             for name in lint.select {
-                if name != "all" and name in rule_by_name {
+                if name != "default" and name in rule_by_name {
                     self._enabled_rules.add(rule_by_name[name]);
                 }
             }
@@ -1545,10 +1548,9 @@ impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
     if node.target.value != "print" {
         return;
     }
-    # It's a bare print() call — report warning with location
-    self.log_warning(
-        "Use console abstraction instead of bare print() [no-print]",
-        node_override=node
+    # It's a bare print() call — report error with location
+    self.log_error(
+        "Calling print() is disallowed by rule [no-print]", node_override=node
     );
 }
 

@@ -1,0 +1,5 @@
+[project]
+name = "jaclang"
+
+[check.lint]
+select = ["all"]

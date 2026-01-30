@@ -148,50 +148,63 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
             }
         }
     }
-    def format_single_file(file_path: str) -> tuple[bool, bool] {
+    def format_single_file(file_path: str) -> tuple[bool, bool, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
-            return (False, False);
+            return (False, False, 0);
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=fix);
-            if prog.errors_had {
+            # Try to write formatted code (may fail on parse errors)
+            try {
+                formatted_code = prog.mod.main.gen.jac;
+                original_code = prog.mod.main.source.code;
+                changed = formatted_code != original_code;
+                write_formatted_code(formatted_code, str(path_obj));
+
+                # Write impl modules (.impl.jac files)
+                for impl_mod in prog.mod.main.impl_mod {
+                    impl_path = impl_mod.loc.mod_path;
+                    impl_formatted = impl_mod.gen.jac;
+                    impl_original = impl_mod.source.code;
+                    if (impl_formatted != impl_original) {
+                        write_formatted_code(impl_formatted, impl_path);
+                        changed = True;
+                    }
+                }
+            } except Exception {
+                # Can't produce formatted output (parse error)
                 for error in prog.errors_had {
                     console.error(f"{error}");
                 }
-                return (False, False);
+                return (False, False, 0);
             }
-            # Write main module
-            formatted_code = prog.mod.main.gen.jac;
-            original_code = prog.mod.main.source.code;
-            changed = formatted_code != original_code;
-            write_formatted_code(formatted_code, str(path_obj));
-
-            # Write impl modules (.impl.jac files)
-            for impl_mod in prog.mod.main.impl_mod {
-                impl_path = impl_mod.loc.mod_path;
-                impl_formatted = impl_mod.gen.jac;
-                impl_original = impl_mod.source.code;
-                if (impl_formatted != impl_original) {
-                    write_formatted_code(impl_formatted, impl_path);
-                    changed = True;
-                }
+            # Report lint errors and warnings after successful formatting
+            error_count = 0;
+            for error in prog.errors_had {
+                console.error(f"{error}");
+                error_count += 1;
             }
-            return (True, changed);
+            for w in prog.warnings_had {
+                console.warning(f"{w}");
+            }
+            return (True, changed, error_count);
         } except Exception as e {
             console.error(f"Error formatting '{file_path}': {e}");
-            return (False, False);
+            return (False, False, 0);
         }
     }
     total_files = 0;
     failed_files = 0;
     changed_files = 0;
+    total_errors = 0;
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
             total_files += 1;
-            (success, changed) = format_single_file(path);
+            (success, changed, errors) = format_single_file(path);
+            total_errors += errors;
             if not success {
                 failed_files += 1;
             } elif changed {
@@ -203,7 +216,8 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
                     continue;
                 }
                 total_files += 1;
-                (success, changed) = format_single_file(str(jac_file));
+                (success, changed, errors) = format_single_file(str(jac_file));
+                total_errors += errors;
                 if not success {
                     failed_files += 1;
                 } elif changed {
@@ -223,7 +237,7 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
             console.success(summary_msg);
         }
     }
-    if (changed_files > 0) {
+    if (changed_files > 0 or total_errors > 0) {
         return 1;
     }
     return 0;
