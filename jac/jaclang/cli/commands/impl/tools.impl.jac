@@ -147,7 +147,7 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
 }
 
 """Extract command data from registry into simple dicts for shellcode generation."""
-def _extract_commands(registry:Any) -> list {
+def _extract_commands(registry: Any) -> list {
     import from jaclang.cli.command { ArgKind }
     commands = [];
     for (name, spec) in sorted(registry.commands.items()) {
@@ -161,7 +161,9 @@ def _extract_commands(registry:Any) -> list {
                 flags.append((f"--no-{arg.name}", None, f"Disable {arg.name}"));
             } elif arg.kind == ArgKind.OPTION {
                 if arg.choices {
-                    value_opts.append((f"--{arg.name}", short, [str(c) for c in arg.choices]));
+                    value_opts.append(
+                        (f"--{arg.name}", short, [str(c) for c in arg.choices])
+                    );
                 } else {
                     flags.append((f"--{arg.name}", short, arg.help or ""));
                 }
@@ -169,13 +171,16 @@ def _extract_commands(registry:Any) -> list {
                 has_file_positional = True;
             }
         }
-        commands.append({
-            "name": name,
-            "help": spec.help or "",
-            "flags": flags,
-            "value_opts": value_opts,
-            "has_file_positional": has_file_positional,
-        });
+        commands.append(
+            {
+                "name": name,
+                "help": spec.help or "",
+                "flags": flags,
+                "value_opts": value_opts,
+                "has_file_positional": has_file_positional,
+
+            }
+        );
     }
     return commands;
 }
@@ -190,11 +195,14 @@ def _install_completion(shell: str, code: str) -> int {
         "bash": os.path.join(home, ".bashrc"),
         "zsh": os.path.join(home, ".zshrc"),
         "fish": os.path.join(home, ".config", "fish", "config.fish"),
+
     };
     # Completion script files stored in ~/.jac/
     ext_map = {"bash": "bash", "zsh": "zsh", "fish": "fish"};
     if shell not in config_map {
-        print(f"Shell {shell} not supported for automatic installation.", file=sys.stderr);
+        print(
+            f"Shell {shell} not supported for automatic installation.", file=sys.stderr
+        );
         return 1;
     }
     # Write completion script to ~/.jac/completions.<shell>
