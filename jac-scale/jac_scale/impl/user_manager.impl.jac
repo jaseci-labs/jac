@@ -138,106 +138,66 @@ impl JacScaleUserManager.sso_initiate(
 
 impl JacScaleUserManager.sso_callback(
     request: Request, platform: str, operation: str
-) -> TransportResponse {
+) -> (Response | TransportResponse) {
     import from jaclang.runtimelib.server { JsonValue }
+    import from fastapi.responses { RedirectResponse }
+    import from urllib.parse { quote }
+
     if (platform not in [p.value for p in Platforms]) {
-        return TransportResponse.fail(
-            code='INVALID_PLATFORM',
-            message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
-                [p.value for p in Platforms]
-            )}",
-            meta=Meta(extra={'http_status': 400})
-        );
+        error_msg = f"Invalid platform '{platform}'";
+        return RedirectResponse(url=f"/login?error={quote(error_msg)}");
     }
     if (platform not in self.SUPPORTED_PLATFORMS) {
-        return TransportResponse.fail(
-            code='SSO_NOT_CONFIGURED',
-            message=f"SSO for platform '{platform}' is not configured. Please set SSO_{platform.upper()}_CLIENT_ID and SSO_{platform.upper()}_CLIENT_SECRET environment variables.",
-            meta=Meta(extra={'http_status': 501})
-        );
+        error_msg = f"SSO for platform '{platform}' is not configured";
+        return RedirectResponse(url=f"/login?error={quote(error_msg)}");
     }
     if (operation not in [o.value for o in Operations]) {
-        return TransportResponse.fail(
-            code='INVALID_OPERATION',
-            message=f"Invalid operation '{operation}'. Must be 'login' or 'register'",
-            meta=Meta(extra={'http_status': 400})
-        );
+        error_msg = f"Invalid operation '{operation}'";
+        return RedirectResponse(url=f"/login?error={quote(error_msg)}");
     }
     sso = self.get_sso(platform, operation);
     if not sso {
-        return TransportResponse.fail(
-            code='SSO_INIT_FAILED',
-            message=f"Failed to initialize SSO for platform '{platform}'",
-            meta=Meta(extra={'http_status': 500})
-        );
+        error_msg = f"Failed to initialize SSO for platform '{platform}'";
+        return RedirectResponse(url=f"/login?error={quote(error_msg)}");
     }
     try {
         user_info = await sso.handle_callback(request);
         email = user_info.email;
         if not email {
-            return TransportResponse.fail(
-                code='EMAIL_MISSING',
-                message=f"Email not provided by {platform}",
-                meta=Meta(extra={'http_status': 400})
-            );
+            error_msg = f"Email not provided by {platform}";
+            return RedirectResponse(url=f"/login?error={quote(error_msg)}");
         }
         if (operation == Operations.LOGIN.value) {
             user = self.get_user(email);
             if not user {
-                return TransportResponse.fail(
-                    code='USER_NOT_FOUND',
-                    message='User not found. Please register first.',
-                    meta=Meta(extra={'http_status': 404})
-                );
+                error_msg = 'User not found. Please register first.';
+                return RedirectResponse(url=f"/login?error={quote(error_msg)}");
             }
             token = self.create_jwt_token(email);
-            return TransportResponse.success(
-                data={
-                    'message': 'Login successful',
-                    'email': email,
-                    'token': token,
-                    'platform': platform,
-                    'user': dict[(str, JsonValue)](user)
-                },
-                meta=Meta(extra={'http_status': 200})
-            );
+            # Redirect to frontend auth callback with token
+            return RedirectResponse(url=f"/auth/callback?token={token}");
         } elif (operation == Operations.REGISTER.value) {
             existing_user = self.get_user(email);
             if existing_user {
-                return TransportResponse.fail(
-                    code='USER_EXISTS',
-                    message='User already exists. Please login instead.',
-                    meta=Meta(extra={'http_status': 400})
-                );
+                error_msg = 'User already exists. Please login instead.';
+                return RedirectResponse(url=f"/login?error={quote(error_msg)}");
             }
             random_password = generate_random_password();
             result = self.create_user(email, random_password);
             if ('error' in result) {
-                return TransportResponse.fail(
-                    code='USER_CREATION_FAILED',
-                    message=result.get('error', 'User creation failed'),
-                    meta=Meta(extra={'http_status': 400})
-                );
+                error_msg = result.get('error', 'User creation failed');
+                return RedirectResponse(url=f"/login?error={quote(error_msg)}");
             }
             token = self.create_jwt_token(email);
-            result['token'] = token;
-            result['platform'] = platform;
-            return TransportResponse.success(
-                data=result, meta=Meta(extra={'http_status': 201})
-            );
+            # Redirect to frontend auth callback with token
+            return RedirectResponse(url=f"/auth/callback?token={token}");
         }
     } except Exception as e {
-        return TransportResponse.fail(
-            code='AUTHENTICATION_FAILED',
-            message=f"Authentication failed: {str(e)}",
-            meta=Meta(extra={'http_status': 500})
-        );
+        error_msg = f"Authentication failed: {str(e)}";
+        return RedirectResponse(url=f"/login?error={quote(error_msg)}");
     }
-    return TransportResponse.fail(
-        code='UNKNOWN_ERROR',
-        message='An unknown error occurred',
-        meta=Meta(extra={'http_status': 500})
-    );
+    error_msg = 'An unknown error occurred';
+    return RedirectResponse(url=f"/login?error={quote(error_msg)}");
 }
 
 # SSO Account Linking Methods

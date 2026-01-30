@@ -34,7 +34,7 @@ obj JacScaleUserManager(UserManager) {
 
     async def sso_callback(
         request: Request, platform: str, operation: str
-    ) -> TransportResponse;
+    ) -> (Response | TransportResponse);
 
     # SSO Account Linking methods
     def link_sso_account(
