@@ -247,8 +247,7 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error while requesting /cl/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # "/nested" – SPA catch-all serves base_route_app HTML for
-                # BrowserRouter client-side routing on direct navigation / refresh
+                # "/nested" – SPA catch-all serves app shell for client-side routing
                 try:
                     print("[DEBUG] Sending GET request to /nested endpoint (SPA catch-all)")
                     with urlopen(
