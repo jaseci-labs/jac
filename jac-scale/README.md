@@ -473,7 +473,7 @@ async walker FetchData {
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
-| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey'` |
+| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey_for_testing_only!'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
 | `SSO_HOST` | SSO host URL | `'http://localhost:8000/sso'` |
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
