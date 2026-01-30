@@ -139,6 +139,22 @@ class TestRestSpec:
         assert data["reports"][0]["message"] == "CustomPathWalker executed"
         assert data["reports"][0]["path"] == "/custom/walker"
 
+    def test_post_method_walker(self) -> None:
+        """Test walker with explicit POST method."""
+        response = requests.post(f"{self.base_url}/walker/PostWalker", timeout=5)
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["reports"][0]["message"] == "PostWalker executed"
+        assert data["reports"][0]["method"] == "POST"
+
+    def test_default_method_walker(self) -> None:
+        """Test walker with default method (POST)."""
+        response = requests.post(f"{self.base_url}/walker/DefaultWalker", timeout=5)
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["reports"][0]["message"] == "DefaultWalker executed"
+        assert data["reports"][0]["method"] == "DEFAULT"
+
     def test_custom_method_func(self) -> None:
         """Test function with custom GET method."""
         requests.post(
@@ -176,6 +192,79 @@ class TestRestSpec:
         assert data["result"]["message"] == "custom_path_func executed"
         assert data["result"]["path"] == "/custom/func"
 
+    def test_post_method_func(self) -> None:
+        """Test function with explicit POST method."""
+        # Use existing user token if possible, but simplest is fresh login
+        login = requests.post(
+            f"{self.base_url}/user/login", json={"username": "u1", "password": "p1"}
+        )
+        token = self._extract_data(login.json())["token"]
+
+        response = requests.post(
+            f"{self.base_url}/function/post_func",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["result"]["message"] == "post_func executed"
+        assert data["result"]["method"] == "POST"
+
+    def test_default_method_func(self) -> None:
+        """Test function with default method (POST)."""
+        # Use existing user token if possible, but simplest is fresh login
+        login = requests.post(
+            f"{self.base_url}/user/login", json={"username": "u1", "password": "p1"}
+        )
+        token = self._extract_data(login.json())["token"]
+
+        response = requests.post(
+            f"{self.base_url}/function/default_func",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["result"]["message"] == "default_func executed"
+        assert data["result"]["method"] == "DEFAULT"
+
+    def test_get_walker_with_params(self) -> None:
+        """Test walker with GET method and query parameters."""
+        # Parameters should be passed as query string
+        params: dict[str, str | int] = {"name": "Alice", "age": 30}
+        response = requests.get(
+            f"{self.base_url}/walker/GetWalkerWithParams",
+            params=params,
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["reports"][0]["message"] == "GetWalkerWithParams executed"
+        assert data["reports"][0]["name"] == "Alice"
+        assert data["reports"][0]["age"] == 30
+
+    def test_get_func_with_params(self) -> None:
+        """Test function with GET method and query parameters."""
+        # Use existing user token if possible, but simplest is fresh login
+        login = requests.post(
+            f"{self.base_url}/user/login", json={"username": "u1", "password": "p1"}
+        )
+        token = self._extract_data(login.json())["token"]
+
+        # Parameters should be passed as query string
+        params: dict[str, str | int] = {"name": "Bob", "age": 40}
+        response = requests.get(
+            f"{self.base_url}/function/get_func_with_params",
+            headers={"Authorization": f"Bearer {token}"},
+            params=params,
+            timeout=5,
+        )
+        assert response.status_code == 200
+        data = self._extract_data(response.json())
+        assert data["result"]["message"] == "get_func_with_params executed"
+        assert data["result"]["name"] == "Bob"
+        assert data["result"]["age"] == 40
+
     def test_openapi_specs(self) -> None:
         """Verify OpenAPI documentation reflects custom paths and methods."""
         spec = requests.get(f"{self.base_url}/openapi.json").json()
@@ -190,3 +279,11 @@ class TestRestSpec:
         assert "/walker/GetWalker" in paths
         assert "get" in paths["/walker/GetWalker"]
         assert "post" not in paths["/walker/GetWalker"]
+
+        assert "/walker/PostWalker" in paths
+        assert "post" in paths["/walker/PostWalker"]
+        assert "get" not in paths["/walker/PostWalker"]
+
+        assert "/walker/DefaultWalker" in paths
+        assert "post" in paths["/walker/DefaultWalker"]
+        assert "get" not in paths["/walker/DefaultWalker"]
