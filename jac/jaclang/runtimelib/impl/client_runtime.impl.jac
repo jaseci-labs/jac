@@ -332,7 +332,7 @@ impl navigate(path: str) -> None {
         router.navigate(path);
     } else {
         window.history.pushState({}, "", path);
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        window.dispatchEvent(new("popstate"));
     }
 }
 

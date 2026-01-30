@@ -1158,9 +1158,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             if not username {
                 username = '__guest__';
                 if not server.user_manager.user_exists(username) {
-                    server.user_manager.create_user(
-                        username, '__no_password__'
-                    );
+                    server.user_manager.create_user(username, '__no_password__');
                 }
             }
             try {

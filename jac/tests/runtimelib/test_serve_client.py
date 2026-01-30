@@ -1377,9 +1377,7 @@ class TestSPACatchAll:
         assert '<div id="__jac_root">' in html
         assert "/static/client.js?hash=" in html
 
-    def test_spa_catchall_root_serves_html(
-        self, spa_client: JacTestClient
-    ) -> None:
+    def test_spa_catchall_root_serves_html(self, spa_client: JacTestClient) -> None:
         """GET / should serve SPA HTML when base_route_app is configured."""
         response = spa_client.get("/")
 
@@ -1388,9 +1386,7 @@ class TestSPACatchAll:
         assert "<!DOCTYPE html>" in html
         assert '<div id="__jac_root">' in html
 
-    def test_spa_catchall_nested_path(
-        self, spa_client: JacTestClient
-    ) -> None:
+    def test_spa_catchall_nested_path(self, spa_client: JacTestClient) -> None:
         """GET to nested path like /dashboard/settings should serve SPA HTML."""
         response = spa_client.get("/dashboard/settings")
 
@@ -1398,9 +1394,7 @@ class TestSPACatchAll:
         html = response.text
         assert "<!DOCTYPE html>" in html
 
-    def test_spa_catchall_api_paths_unaffected(
-        self, spa_client: JacTestClient
-    ) -> None:
+    def test_spa_catchall_api_paths_unaffected(self, spa_client: JacTestClient) -> None:
         """API paths should still return JSON, not SPA HTML."""
         functions_response = spa_client.get("/functions")
         assert functions_response.ok
@@ -1412,9 +1406,7 @@ class TestSPACatchAll:
         data = walkers_response.data
         assert "walkers" in data
 
-    def test_spa_catchall_cl_route_still_works(
-        self, spa_client: JacTestClient
-    ) -> None:
+    def test_spa_catchall_cl_route_still_works(self, spa_client: JacTestClient) -> None:
         """Explicit /cl/ route should still render the page directly."""
         response = spa_client.get("/cl/client_page")
 

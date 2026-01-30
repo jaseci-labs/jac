@@ -249,7 +249,9 @@ def test_all_in_one_app_endpoints() -> None:
 
                 # "/nested" – SPA catch-all serves app shell for client-side routing
                 try:
-                    print("[DEBUG] Sending GET request to /nested endpoint (SPA catch-all)")
+                    print(
+                        "[DEBUG] Sending GET request to /nested endpoint (SPA catch-all)"
+                    )
                     with urlopen(
                         f"http://127.0.0.1:{server_port}/nested",
                         timeout=200,
@@ -265,9 +267,7 @@ def test_all_in_one_app_endpoints() -> None:
                         assert resp_nested.status == 200
                         assert "<html" in nested_body.lower()
                 except (URLError, HTTPError) as exc:
-                    print(
-                        f"[DEBUG] Error while requesting /nested endpoint: {exc}"
-                    )
+                    print(f"[DEBUG] Error while requesting /nested endpoint: {exc}")
                     pytest.fail("Failed to GET /nested endpoint (SPA catch-all)")
 
                 # Note: CSS serving is tested separately in test_css_with_image

@@ -192,10 +192,7 @@ impl JacAPIServer.serve_root_asset(file_path: str) -> Response {
     if (not file_ext or (file_ext not in allowed_extensions)) {
         # SPA catch-all: serve base_route_app for extensionless paths
         base_route_app = config.serve.base_route_app if config else "";
-        if (not file_ext
-            and base_route_app
-            and not file_path.startswith(api_prefixes)
-        ) {
+        if (not file_ext and base_route_app and not file_path.startswith(api_prefixes)) {
             try {
                 render_payload = self.introspector.render_page(
                     base_route_app, {}, '__guest__'
