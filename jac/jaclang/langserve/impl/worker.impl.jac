@@ -459,6 +459,9 @@ impl CompilationWorker.handle_references(
     );
     locations = [];
     if sym_node and sym_node?.sym and sym_node.sym {
+        if loc := self._make_location_dict(sym_node.sym.decl) {
+            locations.append(loc);
+        }
         for use_node in sym_node.sym.uses {
             if loc := self._make_location_dict(use_node) {
                 locations.append(loc);
