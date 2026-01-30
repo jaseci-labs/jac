@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.4 (Unreleased)
 
+- **Console infrastructure**: Replaced bare `print()` calls with `console` abstraction for consistent output formatting.
 - **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
 - **`--no_client` flag support**: Server startup now honors the `--no_client` flag, skipping eager client bundling when the client bundle is built separately, adn we need server only.
 
