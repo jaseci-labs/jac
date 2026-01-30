@@ -43,7 +43,7 @@ impl useRouter -> dict {
 
 impl navigate(path: str) -> None {
     window.history.pushState({}, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
