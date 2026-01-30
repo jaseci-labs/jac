@@ -613,6 +613,7 @@ export default defineConfig({{
   plugins: [react()],
   root: buildDir,
   publicDir: false,
+  appType: 'spa',
   build: {{
     sourcemap: true, // Enable source maps for better error messages
   }},

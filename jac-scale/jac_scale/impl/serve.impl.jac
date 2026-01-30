@@ -180,19 +180,35 @@ impl JacAPIServer._configure_openapi_security -> None {
     self.server.app.openapi = custom_openapi;
 }
 
-"""Serve root-level assets like /img.png, /icons/logo.svg, etc."""
+"""Serve root-level assets like /img.png, /icons/logo.svg, etc.
+Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServer.serve_root_asset(file_path: str) -> Response {
     allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
     file_ext = Path(file_path).suffix.lower();
-    if (not file_ext or (file_ext not in allowed_extensions)) {
-        return Response(status_code=404, content='Not found', media_type='text/plain');
-    }
     import from jaclang.project.config { get_config }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    if file_path.startswith(
-        (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/')
-    ) {
+    api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
+    if (not file_ext or (file_ext not in allowed_extensions)) {
+        # SPA catch-all: serve base_route_app for extensionless paths
+        base_route_app = config.serve.base_route_app if config else "";
+        if (not file_ext and base_route_app and not file_path.startswith(api_prefixes)) {
+            try {
+                render_payload = self.introspector.render_page(
+                    base_route_app, {}, '__guest__'
+                );
+                return HTMLResponse(content=render_payload['html']);
+            } except ValueError {
+                return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404);
+            } except RuntimeError {
+                return HTMLResponse(
+                    content="<h1>503 Service Unavailable</h1>", status_code=503
+                );
+            }
+        }
+        return Response(status_code=404, content='Not found', media_type='text/plain');
+    }
+    if file_path.startswith(api_prefixes) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
     # Find project root (where jac.toml is) instead of using base_path_dir

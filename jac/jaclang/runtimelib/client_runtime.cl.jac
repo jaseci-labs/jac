@@ -91,8 +91,8 @@ def Link(props: dict) -> any;
 def navigate(path: str) -> None;
 # Hook to access router in components
 def useRouter -> dict;
-# Internal: Get current hash path
-def __jacGetHashPath -> str;
+# Internal: Get current path from browser URL
+def __jacGetPath -> str;
 # ============================================================================
 # Walker spawn function
 # ============================================================================

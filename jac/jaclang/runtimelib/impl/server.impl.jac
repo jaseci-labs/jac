@@ -1150,6 +1150,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
         }
 
+        """Authenticate and render a page, sending HTML response."""
+        def _render_page(
+            self: JacRequestHandler, func_name: str, args: dict = {}
+        ) -> None {
+            username = self._authenticate();
+            if not username {
+                username = '__guest__';
+                if not server.user_manager.user_exists(username) {
+                    server.user_manager.create_user(username, '__no_password__');
+                }
+            }
+            try {
+                render_payload = server.introspector.render_page(
+                    func_name, args, username
+                );
+                Jac.send_html(self, 200, render_payload['html']);
+            } except ValueError as exc {
+                Jac.send_json(self, 404, {'error': str(exc)});
+            } except RuntimeError as exc {
+                Jac.send_json(self, 500, {'error': str(exc)});
+            }
+        }
+
         """Handle OPTIONS requests (CORS preflight)."""
         def do_OPTIONS(self: JacRequestHandler) -> None {
             self.send_response(200);
@@ -1295,25 +1318,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         for (key, values) in query_params.items()
                         if (key != 'mode')
                     };
-                    username = self._authenticate();
-                    if not username {
-                        username = '__guest__';
-                        if not server.user_manager.user_exists(username) {
-                            server.user_manager.create_user(
-                                username, '__no_password__'
-                            );
-                        }
-                    }
-                    try {
-                        render_payload = server.introspector.render_page(
-                            base_route_app, args, username
-                        );
-                        Jac.send_html(self, 200, render_payload['html']);
-                    } except ValueError as exc {
-                        Jac.send_json(self, 404, {'error': str(exc)});
-                    } except RuntimeError as exc {
-                        Jac.send_json(self, 500, {'error': str(exc)});
-                    }
+                    self._render_page(base_route_app, args);
                     return;
                 }
                 Jac.send_json(
@@ -1345,23 +1350,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     for (key, values) in query_params.items()
                     if (key != 'mode')
                 };
-                username = self._authenticate();
-                if not username {
-                    username = '__guest__';
-                    if not server.user_manager.user_exists(username) {
-                        server.user_manager.create_user(username, '__no_password__');
-                    }
-                }
-                try {
-                    render_payload = server.introspector.render_page(
-                        func_name, args, username
-                    );
-                    Jac.send_html(self, 200, render_payload['html']);
-                } except ValueError as exc {
-                    Jac.send_json(self, 404, {'error': str(exc)});
-                } except RuntimeError as exc {
-                    Jac.send_json(self, 500, {'error': str(exc)});
-                }
+                self._render_page(func_name, args);
                 return;
             }
             if (path == '/functions') {
@@ -1425,7 +1414,13 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     )
                 );
             } else {
-                Jac.send_json(self, 404, {'error': 'Not found'});
+                # SPA catch-all: serve base_route_app for unmatched extensionless paths
+                base_route_app = config.serve.base_route_app if config else "";
+                if base_route_app {
+                    self._render_page(base_route_app, {});
+                } else {
+                    Jac.send_json(self, 404, {'error': 'Not found'});
+                }
             }
         }
 
