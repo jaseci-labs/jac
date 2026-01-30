@@ -203,9 +203,7 @@ class CompletionFinder:
                  completions.extend(c_results)
         else:
              # Positional arguments
-             # Default to filesystem completion for positional args
-             c_results = self._run_completer(self.default_completer, cword_prefix, None, active_parser, parsed_args)
-             completions.extend(c_results)
+             pass
 
         return list(set(completions))
 
