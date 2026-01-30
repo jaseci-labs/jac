@@ -25,7 +25,6 @@ async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
     uri = params.text_document.uri;
     debug(f"did_open: {uri}");
     ls.on_file_opened(uri);
-    ls.on_file_focused(uri);
     # Only analyze saved files - schedule analysis to read from disk
     ls.schedule_analysis(uri);
 }
@@ -46,18 +45,9 @@ async def did_change(
     debug(f"did_change: {params.text_document.uri} (ignored - only analyze on save)");
 }
 
-"""Handle file close - stop tracking file."""
-async def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None {
-    debug(f"did_close: {params.text_document.uri}");
-    ls.on_file_closed(params.text_document.uri);
-}
-
 def formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit];
-
-"""Check syntax on file creation."""
-def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) -> None { }
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 

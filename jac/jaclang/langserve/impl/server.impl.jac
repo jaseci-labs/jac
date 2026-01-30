@@ -19,18 +19,7 @@ impl run_lang_server -> None {
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
-    server.feature(lspt.TEXT_DOCUMENT_DID_CLOSE)(did_close);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
-    server.feature(
-        lspt.WORKSPACE_DID_CREATE_FILES,
-        lspt.FileOperationRegistrationOptions(
-            filters=[
-                lspt.FileOperationFilter(pattern=lspt.FileOperationPattern('**/*.jac'))
-            ]
-        )
-    )(
-        did_create_files
-    );
     server.feature(
         lspt.WORKSPACE_DID_RENAME_FILES,
         lspt.FileOperationRegistrationOptions(

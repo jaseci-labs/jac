@@ -72,10 +72,6 @@ impl JacLangServer.on_file_opened(file_uri: str) -> None {
     }
 }
 
-impl JacLangServer.on_file_closed(file_uri: str) -> None { }
-
-impl JacLangServer.on_file_focused(file_uri: str) -> None { }
-
 # ============== Diagnostics Callback ==============
 impl JacLangServer._on_worker_diagnostics(
     response: dict

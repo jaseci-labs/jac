@@ -44,8 +44,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def schedule_analysis(file_uri: str) -> None;
     # File events
     def on_file_opened(file_uri: str) -> None;
-    def on_file_closed(file_uri: str) -> None;
-    def on_file_focused(file_uri: str) -> None;
     # Worker diagnostics
     def _on_worker_diagnostics(response: dict) -> None;
     # Response polling
