@@ -2,16 +2,23 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.12 (Unreleased)
+## jac-client 0.2.13 (Unreleased)
 
-## jac-client 0.2.11 (Latest Release)
+## jac-client 0.2.12 (Latest Release)
+
+- **Configurable API Base URL**: Added `[plugins.client.api]` config section with `base_url` option. By default (empty), API calls use same-origin relative URLs. Set `base_url = "http://localhost:8000"` for cross-origin setups.
+- **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.
+- **BrowserRouter Migration**: Migrated client-side routing from `HashRouter` to `BrowserRouter`. URLs now use clean paths (`/about`, `/user/123`) instead of hash-based URLs (`#/about`, `#/user/123`). The `navigate()` helper uses `window.history.pushState` with synthetic `PopStateEvent` dispatch instead of setting `window.location.hash`. The Vite dev server config includes `appType: 'spa'` for history API fallback during development. [Breaking Change - See Migration Guide](../breaking-changes.md)
+- **Auto-Prompt for Missing Client Dependencies**: When running `jac start` on a project without npm dependencies configured (no `jac.toml` or empty `[dependencies.npm]`), the CLI now detects the missing dependencies and interactively prompts the user to install the default jac-client packages (react, vite, etc.). Accepting writes the defaults to `jac.toml` and proceeds with the build. This follows the same pattern as the existing Bun auto-install prompt and eliminates the cryptic "Cannot find package 'vite'" error that previously occurred. Additionally, stale `node_modules` directories from prior failed installs are now automatically detected and cleaned up before reinstalling.
+
+## jac-client 0.2.11
 
 - **Bun Runtime Migration**: Replaced npm/npx with Bun for package management and JavaScript bundling. Bun provides significantly faster dependency installation and build times. When Bun is not installed, the CLI prompts users to install it automatically via the official installer script.
 
 - **Reactive Effects with `can with entry/exit`**: Similar to how `has` variables automatically generate `useState`, the `can with entry` and `can with exit` syntax now automatically generates React `useEffect` hooks. Use `async can with entry { }` for mount effects (async bodies are automatically wrapped in IIFE), `can with exit { }` for cleanup on unmount, and `can with [dep] entry { }` or `can with (dep1, dep2) entry { }` for effects with dependency arrays. This provides a cleaner, more declarative syntax for React lifecycle management without manual `useEffect` boilerplate.
 - **Source Mapping for Vite Errors**: Added source mapping to trace Vite build errors back to original `.jac` files. Compiled JavaScript files now include source file header comments, and a custom `jacSourceMapper` Vite plugin maps error locations to the original Jac source. Source maps are enabled by default for both development and production builds, improving the debugging experience when build errors occur.
 - **`@jac/runtime` Canonical Import Path**: Migrated the client runtime import path from `@jac-client/utils` to `@jac/runtime`, aligning with the new `@jac/` scoped package syntax in Jac source code. The jac-client Vite plugin now maps `@jac/runtime` to its own compiled runtime via a resolve alias. Compiled modules include ES module `export` statements so Vite can resolve named imports between modules. All examples, docs, and templates have been updated.
-- **Various Refactors**: Inluding supporting new useEffect primitives, example updates, etc
+- **Various Refactors**: Including supporting new useEffect primitives, example updates, etc
 
 ## jac-client 0.2.10
 

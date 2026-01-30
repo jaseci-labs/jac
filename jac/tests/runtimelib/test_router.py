@@ -51,14 +51,13 @@ def test_router_event_listeners():
     builder = Jac.get_client_bundle_builder()
     bundle = builder.build(module)
 
-    # Check that event listeners are registered
-    assert "hashchange" in bundle.code
+    # Check that event listeners are registered (popstate for BrowserRouter-style navigation)
     assert "popstate" in bundle.code
     assert "addEventListener" in bundle.code
 
-    # Check hash path handling
-    assert "__jacGetHashPath" in bundle.code
-    assert "window.location.hash" in bundle.code
+    # Check path handling uses pathname (not hash)
+    assert "__jacGetPath" in bundle.code
+    assert "window.location.pathname" in bundle.code
 
 
 def test_router_uses_reactive_signal():
@@ -73,3 +72,30 @@ def test_router_uses_reactive_signal():
     # This makes route changes automatically trigger re-renders
     assert "createSignal" in bundle.code
     assert "setCurrentPath" in bundle.code
+
+
+def test_router_no_hash_references():
+    """Verify router bundle contains no hash-based routing code."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("test_router", str(fixtures_dir))
+
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
+
+    # Hash-based routing should not be present (migrated to BrowserRouter)
+    assert "hashchange" not in bundle.code
+    assert "window.location.hash" not in bundle.code
+    assert "__jacGetHashPath" not in bundle.code
+
+
+def test_router_uses_pushstate_navigation():
+    """Verify router uses pushState for client-side navigation."""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    (module,) = Jac.jac_import("test_router", str(fixtures_dir))
+
+    builder = Jac.get_client_bundle_builder()
+    bundle = builder.build(module)
+
+    assert "pushState" in bundle.code
+    assert "window.history.pushState" in bundle.code
+    assert "PopStateEvent" in bundle.code

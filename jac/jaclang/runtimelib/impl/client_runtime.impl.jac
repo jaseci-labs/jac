@@ -262,24 +262,17 @@ impl __jacRerenderComponent(componentId: any) -> None {
 }
 
 impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
-    # Get initial path from hash or use default
-    initialPath = __jacGetHashPath();
-    if not initialPath {
+    # Get initial path from URL pathname or use default
+    initialPath = __jacGetPath();
+    if not initialPath or initialPath == "/" {
         initialPath = defaultRoute;
     }
     # Create reactive signal for current path
     [currentPath, setCurrentPath] = createSignal(initialPath);
-    # Listen to hash changes
-    window.addEventListener(
-        "hashchange",
-        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
-            newPath = defaultRoute;
-        }setCurrentPath(newPath);}
-    );
-    # Listen to popstate (back/forward buttons)
+    # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
+        lambda event: any  -> None { newPath = __jacGetPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
@@ -309,7 +302,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     }
     # Navigate method
     def navigateTo(path: str) -> None {
-        window.location.hash = "#" + path;
+        window.history.pushState({}, "", path);
         setCurrentPath(path);
     }
     # Store router in global context
@@ -326,23 +319,20 @@ impl Link(props: dict) -> any {
     href = props["href"] if "href" in props else "/";
     children = props["children"] if "children" in props else [];
     def handleClick(event: any) -> None {
-        console.log("Link clicked, navigating to:", href);
         event.preventDefault();
         navigate(href);
     }
     # Return JSX node manually to properly spread children
-    return __jacJsx("a", {"href": "#" + href, "onclick": handleClick}, children);
+    return __jacJsx("a", {"href": href, "onclick": handleClick}, children);
 }
 
 impl navigate(path: str) -> None {
-    console.log("navigate() called with path:", path);
     router = __jacReactiveContext.router;
     if router {
-        console.log("Router found, calling router.navigate()");
         router.navigate(path);
     } else {
-        console.log("No router, setting hash directly");
-        window.location.hash = "#" + path;
+        window.history.pushState({}, "", path);
+        window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
     }
 }
 
@@ -350,13 +340,12 @@ impl useRouter -> dict {
     return __jacReactiveContext.router;
 }
 
-impl __jacGetHashPath -> str {
-    hash = window.location.hash;
-    if hash {
-        return hash[1:];  # Remove '#'
-
+impl __jacGetPath -> str {
+    pathname = window.location.pathname;
+    if pathname {
+        return pathname;
     }
-    return "";
+    return "/";
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {

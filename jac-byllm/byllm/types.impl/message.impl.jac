@@ -8,9 +8,21 @@ impl Message.to_dict -> dict[str, object] {
     }
     media_contents = [];
     for media in self.content {
-        media_contents.extend(media.to_dict());
+        semstr = "";
+        if isinstance(media, tuple) {
+            semstr = media[1] or "";
+            media = media[0];
+        }
+        #TODO: make sure the semstr make into the to_dict representation
+        if semstr {
+            media_dict = media.to_dict();
+            media_dict["description"] = semstr;
+            media_contents.append(media_dict);
+        } else {
+            media_contents.extend(media.to_dict());
+        }
     }
-    return {"role": self.role.value, "content": media_contents,};
+    return {"role": self.role.value, "content": media_contents};
 }
 
 #-------------------------------------------------------------------------------

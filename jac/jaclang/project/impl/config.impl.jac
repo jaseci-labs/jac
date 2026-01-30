@@ -208,9 +208,9 @@ impl JacConfig.get_cache_dir -> Path {
     return self.get_build_dir() / "cache";
 }
 
-"""Get the Python packages directory (.jac/packages)."""
-impl JacConfig.get_packages_dir -> Path {
-    return self.get_build_dir() / "packages";
+"""Get the virtual environment directory (.jac/venv)."""
+impl JacConfig.get_venv_dir -> Path {
+    return self.get_build_dir() / "venv";
 }
 
 """Get the data directory for runtime artifacts (.jac/data)."""
@@ -580,6 +580,14 @@ impl _parse_toml_data(
         config.cache = CacheConfig(
             enabled=cache_data.get("enabled", True),
             dir=cache_data.get("dir", ".jac_cache")
+        );
+    }
+    if "storage" in data {
+        storage_data = data["storage"];
+        config.storage = StorageConfig(
+            storage_type=storage_data.get("type", "local"),
+            base_path=storage_data.get("base_path", "./storage"),
+            create_dirs=storage_data.get("create_dirs", True)
         );
     }
     if "plugins" in data {

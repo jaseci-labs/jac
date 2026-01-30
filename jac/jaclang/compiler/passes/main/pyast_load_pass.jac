@@ -35,7 +35,12 @@ glob T = TypeVar('T', bound=uni.UniNode);
 obj PyastBuildPass(Transform[(uni.PythonModuleAst, uni.Module)]) {
     has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
-        cancel_token: Event | None = None;
+        cancel_token: Event | None = None,
+        mod_path: str by postinit,
+        orig_src: str by postinit,
+        in_type_annotation: bool by postinit,
+        in_match_pattern: bool by postinit,
+        in_fstring_expr: bool by postinit;
 
     def postinit -> None;
     def nu(<>node: T) -> T;

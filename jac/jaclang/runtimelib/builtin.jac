@@ -16,6 +16,7 @@ with entry {
         allroots: Callable[(..., Any)];
         save: Callable[(..., Any)];
         commit: Callable[(..., Any)];
+        store: Callable[(..., Any)];
         NoPerm: IntEnum;
         ReadPerm: IntEnum;
         ConnectPerm: IntEnum;
@@ -41,6 +42,8 @@ def _get_save -> Callable[..., Any];
 
 def _get_commit -> Callable[..., Any];
 
+def _get_store -> Callable[..., Any];
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
@@ -57,6 +60,8 @@ def printgraph(
 
 def _jac_graph_json(file: (str | None) = None) -> str;
 
+def restspec(**specs: Any) -> Callable;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -66,8 +71,10 @@ glob __all__ = [
          'allroots',
          'save',
          'commit',
+         'store',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',
-         'WritePerm'
+         'WritePerm',
+         'restspec'
      ];

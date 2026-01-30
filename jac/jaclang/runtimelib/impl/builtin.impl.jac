@@ -86,6 +86,8 @@ impl __getattr__(name: str) -> object {
         return _get_save();
     } elif (name == 'commit') {
         return _get_commit();
+    } elif (name == 'store') {
+        return _get_store();
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}") ;
 }
@@ -93,6 +95,11 @@ impl __getattr__(name: str) -> object {
 """Get commit lazily."""
 impl _get_commit -> Callable[..., Any] {
     return _get_jac().commit;
+}
+
+"""Get storage backend lazily."""
+impl _get_store -> Callable[..., Any] {
+    return _get_jac().store;
 }
 
 """Get save lazily."""
@@ -135,4 +142,15 @@ impl _get_access_level -> type[AccessLevel] {
 impl _get_jac -> type[JacRuntimeInterface] {
     import from jaclang { JacRuntimeInterface }
     return JacRuntimeInterface;
+}
+
+"""REST API decorator factory."""
+impl restspec(**specs: Any) -> Callable {
+    import from jaclang { JacRuntimeInterface as Jac }
+    SpecsCls = Jac.get_api_server_class().RestSpecs;
+    def decorator(cls: type) -> type {
+        cls.restspec = SpecsCls(**specs);
+        return cls;
+    }
+    return decorator;
 }

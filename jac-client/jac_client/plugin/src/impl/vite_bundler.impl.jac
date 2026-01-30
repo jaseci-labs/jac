@@ -231,6 +231,8 @@ impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
+    api_config_data = self.config_loader.get_api_config();
+    api_base_url = api_config_data.get('base_url', '');
     config_path = configs_dir / 'vite.config.js';
     # TypeScript is always enabled by default
     try {
@@ -355,6 +357,9 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [
     jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
@@ -426,22 +431,29 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import sys;
     import time;
     import shutil;
-    import from jac_client.plugin.utils { ensure_bun_available }
+    import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
     # Ensure bun is available before proceeding
     if not ensure_bun_available() {
         raise ClientBundleError('Bun is required. Install manually: https://bun.sh') from None ;
     }
-    self.output_dir.mkdir(parents=True, exist_ok=True);
-    generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
-    if not generated_package_json.exists() {
-        self.create_package_json();
-    } else {
-        # Ensure tsconfig.json exists even if package.json already exists
-        self.create_tsconfig();
+    # Ensure client npm deps are configured; prompt to install defaults if missing
+    if not ensure_client_deps(self.config_loader) {
+        raise ClientBundleError(
+            'Client dependencies not configured. Add [dependencies.npm] to jac.toml '
+            'or create a project with: jac create --use client'
+        ) from None ;
     }
+    self.output_dir.mkdir(parents=True, exist_ok=True);
+    # Always regenerate package.json to pick up any dependency changes
+    self.create_package_json();
     try {
         build_dir = self._get_client_dir();
         node_modules = build_dir / 'node_modules';
+        # Reinstall if node_modules is missing or stale (e.g. empty from a prior failed install)
+        vite_bin = node_modules / '.bin' / 'vite';
+        if node_modules.exists() and not vite_bin.exists() {
+            shutil.rmtree(node_modules);
+        }
         if not node_modules.exists() {
             # Temporarily copy package.json to client build dir for bun install
             build_package_json = build_dir / 'package.json';
@@ -455,15 +467,17 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                 print("\n  ⏳ Installing dependencies...\n", flush=True);
                 start_time = time.time();
                 result = subprocess.run(
-                    ['bun', 'install'], cwd=build_dir, check=False, text=True
+                    ['bun', 'install'],
+                    cwd=build_dir,
+                    check=False,
+                    text=True,
+                    capture_output=True
                 );
                 elapsed = time.time() - start_time;
                 if result.returncode != 0 {
-                    print(
-                        f"\n  ✖ bun install failed after {elapsed:.1f}s",
-                        file=sys.stderr
-                    );
-                    raise ClientBundleError("Failed to install dependencies") ;
+                    error_output = result.stderr or result.stdout;
+                    error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
+                    raise ClientBundleError(error_msg) from None ;
                 }
                 print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
             } except FileNotFoundError {
@@ -500,13 +514,16 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         # Run vite from client build directory so it can find node_modules
         print("\n  ⏳ Building client bundle...\n", flush=True);
         start_time = time.time();
-        result = subprocess.run(command, cwd=build_dir, check=False, text=True);
+        result = subprocess.run(
+            command, cwd=build_dir, check=False, text=True, capture_output=True
+        );
         elapsed = time.time() - start_time;
         if result.returncode != 0 {
-            print(f"\n  ✖ Vite build failed after {elapsed:.1f}s", file=sys.stderr);
-            raise ClientBundleError(
-                f"Vite build failed (see output above)\nCommand: {' '.join(command)}"
-            ) from None ;
+            error_output = result.stderr or result.stdout;
+            error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{error_output}\nCommand: {' '.join(
+                command
+            )}";
+            raise ClientBundleError(error_msg) from None ;
         }
         print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
     } finally {
@@ -552,6 +569,9 @@ impl ViteBundler.create_dev_vite_config(
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     config_path = configs_dir / 'vite.dev.config.js';
+    # Get API base URL from config (empty = same origin with proxy)
+    api_config_data = self.config_loader.get_api_config();
+    api_base_url = api_config_data.get('base_url', '');
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();
@@ -587,9 +607,13 @@ const projectRoot = path.resolve(__dirname, "../../..");
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [react()],
   root: buildDir,
   publicDir: false,
+  appType: 'spa',
   build: {{
     sourcemap: true, // Enable source maps for better error messages
   }},
@@ -612,6 +636,10 @@ export default defineConfig({{
         changeOrigin: true,
       }},
       "/introspect": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/static": {{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},

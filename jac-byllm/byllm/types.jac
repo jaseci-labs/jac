@@ -19,6 +19,8 @@ import from litellm.types.utils { Message as LiteLLMMessage }
 import from pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
 
+import from jaclang.pycore.mtp { Info }
+
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
 glob MessageType:
@@ -43,7 +45,8 @@ obj Message {
 """Result of a tool call in LLM interactions."""
 obj ToolCallResultMsg(Message) {
     has tool_call_id: str,
-        name: str;
+        name: str,
+        role: MessageRole by postinit;
 
     def postinit -> None;
     def to_dict -> dict[str, object];
@@ -57,7 +60,8 @@ Provides JSON schema generation, argument parsing, and invocation capabilities.
 obj Tool {
     has func: Callable,
         description: str = "",
-        params_desc: dict[(str, str)] = None;
+        params_desc: dict[(str, str)] = None,
+        info: Info = None;
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;
