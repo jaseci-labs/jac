@@ -1,7 +1,7 @@
 
 import from react { useEffect, useContext }
 import from "@jac/runtime" { useNavigate, useLocation }
-import from '..lib.auth-backend' { AuthContext }
+import from '..lib.auth' { AuthContext }
 
 def:pub OAuthCallback() -> any {
     navigate = useNavigate();
