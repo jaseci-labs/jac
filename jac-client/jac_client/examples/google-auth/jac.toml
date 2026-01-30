@@ -4,10 +4,10 @@ version = "1.0.0"
 description = "Jac client application: google-auth"
 entry-point = "main.jac"
 
+[dependencies]
+
 [dependencies.npm]
 jac-client-node = "1.0.4"
-"@react-oauth/google" = "latest"
-jwt-decode = "latest"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
@@ -18,8 +18,9 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client.vite.build]
-minify="true"
+[plugins.client]
+
+
 
 [plugins.scale]
 [plugins.scale.jwt]

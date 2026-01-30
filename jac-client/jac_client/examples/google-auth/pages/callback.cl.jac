@@ -1,7 +1,7 @@
 
 import from react { useEffect, useContext }
 import from "@jac/runtime" { useNavigate, useLocation }
-import from '..lib.auth-backend' { AuthContext }
+import from '..lib.auth' { AuthContext }
 
 def:pub OAuthCallback() -> any {
     navigate = useNavigate();
@@ -13,45 +13,8 @@ def:pub OAuthCallback() -> any {
         # Async function to handle SSO callback
         async def handleSSOCallback() -> None {
             console.log("Handling SSO Callback...", window.location.href);
-            # Check if we're at the backend callback URL with a code parameter
-            if window.location.href.includes('/sso/') and window.location.href.includes('code=') {
-                console.log("Detected backend SSO callback, fetching token...");
-                
-                try {
-                    # Fetch the current URL to get the JSON response from backend
-                                        # Remove hash (#) from URL to get clean backend callback URL
-                    removehash = window.location.href.replace('/#/', '/');
-                    
-                    response = await fetch(removehash);
-                    data = await response.json();
-                    
-                    console.log("Backend SSO Response:", data);
-                    
-                    if data.ok and data.data and data.data.token {
-                        token = data.data.token;
-                        username = data.data.username;
-                        
-                        console.log('✅ Login successful for:', username);
-                        
-                        # Store the token
-                        localStorage.setItem('auth_token', token);
-                        
-                        # Redirect to dashboard
-                        navigate('/dashboard');
-                    } else {
-                        console.error('❌ SSO failed:', data);
-                        errorMsg = data.error or 'authentication_failed';
-                        navigate('/login?error=' + encodeURIComponent(errorMsg));
-                    }
-                } except error {
-                    console.error('Failed to fetch SSO response:', error);
-                    navigate('/login?error=fetch_failed');
-                }
-                
-                return;
-            }
-            
-            # Otherwise, parse query parameters for token (direct callback case)
+
+            # Parse query parameters for token (backend redirects here after OAuth)
             searchParams = Reflect.construct(URLSearchParams,[window.location.search]);
             console.log("OAuth Callback Params:", searchParams);
             token = searchParams.get("token") or "";
@@ -67,22 +30,18 @@ def:pub OAuthCallback() -> any {
             if token {
                 # Store the token
                 localStorage.setItem('auth_token', token);
-                
-                # Decode token to get user info (basic info, full validation happens on backend)
+
+                # Decode token to get user info for logging
                 try {
-                    # Token is already validated by backend, just extract payload
                     payload = JSON.parse(atob(token.split('.')[1]));
-                    
-                    # Update auth context
-                    # The auth provider will validate with backend on next mount
-                    console.log('Login successful for user:', payload.username);
-                    
-                    # Redirect to dashboard
-                    navigate('/dashboard');
+                    console.log('✅ Login successful for user:', payload.username);
                 } except e {
-                    console.error('Failed to process token:', e);
-                    navigate('/login?error=invalid_token');
+                    console.error('Failed to decode token:', e);
                 }
+
+                # Full page reload to /dashboard so AuthProvider validates token before Protected route checks
+                # This ensures user state is loaded before the Protected component renders
+                window.location.href = '/dashboard';
             } else {
                 # No token, something went wrong
                 navigate('/login?error=no_token');

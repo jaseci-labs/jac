@@ -11,27 +11,40 @@ The backend returns JSON with the token, which we handle in the callback page.
 cl import from react { useEffect }
 cl import from '.lib.auth' { AuthProvider }
 cl import from '.lib.protected-route' { Protected }
-cl import from '.pages.login-backend' { Login }
+cl import from '.pages.login' { Login }
 cl import from '.pages.callback' { OAuthCallback }
 cl import from '.pages.home' { Home }
 cl import from '.pages.dashboard' { Dashboard }
+cl import from '.pages.sample' { Sample }
 cl import from "@jac/runtime" {
     Router,
     Routes,
-    Route
+    Route,
+    Link
 }
 
 # Client-side component
 cl {
+
+    def NaviigationMenu() -> any {
+        return <nav style={{ "display": "flex", "gap": "10px", "marginBottom": "20px" }}>
+            <button><Link to="/">Home</Link></button>  
+            <button><Link to="/login">Login</Link></button>
+             <button><Link to="/dashboard">Dashboard</Link></button>  
+             <button><Link to="/sample">Sample</Link></button>
+        </nav>;
+    }
+
+
     def:pub app() -> any {
         return <AuthProvider>
             <Router>
+                <NaviigationMenu />
                 <Routes>
                     <Route path="/" element={<Home />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/auth/callback" element={<OAuthCallback />} />
-                    <Route path="/sso/google/login/callback" element={<OAuthCallback />} />
-                    <Route path="/sso/google/register/callback" element={<OAuthCallback />} />
+                    <Route path="/sample" element={<Sample />} />
                     <Route
                         path="/dashboard"
                         element={
