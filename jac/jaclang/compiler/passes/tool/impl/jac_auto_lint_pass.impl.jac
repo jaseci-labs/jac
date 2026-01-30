@@ -64,7 +64,8 @@ impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
         rel_path = file_path[len(self._project_root):].lstrip(os.sep);
     }
     for pattern in self._exclude_patterns {
-        if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(os.path.basename(file_path), pattern) {
+        if fnmatch.fnmatch(rel_path, pattern)
+        or fnmatch.fnmatch(os.path.basename(file_path), pattern) {
             return True;
         }
     }
