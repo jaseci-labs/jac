@@ -21,6 +21,7 @@ from jaclang import JacRuntime
 from jaclang import JacRuntimeInterface as Jac
 from jaclang.pycore.mtp import (
     ClassInfo,
+    EnumInfo,
     FieldInfo,
     FunctionInfo,
     MethodInfo,
@@ -620,3 +621,295 @@ class TestScopeNameConsistency:
         assert "MTIR retrieval test: PASSED" in stdout_value, (
             f"MTIR retrieval test failed. Output:\n{stdout_value}"
         )
+
+
+# =============================================================================
+# Enum Extraction Tests
+# =============================================================================
+
+
+class TestEnumExtraction:
+    """Tests for enum extraction with MTIR."""
+
+    def test_enum_info_structure(self) -> None:
+        """Test that EnumInfo correctly stores enum members."""
+        members = [
+            FieldInfo(name="RED", semstr="Red color.", type_info="int"),
+            FieldInfo(name="GREEN", semstr="Green color.", type_info="int"),
+            FieldInfo(name="BLUE", semstr="Blue color.", type_info="int"),
+        ]
+        enum_info = EnumInfo(
+            name="Color",
+            semstr="RGB color enumeration.",
+            members=members,
+        )
+
+        assert enum_info.name == "Color"
+        assert enum_info.semstr == "RGB color enumeration."
+        assert len(enum_info.members) == 3
+        assert enum_info.members[0].name == "RED"
+        assert enum_info.members[0].type_info == "int"
+        assert enum_info.members[0].semstr == "Red color."
+
+    def test_enum_with_int_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums with integer values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None, "Should find get_person_info function"
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+
+        # Check that the return type is ClassInfo (Person)
+        assert isinstance(func_info.return_type, ClassInfo)
+        person_class = func_info.return_type
+
+        # Find the personality field
+        personality_field = None
+        for field in person_class.fields:
+            if field.name == "personality":
+                personality_field = field
+                break
+
+        assert personality_field is not None, "Person should have personality field"
+
+        # The type_info should be an EnumInfo
+        assert isinstance(personality_field.type_info, EnumInfo), (
+            f"Expected EnumInfo, got {type(personality_field.type_info)}"
+        )
+
+        personality_enum = personality_field.type_info
+        assert personality_enum.name == "Personality"
+        assert len(personality_enum.members) == 3
+
+        # Check member names and types
+        member_names = [m.name for m in personality_enum.members]
+        assert "INTROVERT" in member_names
+        assert "EXTROVERT" in member_names
+        assert "AMBIVERT" in member_names
+
+        # All members should have int type
+        for member in personality_enum.members:
+            assert member.type_info == "int", (
+                f"Member {member.name} should have int type, got {member.type_info}"
+            )
+
+    def test_enum_with_string_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums with string values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+        assert isinstance(func_info.return_type, ClassInfo)
+
+        person_class = func_info.return_type
+
+        # Find the status field
+        status_field = None
+        for field in person_class.fields:
+            if field.name == "status":
+                status_field = field
+                break
+
+        assert status_field is not None, "Person should have status field"
+        assert isinstance(status_field.type_info, EnumInfo)
+
+        status_enum = status_field.type_info
+        assert status_enum.name == "Status"
+        assert len(status_enum.members) == 3
+
+        # Check member names and types
+        member_names = [m.name for m in status_enum.members]
+        assert "PENDING" in member_names
+        assert "ACTIVE" in member_names
+        assert "COMPLETED" in member_names
+
+        # All members should have str type
+        for member in status_enum.members:
+            assert member.type_info == "str", (
+                f"Member {member.name} should have str type, got {member.type_info}"
+            )
+
+    def test_enum_without_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums without explicit values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_no_value.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find yes_or_no function
+        func_scope = None
+        for scope in mtir_map:
+            if "yes_or_no" in scope and "enum_no_value" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None, "Should find yes_or_no function"
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+
+        # The return type should be EnumInfo (Tell)
+        assert isinstance(func_info.return_type, EnumInfo), (
+            f"Expected EnumInfo, got {type(func_info.return_type)}"
+        )
+
+        tell_enum = func_info.return_type
+        assert tell_enum.name == "Tell"
+        assert len(tell_enum.members) == 2
+
+        # Check member names
+        member_names = [m.name for m in tell_enum.members]
+        assert "YES" in member_names
+        assert "NO" in member_names
+
+        # Members without explicit values should have None as type_info
+        for member in tell_enum.members:
+            assert member.type_info is None, (
+                f"Member {member.name} without value should have None type, "
+                f"got {member.type_info}"
+            )
+
+    def test_enum_semstrings_are_extracted(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that semantic strings for enum members are extracted."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+        assert isinstance(func_info.return_type, ClassInfo)
+
+        person_class = func_info.return_type
+
+        # Get Personality enum
+        personality_field = next(
+            (f for f in person_class.fields if f.name == "personality"), None
+        )
+        assert personality_field is not None
+        assert isinstance(personality_field.type_info, EnumInfo)
+
+        personality_enum = personality_field.type_info
+
+        # Check that semantic strings are present
+        introvert = next(
+            (m for m in personality_enum.members if m.name == "INTROVERT"), None
+        )
+        assert introvert is not None
+        assert introvert.semstr is not None
+        assert (
+            "reserved" in introvert.semstr.lower()
+            or "reflective" in introvert.semstr.lower()
+        )
+
+        extrovert = next(
+            (m for m in personality_enum.members if m.name == "EXTROVERT"), None
+        )
+        assert extrovert is not None
+        assert extrovert.semstr is not None
+        assert (
+            "outgoing" in extrovert.semstr.lower()
+            or "interaction" in extrovert.semstr.lower()
+        )
+
+    def test_enum_in_schema_generation(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that EnumInfo is used in schema generation."""
+        import io
+        import sys
+
+        # Run enum_with_semstr.jac and capture output with verbose=True
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            # Import will trigger compilation and MTIR extraction
+            jac_import("enum_with_semstr", base_path=fixture_path("./"))
+
+            # Now import byllm.schema to test schema generation
+            # Get the Person class and Personality enum from the compiled module
+            from enum_with_semstr import Person
+
+            from byllm import schema  # type: ignore[attr-defined]
+
+            # Generate schema for Person which includes Personality enum
+            person_schema = schema.type_to_schema(Person, info=None)
+
+            # Schema is nested under json_schema.schema
+            assert "json_schema" in person_schema
+            assert "schema" in person_schema["json_schema"]
+            inner_schema = person_schema["json_schema"]["schema"]
+
+            assert "properties" in inner_schema
+            assert "personality" in inner_schema["properties"]
+
+            personality_schema = inner_schema["properties"]["personality"]
+
+            # Should be integer type (since we used int values)
+            assert "type" in personality_schema
+            assert personality_schema["type"] == "integer"
+
+            # Description should include enum values and names
+            assert "description" in personality_schema
+            desc = personality_schema["description"]
+            # Should mention the member names
+            assert "INTROVERT" in desc or "EXTROVERT" in desc or "AMBIVERT" in desc
+            # Should mention the values
+            assert "[1, 2, 3]" in desc or "1" in desc
+
+            # Check the status field (string enum)
+            assert "status" in inner_schema["properties"]
+            status_schema = inner_schema["properties"]["status"]
+            assert status_schema["type"] == "string"
+            assert "PENDING" in status_schema["description"]
+
+        finally:
+            sys.stdout = sys.__stdout__
+
+        # If verbose is enabled, output should contain schema information
+        # This verifies the enum information flows through to schema generation
