@@ -135,7 +135,7 @@ impl lsp -> int {
 
 """Generate shell completion script."""
 impl completions(shell: str = "bash", install: bool = False) -> int {
-    import from jaclang.vendor.jaccomplete { shellcode }
+    import from jaclang.cli.jaccomplete { static_shellcode as shellcode }
     import from jaclang.cli.registry { get_registry }
     import from jaclang.cli.command { ArgKind }
     code = shellcode(_extract_commands(get_registry()), executable="jac", shell=shell);
