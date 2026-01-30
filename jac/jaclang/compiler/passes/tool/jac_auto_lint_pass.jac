@@ -29,11 +29,14 @@ obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
     has lint_enabled: bool = True,
         main_module: uni.Module | None = None,
-        _enabled_rules: set[LintRule] = set();
+        _enabled_rules: set[LintRule] = set(),
+        _exclude_patterns: list[str] = [],
+        _project_root: str = "";
 
     def init(ir_in: uni.Module, prog: Any) -> None;
     def _load_lint_config -> None;
     def is_rule_enabled(rule: LintRule) -> bool;
+    def _is_file_excluded(file_path: str) -> bool;
     def enter_module(node: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
     def is_module_level_construct(stmt: uni.UniNode) -> bool;

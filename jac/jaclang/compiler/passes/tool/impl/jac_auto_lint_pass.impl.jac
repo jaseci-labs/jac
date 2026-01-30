@@ -39,6 +39,8 @@ impl JacAutoLintPass._load_lint_config -> None {
             if name in rule_by_name
         };
         self._enabled_rules -= ignore_rules;
+        self._exclude_patterns = lint.exclude;
+        self._project_root = str(config.project_root) if config.project_root else "";
     } else {
         self._enabled_rules = set(default_rules);
     }
@@ -47,6 +49,26 @@ impl JacAutoLintPass._load_lint_config -> None {
 """Check if a specific lint rule is enabled."""
 impl JacAutoLintPass.is_rule_enabled(rule: LintRule) -> bool {
     return rule in self._enabled_rules;
+}
+
+"""Check if a file path matches any exclude pattern."""
+impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
+    import fnmatch;
+    import os;
+    if not self._exclude_patterns {
+        return False;
+    }
+    # Normalize to relative path from project root
+    rel_path = file_path;
+    if self._project_root and file_path.startswith(self._project_root) {
+        rel_path = file_path[len(self._project_root):].lstrip(os.sep);
+    }
+    for pattern in self._exclude_patterns {
+        if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(os.path.basename(file_path), pattern) {
+            return True;
+        }
+    }
+    return False;
 }
 
 """Remove empty parentheses from function signatures with no parameters."""
@@ -1546,6 +1568,10 @@ impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
         return;
     }
     if node.target.value != "print" {
+        return;
+    }
+    # Skip excluded files (docs, examples, tests, console.impl.jac, etc.)
+    if self._is_file_excluded(node.loc.mod_path) {
         return;
     }
     # It's a bare print() call — report error with location
