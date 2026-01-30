@@ -290,7 +290,7 @@ impl start(
     # Print startup message
     _print_startup_message(dev, no_client, port, actual_api_port, base);
     try {
-        server.start(dev=dev);
+        server.start(dev=dev, no_client=no_client);
         return 0;
     } except KeyboardInterrupt {
         print('\nShutting down...');

@@ -28,10 +28,12 @@ class DesktopTarget(ClientTarget) {
     ) -> Path;
 
     """Start desktop dev server - start web dev server and launch tauri dev."""
-    override def dev(self: DesktopTarget, entry_file: Path, project_dir: Path) -> None;
+    override def dev(
+        self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None;
 
     """Start desktop app - build web bundle and launch Tauri with built bundle."""
     override def start(
-        self: DesktopTarget, entry_file: Path, project_dir: Path
+        self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
 }

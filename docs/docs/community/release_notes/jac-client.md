@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.13 (Unreleased)
 
+- **Desktop App Auto-Start & Port Discovery**: Running `jac start` or `jac dev` for a desktop (Tauri) target now automatically launches the backend API server and connects the app to it -- no manual setup needed. The backend port is dynamically allocated and injected into the webview before any page JavaScript runs, so API calls just work out of the box. Configure a fixed backend URL via `base_url` in `jac.toml` if needed.
+- **Bug fixes**: Fixed a sidecar crash caused by writing to a closed stdout pipe, and fixed an environment variable leak during desktop builds.
 - **Enhanced Compilation for Hot Module Replacement**: Added initial module compilation for HMR without bundling'.
 
 ## jac-client 0.2.12 (Latest Release)

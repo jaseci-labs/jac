@@ -426,15 +426,15 @@ def _handle_start_target(ctx: HookContext) -> None {
             ctx.set_data("cancel_return_code", 1);
             return;
         }
-        # Check if --dev flag is set
         dev_mode = ctx.get_arg("dev", False);
+        api_port = ctx.get_arg("port", 8000);
         try {
             if dev_mode {
                 # Desktop target with --dev: launch Tauri dev mode (hot reload)
-                target.dev(entry_path, project_dir);
+                target.dev(entry_path, project_dir, api_port=api_port);
             } else {
                 # Desktop target without --dev: build web bundle and launch Tauri with built bundle
-                target.start(entry_path, project_dir);
+                target.start(entry_path, project_dir, api_port=api_port);
             }
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 0);

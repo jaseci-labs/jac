@@ -9,6 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **ES Module Export Generation**: Exports now generated at compiler level via ESTree nodes instead of regex post-processing. Only `:pub` declarations are exported.
 - **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
 - **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
+- **`--no_client` flag for `jac start`**: Added `--no_client` CLI flag that skips eager client bundling on server startup. Useful when we need to run server only.
 - **Enhanced Client Compilation for Development**: Improved the `jac start --dev` command to perform initial client compilation for HMR.
 
 ## jaclang 0.9.12 (Latest Release)
