@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
     import from jaclang.pycore.constructs { Archetype }

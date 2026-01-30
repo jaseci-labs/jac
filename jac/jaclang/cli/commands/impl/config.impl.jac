@@ -3,6 +3,8 @@
 Direct implementations - no delegation.
 """
 
+import from jaclang.cli.console { console }
+
 # Configuration groups available in jac.toml
 glob CONFIG_GROUPS = [
          "project",

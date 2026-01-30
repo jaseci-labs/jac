@@ -4,6 +4,7 @@ Direct implementations - no delegation.
 """
 
 import os;
+import from jaclang.cli.console { console }
 
 glob _runtime_initialized = False;
 

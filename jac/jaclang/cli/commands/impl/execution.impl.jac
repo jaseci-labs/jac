@@ -8,6 +8,7 @@ import os;
 import sys;
 import types;
 import from typing { Any }
+import from jaclang.cli.console { console }
 
 glob _runtime_initialized = False;
 

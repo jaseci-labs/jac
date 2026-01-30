@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-import jaclang
 import jaclang.pycore.lark_jac_parser as jl
 import jaclang.pycore.unitree as uni
 from jaclang.pycore.constant import CodeContext, Tokens
@@ -670,7 +669,7 @@ def _sanitize_test_name(name: str) -> str:
 
 # Use fixed file list for deterministic test discovery
 # To add new test files, update MICRO_JAC_FILES in tests/fixtures_list.py
-_base_dir = os.path.dirname(os.path.dirname(jaclang.__file__))
+_base_dir = str(Path(__file__).parent.parent.parent)
 for filename in [os.path.normpath(os.path.join(_base_dir, f)) for f in MICRO_JAC_FILES]:
     test_name = f"test_micro_{_sanitize_test_name(filename)}"
     # Create the test function dynamically

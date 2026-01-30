@@ -1,5 +1,7 @@
 """Implementation of dependency management for Jac projects."""
 
+import from jaclang.cli.console { console }
+
 # ===============================================================================
 # DependencyInstaller Implementation
 # ===============================================================================
