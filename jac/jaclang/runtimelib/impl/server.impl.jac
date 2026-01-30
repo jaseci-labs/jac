@@ -307,14 +307,14 @@ impl ExecutionManager.spawn_walker(
             target_node = ctx.get_root();
         }
         spawn_result = Jac.spawn(<>walker, target_node);
-        task_report = self.report_collector(call_state);
         # Handle async walkers - await the coroutine if spawn returns one
         if iscoroutine(spawn_result) {
-            (result, reports) = await asyncio.gather(spawn_result, task_report);
+            result = await spawn_result;
         } else {
             result = spawn_result;
-            reports = await task_report;
         }
+        call_state.reports.put_nowait(call_state._sentinel);
+        reports = await self.report_collector(call_state);
         Jac.commit();  # Persist changes
         if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
             return reports;
