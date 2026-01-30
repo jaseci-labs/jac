@@ -854,6 +854,7 @@ jac tool ir sym main.jac
 # View generated Python
 jac tool ir py main.jac
 ```
+
 ---
 
 ### jac completions
