@@ -203,10 +203,9 @@ class CompletionFinder:
                  completions.extend(c_results)
         else:
              # Positional arguments
-             # We can't easily know WHICH positional we are on without full state machine.
-             # We will try to run ALL positional completers that match the prefix? 
-             # Or comfortably default to FilesCompleter which is common expectation.
-             pass
+             # Default to filesystem completion for positional args
+             c_results = self._run_completer(self.default_completer, cword_prefix, None, active_parser, parsed_args)
+             completions.extend(c_results)
 
         return list(set(completions))
 
