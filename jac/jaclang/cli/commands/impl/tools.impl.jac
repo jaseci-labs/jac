@@ -4,7 +4,6 @@ Direct implementations - no delegation.
 """
 
 import os;
-import sys;
 
 glob _runtime_initialized = False;
 
@@ -28,7 +27,7 @@ def _proc_file(filename: str) -> tuple {
     } elif filename.endswith('.py') {
         mod = mod[:-3];
     } else {
-        print('Not a valid file!\nOnly supports `.jac` and `.py`', file=sys.stderr);
+        console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
         <>exit(1);
     }
     # Only set base path if not already set (allows tests to override)
@@ -46,19 +45,16 @@ impl tool(tool: str, args: list = []) -> int {
     import from jaclang.utils.lang_tools { AstTool }
     if hasattr(AstTool, tool) {
         try {
-            print(
+            console.print(
                 getattr(AstTool(), tool)(args) if args else getattr(AstTool(), tool)()
             );
             return 0;
         } except Exception as e {
-            print(
-                f"Error while running ast tool {tool}, check args: {e}",
-                file=sys.stderr
-            );
+            console.error(f"Error while running ast tool {tool}, check args: {e}");
             return 1;
         }
     } else {
-        print(f"Ast tool {tool} not found.", file=sys.stderr);
+        console.error(f"Ast tool {tool} not found.");
         return 1;
     }
 }
@@ -98,25 +94,27 @@ impl dot(
                 format=format
             );
         } except Exception as e {
-            print(f"Error while generating graph: {e}");
+            console.print(f"Error while generating graph: {e}");
             import traceback;
             traceback.print_exc();
             jac_machine.close();
             return 1;
         }
         if to_screen {
-            print(graph);
+            console.print(graph);
         } else {
             file_name = saveto or f"{mod}.dot";
             with open(file_name, 'w') as file {
                 file.write(graph);
             }
-            print(f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}");
+            console.print(
+                f">>> Graph content saved to {os.path.join(os.getcwd(), file_name)}"
+            );
         }
         jac_machine.close();
         return 0;
     } else {
-        print('Not a .jac file.', file=sys.stderr);
+        console.error('Not a .jac file.');
         return 1;
     }
 }
@@ -124,11 +122,12 @@ impl dot(
 """Run Jac Language Server Protocol."""
 impl lsp -> int {
     import from jaclang.langserve.server { run_lang_server }
+    import from jaclang.cli.console { console }
     try {
         run_lang_server();
         return 0;
     } except Exception as e {
-        print(f"Error: {e}", file=sys.stderr);
+        console.error(f"Error: {e}");
         return 1;
     }
 }

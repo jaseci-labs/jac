@@ -1,3 +1,4 @@
+
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
     import from jaclang.pycore.constructs { Archetype }
@@ -1549,7 +1550,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
 
         """Log HTTP requests."""
         def log_message(self: JacRequestHandler, format: str, *args: object) -> None {
-            print(f"{self.address_string()} - {(format % args)}");
+            console.print(f"{self.address_string()} - {(format % args)}");
         }
     }
     return JacRequestHandler;
@@ -1617,9 +1618,8 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
             try {
                 # ViteBundler.build() handles its own progress messages
                 self.introspector.ensure_bundle();
-                print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n",
-                    flush=True
+                console.print(
+                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
                 );
             } except Exception as e {
                 bundle_error = str(e);
@@ -1630,27 +1630,29 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     base_route_app = config.serve.base_route_app if config else "";
     with self.server as httpd {
-        print(f"Jac API Server running on http://0.0.0.0:{self.port}");
-        print(f"Module: {self.module_name}");
-        print('\nAvailable endpoints:');
-        print('  POST /user/register - Create a new user');
-        print('  POST /user/login - Login and get auth token');
-        print('  GET  /user/info - Get current user information (auth required)');
-        print('  PUT  /user/username - Update username (auth required)');
-        print('  PUT  /user/password - Update password (auth required)');
-        print('  GET /functions - List all functions');
-        print('  GET /walkers - List all walkers');
-        print('  GET /function/<name> - Get function signature');
-        print('  GET /walker/<name> - Get walker info');
-        print('  POST /function/<name> - Call a function');
-        print('  POST /walker/<name> - Spawn a walker');
-        print(
+        console.print(f"Jac API Server running on http://0.0.0.0:{self.port}");
+        console.print(f"Module: {self.module_name}");
+        console.print('\nAvailable endpoints:');
+        console.print('  POST /user/register - Create a new user');
+        console.print('  POST /user/login - Login and get auth token');
+        console.print(
+            '  GET  /user/info - Get current user information (auth required)'
+        );
+        console.print('  PUT  /user/username - Update username (auth required)');
+        console.print('  PUT  /user/password - Update password (auth required)');
+        console.print('  GET /functions - List all functions');
+        console.print('  GET /walkers - List all walkers');
+        console.print('  GET /function/<name> - Get function signature');
+        console.print('  GET /walker/<name> - Get walker info');
+        console.print('  POST /function/<name> - Call a function');
+        console.print('  POST /walker/<name> - Spawn a walker');
+        console.print(
             f'  GET /{cl_route_prefix}/<name> - Render HTML page for client function'
         );
         if base_route_app {
-            print(f'\nBase route (/) configured to serve: {base_route_app}');
+            console.print(f'\nBase route (/) configured to serve: {base_route_app}');
         }
-        print('\nPress Ctrl+C to stop the server');
+        console.print('\nPress Ctrl+C to stop the server');
         # Display bundle error after endpoints if one occurred
         if bundle_error {
             import from jaclang.cli.console { console }
@@ -1669,7 +1671,7 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         try {
             httpd.serve_forever();
         } except KeyboardInterrupt {
-            print('\nShutting down server...');
+            console.print('\nShutting down server...');
         }
     }
 }
@@ -1682,14 +1684,14 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     client_exports = server.introspector._client_manifest.get('exports', []);
     """Print section header.""";
     def section(title: str, auth: str = '') -> None {
-        print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
+        console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
     """Print endpoint with description.""";
     def endpoint(method: str, path: str, desc: str, details: str = '') -> None {
-        print(f"{method:6} {path}");
-        print(f"       {desc}");
+        console.print(f"{method:6} {path}");
+        console.print(f"       {desc}");
         if details {
-            print(f"       {details}");
+            console.print(f"       {details}");
         }
     }
     """Format parameter info.""";
@@ -1698,9 +1700,9 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
         <>default = f", default: {info['default']}" if info.get('default') else '';
         return f"{name}: {info['type']} ({req}{default})";
     }
-    print(('\n' + ('=' * 80)));
-    print(f"JAC API SERVER - {server.module_name}");
-    print(('=' * 80));
+    console.print(('\n' + ('=' * 80)));
+    console.print(f"JAC API SERVER - {server.module_name}");
+    console.print(('=' * 80));
     section('AUTHENTICATION');
     endpoint(
         'POST',
@@ -1765,7 +1767,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
         if (len(client_exports) > 8) {
             funcs_list += f" (+{(len(client_exports) - 8)} more)";
         }
-        print(f"Available ({len(client_exports)}): {funcs_list}");
+        console.print(f"Available ({len(client_exports)}): {funcs_list}");
         endpoint(
             'GET',
             f'/{cl_route_prefix}/<name>',
@@ -1773,7 +1775,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             f'Example: /{cl_route_prefix}/App?arg1=value1'
         );
     } else {
-        print(
+        console.print(
             "\nNo client functions. Define with 'cl def' for browser-side rendering."
         );
     }
@@ -1785,12 +1787,12 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     }
     endpoint('GET', '/static/client.js', 'Client JavaScript bundle');
     total = 2 + 2 + (len(functions) * 2) + (len(walkers) * 2) + 2;
-    print(('\n' + ('=' * 80)));
-    print(
+    console.print(('\n' + ('=' * 80)));
+    console.print(
         f"TOTAL: {len(functions)} functions · {len(walkers)} walkers · {len(
             client_exports
         )} client functions · {total} endpoints"
     );
-    print(('=' * 80));
-    print('\nAuth: Bearer token (Authorization: Bearer <token>)\n');
+    console.print(('=' * 80));
+    console.print('\nAuth: Bearer token (Authorization: Bearer <token>)\n');
 }

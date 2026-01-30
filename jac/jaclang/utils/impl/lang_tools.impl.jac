@@ -65,7 +65,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     ),
                     prog=prog
                 ).ir_out;
-                print(rep.unparse());
+                console.print(rep.unparse());
                 ir = prog.compile(
                     use_str=rep.unparse(),
                     file_path=(file_name[:-3] + '.jac'),
@@ -157,6 +157,7 @@ impl AstTool.ir(args: list[str]) -> str {
 """List python ast nodes."""
 impl AstTool.py_uni_nodes -> str {
     import from jaclang.compiler.passes.main { PyastBuildPass }
+    import from jaclang.cli.console { console }
     visit_methods = [
         method
         for method in dir(py_ast._Unparser)

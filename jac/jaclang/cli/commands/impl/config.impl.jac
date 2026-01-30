@@ -3,8 +3,6 @@
 Direct implementations - no delegation.
 """
 
-import sys;
-
 # Configuration groups available in jac.toml
 glob CONFIG_GROUPS = [
          "project",
@@ -739,8 +737,8 @@ def _output_table(settings: dict, show_all: bool) -> None {
         separator = "-" * len(header);
     }
 
-    print(header);
-    print(separator);
+    console.print(header);
+    console.print(separator);
 
     # Print settings
     for grp in sorted(settings.keys()) {
@@ -756,19 +754,21 @@ def _output_table(settings: dict, show_all: bool) -> None {
                 fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
                     max_value
                 ) + "}  {:<" + str(max_default) + "}  {}";
-                print(fmt_str.format(grp, key, value_str, default_str, set_marker));
+                console.print(
+                    fmt_str.format(grp, key, value_str, default_str, set_marker)
+                );
             } else {
                 fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
                     max_value
                 ) + "}";
-                print(fmt_str.format(grp, key, value_str));
+                console.print(fmt_str.format(grp, key, value_str));
             }
         }
     }
 
     if show_all {
-        print();
-        print("* = explicitly set in jac.toml");
+        console.print();
+        console.print("* = explicitly set in jac.toml");
     }
 }
 
@@ -788,7 +788,7 @@ def _output_json(settings: dict) -> None {
             };
         }
     }
-    print(json.dumps(output, indent=2, default=str));
+    console.print(json.dumps(output, indent=2, default=str));
 }
 
 """Output settings as TOML (only explicitly set values)."""
@@ -817,9 +817,9 @@ def _output_toml(settings: dict, show_all: bool) -> None {
     }
 
     if lines {
-        print("\n".join(lines));
+        console.print("\n".join(lines));
     } else {
-        print("# No settings explicitly set");
+        console.print("# No settings explicitly set");
     }
 }
 
@@ -924,7 +924,7 @@ def _config_get(config: object, key: str) -> int {
     is_set = _is_explicitly_set(config, group_name, setting_name);
 
     # Output the value
-    print(_format_value(value).strip('"'));
+    console.print(_format_value(value).strip('"'));
 
     if is_set {
         console.print("  (explicitly set in jac.toml)", style="muted");

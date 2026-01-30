@@ -16,6 +16,7 @@ impl JacFileWatcher.start -> None {
     }
     import from watchdog.observers { Observer }
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
+    import from jaclang.cli.console { console }
     watcher = self;
     class JacEventHandler(FileSystemEventHandler) {
         def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) -> None {
@@ -142,7 +143,7 @@ impl JacFileWatcher._notify_callbacks(event: FileChangeEvent) -> None {
         try {
             callback(event);
         } except Exception as e {
-            print(f"[HMR] Error in callback: {e}", flush=True);
+            console.print(f"[HMR] Error in callback: {e}");
         }
     }
 }

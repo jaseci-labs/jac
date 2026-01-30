@@ -482,7 +482,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
-                print("\n  ⏳ Installing dependencies...\n", flush=True);
+                console.print("\n  ⏳ Installing dependencies...\n");
                 start_time = time.time();
                 result = subprocess.run(
                     ['bun', 'install'],
@@ -497,7 +497,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                     error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
                     raise ClientBundleError(error_msg) from None ;
                 }
-                print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+                console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
             } except FileNotFoundError {
                 # This shouldn't happen since we check for bun at the start
                 raise ClientBundleError(
@@ -530,7 +530,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             command = ['bun', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
-        print("\n  ⏳ Building client bundle...\n", flush=True);
+        console.print("\n  ⏳ Building client bundle...\n");
         start_time = time.time();
         result = subprocess.run(
             command, cwd=build_dir, check=False, text=True, capture_output=True
@@ -543,7 +543,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             )}";
             raise ClientBundleError(error_msg) from None ;
         }
-        print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
+        console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
     } finally {
         # Clean up temporary package.json in client build dir
         build_package_json = build_dir / 'package.json';
@@ -730,6 +730,7 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     import sys;
     import time;
     import from jac_client.plugin.utils { ensure_bun_available }
+    import from jaclang.cli.console { console }
     # Ensure bun is available before starting dev server
     if not ensure_bun_available() {
         raise ClientBundleError(
@@ -766,19 +767,17 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             shutil.copy2(generated_package_json, build_package_json);
         }
         try {
-            print("\n  ⏳ Installing dependencies...\n", flush=True);
+            console.print("\n  ⏳ Installing dependencies...\n");
             start_time = time.time();
             result = subprocess.run(
                 ['bun', 'install'], cwd=build_dir, check=False, text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
-                print(
-                    f"\n  ✖ bun install failed after {elapsed:.1f}s", file=sys.stderr
-                );
+                console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
                 raise ClientBundleError("Failed to install dependencies") ;
             }
-            print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
         } finally {
             # Clean up temp package.json
             if build_package_json.exists() {

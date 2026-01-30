@@ -3,7 +3,6 @@
 Direct implementations - no delegation to cli.jac.
 """
 
-import sys;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
@@ -141,7 +140,7 @@ impl format(paths: list, to_screen: bool = False, fix: bool = False) -> int {
     }
     def write_formatted_code(code: str, target_path: str) -> None {
         if to_screen {
-            print(code);
+            console.print(code);
         } else {
             with open(target_path, 'w') as f {
                 f.write(code);
