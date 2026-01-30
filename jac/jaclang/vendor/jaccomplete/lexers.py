@@ -1,13 +1,14 @@
 import shlex
 
+
 def split_line(line: str, point: int | None = None):
     if point is None:
         point = len(line)
-    
+
     # Simple split strategy leveraging standard shlex
     # We want to find the word under cursor and previous words
     line_prefix = line[:point]
-    
+
     try:
         # Standard shlex handles quotes and escapes correctly
         words = shlex.split(line_prefix)
@@ -23,7 +24,7 @@ def split_line(line: str, point: int | None = None):
             except ValueError:
                 # Fallback: simple whitespace split if shlex fails completely
                 words = line_prefix.split()
-    
+
     if not words:
         return "", "", "", [], None
 

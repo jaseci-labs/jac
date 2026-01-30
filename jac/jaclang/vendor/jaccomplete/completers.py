@@ -1,5 +1,3 @@
-import argparse
-import os
 import subprocess
 
 
@@ -11,24 +9,7 @@ def _call(*args, **kwargs):
         return []
 
 
-class BaseCompleter:
-    """Base class that all jaccomplete completers should subclass."""
-
-    def __call__(
-        self, *, prefix: str, action: argparse.Action, parser: argparse.ArgumentParser, parsed_args: argparse.Namespace
-    ) -> None:
-        raise NotImplementedError("This method should be implemented by a subclass.")
-
-
-class ChoicesCompleter(BaseCompleter):
-    def __init__(self, choices):
-        self.choices = choices
-
-    def __call__(self, **kwargs):
-        return (str(c) if not isinstance(c, str) else c for c in self.choices)
-
-
-class FilesCompleter(BaseCompleter):
+class FilesCompleter:
     """File completer class, optionally takes a list of allowed extensions."""
 
     def __init__(self, allowednames=(), directories=True):
@@ -42,7 +23,8 @@ class FilesCompleter(BaseCompleter):
         if self.allowednames:
             if self.directories:
                 files = _call(
-                    ["bash", "-c", f"bind; compgen -A directory -- '{prefix}'"], stderr=subprocess.DEVNULL
+                    ["bash", "-c", f"bind; compgen -A directory -- '{prefix}'"],
+                    stderr=subprocess.DEVNULL,
                 )
                 completion += [f + "/" for f in files]
             for x in self.allowednames:
@@ -52,19 +34,14 @@ class FilesCompleter(BaseCompleter):
                 )
         else:
             completion += _call(
-                ["bash", "-c", f"bind; compgen -A file -- '{prefix}'"], stderr=subprocess.DEVNULL
+                ["bash", "-c", f"bind; compgen -A file -- '{prefix}'"],
+                stderr=subprocess.DEVNULL,
             )
             anticomp = _call(
-                ["bash", "-c", f"bind; compgen -A directory -- '{prefix}'"], stderr=subprocess.DEVNULL
+                ["bash", "-c", f"bind; compgen -A directory -- '{prefix}'"],
+                stderr=subprocess.DEVNULL,
             )
             completion = list(set(completion) - set(anticomp))
             if self.directories:
                 completion += [f + "/" for f in anticomp]
         return completion
-
-
-class SuppressCompleter(BaseCompleter):
-    """A completer used to suppress the completion of specific arguments."""
-
-    def suppress(self):
-        return True

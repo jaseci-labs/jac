@@ -127,10 +127,21 @@ Register-ArgumentCompleter -Native -CommandName %(executable)s -ScriptBlock {
 }
 """  # noqa: E501
 
-shell_codes = {"bash": bashcode, "tcsh": tcshcode, "fish": fishcode, "powershell": powershell_code}
+shell_codes = {
+    "bash": bashcode,
+    "tcsh": tcshcode,
+    "fish": fishcode,
+    "powershell": powershell_code,
+}
 
 
-def shellcode(executables, use_defaults=True, shell="bash", complete_arguments=None, jaccomplete_script=None):
+def shellcode(
+    executables,
+    use_defaults=True,
+    shell="bash",
+    complete_arguments=None,
+    jaccomplete_script=None,
+):
     """
     Provide the shell code required to register a python executable for use with the jaccomplete module.
 
@@ -146,7 +157,11 @@ def shellcode(executables, use_defaults=True, shell="bash", complete_arguments=N
     """
 
     if complete_arguments is None:
-        complete_options = "-o nospace -o default -o bashdefault" if use_defaults else "-o nospace -o bashdefault"
+        complete_options = (
+            "-o nospace -o default -o bashdefault"
+            if use_defaults
+            else "-o nospace -o bashdefault"
+        )
     else:
         complete_options = " ".join(complete_arguments)
 
@@ -170,8 +185,12 @@ def shellcode(executables, use_defaults=True, shell="bash", complete_arguments=N
         code = ""
         for executable in executables:
             script = jaccomplete_script or executable
-            completion_arg = "--path" if "/" in executable else "--command"  # use path for absolute paths
-            function_name = executable.replace("/", "_")  # / not allowed in function name
+            completion_arg = (
+                "--path" if "/" in executable else "--command"
+            )  # use path for absolute paths
+            function_name = executable.replace(
+                "/", "_"
+            )  # / not allowed in function name
 
             code += fishcode % dict(
                 executable=executable,
@@ -183,7 +202,9 @@ def shellcode(executables, use_defaults=True, shell="bash", complete_arguments=N
         code = ""
         for executable in executables:
             script = jaccomplete_script or executable
-            code += powershell_code % dict(executable=executable, jaccomplete_script=script)
+            code += powershell_code % dict(
+                executable=executable, jaccomplete_script=script
+            )
 
     else:
         code = ""
@@ -192,6 +213,8 @@ def shellcode(executables, use_defaults=True, shell="bash", complete_arguments=N
             # If no script was specified, default to the executable being completed.
             if not script:
                 script = executable
-            code += shell_codes.get(shell, "") % dict(executable=executable, jaccomplete_script=script)
+            code += shell_codes.get(shell, "") % dict(
+                executable=executable, jaccomplete_script=script
+            )
 
     return code
