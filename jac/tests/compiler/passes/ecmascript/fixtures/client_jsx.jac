@@ -1,17 +1,17 @@
 """Combined JSX fixture covering client declarations and varied JSX patterns."""
 
-cl glob API_URL: str = "https://api.example.com";
+cl glob:pub API_URL: str = "https://api.example.com";
 
-cl obj ButtonProps {
+cl obj:pub ButtonProps {
     has label: str = "Hello";
     has count: int = 0;
 }
 
-cl walker MyComponent {
+cl walker:pub MyComponent {
     has title: str = "My Component";
 }
 
-cl def component() {
+cl def:pub component() {
     return <div class="box">
         <h1>
             Hello
@@ -26,7 +26,7 @@ def server_only() -> str {
     return "not included";
 }
 
-cl def jsx_bug_tests() {
+cl def:pub jsx_bug_tests() {
     # Constructor calls in JSX
     component = MyComponent(title="Custom Title");
 }

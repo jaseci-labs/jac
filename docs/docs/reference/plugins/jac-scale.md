@@ -10,12 +10,6 @@ Complete reference for jac-scale, the cloud-native deployment and scaling plugin
 pip install jac-scale
 ```
 
-For cloud features:
-
-```bash
-pip install jac-cloud
-```
-
 ---
 
 ## Starting a Server
@@ -97,6 +91,72 @@ Walker `report` values become the response.
 
 ---
 
+## @restspec Decorator
+
+The `@restspec` decorator customizes how walkers and functions are exposed as REST API endpoints.
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `method` | `HTTPMethod` | `POST` | HTTP method for the endpoint |
+| `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
+| `webhook` | `bool` | `False` | Expose as a webhook endpoint instead of a regular walker endpoint |
+
+### Custom HTTP Method
+
+By default, walkers are exposed as `POST` endpoints. Use `@restspec` to change this:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET)
+walker :pub get_users {
+    can fetch with `root entry {
+        report [];
+    }
+}
+```
+
+This walker is now accessible at `GET /walker/get_users` instead of `POST`.
+
+### Custom Path
+
+Override the auto-generated path:
+
+```jac
+@restspec(method=HTTPMethod.GET, path="/custom/users")
+walker :pub list_users {
+    can fetch with `root entry {
+        report [];
+    }
+}
+```
+
+Accessible at `GET /custom/users`.
+
+### Functions
+
+`@restspec` also works on standalone functions:
+
+```jac
+@restspec(method=HTTPMethod.GET)
+def :pub health_check() -> dict {
+    return {"status": "healthy"};
+}
+
+@restspec(method=HTTPMethod.GET, path="/custom/status")
+def :pub app_status() -> dict {
+    return {"status": "running", "version": "1.0.0"};
+}
+```
+
+### Webhook Mode
+
+See the [Webhooks](#webhooks) section below.
+
+---
+
 ## Authentication
 
 ### User Registration
@@ -133,46 +193,412 @@ curl -X POST http://localhost:8000/walker/my_walker \
   -d '{}'
 ```
 
+### JWT Configuration
+
+Configure JWT authentication via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET` | Secret key for JWT signing | `supersecretkey` |
+| `JWT_ALGORITHM` | JWT algorithm | `HS256` |
+| `JWT_EXP_DELTA_DAYS` | Token expiration in days | `7` |
+
+### SSO (Single Sign-On)
+
+jac-scale supports SSO with external identity providers. Currently supported: Google.
+
+**Configuration:**
+
+| Variable | Description |
+|----------|-------------|
+| `SSO_HOST` | SSO callback host URL (default: `http://localhost:8000/sso`) |
+| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID |
+| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+
+**SSO Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/sso/{platform}/login` | Redirect to provider login page |
+| GET | `/sso/{platform}/register` | Redirect to provider registration |
+| GET | `/sso/{platform}/login/callback` | OAuth callback handler |
+
+**Example:**
+
+```bash
+# Redirect user to Google login
+curl http://localhost:8000/sso/google/login
+```
+
 ---
 
-## Permissions
+## Permissions & Access Control
 
-### Permission Levels
+### Access Levels
 
-| Permission | Enum | Description |
-|------------|------|-------------|
-| None | `NoPerm` | No access |
-| Read | `ReadPerm` | Read-only access |
-| Connect | `ConnectPerm` | Can connect edges |
-| Write | `WritePerm` | Full read/write access |
+| Level | Value | Description |
+|-------|-------|-------------|
+| `NO_ACCESS` | `-1` | No access to the object |
+| `READ` | `0` | Read-only access |
+| `CONNECT` | `1` | Can traverse edges to/from this object |
+| `WRITE` | `2` | Full read/write access |
 
-### Grant/Revoke Permissions
+### Granting Permissions
+
+#### To Everyone
+
+Use `perm_grant` to allow all users to access an object at a given level:
 
 ```jac
 with entry {
-    # Grant permission
-    grant(node, WritePerm);
-    grant(node, level=ConnectPerm);
+    # Allow everyone to read this node
+    perm_grant(node, READ);
 
-    # Revoke permission
-    revoke(node);
+    # Allow everyone to write
+    perm_grant(node, WRITE);
 }
 ```
 
-### Custom Access Validation
+#### To a Specific Root
+
+Use `allow_root` to grant access to a specific user's root graph:
 
 ```jac
-node SecureNode {
-    has owner_id: str;
+with entry {
+    # Allow a specific user to read this node
+    allow_root(node, target_root_id, READ);
 
-    def __jac_access__() -> Permission {
-        # Custom validation logic
-        if self.owner_id == current_user_id() {
-            return WritePerm;
-        }
-        return ReadPerm;
+    # Allow write access
+    allow_root(node, target_root_id, WRITE);
+}
+```
+
+### Revoking Permissions
+
+#### From Everyone
+
+```jac
+with entry {
+    # Revoke all public access
+    perm_revoke(node);
+}
+```
+
+#### From a Specific Root
+
+```jac
+with entry {
+    # Revoke a specific user's access
+    disallow_root(node, target_root_id, READ);
+}
+```
+
+### Walker Access Levels
+
+Walkers have three access levels when served as API endpoints:
+
+| Access | Description |
+|--------|-------------|
+| Public (`:pub`) | Accessible without authentication |
+| Protected (default) | Requires JWT authentication |
+| Private (`:priv`) | Only accessible by directly defined walkers (not imported) |
+
+### Permission Functions Reference
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `perm_grant` | `perm_grant(archetype, level)` | Allow everyone to access at given level |
+| `perm_revoke` | `perm_revoke(archetype)` | Remove all public access |
+| `allow_root` | `allow_root(archetype, root_id, level)` | Grant access to a specific root |
+| `disallow_root` | `disallow_root(archetype, root_id, level)` | Revoke access from a specific root |
+
+---
+
+## Webhooks
+
+Webhooks allow external services (payment processors, CI/CD systems, messaging platforms, etc.) to send real-time notifications to your Jac application.
+
+### Features
+
+- Dedicated `/webhook/` endpoints for webhook walkers
+- API key authentication for secure access
+- HMAC-SHA256 signature verification to validate request integrity
+- Automatic endpoint generation based on walker configuration
+
+### Configuration
+
+Configure webhooks in `jac.toml`:
+
+```toml
+[plugins.scale.webhook]
+secret = "your-webhook-secret-key"
+signature_header = "X-Webhook-Signature"
+verify_signature = true
+api_key_expiry_days = 365
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `secret` | string | `"webhook-secret-key"` | Secret key for HMAC signature verification. Also settable via `WEBHOOK_SECRET` env var. |
+| `signature_header` | string | `"X-Webhook-Signature"` | HTTP header name for the HMAC signature |
+| `verify_signature` | boolean | `true` | Whether to verify HMAC signatures on incoming requests |
+| `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. `0` for permanent keys. |
+
+### Creating Webhook Walkers
+
+Use `@restspec(webhook=True)` to create a webhook endpoint:
+
+```jac
+@restspec(webhook=True)
+walker PaymentReceived {
+    has payment_id: str,
+        amount: float,
+        currency: str = 'USD';
+
+    can process with `root entry {
+        report {
+            "status": "success",
+            "message": f"Payment {self.payment_id} received",
+            "amount": self.amount,
+            "currency": self.currency
+        };
     }
 }
+```
+
+This walker is accessible at `POST /webhook/PaymentReceived`.
+
+Webhook walkers are **only** accessible via `/webhook/{walker_name}` endpoints -- they are **not** accessible via the standard `/walker/{walker_name}` endpoint.
+
+### API Key Management
+
+Webhook endpoints require API key authentication. Users must create an API key before calling webhook endpoints.
+
+**Create API Key:**
+
+```bash
+curl -X POST http://localhost:8000/api-key/create \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Webhook Key", "expiry_days": 30}'
+```
+
+Response:
+
+```json
+{
+    "api_key": "eyJhbGciOiJIUzI1NiIs...",
+    "api_key_id": "a1b2c3d4e5f6...",
+    "name": "My Webhook Key",
+    "created_at": "2024-01-15T10:30:00Z",
+    "expires_at": "2024-02-14T10:30:00Z"
+}
+```
+
+**List API Keys:**
+
+```bash
+curl -X GET http://localhost:8000/api-key/list \
+  -H "Authorization: Bearer <jwt_token>"
+```
+
+**Revoke API Key:**
+
+```bash
+curl -X DELETE http://localhost:8000/api-key/<api_key_id> \
+  -H "Authorization: Bearer <jwt_token>"
+```
+
+### Calling Webhook Endpoints
+
+Webhook endpoints require two headers:
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Content-Type` | Yes | Must be `application/json` |
+| `X-API-Key` | Yes | API key from `/api-key/create` |
+| `X-Webhook-Signature` | If `verify_signature` enabled | HMAC-SHA256 signature of request body |
+
+The signature is computed as: `HMAC-SHA256(request_body, api_key)`
+
+**Example (cURL):**
+
+```bash
+API_KEY="eyJhbGciOiJIUzI1NiIs..."
+PAYLOAD='{"payment_id":"PAY-12345","amount":99.99,"currency":"USD"}'
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$API_KEY" | cut -d' ' -f2)
+
+curl -X POST "http://localhost:8000/webhook/PaymentReceived" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: $API_KEY" \
+    -H "X-Webhook-Signature: $SIGNATURE" \
+    -d "$PAYLOAD"
+```
+
+### Webhook vs Regular Walkers
+
+| Feature | Regular Walker (`/walker/`) | Webhook Walker (`/webhook/`) |
+|---------|----------------------------|------------------------------|
+| Authentication | JWT Bearer token | API Key + HMAC Signature |
+| Use Case | User-facing APIs | External service callbacks |
+| Access Control | User-scoped | Service-scoped |
+| Signature Verification | No | Yes (HMAC-SHA256) |
+| Endpoint Path | `/walker/{name}` | `/webhook/{name}` |
+
+### Webhook API Reference
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/webhook/{walker_name}` | Execute webhook walker |
+| POST | `/api-key/create` | Create a new API key (requires JWT) |
+| GET | `/api-key/list` | List all API keys for user (requires JWT) |
+| DELETE | `/api-key/{api_key_id}` | Revoke an API key (requires JWT) |
+
+---
+
+## Storage
+
+Jac provides a built-in storage abstraction for file and blob operations. The core runtime ships with a local filesystem implementation, and jac-scale can override it with cloud storage backends -- all through the same `store()` builtin.
+
+### The `store()` Builtin
+
+The recommended way to get a storage instance is the `store()` builtin. It requires no imports and is automatically hookable by plugins:
+
+```jac
+# Get a storage instance (no imports needed)
+glob storage = store();
+
+# With custom base path
+glob storage = store(base_path="./uploads");
+
+# With all options
+glob storage = store(base_path="./uploads", create_dirs=True);
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `base_path` | `str` | `"./storage"` | Root directory for all files |
+| `create_dirs` | `bool` | `True` | Create base directory if it doesn't exist |
+
+Without jac-scale, `store()` returns a `LocalStorage` instance. With jac-scale installed, it returns a configuration-driven backend (reading from `jac.toml` and environment variables).
+
+### Storage Interface
+
+All storage instances provide these methods:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `upload` | `upload(source, destination, metadata=None) -> str` | Upload a file (from path or file object) |
+| `download` | `download(source, destination=None) -> bytes\|None` | Download a file (returns bytes if no destination) |
+| `delete` | `delete(path) -> bool` | Delete a file or directory |
+| `exists` | `exists(path) -> bool` | Check if a path exists |
+| `list_files` | `list_files(prefix="", recursive=False)` | List files (yields paths) |
+| `get_metadata` | `get_metadata(path) -> dict` | Get file metadata (size, modified, created, is_dir, name) |
+| `copy` | `copy(source, destination) -> bool` | Copy a file within storage |
+| `move` | `move(source, destination) -> bool` | Move a file within storage |
+
+### Usage Example
+
+```jac
+import from http { UploadFile }
+import from uuid { uuid4 }
+
+glob storage = store(base_path="./uploads");
+
+walker :pub upload_file {
+    has file: UploadFile;
+    has folder: str = "documents";
+
+    can process with `root entry {
+        unique_name = f"{uuid4()}.dat";
+        path = f"{self.folder}/{unique_name}";
+
+        # Upload file
+        storage.upload(self.file.file, path);
+
+        # Get metadata
+        metadata = storage.get_metadata(path);
+
+        report {
+            "success": True,
+            "storage_path": path,
+            "size": metadata["size"]
+        };
+    }
+}
+
+walker :pub list_files {
+    has folder: str = "documents";
+    has recursive: bool = False;
+
+    can process with `root entry {
+        files = [];
+        for path in storage.list_files(self.folder, self.recursive) {
+            metadata = storage.get_metadata(path);
+            files.append({
+                "path": path,
+                "size": metadata["size"],
+                "name": metadata["name"]
+            });
+        }
+        report {"files": files};
+    }
+}
+
+walker :pub download_file {
+    has path: str;
+
+    can process with `root entry {
+        if not storage.exists(self.path) {
+            report {"error": "File not found"};
+            return;
+        }
+        content = storage.download(self.path);
+        report {"content": content, "size": len(content)};
+    }
+}
+```
+
+### Configuration
+
+Configure storage in `jac.toml`:
+
+```toml
+[storage]
+storage_type = "local"       # Storage backend type
+base_path = "./storage"      # Base directory for files
+create_dirs = true           # Auto-create directories
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `storage_type` | string | `"local"` | Storage backend (`local`) |
+| `base_path` | string | `"./storage"` | Base path for file storage |
+| `create_dirs` | boolean | `true` | Automatically create directories |
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_STORAGE_TYPE` | Storage type (overrides jac.toml) |
+| `JAC_STORAGE_PATH` | Base directory (overrides jac.toml) |
+| `JAC_STORAGE_CREATE_DIRS` | Auto-create directories (`"true"`/`"false"`) |
+
+Configuration priority: `jac.toml` > environment variables > defaults.
+
+### StorageFactory (Advanced)
+
+For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
+
+```jac
+import from jac_scale.factories.storage_factory { StorageFactory }
+
+# Create with explicit type and config
+glob config = {"base_path": "./my-files", "create_dirs": True};
+glob storage = StorageFactory.create("local", config);
+
+# Create using jac.toml / env var / defaults
+glob default_storage = StorageFactory.get_default();
 ```
 
 ---
@@ -231,179 +657,63 @@ walker async_processor {
 
 ## Database Configuration
 
-### jac.toml
-
-```toml
-[database]
-host = "localhost"
-port = 5432
-name = "jacdb"
-user = "jac"
-password = "secret"
-```
-
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_HOST` | Database hostname |
-| `DATABASE_PORT` | Database port |
-| `DATABASE_NAME` | Database name |
-| `DATABASE_USER` | Database username |
-| `DATABASE_PASSWORD` | Database password |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MONGODB_URI` | MongoDB connection URI | None |
+| `REDIS_URL` | Redis connection URL | None |
+| `K8s_MONGODB` | Enable MongoDB deployment | `false` |
+| `K8s_REDIS` | Enable Redis deployment | `false` |
+
+### Memory Hierarchy
+
+jac-scale uses a tiered memory system:
+
+| Tier | Backend | Purpose |
+|------|---------|---------|
+| L1 | In-memory | Volatile runtime state |
+| L2 | Redis | Cache layer |
+| L3 | MongoDB | Persistent storage |
 
 ---
 
 ## Kubernetes Deployment
 
-### Docker Image
+### Deploy
 
-```dockerfile
-FROM python:3.11-slim
+```bash
+# Deploy to Kubernetes
+jac start app.jac --scale
 
-WORKDIR /app
-RUN pip install jaclang jac-scale
-COPY . .
-
-EXPOSE 8000
-CMD ["jac", "start", "app.jac", "--host", "0.0.0.0"]
+# Build Docker image and deploy
+jac start app.jac --scale --build
 ```
 
-### Deployment Manifest
+### Remove Deployment
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jac-app
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: jac-app
-  template:
-    metadata:
-      labels:
-        app: jac-app
-    spec:
-      containers:
-      - name: jac-app
-        image: myregistry/jac-app:latest
-        ports:
-        - containerPort: 8000
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
+```bash
+jac destroy app.jac
 ```
 
-### Service
+### Environment Variables
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: jac-app-service
-spec:
-  selector:
-    app: jac-app
-  ports:
-  - port: 80
-    targetPort: 8000
-  type: ClusterIP
-```
-
-### Horizontal Pod Autoscaler
-
-```yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: jac-app-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: jac-app
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-```
-
----
-
-## CLI Commands
-
-### jac-scale Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac scale init` | Initialize K8s manifests |
-| `jac scale deploy` | Deploy to cluster |
-| `jac scale status` | Show deployment status |
-| `jac scale logs` | View application logs |
-| `jac scale replicas N` | Scale to N replicas |
-| `jac scale autoscale` | Configure HPA |
-| `jac scale update` | Update deployment |
-| `jac scale rollback` | Rollback deployment |
-
-### jac-cloud Commands
-
-| Command | Description |
-|---------|-------------|
-| `jac serve` | Start server (alias for jac start) |
-| `jac serve --faux` | Print API docs without starting |
-| `jac create_system_admin` | Create admin user |
-
----
-
-## Configuration
-
-### jac.toml
-
-```toml
-[project]
-name = "myapp"
-version = "1.0.0"
-
-[serve]
-port = 8000
-host = "0.0.0.0"
-workers = 4
-reload = false
-
-[database]
-host = "localhost"
-port = 5432
-name = "jacdb"
-
-[environments.production]
-debug = false
-
-[environments.response.headers]
-# Custom response headers
-Cross-Origin-Opener-Policy = "same-origin"
-Cross-Origin-Embedder-Policy = "require-corp"
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP_NAME` | Application name for K8s resources | `jaseci` |
+| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
+| `K8s_NODE_PORT` | External NodePort | `30001` |
+| `K8s_CPU_REQUEST` | CPU resource request | None |
+| `K8s_CPU_LIMIT` | CPU resource limit | None |
+| `K8s_MEMORY_REQUEST` | Memory resource request | None |
+| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
+| `K8s_READINESS_INITIAL_DELAY` | Readiness probe initial delay (seconds) | `10` |
+| `K8s_READINESS_PERIOD` | Readiness probe period (seconds) | `20` |
+| `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe initial delay (seconds) | `10` |
+| `K8s_LIVENESS_PERIOD` | Liveness probe period (seconds) | `20` |
+| `K8s_LIVENESS_FAILURE_THRESHOLD` | Failure threshold before restart | `80` |
+| `DOCKER_USERNAME` | DockerHub username | None |
+| `DOCKER_PASSWORD` | DockerHub password/token | None |
 
 ### Package Version Pinning
 
@@ -484,6 +794,17 @@ with entry {
     commit();
 }
 ```
+
+---
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac start app.jac` | Start local API server |
+| `jac start app.jac --scale` | Deploy to Kubernetes |
+| `jac start app.jac --scale --build` | Build image and deploy |
+| `jac destroy app.jac` | Remove Kubernetes deployment |
 
 ---
 

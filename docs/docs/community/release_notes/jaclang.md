@@ -4,11 +4,16 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.13 (Unreleased)
 
+- **ES Module Export Generation**: Exports now generated at compiler level via ESTree nodes instead of regex post-processing. Only `:pub` declarations are exported.
+- **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
+
 ## jaclang 0.9.12 (Latest Release)
 
 - **Native Binary Compilation via `na {}` Blocks and `.na.jac` Files**: Added a third compilation target to Jac using `na {}` context blocks and `.na.jac` file conventions. Code within the `na` context compiles to native LLVM IR via llvmlite and is JIT-compiled to machine code at runtime. Functions defined in `na {}` blocks are callable via ctypes function pointers. Supports integer, float, and boolean types, arithmetic and comparison operators, if/else and while control flow, recursive function calls, local variables with type inference, and `print()` mapped to native `printf`. Native code is fully isolated from Python (`sv`) and JavaScript (`cl`) codegen -- `na` functions are excluded from both `py_ast` and `es_ast` output, and vice versa. The `llvmlite` package is now a core dependency.
+- **SPA Catch-All for BrowserRouter Support**: The `jac start` HTTP server now serves SPA HTML for unmatched extensionless paths when `base_route_app` is configured in `jac.toml`. This enables BrowserRouter-style client-side routing where direct navigation to `/about` or page refresh on `/dashboard/settings` serves the app shell instead of returning 404. API paths (`/functions`, `/walkers`, `/walker/`, `/function/`, `/user/`), `/cl/` routes, and static file paths are excluded from the catch-all. The vanilla (non-React) client runtime (`createRouter`, `navigate`, `Link`) has also been updated to use `pushState` navigation and `window.location.pathname` instead of hash-based routing.
 - **Startup error handling improvements:** Aggregates initialization errors and displays concise, formatted Vite/Bun bundling failures after the API endpoint list.
 - **Venv-Based Dependency Management**: Migrated `jac add`/`jac remove`/`jac install` from `pip install --target` to stdlib `venv` at `.jac/venv/`. This eliminates manual RECORD-based uninstall logic and metadata cleanup workarounds, delegating all package management to the venv's own pip. No third-party dependencies added.
+- **GET Method Support**: Added full support for HTTP GET requests for both walkers and functions, including correct mapping of query parameters, support for both dynamic (HMR) and static endpoints, and customization via `@restspec(method=HTTPMethod.GET)`.
 - **Enhanced Hot Module Replacement**: Improved client code recompilation to handle exports comprehensively, ensuring all exported symbols are properly updated during hot reloads.
 - **Rest API Specifications Supported**: Rest api specifications supported from jaclang. Developers can utilize it using `@restspec()` decorator.
 - **Ensurepip Error Handling**: Added a clear error message when venv creation fails due to missing `ensurepip` (common on Debian/Ubuntu where `python3-venv` is a separate package), with platform-specific install instructions.
