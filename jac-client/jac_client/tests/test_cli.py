@@ -988,3 +988,77 @@ def test_vite_build_prompts_for_missing_client_deps() -> None:
 
         assert pkg["dependencies"].get("react"), "package.json should have react"
         assert pkg["devDependencies"].get("vite"), "package.json should have vite"
+
+
+def test_start_dev_with_client_does_initial_compilation() -> None:
+    """Test that `jac start --dev` with client enabled performs initial compilation."""
+    import time
+
+    test_project_name = "test-start-dev-client"
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            # Create a client project
+            process = Popen(
+                ["jac", "create", "--use", "client", test_project_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            stdout, stderr = process.communicate()
+            assert process.returncode == 0
+            # Change to project directory
+            os.chdir(test_project_name)
+            # Install dependencies
+            install_process = Popen(
+                ["jac", "install", "--dev"],
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            install_stdout, install_stderr = install_process.communicate()
+            assert install_process.returncode == 0, (
+                f"jac install --dev failed: {install_stderr}"
+            )
+            # Run jac start --dev main.jac
+            process = Popen(
+                ["jac", "start", "--dev", "main.jac"],
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+            )
+            # Wait for the initial compilation message or timeout
+            start_time = time.time()
+            output = ""
+            found_message = False
+            while time.time() - start_time < 30:  # 30 seconds timeout
+                if process.poll() is not None:
+                    break
+                if process.stdout is None:
+                    break
+                line = process.stdout.readline()
+                if not line:
+                    time.sleep(0.1)
+                    continue
+                output += line
+                if "Initial client compilation completed" in output:
+                    found_message = True
+                    break
+            # Terminate the process
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except Exception:
+                process.kill()
+            # Close pipes
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+            assert found_message, (
+                f"Expected 'Initial client compilation completed' in output, but got: {output}"
+            )
+        finally:
+            os.chdir(original_cwd)
