@@ -1,4 +1,3 @@
-from .finders import CompletionFinder
-from .shell_integration import shellcode
+"""Minimal CLI autocompletion for argparse-based commands."""
 
-autocomplete = CompletionFinder()
+from .shell_integration import static_shellcode as shellcode  # noqa: F401

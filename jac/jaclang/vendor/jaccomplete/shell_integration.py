@@ -1,220 +1,190 @@
-from shlex import quote
-
-bashcode = r"""#compdef %(executables)s
-# Run something, muting output or redirecting it to the debug stream
-# depending on the value of _JAC_DEBUG.
-# If JAC_COMPLETE_USE_TEMPFILES is set, use tempfiles for IPC.
-__jac_complete_run() {
-    if [[ -z "${JAC_COMPLETE_USE_TEMPFILES-}" ]]; then
-        __jac_complete_run_inner "$@"
-        return
-    fi
-    local tmpfile="$(mktemp)"
-    _JAC_COMPLETE_STDOUT_FILENAME="$tmpfile" __jac_complete_run_inner "$@"
-    local code=$?
-    cat "$tmpfile"
-    rm "$tmpfile"
-    return $code
-}
-
-__jac_complete_run_inner() {
-    if [[ -z "${_JAC_DEBUG-}" ]]; then
-        "$@" 8>&1 9>&2 1>/dev/null 2>&1 </dev/null
-    else
-        "$@" 8>&1 9>&2 1>&9 2>&1 </dev/null
-    fi
-}
-
-_jac_complete%(function_suffix)s() {
-    local IFS=$'\013'
-    local script="%(jaccomplete_script)s"
-    if [[ -n "${ZSH_VERSION-}" ]]; then
-        local completions
-        completions=($(IFS="$IFS" \
-            COMP_LINE="$BUFFER" \
-            COMP_POINT="$CURSOR" \
-            _JAC_COMPLETE=1 \
-            _JAC_COMPLETE_SHELL="zsh" \
-            _JAC_COMPLETE_SUPPRESS_SPACE=1 \
-            __jac_complete_run ${script:-${words[1]}}))
-        local nosort=()
-        local nospace=()
-        if is-at-least 5.8; then
-            nosort=(-o nosort)
-        fi
-        if [[ "${completions-}" =~ ([^\\\\]): && "${match[1]}" =~ [=/:] ]]; then
-            nospace=(-S '')
-        fi
-        _describe "${words[1]}" completions "${nosort[@]}" "${nospace[@]}"
-    else
-        local SUPPRESS_SPACE=0
-        if compopt +o nospace 2> /dev/null; then
-            SUPPRESS_SPACE=1
-        fi
-        COMPREPLY=($(IFS="$IFS" \
-            COMP_LINE="$COMP_LINE" \
-            COMP_POINT="$COMP_POINT" \
-            COMP_TYPE="$COMP_TYPE" \
-            _JAC_COMPLETE_COMP_WORDBREAKS="$COMP_WORDBREAKS" \
-            _JAC_COMPLETE=1 \
-            _JAC_COMPLETE_SHELL="bash" \
-            _JAC_COMPLETE_SUPPRESS_SPACE=$SUPPRESS_SPACE \
-            __jac_complete_run ${script:-$1}))
-        if [[ $? != 0 ]]; then
-            unset COMPREPLY
-        elif [[ $SUPPRESS_SPACE == 1 ]] && [[ "${COMPREPLY-}" =~ [=/:]$ ]]; then
-            compopt -o nospace
-        fi
-    fi
-}
-if [[ -z "${ZSH_VERSION-}" ]]; then
-    complete %(complete_opts)s -F _jac_complete%(function_suffix)s %(executables)s
-else
-    # When called by the Zsh completion system, this will end with
-    # "loadautofunc" when initially autoloaded and "shfunc" later on, otherwise,
-    # the script was "eval"-ed so use "compdef" to register it with the
-    # completion system
-    autoload is-at-least
-    if [[ $zsh_eval_context == *func ]]; then
-        _jac_complete%(function_suffix)s "$@"
-    else
-        compdef _jac_complete%(function_suffix)s %(executables)s
-    fi
-fi
-"""
-
-tcshcode = """\
-complete "%(executable)s" 'p@*@`jac-complete-tcsh "%(jaccomplete_script)s"`@' ;
-"""
-
-fishcode = r"""
-function __fish_%(function_name)s_complete
-    set -lx _JAC_COMPLETE 1
-    set -lx _JAC_COMPLETE_DFS \t
-    set -lx _JAC_COMPLETE_IFS \n
-    set -lx _JAC_COMPLETE_SUPPRESS_SPACE 1
-    set -lx _JAC_COMPLETE_SHELL fish
-    set -lx COMP_LINE (commandline -p)
-    set -lx COMP_POINT (string length (commandline -cp))
-    set -lx COMP_TYPE
-    if set -q _JAC_DEBUG
-        %(jaccomplete_script)s 8>&1 9>&2 1>&9 2>&1
-    else
-        %(jaccomplete_script)s 8>&1 9>&2 1>/dev/null 2>&1
-    end
-end
-complete %(completion_arg)s %(executable)s -f -a '(__fish_%(function_name)s_complete)'
-"""
-
-powershell_code = r"""
-Register-ArgumentCompleter -Native -CommandName %(executable)s -ScriptBlock {
-    param($commandName, $wordToComplete, $cursorPosition)
-    $completion_file = New-TemporaryFile
-    $env:JAC_COMPLETE_USE_TEMPFILES = 1
-    $env:_JAC_COMPLETE_STDOUT_FILENAME = $completion_file
-    $env:COMP_LINE = $wordToComplete
-    $env:COMP_POINT = $cursorPosition
-    $env:_JAC_COMPLETE = 1
-    $env:_JAC_COMPLETE_SUPPRESS_SPACE = 0
-    $env:_JAC_COMPLETE_IFS = "`n"
-    $env:_JAC_COMPLETE_SHELL = "powershell"
-    %(jaccomplete_script)s 2>&1 | Out-Null
-
-    Get-Content $completion_file | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new($_, $_, "ParameterValue", $_)
-    }
-    Remove-Item $completion_file, Env:\_JAC_COMPLETE_STDOUT_FILENAME, Env:\JAC_COMPLETE_USE_TEMPFILES, Env:\COMP_LINE, Env:\COMP_POINT, Env:\_JAC_COMPLETE, Env:\_JAC_COMPLETE_SUPPRESS_SPACE, Env:\_JAC_COMPLETE_IFS, Env:\_JAC_COMPLETE_SHELL
-}
-"""  # noqa: E501
-
-shell_codes = {
-    "bash": bashcode,
-    "tcsh": tcshcode,
-    "fish": fishcode,
-    "powershell": powershell_code,
-}
+"""Shell completion script generation for bash, zsh, and fish."""
 
 
-def shellcode(
-    executables,
-    use_defaults=True,
-    shell="bash",
-    complete_arguments=None,
-    jaccomplete_script=None,
-):
+def static_shellcode(commands, executable="jac", shell="bash"):
+    """Generate a static shell completion script from pre-processed command data.
+
+    commands: list of dicts, each with:
+        name: str
+        help: str
+        flags: list of (long_flag, short_flag_or_None, help_text)
+        value_opts: list of (long_flag, short_flag_or_None, choices_list)
+        has_file_positional: bool
     """
-    Provide the shell code required to register a python executable for use with the jaccomplete module.
+    if shell == "fish":
+        return _static_fish(commands, executable)
+    if shell == "zsh":
+        return _static_zsh(commands, executable)
+    return _static_bash(commands, executable)
 
-    :param list(str) executables: Executables to be completed (when invoked exactly with this name)
-    :param bool use_defaults: Whether to fallback to readline's default completion when no matches are generated
-        (affects bash only)
-    :param str shell: Name of the shell to output code for
-    :param complete_arguments: Arguments to call complete with (affects bash only)
-    :type complete_arguments: list(str) or None
-    :param jaccomplete_script: Script to call complete with, if not the executable to complete.
-        If supplied, will be used to complete *all* passed executables.
-    :type jaccomplete_script: str or None
-    """
 
-    if complete_arguments is None:
-        complete_options = (
-            "-o nospace -o default -o bashdefault"
-            if use_defaults
-            else "-o nospace -o bashdefault"
+def _static_bash(commands, exe):
+    cmd_names = " ".join(c["name"] for c in commands)
+
+    # Build per-command value-option cases (e.g. --shell bash zsh fish)
+    value_cases = []
+    for c in commands:
+        if not c["value_opts"]:
+            continue
+        prev_cases = []
+        for long, short, choices in c["value_opts"]:
+            pattern = f"{long}"
+            if short:
+                pattern += f"|{short}"
+            prev_cases.append(
+                f'                {pattern}) COMPREPLY=($(compgen -W "{" ".join(choices)}" -- "$cur")); return ;;'
+            )
+        value_cases.append(
+            f"        {c['name']})\n"
+            f"            case \"$prev\" in\n"
+            + "\n".join(prev_cases) + "\n"
+            f"            esac\n"
+            f"            ;;"
         )
-    else:
-        complete_options = " ".join(complete_arguments)
 
-    if shell == "bash" or shell == "zsh":
-        quoted_executables = [quote(i) for i in executables]
-        executables_list = " ".join(quoted_executables)
-        script = jaccomplete_script
-        if script:
-            # If the script path contain a space, this would generate an invalid function name.
-            function_suffix = "_" + script.replace(" ", "_SPACE_")
+    value_block = ""
+    if value_cases:
+        value_block = (
+            "    # Complete option values\n"
+            "    case \"$cmd\" in\n"
+            + "\n".join(value_cases) + "\n"
+            "    esac\n\n"
+        )
+
+    # Build per-command flag/positional cases
+    cmd_cases = []
+    for c in commands:
+        flags = " ".join(
+            f for long, short, _ in c["flags"]
+            for f in ([long] + ([short] if short else []))
+        )
+        # Also include value option flags in the flag list
+        for long, short, _ in c["value_opts"]:
+            flags += f" {long}"
+            if short:
+                flags += f" {short}"
+
+        if c["has_file_positional"]:
+            body = (
+                f"            case \"$cur\" in\n"
+                f"                -*) COMPREPLY=($(compgen -W \"{flags}\" -- \"$cur\")) ;;\n"
+                f"            esac"
+            )
         else:
-            script = ""
-            function_suffix = ""
-        code = bashcode % dict(
-            complete_opts=complete_options,
-            executables=executables_list,
-            jaccomplete_script=script,
-            function_suffix=function_suffix,
+            body = f"            COMPREPLY=($(compgen -W \"{flags}\" -- \"$cur\"))"
+
+        cmd_cases.append(f"        {c['name']})\n{body}\n            ;;")
+
+    return (
+        f"_{exe}_complete() {{\n"
+        f"    local cur prev cmd\n"
+        f"    COMPREPLY=()\n"
+        f"    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n"
+        f"    prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n"
+        f"    cmd=\"${{COMP_WORDS[1]}}\"\n"
+        f"\n"
+        f"    if [[ $COMP_CWORD -eq 1 ]]; then\n"
+        f"        COMPREPLY=($(compgen -W \"{cmd_names}\" -- \"$cur\"))\n"
+        f"        return\n"
+        f"    fi\n"
+        f"\n"
+        f"{value_block}"
+        f"    case \"$cmd\" in\n"
+        + "\n".join(cmd_cases) + "\n"
+        f"    esac\n"
+        f"}}\n"
+        f"complete -o default -o bashdefault -F _{exe}_complete {exe}\n"
+    )
+
+
+def _static_zsh(commands, exe):
+    # Generate native zsh completion with descriptions
+    cmd_descs = []
+    for c in commands:
+        h = c["help"].replace("'", "'\\''")
+        cmd_descs.append(f"        '{c['name']}:{h}'")
+
+    subcases = []
+    for c in commands:
+        args_lines = []
+        for long, short, helptext in c["flags"]:
+            h = helptext.replace("'", "'\\''").replace("[", "\\[").replace("]", "\\]")
+            if short:
+                args_lines.append(f"                '({short} {long})'{{{short},{long}}}'[{h}]' \\")
+            else:
+                args_lines.append(f"                '{long}[{h}]' \\")
+        for long, short, choices in c["value_opts"]:
+            vals = " ".join(choices)
+            if short:
+                args_lines.append(
+                    f"                '({short} {long})'{{{short},{long}}}'[]:value:({vals})' \\"
+                )
+            else:
+                args_lines.append(f"                '{long}[]:value:({vals})' \\")
+        if c["has_file_positional"]:
+            args_lines.append("                '*:file:_files' \\")
+
+        if args_lines:
+            body = "            _arguments -s \\\n" + "\n".join(args_lines) + "\n                ;;"
+        else:
+            body = "            ;;"
+        subcases.append(f"            {c['name']})\n{body}")
+
+    return (
+        f"#compdef {exe}\n"
+        f"_{exe}() {{\n"
+        f"    local -a commands\n"
+        f"    commands=(\n"
+        + "\n".join(cmd_descs) + "\n"
+        f"    )\n"
+        f"\n"
+        f"    _arguments -C \\\n"
+        f"        '1:command:->command' \\\n"
+        f"        '*::arg:->args'\n"
+        f"\n"
+        f"    case $state in\n"
+        f"        command)\n"
+        f"            _describe 'command' commands\n"
+        f"            ;;\n"
+        f"        args)\n"
+        f"            case $words[1] in\n"
+        + "\n".join(subcases) + "\n"
+        f"            esac\n"
+        f"            ;;\n"
+        f"    esac\n"
+        f"}}\n"
+        f"_{exe} \"$@\"\n"
+    )
+
+
+def _static_fish(commands, exe):
+    lines = [f"# Fish completions for {exe}"]
+    # Disable file completion by default, enable per-command
+    lines.append(f"complete -c {exe} -f")
+    # Subcommand completions (only at top level)
+    for c in commands:
+        h = c["help"].replace("'", "\\'")
+        lines.append(
+            f"complete -c {exe} -n '__fish_use_subcommand' -a '{c['name']}' -d '{h}'"
         )
-    elif shell == "fish":
-        code = ""
-        for executable in executables:
-            script = jaccomplete_script or executable
-            completion_arg = (
-                "--path" if "/" in executable else "--command"
-            )  # use path for absolute paths
-            function_name = executable.replace(
-                "/", "_"
-            )  # / not allowed in function name
-
-            code += fishcode % dict(
-                executable=executable,
-                jaccomplete_script=script,
-                completion_arg=completion_arg,
-                function_name=function_name,
-            )
-    elif shell == "powershell":
-        code = ""
-        for executable in executables:
-            script = jaccomplete_script or executable
-            code += powershell_code % dict(
-                executable=executable, jaccomplete_script=script
-            )
-
-    else:
-        code = ""
-        for executable in executables:
-            script = jaccomplete_script
-            # If no script was specified, default to the executable being completed.
-            if not script:
-                script = executable
-            code += shell_codes.get(shell, "") % dict(
-                executable=executable, jaccomplete_script=script
-            )
-
-    return code
+    # Per-command flags
+    for c in commands:
+        cond = f"__fish_seen_subcommand_from {c['name']}"
+        for long, short, helptext in c["flags"]:
+            h = helptext.replace("'", "\\'")
+            l = long.lstrip("-")
+            parts = [f"complete -c {exe} -n '{cond}' -l '{l}'"]
+            if short:
+                parts.append(f"-s '{short.lstrip('-')}'")
+            parts.append(f"-d '{h}'")
+            lines.append(" ".join(parts))
+        for long, short, choices in c["value_opts"]:
+            l = long.lstrip("-")
+            parts = [f"complete -c {exe} -n '{cond}' -l '{l}' -r"]
+            if short:
+                parts.append(f"-s '{short.lstrip('-')}'")
+            parts.append(f"-a '{' '.join(choices)}'")
+            lines.append(" ".join(parts))
+        if c["has_file_positional"]:
+            lines.append(f"complete -c {exe} -n '{cond}' -F")
+    return "\n".join(lines) + "\n"

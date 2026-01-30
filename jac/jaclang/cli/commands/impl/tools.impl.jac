@@ -135,8 +135,10 @@ impl lsp -> int {
 
 """Generate shell completion script."""
 impl completions(shell: str = "bash", install: bool = False) -> int {
-    import from jaclang.vendor { jaccomplete }
-    code = jaccomplete.shellcode(executables=["jac"], shell=shell);
+    import from jaclang.vendor.jaccomplete { shellcode }
+    import from jaclang.cli.registry { get_registry }
+    import from jaclang.cli.command { ArgKind }
+    code = shellcode(_extract_commands(get_registry()), executable="jac", shell=shell);
     if install {
         return _install_completion(shell, code);
     }
@@ -144,25 +146,78 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
     return 0;
 }
 
+"""Extract command data from registry into simple dicts for shellcode generation."""
+def _extract_commands(registry:Any) -> list {
+    import from jaclang.cli.command { ArgKind }
+    commands = [];
+    for (name, spec) in sorted(registry.commands.items()) {
+        flags = [];
+        value_opts = [];
+        has_file_positional = False;
+        for arg in spec.get_all_args() {
+            short = f"-{arg.short}" if arg.short else None;
+            if arg.kind == ArgKind.FLAG or arg.typ == bool {
+                flags.append((f"--{arg.name}", short, arg.help or ""));
+                flags.append((f"--no-{arg.name}", None, f"Disable {arg.name}"));
+            } elif arg.kind == ArgKind.OPTION {
+                if arg.choices {
+                    value_opts.append((f"--{arg.name}", short, [str(c) for c in arg.choices]));
+                } else {
+                    flags.append((f"--{arg.name}", short, arg.help or ""));
+                }
+            } elif arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
+                has_file_positional = True;
+            }
+        }
+        commands.append({
+            "name": name,
+            "help": spec.help or "",
+            "flags": flags,
+            "value_opts": value_opts,
+            "has_file_positional": has_file_positional,
+        });
+    }
+    return commands;
+}
+
 def _install_completion(shell: str, code: str) -> int {
     import re;
     home = os.path.expanduser("~");
+    jac_dir = os.path.join(home, ".jac");
+    os.makedirs(jac_dir, exist_ok=True);
+    # Shell config files
     config_map = {
         "bash": os.path.join(home, ".bashrc"),
         "zsh": os.path.join(home, ".zshrc"),
         "fish": os.path.join(home, ".config", "fish", "config.fish"),
-
     };
+    # Completion script files stored in ~/.jac/
+    ext_map = {"bash": "bash", "zsh": "zsh", "fish": "fish"};
     if shell not in config_map {
-        print(
-            f"Shell {shell} not supported for automatic installation.", file=sys.stderr
-        );
+        print(f"Shell {shell} not supported for automatic installation.", file=sys.stderr);
         return 1;
     }
+    # Write completion script to ~/.jac/completions.<shell>
+    comp_file = os.path.join(jac_dir, f"completions.{ext_map[shell]}");
+    try {
+        with open(comp_file, "w") as f {
+            f.write(code);
+        }
+    } except Exception as e {
+        print(f"Error writing completion script: {e}", file=sys.stderr);
+        return 1;
+    }
+    # Add a source line to shell config
     config_file = config_map[shell];
     start_marker = "# >>> jac completion >>>";
     end_marker = "# <<< jac completion <<<";
-    new_block = f"{start_marker}\n{code}{end_marker}\n";
+    q = '"';
+    if shell == "fish" {
+        source_line = "source " + comp_file;
+    } else {
+        source_line = "[[ -f " + q + comp_file + q + " ]] && source " + q + comp_file + q;
+    }
+    new_block = f"{start_marker}\n{source_line}\n{end_marker}\n";
     if os.path.exists(config_file) {
         with open(config_file, "r") as f {
             content = f.read();
@@ -187,7 +242,8 @@ def _install_completion(shell: str, code: str) -> int {
         with open(config_file, "w") as f {
             f.write(content);
         }
-        print(f"{action} jac completions in {config_file}");
+        print(f"Completion script written to {comp_file}");
+        print(f"{action} source line in {config_file}");
         print(f"Run 'source {config_file}' or restart your shell to activate.");
         return 0;
     } except Exception as e {

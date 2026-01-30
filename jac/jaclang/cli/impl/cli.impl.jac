@@ -15,7 +15,6 @@ impl start_cli -> None {
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
-    import from jaclang.vendor { jaccomplete }
     # Auto-discover and load jac.toml project configuration
     _load_project_config();
     # Load plugins which may register additional commands
@@ -32,8 +31,6 @@ impl start_cli -> None {
     ) {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
     }
-    # Enable tab completion
-    jaccomplete.autocomplete(parser);
     # Parse arguments
     args = parser.parse_args();
     # Handle --version flag
