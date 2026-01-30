@@ -18,8 +18,10 @@ from pathlib import Path
 import pytest
 
 from jaclang import JacRuntime
+from jaclang import JacRuntimeInterface as Jac
 from jaclang.pycore.mtp import (
     ClassInfo,
+    EnumInfo,
     FieldInfo,
     FunctionInfo,
     MethodInfo,
@@ -28,6 +30,9 @@ from jaclang.pycore.mtp import (
     mk_list,
 )
 from jaclang.pycore.program import JacProgram
+
+# Import the jac_import function
+jac_import = Jac.jac_import
 
 
 @pytest.fixture
@@ -358,3 +363,553 @@ class TestMTIRFixture:
                 break
 
         assert found_generate_person, "Should have generate_person function in MTIR"
+
+
+# =============================================================================
+# Scope Name Consistency Tests
+# =============================================================================
+
+
+class TestScopeNameConsistency:
+    """Tests that scope names stored during MTIR generation match what's fetched.
+
+    This test class verifies the fix for the bug where module names ending with
+    'j', 'a', or 'c' were incorrectly truncated due to using .rstrip(".jac")
+    instead of .removesuffix(".jac").
+    """
+
+    def test_scope_name_with_trailing_a(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'a' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("test_schema.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "test_schema" (not "test_schem")
+        # and the scope should be "test_schema.generate_data"
+        scopes_with_generate_data = [
+            scope for scope in mtir_map if "generate_data" in scope
+        ]
+
+        assert len(scopes_with_generate_data) > 0, (
+            f"Should find generate_data in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name is correct (module name intact)
+        matching_scope = None
+        for scope in scopes_with_generate_data:
+            if "test_schema.generate_data" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'test_schema.generate_data', "
+            f"but found: {scopes_with_generate_data}. "
+            f"This indicates the module name may have been truncated."
+        )
+
+        # Verify the MTIR entry is valid
+        assert isinstance(mtir_map[matching_scope], FunctionInfo)
+
+    def test_scope_name_with_trailing_c(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'c' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("basic.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "basic" (not "basi")
+        scopes_with_get_basic = [scope for scope in mtir_map if "get_basic" in scope]
+
+        assert len(scopes_with_get_basic) > 0, (
+            f"Should find get_basic in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name contains correct module name
+        matching_scope = None
+        for scope in scopes_with_get_basic:
+            if "basic.get_basic" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'basic.get_basic', "
+            f"but found: {scopes_with_get_basic}. "
+            f"Module name ending in 'c' may have been truncated."
+        )
+
+    def test_scope_name_with_trailing_j(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test module name ending with 'j' is correctly stored and retrieved."""
+        prog = JacProgram()
+        fixture = fixture_path("proj.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # The module name should be "proj" (not "pro")
+        scopes_with_create_proj = [
+            scope for scope in mtir_map if "create_proj" in scope
+        ]
+
+        assert len(scopes_with_create_proj) > 0, (
+            f"Should find create_proj in MTIR map. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Verify the scope name contains correct module name
+        matching_scope = None
+        for scope in scopes_with_create_proj:
+            if "proj.create_proj" in scope:
+                matching_scope = scope
+                break
+
+        assert matching_scope is not None, (
+            f"Expected scope containing 'proj.create_proj', "
+            f"but found: {scopes_with_create_proj}. "
+            f"Module name ending in 'j' may have been truncated."
+        )
+
+    def test_all_stored_scopes_are_retrievable(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that all scopes stored in MTIR can be retrieved."""
+        # Compile multiple fixtures
+        fixtures = ["test_schema.jac", "basic.jac", "proj.jac"]
+        expected_functions = ["generate_data", "get_basic", "create_proj"]
+        expected_modules = ["test_schema", "basic", "proj"]
+
+        for fixture_name, func_name, module_name in zip(
+            fixtures, expected_functions, expected_modules, strict=True
+        ):
+            prog = JacProgram()
+            prog.compile(fixture_path(fixture_name))
+            assert not prog.errors_had, (
+                f"Compilation errors for {fixture_name}: {prog.errors_had}"
+            )
+
+            assert JacRuntime.program is not None
+            mtir_map = JacRuntime.program.mtir_map
+
+            # Build expected scope pattern
+            expected_scope_pattern = f"{module_name}.{func_name}"
+
+            # Find matching scopes
+            matching_scopes = [
+                scope for scope in mtir_map if expected_scope_pattern in scope
+            ]
+
+            assert len(matching_scopes) > 0, (
+                f"Failed to find scope matching '{expected_scope_pattern}' "
+                f"in MTIR map for {fixture_name}. "
+                f"Available scopes: {list(mtir_map.keys())}. "
+                f"This indicates module name '{module_name}' was not correctly preserved."
+            )
+
+            # Verify the MTIR info can be retrieved
+            scope = matching_scopes[0]
+            mtir_info = mtir_map[scope]
+            assert mtir_info is not None
+            assert isinstance(mtir_info, FunctionInfo)
+            assert mtir_info.name == func_name
+
+    def test_scope_name_generation_algorithm(self) -> None:
+        """Test the scope name generation matches expected format.
+
+        This test verifies that:
+        1. Module names are extracted correctly from file paths
+        2. The .jac suffix is properly removed
+        3. Scope names follow the format: module_name.function_name
+        """
+        test_cases = [
+            ("test_schema.jac", "generate_data", "test_schema.generate_data"),
+            ("basic.jac", "get_basic", "basic.get_basic"),
+            ("proj.jac", "create_proj", "proj.create_proj"),
+            ("data.jac", "process_data", "data.process_data"),  # ends with 'a'
+            ("calc.jac", "calculate", "calc.calculate"),  # ends with 'c'
+            ("subj.jac", "analyze", "subj.analyze"),  # ends with 'j'
+        ]
+
+        for module_file, func_name, expected_scope in test_cases:
+            # Extract module name using removesuffix (the correct way)
+            module_name = module_file.removesuffix(".jac")
+
+            # Generate scope name
+            scope = f"{module_name}.{func_name}"
+
+            assert scope == expected_scope, (
+                f"Scope name mismatch for {module_file}:{func_name}. "
+                f"Expected: {expected_scope}, Got: {scope}"
+            )
+
+            # Verify module name wasn't truncated
+            assert not module_name.endswith("."), (
+                f"Module name '{module_name}' appears to be corrupted "
+                f"(ends with period)"
+            )
+
+            # Verify the original suffix-ending character is preserved
+            if module_file.endswith("a.jac"):
+                assert module_name.endswith("a"), (
+                    f"Module name '{module_name}' lost trailing 'a'"
+                )
+            elif module_file.endswith("c.jac"):
+                assert module_name.endswith("c"), (
+                    f"Module name '{module_name}' lost trailing 'c'"
+                )
+            elif module_file.endswith("j.jac"):
+                assert module_name.endswith("j"), (
+                    f"Module name '{module_name}' lost trailing 'j'"
+                )
+
+    def test_imported_function_scope_resolution(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that imported functions maintain correct scope names.
+
+        This verifies that when a function defined in one module (ending with 'a')
+        is imported into another module, the MTIR can be retrieved at runtime
+        with the correct scope (based on where the function is defined, not imported).
+        """
+        import io
+        import sys
+
+        # Run the importer_main.jac which imports and calls get_imported_data
+        # The fixture includes runtime checks for MTIR retrieval
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            jac_import("importer_main", base_path=fixture_path("./"))
+        finally:
+            sys.stdout = sys.__stdout__
+
+        stdout_value = captured_output.getvalue()
+
+        # The fixture should print MTIR test results
+        # Check that MTIR was found and has the correct scope
+        assert "MTIR_TEST: Found scopes:" in stdout_value, (
+            f"MTIR test did not run or find scopes. Output:\n{stdout_value}"
+        )
+
+        # Verify the scope contains the full module name (importable_schema, not importable_schem)
+        assert (
+            "MTIR_TEST: Has correct scope with 'importable_schema': True"
+            in stdout_value
+        ), (
+            f"MTIR scope does not contain 'importable_schema'. "
+            f"This indicates the module name 'importable_schema' (ending with 'a') "
+            f"was truncated during compilation. Output:\n{stdout_value}"
+        )
+
+        # Verify the overall test passed
+        assert "MTIR retrieval test: PASSED" in stdout_value, (
+            f"MTIR retrieval test failed. Output:\n{stdout_value}"
+        )
+
+
+# =============================================================================
+# Enum Extraction Tests
+# =============================================================================
+
+
+class TestEnumExtraction:
+    """Tests for enum extraction with MTIR."""
+
+    def test_enum_info_structure(self) -> None:
+        """Test that EnumInfo correctly stores enum members."""
+        members = [
+            FieldInfo(name="RED", semstr="Red color.", type_info="int"),
+            FieldInfo(name="GREEN", semstr="Green color.", type_info="int"),
+            FieldInfo(name="BLUE", semstr="Blue color.", type_info="int"),
+        ]
+        enum_info = EnumInfo(
+            name="Color",
+            semstr="RGB color enumeration.",
+            members=members,
+        )
+
+        assert enum_info.name == "Color"
+        assert enum_info.semstr == "RGB color enumeration."
+        assert len(enum_info.members) == 3
+        assert enum_info.members[0].name == "RED"
+        assert enum_info.members[0].type_info == "int"
+        assert enum_info.members[0].semstr == "Red color."
+
+    def test_enum_with_int_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums with integer values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None, "Should find get_person_info function"
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+
+        # Check that the return type is ClassInfo (Person)
+        assert isinstance(func_info.return_type, ClassInfo)
+        person_class = func_info.return_type
+
+        # Find the personality field
+        personality_field = None
+        for field in person_class.fields:
+            if field.name == "personality":
+                personality_field = field
+                break
+
+        assert personality_field is not None, "Person should have personality field"
+
+        # The type_info should be an EnumInfo
+        assert isinstance(personality_field.type_info, EnumInfo), (
+            f"Expected EnumInfo, got {type(personality_field.type_info)}"
+        )
+
+        personality_enum = personality_field.type_info
+        assert personality_enum.name == "Personality"
+        assert len(personality_enum.members) == 3
+
+        # Check member names and types
+        member_names = [m.name for m in personality_enum.members]
+        assert "INTROVERT" in member_names
+        assert "EXTROVERT" in member_names
+        assert "AMBIVERT" in member_names
+
+        # All members should have int type
+        for member in personality_enum.members:
+            assert member.type_info == "int", (
+                f"Member {member.name} should have int type, got {member.type_info}"
+            )
+
+    def test_enum_with_string_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums with string values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+        assert isinstance(func_info.return_type, ClassInfo)
+
+        person_class = func_info.return_type
+
+        # Find the status field
+        status_field = None
+        for field in person_class.fields:
+            if field.name == "status":
+                status_field = field
+                break
+
+        assert status_field is not None, "Person should have status field"
+        assert isinstance(status_field.type_info, EnumInfo)
+
+        status_enum = status_field.type_info
+        assert status_enum.name == "Status"
+        assert len(status_enum.members) == 3
+
+        # Check member names and types
+        member_names = [m.name for m in status_enum.members]
+        assert "PENDING" in member_names
+        assert "ACTIVE" in member_names
+        assert "COMPLETED" in member_names
+
+        # All members should have str type
+        for member in status_enum.members:
+            assert member.type_info == "str", (
+                f"Member {member.name} should have str type, got {member.type_info}"
+            )
+
+    def test_enum_without_values_extraction(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that enums without explicit values are extracted correctly."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_no_value.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find yes_or_no function
+        func_scope = None
+        for scope in mtir_map:
+            if "yes_or_no" in scope and "enum_no_value" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None, "Should find yes_or_no function"
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+
+        # The return type should be EnumInfo (Tell)
+        assert isinstance(func_info.return_type, EnumInfo), (
+            f"Expected EnumInfo, got {type(func_info.return_type)}"
+        )
+
+        tell_enum = func_info.return_type
+        assert tell_enum.name == "Tell"
+        assert len(tell_enum.members) == 2
+
+        # Check member names
+        member_names = [m.name for m in tell_enum.members]
+        assert "YES" in member_names
+        assert "NO" in member_names
+
+        # Members without explicit values should have None as type_info
+        for member in tell_enum.members:
+            assert member.type_info is None, (
+                f"Member {member.name} without value should have None type, "
+                f"got {member.type_info}"
+            )
+
+    def test_enum_semstrings_are_extracted(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that semantic strings for enum members are extracted."""
+        prog = JacProgram()
+        prog.compile(fixture_path("enum_with_semstr.jac"))
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find get_person_info function
+        func_scope = None
+        for scope in mtir_map:
+            if "get_person_info" in scope and "enum_with_semstr" in scope:
+                func_scope = scope
+                break
+
+        assert func_scope is not None
+        func_info = mtir_map[func_scope]
+        assert isinstance(func_info, FunctionInfo)
+        assert isinstance(func_info.return_type, ClassInfo)
+
+        person_class = func_info.return_type
+
+        # Get Personality enum
+        personality_field = next(
+            (f for f in person_class.fields if f.name == "personality"), None
+        )
+        assert personality_field is not None
+        assert isinstance(personality_field.type_info, EnumInfo)
+
+        personality_enum = personality_field.type_info
+
+        # Check that semantic strings are present
+        introvert = next(
+            (m for m in personality_enum.members if m.name == "INTROVERT"), None
+        )
+        assert introvert is not None
+        assert introvert.semstr is not None
+        assert (
+            "reserved" in introvert.semstr.lower()
+            or "reflective" in introvert.semstr.lower()
+        )
+
+        extrovert = next(
+            (m for m in personality_enum.members if m.name == "EXTROVERT"), None
+        )
+        assert extrovert is not None
+        assert extrovert.semstr is not None
+        assert (
+            "outgoing" in extrovert.semstr.lower()
+            or "interaction" in extrovert.semstr.lower()
+        )
+
+    def test_enum_in_schema_generation(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that EnumInfo is used in schema generation."""
+        import io
+        import sys
+
+        # Run enum_with_semstr.jac and capture output with verbose=True
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            # Import will trigger compilation and MTIR extraction
+            jac_import("enum_with_semstr", base_path=fixture_path("./"))
+
+            # Now import byllm.schema to test schema generation
+            # Get the Person class and Personality enum from the compiled module
+            from enum_with_semstr import Person
+
+            from byllm import schema  # type: ignore[attr-defined]
+
+            # Generate schema for Person which includes Personality enum
+            person_schema = schema.type_to_schema(Person, info=None)
+
+            # Schema is nested under json_schema.schema
+            assert "json_schema" in person_schema
+            assert "schema" in person_schema["json_schema"]
+            inner_schema = person_schema["json_schema"]["schema"]
+
+            assert "properties" in inner_schema
+            assert "personality" in inner_schema["properties"]
+
+            personality_schema = inner_schema["properties"]["personality"]
+
+            # Should be integer type (since we used int values)
+            assert "type" in personality_schema
+            assert personality_schema["type"] == "integer"
+
+            # Description should include enum values and names
+            assert "description" in personality_schema
+            desc = personality_schema["description"]
+            # Should mention the member names
+            assert "INTROVERT" in desc or "EXTROVERT" in desc or "AMBIVERT" in desc
+            # Should mention the values
+            assert "[1, 2, 3]" in desc or "1" in desc
+
+            # Check the status field (string enum)
+            assert "status" in inner_schema["properties"]
+            status_schema = inner_schema["properties"]["status"]
+            assert status_schema["type"] == "string"
+            assert "PENDING" in status_schema["description"]
+
+        finally:
+            sys.stdout = sys.__stdout__
+
+        # If verbose is enabled, output should contain schema information
+        # This verifies the enum information flows through to schema generation

@@ -139,24 +139,26 @@ impl EsastGenPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
 impl EsastGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
     if <>node.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
-        for assignment in <>node.assignments {
-            for target in assignment.target {
-                if (sym_name := getattr(target, 'sym_name', None)) {
-                    self.client_manifest.globals.append(sym_name);
-                    if (
-                        assignment.value
-                        and (
-                            (lit_val := self._literal_value(assignment.value)) is not None
-                        )
-                    ) {
-                        self.client_manifest.globals_values[sym_name] = lit_val;
+        is_pub = <>node.access and (<>node.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            for assignment in <>node.assignments {
+                for target in assignment.target {
+                    if (sym_name := getattr(target, 'sym_name', None)) {
+                        self.client_manifest.globals.append(sym_name);
+                        if (
+                            assignment.value
+                            and (
+                                (lit_val := self._literal_value(assignment.value)) is not None
+                            )
+                        ) {
+                            self.client_manifest.globals_values[sym_name] = lit_val;
+                        }
                     }
                 }
             }
         }
     }
     statements: list[(es.Statement | es.ModuleDeclaration)] = [];
-    is_pub = <>node.access and (<>node.access.tag.name == Tok.KW_PUB);
     for assignment in <>node.assignments {
         if assignment.gen.es_ast {
             stmt = assignment.gen.es_ast;
@@ -167,14 +169,7 @@ impl EsastGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
             ) {
                 stmt.kind = 'const';
             }
-            if (is_pub and isinstance(stmt, es.VariableDeclaration)) {
-                export_decl = self.sync_loc(
-                    es.ExportNamedDeclaration(declaration=stmt), jac_node=<>node
-                );
-                statements.append(export_decl);
-            } else {
-                statements.append(cast(es.Statement, stmt));
-            }
+            statements.append(cast(es.Statement, stmt));
         }
     }
     <>node.gen.es_ast = statements;
@@ -2079,13 +2074,16 @@ impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
     }
     if (<>node.code_context == CodeContext.CLIENT and not <>node.is_method) {
         self.client_manifest.has_client = True;
-        name = <>node.name_ref.sym_name;
-        self.client_manifest.exports.append(name);
-        self.client_manifest.params[name] = [
-            p.name.sym_name for p in <>node.signature.params
-        ]
-        if isinstance(<>node.signature, uni.FuncSignature)
-        else [];
+        is_pub = <>node.access and (<>node.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            name = <>node.name_ref.sym_name;
+            self.client_manifest.exports.append(name);
+            self.client_manifest.params[name] = [
+                p.name.sym_name for p in <>node.signature.params
+            ]
+            if isinstance(<>node.signature, uni.FuncSignature)
+            else [];
+        }
     }
     is_jsx_in_return = False;
     if isinstance(<>node.body, list) {
@@ -2186,8 +2184,6 @@ impl EsastGenPass.exit_ability(<>node: uni.Ability) -> None {
             ),
             jac_node=<>node
         );
-        # Don't use ES exports - functions should be in global scope for registration
-        # The __jacRegisterClientModule mechanism handles exposing functions
         <>node.gen.es_ast = func_decl;
     }
 }
@@ -2202,6 +2198,13 @@ impl EsastGenPass.enter_ability(<>node: uni.Ability) -> None {
 
 """Process enum declaration as an object."""
 impl EsastGenPass.exit_enum(<>node: uni.Enum) -> None {
+    if <>node.code_context == CodeContext.CLIENT {
+        self.client_manifest.has_client = True;
+        is_pub = <>node.access and (<>node.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            self.client_manifest.exports.append(<>node.name.sym_name);
+        }
+    }
     properties: list[(es.Property | es.SpreadElement)] = [];
     inner = (
         <>node.body.body
@@ -2251,21 +2254,17 @@ impl EsastGenPass.exit_enum(<>node: uni.Enum) -> None {
         ),
         jac_node=<>node
     );
-    if (<>node.access and (<>node.access.tag.name == Tok.KW_PUB)) {
-        export_decl = self.sync_loc(
-            es.ExportNamedDeclaration(declaration=var_decl), jac_node=<>node
-        );
-        <>node.gen.es_ast = export_decl;
-    } else {
-        <>node.gen.es_ast = var_decl;
-    }
+    <>node.gen.es_ast = var_decl;
 }
 
 """Process archetype (class) declaration."""
 impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
     if <>node.code_context == CodeContext.CLIENT {
         self.client_manifest.has_client = True;
-        self.client_manifest.exports.append(<>node.name.sym_name);
+        is_pub = <>node.access and (<>node.access.tag.name == Tok.KW_PUB);
+        if is_pub {
+            self.client_manifest.exports.append(<>node.name.sym_name);
+        }
     }
     body_stmts: list[es.MethodDefinition | es.PropertyDefinition | es.StaticBlock] = [];
     has_members: list[uni.ArchHas] = [];
@@ -2431,14 +2430,7 @@ impl EsastGenPass.exit_archetype(<>node: uni.Archetype) -> None {
         es.ClassDeclaration(id=class_id, superClass=super_class, body=class_body),
         jac_node=<>node
     );
-    if (<>node.access and (<>node.access.tag.name == Tok.KW_PUB)) {
-        export_decl = self.sync_loc(
-            es.ExportNamedDeclaration(declaration=class_decl), jac_node=<>node
-        );
-        <>node.gen.es_ast = export_decl;
-    } else {
-        <>node.gen.es_ast = class_decl;
-    }
+    <>node.gen.es_ast = class_decl;
 }
 
 """Process import statement."""
@@ -2611,14 +2603,31 @@ impl EsastGenPass.exit_module(<>node: uni.Module) -> None {
     target_body = client_items or fallback_items;
     body.extend(self._flatten_ast_list(target_body));
     body.extend(self.exports);
+    self.populate_client_manifest(<>node);
+    self.client_manifest.exports.sort();
+    self.client_manifest.globals.sort();
+    module_export_names = sorted(
+        set(self.client_manifest.exports + self.client_manifest.globals)
+    );
+    if module_export_names {
+        export_specifiers: list[es.ExportSpecifier] = [];
+        for name in module_export_names {
+            export_specifiers.append(
+                es.ExportSpecifier(
+                    exported=es.Identifier(name=name), local=es.Identifier(name=name)
+                )
+            );
+        }
+        comprehensive_export = es.ExportNamedDeclaration(
+            declaration=None, specifiers=export_specifiers, source=None
+        );
+        body.append(comprehensive_export);
+    }
     program = self.sync_loc(
         es.Program(body=body, sourceType='module'), jac_node=<>node
     );
     <>node.gen.es_ast = program;
     <>node.gen.js = es_to_js(<>node.gen.es_ast);
-    self.populate_client_manifest(<>node);
-    self.client_manifest.exports.sort();
-    self.client_manifest.globals.sort();
     <>node.gen.client_manifest = self.client_manifest;
 }
 

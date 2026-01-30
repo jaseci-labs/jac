@@ -90,6 +90,13 @@ obj PluginsConfig {
         disabled: list[str] = [];  # Plugins temporarily bypassed by user
 }
 
+"""Storage settings from [storage] section."""
+obj StorageConfig {
+    has storage_type: str = "local",  # local, s3, gcs, azure
+        base_path: str = "./storage",
+        create_dirs: bool = True;
+}
+
 """Environment configuration from [environment] section."""
 obj EnvironmentConfig {
     has default_profile: str = "";
@@ -128,6 +135,7 @@ obj JacConfig {
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
+        storage: StorageConfig = StorageConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         # Dependencies

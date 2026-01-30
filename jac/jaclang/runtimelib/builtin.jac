@@ -16,6 +16,7 @@ with entry {
         allroots: Callable[(..., Any)];
         save: Callable[(..., Any)];
         commit: Callable[(..., Any)];
+        store: Callable[(..., Any)];
         NoPerm: IntEnum;
         ReadPerm: IntEnum;
         ConnectPerm: IntEnum;
@@ -40,6 +41,8 @@ def _get_allroots -> Callable[..., Any];
 def _get_save -> Callable[..., Any];
 
 def _get_commit -> Callable[..., Any];
+
+def _get_store -> Callable[..., Any];
 
 def __getattr__(name: str) -> object;
 
@@ -68,6 +71,7 @@ glob __all__ = [
          'allroots',
          'save',
          'commit',
+         'store',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',

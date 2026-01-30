@@ -50,7 +50,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_period': 20,
             'liveness_failure_threshold': 80
         },
-        'server': {'port': 8000, 'host': '0.0.0.0'}
+        'server': {'port': 8000, 'host': '0.0.0.0'},
+        'webhook': {
+            'secret': 'webhook-secret-key',
+            'signature_header': 'X-Webhook-Signature',
+            'verify_signature': True,
+            'api_key_expiry_days': 365
+        }
     };
 }
 
@@ -112,6 +118,21 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
     return {
         'port': int(server_config.get('port', 8000)),
         'host': server_config.get('host', '0.0.0.0')
+    };
+}
+
+"""Get webhook configuration from jac.toml."""
+impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    webhook_config = config.get('webhook', {});
+    return {
+        'secret': os.environ.get('WEBHOOK_SECRET')
+        or webhook_config.get('secret', 'webhook-secret-key'),
+        'signature_header': webhook_config.get(
+            'signature_header', 'X-Webhook-Signature'
+        ),
+        'verify_signature': webhook_config.get('verify_signature', True),
+        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
 }
 
