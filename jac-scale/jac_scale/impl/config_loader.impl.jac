@@ -18,7 +18,11 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 """Get default configuration structure for scale."""
 impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
     return {
-        'jwt': {'secret': 'supersecretkey_for_testing_only!', 'algorithm': 'HS256', 'exp_delta_days': 7},
+        'jwt': {
+            'secret': 'supersecretkey_for_testing_only!',
+            'algorithm': 'HS256',
+            'exp_delta_days': 7
+        },
         'sso': {
             'host': 'http://localhost:8000/sso',
             'google': {'client_id': '', 'client_secret': ''}
