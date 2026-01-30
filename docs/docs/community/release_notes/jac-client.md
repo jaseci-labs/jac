@@ -2,13 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.13 (Unreleased)
+## jac-client 0.2.14 (Unreleased)
+
+## jac-client 0.2.13 (Latest Release)
 
 - **Desktop App Auto-Start & Port Discovery**: Running `jac start` or `jac dev` for a desktop (Tauri) target now automatically launches the backend API server and connects the app to it -- no manual setup needed. The backend port is dynamically allocated and injected into the webview before any page JavaScript runs, so API calls just work out of the box. Configure a fixed backend URL via `base_url` in `jac.toml` if needed.
 - **Bug fixes**: Fixed a sidecar crash caused by writing to a closed stdout pipe, and fixed an environment variable leak during desktop builds.
 - **Enhanced Compilation for Hot Module Replacement**: Added initial module compilation for HMR without bundling'.
 
-## jac-client 0.2.12 (Latest Release)
+## jac-client 0.2.12
 
 - **Configurable API Base URL**: Added `[plugins.client.api]` config section with `base_url` option. By default (empty), API calls use same-origin relative URLs. Set `base_url = "http://localhost:8000"` for cross-origin setups.
 - **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.

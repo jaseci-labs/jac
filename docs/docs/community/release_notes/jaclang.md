@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.13 (Unreleased)
+## jaclang 0.9.14 (Unreleased)
+
+## jaclang 0.9.13 (Latest Release)
 
 - **Configurable Lint Rules**: Auto-lint rules are now individually configurable via `jac.toml` `[check.lint]` section using a select/ignore model. A `LintRule` enum defines all 12 rules with kebab-case names. Use `select = ["all"]` (default) to enable all rules, `ignore = ["rule-name"]` to disable specific ones, or `select = ["rule1", "rule2"]` to enable only listed rules.
 - **No-Print Lint Rule**: Added an opt-in `no-print` lint rule that warns on bare `print()` calls in `.jac` files, encouraging use of the console abstraction instead. Enable via `select = ["all", "no-print"]` in `[check.lint]`.
@@ -11,7 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`--no_client` flag for `jac start`**: Added `--no_client` CLI flag that skips eager client bundling on server startup. Useful when we need to run server only.
 - **Enhanced Client Compilation for Development**: Improved the `jac start --dev` command to perform initial client compilation for HMR.
 
-## jaclang 0.9.12 (Latest Release)
+## jaclang 0.9.12
 
 - **Native Binary Compilation via `na {}` Blocks and `.na.jac` Files**: Added a third compilation target to Jac using `na {}` context blocks and `.na.jac` file conventions. Code within the `na` context compiles to native LLVM IR via llvmlite and is JIT-compiled to machine code at runtime. Functions defined in `na {}` blocks are callable via ctypes function pointers. Supports integer, float, and boolean types, arithmetic and comparison operators, if/else and while control flow, recursive function calls, local variables with type inference, and `print()` mapped to native `printf`. Native code is fully isolated from Python (`sv`) and JavaScript (`cl`) codegen -- `na` functions are excluded from both `py_ast` and `es_ast` output, and vice versa. The `llvmlite` package is now a core dependency.
 - **SPA Catch-All for BrowserRouter Support**: The `jac start` HTTP server now serves SPA HTML for unmatched extensionless paths when `base_route_app` is configured in `jac.toml`. This enables BrowserRouter-style client-side routing where direct navigation to `/about` or page refresh on `/dashboard/settings` serves the app shell instead of returning 404. API paths (`/functions`, `/walkers`, `/walker/`, `/function/`, `/user/`), `/cl/` routes, and static file paths are excluded from the catch-all. The vanilla (non-React) client runtime (`createRouter`, `navigate`, `Link`) has also been updated to use `pushState` navigation and `window.location.pathname` instead of hash-based routing.
