@@ -6,6 +6,40 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### BrowserRouter Migration (jac-client 0.2.12)
+
+Client-side routing has migrated from `HashRouter` to `BrowserRouter`. URLs now use clean paths instead of hash-based URLs.
+
+**Before:**
+
+```
+http://localhost:8000#/about
+http://localhost:8000#/login
+http://localhost:8000#/user/123
+```
+
+**After:**
+
+```
+http://localhost:8000/about
+http://localhost:8000/login
+http://localhost:8000/user/123
+```
+
+**Key Changes:**
+
+- `HashRouter` replaced with `BrowserRouter` in the React Router integration
+- `navigate()` now uses `window.history.pushState` instead of `window.location.hash`
+- The vanilla runtime's `__jacGetHashPath` renamed to `__jacGetPath`, returns `window.location.pathname` instead of hash fragment
+- Server-side SPA catch-all automatically serves app HTML for clean URL paths when `base_route_app` is configured
+
+**Migration Steps:**
+
+1. Update any hardcoded hash-based URLs (`#/path`) to clean paths (`/path`) in your code
+2. If using the vanilla runtime's `Link` component, `href` values no longer need a `#` prefix
+3. Ensure `base_route_app` is set in `jac.toml` `[serve]` section for direct navigation and page refresh to work
+4. If deploying as a static site, configure your hosting provider's SPA fallback (see [routing documentation](../../learn/tools/jac_serve.md))
+
 ### `--cl` Flag Replaced with `--npm` and `--use client`
 
 The `--cl` flag has been removed from jac-client CLI commands and replaced with more descriptive alternatives.
