@@ -18,12 +18,14 @@ A complete guide to implementing Google OAuth authentication in your Jac-Client 
 ## Overview
 
 This guide demonstrates how to:
+
 - Configure jac-scale backend for Google OAuth
 - Set up Google Cloud Console OAuth credentials
 - Implement authentication flow in the frontend
 - Handle protected routes and user sessions
 
 **Authentication Flow:**
+
 ```
 User clicks "Sign in with Google"
     ↓
@@ -83,6 +85,7 @@ client_secret = "${GOOGLE_CLIENT_SECRET}"
 ```
 
 **Configuration Explained:**
+
 - `jwt.secret`: Secret key for signing JWT tokens (change in production!)
 - `jwt.algorithm`: Algorithm for JWT signing (HS256 recommended)
 - `jwt.exp_delta_days`: How long tokens remain valid
@@ -129,18 +132,23 @@ client_secret = "${GOOGLE_CLIENT_SECRET}"
 4. Configure:
    - **Name**: "Jac Client Web App"
    - **Authorized JavaScript origins**:
+
      ```
      http://localhost:8000
      ```
+
    - **Authorized redirect URIs**:
+
      ```
      http://localhost:8000/sso/google/login/callback
      http://localhost:8000/sso/google/register/callback
      ```
+
 5. Click **Create**
 6. **Copy** your Client ID and Client Secret (you'll need these!)
 
 **Production Setup:**
+
 - Add your production domain to authorized origins
 - Add production callback URLs (e.g., `https://yourdomain.com/sso/google/login/callback`)
 
@@ -210,6 +218,7 @@ See the example files in this directory for complete implementations:
 ### Important Notes
 
 1. **Component Nesting**: Ensure Router wraps components using router hooks:
+
    ```jac
    <AuthProvider>
        <Router>
@@ -219,12 +228,14 @@ See the example files in this directory for complete implementations:
    ```
 
 2. **Token Handling**: The callback component stores the token and reloads:
+
    ```jac
    localStorage.setItem('auth_token', token);
    window.location.href = '/dashboard';  // Full page reload
    ```
 
 3. **Protected Routes**: Wrap protected pages with `<Protected>` component:
+
    ```jac
    <Route path="/dashboard" element={
        <Protected><Dashboard /></Protected>
@@ -279,6 +290,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: "SSO for platform 'google' is not configured"
 
 **Solution:**
+
 - Verify `.env` file exists with correct credentials
 - Ensure environment variables are loaded
 - Restart the server after adding `.env`
@@ -286,6 +298,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: "redirect_uri_mismatch"
 
 **Solution:**
+
 - Check Google Console authorized redirect URIs
 - Must exactly match: `http://localhost:8000/sso/google/login/callback`
 - No trailing slashes
@@ -294,6 +307,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: "User redirected back to login after OAuth"
 
 **Solution:**
+
 - Check browser console for errors
 - Verify token is stored in localStorage (DevTools > Application > Local Storage)
 - Ensure AuthProvider validates token on mount
@@ -302,6 +316,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: "Cannot destructure property 'basename'"
 
 **Solution:**
+
 - Ensure `<Router>` wraps all components using `<Link>` or router hooks
 - Correct structure: `<AuthProvider><Router>...</Router></AuthProvider>`
 - Move any navigation menus inside `<Router>`
@@ -309,6 +324,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: "Authentication failed: (invalid_grant) Bad Request"
 
 **Solution:**
+
 - Client secret may be incorrect
 - Authorization code may have expired (only valid for ~60 seconds)
 - Check that callback URL in Google Console matches exactly
@@ -317,7 +333,9 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### Issue: Token expires too quickly
 
 **Solution:**
+
 - Increase `exp_delta_days` in `jac.toml`:
+
   ```toml
   [plugins.scale.jwt]
   exp_delta_days = 30  # 30 days instead of 7
@@ -332,6 +350,7 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
    - Use environment variables in production
 
 2. **Change JWT secret in production**:
+
    ```toml
    secret = "${JWT_SECRET}"  # Load from secure environment
    ```
@@ -357,8 +376,9 @@ DASHBOARD CTX: {user: {...}, token: '...', loading: false}
 ### 1. Update Google Console
 
 Add production URLs:
+
 - **Authorized origins**: `https://yourdomain.com`
-- **Redirect URIs**: 
+- **Redirect URIs**:
   - `https://yourdomain.com/sso/google/login/callback`
   - `https://yourdomain.com/sso/google/register/callback`
 
@@ -372,6 +392,7 @@ host = "https://yourdomain.com/sso"
 ### 3. Set Environment Variables
 
 On your production server:
+
 ```bash
 export GOOGLE_CLIENT_ID="your-production-client-id"
 export GOOGLE_CLIENT_SECRET="your-production-secret"
