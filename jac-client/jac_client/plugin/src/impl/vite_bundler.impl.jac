@@ -216,6 +216,19 @@ impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str
     return '{ ' + ', '.join(items) + ' }';
 }
 
+"""Resolve the API base URL using a consistent priority chain.
+
+Priority: jac.toml base_url > direct override > env var (desktop start) > "" (same-origin)
+"""
+impl ViteBundler._resolve_api_base_url(
+    self: ViteBundler, api_base_url_override: str = ""
+) -> str {
+    api_config_data = self.config_loader.get_api_config();
+    toml_base_url = api_config_data.get('base_url', '');
+    env_override = os.environ.get(API_BASE_URL_ENV_VAR, '');
+    return toml_base_url or api_base_url_override or env_override;
+}
+
 """Get a valid JavaScript variable name from plugin module name."""
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
@@ -224,15 +237,20 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
-"""Create vite.config.js from config.json during bundling."""
-impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path {
+"""Create vite.config.js from config.json during bundling.
+
+api_base_url_override: overrides jac.toml base_url for desktop targets
+    where the CLI knows the backend port at startup time.
+"""
+impl ViteBundler.create_vite_config(
+    self: ViteBundler, entry_file: Path, api_base_url_override: str = ""
+) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
-    api_config_data = self.config_loader.get_api_config();
-    api_base_url = api_config_data.get('base_url', '');
+    api_base_url = self._resolve_api_base_url(api_base_url_override);
     config_path = configs_dir / 'vite.config.js';
     # TypeScript is always enabled by default
     try {
@@ -560,18 +578,23 @@ impl ViteBundler.init(
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
 
-"""Create a dev-mode vite config with API proxy for HMR."""
+"""Create a dev-mode vite config with API proxy for HMR.
+
+api_base_url_override: when set, API calls go directly to this URL
+    instead of via proxy (used by desktop targets).
+"""
 impl ViteBundler.create_dev_vite_config(
-    self: ViteBundler, entry_file: Path, api_port: int = 8000
+    self: ViteBundler,
+    entry_file: Path,
+    api_port: int = 8000,
+    api_base_url_override: str = ""
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     config_path = configs_dir / 'vite.dev.config.js';
-    # Get API base URL from config (empty = same origin with proxy)
-    api_config_data = self.config_loader.get_api_config();
-    api_base_url = api_config_data.get('base_url', '');
+    api_base_url = self._resolve_api_base_url(api_base_url_override);
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();

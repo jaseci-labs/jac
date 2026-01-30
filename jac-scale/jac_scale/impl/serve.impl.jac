@@ -57,10 +57,10 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(dev: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev mode)
-    if not dev {
+    # Eagerly build client bundle if there are client exports (skip in dev or no_client mode)
+    if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;

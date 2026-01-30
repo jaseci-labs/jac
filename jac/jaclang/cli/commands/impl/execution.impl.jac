@@ -272,13 +272,25 @@ impl start(
         }
         # Start Vite dev server if client mode enabled
         if not no_client {
+            # Do initial compilation for HMR
+            try {
+                compiler = server.introspector._bundle_builder._get_compiler();
+                compiler.compile(server.introspector._module, Path(filename));
+                print("  ✔ Initial client compilation completed", flush=True);
+            } except Exception as e {
+                print(
+                    f"Warning: Initial client compilation failed: {e}",
+                    file=sys.stderr,
+                    flush=True
+                );
+            }
             vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
         }
     }
     # Print startup message
     _print_startup_message(dev, no_client, port, actual_api_port, base);
     try {
-        server.start(dev=dev);
+        server.start(dev=dev, no_client=no_client);
         return 0;
     } except KeyboardInterrupt {
         print('\nShutting down...');

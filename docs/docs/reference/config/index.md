@@ -155,8 +155,49 @@ Defaults for `jac check`:
 ```toml
 [check]
 print_errs = true   # Print errors to console
-warnonly = false    # Treat errors as warnings
+warnonly = false     # Treat errors as warnings
 ```
+
+#### [check.lint]
+
+Configure which auto-lint rules are active during `jac format --fix`. Rules use a select/ignore model:
+
+```toml
+[check.lint]
+select = ["all"]              # Enable all default rules (default)
+ignore = ["combine-has"]      # Disable specific rules
+```
+
+To enable opt-in rules (like `no-print`) alongside defaults:
+
+```toml
+[check.lint]
+select = ["all", "no-print"]  # Default rules + opt-in no-print
+```
+
+To enable only specific rules:
+
+```toml
+[check.lint]
+select = ["combine-has", "remove-empty-parens"]
+```
+
+**Available lint rules:**
+
+| Rule Name | Description | Default |
+|-----------|-------------|---------|
+| `combine-has` | Combine consecutive `has` statements with same modifiers | On |
+| `combine-glob` | Combine consecutive `glob` statements with same modifiers | On |
+| `staticmethod-to-static` | Convert `@staticmethod` decorator to `static` keyword | On |
+| `init-to-can` | Convert `def __init__` / `def __post_init__` to `can init` / `can postinit` | On |
+| `remove-empty-parens` | Remove empty parentheses from declarations (`def foo()` → `def foo`) | On |
+| `remove-kwesc` | Remove unnecessary angle bracket escaping from non-keyword names | On |
+| `hasattr-to-null-ok` | Convert `hasattr(obj, "attr")` to null-safe access (`obj?.attr`) | On |
+| `simplify-ternary` | Simplify `x if x else default` to `x or default` | On |
+| `remove-future-annotations` | Remove `import from __future__ { annotations }` (not needed in Jac) | On |
+| `fix-impl-signature` | Fix signature mismatches between declarations and implementations | On |
+| `remove-import-semi` | Remove trailing semicolons from `import from X { ... }` | On |
+| `no-print` | Warn on bare `print()` calls (use console abstraction instead) | Opt-in |
 
 ---
 
@@ -372,6 +413,10 @@ verbose = true
 [build]
 typecheck = true
 dir = ".jac"
+
+[check.lint]
+select = ["all", "no-print"]
+ignore = []
 
 [plugins]
 discovery = "auto"

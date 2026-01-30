@@ -1607,11 +1607,11 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(dev: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev mode)
+    # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
     bundle_error = None;
-    if not dev {
+    if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             try {
