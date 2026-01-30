@@ -1,6 +1,8 @@
 """Button component for the Jac client application."""
 
-def:pub Button(label: str, onClick: any, variant: str = "primary", disabled: bool = False) -> any {
+def:pub Button(
+    label: str, onClick: any, variant: str = "primary", disabled: bool = False
+) -> any {
     base_styles = {
         "padding": "0.75rem 1.5rem",
         "fontSize": "1rem",
@@ -22,11 +24,12 @@ def:pub Button(label: str, onClick: any, variant: str = "primary", disabled: boo
         }
     };
 
-    return <button
-        style={{**base_styles, **variant_styles[variant]}}
-        onClick={onClick}
-        disabled={disabled}
-    >
-        {label}
-    </button>;
+    return
+        <button
+            style={{** base_styles, ** variant_styles[variant]}}
+            onClick={onClick}
+            disabled={disabled}
+        >
+            {label}
+        </button>;
 }

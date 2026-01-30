@@ -1,6 +1,3 @@
-
-
-
 """Main entry point for google-auth with backend SSO.
 
 This example demonstrates proper Google OAuth authentication using jac-scale's backend.
@@ -16,45 +13,54 @@ cl import from '.pages.callback' { OAuthCallback }
 cl import from '.pages.home' { Home }
 cl import from '.pages.dashboard' { Dashboard }
 cl import from '.pages.sample' { Sample }
-cl import from "@jac/runtime" {
-    Router,
-    Routes,
-    Route,
-    Link
-}
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 # Client-side component
 cl {
-
-    def NaviigationMenu() -> any {
-        return <nav style={{ "display": "flex", "gap": "10px", "marginBottom": "20px" }}>
-            <button><Link to="/">Home</Link></button>  
-            <button><Link to="/login">Login</Link></button>
-             <button><Link to="/dashboard">Dashboard</Link></button>  
-             <button><Link to="/sample">Sample</Link></button>
-        </nav>;
+    def NaviigationMenu -> any {
+        return
+            <nav style={{"display": "flex", "gap": "10px", "marginBottom": "20px"}}>
+                <button>
+                    <Link to="/">
+                        Home
+                    </Link>
+                </button>
+                <button>
+                    <Link to="/login">
+                        Login
+                    </Link>
+                </button>
+                <button>
+                    <Link to="/dashboard">
+                        Dashboard
+                    </Link>
+                </button>
+                <button>
+                    <Link to="/sample">
+                        Sample
+                    </Link>
+                </button>
+            </nav>;
     }
 
-
-    def:pub app() -> any {
-        return <AuthProvider>
-            <Router>
-                <NaviigationMenu />
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/auth/callback" element={<OAuthCallback />} />
-                    <Route path="/sample" element={<Sample />} />
-                    <Route
-                        path="/dashboard"
-                        element={
-                            <Protected>
+    def:pub app -> any {
+        return
+            <AuthProvider>
+                <Router>
+                    <NaviigationMenu />
+                    <Routes>
+                        <Route path="/" element={<Home />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/auth/callback" element={<OAuthCallback />} />
+                        <Route path="/sample" element={<Sample />} />
+                        <Route
+                            path="/dashboard"
+                            element={<Protected>
                                 <Dashboard />
-                            </Protected>
-                        }
-                    />
-                </Routes>
-            </Router>
-        </AuthProvider>;
+                            </Protected>}
+                        />
+                    </Routes>
+                </Router>
+            </AuthProvider>;
     }
 }

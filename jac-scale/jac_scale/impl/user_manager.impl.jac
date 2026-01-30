@@ -142,7 +142,6 @@ impl JacScaleUserManager.sso_callback(
     import from jaclang.runtimelib.server { JsonValue }
     import from fastapi.responses { RedirectResponse }
     import from urllib.parse { quote }
-
     if (platform not in [p.value for p in Platforms]) {
         error_msg = f"Invalid platform '{platform}'";
         return RedirectResponse(url=f"/login?error={quote(error_msg)}");
