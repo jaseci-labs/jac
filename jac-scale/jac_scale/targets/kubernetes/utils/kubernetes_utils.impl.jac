@@ -1,5 +1,6 @@
 import os;
 import pathlib;
+import from jaclang.cli.console { console }
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();

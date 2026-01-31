@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Helper function to convert TransportResponse to dict for JSONResponse."""
 def _transport_response_to_dict(
     transport_response: TransportResponse

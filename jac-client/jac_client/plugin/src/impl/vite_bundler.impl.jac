@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
     # Try to get from project config
