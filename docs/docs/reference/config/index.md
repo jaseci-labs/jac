@@ -169,6 +169,7 @@ Configure which auto-lint rules are active during `jac format --fix`. Rules use 
 [check.lint]
 select = ["default"]          # Code-transforming rules only (default)
 ignore = ["combine-has"]      # Disable specific rules
+exclude = []                  # File patterns to skip (glob syntax)
 ```
 
 To enable all rules including warning-only rules:
@@ -208,6 +209,23 @@ select = ["combine-has", "remove-empty-parens"]
 | `fix-impl-signature` | Fix signature mismatches between declarations and implementations | default |
 | `remove-import-semi` | Remove trailing semicolons from `import from X { ... }` | default |
 | `no-print` | Error on bare `print()` calls (use console abstraction instead) | all |
+
+**Excluding files from lint:**
+
+Use `exclude` to skip files matching glob patterns:
+
+```toml
+[check.lint]
+select = ["all"]
+exclude = [
+    "docs/*",
+    "*/examples/*",
+    "*/tests/*",
+    "legacy_module.jac",
+]
+```
+
+Patterns are matched against file paths relative to the project root. Use `*` for single-directory wildcards and `**` for recursive matching.
 
 ---
 
@@ -427,6 +445,7 @@ dir = ".jac"
 [check.lint]
 select = ["all"]
 ignore = []
+exclude = []
 
 [plugins]
 discovery = "auto"
