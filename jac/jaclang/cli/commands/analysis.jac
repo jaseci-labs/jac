@@ -120,17 +120,25 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
             help="Print to stdout instead of writing",
             short="s"
         ),
+        Arg.create(
+            "lintfix",
+            typ=bool,
+            default=False,
+            help="Also apply auto-lint fixes in the same pass",
+            short="l"
+        ),
 
     ],
     examples=[
         ("jac format myfile.jac", "Format a single file"),
         ("jac format myproject/", "Format all files in directory"),
         ("jac format myfile.jac --to_screen", "Preview formatted output"),
+        ("jac format . --lintfix", "Format and auto-fix lint violations"),
 
     ],
     group="analysis"
 )
-def format(paths: list, to_screen: bool = False) -> int;
+def format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int;
 
 """Run the test suite in the specified .jac file or directory."""
 @registry.command(

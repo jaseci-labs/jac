@@ -296,7 +296,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
 }
 
 """Format .jac files with improved code style."""
-impl format(paths: list, to_screen: bool = False) -> int {
+impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int {
     import from jaclang.pycore.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
@@ -311,14 +311,14 @@ impl format(paths: list, to_screen: bool = False) -> int {
         }
     }
     def format_single_file(file_path: str) -> tuple[bool, bool, int] {
+        # Returns (success, changed, lint_error_count)
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
             return (False, False, 0);
         }
         try {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=False);
-            # Try to write formatted code (may fail on parse errors)
+            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
             try {
                 formatted_code = prog.mod.main.gen.jac;
                 original_code = prog.mod.main.source.code;
@@ -342,7 +342,15 @@ impl format(paths: list, to_screen: bool = False) -> int {
                 }
                 return (False, False, 0);
             }
-            return (True, changed, 0);
+            # Report unfixable lint errors (e.g. [no-print])
+            lint_errors = 0;
+            if lintfix {
+                for error in prog.errors_had {
+                    console.error(f"{error}");
+                    lint_errors += 1;
+                }
+            }
+            return (True, changed, lint_errors);
         } except Exception as e {
             console.error(f"Error formatting '{file_path}': {e}");
             return (False, False, 0);
@@ -389,6 +397,9 @@ impl format(paths: list, to_screen: bool = False) -> int {
         } else {
             console.success(summary_msg);
         }
+    }
+    if total_errors > 0 {
+        return 1;
     }
     if changed_files > 0 {
         return 1;
