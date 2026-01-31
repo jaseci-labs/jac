@@ -445,10 +445,9 @@ class TestFormatCommandIntegration:
                 original_impl = f.read()
             assert "impl Calculator.add(a: int, b: int)" in original_impl
 
-            # Run CLI format command with --fix
-            # format exits 1 when files change (for pre-commit usage)
+            # Run CLI lint command with --fix
             with contextlib.suppress(SystemExit):
-                analysis.format([main_dst], fix=True)
+                analysis.lint([main_dst], fix=True)
 
             # Read the updated impl file
             with open(impl_dst) as f:
