@@ -5,5 +5,5 @@ Common questions and answers. If you don't see your question below and couldn't 
 ---
 
 <!-- <a id="define-node-question" style="display: none;"></a> -->
-??? question "I updated to the latest Jac/Jaseci PyPI packages and my project wont `jac start` properly."
+??? question "I updated to the latest Jac/Jaseci PyPI packages and my project won't `jac start` properly."
     - There may be changes to the assumptions of the runtime's `.jac` working directory. Try `jac clean --all` in your project's folder.
