@@ -459,6 +459,32 @@ class TestFormatCommandIntegration:
                 f"Got: {updated_impl}"
             )
 
+    def test_format_lintfix_reports_no_print(
+        self, auto_lint_fixture_path: Callable[[str], str], tmp_path: Path
+    ) -> None:
+        """Test that format --lintfix respects no-print rule from jac.toml config."""
+        from jaclang.cli.commands import analysis  # type: ignore[attr-defined]
+        from jaclang.project.config import JacConfig, set_config
+
+        # Copy no_print fixture to temp location
+        src = auto_lint_fixture_path("no_print.jac")
+        dst = tmp_path / "no_print.jac"
+        shutil.copy(src, dst)
+
+        # Simulate jac.toml with no-print enabled via select = ["all"]
+        config = JacConfig.from_toml_str('[check.lint]\nselect = ["all"]\n')
+        set_config(config)
+        try:
+            # Run format with --lintfix (should report no-print errors and exit 1)
+            result = analysis.format([str(dst)], lintfix=True)
+        finally:
+            set_config(None)
+
+        # no-print errors are unfixable, so format --lintfix should fail
+        assert result == 1, (
+            "format --lintfix should return 1 when unfixable lint errors exist"
+        )
+
 
 class TestRemoveUnnecessaryEscape:
     """Tests for removing unnecessary <> escaping from names."""
