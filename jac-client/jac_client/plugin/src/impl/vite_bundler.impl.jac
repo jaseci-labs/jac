@@ -732,7 +732,6 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     import sys;
     import time;
     import from jac_client.plugin.utils { ensure_bun_available }
-    import from jaclang.cli.console { console }
     # Ensure bun is available before starting dev server
     if not ensure_bun_available() {
         raise ClientBundleError(

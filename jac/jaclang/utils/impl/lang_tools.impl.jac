@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Generate mermaid markdown doc for uninodes."""
 impl AstTool.autodoc_uninode -> str {
     output = '';
@@ -53,7 +55,6 @@ impl AstTool.ir(args: list[str]) -> str {
         [base, mod] = os.path.split(file_name);
         base = base or './';
         if file_name.endswith('.py') {
-            import from jaclang.cli.console { console }
             file_source = read_file_with_encoding(file_name);
             parsed_ast = py_ast.parse(file_source);
             if (output == 'pyast') {
@@ -158,7 +159,6 @@ impl AstTool.ir(args: list[str]) -> str {
 """List python ast nodes."""
 impl AstTool.py_uni_nodes -> str {
     import from jaclang.compiler.passes.main { PyastBuildPass }
-    import from jaclang.cli.console { console }
     visit_methods = [
         method
         for method in dir(py_ast._Unparser)

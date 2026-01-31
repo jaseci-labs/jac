@@ -384,7 +384,6 @@ def _count_jac_files(directory: str) -> int {
 def _print_startup_message(
     dev: bool, no_client: bool, port: int, api_port: int, base_path: str = '.'
 ) -> None {
-    import from jaclang.cli.console { console }
     import from importlib.metadata { version as pkg_version }
 
     # Print header

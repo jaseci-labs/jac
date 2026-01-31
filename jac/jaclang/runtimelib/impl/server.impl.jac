@@ -1656,7 +1656,6 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         console.print('\nPress Ctrl+C to stop the server');
         # Display bundle error after endpoints if one occurred
         if bundle_error {
-            import from jaclang.cli.console { console }
             import sys;
             console.print('\n' + '=' * 70, file=sys.stderr);
             console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);

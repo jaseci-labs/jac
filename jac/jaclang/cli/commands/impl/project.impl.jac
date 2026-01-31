@@ -7,6 +7,7 @@ import subprocess;
 import shlex;
 import base64;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 """Initialize a new Jac project."""
 impl create(
@@ -17,7 +18,6 @@ impl create(
 ) -> int {
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry { get_template_registry }
-    import from jaclang.cli.console { console }
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory
@@ -335,7 +335,6 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
 
 """Create project-root .gitignore with entries."""
 def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
-    import from jaclang.cli.console { console }
     gitignore_path = project_path / ".gitignore";
     with open(gitignore_path, "w") as f {
         f.write("\n".join(entries) + "\n");
@@ -347,7 +346,6 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
 impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error(
@@ -380,7 +378,6 @@ impl add(
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         # Skip silently if jac.toml doesn't exist (for regular Python deps)
@@ -461,7 +458,6 @@ impl add(
 impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -496,7 +492,6 @@ impl remove(packages: list = [], dev: bool = False) -> int {
 """Run custom scripts defined in jac.toml."""
 impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -554,7 +549,6 @@ impl clean(
 ) -> int {
     import shutil;
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");

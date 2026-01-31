@@ -228,7 +228,6 @@ Returns (has_client_decls, has_server_decls).
 """
 impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     import from jaclang.pycore.program { JacProgram }
-    import from jaclang.cli.console { console }
     has_client = False;
     has_server = False;
     try {

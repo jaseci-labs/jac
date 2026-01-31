@@ -67,7 +67,6 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         if client_exports {
             import time;
             import sys;
-            import from jaclang.cli.console { console }
             start_time = time.time();
             try {
                 with console.status(
@@ -873,7 +872,6 @@ impl JacAPIServer.refresh_token(token: (str | None) = None) -> TransportResponse
 }
 
 impl JacAPIServer.create_user(username: str, password: str) -> TransportResponse {
-    import from jaclang.cli.console { console }
     import traceback;
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     try {

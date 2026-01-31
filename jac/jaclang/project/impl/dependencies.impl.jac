@@ -332,7 +332,6 @@ impl remove_venv_from_path(config: JacConfig | None = None) -> None {
 impl is_venv_in_path(config: JacConfig | None = None) -> bool {
     import sys;
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     if config is None {
         config = get_config();
     }

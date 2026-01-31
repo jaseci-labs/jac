@@ -17,7 +17,6 @@ impl JacFileWatcher.start -> None {
     }
     import from watchdog.observers { Observer }
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
-    import from jaclang.cli.console { console }
     watcher = self;
     class JacEventHandler(FileSystemEventHandler) {
         def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) -> None {

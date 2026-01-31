@@ -311,7 +311,6 @@ Detect if the current connected cluster is AWS or local.
 impl cluster_type -> str {
     try {
         import from kubernetes { client }
-        import from jaclang.cli.console { console }
         v1 = client.CoreV1Api();
         nodes = v1.list_node();
         if not nodes.items {

@@ -123,7 +123,6 @@ impl dot(
 """Run Jac Language Server Protocol."""
 impl lsp -> int {
     import from jaclang.langserve.server { run_lang_server }
-    import from jaclang.cli.console { console }
     try {
         run_lang_server();
         return 0;
