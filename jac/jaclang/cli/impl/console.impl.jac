@@ -71,6 +71,9 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
         for arg in args
     );
     print(*stripped_args, **filtered_kwargs);
+    # Flush stdout so output is visible immediately when piped (piped stdout
+    # uses block buffering, which can cause subprocess readline() to hang).
+    sys.stdout.flush();
 }
 
 """Context manager for status during long operations (basic implementation)."""
