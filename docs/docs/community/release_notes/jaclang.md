@@ -4,13 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.14 (Unreleased)
 
+- **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
+
 ## jaclang 0.9.13 (Latest Release)
 
 - **Configurable Lint Rules**: Auto-lint rules are now individually configurable via `jac.toml` `[check.lint]` section using a select/ignore model. A `LintRule` enum defines all 12 rules with kebab-case names. Use `select = ["all"]` (default) to enable all rules, `ignore = ["rule-name"]` to disable specific ones, or `select = ["rule1", "rule2"]` to enable only listed rules.
 - **No-Print Lint Rule**: Added an opt-in `no-print` lint rule that warns on bare `print()` calls in `.jac` files, encouraging use of the console abstraction instead. Enable via `select = ["all", "no-print"]` in `[check.lint]`.
 - **ES Module Export Generation**: Exports now generated at compiler level via ESTree nodes instead of regex post-processing. Only `:pub` declarations are exported.
 - **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
-- **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
 - **`--no_client` flag for `jac start`**: Added `--no_client` CLI flag that skips eager client bundling on server startup. Useful when we need to run server only.
 - **Enhanced Client Compilation for Development**: Improved the `jac start --dev` command to perform initial client compilation for HMR.
 
