@@ -342,7 +342,7 @@ impl format(paths: list, to_screen: bool = False) -> int {
                 }
                 return (False, False, 0);
             }
-            return (True, changed);
+            return (True, changed, 0);
         } except Exception as e {
             console.error(f"Error formatting '{file_path}': {e}");
             return (False, False, 0);
