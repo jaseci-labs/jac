@@ -239,7 +239,7 @@ jac test main.jac -v
 
 ### jac format
 
-Format Jac code according to style guidelines. When `--fix` is used, auto-lint rules are applied (e.g., combining consecutive `has` statements, converting `@staticmethod` to `static`). Configure which rules are active via `[check.lint]` in `jac.toml`.
+Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
 jac format [-h] [-t] paths [paths ...]
