@@ -310,11 +310,11 @@ impl format(paths: list, to_screen: bool = False) -> int {
             }
         }
     }
-    def format_single_file(file_path: str) -> tuple[bool, bool] {
+    def format_single_file(file_path: str) -> tuple[bool, bool, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
-            return (False, False);
+            return (False, False, 0);
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=False);
@@ -340,22 +340,24 @@ impl format(paths: list, to_screen: bool = False) -> int {
                 for error in prog.errors_had {
                     console.error(f"{error}");
                 }
-                return (False, False);
+                return (False, False, 0);
             }
             return (True, changed);
         } except Exception as e {
             console.error(f"Error formatting '{file_path}': {e}");
-            return (False, False);
+            return (False, False, 0);
         }
     }
     total_files = 0;
     failed_files = 0;
     changed_files = 0;
+    total_errors = 0;
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
             total_files += 1;
-            (success, changed) = format_single_file(path);
+            (success, changed, errors) = format_single_file(path);
+            total_errors += errors;
             if not success {
                 failed_files += 1;
             } elif changed {
@@ -367,7 +369,8 @@ impl format(paths: list, to_screen: bool = False) -> int {
                     continue;
                 }
                 total_files += 1;
-                (success, changed) = format_single_file(str(jac_file));
+                (success, changed, errors) = format_single_file(str(jac_file));
+                total_errors += errors;
                 if not success {
                     failed_files += 1;
                 } elif changed {
