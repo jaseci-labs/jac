@@ -160,10 +160,10 @@ warnonly = false     # Treat errors as warnings
 
 #### [check.lint]
 
-Configure which auto-lint rules are active during `jac format --fix`. Rules use a select/ignore model with two group keywords:
+Configure which auto-lint rules are active during `jac lint` and `jac lint --fix`. Rules use a select/ignore model with two group keywords:
 
-- `"default"` - code-transforming rules only (safe, no warnings)
-- `"all"` - every rule, including warning-only rules like `no-print`
+- `"default"` - code-transforming rules only (safe, auto-fixable)
+- `"all"` - every rule, including unfixable rules like `no-print`
 
 ```toml
 [check.lint]
@@ -331,8 +331,8 @@ Custom command shortcuts:
 dev = "jac run main.jac"
 test = "jac test -v"
 build = "jac build main.jac -t"
-lint = "jac check ."
-format = "jac format . --fix"
+lint = "jac lint . --fix"
+format = "jac format ."
 ```
 
 Run with:
@@ -457,7 +457,7 @@ api_key = "${OPENAI_API_KEY}"
 [scripts]
 dev = "jac run main.jac"
 test = "jac test"
-format = "jac format . --fix"
+lint = "jac lint . --fix"
 ```
 
 ---

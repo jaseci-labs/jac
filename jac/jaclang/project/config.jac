@@ -57,8 +57,7 @@ obj ServeConfig {
 
 """Format command defaults from [format] section."""
 obj FormatConfig {
-    has outfile: str = "",
-        fix: bool = False;
+    has outfile: str = "";
 }
 
 """Available lint rules for the auto-lint pass.

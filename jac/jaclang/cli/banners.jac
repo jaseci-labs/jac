@@ -5,7 +5,12 @@ This module contains ASCII art, banners, and branded output for the Jac CLI.
 import platform;
 import sys;
 import from jaclang.cli.console { console }
-glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |\\__,_|\\___|\n|__/';
+glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |\\__,_|\\___|\n|__/',
+     JAC_DOCS_URL = 'https://docs.jaseci.org',
+     JAC_DISCORD_URL = 'https://discord.gg/6j3QNdtcN6',
+     JAC_GITHUB_URL = 'https://github.com/Jaseci-Labs/jaseci',
+     JAC_ISSUES_URL = 'https://github.com/Jaseci-Labs/jaseci/issues';
+
 """Print the full version banner with logo and system info.
 
     Args:
@@ -32,11 +37,9 @@ def print_version_banner(version: str) -> None {
     console.print(
         (logo_lines[5] + f"                Platform: {platform_short}"), style='cyan'
     );
-    console.print('\n📚 Documentation: [url]https://docs.jaseci.org[/url]');
-    console.print('💬 Community:     [url]https://discord.gg/jaseci[/url]');
-    console.print(
-        '🐛 Issues:        [url]https://github.com/Jaseci-Labs/jaseci/issues[/url]'
-    );
+    console.print(f'\n📚 Documentation: [url]{JAC_DOCS_URL}[/url]');
+    console.print(f'💬 Community:     [url]{JAC_DISCORD_URL}[/url]');
+    console.print(f'🐛 Issues:        [url]{JAC_ISSUES_URL}[/url]');
     console.print();
 }
 

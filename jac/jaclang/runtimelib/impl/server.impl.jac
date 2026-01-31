@@ -1,4 +1,5 @@
 import from jaclang.cli.console { console }
+import from jaclang.cli.banners { JAC_DISCORD_URL }
 
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(<>obj: object) -> JsonValue {
@@ -1665,6 +1666,12 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
             console.print(file=sys.stderr);
             console.warning(
                 'Client pages will not be available until this is fixed.', emoji=True
+            );
+            console.print(file=sys.stderr);
+            console.info('Try again after running: jac clean --all', emoji=True);
+            console.info(
+                f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                emoji=True
             );
             console.print('=' * 70 + '\n', file=sys.stderr);
         }

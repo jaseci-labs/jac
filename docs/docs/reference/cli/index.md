@@ -239,17 +239,16 @@ jac test main.jac -v
 
 ### jac format
 
-Format Jac code according to style guidelines. When `--fix` is used, auto-lint rules are applied (e.g., combining consecutive `has` statements, converting `@staticmethod` to `static`). Configure which rules are active via `[check.lint]` in `jac.toml`.
+Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-t] [-f] paths [paths ...]
+jac format [-h] [-t] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to format | Required |
 | `-t, --to_screen` | Print to screen (don't write) | `False` |
-| `-f, --fix` | Apply fixes in place | `False` |
 
 **Examples:**
 
@@ -258,13 +257,47 @@ jac format [-h] [-t] [-f] paths [paths ...]
 jac format main.jac -t
 
 # Apply formatting
-jac format main.jac --fix
+jac format main.jac
 
 # Format entire directory
-jac format . --fix
+jac format .
 ```
 
-> **Lint Rules**: The `--fix` flag applies configurable lint rules. See [`[check.lint]`](../config/index.md#checklint) to enable, disable, or opt into specific rules.
+> **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
+
+---
+
+### jac lint
+
+Lint Jac files and report violations. Use `--fix` to auto-fix violations.
+
+```bash
+jac lint [-h] [-f] [--ignore IGNORE] paths [paths ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `paths` | Files/directories to lint | Required |
+| `-f, --fix` | Auto-fix lint violations | `False` |
+| `--ignore` | Comma-separated files/folders to ignore | `""` |
+
+**Examples:**
+
+```bash
+# Report lint violations
+jac lint main.jac
+
+# Auto-fix violations
+jac lint main.jac --fix
+
+# Lint entire directory
+jac lint .
+
+# Lint excluding folders
+jac lint . --ignore fixtures
+```
+
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. All enabled rules are treated as errors.
 
 ---
 
@@ -987,8 +1020,8 @@ jac run main.jac
 # Test
 jac test -v
 
-# Format
-jac format . --fix
+# Lint and fix
+jac lint . --fix
 ```
 
 ### Production

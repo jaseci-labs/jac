@@ -7,11 +7,11 @@
 set -euo pipefail
 
 declare -A FOLDER_TO_NOTES=(
-    ["jac/"]="docs/docs/community/release_notes/jaclang.md"
-    ["jac-scale/"]="docs/docs/community/release_notes/jac-scale.md"
-    ["jac-client/"]="docs/docs/community/release_notes/jac-client.md"
-    ["jac-byllm/"]="docs/docs/community/release_notes/byllm.md"
-    ["jac-super/"]="docs/docs/community/release_notes/jac-super.md"
+    ["jac/jaclang/"]="docs/docs/community/release_notes/jaclang.md"
+    ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/jac-scale.md"
+    ["jac-client/jac_client/"]="docs/docs/community/release_notes/jac-client.md"
+    ["jac-byllm/byllm/"]="docs/docs/community/release_notes/byllm.md"
+    ["jac-super/jac_super/"]="docs/docs/community/release_notes/jac-super.md"
 )
 
 # Determine changed files based on context

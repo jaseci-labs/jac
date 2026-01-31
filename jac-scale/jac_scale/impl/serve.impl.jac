@@ -1,4 +1,5 @@
 import from jaclang.cli.console { console }
+import from jaclang.cli.banners { JAC_DISCORD_URL }
 
 """Helper function to convert TransportResponse to dict for JSONResponse."""
 def _transport_response_to_dict(
@@ -84,6 +85,11 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                     "\n  Client pages will not be available until this is fixed.\n",
                     style="muted",
                     file=sys.stderr
+                );
+                console.info('Try again after running: jac clean --all', emoji=True);
+                console.info(
+                    f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                    emoji=True
                 );
             }
         }

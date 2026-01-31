@@ -4,7 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.14 (Unreleased)
 
+- **`jac lint` Command**: Added a dedicated `jac lint` command that reports all lint violations as errors with file, line, and column info. Use `jac lint --fix` to auto-fix violations. Lint rules are configured via `[check.lint]` in `jac.toml`. All enabled rules are treated as errors (not warnings). The `--fix` flag has been removed from `jac format`, which is now pure formatting only.
 - **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
+- **Centralized project URLs**: Project URLs (docs, Discord, GitHub, issues) are now defined as constants in `banners.jac` and reused across the CLI banner, server error messages, and help epilog instead of being hardcoded in multiple places.
+- **Client bundle error help message**: When the client bundle build fails during `jac start`, the server now prints a troubleshooting suggestion to run `jac clean --all` and a link to the Discord community for support.
 
 ## jaclang 0.9.13 (Latest Release)
 
