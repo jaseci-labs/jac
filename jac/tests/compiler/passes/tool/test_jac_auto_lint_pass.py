@@ -445,10 +445,9 @@ class TestFormatCommandIntegration:
                 original_impl = f.read()
             assert "impl Calculator.add(a: int, b: int)" in original_impl
 
-            # Run CLI format command with --fix
-            # format exits 1 when files change (for pre-commit usage)
+            # Run CLI lint command with --fix
             with contextlib.suppress(SystemExit):
-                analysis.format([main_dst], fix=True)
+                analysis.lint([main_dst], fix=True)
 
             # Read the updated impl file
             with open(impl_dst) as f:
@@ -459,6 +458,32 @@ class TestFormatCommandIntegration:
                 f"Impl file should have been updated with fixed params.\n"
                 f"Got: {updated_impl}"
             )
+
+    def test_format_lintfix_reports_no_print(
+        self, auto_lint_fixture_path: Callable[[str], str], tmp_path: Path
+    ) -> None:
+        """Test that format --lintfix respects no-print rule from jac.toml config."""
+        from jaclang.cli.commands import analysis  # type: ignore[attr-defined]
+        from jaclang.project.config import JacConfig, set_config
+
+        # Copy no_print fixture to temp location
+        src = auto_lint_fixture_path("no_print.jac")
+        dst = tmp_path / "no_print.jac"
+        shutil.copy(src, dst)
+
+        # Simulate jac.toml with no-print enabled via select = ["all"]
+        config = JacConfig.from_toml_str('[check.lint]\nselect = ["all"]\n')
+        set_config(config)
+        try:
+            # Run format with --lintfix (should report no-print errors and exit 1)
+            result = analysis.format([str(dst)], lintfix=True)
+        finally:
+            set_config(None)
+
+        # no-print errors are unfixable, so format --lintfix should fail
+        assert result == 1, (
+            "format --lintfix should return 1 when unfixable lint errors exist"
+        )
 
 
 class TestRemoveUnnecessaryEscape:
@@ -1121,10 +1146,8 @@ class TestCommentPreservation:
             "Final comment should be near the end of file, not moved earlier"
         )
 
-    def test_no_print_warning(
-        self, auto_lint_fixture_path: Callable[[str], str]
-    ) -> None:
-        """Test that bare print() calls produce warnings with no-print rule."""
+    def test_no_print_error(self, auto_lint_fixture_path: Callable[[str], str]) -> None:
+        """Test that bare print() calls produce errors with no-print rule."""
         from jaclang.project.config import (
             CheckConfig,
             JacConfig,
@@ -1134,21 +1157,21 @@ class TestCommentPreservation:
 
         input_path = auto_lint_fixture_path("no_print.jac")
 
-        # no-print is opt-in, so explicitly enable it
+        # Enable all rules including no-print
         config = JacConfig()
-        config.check = CheckConfig(lint=LintConfig(select=["all", "no-print"]))
+        config.check = CheckConfig(lint=LintConfig(select=["all"]))
         set_config(config)
         try:
             prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
         finally:
             set_config(None)
 
-        # Should have warnings for bare print() calls
-        warning_msgs = [w.msg for w in prog.warnings_had]
-        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
+        # Should have errors for bare print() calls
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
         # There are 2 bare print() calls in the fixture
-        assert len(no_print_warnings) == 2, (
-            f"Expected 2 no-print warnings, got {len(no_print_warnings)}: {no_print_warnings}"
+        assert len(no_print_errors) == 2, (
+            f"Expected 2 no-print errors, got {len(no_print_errors)}: {no_print_errors}"
         )
 
     def test_no_print_ignores_qualified_calls(
@@ -1164,9 +1187,9 @@ class TestCommentPreservation:
 
         input_path = auto_lint_fixture_path("no_print.jac")
 
-        # no-print is opt-in, so explicitly enable it
+        # Enable all rules including no-print
         config = JacConfig()
-        config.check = CheckConfig(lint=LintConfig(select=["all", "no-print"]))
+        config.check = CheckConfig(lint=LintConfig(select=["all"]))
         set_config(config)
         try:
             prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
@@ -1174,21 +1197,32 @@ class TestCommentPreservation:
             set_config(None)
 
         # Should NOT flag console.print()
-        warning_msgs = [w.msg for w in prog.warnings_had]
-        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
         # Only the 2 bare print() calls, not the console.print() call
-        assert len(no_print_warnings) == 2
+        assert len(no_print_errors) == 2
 
     def test_no_print_disabled_by_default(
         self, auto_lint_fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that no-print rule is not active by default."""
+        """Test that no-print rule is not active with default select."""
+        from jaclang.project.config import (
+            JacConfig,
+            set_config,
+        )
+
         input_path = auto_lint_fixture_path("no_print.jac")
 
-        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        # Explicitly use default config (select=["default"]) to isolate from project jac.toml
+        config = JacConfig()
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
 
-        warning_msgs = [w.msg for w in prog.warnings_had]
-        no_print_warnings = [m for m in warning_msgs if "[no-print]" in m]
-        assert len(no_print_warnings) == 0, (
-            f"Expected no no-print warnings by default, got: {no_print_warnings}"
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
+        assert len(no_print_errors) == 0, (
+            f"Expected no no-print errors by default, got: {no_print_errors}"
         )

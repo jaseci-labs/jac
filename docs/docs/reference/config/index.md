@@ -160,19 +160,30 @@ warnonly = false     # Treat errors as warnings
 
 #### [check.lint]
 
-Configure which auto-lint rules are active during `jac format --fix`. Rules use a select/ignore model:
+Configure which auto-lint rules are active during `jac lint` and `jac lint --fix`. Rules use a select/ignore model with two group keywords:
+
+- `"default"` - code-transforming rules only (safe, auto-fixable)
+- `"all"` - every rule, including unfixable rules like `no-print`
 
 ```toml
 [check.lint]
-select = ["all"]              # Enable all default rules (default)
+select = ["default"]          # Code-transforming rules only (default)
 ignore = ["combine-has"]      # Disable specific rules
+exclude = []                  # File patterns to skip (glob syntax)
 ```
 
-To enable opt-in rules (like `no-print`) alongside defaults:
+To enable all rules including warning-only rules:
 
 ```toml
 [check.lint]
-select = ["all", "no-print"]  # Default rules + opt-in no-print
+select = ["all"]              # Everything, including no-print
+```
+
+To add specific rules on top of defaults:
+
+```toml
+[check.lint]
+select = ["default", "no-print"]  # Defaults + no-print warnings
 ```
 
 To enable only specific rules:
@@ -184,20 +195,37 @@ select = ["combine-has", "remove-empty-parens"]
 
 **Available lint rules:**
 
-| Rule Name | Description | Default |
-|-----------|-------------|---------|
-| `combine-has` | Combine consecutive `has` statements with same modifiers | On |
-| `combine-glob` | Combine consecutive `glob` statements with same modifiers | On |
-| `staticmethod-to-static` | Convert `@staticmethod` decorator to `static` keyword | On |
-| `init-to-can` | Convert `def __init__` / `def __post_init__` to `can init` / `can postinit` | On |
-| `remove-empty-parens` | Remove empty parentheses from declarations (`def foo()` → `def foo`) | On |
-| `remove-kwesc` | Remove unnecessary angle bracket escaping from non-keyword names | On |
-| `hasattr-to-null-ok` | Convert `hasattr(obj, "attr")` to null-safe access (`obj?.attr`) | On |
-| `simplify-ternary` | Simplify `x if x else default` to `x or default` | On |
-| `remove-future-annotations` | Remove `import from __future__ { annotations }` (not needed in Jac) | On |
-| `fix-impl-signature` | Fix signature mismatches between declarations and implementations | On |
-| `remove-import-semi` | Remove trailing semicolons from `import from X { ... }` | On |
-| `no-print` | Warn on bare `print()` calls (use console abstraction instead) | Opt-in |
+| Rule Name | Description | Group |
+|-----------|-------------|-------|
+| `combine-has` | Combine consecutive `has` statements with same modifiers | default |
+| `combine-glob` | Combine consecutive `glob` statements with same modifiers | default |
+| `staticmethod-to-static` | Convert `@staticmethod` decorator to `static` keyword | default |
+| `init-to-can` | Convert `def __init__` / `def __post_init__` to `can init` / `can postinit` | default |
+| `remove-empty-parens` | Remove empty parentheses from declarations (`def foo()` → `def foo`) | default |
+| `remove-kwesc` | Remove unnecessary angle bracket escaping from non-keyword names | default |
+| `hasattr-to-null-ok` | Convert `hasattr(obj, "attr")` to null-safe access (`obj?.attr`) | default |
+| `simplify-ternary` | Simplify `x if x else default` to `x or default` | default |
+| `remove-future-annotations` | Remove `import from __future__ { annotations }` (not needed in Jac) | default |
+| `fix-impl-signature` | Fix signature mismatches between declarations and implementations | default |
+| `remove-import-semi` | Remove trailing semicolons from `import from X { ... }` | default |
+| `no-print` | Error on bare `print()` calls (use console abstraction instead) | all |
+
+**Excluding files from lint:**
+
+Use `exclude` to skip files matching glob patterns:
+
+```toml
+[check.lint]
+select = ["all"]
+exclude = [
+    "docs/*",
+    "*/examples/*",
+    "*/tests/*",
+    "legacy_module.jac",
+]
+```
+
+Patterns are matched against file paths relative to the project root. Use `*` for single-directory wildcards and `**` for recursive matching.
 
 ---
 
@@ -303,8 +331,8 @@ Custom command shortcuts:
 dev = "jac run main.jac"
 test = "jac test -v"
 build = "jac build main.jac -t"
-lint = "jac check ."
-format = "jac format . --fix"
+lint = "jac lint . --fix"
+format = "jac format ."
 ```
 
 Run with:
@@ -415,8 +443,9 @@ typecheck = true
 dir = ".jac"
 
 [check.lint]
-select = ["all", "no-print"]
+select = ["all"]
 ignore = []
+exclude = []
 
 [plugins]
 discovery = "auto"
@@ -428,7 +457,7 @@ api_key = "${OPENAI_API_KEY}"
 [scripts]
 dev = "jac run main.jac"
 test = "jac test"
-format = "jac format . --fix"
+lint = "jac lint . --fix"
 ```
 
 ---

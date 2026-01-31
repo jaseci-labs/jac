@@ -1,5 +1,6 @@
-"""Run the language server."""
+import from jaclang.cli.console { console }
 
+"""Run the language server."""
 impl run_lang_server -> None {
     server = JacLangServer();
     # Register all features
@@ -129,5 +130,5 @@ impl formatting(
 }
 
 impl debug(msg: str) -> None {
-    print(f"[SERVER] {msg}", file=sys.stderr);
+    console.error(f"[SERVER] {msg}");
 }

@@ -6,6 +6,7 @@ import threading;
 import time;
 import from pathlib { Path }
 import from typing { Any }
+import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
 
@@ -142,7 +143,7 @@ impl JacFileWatcher._notify_callbacks(event: FileChangeEvent) -> None {
         try {
             callback(event);
         } except Exception as e {
-            print(f"[HMR] Error in callback: {e}", flush=True);
+            console.print(f"[HMR] Error in callback: {e}");
         }
     }
 }

@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 impl JacLangServer.shutdown -> None {
     # Guard against double shutdown.
     if self._shutdown_called {
@@ -387,7 +389,7 @@ impl JacLangServer.get_completion(
 }
 
 impl JacLangServer.debug(msg: str) -> None {
-    print(f"[Engine] {msg}", file=sys.stderr);
+    console.error(f"[Engine] {msg}");
 }
 
 impl JacLangServer.get_token_at_position(

@@ -112,6 +112,17 @@ def get_format_sched(
         ]
 
 
+def get_lint_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
+    """Lint-only schedule. Runs lint rules for error reporting without formatting."""
+    from jaclang.compiler.passes.tool.jac_auto_lint_pass import JacAutoLintPass
+    from jaclang.pycore.passes.annex_pass import JacAnnexPass
+
+    return [
+        JacAnnexPass,
+        JacAutoLintPass,
+    ]
+
+
 class JacCompiler:
     """Jac Compiler singleton.
 
@@ -368,6 +379,21 @@ class JacCompiler:
         parser_pass = JacParser(root_ir=source, prog=prog)
         current_mod = parser_pass.ir_out
         for pass_cls in get_format_sched(auto_lint=auto_lint):
+            current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
+        prog.mod = uni.ProgramModule(current_mod)
+        return prog
+
+    @staticmethod
+    def jac_file_linter(file_path: str) -> JacProgram:
+        """Lint a Jac file (report only, no formatting or output generation)."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        source_str = read_file_with_encoding(file_path)
+        source = uni.Source(source_str, mod_path=file_path)
+        parser_pass = JacParser(root_ir=source, prog=prog)
+        current_mod = parser_pass.ir_out
+        for pass_cls in get_lint_sched():
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out
         prog.mod = uni.ProgramModule(current_mod)
         return prog
