@@ -857,6 +857,49 @@ jac tool ir py main.jac
 
 ---
 
+### jac completions
+
+Generate and install shell completion scripts for the `jac` CLI.
+
+```bash
+jac completions [-h] [-s SHELL] [-i] [--no-install]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-s, --shell` | Shell type (`bash`, `zsh`, `fish`) | `bash` |
+| `-i, --install` | Auto-install completion to shell config | `False` |
+
+When `--install` is used, the completion script is written to `~/.jac/completions.<shell>` (e.g. `~/.jac/completions.bash`) and a source line is added to your shell config file (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).
+
+**Installed files:**
+
+| Shell | Completion script | Config modified |
+|-------|------------------|-----------------|
+| bash | `~/.jac/completions.bash` | `~/.bashrc` |
+| zsh | `~/.jac/completions.zsh` | `~/.zshrc` |
+| fish | `~/.jac/completions.fish` | `~/.config/fish/config.fish` |
+
+**Examples:**
+
+```bash
+# Print bash completion script to stdout
+jac completions
+
+# Auto-install for bash (writes to ~/.jac/completions.bash)
+jac completions --install
+
+# Generate zsh completions
+jac completions --shell zsh
+
+# Auto-install for fish
+jac completions --shell fish --install
+```
+
+> **Note:** After installing, run `source ~/.bashrc` (or restart your shell) to activate completions. Completions cover subcommands, options, and file paths.
+
+---
+
 ### jac lsp
 
 Start the Language Server Protocol server (for IDE integration).
