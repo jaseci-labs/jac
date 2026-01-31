@@ -141,7 +141,7 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
     if install {
         return _install_completion(shell, code);
     }
-    print(code);
+    console.print(code);
     return 0;
 }
 
@@ -199,9 +199,7 @@ def _install_completion(shell: str, code: str) -> int {
     # Completion script files stored in ~/.jac/
     ext_map = {"bash": "bash", "zsh": "zsh", "fish": "fish"};
     if shell not in config_map {
-        print(
-            f"Shell {shell} not supported for automatic installation.", file=sys.stderr
-        );
+        console.error(f"Shell {shell} not supported for automatic installation.");
         return 1;
     }
     # Write completion script to ~/.jac/completions.<shell>
@@ -211,7 +209,7 @@ def _install_completion(shell: str, code: str) -> int {
             f.write(code);
         }
     } except Exception as e {
-        print(f"Error writing completion script: {e}", file=sys.stderr);
+        console.error(f"Error writing completion script: {e}");
         return 1;
     }
     # Add a source line to shell config
@@ -249,12 +247,12 @@ def _install_completion(shell: str, code: str) -> int {
         with open(config_file, "w") as f {
             f.write(content);
         }
-        print(f"Completion script written to {comp_file}");
-        print(f"{action} source line in {config_file}");
-        print(f"Run 'source {config_file}' or restart your shell to activate.");
+        console.print(f"Completion script written to {comp_file}");
+        console.print(f"{action} source line in {config_file}");
+        console.print(f"Run 'source {config_file}' or restart your shell to activate.");
         return 0;
     } except Exception as e {
-        print(f"Error writing config: {e}", file=sys.stderr);
+        console.error(f"Error writing config: {e}");
         return 1;
     }
 }
