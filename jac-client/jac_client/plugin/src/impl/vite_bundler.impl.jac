@@ -2,12 +2,16 @@ import from jaclang.cli.console { console }
 
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
-    # Try to get from project config
+    # Try to get from project config, but only if it matches our project dir
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
         if config is not None {
-            return config.get_client_dir();
+            config_root = config.project_root;
+            if config_root is not None
+            and config_root.resolve() == self.project_dir.resolve() {
+                return config.get_client_dir();
+            }
         }
     } except ImportError { }
     # Fallback to default
