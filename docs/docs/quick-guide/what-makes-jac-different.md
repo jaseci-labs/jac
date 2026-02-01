@@ -24,7 +24,7 @@ graph LR
 
 - `sv { }` -- code that runs on the server (compiles to Python)
 - `cl { }` -- code that runs in the browser (compiles to JavaScript)
-- `na { }` -- code that runs natively on the local machine
+- `na { }` -- code that runs natively compiled on the host machine (compiles to native binary)
 - Code outside any block defaults to the server codespace
 
 **File extensions** -- set the default top-level codespace for a file, e.g., for a module `prog`:
@@ -75,6 +75,8 @@ Codespaces are similar to namespaces, but instead of organizing names, they orga
 ---
 
 ## 2. Object-Spatial Programming (OSP)
+
+OSP gives us two key capabilities. It provides us with a natural way to articulate solutions to problems with graph-like and hierarchical properties, and importantly, a way to organize a programs interaction with data that allows us to hide the complexity of database organization and management.
 
 Standard object-oriented programming models data as isolated objects -- you call methods to bring data to computation. OSP adds a layer on top: objects exist in a **graph** with explicit relationships. Additionally, the `walker` construct is also introduced allowing computation to **move to the data** by traversing that graph.
 
