@@ -4,6 +4,9 @@ Complete Jac applications to study, learn from, and build upon. Each example inc
 
 ---
 
+!!! tip "Before diving in"
+    Each example lists the Jac concepts it uses and links to where you can learn them. If an example uses a concept you haven't seen, follow the linked tutorial first.
+
 ## Featured Examples
 
 ### LittleX - Social Media Platform

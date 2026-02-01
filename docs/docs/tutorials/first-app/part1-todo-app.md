@@ -314,6 +314,9 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
 jac start main.jac
 ```
 
+!!! warning "Common issue"
+    If you see "Address already in use", another process is on port 8000. See [Troubleshooting: Server won't start](../troubleshooting.md#server-wont-start-address-already-in-use).
+
 Open [http://localhost:8000](http://localhost:8000). You should see a clean todo app with an input field and an "Add" button. Try it:
 
 1. Type "Buy groceries" and press Enter -- the todo appears

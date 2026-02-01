@@ -71,27 +71,25 @@ Bonjour, comment allez-vous ?
 
 ## How It Works
 
-The magic is in the `by llm()` syntax:
+The key is the `by llm()` syntax:
 
 ```jac
-"""Translate the given text to French."""
-def translate(text: str) -> str by llm();
+def translate_to_french(text: str) -> str by llm();
 ```
 
 | Part | Purpose |
 |------|---------|
-| `"""..."""` | Docstring becomes the AI prompt |
-| `(text: str)` | Input parameter with type |
+| `translate_to_french` | Function name conveys the intent |
+| `(text: str)` | Input parameter with descriptive name and type |
 | `-> str` | Expected return type |
 | `by llm()` | Delegates implementation to the LLM |
 
-**byLLM automatically:**
+The compiler extracts semantics from the code -- function name, parameter names, types, and return type -- and uses them to construct the LLM prompt. For additional context beyond what names and types convey, use `sem`:
 
-1. Generates a prompt from the docstring and type signature
-2. Calls the LLM API
-3. Parses the response into the correct return type
-
-No manual prompt engineering needed!
+```jac
+sem translate = "Translate the given text to French. Preserve formatting and tone.";
+def translate(text: str) -> str by llm();
+```
 
 ---
 
@@ -289,7 +287,7 @@ test test_translate {
 |---------|--------|
 | Configure LLM | `glob llm = Model(model_name="...")` |
 | AI function | `def func() -> Type by llm()` |
-| Prompt | Function docstring |
+| Semantic context | `sem func = "..."` |
 | Type safety | Return type annotation |
 | Temperature | `by llm(temperature=0.5)` |
 | Max tokens | `by llm(max_tokens=100)` |
@@ -300,4 +298,5 @@ test test_translate {
 
 - [Structured Outputs](structured-outputs.md) - Return enums, objects, and lists
 - [Agentic AI](agentic.md) - Tool calling and ReAct patterns
+- [Part 2: Add AI](../first-app/part2-ai-features.md) - See AI integration in a complete full-stack app
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation

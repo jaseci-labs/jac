@@ -38,6 +38,14 @@ pip install byllm
 export OPENAI_API_KEY="your-key"
 ```
 
+**Key concepts used:**
+
+| Concept | Where to Learn |
+|---------|----------------|
+| `by llm()` | [byLLM Quickstart](../ai/quickstart.md) |
+| `obj` structured types | [Structured Outputs](../ai/structured-outputs.md), [Part 2](../first-app/part2-ai-features.md) |
+| `enum` types | [Part 2: Add AI](../first-app/part2-ai-features.md) |
+
 ---
 
 ## Data Structures

@@ -12,6 +12,8 @@ In Parts 1 and 2, every `def:pub` function operates on the same `root` node. If 
 
 **Walkers** solve this. A `walker:priv` requires authentication and operates on the logged-in user's *private* root node. User A's todos stay separate from User B's -- same code, isolated data, enforced by the runtime.
 
+For a detailed comparison table of when to use functions vs walkers, see [Functions vs Walkers](../language/osp.md#when-to-use-functions-vs-walkers) in the OSP tutorial.
+
 ---
 
 ## Understanding Walkers
@@ -33,6 +35,9 @@ The core keywords:
 - **`here`** -- the node the walker is currently on
 - **`self`** -- the walker's own state (its `has` properties)
 - **`report`** -- send data back to the caller
+
+!!! warning "Common issue"
+    If walker reports come back empty, make sure you have `visit [-->]` to send the walker to connected nodes, and that the node type in `with X entry` matches your graph. See [Troubleshooting: Walker reports are empty](../troubleshooting.md#walker-reports-are-empty).
 
 ---
 

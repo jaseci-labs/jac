@@ -14,6 +14,9 @@ Jac's AI features use an LLM under the hood. You need an API key from Anthropic 
 export ANTHROPIC_API_KEY="your-key-here"
 ```
 
+!!! warning "Common issue"
+    If you get "API key not found" errors, make sure the environment variable is set in the same terminal where you run `jac`. See [Troubleshooting: API key issues](../troubleshooting.md#openai-api-key-not-found).
+
 ---
 
 ## Configure the LLM
@@ -49,17 +52,16 @@ An `enum` constrains the AI to return *exactly* one of these values. Without it,
 Here's the key feature. Add this after the enum:
 
 ```jac
-"""Categorize a todo based on its title."""
 def categorize(title: str) -> Category by llm();
 ```
 
-That's the entire function. There's no body -- `by llm()` tells Jac to have the LLM generate the return value based on three things:
+That's the entire function. There's no body -- `by llm()` tells Jac to have the LLM generate the return value. The compiler extracts semantics from the code itself:
 
-- The **docstring** -- acts as the prompt ("Categorize a todo based on its title")
-- The **parameter types** -- what the LLM receives (`title: str`)
-- The **return type** -- what shape the output must be (`Category`, one of the enum values)
+- The **function name** -- `categorize` tells the LLM what to do
+- The **parameter names and types** -- `title: str` is what the LLM receives
+- The **return type** -- `Category` constrains the output to one of the enum values
 
-You write the contract. The LLM fulfills it.
+The function name, parameter names, and types are the specification. The LLM fulfills it.
 
 ---
 
@@ -330,11 +332,13 @@ You added AI to your app with minimal code changes:
 - **`import from byllm.lib { Model }`** -- load Jac's AI plugin
 - **`glob llm = Model(...)`** -- initialize the LLM at module level
 - **`enum Category`** -- constrain AI output to specific values
-- **`def categorize(...) -> Category by llm()`** -- let the LLM generate a function's return value from its docstring and types
-- **Jac's type system is the LLM's output schema** -- define your types, write a docstring, and `by llm()` handles the rest
+- **`def categorize(...) -> Category by llm()`** -- let the LLM generate a function's return value from its name, parameter names, and types
+- **Jac's type system is the LLM's output schema** -- define your types, name things clearly, and `by llm()` handles the rest. Use `sem` to add meaning beyond what names and types convey
 
 ---
 
 ## Next Step
 
 Your app now has AI, but there's still a problem: every user shares the same todos. In [Part 3](part3-multi-user.md), you'll introduce **walkers** for per-user data isolation, add **authentication**, build an AI-powered **meal planner** with structured outputs, and organize the project into **multiple files**.
+
+**Want to go deeper on AI?** See the [byLLM Quickstart](../ai/quickstart.md) for standalone examples and the [byLLM Reference](../../reference/plugins/byllm.md) for full API docs.
