@@ -240,6 +240,12 @@ class JacScalePlugin {
         import from .factories.storage_factory { StorageFactory }
         return StorageFactory.get_default(base_path, create_dirs);
     }
+
+    @hookimpl
+    static def db(db_name: str = 'jac_db') -> Db {
+        import from jac_scale.db { Db }
+        return Db(db_name=db_name);
+    }
 }
 
 # Pluggy's varnames() puts parameters with defaults into kwargnames, not argnames.
