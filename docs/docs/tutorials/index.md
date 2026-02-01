@@ -4,6 +4,18 @@ In-depth tutorials organized by topic. Each tutorial takes 30-60 minutes to comp
 
 ---
 
+## Start Here
+
+New to Jac? Begin with the **Build Your First App** tutorial -- a 3-part guide that takes you from zero to a multi-user AI-powered app:
+
+| Part | What You'll Build | Concepts |
+|------|-------------------|----------|
+| [Part 1: Todo App](first-app/part1-todo-app.md) | Working todo app with graph persistence | Nodes, `def:pub`, reactive frontend |
+| [Part 2: Add AI](first-app/part2-ai-features.md) | AI categorization + meal planner | `by llm()`, `enum`, `obj`, `sem` |
+| [Part 3: Walkers, Auth & Structure](first-app/part3-multi-user.md) | Auth, walkers, multi-file structure | `walker:priv`, authentication, components |
+
+---
+
 ## Learning Paths
 
 Choose a path based on what you want to build:

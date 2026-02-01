@@ -1,5 +1,8 @@
 # Build a Full-Stack Todo App with AI
 
+!!! tip "New Tutorial Available"
+    For a comprehensive, step-by-step guide to building a full-stack AI app, see the **[Build Your First App](../first-app/part1-todo-app.md)** tutorial series. It covers the same concepts in a more progressive format across three parts.
+
 This tutorial walks you through building a complete full-stack application with Jac, covering server-side graph operations, client-side React UI, and AI-powered features using `by llm()`.
 
 > **Prerequisites:** Complete [Project Setup](setup.md) first.
