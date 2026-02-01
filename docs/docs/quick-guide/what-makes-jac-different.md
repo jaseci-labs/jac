@@ -51,12 +51,16 @@ def:pub add_todo(title: str) -> dict {
 
 # Client codespace
 cl {
-    sv import from main { add_todo }
-
     def:pub app -> any {
         has items: list = [];
+
+        async def add -> None {
+            todo = await add_todo("New");
+            items = items.concat([todo]);
+        }
+
         return <div>
-            <button onclick={|| items = items.concat([await add_todo("New")])}>
+            <button onClick={lambda -> None { add(); }}>
                 Add
             </button>
         </div>;
@@ -64,7 +68,7 @@ cl {
 }
 ```
 
-`sv import` brings server-side definitions into client scope. When the client calls `root spawn AddTodo(...)`, the compiler generates the HTTP call, serialization, and routing between codespaces. You write one language; the compiler produces the interop layer.
+The server definitions are visible to the `cl` block. When the client calls `add_todo(...)`, the compiler generates the HTTP call, serialization, and routing between codespaces. You write one language; the compiler produces the interop layer.
 
 Codespaces are similar to namespaces, but instead of organizing names, they organize where code executes. Interop between them -- function calls, spawn calls, type sharing -- is handled by the compiler and runtime.
 
