@@ -106,16 +106,11 @@ Built-in endpoints:
 
 ### 1 Multi-Layer Memory
 
-```
-┌─────────────────┐
-│   Application   │
-├─────────────────┤
-│  L1: Volatile   │  (in-memory)
-├─────────────────┤
-│  L2: Redis      │  (cache)
-├─────────────────┤
-│  L3: MongoDB    │  (persistent)
-└─────────────────┘
+```mermaid
+graph TD
+    App["Application"] --- L1["L1: Volatile (in-memory)"]
+    L1 --- L2["L2: Redis (cache)"]
+    L2 --- L3["L3: MongoDB (persistent)"]
 ```
 
 ### 2 FastAPI Integration
