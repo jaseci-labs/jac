@@ -1,6 +1,5 @@
 import os
 
-import pytest
 from testcontainers.mongodb import MongoDbContainer
 
 
@@ -35,17 +34,21 @@ class TestDirectDb:
         close_mongo_client()
 
     def test_direct_db_access(self):
-        try:
-            from jac_scale.db import Db, get_db
-        except ImportError:
-            pytest.fail(
-                "Could not import jac_scale.db. Make sure the jac file is compiled."
-            )
+        """Test db() builtin via JacRuntime (plugin hook)."""
+        from jac_scale.db import Db
+        from jaclang.pycore.runtime import JacRuntime
 
-        db = get_db()
+        # Test default db name
+        db = JacRuntime.db()
         assert isinstance(db, Db)
+        assert db.db_name == "jac_db"
 
-        # Verify interactions
+        # Test custom db name
+        db_custom = JacRuntime.db(db_name="my_custom_db")
+        assert isinstance(db_custom, Db)
+        assert db_custom.db_name == "my_custom_db"
+
+        # Verify CRUD operations
         col_name = "direct_access_test"
         doc = {"key": "value", "num": 42}
 
@@ -77,3 +80,39 @@ class TestDirectDb:
 
         deleted = db.find_one(col_name, {"key": "value"})
         assert deleted is None
+
+    def test_db_builtin_import(self):
+        """Test that db is available as a builtin."""
+        from jaclang.runtimelib.builtin import db
+
+        # Verify it's callable
+        assert callable(db)
+
+        # Test it returns correct instance
+        from jac_scale.db import Db
+
+        db_instance = db()
+        assert isinstance(db_instance, Db)
+
+    def test_multiple_db_connections(self):
+        """Test multiple database connections with different names."""
+        from jaclang.pycore.runtime import JacRuntime
+
+        # Create multiple database connections
+        db1 = JacRuntime.db(db_name="db_one")
+        db2 = JacRuntime.db(db_name="db_two")
+
+        assert db1.db_name == "db_one"
+        assert db2.db_name == "db_two"
+
+        # Test operations on different databases
+        db1.insert_one("test_col", {"source": "db1"})
+        db2.insert_one("test_col", {"source": "db2"})
+
+        doc1 = db1.find_one("test_col", {"source": "db1"})
+        doc2 = db2.find_one("test_col", {"source": "db2"})
+
+        assert doc1 is not None
+        assert doc1["source"] == "db1"
+        assert doc2 is not None
+        assert doc2["source"] == "db2"
