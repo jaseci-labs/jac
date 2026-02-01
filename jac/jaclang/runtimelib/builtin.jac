@@ -79,5 +79,6 @@ glob __all__ = [
          'ReadPerm',
          'ConnectPerm',
          'WritePerm',
-         'restspec'
+         'restspec',
+         'db'
      ];
