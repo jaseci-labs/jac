@@ -16,17 +16,16 @@ Traditional OOP: Objects exist in isolation. You call methods to bring data to c
 
 **Object-Spatial Programming (OSP):** Objects exist in a graph with explicit relationships. You send computation (walkers) to data.
 
-```
-Traditional OOP:           OSP:
-┌─────────┐               ┌─────────┐
-│ Object  │               │  Node   │◄──── Walker visits
-│ .method │               │         │      and operates
-└─────────┘               └────┬────┘
-                               │ Edge
-                          ┌────▼────┐
-                          │  Node   │◄──── Walker moves
-                          │         │      to connected nodes
-                          └─────────┘
+```mermaid
+graph TD
+    subgraph oop["Traditional OOP"]
+        Obj["Object<br/>.method()"]
+    end
+    subgraph osp["Object-Spatial Programming"]
+        N1["Node"] -->|Edge| N2["Node"]
+        W1(["Walker visits<br/>and operates"]) -.-> N1
+        W2(["Walker moves<br/>to connected nodes"]) -.-> N2
+    end
 ```
 
 ---
@@ -100,12 +99,11 @@ with entry {
 
 This creates a graph:
 
-```
-    root
-    /  \
- alice  bob
-   |
- carol
+```mermaid
+graph TD
+    root --> alice
+    root --> bob
+    alice --> carol
 ```
 
 ---

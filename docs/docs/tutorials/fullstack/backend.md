@@ -18,11 +18,9 @@ In Jac full-stack apps:
 2. **Frontend** = Components in `cl { }` blocks
 3. **Connection** = `useWalker` hook fetches walker results
 
-```
-┌─────────────┐     HTTP/WS      ┌─────────────┐
-│  Frontend   │ ←───────────────→ │   Walker    │
-│  Component  │    useWalker()    │   API       │
-└─────────────┘                   └─────────────┘
+```mermaid
+graph LR
+    Frontend["Frontend<br/>Component"] <-- "HTTP/WS<br/>useWalker()" --> Backend["Walker<br/>API"]
 ```
 
 ---
