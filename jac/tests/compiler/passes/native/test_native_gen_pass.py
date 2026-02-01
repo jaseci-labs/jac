@@ -462,6 +462,76 @@ class TestNativeRuntime:
         assert f() == 42
 
 
+class TestNativeAugAssign:
+    """Verify augmented assignment operators: +=, -=, *=, //=, %=."""
+
+    def test_add_assign(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_add_assign", ctypes.c_int64)
+        assert f() == 15
+
+    def test_sub_assign(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_sub_assign", ctypes.c_int64)
+        assert f() == 63
+
+    def test_mul_assign(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_mul_assign", ctypes.c_int64)
+        assert f() == 42
+
+    def test_div_assign(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_div_assign", ctypes.c_int64)
+        assert f() == 9
+
+    def test_mod_assign(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_mod_assign", ctypes.c_int64)
+        assert f() == 2
+
+    def test_chained_aug(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_chained_aug", ctypes.c_int64)
+        assert f() == 8  # (1+2)*3 - 1
+
+    def test_aug_in_while(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_in_while", ctypes.c_int64)
+        assert f() == 45  # 0+1+2+...+9
+
+    def test_aug_in_for(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_in_for", ctypes.c_int64)
+        assert f() == 45  # 0+1+2+...+9
+
+    def test_aug_conditional(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_conditional", ctypes.c_int64)
+        assert f() == 2025  # even=20, odd=25 -> 20*100+25
+
+    def test_aug_nested_loops(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_nested_loops", ctypes.c_int64)
+        assert f() == 25  # 5*5
+
+    def test_aug_float_add(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_float_add", ctypes.c_double)
+        assert abs(f() - 4.0) < 1e-10
+
+    def test_aug_float_mul(self):
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_aug_float_mul", ctypes.c_double)
+        assert abs(f() - 7.5) < 1e-10
+
+    def test_count_primes(self):
+        """Count first 10 primes using += in nested while loops."""
+        engine, _ = compile_native("aug_assign.na.jac")
+        f = get_func(engine, "test_count_primes", ctypes.c_int64)
+        assert f() == 29  # 10th prime
+
+
 class TestNativeChess:
     """Full chess.na.jac integration tests."""
 

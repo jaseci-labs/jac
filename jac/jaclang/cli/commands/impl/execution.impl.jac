@@ -81,38 +81,33 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
-        Jac.jac_import(
-            target=mod,
-            base_path=base,
-            override_name='__main__' if main else None,
-            lng=lng
-        );
-        # Execute native entry point for .na.jac files
-        if main and filename.endswith('.na.jac') {
+        if filename.endswith('.na.jac') {
+            # Native files: compile directly and call jac_entry.
+            # Skip jac_import to avoid resolving a .jac file with the same name.
             import ctypes;
             full_path = os.path.abspath(filename);
             program = Jac.get_program();
-            # Look for native engine in hub (populated on fresh compile)
-            engine = None;
-            for ir_mod in program.mod.hub.values() {
-                if ir_mod.gen.native_engine {
-                    engine = ir_mod.gen.native_engine;
-                    break;
+            ir_mod = program.compile(file_path=full_path);
+            if ir_mod and ir_mod.gen.native_engine {
+                engine = ir_mod.gen.native_engine;
+                if main {
+                    addr = engine.get_function_address("jac_entry");
+                    if addr != 0 {
+                        ctypes.CFUNCTYPE(None)(addr)();
+                    }
                 }
+            } else {
+                console.error("Native compilation failed for " + filename);
+                mach.close();
+                return 1;
             }
-            # If not in hub (bytecode was cached), compile natively
-            if engine is None {
-                ir_mod = program.compile(file_path=full_path);
-                if ir_mod and ir_mod.gen.native_engine {
-                    engine = ir_mod.gen.native_engine;
-                }
-            }
-            if engine {
-                addr = engine.get_function_address("jac_entry");
-                if addr != 0 {
-                    ctypes.CFUNCTYPE(None)(addr)();
-                }
-            }
+        } else {
+            Jac.jac_import(
+                target=mod,
+                base_path=base,
+                override_name='__main__' if main else None,
+                lng=lng
+            );
         }
     } except Exception as e {
         import from jaclang.pycore.helpers { dump_traceback }

@@ -480,6 +480,63 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         if var_name in self.local_vars {
             # Update existing variable
             alloca = self.local_vars[var_name];
+            # Handle augmented assignment: +=, -=, *=, //=, %=
+            if node.aug_op is not None {
+                aug_op_val = node.aug_op.value;
+                current = self.builder.load(alloca, name=f"{var_name}.cur");
+                coerced = self._coerce_type(value, current.type);
+                if aug_op_val == "+=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.add(
+                            current, coerced, name=f"{var_name}.add"
+                        );
+                    } else {
+                        value = self.builder.fadd(
+                            current, coerced, name=f"{var_name}.fadd"
+                        );
+                    }
+                } elif aug_op_val == "-=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.sub(
+                            current, coerced, name=f"{var_name}.sub"
+                        );
+                    } else {
+                        value = self.builder.fsub(
+                            current, coerced, name=f"{var_name}.fsub"
+                        );
+                    }
+                } elif aug_op_val == "*=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.mul(
+                            current, coerced, name=f"{var_name}.mul"
+                        );
+                    } else {
+                        value = self.builder.fmul(
+                            current, coerced, name=f"{var_name}.fmul"
+                        );
+                    }
+                } elif aug_op_val == "//=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.sdiv(
+                            current, coerced, name=f"{var_name}.div"
+                        );
+                    } else {
+                        value = self.builder.fdiv(
+                            current, coerced, name=f"{var_name}.fdiv"
+                        );
+                    }
+                } elif aug_op_val == "%=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.srem(
+                            current, coerced, name=f"{var_name}.mod"
+                        );
+                    } else {
+                        value = self.builder.frem(
+                            current, coerced, name=f"{var_name}.fmod"
+                        );
+                    }
+                }
+            }
             coerced = self._coerce_type(value, alloca.type.pointee);
             self.builder.store(coerced, alloca);
         } else {
