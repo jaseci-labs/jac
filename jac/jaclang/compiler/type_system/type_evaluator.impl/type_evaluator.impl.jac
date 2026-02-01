@@ -6,9 +6,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # check if they are available, if the're not, we're inside builtins or
         # typeshed module itself and in that case we can just return unknown type.
         # ----------------------------------------------------------------------
-        case uni.String() | uni.MultiString():
+        case uni.String() | uni.MultiString() | uni.FString():
             if self.prefetch {
-                return self._convert_to_instance(self.get_type_of_string(expr));
+                return self._convert_to_instance(self.prefetch.str_class);
             }
 
         case uni.Int():
@@ -28,8 +28,18 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.ListVal():
             if self.prefetch and self.prefetch.list_class {
-                # TODO: We can do some inference inside the list to get the element type.
-                return self._convert_to_instance(self.prefetch.list_class);
+                list_inst = self._convert_to_instance(self.prefetch.list_class);
+                # Infer element type from the list literal's elements.
+                if isinstance(list_inst, types.ClassType) and expr.values {
+                    for _val in expr.values {
+                        elem_type = self.get_type_of_expression(_val);
+                        if isinstance(elem_type, types.ClassType) {
+                            list_inst.private.type_args = [elem_type];
+                            break;
+                        }
+                    }
+                }
+                return list_inst;
             }
 
         # TODO: Boolean literals.
@@ -214,6 +224,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
+
+        case uni.UnaryExpr():
+            # `not x` -> bool; `-x`, `~x` -> type of operand
+            if isinstance(expr.op, uni.Token) and expr.op.name == Tok.NOT {
+                if self.prefetch and self.prefetch.bool_class {
+                    return self._convert_to_instance(self.prefetch.bool_class);
+                }
+            }
+            return self.get_type_of_expression(expr.operand);
 
         case uni.FilterCompr():
             if expr.f_type {
@@ -429,6 +448,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return self._convert_to_instance(annotation_type);
                 } else {  # Assignment without a type annotation.
 
+                    # Check outer scopes for a typed declaration of the
+                    # same variable (e.g. `s: str = "a"` in an outer loop
+                    # when we're inside a nested `for` body with `s = s + x`).
+                    if (scope_ := node_.find_parent_of_type(uni.UniScopeNode)) {
+                        if (outer := scope_.parent_scope) {
+                            if (outer_sym := outer.lookup(node_.sym_name, deep=True)) {
+                                outer_type = self.get_type_of_symbol(outer_sym);
+                                if not isinstance(outer_type, types.UnknownType) {
+                                    return outer_type;
+                                }
+                            }
+                        }
+                    }
                     if node_.parent.value is not None {
                         return self.get_type_of_expression(node_.parent.value);
                     }
@@ -472,18 +504,26 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
                 );
-                # TODO: Ensure the iter_type is an Iterator[T].
-                # The iter_tpe should be Iterator[T] and the return type should be T.
-                if isinstance(iter_type, types.ClassType)
-                and isinstance(collection_type, types.ClassType) {
+                if isinstance(iter_type, types.ClassType) {
                     if len(iter_type.private.type_args) == 1 {
-                        specialized = iter_type.specialize_generics(
-                            collection_type.private.type_args
-                        );
-                        if len(specialized.private.type_args) == 1 {
-                            iterable_type = specialized.private.type_args[0];
-                            if isinstance(iterable_type, types.ClassType) {
-                                return iterable_type.clone_as_instance();
+                        elem_type = iter_type.private.type_args[0];
+                        # If element type is already concrete (e.g. Iterator[int]
+                        # from range.__iter__), use it directly.
+                        if isinstance(elem_type, types.ClassType) {
+                            return elem_type.clone_as_instance();
+                        }
+                        # Element type is a TypeVar — specialize using the
+                        # collection's type args (e.g. list[int] -> [int]).
+                        if isinstance(collection_type, types.ClassType)
+                        and collection_type.private.type_args {
+                            specialized = iter_type.specialize_generics(
+                                collection_type.private.type_args
+                            );
+                            if len(specialized.private.type_args) == 1 {
+                                iterable_type = specialized.private.type_args[0];
+                                if isinstance(iterable_type, types.ClassType) {
+                                    return iterable_type.clone_as_instance();
+                                }
                             }
                         }
                     }

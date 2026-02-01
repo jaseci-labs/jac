@@ -9,7 +9,7 @@ enum Kind {
     BISHOP = 2
 }
 
-def opposite_color(c: int) -> int {
+def opposite_color(c: int) -> Color {
     if c == Color.WHITE {
         return Color.BLACK;
     }
