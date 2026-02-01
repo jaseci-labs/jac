@@ -52,7 +52,9 @@ def _proc_file(filename: str) -> tuple {
     import from jaclang.pycore.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
-    if filename.endswith('.jac') {
+    if filename.endswith('.na.jac') {
+        mod = mod[:-7];
+    } elif filename.endswith('.jac') {
         mod = mod[:-4];
     } elif filename.endswith('.py') {
         mod = mod[:-3];
@@ -85,6 +87,33 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             override_name='__main__' if main else None,
             lng=lng
         );
+        # Execute native entry point for .na.jac files
+        if main and filename.endswith('.na.jac') {
+            import ctypes;
+            full_path = os.path.abspath(filename);
+            program = Jac.get_program();
+            # Look for native engine in hub (populated on fresh compile)
+            engine = None;
+            for ir_mod in program.mod.hub.values() {
+                if ir_mod.gen.native_engine {
+                    engine = ir_mod.gen.native_engine;
+                    break;
+                }
+            }
+            # If not in hub (bytecode was cached), compile natively
+            if engine is None {
+                ir_mod = program.compile(file_path=full_path);
+                if ir_mod and ir_mod.gen.native_engine {
+                    engine = ir_mod.gen.native_engine;
+                }
+            }
+            if engine {
+                addr = engine.get_function_address("jac_entry");
+                if addr != 0 {
+                    ctypes.CFUNCTYPE(None)(addr)();
+                }
+            }
+        }
     } except Exception as e {
         import from jaclang.pycore.helpers { dump_traceback }
         console.error(dump_traceback(e));
