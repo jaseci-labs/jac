@@ -433,13 +433,13 @@ with entry {
 | ReAct reasoning | `by llm(method="ReAct", tools=[...])` |
 | Object methods | `by llm(tools=[self.method])` |
 | Context injection | `by llm(incl_info={"key": value})` |
-| Tool docstrings | Help LLM understand when to use tools |
+| `sem` on tools | Help LLM understand when to use tools |
 
 ---
 
 ## Best Practices
 
-1. **Clear docstrings** - The LLM uses docstrings to understand tools
+1. **Clear `sem` declarations** - The LLM uses `sem` descriptions to understand tools
 2. **Descriptive parameters** - Name parameters clearly
 3. **Return useful info** - Return strings the LLM can interpret
 4. **Limit tool count** - Too many tools can confuse the LLM

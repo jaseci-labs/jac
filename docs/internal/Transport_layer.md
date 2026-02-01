@@ -129,30 +129,12 @@ obj HTTPTransport(BaseTransport) {
 
 ### Connection Lifecycle
 
-```
-┌─────────────────────────────────────┐
-│  Client initiates request           │
-└────────────────┬────────────────────┘
-                 │
-         ┌───────▼────────┐
-         │   connect()    │
-         │ (if stateful)  │
-         └───────┬────────┘
-                 │
-      ┌──────────▼──────────┐
-      │ Process request &   │
-      │ generate response   │
-      └──────────┬──────────┘
-                 │
-         ┌───────▼────────┐
-         │   send(data)   │
-         │ (encode data)  │
-         └───────┬────────┘
-                 │
-         ┌───────▼────────┐
-         │  close()       │
-         │ (if stateful)  │
-         └───────────────┘
+```mermaid
+graph TD
+    A["Client initiates request"] --> B["connect()<br/>(if stateful)"]
+    B --> C["Process request &<br/>generate response"]
+    C --> D["send(data)<br/>(encode data)"]
+    D --> E["close()<br/>(if stateful)"]
 ```
 
 ## Adding New Transport Types
