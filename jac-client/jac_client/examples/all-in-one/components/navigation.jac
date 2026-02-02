@@ -7,7 +7,7 @@ cl import from "@jac/runtime" {
 }
 
 cl {
-    def:pub Navigation -> any {
+    def:pub Navigation -> JsxElement {
         location = useLocation();
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();

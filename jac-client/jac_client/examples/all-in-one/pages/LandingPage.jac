@@ -6,7 +6,7 @@ cl import from "@jac/runtime" {
 }
 
 cl {
-    def:pub LandingPage -> any {
+    def:pub LandingPage -> JsxElement {
         return
             <div className="landing-container">
                 <section className="hero-section">

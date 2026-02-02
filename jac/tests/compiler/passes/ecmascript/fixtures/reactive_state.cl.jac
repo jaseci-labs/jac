@@ -4,7 +4,7 @@ This tests that has variables work correctly in .cl.jac files,
 without needing an explicit cl {} wrapper.
 """
 
-def:pub counter_app() -> any {
+def:pub counter_app() -> JsxElement {
     has count: int = 0;
     has name: str = "test";
 

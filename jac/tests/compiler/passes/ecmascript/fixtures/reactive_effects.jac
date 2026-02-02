@@ -4,7 +4,7 @@ Note: useEffect import is auto-injected from @jac/runtime when `can with entry/e
 """
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         has items: list = [];
         has loading: bool = True;
 

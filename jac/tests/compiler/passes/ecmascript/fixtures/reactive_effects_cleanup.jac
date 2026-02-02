@@ -4,7 +4,7 @@ Note: useEffect import is auto-injected from @jac/runtime when `can with entry/e
 """
 
 cl {
-    def:pub timer_component() -> any {
+    def:pub timer_component() -> JsxElement {
         has count: int = 0;
 
         # Cleanup effect - runs on component unmount
