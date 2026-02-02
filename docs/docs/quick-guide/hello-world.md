@@ -109,6 +109,7 @@ jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/m
 
 Ready for something more substantial?
 
+- [Core Concepts](what-makes-jac-different.md) - Codespaces, OSP, and compiler-integrated AI
 - [Build Your First App](../tutorials/first-app/part1-todo-app.md) - Build a complete full-stack AI app in Jac
 - [Jac vs Traditional Stack](jac-vs-traditional-stack.md) - See how Jac compares side-by-side
 - [Next Steps](next-steps.md) - Choose a learning path based on your goals

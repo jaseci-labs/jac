@@ -125,6 +125,9 @@ Jac is designed for developers who want to build AI-powered applications without
 | **Frontend Engineer** | Write UI components with full access to npm ecosystem |
 | **Student/Learner** | Modern language designed for clarity and simplicity |
 
+!!! note "What You Should Know"
+    Jac is a Python superset, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
+
 ---
 
 ## When to Use Jac

@@ -14,6 +14,9 @@ New to Jac? Begin with the **Build Your First App** tutorial -- a 3-part guide t
 | [Part 2: Add AI](first-app/part2-ai-features.md) | AI categorization + meal planner | `by llm()`, `enum`, `obj`, `sem` |
 | [Part 3: Walkers, Auth & Structure](first-app/part3-multi-user.md) | Auth, walkers, multi-file structure | `walker:priv`, authentication, components |
 
+!!! note "First App vs Full-Stack Tutorials"
+    **Build Your First App** is a quick end-to-end journey -- build one app across three parts, learning concepts as you go. **Full-Stack Apps** (below) is a deep-dive into each concept individually. New to Jac? Start with Build Your First App. Want to understand a specific topic (routing, state, auth)? Use the Full-Stack tutorials as targeted reference.
+
 ---
 
 ## Learning Paths
@@ -92,6 +95,12 @@ Before starting tutorials, ensure you have:
 - [x] Jac installed (`pip install jaseci`)
 - [x] Completed the [Quick Guide](../quick-guide/index.md)
 - [x] A code editor (VS Code with Jac extension recommended)
+
+**Assumed knowledge:**
+
+- **Python familiarity required** -- Jac is a Python superset; you should be comfortable with functions, classes, and type annotations
+- **React/JSX familiarity helpful** -- for full-stack tutorials, basic component and hook knowledge helps
+- **Web development basics helpful** -- HTTP, REST, frontend/backend separation
 
 For AI tutorials, you'll also need:
 

@@ -7,13 +7,13 @@ be called via ctypes.
 
 import llvmlite.binding as llvm;
 import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes.uni_pass { UniPass }
+import from jaclang.pycore.passes { Transform }
 
 """JIT compile LLVM IR module to native machine code."""
-obj NativeCompilePass(UniPass) {
+obj NativeCompilePass(Transform) {
     def init(
         ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
     ) -> None;
 
-    def before_pass -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
 }

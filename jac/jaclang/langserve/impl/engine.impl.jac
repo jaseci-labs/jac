@@ -42,12 +42,16 @@ impl JacLangServer.log_error(message: str) -> None {
 """Return semantic tokens for a file."""
 impl JacLangServer.get_semantic_tokens(file_path: str) -> lspt.SemanticTokens {
     fs_path = uris.to_fs_path(file_path);
-    sem_mgr = self.sem_managers.get(fs_path);
-    if not sem_mgr {
-        return lspt.SemanticTokens(data=[]);
-        return lspt.SemanticToken();
+    self._state_lock.acquire();
+    try {
+        sem_mgr = self.sem_managers.get(fs_path);
+        if not sem_mgr {
+            return lspt.SemanticTokens(data=[]);
+        }
+        return lspt.SemanticTokens(data=list(sem_mgr.sem_tokens));
+    } finally {
+        self._state_lock.release();
     }
-    return lspt.SemanticTokens(data=sem_mgr.sem_tokens);
 }
 
 """Rename a symbol in a file."""
@@ -146,7 +150,9 @@ impl JacLangServer.get_definition(
     if node_selected.sym and node_selected.sym.defn {
         try {
             return make_location(node_selected.sym.defn[0]);
-        } except Exception { }
+        } except Exception as e {
+            self.log_py(f"Error navigating to definition: {e}");
+        }
     }
     return None;
 }
@@ -162,6 +168,7 @@ impl JacLangServer.get_outline(file_path: str) -> list[lspt.DocumentSymbol] {
 
 """Extract meaningful information from the AST node."""
 impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
+    node_info: Optional[str] = None;
     try {
         if isinstance(sym_node, uni.NameAtom) {
             sym_node = sym_node.name_of;
@@ -186,7 +193,7 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
     } except AttributeError as e {
         self.log_warning(f"'Attribute error when accessing node attributes: '{e}");
     }
-    return node_info.strip();
+    return node_info.strip() if node_info else None;
 }
 
 """Return hover information for a file."""
@@ -207,8 +214,8 @@ impl JacLangServer.get_hover_info(
 
 """Return formatted jac."""
 impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
+    document = self.workspace.get_text_document(file_path);
     try {
-        document = self.workspace.get_text_document(file_path);
         prog = JacProgram.jac_str_formatter(
             source_str=document.source, file_path=document.path
         );
@@ -230,6 +237,14 @@ impl JacLangServer.formatted_jac(file_path: str) -> list[lspt.TextEdit] {
             new_text=formatted_text
         )
     ];
+}
+
+"""Close module (didClose cleanup - remove sem_manager only)."""
+impl JacLangServer.close_module(uri: str) -> None {
+    fs_path = uris.to_fs_path(uri);
+    if fs_path in self.sem_managers {
+        del (self.sem_managers[fs_path], );
+    }
 }
 
 """Delete module."""
@@ -256,10 +271,6 @@ impl JacLangServer.rename_module(old_path: str, new_path: str) -> None {
 impl JacLangServer.get_completion_items_of(
     ty: TypeBase | uni.UniScopeNode
 ) -> lspt.CompletionList {
-    evaluator = self.get_type_evaluator();
-    self.debug("getting completion of " + str(ty));
-    items = get_completion_items(ty);
-    self.debug("completion items are " + str(items));
     items: list[lspt.CompletionItem] = [];
     for item in get_completion_items(ty) {
         detail: lspt.CompletionItemLabelDetails | None = None;
@@ -338,8 +349,6 @@ impl JacLangServer.wait_till_idle_sync -> None {
 impl JacLangServer.get_completion(
     file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
 ) -> lspt.CompletionList {
-    # NOTE: We may only need to wait for the current file's type check.
-    await self.wait_till_idle();
     self.debug("Getting completion for " + file_uri + " at " + str(position));
     try {
         file_path = uris.to_fs_path(file_uri);
@@ -385,7 +394,6 @@ impl JacLangServer.get_completion(
         self.log_py(f"'Error during completion: '{e}");
         return lspt.CompletionList(is_incomplete=False, items=[]);
     }
-    self.debug("returning empty list");
 }
 
 impl JacLangServer.debug(msg: str) -> None {
@@ -396,21 +404,28 @@ impl JacLangServer.get_token_at_position(
     file_path: str, position: lspt.Position
 ) -> Optional[uni.AstNode] {
     fs_path = uris.to_fs_path(file_path);
-    if fs_path not in self.mod.hub {
+    self._state_lock.acquire();
+    try {
+        if fs_path not in self.mod.hub {
+            return None;
+        }
+        sem_mgr = self.sem_managers.get(fs_path);
+        if not sem_mgr {
+            return None;
+        }
+        token_index = utils.find_index(
+            sem_mgr.sem_tokens, position.line, position.character
+        );
+        if token_index is None {
+            return None;
+        }
+        if token_index < len(sem_mgr.static_sem_tokens) {
+            return sem_mgr.static_sem_tokens[token_index][3];
+        }
         return None;
+    } finally {
+        self._state_lock.release();
     }
-    sem_mgr = self.sem_managers.get(fs_path);
-    if not sem_mgr {
-        return None;
-    }
-    token_index = utils.find_index(
-        sem_mgr.sem_tokens, position.line, position.character
-    );
-    if token_index is None {
-        return None;
-    }
-    node_selected = sem_mgr.static_sem_tokens[token_index][3];
-    return node_selected;
 }
 
 impl JacLangServer.type_check(file_uri: str) -> None {
@@ -439,7 +454,7 @@ impl JacLangServer.type_check_file(
     # outside.
 ) -> bool {
     if cancel_token and cancel_token.is_set() {
-        return;
+        return False;
     }
     try {
         document = self.workspace.get_text_document(file_uri);
@@ -454,7 +469,7 @@ impl JacLangServer.type_check_file(
         );
 
         if cancel_token and cancel_token.is_set() {
-            return;
+            return False;
         }
         self.update_modules(fs_path, build);
 
@@ -483,8 +498,10 @@ impl JacLangServer.type_check_file(
             );
         }
     } except Exception as e {
-        self.debug(f"Error during type check: {e}");
+        self.log_error(f"Error during type check: {e}");
+        return False;
     }
+    return True;
 }
 
 """Update modules in JacProgram's hub and semantic managers."""
@@ -492,7 +509,12 @@ impl JacLangServer.update_modules(
     file_path: str, build: uni.Module, need: bool = True
 ) -> None {
     self.log_py(f"'Updating modules for '{file_path}");
-    self.module_manager.update(file_path, build, update_annexed=need);
+    self._state_lock.acquire();
+    try {
+        self.module_manager.update(file_path, build, update_annexed=need);
+    } finally {
+        self._state_lock.release();
+    }
 }
 
 """Get IR for a file path."""
@@ -548,6 +570,7 @@ impl JacLangServer.dispatcher -> None {
 impl JacLangServer.postinit -> None {
     LanguageServer.init(self, 'jac-lsp', 'v0.1');
     JacProgram.init(self);
+    self._state_lock = threading.RLock();
     self.module_manager = ModuleManager(self, self.sem_managers);
     # Worker for type checking using flow.
     self.worker_future = flow self.dispatcher() ;
