@@ -14,10 +14,10 @@ Choose a learning path based on your goals and background.
 2. [Structured Outputs](../tutorials/ai/structured-outputs.md) - Type-safe AI responses
 3. [Agentic AI](../tutorials/ai/agentic.md) - Tool calling and ReAct patterns
 
-**Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models with automatic prompt generation from type signatures and docstrings.
+**Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models. The compiler generates prompts from function names, parameter names, and type signatures. Use `sem` for additional semantic context.
 
 ```jac
-"""Summarize the article in 2-3 sentences."""
+sem summarize = "Summarize the article in 2-3 sentences.";
 def summarize(text: str) -> str by llm();
 ```
 

@@ -6,9 +6,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
         # check if they are available, if the're not, we're inside builtins or
         # typeshed module itself and in that case we can just return unknown type.
         # ----------------------------------------------------------------------
-        case uni.String() | uni.MultiString():
+        case uni.String() | uni.MultiString() | uni.FString():
             if self.prefetch {
-                return self._convert_to_instance(self.get_type_of_string(expr));
+                return self._convert_to_instance(self.prefetch.str_class);
             }
 
         case uni.Int():
@@ -28,8 +28,18 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.ListVal():
             if self.prefetch and self.prefetch.list_class {
-                # TODO: We can do some inference inside the list to get the element type.
-                return self._convert_to_instance(self.prefetch.list_class);
+                list_inst = self._convert_to_instance(self.prefetch.list_class);
+                # Infer element type from the list literal's elements.
+                if isinstance(list_inst, types.ClassType) and expr.values {
+                    for _val in expr.values {
+                        elem_type = self.get_type_of_expression(_val);
+                        if isinstance(elem_type, types.ClassType) {
+                            list_inst.private.type_args = [elem_type];
+                            break;
+                        }
+                    }
+                }
+                return list_inst;
             }
 
         # TODO: Boolean literals.
@@ -214,6 +224,26 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
+
+        case uni.UnaryExpr():
+            if isinstance(expr.op, uni.Token) {
+                if expr.op.name == Tok.NOT {
+                    # `not x` -> bool (only when operand is resolved)
+                    operand_type = self.get_type_of_expression(expr.operand);
+                    if (
+                        not isinstance(operand_type, types.UnknownType)
+                        and self.prefetch
+                        and self.prefetch.bool_class
+                    ) {
+                        return self._convert_to_instance(self.prefetch.bool_class);
+                    }
+                    return operand_type;
+                }
+                if expr.op.name in (Tok.MINUS, Tok.BW_NOT) {
+                    # `-x`, `~x` -> type of operand
+                    return self.get_type_of_expression(expr.operand);
+                }
+            }
 
         case uni.FilterCompr():
             if expr.f_type {
@@ -472,18 +502,26 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 iter_type = self.get_type_of_magic_method_call(
                     collection_type, "__iter__", [], node_.parent,
                 );
-                # TODO: Ensure the iter_type is an Iterator[T].
-                # The iter_tpe should be Iterator[T] and the return type should be T.
-                if isinstance(iter_type, types.ClassType)
-                and isinstance(collection_type, types.ClassType) {
+                if isinstance(iter_type, types.ClassType) {
                     if len(iter_type.private.type_args) == 1 {
-                        specialized = iter_type.specialize_generics(
-                            collection_type.private.type_args
-                        );
-                        if len(specialized.private.type_args) == 1 {
-                            iterable_type = specialized.private.type_args[0];
-                            if isinstance(iterable_type, types.ClassType) {
-                                return iterable_type.clone_as_instance();
+                        elem_type = iter_type.private.type_args[0];
+                        # If element type is already concrete (e.g. Iterator[int]
+                        # from range.__iter__), use it directly.
+                        if isinstance(elem_type, types.ClassType) {
+                            return elem_type.clone_as_instance();
+                        }
+                        # Element type is a TypeVar — specialize using the
+                        # collection's type args (e.g. list[int] -> [int]).
+                        if isinstance(collection_type, types.ClassType)
+                        and collection_type.private.type_args {
+                            specialized = iter_type.specialize_generics(
+                                collection_type.private.type_args
+                            );
+                            if len(specialized.private.type_args) == 1 {
+                                iterable_type = specialized.private.type_args[0];
+                                if isinstance(iterable_type, types.ClassType) {
+                                    return iterable_type.clone_as_instance();
+                                }
                             }
                         }
                     }
@@ -540,6 +578,9 @@ impl TypeEvaluator._assign_class(
     }
     # Check if dest_type is a protocol and src_type implements it.
     for base_cls in dest_type.shared.base_classes {
+        if not isinstance(base_cls, types.ClassType) or base_cls.shared is None {
+            continue;
+        }
         if base_cls.shared == self.prefetch.protocol_class.shared {
             if type_utils.class_implements_protocol(src_type, dest_type) {
                 return True;

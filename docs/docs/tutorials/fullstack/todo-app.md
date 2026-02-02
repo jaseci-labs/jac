@@ -452,7 +452,7 @@ def generate_ingredients(meal_description: str) -> list[Ingredient] by llm();
 - `obj` - Structured data type (not persisted like `node`)
 - `sem Field.name = "description"` - Semantic hint for LLM guidance
 - `def func() -> Type by llm()` - LLM-powered function with structured output
-- The docstring provides context for the LLM
+- The function name, parameter names, and types provide context for the LLM; use `sem` for additional semantics
 
 ### 4.2 Walker That Uses AI
 

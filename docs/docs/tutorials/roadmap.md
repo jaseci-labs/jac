@@ -23,6 +23,9 @@ Then build your first real app:
 
 This 3-part tutorial covers graph storage, AI integration, walkers, and full-stack patterns in one cohesive project.
 
+!!! note "First App vs Deep-Dive Paths"
+    The Build Your First App tutorial covers graph storage, AI, walkers, and full-stack patterns in one project. The paths below go deeper into each area individually. You don't need both -- choose based on whether you prefer learning by building or by topic.
+
 After the first app tutorial, choose a deeper path:
 
 ---

@@ -45,6 +45,8 @@ def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) -> None 
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
 
+def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None;
+
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
 """Provide completion."""

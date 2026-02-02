@@ -111,6 +111,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 return importlib.util.spec_from_file_location(
                     fullname, cl_jac_file, loader=self
                 )
+            # Check for .na.jac file (native)
+            na_jac_file = candidate_path + ".na.jac"
+            if os.path.isfile(na_jac_file):
+                return importlib.util.spec_from_file_location(
+                    fullname, na_jac_file, loader=self
+                )
 
         return None
 
