@@ -1,3 +1,5 @@
+import from jaclang.cli.console { console }
+
 """Generate mermaid markdown doc for uninodes."""
 impl AstTool.autodoc_uninode -> str {
     output = '';
@@ -65,7 +67,7 @@ impl AstTool.ir(args: list[str]) -> str {
                     ),
                     prog=prog
                 ).ir_out;
-                print(rep.unparse());
+                console.print(rep.unparse());
                 ir = prog.compile(
                     use_str=rep.unparse(),
                     file_path=(file_name[:-3] + '.jac'),

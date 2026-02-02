@@ -16,27 +16,23 @@ impl ensure_client_deps(config_loader: object) -> bool {
 """Prompt user to install default jac-client npm dependencies."""
 def prompt_install_client_deps(config_loader: object) -> bool {
     import sys;
-    print("\n  ⚠ Client dependencies are not configured.", file=sys.stderr);
-    print(
-        "  jac-client requires npm packages (react, vite, etc.) to build client pages.",
-        file=sys.stderr
+    import from jaclang.cli.console { console }
+    console.error("\n  ⚠ Client dependencies are not configured.");
+    console.error(
+        "  jac-client requires npm packages (react, vite, etc.) to build client pages."
     );
-    print("  These will be added to your jac.toml file.\n", file=sys.stderr);
+    console.error("  These will be added to your jac.toml file.\n");
     try {
         response = input("  Install default client dependencies now? [Y/n]: ").strip().lower();
     } except (EOFError, KeyboardInterrupt) {
-        print("", file=sys.stderr);
+        console.error("");
         return False;
     }
     if response and response not in ('y', 'yes', '') {
-        print(
-            "\n  To configure manually, add [dependencies.npm] to your jac.toml.",
-            file=sys.stderr
+        console.error(
+            "\n  To configure manually, add [dependencies.npm] to your jac.toml."
         );
-        print(
-            "  Or create a new project with: jac create --use client\n",
-            file=sys.stderr
-        );
+        console.error("  Or create a new project with: jac create --use client\n");
         return False;
     }
     # Default runtime dependencies
@@ -54,7 +50,7 @@ def prompt_install_client_deps(config_loader: object) -> bool {
         '@types/react': '^18.2.0',
         '@types/react-dom': '^18.2.0'
     };
-    print("\n  ⏳ Adding default client dependencies to jac.toml...", flush=True);
+    console.print("\n  ⏳ Adding default client dependencies to jac.toml...");
     try {
         for (name, version) in default_deps.items() {
             config_loader.add_dependency(name, version, is_dev=False);
@@ -64,10 +60,10 @@ def prompt_install_client_deps(config_loader: object) -> bool {
         }
         config_loader.save();
         config_loader.invalidate();
-        print("  ✔ Default client dependencies added to jac.toml\n", flush=True);
+        console.print("  ✔ Default client dependencies added to jac.toml\n");
         return True;
     } except Exception as e {
-        print(f"  ✖ Failed to add dependencies: {e}", file=sys.stderr);
+        console.error(f"  ✖ Failed to add dependencies: {e}");
         return False;
     }
 }

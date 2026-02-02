@@ -239,9 +239,8 @@ def run_periodic_rebuilds(
         rebuild_handler.rebuild()
 
 
-def serve_with_watch() -> None:
+def serve_with_watch(port: int = 8000) -> None:
     """Serve MkDocs site and watch for file changes to trigger rebuilds."""
-    port = 8000
     root_dir = os.path.dirname(os.path.dirname(__file__))
     site_dir = os.path.join(root_dir, "site")
     ignore_paths = [
@@ -310,4 +309,9 @@ def serve_with_watch() -> None:
 
 
 if __name__ == "__main__":
-    serve_with_watch()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MkDocs development server")
+    parser.add_argument("--port", type=int, default=8000, help="Port to serve on")
+    args = parser.parse_args()
+    serve_with_watch(port=args.port)

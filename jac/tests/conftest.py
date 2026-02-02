@@ -16,8 +16,6 @@ from typing import Any
 
 import pytest
 
-import jaclang
-
 # =============================================================================
 # Console Output Normalization - Disable Rich styling during tests
 # =============================================================================
@@ -249,7 +247,7 @@ def examples_path() -> Callable[[str], str]:
     """Get path to examples directory."""
 
     def _examples_path(path: str) -> str:
-        examples_dir = Path(jaclang.__file__).parent.parent / "examples"
+        examples_dir = Path(__file__).parent.parent / "examples"
         return str((examples_dir / path).resolve())
 
     return _examples_path

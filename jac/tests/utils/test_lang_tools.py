@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 import pytest
 
-import jaclang
 from jaclang.runtimelib.utils import read_file_with_encoding
 from jaclang.utils.lang_tools import AstTool
 
@@ -67,8 +66,10 @@ def test_pass_template(tool: AstTool) -> None:
 
 def test_gendotfile(tool: AstTool) -> None:
     """Testing for HTML entity."""
-    jac_file_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "../tests/language/fixtures/simple_walk.jac"
+    from pathlib import Path
+
+    jac_file_path = str(
+        Path(__file__).parent.parent / "language" / "fixtures" / "simple_walk.jac"
     )
     out = tool.ir(["ast.", jac_file_path])
     forbidden_strings = ["<<", ">>", "init", "super"]
@@ -78,10 +79,9 @@ def test_gendotfile(tool: AstTool) -> None:
 
 def test_print(tool: AstTool) -> None:
     """Testing for print AstTool."""
-    jac_file = os.path.join(
-        os.path.dirname(jaclang.__file__),
-        "../tests/language/fixtures/hello.jac",
-    )
+    from pathlib import Path
+
+    jac_file = str(Path(__file__).parent.parent / "language" / "fixtures" / "hello.jac")
     msg = "error in " + jac_file
     out = tool.ir(["ast", jac_file])
     assert "+-- Token" in out, msg
@@ -90,10 +90,9 @@ def test_print(tool: AstTool) -> None:
 
 def test_print_py(tool: AstTool) -> None:
     """Testing for print_py AstTool."""
-    jac_file = os.path.join(
-        os.path.dirname(jaclang.__file__),
-        "../tests/language/fixtures/hello.jac",
-    )
+    from pathlib import Path
+
+    jac_file = str(Path(__file__).parent.parent / "language" / "fixtures" / "hello.jac")
     msg = "error in " + jac_file
     out = tool.ir(["pyast", jac_file])
     assert "Module(" in out, msg
@@ -111,12 +110,9 @@ def test_py_jac_mode(tool: AstTool) -> None:
 
 def test_sym_sym_dot(tool: AstTool) -> None:
     """Testing for sym, sym. AstTool."""
-    jac_file = os.path.normpath(
-        os.path.join(
-            os.path.dirname(jaclang.__file__),
-            "../tests/language/fixtures/hello.jac",
-        )
-    )
+    from pathlib import Path
+
+    jac_file = str(Path(__file__).parent.parent / "language" / "fixtures" / "hello.jac")
     out = tool.ir(["sym", jac_file])
     assert (
         "\n|   +-- ConnectionAbortedError\n|   |   +-- public var\n|   +-- ConnectionError\n|"

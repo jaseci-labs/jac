@@ -1,11 +1,13 @@
-"""Run the language server."""
+import from jaclang.cli.console { console }
 
+"""Run the language server."""
 impl run_lang_server -> None {
     server = JacLangServer();
     # Register all features
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
     server.feature(lspt.TEXT_DOCUMENT_DID_SAVE)(did_save);
     server.feature(lspt.TEXT_DOCUMENT_DID_CHANGE)(did_change);
+    server.feature(lspt.TEXT_DOCUMENT_DID_CLOSE)(did_close);
     server.feature(lspt.TEXT_DOCUMENT_FORMATTING)(formatting);
     server.feature(
         lspt.WORKSPACE_DID_CREATE_FILES,
@@ -105,6 +107,11 @@ impl hover(
     return ls.get_hover_info(params.text_document.uri, params.position);
 }
 
+"""Clean up resources when a document is closed."""
+impl did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None {
+    ls.close_module(params.text_document.uri);
+}
+
 """Check syntax on file delete."""
 impl did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None {
     for file in params.files {
@@ -129,5 +136,5 @@ impl formatting(
 }
 
 impl debug(msg: str) -> None {
-    print(f"[SERVER] {msg}", file=sys.stderr);
+    console.error(f"[SERVER] {msg}");
 }

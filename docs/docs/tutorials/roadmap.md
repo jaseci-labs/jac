@@ -4,18 +4,29 @@ Choose your learning path based on your goals. Each path builds on the previous 
 
 ---
 
-## Quick Start (30 minutes)
+## Quick Start
 
 Start here regardless of your goal:
 
-| Step | Tutorial | Time | What You'll Learn |
-|------|----------|------|-------------------|
-| 1 | [Installation](../quick-guide/install.md) | 5 min | Install Jac and plugins |
-| 2 | [Hello World](../quick-guide/hello-world.md) | 5 min | Basic syntax, functions |
-| 3 | [Your First Graph](../quick-guide/first-graph.md) | 10 min | Nodes, edges, walkers |
-| 4 | [Your First App](../quick-guide/first-app.md) | 10 min | Complete todo app |
+| Step | Tutorial | What You'll Learn |
+|------|----------|-------------------|
+| 1 | [Installation](../quick-guide/install.md) | Install Jac and plugins |
+| 2 | [Hello World](../quick-guide/hello-world.md) | Basic syntax, functions |
 
-After Quick Start, choose your path:
+Then build your first real app:
+
+| Step | Tutorial | What You'll Learn |
+|------|----------|-------------------|
+| 3 | [Part 1: Todo App](first-app/part1-todo-app.md) | Nodes, `def:pub`, reactive frontend |
+| 4 | [Part 2: Add AI](first-app/part2-ai-features.md) | `by llm()`, `enum`, `obj`, `sem` |
+| 5 | [Part 3: Walkers, Auth & Structure](first-app/part3-multi-user.md) | Walkers, authentication, multi-file |
+
+This 3-part tutorial covers graph storage, AI integration, walkers, and full-stack patterns in one cohesive project.
+
+!!! note "First App vs Deep-Dive Paths"
+    The Build Your First App tutorial covers graph storage, AI, walkers, and full-stack patterns in one project. The paths below go deeper into each area individually. You don't need both -- choose based on whether you prefer learning by building or by topic.
+
+After the first app tutorial, choose a deeper path:
 
 ---
 
@@ -100,20 +111,20 @@ Quick Start → Local Server → Kubernetes
 
 ---
 
-## Complete Path (4-5 hours)
+## Complete Path
 
 For comprehensive understanding, follow all paths in order:
 
 ```
-Quick Start (30 min)
+Quick Start + Build Your First App
     ↓
-Core Language (1 hr)
+Core Language (deep dive)
     ↓
-AI Integration (1 hr)
+AI Integration (deep dive)
     ↓
-Full-Stack Apps (2 hr)
+Full-Stack Apps (deep dive)
     ↓
-Production (30 min)
+Production
 ```
 
 ---

@@ -563,8 +563,9 @@ impl _parse_toml_data(
         if "lint" in check_data {
             lint_data = check_data["lint"];
             lint_config = LintConfig(
-                select=lint_data.get("select", ["all"]),
-                ignore=lint_data.get("ignore", [])
+                select=lint_data.get("select", ["default"]),
+                ignore=lint_data.get("ignore", []),
+                exclude=lint_data.get("exclude", [])
             );
         }
         config.check = CheckConfig(

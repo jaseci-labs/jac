@@ -1,5 +1,6 @@
 """Semantic Token Manager module."""
 import from typing { List, Optional, Tuple }
+import logging;
 
 import jaclang.pycore.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -10,6 +11,17 @@ import from jaclang.langserve.utils {
 }
 import lsprotocol.types as lspt;
 
+# Semantic token flat array field offsets.
+# Each token occupies TOK_STRIDE (5) consecutive ints:
+#   [line_delta, col_delta, length, token_type, token_modifier]
+glob TOK_LINE_DELTA = 0,
+     TOK_COL_DELTA = 1,
+     TOK_LENGTH = 2,
+     TOK_TYPE = 3,
+     TOK_MODIFIER = 4,
+     TOK_STRIDE = 5,
+     logger = logging.getLogger("jaclang.langserve.sem_manager");
+
 """Semantic Token Manager class."""
 obj SemTokManager {
     has ir: uni.Module,
@@ -18,6 +30,8 @@ obj SemTokManager {
         static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 
     def postinit -> None;
+    def resolve_symbol(nd: uni.NameAtom) -> None;
+    def collect_resolved_nodes(ir: uni.Module) -> list;
     def gen_sem_tokens(ir: uni.Module) -> list[int];
     def gen_sem_tok_node(
         ir: uni.Module

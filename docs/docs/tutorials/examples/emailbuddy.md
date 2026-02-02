@@ -30,6 +30,20 @@ EmailBuddy demonstrates three key Jac principles:
 
 ---
 
+## Prerequisites & Key Concepts
+
+- Completed [Part 2: Add AI](../first-app/part2-ai-features.md) (AI integration basics)
+- Familiar with [OSP Tutorial](../language/osp.md) (nodes, edges, walkers)
+
+| Concept | Where to Learn |
+|---------|----------------|
+| `by llm()` functions | [byLLM Quickstart](../ai/quickstart.md), [Part 2](../first-app/part2-ai-features.md) |
+| Agentic patterns | [Agentic AI Tutorial](../ai/agentic.md) |
+| Nodes & graph modeling | [OSP Tutorial](../language/osp.md) |
+| Walker APIs | [Part 3](../first-app/part3-multi-user.md) |
+
+---
+
 ## The Problem
 
 Your inbox is a flat list of messages. Finding "what was the final price we agreed on?" requires:
@@ -327,7 +341,7 @@ $.ajax({
 
 1. **Graphs capture relationships** - Emails aren't just data, they're connections between people
 2. **Walkers explore intelligently** - AI-powered traversal finds relevant information
-3. **byLLM simplifies agents** - Define behavior with types and docstrings, not prompts
+3. **byLLM simplifies agents** - Define behavior with types and `sem`, not manual prompts
 4. **Scale-native deploys anywhere** - Same code runs locally or in the cloud
 
 ---

@@ -23,6 +23,7 @@ import json;
 import tomllib;
 import importlib;
 import base64;
+import from jaclang.cli.console { console }
 
 # ===============================================================================
 # Helper: Read file content (text or binary)
@@ -188,7 +189,7 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     with open(output_path, "w") as f {
         json.dump(template_data, f, indent=2);
     }
-    print(f"Bundled template '{template.name}' to {output_path}");
+    console.print(f"Bundled template '{template.name}' to {output_path}");
 }
 
 # ===============================================================================
@@ -254,10 +255,10 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
 
         return hook;
     } except ImportError as e {
-        print(f"Warning: Could not import hook module '{hook_path}': {e}");
+        console.print(f"Warning: Could not import hook module '{hook_path}': {e}");
         return None;
     } except AttributeError as e {
-        print(f"Warning: Hook function not found '{hook_path}': {e}");
+        console.print(f"Warning: Hook function not found '{hook_path}': {e}");
         return None;
     }
 }
