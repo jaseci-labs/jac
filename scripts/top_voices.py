@@ -118,11 +118,11 @@ def fetch_issue_comments(since_date: str) -> list[dict[str, Any]]:
                 break
 
             for item in data:
-                author = item.get("author", {})
+                user = item.get("user", {})
                 # Filter bots by type or by [bot] in login
-                if author.get("type", "").lower() == "bot":
+                if user.get("type", "").lower() == "bot":
                     continue
-                login = author.get("login", "unknown")
+                login = user.get("login", "unknown")
                 if "[bot]" in login.lower():
                     continue
                 comments.append({
@@ -161,11 +161,11 @@ def fetch_pr_comments(since_date: str) -> list[dict[str, Any]]:
                 break
 
             for item in data:
-                author = item.get("author", {})
+                user = item.get("user", {})
                 # Filter bots by type or by [bot] in login
-                if author.get("type", "").lower() == "bot":
+                if user.get("type", "").lower() == "bot":
                     continue
-                login = author.get("login", "unknown")
+                login = user.get("login", "unknown")
                 if "[bot]" in login.lower():
                     continue
                 comments.append({
