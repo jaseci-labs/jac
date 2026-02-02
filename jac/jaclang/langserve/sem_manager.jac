@@ -26,7 +26,6 @@ glob TOK_LINE_DELTA = 0,
 obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
-        sym_cache: dict by postinit,
         sem_tokens: List[int] by postinit,
         static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 

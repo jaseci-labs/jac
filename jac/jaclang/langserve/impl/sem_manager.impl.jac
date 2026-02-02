@@ -2,19 +2,15 @@
 
 """Initialize semantic token manager."""
 impl SemTokManager.postinit -> None {
-    self.sym_cache = {};
     self.sem_tokens = self.gen_sem_tokens(self.ir);
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
 }
 
 """Resolve symbol for a NameAtom node.
 
-This method attempts to find and assign the correct symbol for an
-unresolved NameAtom. It handles member access (AtomTrailer) resolution
-and falls back to hub-wide symbol lookup with caching.
-
-Note: This intentionally mutates nd.sym, nd.name_of, and nd.sem_token
-as a side effect. The mutation is idempotent (skipped if nd.sym is already set).
+Searches hub modules to find and assign the correct symbol for an
+unresolved NameAtom. Sets nd.sym and nd.name_of so that the sem_token
+property computes correctly.
 """
 impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
     import from jaclang.pycore.constant { JacSemTokenType }
@@ -22,7 +18,7 @@ impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
         return;
     }
     symbol = None;
-    # 1. Handle member access (right side of AtomTrailer)
+    # Handle member access (right side of AtomTrailer)
     parent = nd.parent;
     if isinstance(parent, uni.AtomTrailer) and parent.is_attr and parent.right == nd {
         target = parent.target;
@@ -36,32 +32,26 @@ impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
             }
         }
     }
-    # 2. Check cache or scan hub modules
+    # Scan hub modules
     if symbol is None {
-        if nd.value in self.sym_cache {
-            symbol = self.sym_cache[nd.value];
-        } else {
-            for (path, mod) in self.hub.items() {
-                if found := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
-                    # Resolve imported symbols if needed
-                    if found?.via_import and found?.via_import {
-                        if found.decl and found.decl?.name_of {
-                            if isinstance(found.decl.name_of, uni.ModuleItem) {
-                                if found.decl.name_of.sym {
-                                    found = found.decl.name_of.sym;
-                                }
+        for (path, mod) in self.hub.items() {
+            if found := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
+                # Resolve imported symbols if needed
+                if found?.via_import and found?.via_import {
+                    if found.decl and found.decl?.name_of {
+                        if isinstance(found.decl.name_of, uni.ModuleItem) {
+                            if found.decl.name_of.sym {
+                                found = found.decl.name_of.sym;
                             }
                         }
                     }
-                    symbol = found;
-                    break;
                 }
+                symbol = found;
+                break;
             }
-            # Cache the result (including None for misses)
-            self.sym_cache[nd.value] = symbol;
         }
     }
-    # 3. Apply the resolved symbol to the node
+    # Apply the resolved symbol to the node
     if symbol is not None {
         symbol.add_use(nd);
         nd.sym = symbol;
@@ -85,12 +75,13 @@ impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
 
 """Collect all resolved NameAtom nodes from the module IR.
 
-Iterates all NameAtom nodes in the module, resolves their symbols,
-and also extracts type annotation nodes from ImplDef signatures.
+Iterates all in-module nodes and collects those with valid semantic tokens.
+Resolves unresolved NameAtoms via hub lookup and patches ImplDef target names
+where DeclImplMatchPass sets name_spec.sym but NameAtom.sym reads _sym.
 """
 impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
     nodes: list = [];
-    # Process all NameAtom nodes
+    # First pass: collect NameAtoms, resolving any that lack symbols.
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
             self.resolve_symbol(nd);
@@ -99,9 +90,25 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
             }
         }
     }
-    # Extract type annotation nodes from ImplDef signatures
+    # Second pass: handle ImplDef target names and FuncSignature type annotations.
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.ImplDef) {
+            # Patch target NameAtoms: DeclImplMatchPass sets name_spec.sym
+            # but NameAtom.sym reads from _sym, so copy from decl_link.
+            if nd.decl_link and nd.target {
+                method_nd = nd.target[-1];
+                if (
+                    isinstance(method_nd, uni.NameAtom)
+                    and method_nd.sym is None
+                    and nd.decl_link.sym
+                ) {
+                    method_nd.sym = nd.decl_link.sym;
+                }
+                if isinstance(method_nd, uni.NameAtom) and method_nd.sem_token {
+                    nodes.append(method_nd);
+                }
+            }
+            # Resolve type annotations in impl FuncSignature params/return.
             if isinstance(nd.spec, uni.FuncSignature) {
                 sig = nd.spec;
                 all_params = (
@@ -120,7 +127,6 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
                         }
                     }
                 }
-                # Also check return type
                 if sig.return_type and isinstance(sig.return_type, uni.NameAtom) {
                     self.resolve_symbol(sig.return_type);
                     if sig.return_type.sem_token {
