@@ -4,6 +4,9 @@ Your todo app works, but it's not very smart. Let's fix that -- you'll add AI-po
 
 **Prerequisites:** Complete [Part 1](part1-todo-app.md) first.
 
+!!! tip "Starting fresh"
+    If you have leftover data from Part 1, delete the `.jac/data/` directory before running Part 2. The schema changes in this part (adding `category`) may conflict with old Todo nodes.
+
 ---
 
 ## Set Up Your API Key
@@ -15,7 +18,7 @@ export ANTHROPIC_API_KEY="your-key-here"
 ```
 
 !!! warning "Common issue"
-    If you get "API key not found" errors, make sure the environment variable is set in the same terminal where you run `jac`. See [Troubleshooting: API key issues](../troubleshooting.md#openai-api-key-not-found).
+    If you get "API key not found" errors, make sure the environment variable is set in the same terminal where you run `jac`. If adding a todo silently fails (nothing happens), check the terminal running `jac start` for error messages -- a missing or invalid API key causes a server error. See [Troubleshooting: API key issues](../troubleshooting.md#api-key-not-found).
 
 ---
 
@@ -313,6 +316,9 @@ Add one line to `styles.css`:
 export ANTHROPIC_API_KEY="your-key"
 jac start main.jac
 ```
+
+!!! warning "Common issue"
+    If you see "Address already in use", use `--port` to pick a different port: `jac start main.jac --port 3000`.
 
 Open [http://localhost:8000](http://localhost:8000). The app looks the same as before, but now when you add a todo it takes a moment longer -- the LLM is categorizing it behind the scenes. Try it:
 

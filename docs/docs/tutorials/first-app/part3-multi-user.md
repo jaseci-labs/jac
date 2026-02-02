@@ -45,12 +45,14 @@ The core keywords:
 
 Walkers live on the server, but the frontend needs to spawn them. Jac handles this with `sv import` -- server imports that the client uses to call walkers. This naturally leads to splitting your code into separate files.
 
-Create a new project:
+Create a new project (this gives you a clean slate with no leftover data from Parts 1-2):
 
 ```bash
 jac create my-todo-app --use client --skip
 cd my-todo-app
 ```
+
+You can delete the scaffolded `main.jac` and `components/Button.cl.jac` -- you'll replace them with the files below.
 
 You'll create these files:
 
@@ -98,7 +100,7 @@ The `cl { }` block is client-side code embedded in a server file. It imports the
 
 ### Data Models
 
-You already know `Todo` from Parts 1 and 2. Now add `MealIngredient` -- a node that persists generated ingredients to the graph (unlike Part 2 where they only existed in browser memory):
+You already know `Todo` from Parts 1 and 2. Note the field rename from `done` to `completed` -- this aligns with the walker convention used throughout Part 3. Now add `MealIngredient` -- a node that persists generated ingredients to the graph (unlike Part 2 where they only existed in browser memory):
 
 ```jac
 node Todo {
@@ -1539,6 +1541,9 @@ All the complete files are in the collapsible sections below. Create each file i
 export ANTHROPIC_API_KEY="your-key"
 jac start main.jac
 ```
+
+!!! warning "Common issue"
+    If you see "Address already in use", use `--port` to pick a different port: `jac start main.jac --port 3000`.
 
 Open [http://localhost:8000](http://localhost:8000). You should see a login screen -- that's the auth working.
 
