@@ -192,7 +192,9 @@ obj JacConfig {
         active_profile: str = "",
         _raw_data: dict[str, Any] = {};
 
-    static def discover(start_path: Path | None = None, profile: str | None = None) -> JacConfig | None;
+    static def discover(
+        start_path: Path | None = None, profile: str | None = None
+    ) -> JacConfig | None;
     static def load(toml_path: Path) -> JacConfig;
     static def from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig;
     def apply_env_interpolation -> None;

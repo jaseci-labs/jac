@@ -515,7 +515,9 @@ def _config_path -> None {
             console.print(f"Active profile: {config.active_profile}", style="info");
         }
         if config.config_files and len(config.config_files) > 1 {
-            console.print(f"\nLoaded config files (lowest to highest priority):", style="info");
+            console.print(
+                f"\nLoaded config files (lowest to highest priority):", style="info"
+            );
             for (i, path) in enumerate(config.config_files) {
                 label = _config_file_label(path, config.active_profile);
                 console.print(f"  {i + 1}. {path}{label}");

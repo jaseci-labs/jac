@@ -169,9 +169,7 @@ impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
 def _deep_merge(base: dict, override: dict) -> dict {
     result = base.copy();
     for (key, value) in override.items() {
-        if key in result
-        and isinstance(result[key], dict)
-        and isinstance(value, dict) {
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict) {
             result[key] = _deep_merge(result[key], value);
         } else {
             result[key] = value;
@@ -192,9 +190,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         return;
     }
     _visited.add(profile_name);
-
     profile = self.environments[profile_name];
-
     # Handle inheritance first
     if "inherits" in profile {
         parent_name = profile["inherits"];
@@ -202,7 +198,6 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             self.apply_profile(parent_name, _visited=_visited);
         }
     }
-
     # Generic sections: setattr loop
     section_map: dict = {
         "run": self.run,
@@ -223,7 +218,6 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-
     # Special case: project (kebab-case -> snake_case)
     if "project" in profile {
         for (key, value) in profile["project"].items() {
@@ -233,7 +227,6 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-
     # Special case: check (nested lint)
     if "check" in profile {
         check_data = profile["check"];
@@ -249,7 +242,6 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-
     # Special case: storage (type -> storage_type)
     if "storage" in profile {
         storage_data = profile["storage"];
@@ -261,12 +253,10 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-
     # Plugins: deep merge
     if "plugins" in profile {
         self.plugins = _deep_merge(self.plugins, profile["plugins"]);
     }
-
     # Dict sections: merge
     if "dependencies" in profile {
         for (key, value) in profile["dependencies"].items() {
@@ -443,7 +433,9 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
     # Merge raw data for _is_explicitly_set checks
     for (key, value) in data.items() {
-        if key in self._raw_data and isinstance(self._raw_data[key], dict) and isinstance(value, dict) {
+        if key in self._raw_data
+        and isinstance(self._raw_data[key], dict)
+        and isinstance(value, dict) {
             self._raw_data[key].update(value);
         } else {
             self._raw_data[key] = value;

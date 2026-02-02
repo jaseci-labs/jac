@@ -157,10 +157,7 @@ def _apply_profile(args_dict: dict) -> None {
         # or via profile overlay) — otherwise leave the argparse default alone.
         _apply_config_defaults(config, args_dict);
     } except (KeyError, ValueError, OSError) as e {
-        console.print(
-            f"Warning: Failed to apply profile: {e}",
-            style="warning"
-        );
+        console.print(f"Warning: Failed to apply profile: {e}", style="warning");
     }
 }
 
