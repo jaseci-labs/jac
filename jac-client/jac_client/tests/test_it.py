@@ -1044,16 +1044,14 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str:
 def test_profile_config_applies_to_server() -> None:
     """Verify that ``--profile prod`` loads jac.prod.toml and its settings take effect.
 
-    The prod profile sets ``[plugins.client.api] base_url`` to a custom URL.
-    We start the server with ``--profile prod`` and confirm that the custom
-    base_url is baked into the served JS bundle, proving the profile overlay
-    pipeline works end-to-end.
+    The prod profile overrides ``[plugins.client.app_meta_data] title``.
+    We start the server with ``--profile prod`` and confirm the HTML ``<title>``
+    reflects the prod value, proving the profile overlay pipeline works end-to-end.
     """
-    import re
-
     print("[DEBUG] Starting test_profile_config_applies_to_server")
 
-    prod_base_url = "http://prod-api.example.com"
+    prod_title = "All-In-One Prod"
+    base_title = "All-In-One"
     app_name = "e2e-profile-test"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -1062,17 +1060,14 @@ def test_profile_config_applies_to_server() -> None:
         try:
             os.chdir(temp_dir)
 
-            # 1. Set up the all-in-one project
             project_path = _setup_all_in_one_project(temp_dir, app_name)
             print(f"[DEBUG] Project set up at {project_path}")
 
-            # Verify jac.prod.toml was copied from the example
             prod_toml = os.path.join(project_path, "jac.prod.toml")
             assert os.path.isfile(prod_toml), (
                 "jac.prod.toml should be copied from all-in-one example"
             )
 
-            # 2. Start the server WITH --profile prod
             server: Popen[bytes] | None = None
             server_port = get_free_port()
             jac_cmd = get_jac_command()
@@ -1096,7 +1091,6 @@ def test_profile_config_applies_to_server() -> None:
                 wait_for_port("127.0.0.1", server_port, timeout=90.0)
                 print(f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}")
 
-                # 3. Fetch root HTML to find the JS bundle path
                 root_bytes = _wait_for_endpoint(
                     f"http://127.0.0.1:{server_port}",
                     timeout=120.0,
@@ -1107,29 +1101,17 @@ def test_profile_config_applies_to_server() -> None:
                 print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
                 assert "<html" in root_body.lower(), "Root should return HTML"
 
-                # 4. Extract and fetch the JS bundle
-                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
-                assert script_match, (
-                    f"Could not find client JS bundle in HTML:\n{root_body[:1000]}"
+                assert f"<title>{prod_title}</title>" in root_body, (
+                    f"Expected prod title '{prod_title}' in HTML, "
+                    f"but found base title instead. "
+                    f"This means --profile prod did not load jac.prod.toml correctly.\n"
+                    f"HTML (first 500 chars): {root_body[:500]}"
                 )
-
-                js_path = script_match.group(1)
-                js_url = f"http://127.0.0.1:{server_port}{js_path}"
-                print(f"[DEBUG] Fetching JS bundle from {js_url}")
-
-                with urlopen(js_url, timeout=30) as resp:
-                    js_body = resp.read().decode("utf-8", errors="ignore")
-                    assert resp.status == 200
-                    assert len(js_body) > 0
-
-                # 5. Assert the prod profile's base_url is baked into the bundle
-                assert prod_base_url in js_body, (
-                    f"Expected prod profile base_url '{prod_base_url}' in JS bundle, "
-                    f"but it was not found. Bundle size: {len(js_body)} bytes. "
-                    f"This means --profile prod did not load jac.prod.toml correctly."
+                assert f"<title>{base_title}</title>" not in root_body, (
+                    "Base title should be overridden by prod profile"
                 )
                 print(
-                    f"[DEBUG] Confirmed '{prod_base_url}' found in JS bundle "
+                    f"[DEBUG] Confirmed title='{prod_title}' in HTML "
                     f"- profile config applied successfully"
                 )
 
@@ -1153,15 +1135,14 @@ def test_profile_config_applies_to_server() -> None:
 def test_no_profile_omits_profile_settings() -> None:
     """Verify that without ``--profile``, prod-only settings are NOT applied.
 
-    Starts the server without any profile flag and confirms the prod
-    ``base_url`` does NOT appear in the JS bundle. This is the control
-    test for ``test_profile_config_applies_to_server``.
+    Starts the server without any profile flag and confirms the HTML
+    ``<title>`` uses the base config value, not the prod override.
+    This is the control test for ``test_profile_config_applies_to_server``.
     """
-    import re
-
     print("[DEBUG] Starting test_no_profile_omits_profile_settings")
 
-    prod_base_url = "http://prod-api.example.com"
+    prod_title = "All-In-One Prod"
+    base_title = "All-In-One"
     app_name = "e2e-no-profile-test"
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -1170,16 +1151,13 @@ def test_no_profile_omits_profile_settings() -> None:
         try:
             os.chdir(temp_dir)
 
-            # 1. Set up the all-in-one project (includes jac.prod.toml but we won't activate it)
             project_path = _setup_all_in_one_project(temp_dir, app_name)
             print(f"[DEBUG] Project set up at {project_path}")
 
-            # Remove jac.local.toml so it doesn't interfere
             local_toml = os.path.join(project_path, "jac.local.toml")
             if os.path.isfile(local_toml):
                 os.remove(local_toml)
 
-            # 2. Start the server WITHOUT --profile
             server: Popen[bytes] | None = None
             server_port = get_free_port()
             jac_cmd = get_jac_command()
@@ -1199,7 +1177,6 @@ def test_no_profile_omits_profile_settings() -> None:
                 wait_for_port("127.0.0.1", server_port, timeout=90.0)
                 print(f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}")
 
-                # 3. Fetch root HTML
                 root_bytes = _wait_for_endpoint(
                     f"http://127.0.0.1:{server_port}",
                     timeout=120.0,
@@ -1209,29 +1186,17 @@ def test_no_profile_omits_profile_settings() -> None:
                 root_body = root_bytes.decode("utf-8", errors="ignore")
                 assert "<html" in root_body.lower()
 
-                # 4. Extract and fetch the JS bundle
-                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
-                assert script_match, (
-                    f"Could not find client JS bundle in HTML:\n{root_body[:1000]}"
+                assert f"<title>{base_title}</title>" in root_body, (
+                    f"Expected base title '{base_title}' in HTML when no profile is set.\n"
+                    f"HTML (first 500 chars): {root_body[:500]}"
                 )
-
-                js_path = script_match.group(1)
-                js_url = f"http://127.0.0.1:{server_port}{js_path}"
-                print(f"[DEBUG] Fetching JS bundle from {js_url}")
-
-                with urlopen(js_url, timeout=30) as resp:
-                    js_body = resp.read().decode("utf-8", errors="ignore")
-                    assert resp.status == 200
-                    assert len(js_body) > 0
-
-                # 5. Assert the prod base_url is NOT in the bundle
-                assert prod_base_url not in js_body, (
-                    f"Prod profile base_url '{prod_base_url}' should NOT appear "
-                    f"in the JS bundle when no profile is specified. "
-                    f"This means profile settings are leaking without --profile."
+                assert f"<title>{prod_title}</title>" not in root_body, (
+                    f"Prod title '{prod_title}' should NOT appear "
+                    f"when no profile is specified. "
+                    f"Profile settings are leaking without --profile."
                 )
                 print(
-                    f"[DEBUG] Confirmed '{prod_base_url}' is absent from JS bundle "
+                    f"[DEBUG] Confirmed title='{base_title}' in HTML "
                     f"- profile settings correctly isolated"
                 )
 
