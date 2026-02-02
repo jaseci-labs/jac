@@ -12,7 +12,7 @@ cl import from ..components.CategoryFilter { CategoryFilter }
 cl import from ..constants.categories { CATEGORY_COLORS }
 
 # cl import from "..components.PieChart.tsx" { PieChart }
-cl def:pub BudgetPlanner -> any {
+cl def:pub BudgetPlanner -> JsxElement {
     [filter, setFilter] = useState("ALL");
     budget = useBudgetContext();
 
