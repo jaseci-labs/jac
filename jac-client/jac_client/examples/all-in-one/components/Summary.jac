@@ -6,7 +6,7 @@ cl import from ..context.BudgetContext {
 cl import from ..utils.formatters { formatCurrency }
 
 cl {
-    def:pub Summary -> any {
+    def:pub Summary -> JsxElement {
         budget = useBudgetContext();
 
         # Business/Personal breakdown

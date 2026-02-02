@@ -3,7 +3,7 @@ cl import from antd { Button }
 cl import from ...ButtonRoot { ButtonRoot }
 cl import from ..ButtonSecondL { ButtonSecondL }
 
-cl def:pub ButtonThirdL -> any {
+cl def:pub ButtonThirdL -> JsxElement {
     return
         <div>
             <Button type="dashed" size="large">

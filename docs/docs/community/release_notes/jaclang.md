@@ -2,8 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.14 (Unreleased)
+## jaclang 0.9.15 (Unreleased)
 
+## jaclang 0.9.14 (Latest Release)
+
+- **Fix: `jac format` No Longer Deletes Files with Syntax Errors**: Fixed a bug where `jac format` would overwrite a file's contents with an empty string when the file contained syntax errors. The formatter now checks for parse errors before writing and leaves the original file untouched.
 - **`jac lint` Command**: Added a dedicated `jac lint` command that reports all lint violations as errors with file, line, and column info. Use `jac lint --fix` to auto-fix violations. Lint rules are configured via `[check.lint]` in `jac.toml`. All enabled rules are treated as errors (not warnings). The `--fix` flag has been removed from `jac format`, which is now pure formatting only.
 - **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
 - **Centralized project URLs**: Project URLs (docs, Discord, GitHub, issues) are now defined as constants in `banners.jac` and reused across the CLI banner, server error messages, and help epilog instead of being hardcoded in multiple places.
@@ -11,9 +14,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler Buildout**: Major expansion of the native binary compilation pipeline for `.na.jac` files. The native backend now supports enums, boolean short-circuit evaluation, break/continue, for loops, ternary expressions, string literals and f-strings, objects with fields/methods/postinit, GC-managed lists, single inheritance with vtable-based virtual dispatch, complex access chains, indexed field assignment, string methods (strip, split, indexing), builtins (ord, int, input), augmented assignment operators (`+=`, `-=`, `*=`, `//=`, `%=`), and `with entry { ... }` blocks. All heap allocations use Boehm GC. Validated end-to-end with a fully native chess game.
 - **`jac run` for `.na.jac` Files**: Running `jac run file.na.jac` now compiles the file to native machine code and executes the `jac_entry` function directly, bypassing the Python import machinery entirely. Native execution runs as pure machine code with zero Python interpreter overhead at runtime.
 - **LSP Semantic Token Manager Refactor**: Refactored the language server's `SemTokManager` for production robustness. Deduplicated ~170 lines of shared symbol resolution logic.
+- **JsxElement Builtin Type**: Added `JsxElement` builtin type for strict type checking of JSX expressions for client-side UI components.
 - **1 Small Refactors**
 
-## jaclang 0.9.13 (Latest Release)
+## jaclang 0.9.13
 
 - **Configurable Lint Rules**: Auto-lint rules are now individually configurable via `jac.toml` `[check.lint]` section using a select/ignore model. A `LintRule` enum defines all 12 rules with kebab-case names. Use `select = ["default"]` for code-transforming rules only, `select = ["all"]` to enable every rule including warning-only rules, `ignore = ["rule-name"]` to disable specific ones, or `select = ["rule1", "rule2"]` to enable only listed rules.
 - **No-Print Lint Rule**: Added a `no-print` lint rule that errors on bare `print()` calls in `.jac` files, encouraging use of the console abstraction instead. Included in the `"all"` group; enable via `select = ["all"]` or `select = ["default", "no-print"]` in `[check.lint]`.
