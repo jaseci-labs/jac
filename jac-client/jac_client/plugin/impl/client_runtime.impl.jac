@@ -209,9 +209,11 @@ impl __removeLocalStorage(key: str) -> None {
 authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> any {
     if jacIsLoggedIn() {
-        return <ReactRouterOutlet />;
+        return
+            <ReactRouterOutlet />;
     }
-    return <ReactRouterNavigate to={redirect} replace={True} />;
+    return
+        <ReactRouterNavigate to={redirect} replace={True} />;
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {

@@ -63,7 +63,6 @@ impl ViteCompiler.compile_and_bundle(
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
     # Use _entry.js to avoid conflict with compiled modules that may be named main.js
     entry_file = self.compiled_dir / '_entry.js';
-
     if self._has_pages {
         # File-based routing mode: import from generated _routes.js
         entry_content = self._create_pages_entry_content(module_path);
@@ -75,33 +74,33 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     entry_file.write_text(entry_content, encoding='utf-8');
 }
 
-impl ViteCompiler._create_pages_entry_content(self: ViteCompiler, module_path: Path) -> str {
+impl ViteCompiler._create_pages_entry_content(
+    self: ViteCompiler, module_path: Path
+) -> str {
     lines: list[str] = [];
-
     auth_redirect = "/login";
     try {
         import from ..config_loader { PluginConfig }
         config = PluginConfig.load(self.project_dir);
-        if config and hasattr(config, 'routing') and config.routing {
+        if config and config?.routing and config.routing {
             auth_redirect = config.routing.get('auth_redirect', '/login');
         }
     } except Exception { }
-
     # Check if main.jac exists and exports app (used as wrapper)
     app_module = self.compiled_dir / f"{module_path.stem}.js";
     has_app_wrapper = app_module.exists();
-
     # --- Imports ---
     lines.append('import React from "react";');
     lines.append('import { createRoot } from "react-dom/client";');
     lines.append('import { BrowserRouter, Routes, Route } from "react-router-dom";');
-    lines.append('import { JacClientErrorBoundary, ErrorFallback, AuthGuard } from "@jac/runtime";');
+    lines.append(
+        'import { JacClientErrorBoundary, ErrorFallback, AuthGuard } from "@jac/runtime";'
+    );
     lines.append('import { routes, layouts } from "./_routes.js";');
     if has_app_wrapper {
         lines.append(f'import {{ app as AppWrapper }} from "./{module_path.stem}.js";');
     }
     lines.append('');
-
     # --- Route helpers ---
     lines.append('const publicRoutes = routes.filter(r => !r.auth);');
     lines.append('const authRoutes = routes.filter(r => r.auth);');
@@ -109,29 +108,37 @@ impl ViteCompiler._create_pages_entry_content(self: ViteCompiler, module_path: P
     lines.append('');
     lines.append('function renderRoutes(routeList) {');
     lines.append('\treturn routeList.map(r =>');
-    lines.append('\t\tReact.createElement(Route, { key: r.path, path: r.path, element: React.createElement(r.element, null) })');
+    lines.append(
+        '\t\tReact.createElement(Route, { key: r.path, path: r.path, element: React.createElement(r.element, null) })'
+    );
     lines.append('\t);');
     lines.append('}');
     lines.append('');
-
     # --- Auth guard routes (reused in both layout and non-layout paths) ---
     # AuthGuard is a runtime function compiled with plain parameters (not React props
     # destructuring), so we wrap it in a component that passes the redirect string directly.
-    lines.append(f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}');
-    lines.append('const authGuardElement = React.createElement(_AuthGuardRoute, null);');
+    lines.append(
+        f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}'
+    );
+    lines.append(
+        'const authGuardElement = React.createElement(_AuthGuardRoute, null);'
+    );
     lines.append('');
-
     # --- Single App component with one BrowserRouter ---
     lines.append('function App() {');
     lines.append('\tconst routeChildren = [');
     lines.append('\t\t...renderRoutes(publicRoutes),');
-    lines.append('\t\tReact.createElement(Route, { key: "__auth", element: authGuardElement },');
+    lines.append(
+        '\t\tReact.createElement(Route, { key: "__auth", element: authGuardElement },'
+    );
     lines.append('\t\t\t...renderRoutes(authRoutes)');
     lines.append('\t\t),');
     lines.append('\t];');
     lines.append('');
     lines.append('\tconst routeTree = RootLayout');
-    lines.append('\t\t? React.createElement(Route, { element: React.createElement(RootLayout, null) }, ...routeChildren)');
+    lines.append(
+        '\t\t? React.createElement(Route, { element: React.createElement(RootLayout, null) }, ...routeChildren)'
+    );
     lines.append('\t\t: routeChildren;');
     lines.append('');
     lines.append('\treturn React.createElement(BrowserRouter, null,');
@@ -141,20 +148,22 @@ impl ViteCompiler._create_pages_entry_content(self: ViteCompiler, module_path: P
     lines.append('\t);');
     lines.append('}');
     lines.append('');
-
     # --- Root render ---
     if has_app_wrapper {
-        lines.append('const appElement = React.createElement(AppWrapper, null, React.createElement(App, null));');
+        lines.append(
+            'const appElement = React.createElement(AppWrapper, null, React.createElement(App, null));'
+        );
     } else {
         lines.append('const appElement = React.createElement(App, null);');
     }
     lines.append('');
     lines.append('const root = createRoot(document.getElementById("root"));');
     lines.append('root.render(');
-    lines.append('\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback }, appElement)');
+    lines.append(
+        '\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback }, appElement)'
+    );
     lines.append(');');
     lines.append('');
-
     return "\n".join(lines);
 }
 
@@ -387,7 +396,9 @@ impl ViteCompiler._generate_routes_manifest(self: ViteCompiler) -> None {
             rel_path = route.file_path.relative_to(scanner.pages_dir.parent);
         }
         rel_str = self._jac_path_to_js(str(rel_path));
-        lines.append(f'import {{ page as {route.component_import} }} from "./{rel_str}";');
+        lines.append(
+            f'import {{ page as {route.component_import} }} from "./{rel_str}";'
+        );
     }
     # Import layout components
     for (prefix, layout) in layouts.items() {
@@ -397,7 +408,9 @@ impl ViteCompiler._generate_routes_manifest(self: ViteCompiler) -> None {
             rel_path = layout.file_path.relative_to(scanner.pages_dir.parent);
         }
         rel_str = self._jac_path_to_js(str(rel_path));
-        lines.append(f'import {{ layout as {layout.component_import} }} from "./{rel_str}";');
+        lines.append(
+            f'import {{ layout as {layout.component_import} }} from "./{rel_str}";'
+        );
     }
     lines.append('');
     # Export routes array
@@ -407,7 +420,9 @@ impl ViteCompiler._generate_routes_manifest(self: ViteCompiler) -> None {
             continue;
         }
         auth_str = "true" if route.auth_required else "false";
-        lines.append(f'\t{{ path: "{route.path}", element: {route.component_import}, auth: {auth_str} }},');
+        lines.append(
+            f'\t{{ path: "{route.path}", element: {route.component_import}, auth: {auth_str} }},'
+        );
     }
     lines.append('];');
     lines.append('');

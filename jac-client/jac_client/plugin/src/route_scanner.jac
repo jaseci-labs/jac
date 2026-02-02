@@ -37,6 +37,7 @@ class RouteScanner {
         url_prefix: str = "",
         auth_required: bool = False
     ) -> list[RouteEntry];
+
     def _file_to_route_path(self: RouteScanner, filename: str) -> str;
     def _file_to_component_name(self: RouteScanner, file_path: Path) -> str;
     def _detect_collisions(self: RouteScanner, routes: list[RouteEntry]) -> None;

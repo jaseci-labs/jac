@@ -1,6 +1,4 @@
-cl import from ...components.nestedDemo.CustomButton.tsx {
-    CustomButton
-}
+cl import from ...components.nestedDemo.CustomButton.tsx { CustomButton }
 cl import from ...button { CustomButtonRoot }
 
 cl {

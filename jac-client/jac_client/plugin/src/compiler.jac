@@ -34,7 +34,6 @@ class ViteCompiler {
     }
 
     def _jac_path_to_js(self: ViteCompiler, rel_str: str) -> str;
-
     def init(
         self: ViteCompiler,
         vite_package_json: Path,
@@ -73,6 +72,7 @@ class ViteCompiler {
         collected_exports: (set[str] | None) = None,
         collected_globals: (dict[(str, Any)] | None) = None
     ) -> bool;
+
     def _generate_routes_manifest(self: ViteCompiler) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path

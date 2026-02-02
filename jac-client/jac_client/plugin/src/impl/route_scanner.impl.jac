@@ -62,14 +62,11 @@ impl RouteScanner._scan_directory(
     auth_required: bool = False
 ) -> list[RouteEntry] {
     routes: list[RouteEntry] = [];
-
     # Collect and sort entries for deterministic route ordering
     entries = sorted(dir_path.iterdir(), key=attrgetter('name'));
-
     for entry in entries {
         if entry.is_dir() {
             dir_name = entry.name;
-
             # Route groups: (public), (auth), etc.
             group_match = re.match(r'^\((\w+)\)$', dir_name);
             if group_match {
@@ -88,12 +85,10 @@ impl RouteScanner._scan_directory(
             if any(suffix in entry.name for suffix in self.SKIP_SUFFIXES) {
                 continue;
             }
-
             stem = entry.stem;
-
             # layout.jac — not a route, it's a layout wrapper
             if stem == self.LAYOUT_FILENAME {
-                layout_key = url_prefix if url_prefix else "/";
+                layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
                     raise ClientBundleError(
                         f"Layout collision: '{layout_key}' has layouts from both "
@@ -112,17 +107,14 @@ impl RouteScanner._scan_directory(
                 self._page_files.append(entry);
                 continue;
             }
-
             route_segment = self._file_to_route_path(stem);
             is_catch_all = stem.startswith('[...');
-
             if stem == self.INDEX_FILENAME {
                 # index.jac maps to the directory path
-                route_path = url_prefix if url_prefix else "/";
+                route_path = url_prefix or "/";
             } else {
                 route_path = f"{url_prefix}/{route_segment}";
             }
-
             component_name = self._file_to_component_name(entry);
             route = RouteEntry(
                 path=route_path,
@@ -151,13 +143,11 @@ impl RouteScanner._file_to_route_path(self: RouteScanner, filename: str) -> str 
     if catch_all_match {
         return "*";
     }
-
     # Dynamic segment: [id] → :id
     dynamic_match = re.match(r'^\[(\w+)\]$', filename);
     if dynamic_match {
         return f":{dynamic_match.group(1)}";
     }
-
     # Static segment
     return filename;
 }
@@ -176,7 +166,6 @@ impl RouteScanner._file_to_component_name(self: RouteScanner, file_path: Path) -
     } except ValueError {
         relative = Path(file_path.name);
     }
-
     parts: list[str] = [];
     for part in relative.with_suffix('').parts {
         # Skip route group directories like (auth), (public)
@@ -189,11 +178,12 @@ impl RouteScanner._file_to_component_name(self: RouteScanner, file_path: Path) -
         clean = re.sub(r'^\[(\w+)\]$', r'\1', clean);
         parts.append(clean[0].upper() + clean[1:] if len(clean) > 0 else clean);
     }
-
     return self.COMPONENT_PREFIX + "".join(parts);
 }
 
-impl RouteScanner._detect_collisions(self: RouteScanner, routes: list[RouteEntry]) -> None {
+impl RouteScanner._detect_collisions(
+    self: RouteScanner, routes: list[RouteEntry]
+) -> None {
     seen: dict[(str, Path)] = {};
     for route in routes {
         if route.is_layout {
