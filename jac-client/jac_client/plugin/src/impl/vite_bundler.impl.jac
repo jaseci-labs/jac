@@ -372,7 +372,7 @@ export default defineConfig({{
 ''';
     } else {
         # Build config
-        build_overrides_str = self._format_config_object(build_config, indent=4)
+        build_overrides_str = self._format_config_object(build_config, indent=2)
         if (isinstance(build_config, <>dict) and build_config)
         else '';
         server_config = vite_config_data.get('server', {});
@@ -454,6 +454,7 @@ export default defineConfig({{
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     sourcemap: true, // Enable source maps for better error messages
+{build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
       output: {{
@@ -467,7 +468,6 @@ export default defineConfig({{
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
     emptyOutDir: true,
-{build_overrides_str}
   }},
   publicDir: false,
 {server_section}  resolve: {{
