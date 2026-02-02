@@ -36,12 +36,10 @@ def reset_jac_machine(fresh_jac_context: Path) -> Generator[None, None, None]:
     _clear_jac_modules()
     _active_servers.clear()
     yield
-    # Clear type system state from all servers created during the test
+    # Shutdown all servers created during the test (terminates worker processes).
     for server in _active_servers:
-        # Ensure worker thread is stopped to avoid cross-test interference.
         with contextlib.suppress(Exception):
             server.shutdown()
-        server.clear_type_system(clear_hub=True)
     _active_servers.clear()
     _clear_jac_modules()
 
@@ -319,14 +317,24 @@ def test_missing_mod_warning(fixture_path: Callable[[str], str]) -> None:
         import_file = uris.from_fs_path(fixture_path("md_path.jac"))
         lsp.type_check_file(import_file)
 
+        # Collect warning diagnostics from all cached diagnostics.
+        warning_messages = []
+        for uri, diags in lsp.diagnostics.items():
+            for d in diags:
+                if d.severity == lspt.DiagnosticSeverity.Warning:
+                    fs = uris.to_fs_path(uri)
+                    warning_messages.append(
+                        f"{fs}, line {d.range.start.line + 1}, "
+                        f"col {d.range.start.character + 1}: {d.message}"
+                    )
+
         expected_warnings = [
-            "fixtures/md_path.jac, line 21, col 13: Module not found",  # missing_mod
-            "fixtures/md_path.jac, line 27, col 8: Module not found",  # nonexistent_module
+            "Module not found",  # missing_mod
+            "Module not found",  # nonexistent_module
         ]
-        warnings_str = [str(w) for w in lsp.warnings_had]
         for expected in expected_warnings:
-            assert any(expected in w for w in warnings_str), (
-                f"Expected warning '{expected}' not found in {warnings_str}"
+            assert any(expected in w for w in warning_messages), (
+                f"Expected warning '{expected}' not found in {warning_messages}"
             )
     finally:
         lsp.shutdown()

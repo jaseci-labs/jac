@@ -18,12 +18,12 @@ import lsprotocol.types as lspt;
 
 def debug(msg: str) -> None;
 
-"""Check syntax on change."""
+"""Check syntax on open."""
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
     ls.type_check(params.text_document.uri);
 }
 
-"""Check syntax on change."""
+"""Check syntax on save."""
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) -> None {
     ls.type_check(params.text_document.uri);
 }
@@ -51,7 +51,6 @@ def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 async def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {
-    file_path = params.text_document.uri;
     debug("Completion requested");
     return await ls.get_completion(
         params.text_document.uri,

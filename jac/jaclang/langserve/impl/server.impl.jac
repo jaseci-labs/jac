@@ -2,6 +2,11 @@ import from jaclang.cli.console { console }
 
 """Run the language server."""
 impl run_lang_server -> None {
+    # Suppress noisy pygls/LSP protocol logging.
+    logging.getLogger("pygls").setLevel(logging.CRITICAL);
+    logging.getLogger("pygls.feature_manager").setLevel(logging.CRITICAL);
+    logging.getLogger("pygls.protocol.json_rpc").setLevel(logging.CRITICAL);
+
     server = JacLangServer();
     # Register all features
     server.feature(lspt.TEXT_DOCUMENT_DID_OPEN)(did_open);
@@ -130,5 +135,5 @@ impl formatting(
 }
 
 impl debug(msg: str) -> None {
-    console.error(f"[SERVER] {msg}");
+    print(f"[SERVER] {msg}", file=sys.stderr);
 }

@@ -11,6 +11,20 @@ impl ModuleManager.clear_alerts_for_file(file_path_fs: str) -> None {
         for w in self.program.warnings_had
         if w.loc.mod_path != file_path_fs
     ];
+    # Also clear from the compiler's internal_program (used for jaclang.* files).
+    try {
+        internal = self.program._get_compiler().internal_program;
+        if internal is not self.program {
+            internal.errors_had = [
+                e for e in internal.errors_had
+                if e.loc.mod_path != file_path_fs
+            ];
+            internal.warnings_had = [
+                w for w in internal.warnings_had
+                if w.loc.mod_path != file_path_fs
+            ];
+        }
+    } except Exception { ; }
 }
 
 """Update modules in JacProgram's hub and semantic managers."""

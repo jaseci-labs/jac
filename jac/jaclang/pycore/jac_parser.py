@@ -249,12 +249,23 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self._node_ids: set[int] = set()
 
         if cancel_token and cancel_token.is_set():
+            self.errors_had = []
+            self.warnings_had = []
+            self.cancel_token = cancel_token
+            self.ir_out = uni.Module.make_stub(inject_src=root_ir)
+            self.ir_out.has_syntax_errors = True
             return
         Transform.__init__(self, ir_in=root_ir, prog=prog, cancel_token=cancel_token)
 
     def transform(self, ir_in: uni.Source) -> uni.Module:
         """Transform input IR."""
         try:
+            # Check for cancellation at the start
+            if self.is_canceled():
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = True
+                return mod
+                
             # Create input for Lark parser transform
             lark_input = LarkParseInput(
                 ir_value=ir_in.value,
@@ -263,13 +274,30 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use LarkParseTransform instead of direct parser call
             lark_transform = LarkParseTransform(ir_in=lark_input, prog=self.prog)
             parse_output = lark_transform.ir_out
+            
+            # Check for cancellation before AST transformation
+            if self.is_canceled():
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = True
+                return mod
+                
             # Transform parse tree to AST
             mod = JacParser.TreeToAST(parser=self).transform(parse_output.tree)
+            if self.is_canceled():
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = True
+                return mod
             ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
             if not isinstance(mod, uni.Module):
                 raise self.ice()
             if len(self.errors_had) != 0:
                 mod.has_syntax_errors = True
+                
+            # Check for cancellation after AST transformation
+            if self.is_canceled():
+                mod.has_syntax_errors = True
+                return mod
+                
             if ir_in.file_path.endswith(".cl.jac"):
                 self._coerce_client_module(mod)
             elif ir_in.file_path.endswith(".sv.jac"):
@@ -285,7 +313,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
             if len(e.args) >= 1 and isinstance(e.args[0], str):
                 error_msg += e.args[0]
             self.log_error(error_msg, node_override=catch_error)
-
         except Exception as e:
             raise e
 
@@ -466,7 +493,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
         ) -> uni.UniNode:
             self.cur_nodes = new_children or tree.children  # type: ignore[assignment]
             if self.parse_ref.is_canceled():
-                raise StopIteration
+                # Return an empty token instead of raising StopIteration
+                # This avoids issues with generator handling in Python 3.7+
+                return uni.EmptyToken(orig_src=self.parse_ref.ir_in)
             try:
                 return self._node_update(super()._call_userfunc(tree, new_children))
             finally:
