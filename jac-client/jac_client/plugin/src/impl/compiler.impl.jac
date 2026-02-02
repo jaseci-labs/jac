@@ -115,7 +115,10 @@ impl ViteCompiler._create_pages_entry_content(self: ViteCompiler, module_path: P
     lines.append('');
 
     # --- Auth guard routes (reused in both layout and non-layout paths) ---
-    lines.append(f'const authGuardElement = React.createElement(AuthGuard, {{ redirect: "{auth_redirect}" }});');
+    # AuthGuard is a runtime function compiled with plain parameters (not React props
+    # destructuring), so we wrap it in a component that passes the redirect string directly.
+    lines.append(f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}');
+    lines.append('const authGuardElement = React.createElement(_AuthGuardRoute, null);');
     lines.append('');
 
     # --- Single App component with one BrowserRouter ---
