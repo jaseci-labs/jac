@@ -83,7 +83,15 @@ impl TypeCheckPass.exit_atom_trailer(
 """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
 impl TypeCheckPass.exit_assignment(self: TypeCheckPass, <>node: uni.Assignment) -> None {
     if ((len(<>node.target) == 1) and (<>node.value is not None)) {
-        left_type = self.evaluator.get_type_of_expression(<>node.target[0]);
+        target = <>node.target[0];
+        # For assignment targets, use the declared symbol type (not the
+        # narrowed type). Narrowing reflects the *current* value; the
+        # variable's declared type determines what can be assigned to it.
+        if isinstance(target, uni.Name) and target.sym {
+            left_type = self.evaluator.get_type_of_symbol(target.sym);
+        } else {
+            left_type = self.evaluator.get_type_of_expression(target);
+        }
         right_type = self.evaluator.get_type_of_expression(<>node.value);
         if not self.evaluator.assign_type(right_type, left_type) {
             self.log_error(f"Cannot assign {right_type} to {left_type}");
@@ -281,4 +289,5 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator = self.prog.get_type_evaluator();
     self.evaluator.diagnostic_callback = self._add_diagnostic;
     self._insert_builtin_symbols();
+    self.evaluator._narrowing_cache = {};
 }

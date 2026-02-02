@@ -41,7 +41,7 @@ Routing allows you to create multi-page applications where different URLs displa
 - **Declarative Syntax**: Define routes using JSX components
 - **URL Parameters**: Dynamic routes with params like `/user/:id`
 - **Browser History**: Back/forward buttons work automatically
-- **Hash-based URLs**: Uses `#/path` for maximum compatibility
+- **Clean URLs**: Uses standard paths like `/about`, `/user/123`
 - **Battle-tested**: Built on industry-standard routing technology
 
 ---
@@ -140,13 +140,13 @@ cl {
 2. **`<Routes>`** contains all your route definitions
 3. **`<Route>`** maps a URL path to an element (note: `element={<Component />}`)
 4. **`<Link>`** creates clickable navigation links
-5. URLs will be hash-based: `#/`, `#/about`, `#/contact`
+5. URLs use clean paths: `/`, `/about`, `/contact`
 
 **Key Points:**
 
 - Use `element={<Home />}` to render components
 - No configuration needed - just wrap and go
-- Hash-based URLs work everywhere
+- Clean URLs with browser history support
 
 ---
 
@@ -164,10 +164,10 @@ The `<Router>` component is the top-level container for your app:
 
 **Features:**
 
-- Hash-based URLs (e.g., `#/about`, `#/contact`)
+- Clean URLs (e.g., `/about`, `/contact`)
 - No props needed - it just works!
 - Manages routing state automatically
-- Works in any environment
+- Server-side catch-all serves the SPA for direct navigation and page refreshes
 
 ### Routes Component
 
@@ -686,7 +686,7 @@ def Navigation() -> any {
 ## Summary
 
 - **Simple & Declarative**: Use `<Router>`, `<Routes>`, `<Route>` components
-- **Hash-based URLs**: Uses `#/path` for maximum compatibility
+- **Clean URLs**: Uses standard paths like `/about`, `/user/123`
 - **Modern Hooks**: `useNavigate()`, `useLocation()`, `useParams()`
 - **Protected Routes**: Use `<Navigate>` component for redirects
 - **URL Parameters**: Dynamic routes with `:param` syntax
@@ -694,3 +694,11 @@ def Navigation() -> any {
 - **Production-ready**: Battle-tested routing for real applications
 
 Routing in Jac is simple, powerful, and production-ready!
+
+> **Note for static deployments**: When deploying a Jac app as a static site (via `jac build --target web`), your hosting provider must be configured to serve `index.html` for all paths (SPA fallback). For example:
+>
+> - **Netlify**: Add a `_redirects` file with `/* /index.html 200`
+> - **Vercel**: Add a `rewrites` rule in `vercel.json`
+> - **Nginx**: Use `try_files $uri /index.html`
+>
+> When using `jac start`, the server handles this automatically.

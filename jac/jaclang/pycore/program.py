@@ -186,3 +186,14 @@ class JacProgram:
         from jaclang.pycore.compiler import JacCompiler
 
         return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint)
+
+    @staticmethod
+    def jac_file_linter(file_path: str) -> JacProgram:
+        """Lint a Jac file (report only, no formatting or output generation).
+
+        Args:
+            file_path: Path to the Jac file to lint.
+        """
+        from jaclang.pycore.compiler import JacCompiler
+
+        return JacCompiler.jac_file_linter(file_path)

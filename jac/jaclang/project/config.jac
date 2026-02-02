@@ -57,14 +57,54 @@ obj ServeConfig {
 
 """Format command defaults from [format] section."""
 obj FormatConfig {
-    has outfile: str = "",
-        fix: bool = False;
+    has outfile: str = "";
+}
+
+"""Available lint rules for the auto-lint pass.
+
+Each member corresponds to a configurable lint rule that can be
+enabled/disabled via jac.toml [check.lint] select/ignore lists.
+The string value is the kebab-case name used in jac.toml.
+"""
+enum LintRule {
+    NO_PRINT = "no-print",
+    COMBINE_HAS = "combine-has",
+    COMBINE_GLOB = "combine-glob",
+    STATICMETHOD_TO_STATIC = "staticmethod-to-static",
+    INIT_TO_CAN = "init-to-can",
+    REMOVE_EMPTY_PARENS = "remove-empty-parens",
+    REMOVE_KWESC = "remove-kwesc",
+    HASATTR_TO_NULL_OK = "hasattr-to-null-ok",
+    SIMPLIFY_TERNARY = "simplify-ternary",
+    REMOVE_FUTURE_ANNOTATIONS = "remove-future-annotations",
+    FIX_IMPL_SIGNATURE = "fix-impl-signature",
+    REMOVE_IMPORT_SEMI = "remove-import-semi"
+}
+
+"""Lint rule configuration from [check.lint] section.
+
+Rules use a select/ignore/exclude model:
+- select: list of rule names to enable
+  - "default": code-transforming rules only
+  - "all": every rule including warning-only rules
+  - individual rule names can be listed explicitly
+- ignore: list of rule names to skip even if selected
+- exclude: list of glob patterns for files to skip linting entirely
+
+Rule names are the kebab-case values of LintRule enum members,
+e.g. "no-print", "combine-has", etc.
+"""
+obj LintConfig {
+    has select: list[str] = ["default"],
+        ignore: list[str] = [],
+        exclude: list[str] = [];
 }
 
 """Check command defaults from [check] section."""
 obj CheckConfig {
     has print_errs: bool = True,
-        warnonly: bool = False;
+        warnonly: bool = False,
+        lint: LintConfig = LintConfig();
 }
 
 """Dot/graph visualization defaults from [dot] section."""

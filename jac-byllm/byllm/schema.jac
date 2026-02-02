@@ -9,7 +9,7 @@ import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
 import from typing { Callable, Union, get_args, get_origin, get_type_hints }
 import from pydantic { TypeAdapter }
-import from jaclang.pycore.mtp { Info, FieldInfo, ClassInfo, ParamInfo }
+import from jaclang.pycore.mtp { Info, FieldInfo, ClassInfo, ParamInfo, EnumInfo }
 
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";

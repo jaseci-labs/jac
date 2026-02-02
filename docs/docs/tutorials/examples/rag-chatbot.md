@@ -32,25 +32,29 @@ This example demonstrates advanced Jac concepts:
 
 ---
 
+## Prerequisites & Key Concepts
+
+- Completed the [AI Integration](../ai/quickstart.md) tutorials
+- Familiar with [OSP](../language/osp.md) (node-walker architecture)
+
+| Concept | Where to Learn |
+|---------|----------------|
+| `by llm()` | [byLLM Quickstart](../ai/quickstart.md) |
+| OSP architecture | [OSP Tutorial](../language/osp.md) |
+| Structured outputs | [Structured Outputs](../ai/structured-outputs.md) |
+| Tool calling / MCP | [Agentic AI](../ai/agentic.md) |
+
+---
+
 ## Architecture Overview
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Client    │ ──→ │    Router    │ ──→ │  Chat Node  │
-│  Streamlit  │     │   (AI-based) │     │  (Handler)  │
-└─────────────┘     └──────────────┘     └─────────────┘
-                           ↓
-                    ┌──────────────┐
-                    │  MCP Server  │
-                    │  (Tools)     │
-                    └──────────────┘
-                           ↓
-              ┌────────────┴────────────┐
-              ↓                         ↓
-       ┌────────────┐            ┌────────────┐
-       │  ChromaDB  │            │ Web Search │
-       │  (Docs)    │            │  (Serper)  │
-       └────────────┘            └────────────┘
+```mermaid
+graph TD
+    Client["Client<br/>Streamlit"] --> Router["Router<br/>(AI-based)"]
+    Router --> Chat["Chat Node<br/>(Handler)"]
+    Router --> MCP["MCP Server<br/>(Tools)"]
+    MCP --> Chroma["ChromaDB<br/>(Docs)"]
+    MCP --> Web["Web Search<br/>(Serper)"]
 ```
 
 ---

@@ -1,5 +1,7 @@
 """Implementation of dependency management for Jac projects."""
 
+import from jaclang.cli.console { console }
+
 # ===============================================================================
 # DependencyInstaller Implementation
 # ===============================================================================
@@ -45,7 +47,7 @@ impl DependencyInstaller.ensure_venv -> None {
             # Corrupted venv - recreate
             import shutil;
             if self.verbose {
-                print(f"Recreating corrupted venv at {self.venv_dir}");
+                console.print(f"Recreating corrupted venv at {self.venv_dir}");
             }
             shutil.rmtree(self.venv_dir);
             _create_venv(self.venv_dir);
@@ -53,7 +55,7 @@ impl DependencyInstaller.ensure_venv -> None {
     } else {
         # Create new venv
         if self.verbose {
-            print(f"Creating venv at {self.venv_dir}");
+            console.print(f"Creating venv at {self.venv_dir}");
         }
         self.venv_dir.parent.mkdir(parents=True, exist_ok=True);
         _create_venv(self.venv_dir);
@@ -76,7 +78,7 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     }
     cmd = [venv_python, "-m", "pip"] + args;
     if self.verbose {
-        print(f"Running: {' '.join(cmd)}");
+        console.print(f"Running: {' '.join(cmd)}");
     }
     try {
         result = subprocess.run(cmd, capture_output=True, text=True);
@@ -125,13 +127,13 @@ impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     } else {
         spec = name;
     }
-    print(f"Installing {spec}...");
+    console.print(f"Installing {spec}...");
     (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
     if returncode == 0 {
-        print(f"  {name} installed successfully");
+        console.print(f"  {name} installed successfully");
         return True;
     } else {
-        print(f"  Failed to install {name}: {stderr}", file=sys.stderr);
+        console.error(f"  Failed to install {name}: {stderr}");
         return False;
     }
 }
@@ -146,13 +148,13 @@ impl DependencyInstaller.install_git_package(
     } else {
         spec = f"git+{git_url}";
     }
-    print(f"Installing {name} from git...");
+    console.print(f"Installing {name} from git...");
     (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
     if returncode == 0 {
-        print(f"  {name} installed successfully from git");
+        console.print(f"  {name} installed successfully from git");
         return True;
     } else {
-        print(f"  Failed to install {name} from git: {stderr}", file=sys.stderr);
+        console.error(f"  Failed to install {name} from git: {stderr}");
         return False;
     }
 }
@@ -162,19 +164,19 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
     if not self.venv_dir or not self.venv_dir.exists() {
         return False;
     }
-    print(f"Uninstalling {name}...");
+    console.print(f"Uninstalling {name}...");
     (returncode, stdout, stderr) = self._run_pip(["uninstall", "-y", name]);
     if returncode == 0 {
-        print(f"  {name} uninstalled successfully");
+        console.print(f"  {name} uninstalled successfully");
         return True;
     } else {
         if "not installed" in stderr.lower() or "not installed" in stdout.lower() {
             if self.verbose {
-                print(f"  {name} was not installed");
+                console.print(f"  {name} was not installed");
             }
             return False;
         }
-        print(f"  Failed to uninstall {name}: {stderr}", file=sys.stderr);
+        console.error(f"  Failed to uninstall {name}: {stderr}");
         return False;
     }
 }

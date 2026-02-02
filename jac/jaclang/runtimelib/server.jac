@@ -245,7 +245,7 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
-    def start(dev: bool = False) -> None;
+    def start(dev: bool = False, no_client: bool = False) -> None;
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""

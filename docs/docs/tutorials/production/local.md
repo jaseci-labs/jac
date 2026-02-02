@@ -13,12 +13,10 @@ Run your Jac walkers as a production-ready HTTP API server.
 
 The `jac start` command turns your walkers into REST API endpoints automatically:
 
-```
-┌─────────────┐     HTTP      ┌─────────────┐
-│   Client    │ ─────────────→ │  jac start  │
-│  (Browser,  │               │   Server    │
-│   Mobile)   │ ←───────────── │             │
-└─────────────┘    JSON       └─────────────┘
+```mermaid
+graph LR
+    Client["Client<br/>(Browser, Mobile)"] -- "HTTP" --> Server["jac start<br/>Server"]
+    Server -- "JSON" --> Client
 ```
 
 ---

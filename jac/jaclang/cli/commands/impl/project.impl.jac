@@ -5,9 +5,9 @@ Direct implementations - no delegation.
 
 import subprocess;
 import shlex;
-import sys;
 import base64;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 """Initialize a new Jac project."""
 impl create(
@@ -18,7 +18,6 @@ impl create(
 ) -> int {
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry { get_template_registry }
-    import from jaclang.cli.console { console }
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory
@@ -185,7 +184,7 @@ def _resolve_template(use: str, registry: any) -> any {
 
     # Check if it's a URL
     if use.startswith("http://") or use.startswith("https://") {
-        print(f"Downloading template from {use}...");
+        console.print(f"Downloading template from {use}...");
         try {
             # Download to a temporary file
             with tempfile.NamedTemporaryFile(suffix=".jacpack", delete=False) as tmp {
@@ -195,13 +194,13 @@ def _resolve_template(use: str, registry: any) -> any {
             tmpl = load_template_from_json(tmp_path);
             # Clean up temp file
             tmp_path.unlink();
-            print(f"Using template '{tmpl.name}' from URL");
+            console.print(f"Using template '{tmpl.name}' from URL");
             return tmpl;
         } except urllib.error.URLError as e {
-            print(f"Error downloading template from URL: {e}", file=sys.stderr);
+            console.error(f"Error downloading template from URL: {e}");
             return None;
         } except Exception as e {
-            print(f"Error loading template from URL: {e}", file=sys.stderr);
+            console.error(f"Error loading template from URL: {e}");
             return None;
         }
     }
@@ -214,40 +213,36 @@ def _resolve_template(use: str, registry: any) -> any {
                 # Load from .jacpack file
                 if use_path.suffix == ".jacpack" or use.endswith(".jacpack") {
                     tmpl = load_template_from_json(use_path);
-                    print(f"Using template '{tmpl.name}' from {use_path}");
+                    console.print(f"Using template '{tmpl.name}' from {use_path}");
                     return tmpl;
                 } else {
-                    print(
-                        f"Error: File must be a .jacpack file: {use}", file=sys.stderr
-                    );
+                    console.error(f"Error: File must be a .jacpack file: {use}");
                     return None;
                 }
             } elif use_path.is_dir() {
                 # Load from directory with jac.toml [jacpack] section
                 tmpl = load_template_from_directory(use_path);
-                print(f"Using template '{tmpl.name}' from {use_path}");
+                console.print(f"Using template '{tmpl.name}' from {use_path}");
                 return tmpl;
             }
         } except Exception as e {
-            print(f"Error loading template from {use}: {e}", file=sys.stderr);
+            console.error(f"Error loading template from {use}: {e}");
             return None;
         }
     }
 
     # Check if path looks like a file path but doesn't exist
     if "/" in use or use.endswith(".jacpack") {
-        print(f"Error: Template file or directory not found: {use}", file=sys.stderr);
+        console.error(f"Error: Template file or directory not found: {use}");
         return None;
     }
 
     # Fall back to registry lookup
     tmpl = registry.get(use);
     if tmpl is None {
-        print(f"Unknown jacpack template: {use}", file=sys.stderr);
-        print("Use --list-jacpacks to see available templates.", file=sys.stderr);
-        print(
-            "You can also specify a path to a .jacpack file or a URL.", file=sys.stderr
-        );
+        console.error(f"Unknown jacpack template: {use}");
+        console.error("Use --list-jacpacks to see available templates.");
+        console.error("You can also specify a path to a .jacpack file or a URL.");
         return None;
     }
     return tmpl;
@@ -340,7 +335,6 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
 
 """Create project-root .gitignore with entries."""
 def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
-    import from jaclang.cli.console { console }
     gitignore_path = project_path / ".gitignore";
     with open(gitignore_path, "w") as f {
         f.write("\n".join(entries) + "\n");
@@ -352,7 +346,6 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
 impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error(
@@ -385,7 +378,6 @@ impl add(
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         # Skip silently if jac.toml doesn't exist (for regular Python deps)
@@ -466,7 +458,6 @@ impl add(
 impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -501,7 +492,6 @@ impl remove(packages: list = [], dev: bool = False) -> int {
 """Run custom scripts defined in jac.toml."""
 impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -559,7 +549,6 @@ impl clean(
 ) -> int {
     import shutil;
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -650,24 +639,24 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
         registry = get_template_registry();
         templates = registry.list_templates();
         if not templates {
-            print("No templates available.");
+            console.print("No templates available.");
             return 0;
         }
-        print("Available templates:");
+        console.print("Available templates:");
         for (tname, desc) in templates {
-            print(f"  {tname}: {desc}");
+            console.print(f"  {tname}: {desc}");
         }
         return 0;
     }
     if action == "pack" {
         if not path {
-            print("Error: Template directory path required.", file=sys.stderr);
-            print("Usage: jac jacpack pack <directory> [-o output.jacpack]");
+            console.error("Error: Template directory path required.");
+            console.print("Usage: jac jacpack pack <directory> [-o output.jacpack]");
             return 1;
         }
         template_dir = Path(path);
         if not template_dir.is_dir() {
-            print(f"Error: Not a directory: {template_dir}", file=sys.stderr);
+            console.error(f"Error: Not a directory: {template_dir}");
             return 1;
         }
         # Determine output path
@@ -691,14 +680,14 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
             bundle_template(template_dir, output_path);
             return 0;
         } except Exception as e {
-            print(f"Error bundling template: {e}", file=sys.stderr);
+            console.error(f"Error bundling template: {e}");
             return 1;
         }
     }
     if action == "info" {
         if not path {
-            print("Error: Template path required.", file=sys.stderr);
-            print("Usage: jac jacpack info <path>");
+            console.error("Error: Template path required.");
+            console.print("Usage: jac jacpack info <path>");
             return 1;
         }
         template_path = Path(path);
@@ -708,28 +697,28 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
             } elif template_path.suffix == ".json" {
                 tmpl = load_template_from_json(template_path);
             } else {
-                print(f"Error: Unknown template format: {path}", file=sys.stderr);
+                console.error(f"Error: Unknown template format: {path}");
                 return 1;
             }
 
             # Access strongly-typed ProjectTemplate fields
-            print(f"Template: {tmpl.name}");
-            print(f"Description: {tmpl.description}");
-            print(f"Files: {len(tmpl.files)}");
+            console.print(f"Template: {tmpl.name}");
+            console.print(f"Description: {tmpl.description}");
+            console.print(f"Files: {len(tmpl.files)}");
             for file_path in sorted(tmpl.files.keys()) {
-                print(f"  - {file_path}");
+                console.print(f"  - {file_path}");
             }
-            print(f"Directories: {tmpl.directories}");
+            console.print(f"Directories: {tmpl.directories}");
             if tmpl.post_create is not None {
-                print("Post-create hook: Yes");
+                console.print("Post-create hook: Yes");
             }
             return 0;
         } except Exception as e {
-            print(f"Error loading template: {e}", file=sys.stderr);
+            console.error(f"Error loading template: {e}");
             return 1;
         }
     }
-    print(f"Unknown action: {action}", file=sys.stderr);
-    print("Available actions: list, pack, info");
+    console.error(f"Unknown action: {action}");
+    console.print("Available actions: list, pack, info");
     return 1;
 }

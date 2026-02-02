@@ -12,10 +12,10 @@ impl ViteCompiler._get_client_dir(self: ViteCompiler) -> Path {
     return self.project_dir / '.jac' / 'client';
 }
 
-"""Compile module and dependencies, then bundle with Vite."""
-impl ViteCompiler.compile_and_bundle(
+"""Compile module and dependencies without bundling (for dev mode)."""
+impl ViteCompiler.compile(
     self: ViteCompiler, module: ModuleType, module_path: Path
-) -> tuple[str, str, list[str], list[str]] {
+) -> tuple[list[str], list[str]] {
     (module_js, mod, module_manifest) = self.jac_compiler.compile_module(module_path);
     collected_exports: set[str] = set(
         self.jac_compiler.extract_exports(module_manifest)
@@ -32,13 +32,22 @@ impl ViteCompiler.compile_and_bundle(
     self.compile_runtime_utils();
     self.copy_root_assets();
     self.create_entry_file(module_path);
+    # Return exports and globals without bundling
+    client_exports = sorted(collected_exports);
+    client_globals = list(collected_globals.keys());
+    return (client_exports, client_globals);
+}
+
+"""Compile module and dependencies, then bundle with Vite."""
+impl ViteCompiler.compile_and_bundle(
+    self: ViteCompiler, module: ModuleType, module_path: Path
+) -> tuple[str, str, list[str], list[str]] {
+    (client_exports, client_globals) = self.compile(module, module_path);
     # Vite handles JSX/TSX transpilation natively with Bun - no Babel needed
     # Vite builds directly from compiled/ directory
     entry_file = self.compiled_dir / '_entry.js';
     self.vite_bundler.build(entry_file=entry_file);
     (bundle_code, bundle_hash) = self.vite_bundler.read_bundle();
-    client_exports = sorted(collected_exports);
-    client_globals = list(collected_globals.keys());
     return (bundle_code, bundle_hash, client_exports, client_globals);
 }
 
@@ -187,20 +196,7 @@ impl ViteCompiler.compile_dependencies_recursively(
         output_path = self.compiled_dir / name;
     }
     output_path.parent.mkdir(parents=True, exist_ok=True);
-    # Add source file header comment for better error messages
     source_header = f"/* Source: {module_path} */\n";
-    # Add ES module exports so Vite can resolve named imports between modules
-    module_export_names = sorted(set(exports_list + list(non_root_globals.keys())));
-    if module_export_names {
-        import re;
-        # Strip any existing export declarations to avoid duplicates
-        clean_combined_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', combined_js);
-        clean_combined_js = re.sub(
-            r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_combined_js
-        );
-        export_stmt = f"\nexport {{ {', '.join(module_export_names)} }};\n";
-        combined_js = clean_combined_js + export_stmt;
-    }
     output_path.write_text(source_header + combined_js, encoding='utf-8');
     if (not manifest or not manifest.imports) {
         return;
@@ -240,34 +236,15 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     runtimeutils_exports_list = self.jac_compiler.extract_exports(
         runtimeutils_manifest
     );
-    # Include both function exports and glob exports (e.g., useState, useEffect)
     glob_names = list(runtimeutils_manifest.globals) if runtimeutils_manifest else [];
     all_exports = sorted(
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
     );
-    # Strip all existing export statements from compiled JS to avoid duplicates.
-    # The codegen produces `export let`, `export function`, `export class`, and
-    # `export { ... }` forms. We remove the export keyword from declarations and
-    # remove export blocks entirely, then add one comprehensive export at the end.
-    import re;
-    clean_js = re.sub(r'\nexport\s*\{[^}]*\}\s*;?\s*', '\n', runtimeutils_js);
-    clean_js = re.sub(r'\bexport\s+(let|const|var|function|class)\b', r'\1', clean_js);
-    # Append single comprehensive ES module export for Vite to resolve @jac/runtime
-    export_names = [
-        e
-        for e in all_exports
-        if not e.startswith('_')
-    ];
-    # Also include internal names that are imported by compiled modules
-    internal_exports = ['__jacJsx', '__jacSpawn', '__jacCallFunction'];
-    all_export_names = sorted(set(export_names + internal_exports));
-    export_stmt = f"\nexport {{ {', '.join(all_export_names)} }};\n";
-    combined_runtime_utils_js = clean_js + export_stmt;
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
     (self.compiled_dir / 'client_runtime.js').write_text(
-        combined_runtime_utils_js, encoding='utf-8'
+        runtimeutils_js, encoding='utf-8'
     );
-    return (combined_runtime_utils_js, all_exports);
+    return (runtimeutils_js, all_exports);
 }
 
 """Initialize the Vite compiler."""

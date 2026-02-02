@@ -8,6 +8,12 @@ on:
       - 'docs/**/*.md'
       - 'docs/scripts/validate_docs_code.py'
       - '.github/workflows/docs-validation.yml'
+      - 'jac/jaclang/**'
+      - 'jac-scale/jac_scale/**'
+      - 'jac-client/jac_client/**'
+      - 'jac-byllm/byllm/**'
+      - 'jac-super/jac_super/**'
+      - 'docs/docs/community/release_notes/**'
   push:
     branches:
       - main
@@ -67,3 +73,19 @@ jobs:
             echo "- Jac code block syntax: ✓" >> $GITHUB_STEP_SUMMARY
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
+
+  check-release-notes:
+    name: Check Release Notes Updated
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check release notes
+        env:
+          CI: "true"
+        run: bash scripts/check-release-notes.sh

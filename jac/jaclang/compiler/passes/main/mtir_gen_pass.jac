@@ -8,6 +8,7 @@ from GenAI abilities for use by the LLM runtime.
 import jaclang.pycore.unitree as uni;
 import from jaclang.pycore.mtp {
     ClassInfo,
+    EnumInfo,
     FieldInfo,
     FunctionInfo,
     MethodInfo,
@@ -53,6 +54,9 @@ obj MTIRGenPass(UniPass) {
     def _extract_type_symbol(
         type_expr: uni.Expr | None, scope: uni.UniScopeNode
     ) -> uni.Symbol | None;
+
+    """Extract enum information from a symbol."""
+    def _extract_enum_info(symbol: uni.Symbol) -> EnumInfo;
 
     """Extract class structure information from a symbol."""
     def _extract_class_info(symbol: uni.Symbol) -> ClassInfo | None;

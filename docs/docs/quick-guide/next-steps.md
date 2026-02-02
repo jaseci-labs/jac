@@ -14,10 +14,10 @@ Choose a learning path based on your goals and background.
 2. [Structured Outputs](../tutorials/ai/structured-outputs.md) - Type-safe AI responses
 3. [Agentic AI](../tutorials/ai/agentic.md) - Tool calling and ReAct patterns
 
-**Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models with automatic prompt generation from type signatures and docstrings.
+**Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models. The compiler generates prompts from function names, parameter names, and type signatures. Use `sem` for additional semantic context.
 
 ```jac
-"""Summarize the article in 2-3 sentences."""
+sem summarize = "Summarize the article in 2-3 sentences.";
 def summarize(text: str) -> str by llm();
 ```
 
@@ -143,7 +143,7 @@ Jac's frontend syntax will look familiar (JSX-style).
 2. **Graph thinking** - Model data as nodes and edges
 3. **Walker pattern** - Computation that moves through data
 
-**Start here:** [Hello World](hello-world.md) → [Your First Full-Stack AI App](first-fullstack-ai-app.md)
+**Start here:** [Hello World](hello-world.md) → [Build Your First App](../tutorials/first-app/part1-todo-app.md)
 
 ---
 

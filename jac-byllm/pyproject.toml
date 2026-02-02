@@ -1,6 +1,6 @@
 [project]
 name = "byllm"
-version = "0.4.16"
+version = "0.4.17"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.11"
 dependencies = [
-    "jaclang>=0.9.12",
+    "jaclang>=0.9.13",
     "litellm>=1.75.5.post1,<1.80.0",
     "loguru>=0.7.2,<0.8.0",
     "pillow>=10.4.0,<10.5.0",

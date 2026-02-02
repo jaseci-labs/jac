@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import gc
 import os
-import shutil
 import tempfile
 import time
-from subprocess import PIPE, Popen, run
+from subprocess import Popen, run
 
 import pytest
 
@@ -27,6 +26,8 @@ from .test_helpers import (
 def running_server():
     """Start the all-in-one jac server for the test module and yield its URL.
 
+    Uses jacpack to bundle and extract the all-in-one example.
+
     Yields a dict with keys `port` and `url`.
     """
     tests_dir = os.path.dirname(__file__)
@@ -44,43 +45,33 @@ def running_server():
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
-            process = Popen(
-                [*jac_cmd, "create", "--use", "client", app_name],
-                stdin=PIPE,
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-                env=env,
-            )
-            stdout, stderr = process.communicate()
-            if process.returncode != 0:
-                pytest.fail(f"jac create --use client failed: {stderr}")
 
-            project_path = os.path.join(temp_dir, app_name)
-
-            for entry in os.listdir(all_in_one_path):
-                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
-                    continue
-                src = os.path.join(all_in_one_path, entry)
-                dst = os.path.join(project_path, entry)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            jac_add_result = run(
-                [*jac_cmd, "add", "--npm"],
-                cwd=project_path,
+            # Create jacpack file from all-in-one example
+            jacpack_path = os.path.join(temp_dir, "all-in-one.jacpack")
+            pack_result = run(
+                [*jac_cmd, "jacpack", "pack", all_in_one_path, "-o", jacpack_path],
                 capture_output=True,
                 text=True,
                 env=env,
             )
-            if jac_add_result.returncode != 0:
-                pytest.fail(f"jac add --npm failed: {jac_add_result.stderr}")
+            if pack_result.returncode != 0:
+                pytest.fail(f"jac jacpack pack failed: {pack_result.stderr}")
+
+            # Create project from jacpack file
+            create_result = run(
+                [*jac_cmd, "create", app_name, "--use", jacpack_path],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if create_result.returncode != 0:
+                pytest.fail(f"jac create --use jacpack failed: {create_result.stderr}")
+
+            project_path = os.path.join(temp_dir, app_name)
 
             server_port = get_free_port()
             server = Popen(
-                [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                [*jac_cmd, "start", "-p", str(server_port)],
                 cwd=project_path,
                 env=env,
             )
@@ -144,14 +135,14 @@ class TestAuthenticationE2E:
 
     def _signup(self, page: Page, base_url: str, username: str, password: str) -> None:
         """Navigate to signup, fill form, and submit."""
-        page.goto(f"{base_url}#/signup", wait_until="networkidle", timeout=60000)
+        page.goto(f"{base_url}/signup", wait_until="networkidle", timeout=60000)
         page.wait_for_selector('input[type="text"]', timeout=30000)
         self._fill_auth_form(page, username, password)
         self._submit_form(page)
 
     def _login(self, page: Page, base_url: str, username: str, password: str) -> None:
         """Navigate to login, fill form, and submit."""
-        page.goto(f"{base_url}#/login", wait_until="networkidle", timeout=30000)
+        page.goto(f"{base_url}/login", wait_until="networkidle", timeout=30000)
         page.wait_for_selector('input[type="text"]', timeout=30000)
         self._fill_auth_form(page, username, password)
         self._submit_form(page)
@@ -166,10 +157,10 @@ class TestAuthenticationE2E:
     def test_navigate_without_auth(self, running_server: dict, page: Page) -> None:
         """Visiting protected route without auth should redirect to login."""
         page.goto(
-            f"{running_server['url']}#/nested", wait_until="networkidle", timeout=60000
+            f"{running_server['url']}/nested", wait_until="networkidle", timeout=60000
         )
         page.wait_for_timeout(2000)
-        assert "#/login" in page.url.lower()
+        assert "/login" in page.url.lower()
 
     def test_signup_form_submission(self, running_server: dict, page: Page) -> None:
         """Signup via UI should redirect away from signup page on success."""
@@ -179,7 +170,7 @@ class TestAuthenticationE2E:
             f"e2e_signup_{int(time.time())}",
             "test_pass_123",
         )
-        assert "#/signup" not in page.url.lower()
+        assert "/signup" not in page.url.lower()
 
     def test_login_with_valid_credentials(
         self, running_server: dict, page: Page
@@ -192,7 +183,7 @@ class TestAuthenticationE2E:
         self._logout(page)
         self._login(page, base_url, username, password)
 
-        assert "#/login" not in page.url.lower() and "#/signup" not in page.url.lower()
+        assert "/login" not in page.url.lower() and "/signup" not in page.url.lower()
 
     def test_login_with_invalid_credentials(
         self, running_server: dict, page: Page
@@ -200,7 +191,7 @@ class TestAuthenticationE2E:
         """Verify login fails for invalid credentials (stays or shows error)."""
         self._login(page, running_server["url"], "nonexistent_999", "wrong_pass")
 
-        assert "#/login" in page.url.lower()
+        assert "/login" in page.url.lower()
         assert page.locator("text=/Invalid credentials/i").first.is_visible()
 
     def test_logout_functionality(self, running_server: dict, page: Page) -> None:
@@ -214,7 +205,7 @@ class TestAuthenticationE2E:
         logout_btn.click()
         page.wait_for_timeout(1500)
 
-        assert "#/login" in page.url.lower() and not logout_btn.is_visible(timeout=5000)
+        assert "/login" in page.url.lower() and not logout_btn.is_visible(timeout=5000)
 
     def test_complete_auth_flow(self, running_server: dict, page: Page) -> None:
         """Integration: signup -> logout -> login -> access protected route."""
@@ -222,11 +213,11 @@ class TestAuthenticationE2E:
         username, password = f"e2e_complete_{int(time.time())}", "complete_pass_123"
 
         self._signup(page, base_url, username, password)
-        assert "#/signup" not in page.url.lower()
+        assert "/signup" not in page.url.lower()
 
         self._logout(page)
         self._login(page, base_url, username, password)
-        assert "#/login" not in page.url.lower()
+        assert "/login" not in page.url.lower()
 
-        page.goto(f"{base_url}#/nested", wait_until="networkidle", timeout=30000)
-        assert "#/nested" in page.url.lower()
+        page.goto(f"{base_url}/nested", wait_until="networkidle", timeout=30000)
+        assert "/nested" in page.url.lower()

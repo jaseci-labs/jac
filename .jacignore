@@ -309,3 +309,6 @@ tool_function.jac
 webhook.impl.jac
 storage_factory.jac
 importer_main.jac
+checker_type_narrowing.jac
+jaccomplete.jac
+jaccomplete.impl.jac
