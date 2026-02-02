@@ -34,7 +34,11 @@ class ViteBundler {
     ) -> str;
 
     def create_vite_config(
-        self: ViteBundler, entry_file: Path, api_base_url_override: str = "", is_dev: bool = False, api_port: int = 8000
+        self: ViteBundler,
+        entry_file: Path,
+        api_base_url_override: str = "",
+        is_dev: bool = False,
+        api_port: int = 8000
     ) -> Path;
 
     def _get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str;
@@ -57,8 +61,6 @@ class ViteBundler {
     def create_tsconfig(self: ViteBundler) -> Path;
     """Create config files from jac.toml [plugins.client.configs]."""
     def create_config_files(self: ViteBundler) -> list[Path];
-
-
 
     """Start Vite dev server as a subprocess."""
     def start_dev_server(self: ViteBundler, port: int = 3000) -> Any;

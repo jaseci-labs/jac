@@ -1123,7 +1123,9 @@ cors = true
             assert "@tailwindcss/vite" in build_config_content  # Tailwind import
 
             # Test create_vite_config (dev config)
-            dev_config_path = bundler.create_vite_config(entry_file, is_dev=True, api_port=8001)
+            dev_config_path = bundler.create_vite_config(
+                entry_file, is_dev=True, api_port=8001
+            )
             assert dev_config_path.exists()
             assert dev_config_path.name == "vite.dev.config.js"
 
