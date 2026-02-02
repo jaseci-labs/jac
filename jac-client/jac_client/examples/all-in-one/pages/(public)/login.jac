@@ -1,25 +1,25 @@
-cl import from "@jac/runtime" { Link, useNavigate, jacSignup }
+cl import from "@jac/runtime" { Link, useNavigate, jacLogin }
 
 cl {
-    def:pub SignupPage -> any {
+    def:pub page -> any {
         has username: str = "",
             password: str = "",
             error: str = "";
 
         navigate = useNavigate();
 
-        async def handleSignup(e: any) -> None {
+        async def handleLogin(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
                 error = "Please fill in all fields";
                 return;
             }
-            result = await jacSignup(username, password);
-            if result["success"] {
+            success = await jacLogin(username, password);
+            if success {
                 navigate("/");
             } else {
-                error = result["error"] if result["error"] else "Signup failed";
+                error = "Invalid credentials";
             }
         }
 
@@ -60,9 +60,9 @@ cl {
                     }}
                 >
                     <h2 style={{"marginBottom": "24px", "textAlign": "center"}}>
-                        Sign Up
+                        Login
                     </h2>
-                    <form onSubmit={handleSignup}>
+                    <form onSubmit={handleLogin}>
                         <input
                             type="text"
                             value={username}
@@ -105,7 +105,7 @@ cl {
                                 "fontWeight": "600"
                             }}
                         >
-                            Sign Up
+                            Login
                         </button>
                     </form>
                     <p
@@ -115,10 +115,10 @@ cl {
                             "fontSize": "14px"
                         }}
                     >
-                        Have an account?
+                        Need an account?
                         {" "}
-                        <Link to="/login">
-                            Login
+                        <Link to="/signup">
+                            Sign up
                         </Link>
                     </p>
                 </div>

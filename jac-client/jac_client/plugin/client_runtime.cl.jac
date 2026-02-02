@@ -9,6 +9,7 @@ import from 'react-router-dom' {
     Route as ReactRouterRoute,
     Link as ReactRouterLink,
     Navigate as ReactRouterNavigate,
+    Outlet as ReactRouterOutlet,
     useNavigate as reactRouterUseNavigate,
     useLocation as reactRouterUseLocation,
     useParams as reactRouterUseParams
@@ -29,6 +30,7 @@ glob:
      useNavigate = reactRouterUseNavigate,
      useLocation = reactRouterUseLocation,
      useParams = reactRouterUseParams,
+     Outlet = ReactRouterOutlet,
      JacClientErrorBoundary = ErrorBoundary;
 
 def:pub useRouter -> dict;
@@ -44,6 +46,6 @@ def:pub __getApiBaseUrl -> str;
 def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
+def:pub AuthGuard(redirect: str = "/login") -> any;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> any;
 def:pub errorOverlay(filePath: str, errors: str) -> any;
-# React Router components
