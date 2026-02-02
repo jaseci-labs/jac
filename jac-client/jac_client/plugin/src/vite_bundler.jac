@@ -49,6 +49,7 @@ class ViteBundler {
         api_base_url: str,
         api_port: int = 8000
     ) -> str;
+
     def create_package_json(
         self: ViteBundler, project_name: Optional[str] = None
     ) -> Path;
