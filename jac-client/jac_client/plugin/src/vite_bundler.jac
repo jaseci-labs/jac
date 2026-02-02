@@ -42,6 +42,7 @@ class ViteBundler {
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
     def _ensure_root_package_json(self: ViteBundler) -> None;
     def _cleanup_root_package_files(self: ViteBundler) -> None;
+    def _generate_vite_config_content(self: ViteBundler, is_dev: bool, entry_file: Path, api_base_url: str, api_port: int = 8000) -> str;
     def create_package_json(
         self: ViteBundler, project_name: Optional[str] = None
     ) -> Path;
