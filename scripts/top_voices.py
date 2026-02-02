@@ -2,11 +2,17 @@
 """Script to generate a markdown table of top voices from GitHub discussions."""
 
 import argparse
+import json
 import subprocess
 import sys
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+REPO = "Jaseci-Labs/jaseci"
+PER_PAGE = 100
+MAX_PR_LIMIT = 500
+DEFAULT_PERIODS = [7, 30, 180, 365]
 
 table_css = """
 <style>
@@ -95,325 +101,226 @@ def check_gh_cli() -> bool:
         return False
 
 
-def fetch_issue_comments(since_date: str) -> list[dict[str, Any]]:
-    """Fetch issue comments using GitHub CLI."""
-    comments = []
-    try:
-        # Fetch issue comments with pagination
-        page = 1
-        while True:
-            cmd = [
-                "gh",
-                "api",
-                f"/repos/Jaseci-Labs/jaseci/issues/comments?since={since_date}&per_page=100&page={page}",
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if result.returncode != 0:
-                break
-
-            import json
-
-            data = json.loads(result.stdout)
-            if not data:
-                break
-
-            for item in data:
-                user = item.get("user", {})
-                # Filter bots by type or by [bot] in login
-                if user.get("type", "").lower() == "bot":
-                    continue
-                login = user.get("login", "unknown")
-                if "[bot]" in login.lower():
-                    continue
-                comments.append({
-                    "author": login,
-                    "date": item.get("created_at", ""),
-                })
-
-            # Check if we got a full page (if less, we're done)
-            if len(data) < 100:
-                break
-            page += 1
-    except Exception as e:
-        print(f"Warning: Error fetching issue comments: {e}")
-    return comments
+def is_bot(user_data: dict | str) -> bool:
+    """Check if a user is a bot."""
+    if isinstance(user_data, dict):
+        return (
+            user_data.get("type", "").lower() == "bot"
+            or "[bot]" in user_data.get("login", "").lower()
+        )
+    return "[bot]" in str(user_data).lower()
 
 
-def fetch_pr_comments(since_date: str) -> list[dict[str, Any]]:
-    """Fetch PR review comments using GitHub CLI."""
-    comments = []
-    try:
-        page = 1
-        while True:
-            cmd = [
-                "gh",
-                "api",
-                f"/repos/Jaseci-Labs/jaseci/pulls/comments?since={since_date}&per_page=100&page={page}",
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if result.returncode != 0:
-                break
-
-            import json
-
-            data = json.loads(result.stdout)
-            if not data:
-                break
-
-            for item in data:
-                user = item.get("user", {})
-                # Filter bots by type or by [bot] in login
-                if user.get("type", "").lower() == "bot":
-                    continue
-                login = user.get("login", "unknown")
-                if "[bot]" in login.lower():
-                    continue
-                comments.append({
-                    "author": login,
-                    "date": item.get("created_at", ""),
-                })
-
-            if len(data) < 100:
-                break
-            page += 1
-    except Exception as e:
-        print(f"Warning: Error fetching PR comments: {e}")
-    return comments
-
-
-def fetch_pr_reviews(since_date: str) -> list[dict[str, Any]]:
-    """Fetch PR reviews using GitHub CLI."""
-    reviews = []
-    try:
-        # Get all PRs merged or updated since date
-        cmd = [
-            "gh",
-            "pr",
-            "list",
-            "--repo", "Jaseci-Labs/jaseci",
-            "--state", "merged",
-            "--limit", "500",
-            "--json", "number,updatedAt,mergedAt",
-        ]
+def paginated_api(endpoint: str) -> list[dict]:
+    """Fetch all pages from a GitHub API endpoint."""
+    items = []
+    page = 1
+    while True:
+        cmd = ["gh", "api", f"{endpoint}&per_page={PER_PAGE}&page={page}"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
-            return reviews
+            break
+        data = json.loads(result.stdout)
+        if not data:
+            break
+        items.extend(data)
+        if len(data) < PER_PAGE:
+            break
+        page += 1
+    return items
 
-        import json
 
-        prs = json.loads(result.stdout)
-        since_dt = datetime.fromisoformat(since_date.replace("Z", "+00:00"))
+def fetch_comments(since_date: str) -> list[dict]:
+    """Fetch issue and PR comments."""
+    comments = []
 
-        for pr in prs:
-            # Check if PR was updated/merged since date
-            pr_date = pr.get("mergedAt") or pr.get("updatedAt")
-            if not pr_date:
-                continue
-            pr_date_dt = datetime.fromisoformat(pr_date.replace("Z", "+00:00"))
-            if pr_date_dt < since_dt:
-                continue
-
-            # Fetch reviews for this PR
-            pr_number = pr.get("number")
-            review_cmd = [
-                "gh",
-                "api",
-                f"/repos/Jaseci-Labs/jaseci/pulls/{pr_number}/reviews",
-            ]
-            review_result = subprocess.run(
-                review_cmd, capture_output=True, text=True, check=False
+    for item in paginated_api(f"/repos/{REPO}/issues/comments?since={since_date}"):
+        if not is_bot(item.get("user", {})):
+            comments.append(
+                {
+                    "author": item["user"].get("login", "unknown"),
+                    "date": item.get("created_at", ""),
+                }
             )
-            if review_result.returncode == 0:
-                review_data = json.loads(review_result.stdout)
-                for review in review_data:
-                    author = review.get("user", {})
-                    # Filter bots by type or by [bot] in login
-                    if author.get("type", "").lower() == "bot":
-                        continue
-                    login = author.get("login", "unknown")
-                    if "[bot]" in login.lower():
-                        continue
-                    review_date = review.get("submitted_at", "")
-                    if review_date:
-                        review_dt = datetime.fromisoformat(review_date.replace("Z", "+00:00"))
-                        if review_dt >= since_dt:
-                            reviews.append({
-                                "author": login,
+
+    for item in paginated_api(f"/repos/{REPO}/pulls/comments?since={since_date}"):
+        if not is_bot(item.get("user", {})):
+            comments.append(
+                {
+                    "author": item["user"].get("login", "unknown"),
+                    "date": item.get("created_at", ""),
+                }
+            )
+
+    return comments
+
+
+def fetch_reviews(since_date: str) -> list[dict]:
+    """Fetch PR reviews."""
+    reviews: list[dict] = []
+    cmd = [
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        REPO,
+        "--state",
+        "merged",
+        "--limit",
+        str(MAX_PR_LIMIT),
+        "--json",
+        "number,updatedAt,mergedAt",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return reviews
+
+    since_dt = datetime.fromisoformat(since_date.replace("Z", "+00:00"))
+    for pr in json.loads(result.stdout):
+        pr_date = pr.get("mergedAt") or pr.get("updatedAt")
+        if not pr_date:
+            continue
+        pr_date_dt = datetime.fromisoformat(pr_date.replace("Z", "+00:00"))
+        if pr_date_dt < since_dt:
+            continue
+
+        review_cmd = ["gh", "api", f"/repos/{REPO}/pulls/{pr['number']}/reviews"]
+        review_result = subprocess.run(
+            review_cmd, capture_output=True, text=True, check=False
+        )
+        if review_result.returncode == 0:
+            for review in json.loads(review_result.stdout):
+                if is_bot(review.get("user", {})):
+                    continue
+                review_date = review.get("submitted_at", "")
+                if review_date:
+                    review_dt = datetime.fromisoformat(
+                        review_date.replace("Z", "+00:00")
+                    )
+                    if review_dt >= since_dt:
+                        reviews.append(
+                            {
+                                "author": review["user"].get("login", "unknown"),
                                 "date": review_date,
-                            })
-    except Exception as e:
-        print(f"Warning: Error fetching PR reviews: {e}")
+                            }
+                        )
     return reviews
 
 
-def fetch_user_names(usernames: set[str]) -> dict[str, str]:
+def fetch_issues(since_date: str) -> list[dict]:
+    """Fetch issues created."""
+    cmd = [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        REPO,
+        "--limit",
+        str(MAX_PR_LIMIT),
+        "--search",
+        f"created:>{since_date[:10]}",
+        "--json",
+        "author,createdAt",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        return []
+
+    issues = []
+    for item in json.loads(result.stdout):
+        if not is_bot(item.get("author", {})):
+            issues.append(
+                {
+                    "author": item["author"].get("login", "unknown"),
+                    "date": item.get("createdAt", ""),
+                }
+            )
+    return issues
+
+
+def fetch_real_names(usernames: set) -> dict:
     """Fetch real names for GitHub usernames."""
     names = {}
     for username in usernames:
         if username == "unknown":
             continue
-        try:
-            cmd = [
-                "gh",
-                "api",
-                f"/users/{username}",
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if result.returncode == 0:
-                import json
-                user_data = json.loads(result.stdout)
-                name = user_data.get("name")
-                # Only use the profile name if it exists and isn't just the username
-                if name and name.lower() != username.lower():
-                    names[username] = name
-        except Exception:
-            pass
+        cmd = ["gh", "api", f"/users/{username}"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            user_data = json.loads(result.stdout)
+            name = user_data.get("name")
+            if name and name.lower() != username.lower():
+                names[username] = name
     return names
 
 
-def fetch_issues_created(since_date: str) -> list[dict[str, Any]]:
-    """Fetch issues created using GitHub CLI."""
-    issues = []
-    try:
-        cmd = [
-            "gh",
-            "issue",
-            "list",
-            "--repo", "Jaseci-Labs/jaseci",
-            "--limit", "500",
-            "--search", f"created:>{since_date[:10]}",
-            "--json", "author,createdAt",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            return issues
-
-        import json
-
-        data = json.loads(result.stdout)
-        for item in data:
-            author = item.get("author", {})
-            # Filter bots by type or by [bot] in login
-            if author.get("type", "").lower() == "bot":
-                continue
-            login = author.get("login", "unknown")
-            if "[bot]" in login.lower():
-                continue
-            issues.append({
-                "author": login,
-                "date": item.get("createdAt", ""),
-            })
-    except Exception as e:
-        print(f"Warning: Error fetching issues: {e}")
-    return issues
-
-
-def is_bot(name: str) -> bool:
-    """Check if a username is a bot."""
-    return "[bot]" in name.lower()
-
-
 def process_voices(
-    comments: list[dict[str, Any]],
-    reviews: list[dict[str, Any]],
-    issues: list[dict[str, Any]],
-    days: int,
+    comments: list, reviews: list, issues: list, days: int
 ) -> list[dict[str, Any]]:
     """Process voice data to get stats for a specific period."""
     since_date = (datetime.now(UTC) - timedelta(days=days)).replace(tzinfo=None)
 
-    # Group by username to deduplicate (similar to grouping by email in contributors)
-    voices: dict[str, dict[str, Any]] = defaultdict(
+    voices: dict[str, dict] = defaultdict(
         lambda: {
             "comments": 0,
             "reviews": 0,
-            "issues_created": 0,
+            "issues": 0,
             "active_days": set(),
             "names": defaultdict(int),
         }
     )
-
-    # Collect all usernames first
     all_usernames = set()
 
-    # Process comments
-    for item in comments:
-        try:
-            date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
-            if date >= since_date:
-                author = item["author"]
-                if author == "unknown" or is_bot(author):
+    for items, key in [
+        (comments, "comments"),
+        (reviews, "reviews"),
+        (issues, "issues"),
+    ]:
+        for item in items:
+            try:
+                date = datetime.fromisoformat(
+                    item["date"].replace("Z", "+00:00")
+                ).replace(tzinfo=None)
+                if date < since_date:
                     continue
-                all_usernames.add(author)
-                voices[author]["comments"] += 1
-                voices[author]["active_days"].add(date.date())
-                voices[author]["names"][author] += 1
-        except (ValueError, KeyError):
-            continue
+            except (ValueError, KeyError):
+                continue
 
-    # Process reviews
-    for item in reviews:
-        try:
-            date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
-            if date >= since_date:
-                author = item["author"]
-                if author == "unknown" or is_bot(author):
-                    continue
-                all_usernames.add(author)
-                voices[author]["reviews"] += 1
-                voices[author]["active_days"].add(date.date())
-                voices[author]["names"][author] += 1
-        except (ValueError, KeyError):
-            continue
+            author = item["author"]
+            if author == "unknown" or is_bot(author):
+                continue
 
-    # Process issues created
-    for item in issues:
-        try:
-            date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
-            if date >= since_date:
-                author = item["author"]
-                if author == "unknown" or is_bot(author):
-                    continue
-                all_usernames.add(author)
-                voices[author]["issues_created"] += 1
-                voices[author]["active_days"].add(date.date())
-                voices[author]["names"][author] += 1
-        except (ValueError, KeyError):
-            continue
+            all_usernames.add(author)
+            voices[author][key] += 1
+            voices[author]["active_days"].add(date.date())
+            voices[author]["names"][author] += 1
 
-    # Fetch real names for all users
     print(f"Fetching names for {len(all_usernames)} users...", file=sys.stderr)
-    real_names = fetch_user_names(all_usernames)
+    real_names = fetch_real_names(all_usernames)
 
-    # Build final list with real names, filtering out bots and using most common name
     results = []
     for username, data in voices.items():
-        # Get the display name (prefer real name, fallback to most common username)
-        if username in real_names:
-            display_name = real_names[username]
-        else:
-            # Use most frequently used name for this user
-            display_name = max(data["names"].items(), key=lambda x: x[1])[0]
-
-        # Filter out bots from final results
+        if is_bot(username):
+            continue
+        display_name = real_names.get(username, username)
         if is_bot(display_name):
             continue
+        total = data["comments"] + data["reviews"] + data["issues"]
+        results.append(
+            {
+                "name": display_name,
+                "comments": data["comments"],
+                "reviews": data["reviews"],
+                "issues": data["issues"],
+                "active_days": len(data["active_days"]),
+                "total": total,
+            }
+        )
 
-        total = data["comments"] + data["reviews"] + data["issues_created"]
-        results.append({
-            "name": display_name,
-            "comments": data["comments"],
-            "reviews": data["reviews"],
-            "issues": data["issues_created"],
-            "active_days": len(data["active_days"]),
-            "total": total,
-        })
-
-    # Sort by total engagement (comments + reviews + issues)
     return sorted(results, key=lambda x: x["total"], reverse=True)
 
 
-def generate_html_table(voices: list[dict[str, Any]], days: int) -> str:
+def generate_html_table(voices: list[dict], days: int) -> str:
     """Generate an HTML table from voice data."""
     if not voices:
         return f"<p>No discussion activity found in the last {days} days.</p>"
@@ -432,13 +339,9 @@ def generate_html_table(voices: list[dict[str, Any]], days: int) -> str:
     )
     lines.append("<tbody>")
     for voice in voices:
-        name = voice["name"]
-        comments = voice["comments"]
-        reviews = voice["reviews"]
-        issues = voice["issues"]
-        active_days = voice["active_days"]
         lines.append(
-            f"<tr><td>{name}</td><td>{comments}</td><td>{reviews}</td><td>{issues}</td><td>{active_days}</td></tr>"
+            f"<tr><td>{voice['name']}</td><td>{voice['comments']}</td>"
+            f"<td>{voice['reviews']}</td><td>{voice['issues']}</td><td>{voice['active_days']}</td></tr>"
         )
     lines.append("</tbody></table>")
     return "\n".join(lines)
@@ -463,51 +366,48 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Check if gh CLI is available
     if not check_gh_cli():
-        print("# Top Voices\n\n> GitHub CLI not found or not authenticated. Unable to fetch discussion data.\n")
+        print(
+            "# Top Voices\n\n> GitHub CLI not found or not authenticated. Unable to fetch discussion data.\n"
+        )
         return
 
     periods = []
     if args.days is not None:
         periods.append(args.days)
-    for p in [7, 30, 180, 365]:
+    for p in DEFAULT_PERIODS:
         if p not in periods:
             periods.append(p)
     if not periods:
         return
 
-    # Calculate the earliest date we need
     max_days = max(periods)
-    since_date = (datetime.now(UTC) - timedelta(days=max_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    since_date = (datetime.now(UTC) - timedelta(days=max_days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     print(f"Fetching discussion data since {since_date}...", file=sys.stderr)
 
-    # Fetch all data once
-    comments = fetch_issue_comments(since_date)
-    pr_comments = fetch_pr_comments(since_date)
-    reviews = fetch_pr_reviews(since_date)
-    issues = fetch_issues_created(since_date)
+    comments = fetch_comments(since_date)
+    reviews = fetch_reviews(since_date)
+    issues = fetch_issues(since_date)
 
-    # Combine comments from issues and PRs
-    all_comments = comments + pr_comments
+    print(
+        f"Found {len(comments)} comments, {len(reviews)} reviews, {len(issues)} issues",
+        file=sys.stderr,
+    )
 
-    print(f"Found {len(all_comments)} comments, {len(reviews)} reviews, {len(issues)} issues", file=sys.stderr)
-
-    # Generate tables for each period
     html = []
     html.append(get_table_css())
     html.append('<div class="tabcontent">')
 
     for days in periods:
-        voices = process_voices(all_comments, reviews, issues, days)
+        voices = process_voices(comments, reviews, issues, days)
         html.append(generate_html_table(voices, days))
 
     html.append("</div>")
-
     print("\n".join(html))
 
 
 if __name__ == "__main__":
-    import sys
     main()

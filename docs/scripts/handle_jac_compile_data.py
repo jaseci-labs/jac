@@ -133,7 +133,9 @@ def get_top_voices() -> str:
     root_dir = os.path.dirname(os.path.dirname(current_dir))
     cmd = ["python3", "scripts/top_voices.py"]
     try:
-        return subprocess.check_output(cmd, cwd=root_dir, stderr=subprocess.DEVNULL).decode("utf-8")
+        return subprocess.check_output(
+            cmd, cwd=root_dir, stderr=subprocess.DEVNULL
+        ).decode("utf-8")
     except subprocess.CalledProcessError as e:
         print(f"Warning: Failed to get top voices: {e}")
         return "# Top Voices\n\nUnable to fetch discussion data at this time.\n"
