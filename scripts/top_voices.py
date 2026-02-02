@@ -3,6 +3,7 @@
 
 import argparse
 import subprocess
+import sys
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -118,10 +119,14 @@ def fetch_issue_comments(since_date: str) -> list[dict[str, Any]]:
 
             for item in data:
                 author = item.get("author", {})
-                if author.get("type") == "Bot":
+                # Filter bots by type or by [bot] in login
+                if author.get("type", "").lower() == "bot":
+                    continue
+                login = author.get("login", "unknown")
+                if "[bot]" in login.lower():
                     continue
                 comments.append({
-                    "author": author.get("login", "unknown"),
+                    "author": login,
                     "date": item.get("created_at", ""),
                 })
 
@@ -157,10 +162,14 @@ def fetch_pr_comments(since_date: str) -> list[dict[str, Any]]:
 
             for item in data:
                 author = item.get("author", {})
-                if author.get("type") == "Bot":
+                # Filter bots by type or by [bot] in login
+                if author.get("type", "").lower() == "bot":
+                    continue
+                login = author.get("login", "unknown")
+                if "[bot]" in login.lower():
                     continue
                 comments.append({
-                    "author": author.get("login", "unknown"),
+                    "author": login,
                     "date": item.get("created_at", ""),
                 })
 
@@ -218,19 +227,48 @@ def fetch_pr_reviews(since_date: str) -> list[dict[str, Any]]:
                 review_data = json.loads(review_result.stdout)
                 for review in review_data:
                     author = review.get("user", {})
-                    if author.get("type") == "bot":
+                    # Filter bots by type or by [bot] in login
+                    if author.get("type", "").lower() == "bot":
+                        continue
+                    login = author.get("login", "unknown")
+                    if "[bot]" in login.lower():
                         continue
                     review_date = review.get("submitted_at", "")
                     if review_date:
                         review_dt = datetime.fromisoformat(review_date.replace("Z", "+00:00"))
                         if review_dt >= since_dt:
                             reviews.append({
-                                "author": author.get("login", "unknown"),
+                                "author": login,
                                 "date": review_date,
                             })
     except Exception as e:
         print(f"Warning: Error fetching PR reviews: {e}")
     return reviews
+
+
+def fetch_user_names(usernames: set[str]) -> dict[str, str]:
+    """Fetch real names for GitHub usernames."""
+    names = {}
+    for username in usernames:
+        if username == "unknown":
+            continue
+        try:
+            cmd = [
+                "gh",
+                "api",
+                f"/users/{username}",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                import json
+                user_data = json.loads(result.stdout)
+                name = user_data.get("name")
+                # Only use the profile name if it exists and isn't just the username
+                if name and name.lower() != username.lower():
+                    names[username] = name
+        except Exception:
+            pass
+    return names
 
 
 def fetch_issues_created(since_date: str) -> list[dict[str, Any]]:
@@ -255,15 +293,24 @@ def fetch_issues_created(since_date: str) -> list[dict[str, Any]]:
         data = json.loads(result.stdout)
         for item in data:
             author = item.get("author", {})
-            if author.get("type") == "Bot":
+            # Filter bots by type or by [bot] in login
+            if author.get("type", "").lower() == "bot":
+                continue
+            login = author.get("login", "unknown")
+            if "[bot]" in login.lower():
                 continue
             issues.append({
-                "author": author.get("login", "unknown"),
+                "author": login,
                 "date": item.get("createdAt", ""),
             })
     except Exception as e:
         print(f"Warning: Error fetching issues: {e}")
     return issues
+
+
+def is_bot(name: str) -> bool:
+    """Check if a username is a bot."""
+    return "[bot]" in name.lower()
 
 
 def process_voices(
@@ -275,14 +322,19 @@ def process_voices(
     """Process voice data to get stats for a specific period."""
     since_date = (datetime.now(UTC) - timedelta(days=days)).replace(tzinfo=None)
 
+    # Group by username to deduplicate (similar to grouping by email in contributors)
     voices: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "comments": 0,
             "reviews": 0,
             "issues_created": 0,
             "active_days": set(),
+            "names": defaultdict(int),
         }
     )
+
+    # Collect all usernames first
+    all_usernames = set()
 
     # Process comments
     for item in comments:
@@ -290,8 +342,12 @@ def process_voices(
             date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
             if date >= since_date:
                 author = item["author"]
+                if author == "unknown" or is_bot(author):
+                    continue
+                all_usernames.add(author)
                 voices[author]["comments"] += 1
                 voices[author]["active_days"].add(date.date())
+                voices[author]["names"][author] += 1
         except (ValueError, KeyError):
             continue
 
@@ -301,8 +357,12 @@ def process_voices(
             date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
             if date >= since_date:
                 author = item["author"]
+                if author == "unknown" or is_bot(author):
+                    continue
+                all_usernames.add(author)
                 voices[author]["reviews"] += 1
                 voices[author]["active_days"].add(date.date())
+                voices[author]["names"][author] += 1
         except (ValueError, KeyError):
             continue
 
@@ -312,27 +372,45 @@ def process_voices(
             date = datetime.fromisoformat(item["date"].replace("Z", "+00:00")).replace(tzinfo=None)
             if date >= since_date:
                 author = item["author"]
+                if author == "unknown" or is_bot(author):
+                    continue
+                all_usernames.add(author)
                 voices[author]["issues_created"] += 1
                 voices[author]["active_days"].add(date.date())
+                voices[author]["names"][author] += 1
         except (ValueError, KeyError):
             continue
 
+    # Fetch real names for all users
+    print(f"Fetching names for {len(all_usernames)} users...", file=sys.stderr)
+    real_names = fetch_user_names(all_usernames)
+
+    # Build final list with real names, filtering out bots and using most common name
+    results = []
+    for username, data in voices.items():
+        # Get the display name (prefer real name, fallback to most common username)
+        if username in real_names:
+            display_name = real_names[username]
+        else:
+            # Use most frequently used name for this user
+            display_name = max(data["names"].items(), key=lambda x: x[1])[0]
+
+        # Filter out bots from final results
+        if is_bot(display_name):
+            continue
+
+        total = data["comments"] + data["reviews"] + data["issues_created"]
+        results.append({
+            "name": display_name,
+            "comments": data["comments"],
+            "reviews": data["reviews"],
+            "issues": data["issues_created"],
+            "active_days": len(data["active_days"]),
+            "total": total,
+        })
+
     # Sort by total engagement (comments + reviews + issues)
-    return sorted(
-        [
-            {
-                "name": name,
-                "comments": data["comments"],
-                "reviews": data["reviews"],
-                "issues": data["issues_created"],
-                "active_days": len(data["active_days"]),
-                "total": data["comments"] + data["reviews"] + data["issues_created"],
-            }
-            for name, data in voices.items()
-        ],
-        key=lambda x: x["total"],
-        reverse=True,
-    )
+    return sorted(results, key=lambda x: x["total"], reverse=True)
 
 
 def generate_html_table(voices: list[dict[str, Any]], days: int) -> str:
