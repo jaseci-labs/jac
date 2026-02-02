@@ -90,43 +90,70 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
 
 impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     self.ensure_venv();
-    all_success = True;
+    # Collect all package specs for batch installation
+    # This allows pip to resolve compatible versions across all dependencies
+    specs: list[str] = [];
     for (name, version) in self.config.dependencies.items() {
-        if not self.install_package(name, version) {
-            all_success = False;
-        }
+        specs.append(self._make_spec(name, version));
     }
     if include_dev {
         for (name, version) in self.config.dev_dependencies.items() {
-            if not self.install_package(name, version) {
-                all_success = False;
-            }
+            specs.append(self._make_spec(name, version));
         }
     }
+    # Install all Python packages in a single pip command
+    if specs {
+        console.print(
+            f"Installing {len(specs)} package(s) with dependency resolution..."
+        );
+        if not self._install_batch(specs) {
+            return False;
+        }
+    }
+    # Install git dependencies separately
     for (name, git_info) in self.config.git_dependencies.items() {
         if isinstance(git_info, dict) {
             git_url = git_info.get("git", "");
             branch = git_info.get("branch", "");
             if not self.install_git_package(name, git_url, branch) {
-                all_success = False;
+                return False;
             }
         }
     }
-    return all_success;
+    return True;
+}
+
+"""Create pip spec from package name and version."""
+impl DependencyInstaller._make_spec(name: str, version: str) -> str {
+    if not version {
+        return name;
+    }
+    if version.startswith(("=", ">", "<", "~", "!")) {
+        return f"{name}{version}";
+    }
+    return f"{name}=={version}";
+}
+
+"""Install packages in batch for proper dependency resolution."""
+impl DependencyInstaller._install_batch(specs: list[str]) -> bool {
+    if not specs {
+        return True;
+    }
+    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
+    if returncode == 0 {
+        console.print(f"  Successfully installed {len(specs)} package(s)");
+        return True;
+    }
+    # Batch failed - show error and suggest checking for conflicts
+    console.error(f"  Batch installation failed: {stderr}");
+    console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
+    return False;
 }
 
 impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
     import sys;
     self.ensure_venv();
-    if version {
-        if version.startswith(("=", ">", "<", "~", "!")) {
-            spec = f"{name}{version}";
-        } else {
-            spec = f"{name}=={version}";
-        }
-    } else {
-        spec = name;
-    }
+    spec = self._make_spec(name, version);
     console.print(f"Installing {spec}...");
     (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
     if returncode == 0 {

@@ -182,7 +182,7 @@ class TestDependencyInstaller:
             assert "git+https://github.com/user/plugin.git@main" in call_args
 
     def test_install_all(self, temp_project: Path) -> None:
-        """Test installing all dependencies."""
+        """Test installing all dependencies with batch resolution."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
@@ -195,11 +195,11 @@ class TestDependencyInstaller:
             result = installer.install_all(include_dev=False)
 
             assert result is True
-            # Should install requests (from dependencies)
-            assert mock_pip.call_count >= 1
+            # Single batch call for all Python packages
+            assert mock_pip.call_count == 1
 
     def test_install_all_with_dev(self, temp_project: Path) -> None:
-        """Test installing all dependencies including dev."""
+        """Test installing all dependencies including dev with batch resolution."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
@@ -212,8 +212,8 @@ class TestDependencyInstaller:
             result = installer.install_all(include_dev=True)
 
             assert result is True
-            # Should install both requests and pytest
-            assert mock_pip.call_count >= 2
+            # Single batch call with both regular and dev dependencies
+            assert mock_pip.call_count == 1
 
     def test_is_installed(self, temp_project: Path) -> None:
         """Test checking if package is installed."""
