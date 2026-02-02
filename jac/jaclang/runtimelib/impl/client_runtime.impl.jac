@@ -1,8 +1,8 @@
-impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> dict {
+impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
     return {"tag": tag, "props": props, "children": children};
 }
 
-impl renderJsxTree(node: any, container: any) -> None {
+impl renderJsxTree(node: JsxElement, container: any) -> None {
     container.replaceChildren(__buildDom(node));
 }
 

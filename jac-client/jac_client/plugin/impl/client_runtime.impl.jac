@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> any {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
