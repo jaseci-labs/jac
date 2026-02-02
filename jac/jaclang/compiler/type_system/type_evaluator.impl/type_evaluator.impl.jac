@@ -697,10 +697,10 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if src_type == dest_type {
         return True;
     }
-
     # Strict checking for JsxElement type - prevent non-JSX assignment to JsxElement
     if self.prefetch and self.prefetch.jsx_element_class {
-        if isinstance(dest_type, types.ClassType) and isinstance(src_type, types.ClassType) {
+        if isinstance(dest_type, types.ClassType)
+        and isinstance(src_type, types.ClassType) {
             if dest_type.shared == self.prefetch.jsx_element_class.shared {
                 # Destination is JsxElement - only allow JsxElement as source
                 if src_type.shared != self.prefetch.jsx_element_class.shared {
