@@ -642,11 +642,11 @@ impl ViteBundler.create_dev_vite_config(
     extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
     extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
     build_config = vite_config_data.get('build', {});
-    build_overrides_str = self._format_config_object(build_config, indent=4)
+    build_overrides_str = self._format_config_object(build_config, indent=2)
     if (isinstance(build_config, <>dict) and build_config)
     else '';
     server_config = vite_config_data.get('server', {});
-    server_config_str = self._format_config_object(server_config, indent=4)
+    server_config_str = self._format_config_object(server_config, indent=2)
     if (isinstance(server_config, <>dict) and server_config)
     else '';
     resolve_config = vite_config_data.get('resolve', {});
