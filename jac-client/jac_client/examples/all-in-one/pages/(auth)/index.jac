@@ -3,7 +3,7 @@ cl import from ...components.Card.tsx { Card }
 sv import from ...main { ping_server, get_server_message, create_todo }
 
 cl {
-    def:pub page -> any {
+    def:pub page -> JsxElement {
         has count: int = 0,
             pingResult: str = "",
             serverMessage: str = "",

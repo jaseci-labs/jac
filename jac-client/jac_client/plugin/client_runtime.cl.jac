@@ -16,7 +16,7 @@ import from 'react-router-dom' {
 }
 import from 'react-error-boundary' { ErrorBoundary }
 
-def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> any;
+def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
 
 # React hooks re-exported for auto-injection by `has` variables and `can with entry/exit` effects
 glob:

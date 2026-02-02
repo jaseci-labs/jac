@@ -2,7 +2,7 @@ cl import from ...components.nestedDemo.CustomButton.tsx { CustomButton }
 cl import from ...button { CustomButtonRoot }
 
 cl {
-    def:pub page -> any {
+    def:pub page -> JsxElement {
         return
             <div
                 style={{
