@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.14 (Unreleased)
+## jaclang 0.9.15 (Unreleased)
+
+## jaclang 0.9.14 (Latest Release)
 
 - **Fix: `jac format` No Longer Deletes Files with Syntax Errors**: Fixed a bug where `jac format` would overwrite a file's contents with an empty string when the file contained syntax errors. The formatter now checks for parse errors before writing and leaves the original file untouched.
 - **`jac lint` Command**: Added a dedicated `jac lint` command that reports all lint violations as errors with file, line, and column info. Use `jac lint --fix` to auto-fix violations. Lint rules are configured via `[check.lint]` in `jac.toml`. All enabled rules are treated as errors (not warnings). The `--fix` flag has been removed from `jac format`, which is now pure formatting only.
@@ -15,7 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **JsxElement Builtin Type**: Added `JsxElement` builtin type for strict type checking of JSX expressions for client-side UI components.
 - **1 Small Refactors**
 
-## jaclang 0.9.13 (Latest Release)
+## jaclang 0.9.13
 
 - **Configurable Lint Rules**: Auto-lint rules are now individually configurable via `jac.toml` `[check.lint]` section using a select/ignore model. A `LintRule` enum defines all 12 rules with kebab-case names. Use `select = ["default"]` for code-transforming rules only, `select = ["all"]` to enable every rule including warning-only rules, `ignore = ["rule-name"]` to disable specific ones, or `select = ["rule1", "rule2"]` to enable only listed rules.
 - **No-Print Lint Rule**: Added a `no-print` lint rule that errors on bare `print()` calls in `.jac` files, encouraging use of the console abstraction instead. Included in the `"all"` group; enable via `select = ["all"]` or `select = ["default", "no-print"]` in `[check.lint]`.
