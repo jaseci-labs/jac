@@ -288,8 +288,10 @@ def test_route_scanner_index_file_handling() -> None:
         "Index file check should use INDEX_FILENAME constant"
     )
 
-    # index.jac maps to url_prefix (not url_prefix/index)
-    assert 'route_path = url_prefix if url_prefix else "/"' in content, (
+    # index.jac maps to url_prefix (not url_prefix/index).
+    # Normalize whitespace so formatter line-wrapping doesn't break the check.
+    normalized = " ".join(content.split())
+    assert 'route_path = url_prefix if url_prefix else "/"' in normalized, (
         "index.jac should map to the directory URL prefix"
     )
 
