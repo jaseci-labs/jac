@@ -599,8 +599,9 @@ impl ViteBundler.create_dev_vite_config(
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
-    config_path = configs_dir / 'vite.dev.config.js';
+    vite_config_data = self.config_loader.get_vite_config();
     api_base_url = self._resolve_api_base_url(api_base_url_override);
+    config_path = configs_dir / 'vite.dev.config.js';
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();
@@ -618,16 +619,47 @@ impl ViteBundler.create_dev_vite_config(
         compiled_utils_relative = 'compiled/client_runtime.js';
         compiled_assets_relative = 'compiled/assets';
     }
-    # Extensions for TypeScript
+    plugins = [];
+    plugin_imports = [];
+    # TypeScript support is always enabled, so always include React plugin
+    plugin_imports.append('import react from "@vitejs/plugin-react";');
+    plugins.append('    react()');
+    lib_imports = vite_config_data.get('lib_imports', []);
+    for lib_import in lib_imports {
+        if (isinstance(lib_import, str) and lib_import.strip()) {
+            plugin_imports.append(lib_import);
+        }
+    }
+    custom_plugins = vite_config_data.get('plugins', []);
+    for plugin in custom_plugins {
+        if isinstance(plugin, str) {
+            plugins.append(f"    {plugin}");
+        }
+    }
+    plugins_str = ',\n'.join(plugins) if plugins else '';
+    imports_str = '\n'.join(plugin_imports) if plugin_imports else '';
+    # TypeScript extensions are always included
     extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
     extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
+    build_config = vite_config_data.get('build', {});
+    build_overrides_str = self._format_config_object(build_config, indent=4)
+    if (isinstance(build_config, <>dict) and build_config)
+    else '';
+    server_config = vite_config_data.get('server', {});
+    server_config_str = self._format_config_object(server_config, indent=4)
+    if (isinstance(server_config, <>dict) and server_config)
+    else '';
+    resolve_config = vite_config_data.get('resolve', {});
+    resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
+    if (isinstance(resolve_config, <>dict) and resolve_config)
+    else '';
+    imports_section = f"{imports_str}\n" if imports_str else '';
+    newline = '\n';
     # Generate dev config with proxy for API routes
     config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
-import react from "@vitejs/plugin-react";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+{imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
@@ -639,12 +671,12 @@ export default defineConfig({{
   define: {{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
-  plugins: [react()],
+  plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir,
   publicDir: false,
   appType: 'spa',
   build: {{
-    sourcemap: true, // Enable source maps for better error messages
+    sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
     watch: {{
@@ -673,6 +705,7 @@ export default defineConfig({{
         changeOrigin: true,
       }},
     }},
+{server_config_str}
   }},
   resolve: {{
     alias: {{
@@ -680,6 +713,7 @@ export default defineConfig({{
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
     }},
     extensions: [{extensions_str}],
+{resolve_overrides_str}
   }},
 }});
 ''';
