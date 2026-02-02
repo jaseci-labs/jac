@@ -205,6 +205,17 @@ impl __removeLocalStorage(key: str) -> None {
     }
 }
 
+"""Auth guard component for file-based routing. Renders child routes if
+authenticated, otherwise redirects to the login path."""
+impl AuthGuard(redirect: str = "/login") -> any {
+    if jacIsLoggedIn() {
+        return
+            <ReactRouterOutlet />;
+    }
+    return
+        <ReactRouterNavigate to={redirect} replace={True} />;
+}
+
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
     return
         <div

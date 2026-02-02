@@ -312,3 +312,5 @@ importer_main.jac
 checker_type_narrowing.jac
 jaccomplete.jac
 jaccomplete.impl.jac
+route_scanner.impl.jac
+nested.jac
