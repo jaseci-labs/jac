@@ -39,7 +39,7 @@ impl MTIRGenPass._is_primitive_type(type_expr: uni.Expr | None) -> bool {
 or tuple-based generic representation (using mk_list/mk_dict/mk_tuple)."""
 impl MTIRGenPass._parse_type_expr(
     type_expr: uni.Expr | None, scope: uni.UniScopeNode
-) -> ClassInfo | str | tuple | None {
+) -> ClassInfo | EnumInfo | str | tuple | None {
     if type_expr is None {
         return None;
     }
@@ -98,12 +98,17 @@ impl MTIRGenPass._parse_type_expr(
     }
     sym = self._extract_type_symbol(type_expr, scope);
     if sym {
-        nested = self._extract_class_info(sym);
-        if nested {
-            return nested;
-        }
-        if isinstance(type_expr, uni.Name) {
-            return type_expr.value;
+        if sym and sym.sym_type.value == 'enum' {
+            enum_info = self._extract_enum_info(sym);
+            return enum_info;
+        } else {
+            nested = self._extract_class_info(sym);
+            if nested {
+                return nested;
+            }
+            if isinstance(type_expr, uni.Name) {
+                return type_expr.value;
+            }
         }
     }
     return None;
@@ -123,6 +128,84 @@ impl MTIRGenPass._extract_type_symbol(
         return scope.lookup(type_expr.value, deep=True);
     }
     return None;
+}
+
+impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
+    decl = symbol.decl;
+    if not isinstance(decl.name_of, uni.Enum) {
+        raise Exception(f"Symbol {symbol} is not an Enum.") ;
+    }
+    enum_node = decl.name_of;
+    members: list[FieldInfo] = [];
+    # Check if enum has a body and it's a Sequence
+    if enum_node.body and isinstance(enum_node.body, Sequence) {
+        for enum_stmt in enum_node.body {
+            # Handle Assignment nodes (e.g., RED = 1)
+            if isinstance(enum_stmt, uni.Assignment) and enum_stmt.is_enum_stmt {
+                # Extract the target name (should be a single Name/NameAtom)
+                if enum_stmt.target and len(enum_stmt.target) > 0 {
+                    target = enum_stmt.target[0];
+                    if isinstance(target, uni.NameAtom) or isinstance(target, uni.Name) {
+                        member_name = target.value;
+                        # Determine type from the assigned value
+                        type_info = None;
+                        if enum_stmt.value {
+                            # Check literal types
+                            if isinstance(enum_stmt.value, uni.Int) {
+                                type_info = "int";
+                            } elif isinstance(enum_stmt.value, uni.String) {
+                                type_info = "str";
+                            } elif isinstance(enum_stmt.value, uni.MultiString) {
+                                # MultiString is used for string literals in some contexts
+                                type_info = "str";
+                            } elif isinstance(enum_stmt.value, uni.Float) {
+                                type_info = "float";
+                            } elif isinstance(enum_stmt.value, uni.Bool) {
+                                type_info = "bool";
+                            } else {
+                                # Non-allowed type for enum value
+                                raise Exception(
+                                    f"Enum member '{member_name}' has invalid value type: {type(
+                                        enum_stmt.value
+                                    ).__name__}. "
+                                    f"Only int, str, float, and bool literals are allowed."
+                                ) ;
+                            }
+                        }
+                        # Get semantic string from symbol if available
+                        semstr_val = None;
+                        if target?.sym and target.sym {
+                            semstr_val = target.sym.semstr;
+                        }
+                        field_info = FieldInfo(
+                            name=member_name, semstr=semstr_val, type_info=type_info
+                        );
+                        members.append(field_info);
+                    }
+                }
+            }
+            # Handle NameAtom nodes (simple enum members like RED, BLUE)
+            elif isinstance(enum_stmt, uni.NameAtom) and enum_stmt.is_enum_stmt {
+                member_name = enum_stmt.value;
+                # Get semantic string from symbol if available
+                semstr_val = None;
+                if enum_stmt?.sym and enum_stmt.sym {
+                    semstr_val = enum_stmt.sym.semstr;
+                }
+                field_info = FieldInfo(
+                    name=member_name,
+                    semstr=semstr_val,
+                    type_info=None  # Simple enum members don't have explicit type
+                );
+                members.append(field_info);
+            }
+        }
+    }
+    return EnumInfo(
+        name=enum_node.name.value,
+        semstr=symbol.semstr or enum_node.doc.lit_value if enum_node.doc else None,
+        members=members
+    );
 }
 
 """Extract class structure information from a symbol."""

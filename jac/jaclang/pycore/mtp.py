@@ -70,6 +70,11 @@ class FieldInfo(VarInfo):
 
 
 @dataclass
+class EnumInfo(Info):
+    members: list[FieldInfo]
+
+
+@dataclass
 class ClassInfo(Info):
     fields: list[FieldInfo]
     base_classes: list[ClassInfo]

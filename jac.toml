@@ -1,0 +1,11 @@
+[project]
+name = "jaclang"
+
+[check.lint]
+select = ["all"]
+exclude = [
+    "docs/*",
+    "*/examples/*",
+    "*/tests/*",
+    "console.impl.jac",
+]

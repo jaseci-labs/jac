@@ -16,7 +16,8 @@ import from jaclang.vendor.pygls { uris }
 import lsprotocol.types as lspt;
 
 glob P = ParamSpec('P'),
-     T = TypeVar('T', bound=Callable[(P, Coroutine[(Any, Any, Any)])]);
+     T = TypeVar('T', bound=Callable[(P, Coroutine[(Any, Any, Any)])]),
+     _BUILTIN_NAMES = frozenset(dir(builtins));
 
 def gen_diagnostics(
     from_path: str, errors: list[Alert], warnings: list[Alert]

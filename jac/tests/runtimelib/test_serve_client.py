@@ -1322,3 +1322,116 @@ class TestImportedWalkerAccessLevels:
             json={"msg": "auth test"},
         )
         assert result7.ok, f"Local default walker should work with auth: {result7.data}"
+
+
+# =============================================================================
+# SPA Catch-All Tests (BrowserRouter support)
+# =============================================================================
+
+
+@pytest.fixture
+def spa_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client with base_route_app configured for SPA catch-all."""
+    from jaclang.project.config import JacConfig, ServeConfig, set_config
+
+    fixtures_src = Path(fixture_abs_path("")).resolve()
+    unique_id = uuid.uuid4().hex[:8]
+    module_name = f"spa_app_{unique_id}"
+    fixtures_dest = tmp_path / module_name
+    fixtures_dest.mkdir(parents=True, exist_ok=True)
+
+    # Copy .jac source files, renaming client_app.jac to unique module name
+    for f in fixtures_src.glob("*.jac"):
+        if f.is_file():
+            dest_name = f.name
+            if f.name == "client_app.jac":
+                dest_name = f"{module_name}.jac"
+            shutil.copy(f, fixtures_dest / dest_name)
+
+    set_config(JacConfig(serve=ServeConfig(base_route_app="client_page")))
+
+    client = JacTestClient.from_file(
+        str(fixtures_dest / f"{module_name}.jac"),
+        base_path=str(fixtures_dest),
+        module_name=module_name,
+    )
+    yield client
+    client.close()
+    # Reset config to defaults to avoid leaking into other tests
+    set_config(JacConfig())
+
+
+class TestSPACatchAll:
+    """Tests for SPA catch-all routing (BrowserRouter support)."""
+
+    def test_spa_catchall_serves_html_for_clean_urls(
+        self, spa_client: JacTestClient
+    ) -> None:
+        """GET to unknown extensionless path should serve SPA HTML."""
+        response = spa_client.get("/about")
+
+        assert response.ok
+        assert response.status_code == 200
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+        assert "/static/client.js?hash=" in html
+
+    def test_spa_catchall_root_serves_html(self, spa_client: JacTestClient) -> None:
+        """GET / should serve SPA HTML when base_route_app is configured."""
+        response = spa_client.get("/")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+
+    def test_spa_catchall_nested_path(self, spa_client: JacTestClient) -> None:
+        """GET to nested path like /dashboard/settings should serve SPA HTML."""
+        response = spa_client.get("/dashboard/settings")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+
+    def test_spa_catchall_api_paths_unaffected(self, spa_client: JacTestClient) -> None:
+        """API paths should still return JSON, not SPA HTML."""
+        functions_response = spa_client.get("/functions")
+        assert functions_response.ok
+        data = functions_response.data
+        assert "functions" in data
+
+        walkers_response = spa_client.get("/walkers")
+        assert walkers_response.ok
+        data = walkers_response.data
+        assert "walkers" in data
+
+    def test_spa_catchall_cl_route_still_works(self, spa_client: JacTestClient) -> None:
+        """Explicit /cl/ route should still render the page directly."""
+        response = spa_client.get("/cl/client_page")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+
+    def test_spa_catchall_static_files_unaffected(
+        self, spa_client: JacTestClient
+    ) -> None:
+        """Static file paths should not be caught by SPA catch-all."""
+        response = spa_client.get("/static/nonexistent.js")
+
+        assert not response.ok
+
+    def test_unknown_path_returns_404_without_base_route_app(
+        self, client: JacTestClient
+    ) -> None:
+        """Without base_route_app configured, unknown paths should return 404."""
+        from jaclang.project.config import JacConfig, set_config
+
+        set_config(JacConfig())
+        response = client.get("/some-unknown-path")
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data

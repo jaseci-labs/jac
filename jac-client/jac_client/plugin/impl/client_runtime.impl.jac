@@ -42,7 +42,8 @@ impl useRouter -> dict {
 }
 
 impl navigate(path: str) -> None {
-    window.location.hash = "#" + path;
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
 }
 
 impl __getApiBaseUrl -> str {

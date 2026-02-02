@@ -1270,6 +1270,46 @@ def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_type_narrowing(fixture_path: Callable[[str], str]) -> None:
+    """Test CFG-based type narrowing for isinstance and None checks.
+
+    The fixture checker_type_narrowing.jac defines 6 functions that exercise
+    flow-sensitive type narrowing:
+
+      1. isinstance narrowing in if-branch        (1 assignment inside branch)
+      2. isinstance narrowing with else            (2 assignments, one per branch)
+      3. None narrowing with `is not None`         (1 assignment inside branch)
+      4. None narrowing with `is None` + return    (1 assignment after early return)
+      5. Narrowing expires at join point           (2 assignments in branches + 1 at join)
+      6. Chained isinstance narrowing in elif      (3 assignments, one per branch)
+
+    With CFG-based narrowing implemented, every assignment inside a narrowed
+    branch should succeed because the checker sees the narrowed type.  Only
+    the join-point assignment in function 5 should fail because the full
+    union type is restored after the if/else.
+
+    Expected after narrowing: exactly 1 error (the join-point assignment).
+    """
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_type_narrowing.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # With narrowing: only the join-point assignment at line 95 should error.
+    # (fail: Dog = animal; where animal is Dog | Cat after the if/else)
+    assert len(program.errors_had) == 1, (
+        f"Expected exactly 1 type error (join-point in test 5), but got "
+        f"{len(program.errors_had)}:\n"
+        + "\n---\n".join(err.pretty_print() for err in program.errors_had)
+    )
+
+    _assert_error_pretty_found(
+        """
+        fail: Dog = animal;            # <-- Error (Dog | Cat cannot assign to Dog)
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
 def test_postinit_fields_not_required_in_constructor(
     fixture_path: Callable[[str], str],
 ) -> None:

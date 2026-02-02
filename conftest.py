@@ -25,7 +25,8 @@ _PROJECT_ROOT = Path(__file__).parent
 
 def _make_path_fn(*parts: str) -> Callable[[str], str]:
     """Create a path resolver function for the given subdirectory parts."""
-    base = _JACLANG_DIR.joinpath(*parts) if parts else _JACLANG_DIR.parent / "examples"
+    _jac_dir = _PROJECT_ROOT / "jac"
+    base = (_jac_dir / "jaclang").joinpath(*parts) if parts else _jac_dir / "examples"
     return lambda f: str((base / f).resolve())
 
 
@@ -104,7 +105,7 @@ def get_micro_jac_files() -> list[str]:
     Uses a fixed list of files from fixtures_list.py for deterministic testing.
     To add new test files, update MICRO_JAC_FILES in jac/tests/fixtures_list.py.
     """
-    base_dir = _JACLANG_DIR.parent
+    base_dir = _PROJECT_ROOT / "jac"
     return [os.path.normpath(os.path.join(base_dir, f)) for f in MICRO_JAC_FILES]
 
 

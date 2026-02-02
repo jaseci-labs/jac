@@ -263,7 +263,7 @@ class TestJacScaleServe:
     def _create_expired_token(self, username: str, days_ago: int = 1) -> str:
         """Create an expired JWT token for testing."""
         # Use the same secret as the server (default)
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         past_time = datetime.now(UTC) - timedelta(days=days_ago)
@@ -276,7 +276,7 @@ class TestJacScaleServe:
 
     def _create_very_old_token(self, username: str, days_ago: int = 15) -> str:
         """Create a token that's too old to refresh."""
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         past_time = datetime.now(UTC) - timedelta(days=days_ago)
@@ -508,7 +508,7 @@ class TestJacScaleServe:
         new_token = refresh_result["token"]
 
         # Decode both tokens and verify username is preserved
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])
@@ -538,7 +538,7 @@ class TestJacScaleServe:
         new_token = refresh_result["token"]
 
         # Decode tokens and compare expiration times
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])

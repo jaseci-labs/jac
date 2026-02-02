@@ -1,5 +1,6 @@
 import os;
 import pathlib;
+import from jaclang.cli.console { console }
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -183,7 +184,7 @@ impl sync_code_to_pvc(
                 cwd=code_folder
             );
         } else {
-            print("jac.toml file not found");
+            console.print("jac.toml file not found");
         }
     } finally {
         temp_tar_path.unlink(missing_ok=True);
@@ -368,12 +369,12 @@ impl check_deployment_status(
         try {
             response = requests.get(url, timeout=10);
             if (response.status_code == 200) {
-                print(f"Service is available at: {url}");
+                console.print(f"Service is available at: {url}");
                 return True;
             }
         } except RequestException as e {
             if (attempt == max_retries) {
-                print(f"Failed to connect to {url}: {e}");
+                console.print(f"Failed to connect to {url}: {e}");
             }
         }
         if (attempt < max_retries) {
@@ -436,10 +437,10 @@ impl ensure_namespace_exists(namespace: str) -> None {
         config.load_kube_config();
         core_v1 = client.CoreV1Api();
         core_v1.read_namespace(name=namespace);
-        print(f"Namespace '{namespace}' already exists.");
+        console.print(f"Namespace '{namespace}' already exists.");
     } except ApiException as e {
         if (e.status == 404) {
-            print(f"Namespace '{namespace}' not found. Creating it...");
+            console.print(f"Namespace '{namespace}' not found. Creating it...");
             core_v1.create_namespace(
                 body={
                     'apiVersion': 'v1',
@@ -447,7 +448,7 @@ impl ensure_namespace_exists(namespace: str) -> None {
                     'metadata': {'name': namespace}
                 }
             );
-            print(f"Namespace '{namespace}' created successfully.");
+            console.print(f"Namespace '{namespace}' created successfully.");
         } else {
             raise ;
         }
@@ -514,6 +515,6 @@ impl load_env_variables(code_folder: str) -> list {
 """
 impl debug_print(statement: str, debug_only: bool = False) -> None {
     if debug_only {
-        print(statement);
+        console.print(statement);
     }
 }

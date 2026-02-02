@@ -14,20 +14,14 @@ Scale your Jac application with jac-scale on Kubernetes.
 
 jac-scale provides cloud-native deployment for Jac applications:
 
-```
-┌─────────────────────────────────────────────┐
-│            Kubernetes Cluster               │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  Pod 1   │  │  Pod 2   │  │  Pod 3   │  │
-│  │ jac-app  │  │ jac-app  │  │ jac-app  │  │
-│  └──────────┘  └──────────┘  └──────────┘  │
-│         ↑           ↑           ↑          │
-│         └───────────┼───────────┘          │
-│                     ↓                      │
-│              ┌──────────────┐              │
-│              │ Load Balancer│              │
-│              └──────────────┘              │
-└─────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph cluster["Kubernetes Cluster"]
+        LB["Load Balancer"]
+        LB --> P1["Pod 1<br/>jac-app"]
+        LB --> P2["Pod 2<br/>jac-app"]
+        LB --> P3["Pod 3<br/>jac-app"]
+    end
 ```
 
 ---

@@ -385,7 +385,7 @@ See [Walker Responses](../reference/language/walker-responses.md) for details on
 
 ## AI Integration Issues
 
-### OpenAI API key not found
+### API key not found
 
 **Error:**
 
@@ -395,13 +395,17 @@ AuthenticationError: No API key provided
 
 **Solution:**
 
+Set the environment variable for your LLM provider in the same terminal where you run `jac`:
+
 ```bash
-# Set environment variable
+# Anthropic (used in the tutorials)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# OpenAI
 export OPENAI_API_KEY="sk-..."
 
-# Or in .env file
-echo "OPENAI_API_KEY=sk-..." > .env
-source .env
+# Google
+export GOOGLE_API_KEY="..."
 ```
 
 ### Rate limit exceeded
@@ -497,4 +501,4 @@ jac check myfile.jac
 | Empty reports | Check node connections and `report` calls |
 | 401 Unauthorized | Add `:pub` modifier to walker or include auth token |
 | CORS error | Configure `[plugins.scale.cors]` in jac.toml |
-| API key missing | Set `OPENAI_API_KEY` environment variable |
+| API key missing | Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_API_KEY` environment variable |

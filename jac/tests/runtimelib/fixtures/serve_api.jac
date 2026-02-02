@@ -94,7 +94,7 @@ def greet(name: str = "World") -> str {
 
 cl glob WELCOME_TITLE: str = "Runtime Test";
 
-cl def client_page() {
+cl def:pub client_page() {
     return <section class="welcome">
         <h1>
             {WELCOME_TITLE}

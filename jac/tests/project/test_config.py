@@ -244,7 +244,7 @@ dir = ".cache"
 
 [scripts]
 start = "jac run app.jac"
-lint = "jac format . --fix"
+lint = "jac lint . --fix"
 
 [plugins.byllm]
 default_model = "gpt-4"
@@ -294,7 +294,7 @@ port = 8000
 
         # Scripts
         assert config.scripts["start"] == "jac run app.jac"
-        assert config.scripts["lint"] == "jac format . --fix"
+        assert config.scripts["lint"] == "jac lint . --fix"
 
         # Plugin config
         assert "byllm" in config.plugins

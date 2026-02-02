@@ -247,29 +247,28 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error while requesting /cl/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # "/cl/app#/nested" – relative paths / nested route
-                # (hash fragment is client-side only but server should still serve the app shell)
+                # "/nested" – SPA catch-all serves app shell for client-side routing
                 try:
-                    print("[DEBUG] Sending GET request to /cl/app#/nested endpoint")
+                    print(
+                        "[DEBUG] Sending GET request to /nested endpoint (SPA catch-all)"
+                    )
                     with urlopen(
-                        f"http://127.0.0.1:{server_port}/cl/app#/nested",
+                        f"http://127.0.0.1:{server_port}/nested",
                         timeout=200,
                     ) as resp_nested:
                         nested_body = resp_nested.read().decode(
                             "utf-8", errors="ignore"
                         )
                         print(
-                            "[DEBUG] Received response from /cl/app#/nested endpoint\n"
+                            "[DEBUG] Received response from /nested endpoint\n"
                             f"Status: {resp_nested.status}\n"
                             f"Body (truncated to 500 chars):\n{nested_body[:500]}"
                         )
                         assert resp_nested.status == 200
                         assert "<html" in nested_body.lower()
                 except (URLError, HTTPError) as exc:
-                    print(
-                        f"[DEBUG] Error while requesting /cl/app#/nested endpoint: {exc}"
-                    )
-                    pytest.fail("Failed to GET /cl/app#/nested endpoint")
+                    print(f"[DEBUG] Error while requesting /nested endpoint: {exc}")
+                    pytest.fail("Failed to GET /nested endpoint (SPA catch-all)")
 
                 # Note: CSS serving is tested separately in test_css_with_image
                 # The CSS is bundled into client.js so no separate /static/styles.css endpoint
@@ -521,10 +520,10 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error verifying TypeScript component: {exc}")
                     pytest.fail("Failed to verify TypeScript component integration")
 
-                # Verify nested folder imports are working - /cl/app#/nested route
+                # Verify nested folder imports are working - /nested route (SPA catch-all)
                 # This route uses nested folder imports (components.button and button)
                 try:
-                    print("[DEBUG] Verifying nested folder imports via /cl/app#/nested")
+                    print("[DEBUG] Verifying nested folder imports via /nested")
                     # The nested route should load successfully (already tested above)
                     # Nested imports are compiled and included in the bundle
                     assert "<html" in nested_body.lower(), (

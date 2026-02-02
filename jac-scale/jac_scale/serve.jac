@@ -78,12 +78,15 @@ obj JacAPIServer(JServer) {
     ) -> Callable[..., TransportResponse];
 
     def create_walker_parameters(
-        walker_name: str, invoke_on_root: bool
+        walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
     ) -> list[APIParameter];
 
     def register_walkers_endpoints -> None;
     def create_function_callback(func_name: str) -> Callable[..., TransportResponse];
-    def create_function_parameters(func_name: str) -> list[APIParameter];
+    def create_function_parameters(
+        func_name: str, method: HTTPMethod = HTTPMethod.POST
+    ) -> list[APIParameter];
+
     def register_functions_endpoints -> None;
     def render_page_callback -> Callable[..., HTMLResponse];
     def render_base_route_callback(app_name: str) -> Callable[..., HTMLResponse];
@@ -95,7 +98,7 @@ obj JacAPIServer(JServer) {
     def register_root_asset_endpoint -> None;
     def serve_root_asset(file_path: str) -> Response;
     def _configure_openapi_security -> None;
-    def start(dev: bool = False) -> None;
+    def start(dev: bool = False, no_client: bool = False) -> None;
     # HMR (Hot Module Replacement) dynamic routing methods
     def enable_hmr(hot_reloader: Any) -> None;
     def register_dynamic_walker_endpoint -> None;
