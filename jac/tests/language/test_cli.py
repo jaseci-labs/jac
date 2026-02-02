@@ -698,6 +698,39 @@ def test_format_tracks_changed_files(
         assert "(1 changed)" in combined_output
 
 
+def test_format_preserves_file_on_syntax_error(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that format command preserves file content when there are syntax errors."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Copy err2.jac (which has syntax errors) to a temp location
+        src = fixture_path("err2.jac")
+        dest = os.path.join(tmpdir, "err2.jac")
+        with open(src) as f:
+            original_content = f.read()
+        with open(dest, "w") as f:
+            f.write(original_content)
+
+        # Run format on the file with syntax errors
+        captured_stderr = io.StringIO()
+        old_stderr = sys.stderr
+        sys.stderr = captured_stderr
+
+        try:
+            result = analysis.format([dest])
+        finally:
+            sys.stderr = old_stderr
+
+        # Read file content after formatting
+        with open(dest) as f:
+            after_content = f.read()
+
+        # File content must be preserved (not wiped)
+        assert after_content == original_content
+        # Format should report failure
+        assert result == 0  # 0 changed files, but failure is silent in exit code
+
+
 def test_jac_create_and_run_no_root_files(
     cli_test_dir: Path,
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
