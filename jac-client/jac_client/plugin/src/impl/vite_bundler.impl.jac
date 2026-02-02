@@ -299,7 +299,6 @@ impl ViteBundler._generate_vite_config_content(
     else '';
     imports_section = f"{imports_str}\n" if imports_str else '';
     newline = '\n';
-
     if is_dev {
         # Dev config
         build_overrides_str = self._format_config_object(build_config, indent=2)
@@ -450,7 +449,9 @@ export default defineConfig({{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
   plugins: [
-    jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
+        if plugins_str
+        else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     sourcemap: true, // Enable source maps for better error messages
@@ -499,9 +500,7 @@ impl ViteBundler.create_vite_config(
     api_base_url = self._resolve_api_base_url(api_base_url_override);
     config_path = configs_dir / 'vite.config.js';
     config_content = self._generate_vite_config_content(
-        is_dev=False,
-        entry_file=entry_file,
-        api_base_url=api_base_url
+        is_dev=False, entry_file=entry_file, api_base_url=api_base_url
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
