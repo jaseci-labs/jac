@@ -69,7 +69,8 @@ obj PrefetchedTypes {
         final_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
-        walker_class: TypeBase | None = None;
+        walker_class: TypeBase | None = None,
+        jsx_element_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""

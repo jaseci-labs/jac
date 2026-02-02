@@ -1,12 +1,7 @@
-# Landing Page - Ledgerly Brand
-# Professional landing page with hero, features, and CTA sections
-# Demonstrates: routing with Link, dark theme design, responsive layout
-cl import from "@jac/runtime" {
-    Link,
-}
+cl import from "@jac/runtime" { Link }
 
 cl {
-    def:pub LandingPage -> any {
+    def:pub page -> JsxElement {
         return
             <div className="landing-container">
                 <section className="hero-section">
@@ -29,7 +24,7 @@ cl {
                             "justifyContent": "center"
                         }}
                     >
-                        <Link to="/app">
+                        <Link to="/budget">
                             <button className="cta-button">
                                 Let's Plan
                             </button>
@@ -101,7 +96,7 @@ cl {
                             "justifyContent": "center"
                         }}
                     >
-                        <Link to="/app">
+                        <Link to="/budget">
                             <button className="cta-button">
                                 Get Started Free
                             </button>

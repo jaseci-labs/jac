@@ -2,12 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.14 (Unreleased)
+## jac-client 0.2.15 (Unreleased)
 
+## jac-client 0.2.14 (Latest Release)
+
+- **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Updated Fullstack Template**: Modernized the `fullstack` jacpack template to use idiomatic Jac patterns -- `can with entry` lifecycle effects instead of `useEffect`, JSX comprehensions instead of `.map()`, and impl separation (`frontend.impl.jac`) for cleaner code organization. Updated template README with project structure and pattern documentation.
 - **E2E Tests**: Now use jacpack workflow for testing.
+- **File-Based Routing**: Added Next.js-style file-based routing via a `pages/` directory convention. Place `.jac` files under `pages/` and routes are generated automatically -- `pages/index.jac` maps to `/`, `pages/about.jac` to `/about`, `pages/users/[id].jac` to `/users/:id`, and `pages/[...slug].jac` to a catch-all `*` route. Organize routes with parenthesized group directories: `pages/(auth)/` marks enclosed pages as requiring authentication, while `pages/(public)/` keeps them open -- groups control auth without adding URL segments. Add `layout.jac` files at any level for shared layout wrappers rendered via React Router `<Outlet/>`. The compiler detects `pages/`, generates a route manifest (`_routes.js`) with lazy imports, and produces an `_entry.js` that wires up `BrowserRouter`, `Routes`, layout nesting, and an `AuthGuard` component that checks `jacIsLoggedIn()` and redirects unauthenticated users (configurable via `auth_redirect` in `jac.toml` routing config). Duplicate route paths and duplicate layouts at the same level raise `ClientBundleError` at compile time. Projects without a `pages/` directory continue to use explicit routing unchanged.
 
-## jac-client 0.2.13 (Latest Release)
+## jac-client 0.2.13
 
 - **Console infrastructure**: Replaced bare `print()` calls with `console` abstraction for consistent output formatting.
 - **Desktop App Auto-Start & Port Discovery**: Running `jac start` or `jac dev` for a desktop (Tauri) target now automatically launches the backend API server and connects the app to it -- no manual setup needed. The backend port is dynamically allocated and injected into the webview before any page JavaScript runs, so API calls just work out of the box. Configure a fixed backend URL via `base_url` in `jac.toml` if needed.
