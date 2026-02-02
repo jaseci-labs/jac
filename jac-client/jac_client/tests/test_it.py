@@ -1079,9 +1079,13 @@ def test_profile_config_applies_to_server() -> None:
                 )
                 server = Popen(
                     [
-                        *jac_cmd, "start", "main.jac",
-                        "-p", str(server_port),
-                        "--profile", "prod",
+                        *jac_cmd,
+                        "start",
+                        "main.jac",
+                        "-p",
+                        str(server_port),
+                        "--profile",
+                        "prod",
                     ],
                     cwd=project_path,
                     env=env,
@@ -1089,7 +1093,9 @@ def test_profile_config_applies_to_server() -> None:
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
                 wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
 
                 root_bytes = _wait_for_endpoint(
                     f"http://127.0.0.1:{server_port}",
@@ -1175,7 +1181,9 @@ def test_no_profile_omits_profile_settings() -> None:
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
                 wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
 
                 root_bytes = _wait_for_endpoint(
                     f"http://127.0.0.1:{server_port}",

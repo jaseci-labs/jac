@@ -176,6 +176,7 @@ def _apply_config_defaults(config: object, args_dict: dict) -> None {
         ("cache", True, config.run.cache, "run", "cache"),
         ("main", True, config.run.main, "run", "main"),
         ("verbose", False, config.test.verbose, "test", "verbose"),
+
     ];
     for (arg_name, arg_default, config_value, section, key) in bridges {
         if arg_name not in args_dict {
