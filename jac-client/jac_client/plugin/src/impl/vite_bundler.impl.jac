@@ -493,7 +493,11 @@ is_dev: if True, creates dev config with HMR proxy, else build config.
 api_port: port for API proxy in dev mode.
 """
 impl ViteBundler.create_vite_config(
-    self: ViteBundler, entry_file: Path, api_base_url_override: str = "", is_dev: bool = False, api_port: int = 8000
+    self: ViteBundler,
+    entry_file: Path,
+    api_base_url_override: str = "",
+    is_dev: bool = False,
+    api_port: int = 8000
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -503,7 +507,10 @@ impl ViteBundler.create_vite_config(
     config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
     config_path = configs_dir / config_filename;
     config_content = self._generate_vite_config_content(
-        is_dev=is_dev, entry_file=entry_file, api_base_url=api_base_url, api_port=api_port
+        is_dev=is_dev,
+        entry_file=entry_file,
+        api_base_url=api_base_url,
+        api_port=api_port
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
@@ -673,8 +680,6 @@ impl ViteBundler.init(
     # Set output_dir after config_loader is initialized so _get_client_dir works
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
-
-
 
 """Create config files from jac.toml [plugins.client.configs].
 
