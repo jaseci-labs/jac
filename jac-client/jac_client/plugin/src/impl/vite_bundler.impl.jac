@@ -489,18 +489,21 @@ export default defineConfig({{
 
 api_base_url_override: overrides jac.toml base_url for desktop targets
     where the CLI knows the backend port at startup time.
+is_dev: if True, creates dev config with HMR proxy, else build config.
+api_port: port for API proxy in dev mode.
 """
 impl ViteBundler.create_vite_config(
-    self: ViteBundler, entry_file: Path, api_base_url_override: str = ""
+    self: ViteBundler, entry_file: Path, api_base_url_override: str = "", is_dev: bool = False, api_port: int = 8000
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     api_base_url = self._resolve_api_base_url(api_base_url_override);
-    config_path = configs_dir / 'vite.config.js';
+    config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
+    config_path = configs_dir / config_filename;
     config_content = self._generate_vite_config_content(
-        is_dev=False, entry_file=entry_file, api_base_url=api_base_url
+        is_dev=is_dev, entry_file=entry_file, api_base_url=api_base_url, api_port=api_port
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
@@ -671,32 +674,7 @@ impl ViteBundler.init(
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
 
-"""Create a dev-mode vite config with API proxy for HMR.
 
-api_base_url_override: when set, API calls go directly to this URL
-    instead of via proxy (used by desktop targets).
-"""
-impl ViteBundler.create_dev_vite_config(
-    self: ViteBundler,
-    entry_file: Path,
-    api_port: int = 8000,
-    api_base_url_override: str = ""
-) -> Path {
-    build_dir = self._get_client_dir();
-    build_dir.mkdir(parents=True, exist_ok=True);
-    configs_dir = build_dir / 'configs';
-    configs_dir.mkdir(exist_ok=True);
-    api_base_url = self._resolve_api_base_url(api_base_url_override);
-    config_path = configs_dir / 'vite.dev.config.js';
-    config_content = self._generate_vite_config_content(
-        is_dev=True,
-        entry_file=entry_file,
-        api_base_url=api_base_url,
-        api_port=api_port
-    );
-    config_path.write_text(config_content, encoding='utf-8');
-    return config_path;
-}
 
 """Create config files from jac.toml [plugins.client.configs].
 
@@ -805,7 +783,7 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     dev_config = build_dir / 'configs' / 'vite.dev.config.js';
     if not dev_config.exists() {
         raise ClientBundleError(
-            "Dev config not found. Call create_dev_vite_config first."
+            "Dev config not found. Call create_vite_config first(is_dev = True)."
         ) ;
     }
     config_rel = dev_config.relative_to(build_dir);

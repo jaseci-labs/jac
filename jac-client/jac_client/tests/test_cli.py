@@ -1065,7 +1065,7 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
 
 
 def test_vite_config_generation() -> None:
-    """Test that create_vite_config and create_dev_vite_config generate correct files."""
+    """Test that create_vite_config(build/dev)  generate correct files."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -1122,8 +1122,8 @@ cors = true
             assert "tailwindcss()" in build_config_content  # Tailwind plugin
             assert "@tailwindcss/vite" in build_config_content  # Tailwind import
 
-            # Test create_dev_vite_config (dev config)
-            dev_config_path = bundler.create_dev_vite_config(entry_file, api_port=8001)
+            # Test create_vite_config (dev config)
+            dev_config_path = bundler.create_vite_config(entry_file, is_dev=True, api_port=8001)
             assert dev_config_path.exists()
             assert dev_config_path.name == "vite.dev.config.js"
 
