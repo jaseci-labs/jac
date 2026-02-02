@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.14 (Unreleased)
 
+- **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Updated Fullstack Template**: Modernized the `fullstack` jacpack template to use idiomatic Jac patterns -- `can with entry` lifecycle effects instead of `useEffect`, JSX comprehensions instead of `.map()`, and impl separation (`frontend.impl.jac`) for cleaner code organization. Updated template README with project structure and pattern documentation.
 - **E2E Tests**: Now use jacpack workflow for testing.
 
