@@ -13,7 +13,9 @@ jac create my-todo --use client --skip
 cd my-todo
 ```
 
-Create `styles.css` in your project root:
+`--skip` skips the interactive prompts after creation. You don't need to run `jac install` separately -- `jac start` handles dependency installation automatically.
+
+Now replace `main.jac` with the code below and create `styles.css` in your project root:
 
 ```css
 .container { max-width: 500px; margin: 40px auto; font-family: system-ui; padding: 20px; }
@@ -27,7 +29,7 @@ Create `styles.css` in your project root:
 .count { text-align: center; color: #888; margin-top: 16px; font-size: 0.9rem; }
 ```
 
-Now replace `main.jac` with the code below. We'll walk through each piece.
+We'll walk through each piece of `main.jac` below.
 
 ---
 
@@ -313,6 +315,11 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
 ```bash
 jac start main.jac
 ```
+
+This starts on port 8000 by default. Use `jac start main.jac --port 3000` to pick a different port.
+
+!!! warning "Common issue"
+    If you see "Address already in use", another process is on port 8000. Use `--port` to pick a different port, or see [Troubleshooting: Server won't start](../troubleshooting.md#server-wont-start-address-already-in-use).
 
 Open [http://localhost:8000](http://localhost:8000). You should see a clean todo app with an input field and an "Add" button. Try it:
 

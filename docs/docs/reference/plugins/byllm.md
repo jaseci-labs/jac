@@ -120,8 +120,8 @@ glob llm = Model(
 # Basic function
 def function_name(param: type) -> return_type by llm();
 
-# With docstring (recommended)
-"""Description of what the function does."""
+# With sem for additional context (recommended for ambiguous names)
+sem function_name = "Description of what the function does.";
 def function_name(param: type) -> return_type by llm();
 ```
 
@@ -241,21 +241,21 @@ sem Customer.tier = "Service tier: 'basic', 'premium', or 'enterprise'";
 
 ---
 
-## Docstrings
+## Semantic Context with `sem`
 
-Provide function-level context:
+Use `sem` to provide function-level context beyond what names and types convey:
 
 ```jac
-"""
+sem translate = """
 Translate the given text to the target language.
 Preserve formatting and technical terms.
-"""
+""";
 def translate(text: str, target_language: str) -> str by llm();
 
-"""
+sem analyze_feedback = """
 Analyze customer feedback and categorize the main concerns.
 Focus on actionable insights for the product team.
-"""
+""";
 def analyze_feedback(feedback: str) -> list[str] by llm();
 ```
 
@@ -434,14 +434,14 @@ def extract_person(text: str) -> Person:
 
 ## Best Practices
 
-### 1. Clear Docstrings
+### 1. Descriptive Names and `sem` for Clarity
 
 ```jac
-# Good
-"""Extract all email addresses from the text. Return empty list if none found."""
+# Good - name is self-explanatory
 def extract_emails(text: str) -> list[str] by llm();
 
-# Avoid
+# Better - sem adds detail when needed
+sem extract_emails = "Extract all email addresses from the text. Return empty list if none found.";
 def extract_emails(text: str) -> list[str] by llm();
 ```
 
@@ -468,20 +468,15 @@ sem Order.status = "Order status: 'pending', 'processing', 'shipped', 'delivered
 sem Order.items = "List of items with 'sku', 'quantity', and 'price' fields";
 ```
 
-### 4. Tool Docstrings
+### 4. Tool Semantics
+
+Use `sem` to describe tools so the LLM knows when to call them:
 
 ```jac
-"""
-Search products in the catalog.
-
-Args:
-    query: Search terms
-    category: Optional category filter
-    max_results: Maximum number of results (default 10)
-
-Returns:
-    List of matching product records
-"""
+sem search_products = "Search products in the catalog and return matching records.";
+sem search_products.query = "Search terms";
+sem search_products.category = "Optional category filter";
+sem search_products.max_results = "Maximum number of results (default 10)";
 def search_products(query: str, category: str = "", max_results: int = 10) -> list[dict] {
     # Implementation
 }

@@ -9,6 +9,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Centralized project URLs**: Project URLs (docs, Discord, GitHub, issues) are now defined as constants in `banners.jac` and reused across the CLI banner, server error messages, and help epilog instead of being hardcoded in multiple places.
 - **Client bundle error help message**: When the client bundle build fails during `jac start`, the server now prints a troubleshooting suggestion to run `jac clean --all` and a link to the Discord community for support.
 - **`db` Builtin Exposed**: The `db` builtin function is now exported in `__all__` of `jaclang.runtimelib.builtin`, making it available as a global builtin in `.jac` files without explicit import. Use `db()` for direct MongoDB access when `jac-scale` is installed.
+- **Native Compiler Buildout**: Major expansion of the native binary compilation pipeline for `.na.jac` files. The native backend now supports enums, boolean short-circuit evaluation, break/continue, for loops, ternary expressions, string literals and f-strings, objects with fields/methods/postinit, GC-managed lists, single inheritance with vtable-based virtual dispatch, complex access chains, indexed field assignment, string methods (strip, split, indexing), builtins (ord, int, input), augmented assignment operators (`+=`, `-=`, `*=`, `//=`, `%=`), and `with entry { ... }` blocks. All heap allocations use Boehm GC. Validated end-to-end with a fully native chess game.
+- **`jac run` for `.na.jac` Files**: Running `jac run file.na.jac` now compiles the file to native machine code and executes the `jac_entry` function directly, bypassing the Python import machinery entirely. Native execution runs as pure machine code with zero Python interpreter overhead at runtime.
+- **LSP Semantic Token Manager Refactor**: Refactored the language server's `SemTokManager` for production robustness. Deduplicated ~170 lines of shared symbol resolution logic.
+- **1 Small Refactors**
 
 ## jaclang 0.9.13 (Latest Release)
 

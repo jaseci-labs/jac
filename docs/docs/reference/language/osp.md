@@ -851,3 +851,5 @@ walker ShoppingCart {
 - [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
 - [Graph Operations](graph-operations.md) - Quick reference for `++>`, `-->`, `del here`
 - [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full-stack tutorial using OSP concepts
+- [OSP Tutorial](../../tutorials/language/osp.md) - Hands-on tutorial with exercises
+- [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts

@@ -12,6 +12,7 @@ nav:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
+      - Core Concepts: "quick-guide/what-makes-jac-different.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
       - FAQ: "quick-guide/faq.md"
       - Next Steps: "quick-guide/next-steps.md"
@@ -220,7 +221,8 @@ plugins:
 
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
-        quick-guide/first-graph.md: tutorials/first-app/part1-todo-app.md
+        quick-guide/first-graph.md: quick-guide/what-makes-jac-different.md
+        quick-guide/thinking-in-graphs.md: quick-guide/what-makes-jac-different.md
         quick-guide/first-app.md: tutorials/first-app/part1-todo-app.md
         quick-guide/first-fullstack-ai-app.md: tutorials/first-app/part1-todo-app.md
         cli/index.md: reference/cli/index.md

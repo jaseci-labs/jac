@@ -32,6 +32,20 @@ This example demonstrates advanced Jac concepts:
 
 ---
 
+## Prerequisites & Key Concepts
+
+- Completed the [AI Integration](../ai/quickstart.md) tutorials
+- Familiar with [OSP](../language/osp.md) (node-walker architecture)
+
+| Concept | Where to Learn |
+|---------|----------------|
+| `by llm()` | [byLLM Quickstart](../ai/quickstart.md) |
+| OSP architecture | [OSP Tutorial](../language/osp.md) |
+| Structured outputs | [Structured Outputs](../ai/structured-outputs.md) |
+| Tool calling / MCP | [Agentic AI](../ai/agentic.md) |
+
+---
+
 ## Architecture Overview
 
 ```mermaid
