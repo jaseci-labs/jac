@@ -34,23 +34,13 @@ This example demonstrates advanced Jac concepts:
 
 ## Architecture Overview
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Client    │ ──→ │    Router    │ ──→ │  Chat Node  │
-│  Streamlit  │     │   (AI-based) │     │  (Handler)  │
-└─────────────┘     └──────────────┘     └─────────────┘
-                           ↓
-                    ┌──────────────┐
-                    │  MCP Server  │
-                    │  (Tools)     │
-                    └──────────────┘
-                           ↓
-              ┌────────────┴────────────┐
-              ↓                         ↓
-       ┌────────────┐            ┌────────────┐
-       │  ChromaDB  │            │ Web Search │
-       │  (Docs)    │            │  (Serper)  │
-       └────────────┘            └────────────┘
+```mermaid
+graph TD
+    Client["Client<br/>Streamlit"] --> Router["Router<br/>(AI-based)"]
+    Router --> Chat["Chat Node<br/>(Handler)"]
+    Router --> MCP["MCP Server<br/>(Tools)"]
+    MCP --> Chroma["ChromaDB<br/>(Docs)"]
+    MCP --> Web["Web Search<br/>(Serper)"]
 ```
 
 ---
