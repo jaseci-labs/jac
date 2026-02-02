@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import gc
 import os
-import shutil
 import tempfile
 import time
-from subprocess import PIPE, Popen, run
+from subprocess import Popen, run
 
 import pytest
 
@@ -27,6 +26,8 @@ from .test_helpers import (
 def running_server():
     """Start the all-in-one jac server for the test module and yield its URL.
 
+    Uses jacpack to bundle and extract the all-in-one example.
+
     Yields a dict with keys `port` and `url`.
     """
     tests_dir = os.path.dirname(__file__)
@@ -44,43 +45,33 @@ def running_server():
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
-            process = Popen(
-                [*jac_cmd, "create", "--use", "client", app_name],
-                stdin=PIPE,
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-                env=env,
-            )
-            stdout, stderr = process.communicate()
-            if process.returncode != 0:
-                pytest.fail(f"jac create --use client failed: {stderr}")
 
-            project_path = os.path.join(temp_dir, app_name)
-
-            for entry in os.listdir(all_in_one_path):
-                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
-                    continue
-                src = os.path.join(all_in_one_path, entry)
-                dst = os.path.join(project_path, entry)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, dirs_exist_ok=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            jac_add_result = run(
-                [*jac_cmd, "add", "--npm"],
-                cwd=project_path,
+            # Create jacpack file from all-in-one example
+            jacpack_path = os.path.join(temp_dir, "all-in-one.jacpack")
+            pack_result = run(
+                [*jac_cmd, "jacpack", "pack", all_in_one_path, "-o", jacpack_path],
                 capture_output=True,
                 text=True,
                 env=env,
             )
-            if jac_add_result.returncode != 0:
-                pytest.fail(f"jac add --npm failed: {jac_add_result.stderr}")
+            if pack_result.returncode != 0:
+                pytest.fail(f"jac jacpack pack failed: {pack_result.stderr}")
+
+            # Create project from jacpack file
+            create_result = run(
+                [*jac_cmd, "create", app_name, "--use", jacpack_path],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if create_result.returncode != 0:
+                pytest.fail(f"jac create --use jacpack failed: {create_result.stderr}")
+
+            project_path = os.path.join(temp_dir, app_name)
 
             server_port = get_free_port()
             server = Popen(
-                [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                [*jac_cmd, "start", "-p", str(server_port)],
                 cwd=project_path,
                 env=env,
             )

@@ -5,7 +5,7 @@ Learn Jac's unique graph-based programming paradigm with nodes, edges, and walke
 > **Prerequisites**
 >
 > - Completed: [Hello World](../../quick-guide/hello-world.md)
-> - Recommended: [Your First Graph](../../quick-guide/first-graph.md) (gentler introduction)
+> - Recommended: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
 > - Time: ~45 minutes
 
 ---
@@ -502,6 +502,25 @@ curl -X POST http://localhost:8000/walker/add_todo \
 
 ---
 
+## When to Use Functions vs Walkers
+
+Jac gives you two ways to expose server logic: `def:pub` functions and `walker` types.
+
+| | `def:pub` Functions | Walkers |
+|---|---|---|
+| **Best for** | Simple stateless CRUD, quick prototyping | Graph traversal, per-user data, production apps |
+| **Auth** | Shared data (no user isolation) | Per-user root node (`walker:priv` enforces auth) |
+| **Data access** | Direct: `[root -->]` | Traversal: `visit [-->]`, `here` |
+| **API style** | Function call → HTTP endpoint | Spawn walker at node |
+| **State** | Stateless | Carries state across nodes via `has` properties |
+
+!!! tip "Rule of thumb"
+    Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
+
+The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 1, then refactors to walkers in [Part 3](../first-app/part3-multi-user.md) -- showing exactly when and why to make the switch.
+
+---
+
 ## Key Takeaways
 
 | Concept | Purpose |
@@ -524,7 +543,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
 
 - [Testing](testing.md) - Test your nodes and walkers
 - [AI Integration](../ai/quickstart.md) - Add LLM capabilities
-- [First App](../../quick-guide/first-app.md) - Review the todo app example
+- [First App Tutorial](../first-app/part1-todo-app.md) - Review the todo app example
 
 **Reference:**
 
