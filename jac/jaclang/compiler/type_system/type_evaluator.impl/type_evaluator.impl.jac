@@ -921,7 +921,6 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     self.jac_builtins_module = self._load_stub_module(
         self._JAC_BUILTINS_STUB_FILE_PATH
     );
-    # Make Jac builtin types available by copying them into builtins_module
     # This avoids parent_scope chaining which can cause recursion issues
     for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
         if name not in self.builtins_module.names_in_scope {
