@@ -60,8 +60,7 @@ impl start_cli -> None {
     args_dict = vars(args);
     args_dict.pop('command');
     args_dict.pop('version', None);
-    # Apply environment profile if specified
-    _apply_env_profile(args_dict);
+    _apply_profile(args_dict);
     # Execute using the new executor with hook support
     executor = get_executor();
     result = executor.execute(command_spec, args_dict);
@@ -117,8 +116,12 @@ def _initialize_template_registry -> None {
     }
 }
 
-"""Apply environment profile from --env flag or JAC_ENV environment variable."""
-def _apply_env_profile(args_dict: dict) -> None {
+"""Resolve the active profile name and apply multi-file config overlay.
+
+Profile priority: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default_profile
+"""
+def _apply_profile(args_dict: dict) -> None {
+    import from jaclang.cli.console { console }
     try {
         import from jaclang.project.config { get_config }
 
@@ -127,19 +130,30 @@ def _apply_env_profile(args_dict: dict) -> None {
             return;
         }
 
-        # Check for --env argument or JAC_ENV environment variable
-        profile = args_dict.pop('env', None);
-        if profile is None {
-            profile = os.environ.get('JAC_ENV');
+        # Determine profile name: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default
+        profile = args_dict.pop('profile', None);
+        if not profile {
+            profile = os.environ.get('JAC_PROFILE');
         }
-        if profile is None and config.environment.default_profile {
+        if not profile {
+            jac_env = os.environ.get('JAC_ENV');
+            if jac_env {
+                console.print(
+                    "Warning: JAC_ENV is deprecated, use JAC_PROFILE instead.",
+                    style="warning"
+                );
+                profile = jac_env;
+            }
+        }
+        if not profile and config.environment.default_profile {
             profile = config.environment.default_profile;
         }
 
-        if profile {
-            config.apply_profile(profile);
-        }
-    } except Exception {
-    # Silently ignore profile loading errors
+        config.apply_profile_overlay(profile or None);
+    } except (KeyError, ValueError, OSError) as e {
+        console.print(
+            f"Warning: Failed to apply profile: {e}",
+            style="warning"
+        );
     }
 }
