@@ -21,7 +21,7 @@ import from ..utils.helpers {
 import from ..utils.formatters { formatCurrency }
 
 # Import walkers from server module
-sv import from .FeaturesTest {
+sv import from ..main {
     create_test_data,
     read_test_data,
     update_test_data,
