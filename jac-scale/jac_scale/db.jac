@@ -2,6 +2,7 @@
 import from pymongo { MongoClient }
 import from typing { Any }
 import from jac_scale.config_loader { get_scale_config }
+import from bson { ObjectId }
 
 glob _client: (MongoClient | None) = None;
 
@@ -29,4 +30,17 @@ obj Db {
     ) -> Any;
 
     def delete_one(col_name: str, filter: dict) -> Any;
+    # Bulk operations
+    def insert_many(col_name: str, documents: list) -> Any;
+    def update_many(
+        col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
+    ) -> Any;
+
+    # ID-based convenience methods
+    def find_by_id(col_name: str, id: str) -> dict | None;
+    def update_by_id(
+        col_name: str, id: str, update_data: dict, upsert_mode: bool = False
+    ) -> Any;
+
+    def delete_by_id(col_name: str, id: str) -> Any;
 }
