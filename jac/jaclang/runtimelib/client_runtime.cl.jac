@@ -1,5 +1,11 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
+# JSX element representation
+obj JsxElement {
+    has tag: any,
+        props: dict = {},
+        children: list = [];
+}
 # JSX factory function
 def __jacJsx(
     tag: any, props: dict = {}, children: list = []

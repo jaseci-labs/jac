@@ -47,6 +47,7 @@ from jaclang.pycore.constructs import (
     Archetype,
     EdgeAnchor,
     EdgeArchetype,
+    JsxElement,
     NodeAnchor,
     NodeArchetype,
     WalkerAnchor,
@@ -887,6 +888,7 @@ class JacClassReferences:
     Node = NodeArchetype
     Edge = EdgeArchetype
     Walker = WalkerArchetype
+    JsxElement = JsxElement
 
 
 class JacBuiltin:
@@ -1323,7 +1325,7 @@ class JacBasics:
         tag: object,
         attributes: Mapping[str, object] | None = None,
         children: Sequence[object] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsxElement:
         """JSX interface for creating elements.
 
         Args:
@@ -1332,15 +1334,11 @@ class JacBasics:
             children: Child elements
 
         Returns:
-            JSX element representation (implementation-defined)
+            JSX element representation.
         """
         props: dict[str, object] = dict(attributes) if attributes else {}
         child_list = list(children) if children else []
-        return {
-            "tag": tag,
-            "props": props,
-            "children": child_list,
-        }
+        return JsxElement(tag=tag, props=props, children=child_list)
 
     @staticmethod
     def run_test(
