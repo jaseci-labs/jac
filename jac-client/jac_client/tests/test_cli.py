@@ -1093,6 +1093,7 @@ cors = true
 
             # Import ViteBundler
             from pathlib import Path
+
             from jac_client.plugin.src.vite_bundler import ViteBundler
 
             # Initialize bundler
@@ -1144,7 +1145,9 @@ cors = true
 
             # Verify configs are different (dev vs build)
             assert build_config_content != dev_config_content
-            assert "sourcemap: true" in build_config_content  # Both should have sourcemaps
+            assert (
+                "sourcemap: true" in build_config_content
+            )  # Both should have sourcemaps
             assert "sourcemap: true" in dev_config_content
 
         finally:
