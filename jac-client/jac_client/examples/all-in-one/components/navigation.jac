@@ -94,8 +94,8 @@ cl {
                                     Nested Imports
                                 </Link>
                                 <Link
-                                    to="/features-test"
-                                    style={linkStyle("/features-test")}
+                                    to="/features"
+                                    style={linkStyle("/features")}
                                 >
                                     Features Test
                                 </Link>
@@ -103,8 +103,8 @@ cl {
                                     Landing Page
                                 </Link>
                                 <Link
-                                    to="/budget-planner"
-                                    style={linkStyle("/budget-planner")}
+                                    to="/budget"
+                                    style={linkStyle("/budget")}
                                 >
                                     Budget Planner
                                 </Link>
