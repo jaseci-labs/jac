@@ -23,7 +23,10 @@ glob registry = get_registry();
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
         Arg.create(
-            "profile", default="", short="", help="Configuration profile to load (e.g. prod, staging)"
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],
@@ -51,7 +54,10 @@ def run(filename: str, main: bool = True, cache: bool = True) -> int;
         Arg.create("root", default="", help="Root executor ID", short="r"),
         Arg.create("node", default="", help="Starting node ID", short="n"),
         Arg.create(
-            "profile", default="", short="", help="Configuration profile to load (e.g. prod, staging)"
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],
@@ -111,7 +117,10 @@ def enter(
             help="Skip client bundling/serving (API only)"
         ),
         Arg.create(
-            "profile", default="", short="", help="Configuration profile to load (e.g. prod, staging)"
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],
@@ -148,7 +157,10 @@ def start(
             "cache", typ=bool, default=False, help="Use cached compilation", short="c"
         ),
         Arg.create(
-            "profile", default="", short="", help="Configuration profile to load (e.g. prod, staging)"
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],

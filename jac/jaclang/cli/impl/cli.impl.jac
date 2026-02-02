@@ -151,9 +151,6 @@ def _apply_profile(args_dict: dict) -> None {
 
         config.apply_profile_overlay(profile or None);
     } except (KeyError, ValueError, OSError) as e {
-        console.print(
-            f"Warning: Failed to apply profile: {e}",
-            style="warning"
-        );
+        console.print(f"Warning: Failed to apply profile: {e}", style="warning");
     }
 }

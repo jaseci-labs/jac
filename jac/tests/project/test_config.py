@@ -653,7 +653,7 @@ class TestDiscoverConfigFiles:
     def test_with_profile_file(self, temp_project: Path) -> None:
         """Test discovery includes profile-specific file."""
         prod_toml = temp_project / "jac.prod.toml"
-        prod_toml.write_text('[serve]\nport = 80\n')
+        prod_toml.write_text("[serve]\nport = 80\n")
 
         files = discover_config_files(temp_project, profile="prod")
 
@@ -664,7 +664,7 @@ class TestDiscoverConfigFiles:
     def test_with_local_file(self, temp_project: Path) -> None:
         """Test discovery includes jac.local.toml."""
         local_toml = temp_project / "jac.local.toml"
-        local_toml.write_text('[run]\ncache = false\n')
+        local_toml.write_text("[run]\ncache = false\n")
 
         files = discover_config_files(temp_project)
 
@@ -674,8 +674,8 @@ class TestDiscoverConfigFiles:
 
     def test_all_files_present(self, temp_project: Path) -> None:
         """Test discovery with base, profile, and local files."""
-        (temp_project / "jac.staging.toml").write_text('[serve]\nport = 9000\n')
-        (temp_project / "jac.local.toml").write_text('[run]\ncache = false\n')
+        (temp_project / "jac.staging.toml").write_text("[serve]\nport = 9000\n")
+        (temp_project / "jac.local.toml").write_text("[run]\ncache = false\n")
 
         files = discover_config_files(temp_project, profile="staging")
 
@@ -694,7 +694,7 @@ class TestDiscoverConfigFiles:
 
     def test_no_profile_skips_profile_file(self, temp_project: Path) -> None:
         """Test that None profile doesn't look for profile files."""
-        (temp_project / "jac.prod.toml").write_text('[serve]\nport = 80\n')
+        (temp_project / "jac.prod.toml").write_text("[serve]\nport = 80\n")
 
         files = discover_config_files(temp_project, profile=None)
 
@@ -721,7 +721,7 @@ class TestMergeFromTomlFile:
         assert config.serve.port == 8000
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text('[run]\ncache = false\n\n[serve]\nport = 9000\n')
+        overlay.write_text("[run]\ncache = false\n\n[serve]\nport = 9000\n")
 
         config.merge_from_toml_file(overlay)
 
@@ -734,7 +734,7 @@ class TestMergeFromTomlFile:
         assert config.run.main is True
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text('[run]\ncache = false\n')
+        overlay.write_text("[run]\ncache = false\n")
 
         config.merge_from_toml_file(overlay)
 
@@ -841,7 +841,7 @@ class TestMergeFromTomlFile:
 
         overlay = temp_project / "overlay.toml"
         overlay.write_text(
-            '[environments.ci]\n\n[environments.ci.test]\nverbose = true\n'
+            "[environments.ci]\n\n[environments.ci.test]\nverbose = true\n"
         )
 
         config.merge_from_toml_file(overlay)
@@ -854,7 +854,7 @@ class TestMergeFromTomlFile:
         assert len(config.config_files) == 1
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text('[run]\ncache = false\n')
+        overlay.write_text("[run]\ncache = false\n")
 
         config.merge_from_toml_file(overlay)
 
@@ -866,7 +866,7 @@ class TestMergeFromTomlFile:
         config = JacConfig.load(temp_project / "jac.toml")
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text('[run]\ncache = false\n')
+        overlay.write_text("[run]\ncache = false\n")
 
         config.merge_from_toml_file(overlay)
         config.merge_from_toml_file(overlay)
@@ -879,7 +879,7 @@ class TestMergeFromTomlFile:
         assert "serve" not in config._raw_data  # not in base config
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text('[serve]\nport = 9000\n')
+        overlay.write_text("[serve]\nport = 9000\n")
 
         config.merge_from_toml_file(overlay)
 
@@ -917,7 +917,7 @@ class TestMergeFromTomlFile:
         config = JacConfig.load(temp_project / "jac.toml")
 
         bad_file = temp_project / "bad.toml"
-        bad_file.write_text('this is not valid toml [[[')
+        bad_file.write_text("this is not valid toml [[[")
 
         with pytest.raises(tomllib.TOMLDecodeError):
             config.merge_from_toml_file(bad_file)
@@ -945,16 +945,14 @@ class TestApplyProfileOverlay:
         config = JacConfig.load(temp_project / "jac.toml")
 
         local = temp_project / "jac.local.toml"
-        local.write_text('[run]\ncache = false\n')
+        local.write_text("[run]\ncache = false\n")
 
         config.apply_profile_overlay(None)
 
         assert config.run.cache is False
         assert config.active_profile == ""
 
-    def test_empty_string_profile_treated_as_none(
-        self, temp_project: Path
-    ) -> None:
+    def test_empty_string_profile_treated_as_none(self, temp_project: Path) -> None:
         """Test that empty string profile behaves like None."""
         config = JacConfig.load(temp_project / "jac.toml")
 
@@ -980,7 +978,7 @@ port = 443
 
         # Profile file overrides build settings
         prod_toml = temp_project / "jac.prod.toml"
-        prod_toml.write_text('[build]\ntypecheck = true\n')
+        prod_toml.write_text("[build]\ntypecheck = true\n")
 
         config = JacConfig.load(jac_toml)
         config.apply_profile_overlay("prod")
@@ -998,10 +996,10 @@ port = 443
         jac_toml.write_text('[project]\nname = "test"\n\n[serve]\nport = 8000\n')
 
         prod_toml = temp_project / "jac.prod.toml"
-        prod_toml.write_text('[serve]\nport = 80\n')
+        prod_toml.write_text("[serve]\nport = 80\n")
 
         local_toml = temp_project / "jac.local.toml"
-        local_toml.write_text('[serve]\nport = 9999\n')
+        local_toml.write_text("[serve]\nport = 9999\n")
 
         config = JacConfig.load(jac_toml)
         config.apply_profile_overlay("prod")
@@ -1060,10 +1058,10 @@ port = 9000
         jac_toml.write_text('[project]\nname = "test"\n')
 
         prod_toml = temp_project / "jac.prod.toml"
-        prod_toml.write_text('[serve]\nport = 80\n')
+        prod_toml.write_text("[serve]\nport = 80\n")
 
         local_toml = temp_project / "jac.local.toml"
-        local_toml.write_text('[run]\ncache = false\n')
+        local_toml.write_text("[run]\ncache = false\n")
 
         config = JacConfig.load(jac_toml)
         config.apply_profile_overlay("prod")
@@ -1092,11 +1090,11 @@ verbose = true
 
         # Profile file sets fail_fast
         prod_toml = temp_project / "jac.prod.toml"
-        prod_toml.write_text('[test]\nfail_fast = true\n')
+        prod_toml.write_text("[test]\nfail_fast = true\n")
 
         # Local file overrides verbose back to false
         local_toml = temp_project / "jac.local.toml"
-        local_toml.write_text('[test]\nverbose = false\n')
+        local_toml.write_text("[test]\nverbose = false\n")
 
         config = JacConfig.load(jac_toml)
         config.apply_profile_overlay("prod")
@@ -1154,9 +1152,7 @@ class TestMultiProfileBugFixes:
         assert config.plugins["byllm"]["options"]["max_tokens"] == 1000
 
         overlay = temp_project / "overlay.toml"
-        overlay.write_text(
-            "[plugins.byllm.options]\n" "temperature = 0.9\n"
-        )
+        overlay.write_text("[plugins.byllm.options]\ntemperature = 0.9\n")
 
         config.merge_from_toml_file(overlay)
 
@@ -1361,10 +1357,8 @@ class TestMultiProfileBugFixes:
         config = JacConfig()
         assert config.config_files is None
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".toml", mode="w", delete=False
-        ) as f:
-            f.write('[run]\ncache = false\n')
+        with tempfile.NamedTemporaryFile(suffix=".toml", mode="w", delete=False) as f:
+            f.write("[run]\ncache = false\n")
             f.flush()
             toml_path = Path(f.name)
 

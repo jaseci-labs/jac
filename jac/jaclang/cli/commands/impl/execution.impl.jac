@@ -44,13 +44,11 @@ def _discover_config_from_file(filename: str) -> None {
     # Re-discover config with profile applied in one step
     try {
         config = JacConfig.discover(
-            start_path=file_dir,
-            profile=active_profile or None
+            start_path=file_dir, profile=active_profile or None
         );
     } except (OSError, KeyError, ValueError) as e {
         console.print(
-            f"Warning: Failed to discover config from {file_dir}: {e}",
-            style="warning"
+            f"Warning: Failed to discover config from {file_dir}: {e}", style="warning"
         );
         return;
     }
