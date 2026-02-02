@@ -31,8 +31,11 @@ class TestDependencyInstaller:
         assert installer.config == config
         assert installer.venv_dir == temp_project / ".jac" / "venv"
 
-    def test_init_without_config_fails(self) -> None:
+    def test_init_without_config_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that init without discoverable config fails."""
+        monkeypatch.chdir(tmp_path)
         with pytest.raises(ValueError, match="No jac.toml found"):
             DependencyInstaller()
 

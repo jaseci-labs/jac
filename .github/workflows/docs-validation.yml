@@ -8,11 +8,11 @@ on:
       - 'docs/**/*.md'
       - 'docs/scripts/validate_docs_code.py'
       - '.github/workflows/docs-validation.yml'
-      - 'jac/**'
-      - 'jac-scale/**'
-      - 'jac-client/**'
-      - 'jac-byllm/**'
-      - 'jac-super/**'
+      - 'jac/jaclang/**'
+      - 'jac-scale/jac_scale/**'
+      - 'jac-client/jac_client/**'
+      - 'jac-byllm/byllm/**'
+      - 'jac-super/jac_super/**'
       - 'docs/docs/community/release_notes/**'
   push:
     branches:

@@ -37,10 +37,6 @@ cl def:pub app() -> any {
             </div> for item in items]}
         </div>;
 }
-
-with entry {
-
-}
 ```
 
 **What this file provides:**

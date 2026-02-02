@@ -53,13 +53,27 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
         if k not in ['style', 'file']
     };
     # Strip Rich markup tags like [cyan], [/cyan], [bold], [dim], etc.
-    # Pattern matches [tag], [/tag], and [tag attr=value] style markers
-    markup_pattern = re.compile(r'\[/?[a-zA-Z_][a-zA-Z0-9_\- =."\']*\]');
+    # Only match closing tags [/...] and known Rich style/color keywords
+    # to avoid stripping content like TOML headers [project] or graphviz [label=...]
+    _rich_styles = (
+        'bold|dim|italic|underline|strike|reverse|blink|overline|'
+        'red|green|blue|cyan|magenta|yellow|white|black|'
+        'bright_red|bright_green|bright_blue|bright_cyan|bright_magenta|bright_yellow|bright_white|'
+        'grey0|grey100|muted|info|success|warning|error|link'
+    );
+    markup_pattern = re.compile(
+        r'\[/[a-zA-Z_][a-zA-Z0-9_ ]*\]'  # Closing tags: [/bold], [/red], etc.
+        r'|'
+        r'\[(?:' + _rich_styles + r')(?:\s[^\]]*?)?\]'  # Opening style tags
+    );
     stripped_args = tuple(
         markup_pattern.sub('', str(arg)) if isinstance(arg, str) else arg
         for arg in args
     );
     print(*stripped_args, **filtered_kwargs);
+    # Flush stdout so output is visible immediately when piped (piped stdout
+    # uses block buffering, which can cause subprocess readline() to hang).
+    sys.stdout.flush();
 }
 
 """Context manager for status during long operations (basic implementation)."""

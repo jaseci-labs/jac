@@ -121,71 +121,28 @@ ext install jaseci-labs.jaclang-extension
 
 ## Verify Installation
 
-Create a test file `test.jac`:
-
-```jac
-with entry {
-    print("Jac is working!");
-}
-```
-
-Run it:
-
 ```bash
-jac test.jac
+jac --version
 ```
 
 Expected output:
 
 ```
-Jac is working!
+   _
+  (_) __ _  ___     Jac Language
+  | |/ _` |/ __|
+  | | (_| | (__     Version:  0.X.X
+ _/ |\__,_|\___|    Python 3.12.3
+|__/                Platform: Linux x86_64
+
+📚 Documentation: https://docs.jaseci.org
+💬 Community:     https://discord.gg/6j3QNdtcN6
+🐛 Issues:        https://github.com/Jaseci-Labs/jaseci/issues
 ```
-
----
-
-## Troubleshooting
-
-### "command not found: jac"
-
-Your Python scripts directory isn't in PATH. Try:
-
-```bash
-python -m jaclang.cli run test.jac
-```
-
-Or add Python scripts to PATH:
-
-```bash
-# Find the path
-python -c "import site; print(site.USER_BASE + '/bin')"
-
-# Add to ~/.bashrc or ~/.zshrc
-export PATH="$PATH:$(python -c 'import site; print(site.USER_BASE)')/bin"
-```
-
-### Permission Errors
-
-Use `--user` flag:
-
-```bash
-pip install --user jaseci
-```
-
-### Conflicting Packages
-
-Use a virtual environment (see above) to isolate Jac from other Python projects.
 
 ---
 
 ## For Contributors
-
-To work on Jac itself:
-
-```bash
-git clone --recurse --depth 1 https://github.com/Jaseci-Labs/jaseci
-cd jaseci
-pip install -e ./jac[dev]
-```
 
 See the [Contributing Guide](../community/contributing.md) for development setup.
 
@@ -194,4 +151,4 @@ See the [Contributing Guide](../community/contributing.md) for development setup
 ## Next Steps
 
 - [Hello World](hello-world.md) - Write your first program
-- [Your First App](first-app.md) - Build a complete application
+- [Build Your First App](../tutorials/first-app/part1-todo-app.md) - Build a complete full-stack application

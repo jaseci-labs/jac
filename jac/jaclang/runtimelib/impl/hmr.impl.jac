@@ -11,6 +11,7 @@ import shutil;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.pycore.constant { CodeContext }
+import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
 
@@ -43,7 +44,7 @@ impl HotReloader.on_file_change(event: Any) -> None {
     if not self._running {
         return;
     }
-    print(f"[HMR] File changed: {event.path} ({event.change_type})", flush=True);
+    console.print(f"[HMR] File changed: {event.path} ({event.change_type})");
     # Process the change
     self._process_change(event.path);
 }
@@ -96,30 +97,29 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
             del Jac.program.mod.hub[resolved_path];
         }
     } except Exception as e {
-        print(f"[HMR] Warning: Could not clear module hub: {e}", flush=True);
+        console.print(f"[HMR] Warning: Could not clear module hub: {e}");
     }
     # Re-import with force reload
     try {
         Jac.jac_import(
             target=module_name, base_path=self.base_path, reload_module=True
         );
-        print(f"[HMR] Reloaded: {file_path}", flush=True);
+        console.print(f"[HMR] Reloaded: {file_path}");
     } except SyntaxError as e {
         # Syntax error during reload
         line_info = f" (line {e.lineno})" if e?.lineno and e.lineno else "";
-        print(
-            f"[HMR] Syntax error reloading {file_path}{line_info}: {e?.msg or str(e)}",
-            flush=True
+        console.print(
+            f"[HMR] Syntax error reloading {file_path}{line_info}: {e?.msg or str(e)}"
         );
-        print(f"[HMR] Fix the error and save to retry", flush=True);
+        console.print(f"[HMR] Fix the error and save to retry");
     } except ImportError as e {
         # Import error (missing dependency, etc.)
-        print(f"[HMR] Import error reloading {file_path}: {e}", flush=True);
+        console.print(f"[HMR] Import error reloading {file_path}: {e}");
         self._emit_client_error_overlay(file_path, str(e));
     } except Exception as e {
         # Other errors
         error_type = type(e).__name__;
-        print(f"[HMR] {error_type} reloading {file_path}: {e}", flush=True);
+        console.print(f"[HMR] {error_type} reloading {file_path}: {e}");
         self._emit_client_error_overlay(file_path, str(e));
     }
 }
@@ -145,7 +145,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Check for compilation errors
         if Jac.program.errors_had {
             errors = '\n'.join(str(err) for err in Jac.program.errors_had);
-            print(f"[HMR] Client compile errors in {file_path}:\n{errors}", flush=True);
+            console.print(f"[HMR] Client compile errors in {file_path}:\n{errors}");
             self._emit_client_error_overlay(file_path, errors);
             Jac.program.errors_had.clear();
             return;
@@ -160,7 +160,7 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         js_code = mod.gen.js or '';
 
         if not js_code {
-            print(f"[HMR] No client JS generated for {file_path}", flush=True);
+            console.print(f"[HMR] No client JS generated for {file_path}");
             return;
         }
 
@@ -200,9 +200,9 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Write the JS code
         output_path.write_text(js_code, encoding='utf-8');
 
-        print(f"[HMR] Recompiled client: {file_path} -> {output_path}", flush=True);
+        console.print(f"[HMR] Recompiled client: {file_path} -> {output_path}");
     } except Exception as e {
-        print(f"[HMR] Error recompiling client code {file_path}: {e}", flush=True);
+        console.print(f"[HMR] Error recompiling client code {file_path}: {e}");
     }
 }
 
@@ -253,16 +253,15 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     } except SyntaxError as e {
         # Syntax error - provide detailed location info
         line_info = f" at line {e.lineno}" if e?.lineno and e.lineno else "";
-        print(
-            f"[HMR] Syntax error in {file_path}{line_info}: {e?.msg or str(e)}",
-            flush=True
+        console.print(
+            f"[HMR] Syntax error in {file_path}{line_info}: {e?.msg or str(e)}"
         );
         # Still try to reload - the error will be shown again during actual reload
         has_server = True;
     } except Exception as e {
         # Other parse errors - still try to reload
         error_type = type(e).__name__;
-        print(f"[HMR] {error_type} in {file_path}: {e}", flush=True);
+        console.print(f"[HMR] {error_type} in {file_path}: {e}");
         has_server = True;
     }
     return (has_client, has_server);
@@ -307,7 +306,7 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     output_path.write_text(entry_content, encoding='utf-8');
     # Mark that have an overlay entry
     self._overlay_entry = True;
-    print(f"[HMR] Error emitting overlay for {file_path}", flush=True);
+    console.print(f"[HMR] Error emitting overlay for {file_path}");
     return;
 }
 
@@ -329,7 +328,7 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
             # File was deleted - remove from build directory
             if output_path.exists() {
                 output_path.unlink();
-                print(f"[HMR] Removed deleted frontend file: {rel_path}", flush=True);
+                console.print(f"[HMR] Removed deleted frontend file: {rel_path}");
             }
             self._emit_client_error_overlay(file_path, f"No module in {rel_path}");
             return;
@@ -342,9 +341,9 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
             output_path.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(source_path, output_path);
         } except (FileNotFoundError, OSError) { }
-        print(f"[HMR] Copied frontend file: {file_path} -> {output_path}", flush=True);
+        console.print(f"[HMR] Copied frontend file: {file_path} -> {output_path}");
     } except Exception as e {
-        print(f"[HMR] Error copying frontend file {file_path}: {e}", flush=True);
+        console.print(f"[HMR] Error copying frontend file {file_path}: {e}");
     }
 }
 
@@ -360,6 +359,6 @@ impl HotReloader._update_entry_point -> None {
     output_path = output_base / "_entry.js";
     entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ app as App }} from "./{self.module_name}.js";\nimport {{ JacClientErrorBoundary, ErrorFallback }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(\n\tReact.createElement(\n\t\tJacClientErrorBoundary,{{ FallbackComponent: ErrorFallback }},\n\t\tReact.createElement(App, null)\n\t)\n);\n';
     output_path.write_text(entry_content, encoding='utf-8');
-    print(f"[HMR] Update entry: {output_path}", flush=True);
+    console.print(f"[HMR] Update entry: {output_path}");
     self._overlay_entry = False;
 }

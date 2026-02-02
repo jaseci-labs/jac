@@ -48,7 +48,8 @@ obj JacLangServer(JacProgram, LanguageServer) {
         queue: Queue = Queue(),
         worker_future: Future | None by postinit,
         last_task: Task | None = None,
-        _shutdown_called: bool = False;
+        _shutdown_called: bool = False,
+        _state_lock: threading.RLock by postinit;
 
     def postinit -> None;
     def dispatcher -> None;
@@ -88,6 +89,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def get_node_type(n: uni.AstNode) -> Optional[TypeBase];
     def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
     def rename_module(old_path: str, new_path: str) -> None;
+    def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;
     def formatted_jac(file_path: str) -> list[lspt.TextEdit];
     def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];
