@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import keyword
 import os
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from threading import Event
@@ -67,6 +68,9 @@ def _extract_jac_keywords() -> set[str]:
 JAC_KEYWORDS = _extract_jac_keywords()
 # Python keywords that should NOT be used as names in Jac
 PYTHON_ONLY_KEYWORDS = set(keyword.kwlist) - JAC_KEYWORDS
+
+# Pre-compiled regex for bare except detection ("except" followed by "{")
+_BARE_EXCEPT_PATTERN = re.compile(r"except\s*\{")
 
 
 @dataclass
@@ -247,6 +251,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self.mod_path = root_ir.loc.mod_path
         self.node_list: list[uni.UniNode] = []
         self._node_ids: set[int] = set()
+        self.source_code = root_ir.value  # Store source code for error checking
+        self._source_lines_cache: list[str] | None = None  # Cache for splitlines()
+        self._bare_except_checked = False  # Flag to check only once
 
         if cancel_token and cancel_token.is_set():
             return
@@ -354,22 +361,42 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 if e.token_history and len(e.token_history) >= 1
                 else None
             )
-            # Special case for bare except
-            if Tok.KW_EXCEPT.name and (
-                (Tok.LBRACE.name in e.accepts) or (Tok.RBRACE.name in e.accepts)
-            ):
-                error_tok = self.error_to_token(e)
-                error_tok.line_no = e.line - 1
-                if Tok.LBRACE.name in e.accepts:
-                    error_tok.c_start = e.column + 5
 
-                error_tok.end_line = error_tok.line_no
+            if self._source_lines_cache is None:
+                self._source_lines_cache = self.source_code.splitlines()
 
-                self.log_error(
-                    "Bare except is not supported. Use `except Exception` or `except Exception as e`",
-                    error_tok,
-                )
-                return False  # Stop parsing gracefully
+            source_lines = self._source_lines_cache
+            # Combine bounds checks: 0 < e.line <= len(source_lines)
+            if 0 < e.line <= len(source_lines):
+                # Check a wider context window since parsing errors can cascade
+                # e.line is 1-indexed, convert to 0-indexed for array access
+                context_start = max(0, e.line - 5)  # 5 lines before error line
+                context_end = min(len(source_lines), e.line)
+                context = "\n".join(source_lines[context_start:context_end])
+
+                # Early exit: Quick substring check before compiled regex
+                if "except" in context:
+                    match = _BARE_EXCEPT_PATTERN.search(context)
+                    if match:
+                        # Found bare except pattern
+                        before_match = context[: match.start()]
+                        line_offset = before_match.count("\n")
+                        except_line_no = context_start + line_offset + 1
+
+                        lines_before = before_match.split("\n")
+                        except_col = (len(lines_before[-1]) + 1) if lines_before else 0
+
+                        error_tok = self.error_to_token(e)
+                        error_tok.line_no = except_line_no
+                        error_tok.c_start = except_col
+                        error_tok.end_line = except_line_no
+                        error_tok.c_end = except_col + len("except")
+
+                        self.log_error(
+                            "Bare except is not supported. Use `except Exception` or `except Exception as e`",
+                            error_tok,
+                        )
+                        return False
 
             # Check for unsupported python keywords in code blocks
             if (
