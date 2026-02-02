@@ -150,10 +150,47 @@ def _apply_profile(args_dict: dict) -> None {
         }
 
         config.apply_profile_overlay(profile or None);
+
+        # Bridge config values into args_dict when the CLI arg is at its
+        # argparse default so that config file values take effect.
+        # Only override when the config explicitly sets the value (in _raw_data
+        # or via profile overlay) — otherwise leave the argparse default alone.
+        _apply_config_defaults(config, args_dict);
     } except (KeyError, ValueError, OSError) as e {
         console.print(
             f"Warning: Failed to apply profile: {e}",
             style="warning"
         );
+    }
+}
+
+"""Apply config values to args_dict for keys still at their argparse defaults.
+
+Maps config fields to CLI arg names with their argparse defaults.
+Only overrides an arg if:
+  1. The arg exists in args_dict (the command accepts it)
+  2. The arg value equals the argparse default (user didn't explicitly pass it)
+  3. The config has an explicitly-set value (from file or profile, not just the object default)
+"""
+def _apply_config_defaults(config: object, args_dict: dict) -> None {
+    # (arg_name, argparse_default, config_value, raw_data_section, raw_data_key)
+    bridges: list = [
+        ("port", 8000, config.serve.port, "serve", "port"),
+        ("cache", True, config.run.cache, "run", "cache"),
+        ("main", True, config.run.main, "run", "main"),
+        ("verbose", False, config.test.verbose, "test", "verbose"),
+    ];
+    for (arg_name, arg_default, config_value, section, key) in bridges {
+        if arg_name not in args_dict {
+            continue;
+        }
+        if args_dict[arg_name] != arg_default {
+            continue;  # User explicitly passed this arg
+        }
+        # Check if the config explicitly sets this value
+        raw = config._raw_data.get(section, {});
+        if isinstance(raw, dict) and key in raw {
+            args_dict[arg_name] = config_value;
+        }
     }
 }

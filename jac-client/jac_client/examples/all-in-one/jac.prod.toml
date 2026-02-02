@@ -1,0 +1,8 @@
+[serve]
+port = 80
+
+[plugins.client]
+minify = true
+
+[plugins.client.api]
+base_url = "http://prod-api.example.com"

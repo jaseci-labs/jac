@@ -1422,3 +1422,132 @@ class TestMultiProfileBugFixes:
         config.merge_from_toml_file(overlay)
 
         assert config.environment.default_profile == "dev"
+
+
+# ===============================================================================
+# Integration tests using the jactastic fixture project
+# ===============================================================================
+
+JACTASTIC_DIR = Path(__file__).parent / "jactastic"
+
+
+class TestJactasticMultiProfile:
+    """Integration tests for multi-file config using the jactastic project fixture.
+
+    jactastic/ contains:
+      - jac.toml        (base: serve.base_route_app="app", plugins.client, npm deps)
+      - jac.prod.toml   (serve.port=80, plugins.client.minify=true, plugins.byllm)
+      - jac.local.toml  (serve.port=9000, run.cache=false)
+    """
+
+    def test_load_base_only(self) -> None:
+        """Loading jac.toml alone gives base values, no profile."""
+        config = JacConfig.load(JACTASTIC_DIR / "jac.toml")
+
+        assert config.project.name == "jactastic"
+        assert config.serve.base_route_app == "app"
+        assert config.serve.port == 8090  # from base jac.toml
+        assert config.active_profile == ""
+        assert len(config.config_files) == 1
+
+    def test_discover_no_profile(self) -> None:
+        """discover() without profile loads base + local (local always loads)."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile=None)
+
+        assert config is not None
+        assert config.project.name == "jactastic"
+        # No profile overlay, but apply_profile_overlay not called, so no local merge
+        assert config.active_profile == ""
+
+    def test_discover_with_prod_profile(self) -> None:
+        """discover(profile='prod') applies base → prod file → local."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile="prod")
+
+        assert config is not None
+        assert config.active_profile == "prod"
+
+        # From jac.prod.toml (step 1)
+        assert "byllm" in config.plugins
+        assert config.plugins["byllm"]["default_model"] == "gpt-4"
+        assert config.plugins["client"]["minify"] is True
+
+        # From jac.local.toml (step 3 — highest priority)
+        assert config.serve.port == 9000  # local overrides prod's port=80
+        assert config.run.cache is False
+
+    def test_prod_without_local_override(self) -> None:
+        """Verify what prod profile sets before local overrides it."""
+        config = JacConfig.load(JACTASTIC_DIR / "jac.toml")
+        # Manually apply only the prod file, skip local
+        config.merge_from_toml_file(JACTASTIC_DIR / "jac.prod.toml")
+
+        assert config.serve.port == 80  # from jac.prod.toml
+        assert config.serve.base_route_app == "app"  # preserved from base
+        assert config.plugins["client"]["minify"] is True
+
+    def test_local_overrides_prod_port(self) -> None:
+        """jac.local.toml port=9000 beats jac.prod.toml port=80."""
+        config = JacConfig.load(JACTASTIC_DIR / "jac.toml")
+        config.apply_profile_overlay("prod")
+
+        # prod sets port=80, local overrides to 9000
+        assert config.serve.port == 9000
+
+    def test_config_files_tracked_in_order(self) -> None:
+        """All three files tracked: base, prod, local."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile="prod")
+
+        assert config is not None
+        assert len(config.config_files) == 3
+        assert config.config_files[0].name == "jac.toml"
+        assert config.config_files[1].name == "jac.prod.toml"
+        assert config.config_files[2].name == "jac.local.toml"
+
+    def test_base_dependencies_preserved(self) -> None:
+        """Profile overlay doesn't wipe base npm dependencies."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile="prod")
+
+        assert config is not None
+        # npm deps from base jac.toml preserved
+        assert "npm" in config.plugin_dependencies
+        assert config.plugin_dependencies["npm"]["jac-client-node"] == "1.0.4"
+        # dev-dependencies preserved
+        assert "watchdog" in config.dev_dependencies
+
+    def test_discover_config_files_for_jactastic(self) -> None:
+        """discover_config_files returns correct files for jactastic."""
+        files = discover_config_files(JACTASTIC_DIR, profile="prod")
+
+        assert len(files) == 3
+        assert files[0] == JACTASTIC_DIR / "jac.toml"
+        assert files[1] == JACTASTIC_DIR / "jac.prod.toml"
+        assert files[2] == JACTASTIC_DIR / "jac.local.toml"
+
+    def test_discover_config_files_no_profile(self) -> None:
+        """Without profile, only base and local are found."""
+        files = discover_config_files(JACTASTIC_DIR)
+
+        assert len(files) == 2
+        assert files[0] == JACTASTIC_DIR / "jac.toml"
+        assert files[1] == JACTASTIC_DIR / "jac.local.toml"
+
+    def test_nonexistent_profile_still_gets_local(self) -> None:
+        """A profile with no matching file still picks up jac.local.toml."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile="staging")
+
+        assert config is not None
+        assert config.active_profile == "staging"
+        # No jac.staging.toml exists, but local still applies
+        assert config.serve.port == 9000
+        assert config.run.cache is False
+
+    def test_plugin_deep_merge_across_files(self) -> None:
+        """Plugins from base and prod are deep-merged, not replaced."""
+        config = JacConfig.discover(JACTASTIC_DIR, profile="prod")
+
+        assert config is not None
+        # base has [plugins.client] (empty), prod adds client.minify and byllm
+        assert "client" in config.plugins
+        assert config.plugins["client"]["minify"] is True
+        assert "byllm" in config.plugins
+        assert config.plugins["byllm"]["default_model"] == "gpt-4"
