@@ -698,6 +698,31 @@ def test_format_tracks_changed_files(
         assert "(1 changed)" in combined_output
 
 
+def test_format_preserves_file_on_syntax_error(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that format does not overwrite a file that has syntax errors."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        broken_file = os.path.join(tmpdir, "broken.jac")
+        original_content = 'can foo() -> {{\n    print("broken syntax;\n}\n'
+        with open(broken_file, "w") as f:
+            f.write(original_content)
+
+        captured_stderr = io.StringIO()
+        old_stderr = sys.stderr
+        sys.stderr = captured_stderr
+        try:
+            with capture_stdout():
+                analysis.format([broken_file])
+        finally:
+            sys.stderr = old_stderr
+
+        with open(broken_file) as f:
+            assert f.read() == original_content, (
+                "jac format should not modify a file with syntax errors"
+            )
+
+
 def test_jac_create_and_run_no_root_files(
     cli_test_dir: Path,
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],

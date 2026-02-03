@@ -9,7 +9,7 @@ cl {
     glob setUiState = _uiState[1];
 
     # UI Component
-    def: pub Button(label: str) -> any {
+    def: pub Button(label: str) -> JsxElement {
         return <button
             onclick={handleClick}
         >
@@ -22,7 +22,7 @@ cl {
     }
 
     # Another component
-    def: pub Card(title: str) -> any {
+    def: pub Card(title: str) -> JsxElement {
         return <div class="card">
             <h2>
                 {title}
