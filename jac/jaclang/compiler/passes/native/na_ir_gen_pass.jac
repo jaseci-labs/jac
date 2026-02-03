@@ -108,6 +108,7 @@ obj NaIRGenPass(Transform) {
         obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
     ) -> (ir.Value | None);
 
+    def _generate_inherited_method_wrappers -> None;
     # Phase 6: Complex Chains and Type Inference
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);

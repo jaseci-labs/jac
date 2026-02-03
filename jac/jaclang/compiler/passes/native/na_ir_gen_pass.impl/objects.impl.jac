@@ -116,6 +116,8 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
             }
         }
     }
+    # Pass 6: Generate wrapper functions for inherited methods
+    self._generate_inherited_method_wrappers();
 }
 
 """Register a struct type — define its field layout from has declarations."""
