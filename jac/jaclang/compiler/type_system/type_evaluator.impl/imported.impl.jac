@@ -85,46 +85,47 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         if node_.path[-1].type {
             return node_.path[-1].type;
         }
-        # Get file paths only (directories filtered out by resolve_relative_path_list)
-        file_paths = node_.resolve_relative_path_list();
-        # Should have exactly one file path (the actual module file)
-        if not file_paths {
-            return types.UnknownType();
-        }
-        mod_path = file_paths[-1];  # The last (and typically only) file
-        last_node = node_.path[-1];
-        # Check module type cache first
-        if mod_path in self._module_type_cache {
-            last_node.type = self._module_type_cache[mod_path];
-            last_node._sym_category = SymbolType.MODULE;
-            if node_.alias {
-                node_.alias.type = last_node.type;
-                node_.alias._sym_category = SymbolType.MODULE;
+        # Compute path list once before the loop.
+        path_list = node_.resolve_relative_path_list();
+        for (idx, npath) in enumerate(node_.path) {
+            mod_path = path_list[idx];
+
+            # Check module type cache first.
+            if mod_path in self._module_type_cache {
+                npath.type = self._module_type_cache[mod_path];
+                npath._sym_category = SymbolType.MODULE;
+                continue;
             }
-            return last_node.type;
+
+            # If the path doesn't exist, return unknown type.
+            # eg: import from ..mod { item }  # <-- Here ..mod might not exist.
+            if not Path(mod_path).exists() {
+                npath.type = types.UnknownType();
+                npath._sym_category = SymbolType.MODULE;
+                self.add_diagnostic(npath, 'Module not found', warning=True);
+                return npath.type;
+            }
+
+            if Path(mod_path).is_dir() {
+                continue;
+            }
+            
+            mod: uni.Module = self._import_module_from_path(mod_path);
+            mod_type = types.ModuleType(
+                mod_name=npath.value,
+                file_uri=Path(mod_path).resolve(),
+                symbol_table=mod
+            );
+            npath.type = mod_type;
+            npath._sym_category = SymbolType.MODULE;
+            # Cache the module type for future lookups.
+            self._module_type_cache[mod_path] = mod_type;
         }
-        # If the path doesn't exist, return unknown type
-        if not Path(mod_path).exists() {
-            last_node.type = types.UnknownType();
-            last_node._sym_category = SymbolType.MODULE;
-            self.add_diagnostic(last_node, 'Module not found', warning=True);
-            return last_node.type;
-        }
-        # Load and type the module file
-        mod: uni.Module = self._import_module_from_path(mod_path);
-        mod_type = types.ModuleType(
-            mod_name=last_node.value,
-            file_uri=Path(mod_path).resolve(),
-            symbol_table=mod
-        );
-        last_node.type = mod_type;
-        last_node._sym_category = SymbolType.MODULE;
-        self._module_type_cache[mod_path] = mod_type;
         if node_.alias {
-            node_.alias.type = last_node.type;
+            node_.alias.type = node_.path[-1].type;
             node_.alias._sym_category = SymbolType.MODULE;
         }
-        return mod_type;
+        return node_.path[-1].type;
     }
     return types.UnknownType();
 }
