@@ -48,14 +48,26 @@ impl NaIRGenPass.init(
     self.vtable_globals: dict[(str, ir.GlobalVariable)] = {};
     # Tuple support (Phase 9)
     self.tuple_types: dict[(str, object)] = {};  # type_key → LiteralStructType
+    # Global variable support (Phase 11)
+    self.global_vars: dict[(str, ir.GlobalVariable)] = {};  # name → global variable
+    self.global_var_types: dict[(str, ir.Type)] = {};  # name → LLVM type
+    # Dictionary support (Phase 12)
+    self.dict_types: dict[(str, object)] = {};  # "key_type:val_type" → dict struct type
+    self.dict_helpers: dict[(str, dict)] = {};  # "key_type:val_type" → {new, set, get, contains, len}
+    self.var_dict_type: dict[(str, str)] = {};  # var_name → "key_type:val_type"
+    # Set support (Phase 13)
+    self.set_types: dict[(str, object)] = {};  # elem_type_name → set struct type
+    self.set_helpers: dict[(str, dict)] = {};  # elem_type_name → {new, add, contains, len}
+    self.var_set_elem_type: dict[(str, str)] = {};  # var_name → elem_type_name
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 
 # ─── Main Pass Logic ─────────────────────────────────────────
 """Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
-    # Phase 0: Forward declarations (enums, archetypes, free functions)
+    # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
     self._register_enums(self.ir_in);
+    self._register_globals(self.ir_in);
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
     for stmt in self.ir_in.body {

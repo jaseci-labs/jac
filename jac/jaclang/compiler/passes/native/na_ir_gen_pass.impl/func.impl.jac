@@ -123,6 +123,22 @@ impl NaIRGenPass._codegen_entry(<>node: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    # Initialize global variables that have complex initializers (dicts, lists, etc.)
+    if self?._global_init_nodes and self._global_init_nodes {
+        for init_tuple in self._global_init_nodes {
+            var_name = init_tuple[0];
+            init_node = init_tuple[1];
+            var_type = init_tuple[2];
+            init_val = self._codegen_expr(init_node);
+            if init_val is not None {
+                global_var = self.global_vars.get(var_name);
+                if global_var is not None {
+                    coerced = self._coerce_type(init_val, var_type);
+                    self.builder.store(coerced, global_var);
+                }
+            }
+        }
+    }
     # Generate body statements
     if (<>node).body {
         self._codegen_body((<>node).body);

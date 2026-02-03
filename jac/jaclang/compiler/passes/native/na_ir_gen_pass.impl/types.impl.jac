@@ -77,6 +77,78 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                 }
             }
         }
+        # Handle dict[K, V] type annotations
+        if target_name == "dict" {
+            if type_expr?.right and type_expr.right?.slices {
+                slices = type_expr.right.slices or [];
+                key_node: (object | None) = None;
+                val_node: (object | None) = None;
+                # dict[K, V] may parse as one slice with TupleVal, or two separate slices
+                if len(slices) == 1
+                and slices[0]?.start
+                and isinstance(slices[0].start, uni.TupleVal) {
+                    # Single slice with TupleVal: dict[(K, V)] → extract K and V from tuple values
+                    tuple_val = slices[0].start;
+                    if tuple_val.values and len(tuple_val.values) >= 2 {
+                        key_node = tuple_val.values[0];
+                        val_node = tuple_val.values[1];
+                    }
+                } elif len(slices) >= 2 {
+                    # Two separate slices
+                    key_node = slices[0];
+                    val_node = slices[1];
+                    if key_node?.start and key_node.start is not None {
+                        key_node = key_node.start;
+                    }
+                    if val_node?.start and val_node.start is not None {
+                        val_node = val_node.start;
+                    }
+                }
+                if key_node is not None and val_node is not None {
+                    key_type = self._resolve_jac_type(key_node);
+                    val_type = self._resolve_jac_type(val_node);
+                    key_type_name = "i64";
+                    if isinstance(key_type, ir.DoubleType) {
+                        key_type_name = "f64";
+                    } elif isinstance(key_type, ir.PointerType) {
+                        key_type_name = "ptr";
+                    }
+                    val_type_name = "i64";
+                    if isinstance(val_type, ir.DoubleType) {
+                        val_type_name = "f64";
+                    } elif isinstance(val_type, ir.PointerType) {
+                        val_type_name = "ptr";
+                    }
+                    dict_key = f"{key_type_name}:{val_type_name}";
+                    self._emit_dict_helpers(
+                        key_type_name, val_type_name, key_type, val_type
+                    );
+                    return self.dict_types[dict_key].as_pointer();
+                }
+            }
+        }
+        # Handle set[T] type annotations
+        if target_name == "set" {
+            if type_expr?.right and type_expr.right?.slices {
+                slices = type_expr.right.slices or [];
+                if slices {
+                    elem_node = slices[0];
+                    if elem_node?.start and elem_node.start is not None {
+                        elem_type = self._resolve_jac_type(elem_node.start);
+                    } else {
+                        elem_type = self._resolve_jac_type(elem_node);
+                    }
+                    elem_type_name = "i64";
+                    if isinstance(elem_type, ir.DoubleType) {
+                        elem_type_name = "f64";
+                    } elif isinstance(elem_type, ir.PointerType) {
+                        elem_type_name = "ptr";
+                    }
+                    self._emit_set_helpers(elem_type_name, elem_type);
+                    return self.set_types[elem_type_name].as_pointer();
+                }
+            }
+        }
         # Handle tuple[T1, T2, ...] type annotations
         if target_name == "tuple" {
             if type_expr?.right and type_expr.right?.slices {
@@ -317,19 +389,28 @@ impl NaIRGenPass._emit_binary_op(
 impl NaIRGenPass._emit_comparison(
     op: str, left: ir.Value, right: ir.Value, is_float: bool
 ) -> (ir.Value | None) {
-    # String comparison (i8* operands)
+    # Pointer comparisons
     if isinstance(left.type, ir.PointerType) and isinstance(right.type, ir.PointerType) {
-        strcmp_fn = self._get_or_declare_extern(
-            "strcmp",
-            ir.IntType(32),
-            [ir.IntType(8).as_pointer(), ir.IntType(8).as_pointer()]
-        );
-        cmp_result = self.builder.call(strcmp_fn, [left, right], name="strcmp");
-        zero = ir.Constant(ir.IntType(32), 0);
+        i8_ptr = ir.IntType(8).as_pointer();
+        # String comparison: both operands must be i8* (char pointers)
+        if left.type == i8_ptr and right.type == i8_ptr {
+            strcmp_fn = self._get_or_declare_extern(
+                "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+            );
+            cmp_result = self.builder.call(strcmp_fn, [left, right], name="strcmp");
+            zero = ir.Constant(ir.IntType(32), 0);
+            if op == Tok.EE {
+                return self.builder.icmp_signed("==", cmp_result, zero, name="streq");
+            } elif op == Tok.NE {
+                return self.builder.icmp_signed("!=", cmp_result, zero, name="strne");
+            }
+            return None;
+        }
+        # For other pointer types (structs, tuples), use pointer comparison
         if op == Tok.EE {
-            return self.builder.icmp_signed("==", cmp_result, zero, name="streq");
+            return self.builder.icmp_unsigned("==", left, right, name="ptreq");
         } elif op == Tok.NE {
-            return self.builder.icmp_signed("!=", cmp_result, zero, name="strne");
+            return self.builder.icmp_unsigned("!=", left, right, name="ptrne");
         }
         return None;
     }

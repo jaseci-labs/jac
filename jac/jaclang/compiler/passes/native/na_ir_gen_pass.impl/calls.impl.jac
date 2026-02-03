@@ -70,6 +70,73 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Handle chr() builtin: convert integer to single-character string
+    if func_name == "chr" {
+        params_l = node.params or [];
+        if params_l {
+            arg_val = self._codegen_expr(params_l[0]);
+            if arg_val is not None {
+                i8p = ir.IntType(8).as_pointer();
+                # Allocate 2 bytes for character + null terminator
+                gc_malloc = self._get_or_declare_extern(
+                    "GC_malloc", i8p, [ir.IntType(64)]
+                );
+                str_ptr = self.builder.call(
+                    gc_malloc, [ir.Constant(ir.IntType(64), 2)], name="chr.buf"
+                );
+                # Truncate i64 to i8
+                byte_val = self.builder.trunc(arg_val, ir.IntType(8), name="chr.byte");
+                # Store character at index 0
+                self.builder.store(byte_val, str_ptr);
+                # Store null terminator at index 1
+                idx1_ptr = self.builder.gep(
+                    str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr"
+                );
+                self.builder.store(ir.Constant(ir.IntType(8), 0), idx1_ptr);
+                return str_ptr;
+            }
+        }
+    }
+    # Handle str() builtin: convert int to string using snprintf
+    if func_name == "str" {
+        params_l = node.params or [];
+        if params_l {
+            arg_val = self._codegen_expr(params_l[0]);
+            if arg_val is not None {
+                i8p = ir.IntType(8).as_pointer();
+                # Allocate buffer for string representation (32 bytes is plenty for integers)
+                gc_malloc = self._get_or_declare_extern(
+                    "GC_malloc", i8p, [ir.IntType(64)]
+                );
+                buf_ptr = self.builder.call(
+                    gc_malloc, [ir.Constant(ir.IntType(64), 32)], name="str.buf"
+                );
+                # Use snprintf to convert
+                snprintf = self._get_or_declare_extern(
+                    "snprintf",
+                    ir.IntType(32),
+                    [i8p, ir.IntType(64), i8p],
+                    var_arg=True
+                );
+                # Determine format string based on type
+                if isinstance(arg_val.type, ir.IntType) {
+                    fmt = self._get_fmt_string("%ld");
+                } elif isinstance(arg_val.type, ir.DoubleType) {
+                    fmt = self._get_fmt_string("%g");
+                } else {
+                    # Default to %ld
+                    fmt = self._get_fmt_string("%ld");
+                }
+                fmt_ptr = self.builder.bitcast(fmt, i8p, name="str.fmt.ptr");
+                self.builder.call(
+                    snprintf,
+                    [buf_ptr, ir.Constant(ir.IntType(64), 32), fmt_ptr, arg_val],
+                    name="str.snprintf"
+                );
+                return buf_ptr;
+            }
+        }
+    }
     # Handle input() builtin: printf prompt, fgets from stdin
     if func_name == "input" {
         i8p = ir.IntType(8).as_pointer();

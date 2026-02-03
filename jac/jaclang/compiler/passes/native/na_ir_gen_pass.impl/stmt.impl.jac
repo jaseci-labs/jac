@@ -33,17 +33,22 @@ impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
 
 """Generate return statement."""
 impl NaIRGenPass._codegen_return(node: uni.ReturnStmt) -> None {
+    func_ret_type = self.builder.function.return_value.type;
     if node.expr is not None {
         val = self._codegen_expr(node.expr);
         if val is not None {
-            func_ret_type = self.builder.function.return_value.type;
             val = self._coerce_type(val, func_ret_type);
             self.builder.ret(val);
-        } else {
-            self.builder.ret_void();
+            return;
         }
-    } else {
+    }
+    # Fallback: return appropriate default value based on return type
+    if isinstance(func_ret_type, ir.VoidType) {
         self.builder.ret_void();
+    } elif isinstance(func_ret_type, ir.PointerType) {
+        self.builder.ret(ir.Constant(func_ret_type, None));
+    } else {
+        self.builder.ret(ir.Constant(func_ret_type, 0));
     }
 }
 
@@ -155,6 +160,48 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
     }
     value = self._codegen_expr(node.value) if node.value else None;
     self._list_type_hint = None;
+    # Handle empty dict literal {} with type annotation
+    if value is None and isinstance(node.value, uni.DictVal) {
+        if not node.value.kv_pairs and node.type_tag and node.type_tag.tag {
+            # Empty dict with type hint - create empty dict of correct type
+            dict_type = self._resolve_jac_type(node.type_tag.tag);
+            if isinstance(dict_type, ir.PointerType) {
+                # Find the dict helpers for this type
+                for (dict_key, dtype) in self.dict_types.items() {
+                    if dict_type == dtype.as_pointer() {
+                        helpers = self.dict_helpers.get(dict_key);
+                        if helpers is not None {
+                            value = self.builder.call(
+                                helpers["new"], [], name="dict.new"
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    # Handle empty set literal {} that should be a set with type annotation
+    if value is None and isinstance(node.value, uni.SetVal) {
+        if not node.value.values and node.type_tag and node.type_tag.tag {
+            # Empty set with type hint - create empty set of correct type
+            set_type = self._resolve_jac_type(node.type_tag.tag);
+            if isinstance(set_type, ir.PointerType) {
+                # Find the set helpers for this type
+                for (elem_name, stype) in self.set_types.items() {
+                    if set_type == stype.as_pointer() {
+                        helpers = self.set_helpers.get(elem_name);
+                        if helpers is not None {
+                            value = self.builder.call(
+                                helpers["new"], [], name="set.new"
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
     if value is None {
         return;
     }
@@ -172,31 +219,56 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
             self._codegen_field_assign(target_expr, value);
             continue;
         }
-        # Handle index assignment: items[i] = val or expr[i] = val
+        # Handle index assignment: items[i] = val or expr[i] = val (lists or dicts)
         if isinstance(target_expr, uni.AtomTrailer) and not target_expr.is_attr {
             idx_target_name = self._get_name(target_expr.target);
-            elem_type_name: (str | None) = None;
-            if idx_target_name is not None
-            and idx_target_name in self.var_list_elem_type {
-                elem_type_name = self.var_list_elem_type[idx_target_name];
-            }
             target_val = self._codegen_expr(target_expr.target);
-            if target_val is not None {
-                if elem_type_name is None {
-                    elem_type_name = self._infer_list_elem_type(target_val);
-                }
-                if elem_type_name is not None and target_expr.right?.slices {
-                    slices = target_expr.right.slices or [];
-                    if slices {
-                        idx_node = slices[0];
-                        idx_val = self._codegen_expr(idx_node);
-                        if idx_val is None and idx_node?.start {
-                            idx_val = self._codegen_expr(idx_node.start);
+            if target_val is not None and target_expr.right?.slices {
+                slices = target_expr.right.slices or [];
+                if slices {
+                    idx_node = slices[0];
+                    idx_val = self._codegen_expr(idx_node);
+                    if idx_val is None and idx_node?.start {
+                        idx_val = self._codegen_expr(idx_node.start);
+                    }
+                    if idx_val is not None {
+                        # Check if this is a dict assignment
+                        dict_type_key: (str | None) = None;
+                        if idx_target_name is not None
+                        and idx_target_name in self.var_dict_type {
+                            dict_type_key = self.var_dict_type[idx_target_name];
                         }
-                        if idx_val is not None {
-                            self._codegen_index_set(
-                                target_val, idx_val, value, elem_type_name
-                            );
+                        if dict_type_key is None {
+                            dict_info = self._infer_dict_type(target_val);
+                            if dict_info is not None {
+                                dict_type_key = f"{dict_info[0]}:{dict_info[1]}";
+                            }
+                        }
+                        if dict_type_key is not None {
+                            # Dict assignment: dict[key] = value
+                            parts = dict_type_key.split(":");
+                            if len(parts) == 2 {
+                                self._codegen_dict_set(
+                                    target_val, idx_val, value, parts[0], parts[1]
+                                );
+                            }
+                        } else {
+                            # List assignment: list[idx] = value
+                            elem_type_name: (str | None) = None;
+                            if idx_target_name is not None
+                            and idx_target_name in self.var_list_elem_type {
+                                elem_type_name = self.var_list_elem_type[
+                                    idx_target_name
+                                ];
+                            }
+                            if elem_type_name is None {
+                                elem_type_name = self._infer_list_elem_type(target_val);
+                            }
+                            if elem_type_name is not None {
+                                self._codegen_index_set(
+                                    target_val, idx_val, value, elem_type_name
+                                );
+                            }
                         }
                     }
                 }
@@ -221,6 +293,16 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
                         value = self.builder.add(
                             current, coerced, name=f"{var_name}.add"
                         );
+                    } elif isinstance(current.type, ir.DoubleType) {
+                        value = self.builder.fadd(
+                            current, coerced, name=f"{var_name}.fadd"
+                        );
+                    } elif isinstance(current.type, ir.PointerType) {
+                        # String concatenation for +=
+                        value = self._emit_binary_op(Tok.PLUS, current, coerced);
+                        if value is None {
+                            value = current;
+                        }
                     } else {
                         value = self.builder.fadd(
                             current, coerced, name=f"{var_name}.fadd"
@@ -265,6 +347,46 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
                         value = self.builder.frem(
                             current, coerced, name=f"{var_name}.fmod"
                         );
+                    }
+                } elif aug_op_val == "&=" {
+                    # Bitwise AND assignment
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.and_(
+                            current, coerced, name=f"{var_name}.and"
+                        );
+                    }
+                } elif aug_op_val == "|=" {
+                    # Bitwise OR assignment
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.or_(
+                            current, coerced, name=f"{var_name}.or"
+                        );
+                    }
+                } elif aug_op_val == "^=" {
+                    # Bitwise XOR assignment
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.xor(
+                            current, coerced, name=f"{var_name}.xor"
+                        );
+                    }
+                } elif aug_op_val == "<<=" {
+                    # Left shift assignment
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.shl(
+                            current, coerced, name=f"{var_name}.shl"
+                        );
+                    }
+                } elif aug_op_val == ">>=" {
+                    # Right shift assignment (arithmetic)
+                    if isinstance(current.type, ir.IntType) {
+                        value = self.builder.ashr(
+                            current, coerced, name=f"{var_name}.ashr"
+                        );
+                    }
+                } elif aug_op_val == "**=" {
+                    # Power assignment
+                    if isinstance(current.type, ir.IntType) {
+                        value = self._codegen_int_pow(current, coerced);
                     }
                 }
             }
@@ -312,6 +434,20 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         for (ename, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 self.var_list_elem_type[var_name] = ename;
+                break;
+            }
+        }
+        # Track dict type for dict variables
+        for (dkey, dtype) in self.dict_types.items() {
+            if value.type == dtype.as_pointer() {
+                self.var_dict_type[var_name] = dkey;
+                break;
+            }
+        }
+        # Track set element type for set variables
+        for (ename, stype) in self.set_types.items() {
+            if value.type == stype.as_pointer() {
+                self.var_set_elem_type[var_name] = ename;
                 break;
             }
         }

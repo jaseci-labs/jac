@@ -157,4 +157,39 @@ obj NaIRGenPass(Transform) {
         elem_type_name: str,
         conditionals: list
     ) -> None;
+    # Phase 11: Global Variables
+    def _register_globals(module: uni.Module) -> None;
+    def _codegen_global_vars(node: uni.GlobalVars) -> None;
+    def _codegen_const_expr(
+        node: uni.UniNode, target_type: ir.Type
+    ) -> (ir.Constant | None);
+    # Phase 12: Dictionaries
+    def _emit_dict_helpers(
+        key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
+    ) -> None;
+
+    def _codegen_dict_val(node: uni.DictVal) -> (ir.Value | None);
+    def _codegen_dict_access(
+        target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_dict_set(
+        target_val: ir.Value,
+        key_val: ir.Value,
+        value: ir.Value,
+        key_type_name: str,
+        val_type_name: str
+    ) -> None;
+
+    def _infer_dict_type(val: ir.Value) -> (tuple | None);
+    # Phase 13: Sets
+    def _emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
+    def _codegen_set_val(node: uni.SetVal) -> (ir.Value | None);
+    def _codegen_set_contains(
+        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_set_add(
+        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
+    ) -> None;
 }

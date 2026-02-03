@@ -73,6 +73,12 @@ impl NaIRGenPass._codegen_expr(node: (uni.UniNode | None)) -> (ir.Value | None) 
     if isinstance(node, uni.TupleVal) {
         return self._codegen_tuple_val(node);
     }
+    if isinstance(node, uni.DictVal) {
+        return self._codegen_dict_val(node);
+    }
+    if isinstance(node, uni.SetVal) {
+        return self._codegen_set_val(node);
+    }
     # Handle parenthesized expressions: (expr) → AtomUnit
     if isinstance(node, uni.AtomUnit) {
         return self._codegen_expr(node.value);
@@ -93,6 +99,11 @@ impl NaIRGenPass._codegen_name(node: uni.Name) -> (ir.Value | None) {
     }
     if var_name in self.func_symtab {
         return self.func_symtab[var_name];
+    }
+    # Check global variables
+    if var_name in self.global_vars {
+        global_var = self.global_vars[var_name];
+        return self.builder.load(global_var, name=f"glob.{var_name}");
     }
     return None;
 }
@@ -456,6 +467,64 @@ impl NaIRGenPass._codegen_atom_trailer(node: uni.AtomTrailer) -> (ir.Value | Non
                         }
                     }
                 }
+                # Check for dict indexing
+                dict_type_info = self._infer_dict_type(target_val);
+                if dict_type_info is not None {
+                    (key_type_name, val_type_name) = dict_type_info;
+                    slices = node.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        key_val = self._codegen_expr(idx_node);
+                        if key_val is None and idx_node?.start {
+                            key_val = self._codegen_expr(idx_node.start);
+                        }
+                        if key_val is not None {
+                            return self._codegen_dict_access(
+                                target_val, key_val, key_type_name, val_type_name
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        # Check for named dict access: d[key] where d is a known dict variable
+        if target_name is not None and target_name in self.var_dict_type {
+            dict_type_key = self.var_dict_type[target_name];
+            parts = dict_type_key.split(":");
+            if len(parts) == 2 {
+                (key_type_name, val_type_name) = (parts[0], parts[1]);
+                target_val = self._codegen_expr(node.target);
+                if target_val is not None {
+                    slices = node.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        key_val = self._codegen_expr(idx_node);
+                        if key_val is None and idx_node?.start {
+                            key_val = self._codegen_expr(idx_node.start);
+                        }
+                        if key_val is not None {
+                            return self._codegen_dict_access(
+                                target_val, key_val, key_type_name, val_type_name
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return None;
+}
+
+"""Infer dict type info from an LLVM value. Returns (key_type_name, val_type_name) or None."""
+impl NaIRGenPass._infer_dict_type(val: ir.Value) -> (tuple | None) {
+    if not isinstance(val.type, ir.PointerType) {
+        return None;
+    }
+    for (dict_key, dtype) in self.dict_types.items() {
+        if val.type == dtype.as_pointer() {
+            parts = dict_key.split(":");
+            if len(parts) == 2 {
+                return (parts[0], parts[1]);
             }
         }
     }
