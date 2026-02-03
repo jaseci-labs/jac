@@ -31,7 +31,19 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
                 elem_type_name = "ptr";
             }
         }
-        # 5. If output is a Name that's in a for-loop (same name as loop variable), use inferred type
+        # 5. If output is a ListCompr (nested list comprehension), use ptr
+        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListCompr) {
+            elem_type_name = "ptr";
+        }
+        # 6. If output is a ListVal (list literal), use ptr
+        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListVal) {
+            elem_type_name = "ptr";
+        }
+        # 7. If output is a Null (None), use ptr
+        if elem_type_name == "i64" and isinstance(node.out_expr, uni.Null) {
+            elem_type_name = "ptr";
+        }
+        # 8. If output is a Name that's in a for-loop (same name as loop variable), use inferred type
         if elem_type_name == "i64" and isinstance(node.out_expr, uni.Name) {
             out_name = node.out_expr.value;
             # Check if out_name matches any of the comprehension loop variables
@@ -82,7 +94,12 @@ impl NaIRGenPass._codegen_compr_loops(
 ) -> None {
     if idx >= len(comprs) {
         # Base case: all loops complete, evaluate and append
+        # Clear list type hint before evaluating out_expr to allow nested comprehensions
+        # to determine their own element type
+        saved_hint = self._list_type_hint;
+        self._list_type_hint = None;
         val = self._codegen_expr(out_expr);
+        self._list_type_hint = saved_hint;
         if val is not None {
             helpers = self.list_helpers.get(elem_type_name);
             if helpers is not None {
@@ -101,6 +118,17 @@ impl NaIRGenPass._codegen_compr_loops(
     loop_target = inner.target;
     collection = inner.collection;
     conditionals = inner.conditional or [];
+    # Check if it's a range() call FIRST (before trying to evaluate as expression)
+    # range() is not a real function in native mode, so we handle it specially
+    if isinstance(collection, uni.FuncCall) {
+        call_name = self._get_name(collection.target);
+        if call_name == "range" {
+            self._codegen_compr_range_loop(
+                inner, comprs, idx, list_val, out_expr, elem_type_name, conditionals
+            );
+            return;
+        }
+    }
     # Save original list type hint (for the output list)
     saved_hint = self._list_type_hint;
     # Evaluate collection (may need its own hint for nested lists)
@@ -110,16 +138,6 @@ impl NaIRGenPass._codegen_compr_loops(
     self._list_type_hint = saved_hint;
     if coll_val is None {
         return;
-    }
-    # Check if it's a range() call
-    if isinstance(collection, uni.FuncCall) {
-        call_name = self._get_name(collection.target);
-        if call_name == "range" {
-            self._codegen_compr_range_loop(
-                inner, comprs, idx, list_val, out_expr, elem_type_name, conditionals
-            );
-            return;
-        }
     }
     # List iteration
     coll_elem_type_name = self._infer_list_elem_type(coll_val);

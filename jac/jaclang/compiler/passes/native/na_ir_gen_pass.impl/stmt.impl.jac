@@ -35,7 +35,22 @@ impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
 impl NaIRGenPass._codegen_return(node: uni.ReturnStmt) -> None {
     func_ret_type = self.builder.function.return_value.type;
     if node.expr is not None {
+        # Set list type hint from function return type for list comprehensions
+        self._list_type_hint = None;
+        if isinstance(func_ret_type, ir.PointerType) {
+            # Check if return type is a list type
+            ret_type_name = str(func_ret_type.pointee);
+            if ret_type_name.startswith("%\"List.") {
+                # Extract element type from list type name
+                # e.g., %"List.ptr" -> "ptr", %"List.i64" -> "i64"
+                elem_type = ret_type_name[7:-1]
+                if ret_type_name.endswith("\"")
+                else ret_type_name[7:];
+                self._list_type_hint = elem_type;
+            }
+        }
         val = self._codegen_expr(node.expr);
+        self._list_type_hint = None;
         if val is not None {
             val = self._coerce_type(val, func_ret_type);
             self.builder.ret(val);

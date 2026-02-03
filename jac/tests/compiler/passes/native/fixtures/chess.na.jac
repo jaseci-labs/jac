@@ -390,11 +390,13 @@ def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
 glob _rand_state: int = 12345;
 
 def seed_random(seed: int) -> None {
+    global _rand_state;
     _rand_state = seed;
 }
 
 def random_int(max_val: int) -> int {
     # Simple LCG random number generator
+    global _rand_state;
     _rand_state = (_rand_state * 1103515245 + 12345) % 2147483648;
     if max_val <= 0 {
         return 0;
