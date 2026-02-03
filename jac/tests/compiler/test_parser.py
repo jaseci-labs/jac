@@ -300,6 +300,46 @@ def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
         assert expected in pretty
 
 
+def test_docstring_inside_function_errors(fixture_path: Callable[[str], str]) -> None:
+    """Test that docstrings inside function/ability bodies produce proper errors."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    prog = JacProgram()
+    prog.compile(fixture_path("docstring_errors.jac"))
+    sys.stdout = sys.__stdout__
+
+    # Filter only docstring-specific errors (ignore parser recovery errors)
+    docstring_errors = [
+        e for e in prog.errors_had if "Invalid docstring placement" in e.pretty_print()
+    ]
+
+    # Should have 3 docstring errors - one for each docstring inside function body
+    assert len(docstring_errors) == 3, (
+        f"Expected 3 docstring errors but got {len(docstring_errors)}. "
+        f"All errors: {[e.pretty_print() for e in prog.errors_had]}"
+    )
+
+    # All docstring errors should mention proper placement
+    for error in docstring_errors:
+        pretty = error.pretty_print()
+        assert "Invalid docstring placement" in pretty
+        assert "docstrings must be before the function/ability declaration" in pretty
+
+
+def test_docstring_valid_placement(fixture_path: Callable[[str], str]) -> None:
+    """Test that docstrings placed before declarations are valid."""
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    prog = JacProgram()
+    prog.compile(fixture_path("docstring_valid.jac"))
+    sys.stdout = sys.__stdout__
+
+    # Should have no errors - all docstrings are correctly placed
+    assert len(prog.errors_had) == 0, (
+        f"Expected no errors but got: {[e.pretty_print() for e in prog.errors_had]}"
+    )
+
+
 def _load_combined_jsx_fixture() -> tuple[str, JacParser]:
     """Parse the consolidated JSX fixture once for downstream assertions."""
     fixture_path = (

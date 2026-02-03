@@ -355,6 +355,33 @@ class JacParser(Transform[uni.Source, uni.Module]):
                 else None
             )
 
+            # Check for Doc String inside Ability/Archetype
+            if (
+                last_tok
+                and last_tok.type == Tok.STRING.name
+                and Tok.SEMI.name in e.accepts
+                and (
+                    last_tok.value.startswith('"""') or last_tok.value.startswith("'''")
+                )
+            ):
+                # Create error token at the docstring location using position from last_tok
+                error_tok = uni.EmptyToken()
+                error_tok.orig_src = self.ir_in
+                error_tok.line_no = error_tok.end_line = last_tok.line
+                error_tok.c_start = last_tok.column
+                error_tok.c_end = last_tok.end_column
+                error_tok.pos_start = last_tok.start_pos
+                error_tok.pos_end = last_tok.end_pos
+
+                self.log_error(
+                    "Invalid docstring placement: docstrings must be before the function/ability declaration.",
+                    error_tok,
+                )
+
+                # Feed a SEMI token to help the parser recover
+                iparser.feed_token(jl.Token(Tok.SEMI.name, ";"))
+                return feed_current_token(iparser, e.token)
+
             # Check for unsupported python keywords in code blocks
             if (
                 e.token
