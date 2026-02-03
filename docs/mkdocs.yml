@@ -26,6 +26,8 @@ nav:
           - "Part 3: Walkers, Auth & Structure": "tutorials/first-app/part3-multi-user.md"
       - Core Language:
           - Jac Basics (from Python): "tutorials/language/basics.md"
+          - Mixing Jac and Python: "tutorials/language/mixing-jac-python.md"
+          - Jac as a Python Library: "tutorials/language/library-mode.md"
           - Object-Spatial Programming: "tutorials/language/osp.md"
           - Testing Your Code: "tutorials/language/testing.md"
       - AI Integration:
