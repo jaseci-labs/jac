@@ -12,7 +12,7 @@ import from jaclang.pycore.constant {
     JacSemTokenType as SemTokType
 }
 
-import from .engine { JacLangServer }
+import from .engine { JacLangServer,Task }
 
 import lsprotocol.types as lspt;
 
@@ -32,7 +32,8 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    debug("Did change: Type checking started...");
+    import time;
+    debug(f"Did change: Type checking started.. {Task._task_id}.{time.time()}");
     ls.type_check(params.text_document.uri);
 }
 
@@ -49,18 +50,18 @@ def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> Non
 
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
-"""Provide completion."""
-async def completion(
-    ls: JacLangServer, params: lspt.CompletionParams
-) -> lspt.CompletionList {
-    file_path = params.text_document.uri;
-    debug("Completion requested");
-    return await ls.get_completion(
-        params.text_document.uri,
-        params.position,
-        (params.context.trigger_character if params.context else None)
-    );
-}
+# """Provide completion."""
+# async def completion(
+#     ls: JacLangServer, params: lspt.CompletionParams
+# ) -> lspt.CompletionList {
+#     file_path = params.text_document.uri;
+#     debug("Completion requested");
+#     return await ls.get_completion(
+#         params.text_document.uri,
+#         params.position,
+#         (params.context.trigger_character if params.context else None)
+#     );
+# }
 
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams

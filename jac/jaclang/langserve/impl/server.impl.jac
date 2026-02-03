@@ -39,12 +39,12 @@ impl run_lang_server -> None {
     )(
         did_delete_files
     );
-    server.feature(
-        lspt.TEXT_DOCUMENT_COMPLETION,
-        lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
-    )(
-        completion
-    );
+    # server.feature(
+    #     lspt.TEXT_DOCUMENT_COMPLETION,
+    #     lspt.CompletionOptions(trigger_characters=['.', ':', 'a-zA-Z0-9'])
+    # )(
+    #     completion
+    # );
     server.feature(
         lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True)
     )(

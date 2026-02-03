@@ -248,13 +248,21 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self.node_list: list[uni.UniNode] = []
         self._node_ids: set[int] = set()
 
-        if cancel_token and cancel_token.is_set():
-            return
+        # Always call Transform.__init__ to initialize errors_had and other attributes
         Transform.__init__(self, ir_in=root_ir, prog=prog, cancel_token=cancel_token)
 
     def transform(self, ir_in: uni.Source) -> uni.Module:
         """Transform input IR."""
         try:
+            import time,sys
+
+            # Check for cancellation before starting
+            if self.is_canceled():
+                print(f"CANCELLED {time.time()}",file=sys.stderr)
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = False
+                return mod
+            
             # Create input for Lark parser transform
             lark_input = LarkParseInput(
                 ir_value=ir_in.value,
@@ -263,6 +271,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use LarkParseTransform instead of direct parser call
             lark_transform = LarkParseTransform(ir_in=lark_input, prog=self.prog)
             parse_output = lark_transform.ir_out
+            
+            # Check for cancellation again after parsing
+            if self.is_canceled():
+                print(f"CANCELLED {time.time()}",file=sys.stderr) 
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = False
+                return mod
+            
             # Transform parse tree to AST
             mod = JacParser.TreeToAST(parser=self).transform(parse_output.tree)
             ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
@@ -466,7 +482,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
         ) -> uni.UniNode:
             self.cur_nodes = new_children or tree.children  # type: ignore[assignment]
             if self.parse_ref.is_canceled():
-                raise StopIteration
+                # Return empty token instead of raising StopIteration to avoid generator issues
+                empty = uni.EmptyToken()
+                empty.orig_src = self.parse_ref.ir_in
+                return empty
             try:
                 return self._node_update(super()._call_userfunc(tree, new_children))
             finally:
