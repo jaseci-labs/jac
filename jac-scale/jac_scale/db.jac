@@ -1,26 +1,40 @@
 """Direct Database Access Module."""
 import from pymongo { MongoClient }
+import from redis { Redis }
 import from typing { Any }
-import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.factories.database_factory {
+    DatabaseProviderFactory,
+    DatabaseType
+}
 import from bson { ObjectId }
 
-glob _client: (MongoClient | None) = None;
+glob _mongo_client: (MongoClient | None) = None,
+     _redis_client: (Redis | None) = None;
 
-def get_mongo_client -> MongoClient {
-    global _client;
-    if _client is None {
-        config = get_scale_config();
-        db_config = config.get_database_config();
-        mongo_url = db_config['mongodb_uri'];
-        _client = MongoClient(mongo_url);
+def get_mongo_client(uri: (str | None) = None) -> MongoClient {
+    global _mongo_client;
+    if _mongo_client is None {
+        _mongo_client = DatabaseProviderFactory.create_client(
+            DatabaseType.MONGODB, uri=uri
+        );
     }
+    return _mongo_client;
+}
 
-    return _client;
+def get_redis_client(uri: (str | None) = None) -> Redis {
+    global _redis_client;
+    if _redis_client is None {
+        _redis_client = DatabaseProviderFactory.create_client(
+            DatabaseType.REDIS, uri=uri
+        );
+    }
+    return _redis_client;
 }
 
 obj Db {
-    has client: MongoClient = get_mongo_client(),
-        db_name: str = 'jac_db';
+    has client: (MongoClient | Redis),
+        db_name: str = 'jac_db',
+        db_type: DatabaseType = DatabaseType.MONGODB;
 
     def find_one(col_name: str, filter: dict) -> dict | None;
     def find(col_name: str, filter: dict) -> Any;
