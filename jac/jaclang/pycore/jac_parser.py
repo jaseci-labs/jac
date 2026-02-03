@@ -247,7 +247,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self.mod_path = root_ir.loc.mod_path
         self.node_list: list[uni.UniNode] = []
         self._node_ids: set[int] = set()
-
+        self.errors_had: list = []
         Transform.__init__(self, ir_in=root_ir, prog=prog, cancel_token=cancel_token)
 
     def transform(self, ir_in: uni.Source) -> uni.Module:
@@ -276,9 +276,16 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             # Transform parse tree to AST
             mod = JacParser.TreeToAST(parser=self).transform(parse_output.tree)
-            ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
-            if not isinstance(mod, uni.Module):
+
+            # Check for cancellation after TreeToAST - it may return EmptyToken when cancelled
+            if self.is_canceled() or not isinstance(mod, uni.Module):
+                if self.is_canceled():
+                    mod = uni.Module.make_stub(inject_src=ir_in)
+                    mod.has_syntax_errors = False
+                    return mod
                 raise self.ice()
+
+            ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
             if len(self.errors_had) != 0:
                 mod.has_syntax_errors = True
             if ir_in.file_path.endswith(".cl.jac"):
