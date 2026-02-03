@@ -95,8 +95,8 @@ impl Db.update_one(
                 self.client.set(key, json.dumps(doc));
                 # Return result similar to MongoDB
                 class UpdateResult {
-                    has matched_count: int;
-                    has modified_count: int;
+                    has matched_count: int,
+                        modified_count: int;
                 }
                 return UpdateResult(matched_count=1, modified_count=1);
             } elif upsert_mode {
@@ -109,9 +109,9 @@ impl Db.update_one(
                 }
                 self.client.set(key, json.dumps(doc));
                 class UpdateResult {
-                    has matched_count: int;
-                    has modified_count: int;
-                    has upserted_id: str;
+                    has matched_count: int,
+                        modified_count: int,
+                        upserted_id: str;
                 }
                 return UpdateResult(
                     matched_count=0, modified_count=0, upserted_id=filter['_id']
@@ -119,8 +119,8 @@ impl Db.update_one(
             }
         }
         class UpdateResult {
-            has matched_count: int;
-            has modified_count: int;
+            has matched_count: int,
+                modified_count: int;
         }
         return UpdateResult(matched_count=0, modified_count=0);
     }
@@ -193,7 +193,7 @@ impl Db.update_many(
                 doc = json.loads(data);
                 # Simple filter matching (only exact matches for now)
                 matches = True;
-                for k, v in filter.items() {
+                for (k, v) in filter.items() {
                     if doc.get(k) != v {
                         matches = False;
                         break;
@@ -212,8 +212,8 @@ impl Db.update_many(
             }
         }
         class UpdateResult {
-            has matched_count: int;
-            has modified_count: int;
+            has matched_count: int,
+                modified_count: int;
         }
         return UpdateResult(matched_count=matched, modified_count=modified);
     }
@@ -255,8 +255,8 @@ impl Db.update_by_id(
             }
             self.client.set(key, json.dumps(doc));
             class UpdateResult {
-                has matched_count: int;
-                has modified_count: int;
+                has matched_count: int,
+                    modified_count: int;
             }
             return UpdateResult(matched_count=1, modified_count=1);
         } elif upsert_mode {
@@ -268,15 +268,15 @@ impl Db.update_by_id(
             }
             self.client.set(key, json.dumps(doc));
             class UpdateResult {
-                has matched_count: int;
-                has modified_count: int;
-                has upserted_id: str;
+                has matched_count: int,
+                    modified_count: int,
+                    upserted_id: str;
             }
             return UpdateResult(matched_count=0, modified_count=0, upserted_id=id);
         }
         class UpdateResult {
-            has matched_count: int;
-            has modified_count: int;
+            has matched_count: int,
+                modified_count: int;
         }
         return UpdateResult(matched_count=0, modified_count=0);
     }
