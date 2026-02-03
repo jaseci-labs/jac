@@ -386,6 +386,22 @@ def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
     }
 }
 
+# Global variable for simple random state (Linear Congruential Generator)
+glob _rand_state: int = 12345;
+
+def seed_random(seed: int) -> None {
+    _rand_state = seed;
+}
+
+def random_int(max_val: int) -> int {
+    # Simple LCG random number generator
+    _rand_state = (_rand_state * 1103515245 + 12345) % 2147483648;
+    if max_val <= 0 {
+        return 0;
+    }
+    return _rand_state % max_val;
+}
+
 # ===================== Board =====================
 obj Board {
     has squares: list[list[Piece | None]] = [],
@@ -922,7 +938,7 @@ obj Game {
                 print(f"{color_name} is in CHECK!");
             }
 
-            move_str: str = input(f"{color_name}'s turn (e.g. e2 e4): ");
+            move_str: str = input(f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): ");
 
             if move_str == "quit" {
                 print("Game ended.");
@@ -930,38 +946,55 @@ obj Game {
                 return;
             }
 
-            coords: tuple[int, int, int, int] | None = self.parse_input(move_str);
-            if coords is None {
-                print("Invalid input. Use format like: e2 e4");
-                continue;
-            }
-
-            from_row: int;
-            from_col: int;
-            to_row: int;
-            to_col: int;
-            (from_row, from_col, to_row, to_col) = coords;  # Tuple unpacking
-
-            # Check that selected piece belongs to current player
-            selected: Piece | None = self.board.get_piece(from_row, from_col);
-            if selected is None or selected.color != self.current_turn {
-                print("No valid piece at that square.");
-                continue;
-            }
-
-            # Find matching legal move using comprehension filter
+            # Get legal moves for current player
             legal_moves: list[Move] = self.get_legal_moves(self.current_turn);
-            matching: list[Move] = [
-                m for m in legal_moves
-                if m.from_pos == (from_row, from_col) and m.to_pos == (to_row, to_col)
-            ];
 
-            if len(matching) == 0 {
-                print("Illegal move. Try again.");
-                continue;
+            # Handle empty input - make a random move
+            found: Move | None = None;
+            if len(move_str) == 0 {
+                if len(legal_moves) == 0 {
+                    print("No legal moves available!");
+                    continue;
+                }
+                idx: int = random_int(len(legal_moves));
+                found = legal_moves[idx];
+                # Show what move was chosen
+                from_alg: str = tuple_to_algebraic(found.from_pos);
+                to_alg: str = tuple_to_algebraic(found.to_pos);
+                print(f"Random move: {from_alg} {to_alg}");
+            } else {
+                coords: tuple[int, int, int, int] | None = self.parse_input(move_str);
+                if coords is None {
+                    print("Invalid input. Use format like: e2 e4");
+                    continue;
+                }
+
+                from_row: int;
+                from_col: int;
+                to_row: int;
+                to_col: int;
+                (from_row, from_col, to_row, to_col) = coords;  # Tuple unpacking
+
+                # Check that selected piece belongs to current player
+                selected: Piece | None = self.board.get_piece(from_row, from_col);
+                if selected is None or selected.color != self.current_turn {
+                    print("No valid piece at that square.");
+                    continue;
+                }
+
+                # Find matching legal move using comprehension filter
+                matching: list[Move] = [
+                    m for m in legal_moves
+                    if m.from_pos == (from_row, from_col) and m.to_pos == (to_row, to_col)
+                ];
+
+                if len(matching) == 0 {
+                    print("Illegal move. Try again.");
+                    continue;
+                }
+
+                found = matching[0];
             }
-
-            found: Move = matching[0];
 
             # Execute
             self.board.make_move(found);
