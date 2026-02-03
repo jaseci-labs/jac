@@ -44,7 +44,7 @@ enum TokenKind {
     # -------------------------------------------------------------------------
     # Keywords - Declarations
     # -------------------------------------------------------------------------
-    KW_ABSTRACT = "abstract",
+    KW_ABSTRACT = "abs",
     KW_OBJECT = "obj",
     KW_CLASS = "class",
     KW_ENUM = "enum",
@@ -59,7 +59,7 @@ enum TokenKind {
     KW_IMPL = "impl",
     KW_SEM = "sem",
     KW_TEST = "test",
-    KW_GLOBAL = "global",
+    KW_GLOBAL = "glob",
     # -------------------------------------------------------------------------
     # Keywords - Import/Include
     # -------------------------------------------------------------------------
@@ -93,7 +93,7 @@ enum TokenKind {
     KW_BREAK = "break",
     KW_CONTINUE = "continue",
     KW_RAISE = "raise",
-    KW_DELETE = "delete",
+    KW_DELETE = "del",
     KW_ASSERT = "assert",
     KW_SKIP = "skip",
     KW_REPORT = "report",
@@ -221,8 +221,8 @@ enum TokenKind {
     ARROW_R = "-->",
     ARROW_BI = "<-->",
     ARROW_L_P1 = "<-:",
-    ARROW_L_P2 = ":-",
-    ARROW_R_P1 = "-:",
+    ARROW_L_P2 = ":<-",
+    ARROW_R_P1 = "->:",
     ARROW_R_P2 = ":->",
     # -------------------------------------------------------------------------
     # Connect Arrows (Graph Modification)
@@ -231,14 +231,14 @@ enum TokenKind {
     CARROW_R = "++>",
     CARROW_BI = "<++>",
     CARROW_L_P1 = "<+:",
-    CARROW_L_P2 = ":+",
-    CARROW_R_P1 = "+:",
+    CARROW_L_P2 = ":<+",
+    CARROW_R_P1 = "+>:",
     CARROW_R_P2 = ":+>",
     # -------------------------------------------------------------------------
     # Special Operators
     # -------------------------------------------------------------------------
     RETURN_HINT = "->",
-    NULL_OK = "?.",
+    NULL_OK = "?",
     DECOR_OP = "@",
     TYPE_OP = "`",
     GLOBAL_OP = ":g:",
@@ -429,7 +429,7 @@ glob KEYWORDS:
          "any": TokenKind.TYP_ANY,
          "type": TokenKind.TYP_TYPE,
          # Declaration keywords
-         "abstract": TokenKind.KW_ABSTRACT,
+         "abs": TokenKind.KW_ABSTRACT,
          "obj": TokenKind.KW_OBJECT,
          "class": TokenKind.KW_CLASS,
          "enum": TokenKind.KW_ENUM,
@@ -444,7 +444,7 @@ glob KEYWORDS:
          "impl": TokenKind.KW_IMPL,
          "sem": TokenKind.KW_SEM,
          "test": TokenKind.KW_TEST,
-         "global": TokenKind.KW_GLOBAL,
+         "glob": TokenKind.KW_GLOBAL,
          # Import keywords
          "import": TokenKind.KW_IMPORT,
          "include": TokenKind.KW_INCLUDE,
@@ -472,7 +472,7 @@ glob KEYWORDS:
          "break": TokenKind.KW_BREAK,
          "continue": TokenKind.KW_CONTINUE,
          "raise": TokenKind.KW_RAISE,
-         "delete": TokenKind.KW_DELETE,
+         "del": TokenKind.KW_DELETE,
          "assert": TokenKind.KW_ASSERT,
          "skip": TokenKind.KW_SKIP,
          "report": TokenKind.KW_REPORT,

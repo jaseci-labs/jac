@@ -250,6 +250,68 @@ obj Lexer {
             value += self.advance();
         }
 
+        # Check for multi-word keywords: "not in" and "is not"
+        if value == "not" {
+            # Save state for potential rollback
+            saved_pos = self.pos;
+            saved_line = self.line;
+            saved_col = self.col;
+            # Skip whitespace (but not newlines for safety)
+            while not self.at_end()
+            and (self.current() == " " or self.current() == "\t") {
+                self.advance();
+            }
+            # Check for "in" - making it "not in"
+            if not self.at_end() and self.current() == "i" {
+                if self.source[self.pos:self.pos + 2] == "in"
+                and (
+                    self.pos + 2 >= len(self.source)
+                    or not self.is_alnum(self.source[self.pos + 2])
+                ) {
+                    self.advance();  # i
+                    self.advance();  # n
+                    return self.make_token(
+                        TokenKind.KW_NIN, "not in", start_line, start_col, start_pos
+                    );
+                }
+            }
+            # Rollback if not "not in"
+            self.pos = saved_pos;
+            self.line = saved_line;
+            self.col = saved_col;
+        }
+
+        if value == "is" {
+            # Save state for potential rollback
+            saved_pos = self.pos;
+            saved_line = self.line;
+            saved_col = self.col;
+            # Skip whitespace (but not newlines for safety)
+            while not self.at_end()
+            and (self.current() == " " or self.current() == "\t") {
+                self.advance();
+            }
+            # Check for "not" - making it "is not"
+            if not self.at_end() and self.current() == "n" {
+                if self.source[self.pos:self.pos + 3] == "not"
+                and (
+                    self.pos + 3 >= len(self.source)
+                    or not self.is_alnum(self.source[self.pos + 3])
+                ) {
+                    self.advance();  # n
+                    self.advance();  # o
+                    self.advance();  # t
+                    return self.make_token(
+                        TokenKind.KW_ISN, "is not", start_line, start_col, start_pos
+                    );
+                }
+            }
+            # Rollback if not "is not"
+            self.pos = saved_pos;
+            self.line = saved_line;
+            self.col = saved_col;
+        }
+
         # Check for keyword
         kind = lookup_keyword(value);
         if kind is not None {
@@ -257,6 +319,26 @@ obj Lexer {
         }
 
         return self.make_token(TokenKind.NAME, value, start_line, start_col, start_pos);
+    }
+
+    def scan_kwesc_name -> Token {
+        # Scan keyword-escaped name: KWESC_NAME token (angle bracket prefix)
+        start_line = self.line;
+        start_col = self.col;
+        start_pos = self.pos;
+
+        # Skip the <> prefix
+        self.advance();  # <
+        self.advance();  # >
+
+        value = "<>";
+        while not self.at_end() and self.is_alnum(self.current()) {
+            value += self.advance();
+        }
+
+        return self.make_token(
+            TokenKind.KWESC_NAME, value, start_line, start_col, start_pos
+        );
     }
 
     def scan_number -> Token {
@@ -487,12 +569,9 @@ obj Lexer {
                     self.advance();
                     self.pop_mode();
                     end_kind = self.get_fstring_end_kind(mode);
+                    triple_quote = f"{quote}{quote}{quote}";
                     return self.make_token(
-                        end_kind,
-                        quote + quote + quote,
-                        start_line,
-                        start_col,
-                        start_pos
+                        end_kind, triple_quote, start_line, start_col, start_pos
                     );
                 }
             } else {
@@ -957,9 +1036,9 @@ obj Lexer {
                 TokenKind.RETURN_HINT, "->", start_line, start_col, start_pos
             );
         }
-        if self.match_string("?.") {
+        if self.match_char("?") {
             return self.make_token(
-                TokenKind.NULL_OK, "?.", start_line, start_col, start_pos
+                TokenKind.NULL_OK, "?", start_line, start_col, start_pos
             );
         }
         if self.match_string(":=") {
@@ -1012,24 +1091,24 @@ obj Lexer {
                 TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
             );
         }
-        if self.match_string("-:") {
+        if self.match_string("->:") {
             return self.make_token(
-                TokenKind.ARROW_R_P1, "-:", start_line, start_col, start_pos
+                TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
             );
         }
-        if self.match_string(":-") {
+        if self.match_string(":<-") {
             return self.make_token(
-                TokenKind.ARROW_L_P2, ":-", start_line, start_col, start_pos
+                TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos
             );
         }
-        if self.match_string("+:") {
+        if self.match_string("+>:") {
             return self.make_token(
-                TokenKind.CARROW_R_P1, "+:", start_line, start_col, start_pos
+                TokenKind.CARROW_R_P1, "+>:", start_line, start_col, start_pos
             );
         }
-        if self.match_string(":+") {
+        if self.match_string(":<+") {
             return self.make_token(
-                TokenKind.CARROW_L_P2, ":+", start_line, start_col, start_pos
+                TokenKind.CARROW_L_P2, ":<+", start_line, start_col, start_pos
             );
         }
         if self.match_string("</") {
@@ -1226,6 +1305,11 @@ obj Lexer {
         }
 
         ch = self.current();
+
+        # Check for keyword-escaped name: <>identifier
+        if ch == "<" and self.peek() == ">" and self.is_alpha(self.peek(2)) {
+            return self.scan_kwesc_name();
+        }
 
         # Identifier or keyword
         if self.is_alpha(ch) {
