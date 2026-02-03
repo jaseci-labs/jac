@@ -304,17 +304,7 @@ obj SourceLoc {
         pos_start: int = 0,
         pos_end: int = 0;
 
-    def span_to(other: SourceLoc) -> SourceLoc {
-        return SourceLoc(
-            file_path=self.file_path,
-            line=self.line,
-            end_line=other.end_line,
-            col_start=self.col_start,
-            col_end=other.col_end,
-            pos_start=self.pos_start,
-            pos_end=other.pos_end
-        );
-    }
+    def span_to(other: SourceLoc) -> SourceLoc;
 }
 
 # =============================================================================
@@ -325,90 +315,12 @@ obj Token {
         value: str,
         loc: SourceLoc;
 
-    def is_keyword -> bool {
-        return self.kind.value.startswith("KW_") or self.kind.value.startswith("TYP_");
-    }
-
-    def is_literal -> bool {
-        return self.kind in [
-            TokenKind.INT,
-            TokenKind.HEX,
-            TokenKind.BIN,
-            TokenKind.OCT,
-            TokenKind.FLOAT,
-            TokenKind.STRING,
-            TokenKind.BOOL,
-            TokenKind.NULL
-        ];
-    }
-
-    def is_operator -> bool {
-        return self.kind in [
-            TokenKind.PLUS,
-            TokenKind.MINUS,
-            TokenKind.STAR_MUL,
-            TokenKind.DIV,
-            TokenKind.FLOOR_DIV,
-            TokenKind.MOD,
-            TokenKind.STAR_POW,
-            TokenKind.BW_AND,
-            TokenKind.BW_OR,
-            TokenKind.BW_XOR,
-            TokenKind.BW_NOT,
-            TokenKind.LSHIFT,
-            TokenKind.RSHIFT,
-            TokenKind.EE,
-            TokenKind.NE,
-            TokenKind.LT,
-            TokenKind.GT,
-            TokenKind.LTE,
-            TokenKind.GTE,
-            TokenKind.KW_AND,
-            TokenKind.KW_OR,
-            TokenKind.KW_NOT,
-            TokenKind.KW_IN,
-            TokenKind.KW_IS
-        ];
-    }
-
-    def is_assignment -> bool {
-        return self.kind in [
-            TokenKind.EQ,
-            TokenKind.WALRUS_EQ,
-            TokenKind.ADD_EQ,
-            TokenKind.SUB_EQ,
-            TokenKind.MUL_EQ,
-            TokenKind.DIV_EQ,
-            TokenKind.FLOOR_DIV_EQ,
-            TokenKind.MOD_EQ,
-            TokenKind.STAR_POW_EQ,
-            TokenKind.BW_AND_EQ,
-            TokenKind.BW_OR_EQ,
-            TokenKind.BW_XOR_EQ,
-            TokenKind.LSHIFT_EQ,
-            TokenKind.RSHIFT_EQ,
-            TokenKind.MATMUL_EQ
-        ];
-    }
-
-    def is_compare_op -> bool {
-        return self.kind in [
-            TokenKind.EE,
-            TokenKind.NE,
-            TokenKind.LT,
-            TokenKind.GT,
-            TokenKind.LTE,
-            TokenKind.GTE,
-            TokenKind.KW_IN,
-            TokenKind.KW_IS,
-            TokenKind.KW_NIN,
-            TokenKind.KW_ISN
-        ];
-    }
-
-    def __str__ -> str {
-        return f"Token({self.kind}, '{self.value}', line={self.loc.line})";
-    }
+    def is_keyword -> bool;
+    def is_literal -> bool;
+    def is_operator -> bool;
+    def is_assignment -> bool;
+    def is_compare_op -> bool;
+    def __str__ -> str;
 }
 
 # =============================================================================
