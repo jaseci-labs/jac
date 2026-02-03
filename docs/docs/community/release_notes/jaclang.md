@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.15 (Unreleased)
 
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
+- **Fix: `jac add` Dependency Resolution**: `jac add` now installs all Python dependencies in a single batch, allowing `pip` to resolve compatible versions across interdependent packages and preventing runtime errors caused by version mismatches.
 
 ## jaclang 0.9.14 (Latest Release)
 
