@@ -254,15 +254,16 @@ class JacParser(Transform[uni.Source, uni.Module]):
     def transform(self, ir_in: uni.Source) -> uni.Module:
         """Transform input IR."""
         try:
-            import time,sys
+            import sys
+            import time
 
             # Check for cancellation before starting
             if self.is_canceled():
-                print(f"CANCELLED {time.time()}",file=sys.stderr)
+                print(f"CANCELLED {time.time()}", file=sys.stderr)
                 mod = uni.Module.make_stub(inject_src=ir_in)
                 mod.has_syntax_errors = False
                 return mod
-            
+
             # Create input for Lark parser transform
             lark_input = LarkParseInput(
                 ir_value=ir_in.value,
@@ -271,14 +272,14 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use LarkParseTransform instead of direct parser call
             lark_transform = LarkParseTransform(ir_in=lark_input, prog=self.prog)
             parse_output = lark_transform.ir_out
-            
+
             # Check for cancellation again after parsing
             if self.is_canceled():
-                print(f"CANCELLED {time.time()}",file=sys.stderr) 
+                print(f"CANCELLED {time.time()}", file=sys.stderr)
                 mod = uni.Module.make_stub(inject_src=ir_in)
                 mod.has_syntax_errors = False
                 return mod
-            
+
             # Transform parse tree to AST
             mod = JacParser.TreeToAST(parser=self).transform(parse_output.tree)
             ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]

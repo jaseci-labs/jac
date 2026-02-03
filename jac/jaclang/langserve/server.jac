@@ -12,7 +12,7 @@ import from jaclang.pycore.constant {
     JacSemTokenType as SemTokType
 }
 
-import from .engine { JacLangServer,Task }
+import from .engine { JacLangServer, Task }
 
 import lsprotocol.types as lspt;
 
@@ -62,7 +62,6 @@ def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 #         (params.context.trigger_character if params.context else None)
 #     );
 # }
-
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Hover];
