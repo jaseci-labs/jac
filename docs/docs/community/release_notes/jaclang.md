@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.15 (Unreleased)
 
+- **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
+
 ## jaclang 0.9.14 (Latest Release)
 
 - **Fix: `jac format` No Longer Deletes Files with Syntax Errors**: Fixed a bug where `jac format` would overwrite a file's contents with an empty string when the file contained syntax errors. The formatter now checks for parse errors before writing and leaves the original file untouched.
