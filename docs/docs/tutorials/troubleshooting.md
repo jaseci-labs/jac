@@ -305,19 +305,21 @@ netstat -ano | findstr :8000  # Windows
 
 ### Frontend not updating after changes
 
-**Cause:** Hot Module Replacement (HMR) not working or cache issue.
+**Cause:** Running in production mode or browser cache.
 
 **Solutions:**
 
-1. Ensure you're using `--dev` flag:
+1. Use `--dev` flag for development (enables hot reload):
 
 ```bash
-jac start main.jac --dev
+jac start --dev
 ```
 
-1. Hard refresh the browser: `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac)
+Without `--dev`, the app runs in production mode with pre-built static assets that don't auto-update.
 
-2. Clear browser cache and restart server
+2. Hard refresh the browser: `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac)
+
+3. Restart the server if changes still don't appear
 
 ### API endpoint returns 401 Unauthorized
 

@@ -92,11 +92,15 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 # Start with default main.jac on default port
 jac start
 
+# Start with a specific file
+jac start app.jac
+
 # Start on custom port
 jac start -p 3000
 
-# Start with Hot Module Replacement (development)
-jac start --dev
+# Development mode with hot reload (recommended for development)
+jac start --dev              # uses main.jac by default
+jac start --dev app.jac      # specify a different file
 
 # HMR mode without client bundling (API only)
 jac start --dev --no-client
@@ -108,9 +112,12 @@ jac start --scale
 jac start --scale --build
 ```
 
-> **Note**:
->
-> - If your project uses a different entry file (e.g., `app.jac`, `server.jac`), you can specify it explicitly: `jac start app.jac`
+**Development vs Production:**
+
+- **Development** (`--dev`): Vite dev server with HMR on port 8000, API server on 8001, instant code updates
+- **Production** (default): Optimized static build served on port 8000, ready for deployment
+
+> **Note**: If your project uses a different entry file (e.g., `app.jac`, `server.jac`), specify it: `jac start app.jac`
 >
 ---
 

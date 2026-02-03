@@ -97,10 +97,17 @@ jac start app.jac --port 3000
 Hot Module Replacement for development:
 
 ```bash
-jac start app.jac --dev
+jac start --dev          # uses main.jac by default
+jac start --dev app.jac  # specify a different file
 ```
 
-Changes to your `.jac` files will automatically reload.
+**What happens:**
+- Vite dev server runs on port 8000 (frontend)
+- API server runs on port 8001 (backend)
+- File watcher monitors `.jac` changes and auto-reloads
+- Browser auto-refreshes on code changes
+
+Dependencies install automatically on first run.
 
 ### API-Only Mode
 
@@ -109,6 +116,8 @@ Skip client bundling and only serve the API:
 ```bash
 jac start app.jac --dev --no-client
 ```
+
+Useful for backend-only development or when using a separate frontend framework.
 
 ---
 

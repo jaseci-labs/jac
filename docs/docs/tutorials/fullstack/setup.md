@@ -101,19 +101,27 @@ base_route_app = "app"
 jac start --dev
 ```
 
+If your entry file is named something other than `main.jac`, specify it: `jac start --dev app.jac`
+
 This starts:
 
-- **Vite dev server** on port 8000 (open in browser)
-- **API server** on port 8001 (proxied via Vite)
-- **File watcher** for `.jac` files
+- **Vite dev server** on port 8000 (frontend with HMR)
+- **API server** on port 8001 (backend endpoints)
+- **File watcher** that rebuilds on `.jac` changes
 
 Open http://localhost:8000/cl/app
+
+**What's Hot Module Replacement (HMR)?**
+
+Changes to your `.jac` files automatically rebuild and refresh the browser - no manual restarts needed. Edit your code, save, and see updates instantly.
 
 ### Production Mode
 
 ```bash
 jac start
 ```
+
+Builds optimized static assets and serves everything on port 8000. Use this for deployment.
 
 Open http://localhost:8000/cl/app
 

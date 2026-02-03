@@ -313,10 +313,13 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
     ```
 
 ```bash
-jac start main.jac
+jac start main.jac --dev
 ```
 
 This starts on port 8000 by default. Use `jac start main.jac --port 3000` to pick a different port.
+
+!!! tip "Development Mode"
+    The `--dev` flag enables hot module replacement - your changes auto-rebuild and refresh the browser instantly. For production, use `jac start` without `--dev` to serve optimized static assets.
 
 !!! warning "Common issue"
     If you see "Address already in use", another process is on port 8000. Use `--port` to pick a different port, or see [Troubleshooting: Server won't start](../troubleshooting.md#server-wont-start-address-already-in-use).

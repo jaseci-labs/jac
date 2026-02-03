@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.15 (Unreleased)
 
+- **Auto-install watchdog for `--dev` mode**: `jac start --dev` automatically installs `watchdog` if missing, eliminating the manual `jac install --dev` step.
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
 
 ## jaclang 0.9.14 (Latest Release)
