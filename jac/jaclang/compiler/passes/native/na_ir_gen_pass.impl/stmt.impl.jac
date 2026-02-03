@@ -202,6 +202,27 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
             }
         }
     }
+    # Handle set() constructor call with type annotation
+    if value is None and isinstance(node.value, uni.FuncCall) {
+        func_name = self._get_name(node.value.target);
+        if func_name == "set" and node.type_tag and node.type_tag.tag {
+            # set() constructor with type annotation - create empty set
+            set_type = self._resolve_jac_type(node.type_tag.tag);
+            if isinstance(set_type, ir.PointerType) {
+                for (elem_name, stype) in self.set_types.items() {
+                    if set_type == stype.as_pointer() {
+                        helpers = self.set_helpers.get(elem_name);
+                        if helpers is not None {
+                            value = self.builder.call(
+                                helpers["new"], [], name="set.new"
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
     if value is None {
         return;
     }

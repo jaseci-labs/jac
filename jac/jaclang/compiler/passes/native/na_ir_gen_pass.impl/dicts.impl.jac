@@ -146,9 +146,18 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_body = b.load(idx_alloca, name="idx.body");
     key_ptr = b.gep(keys_arr, [idx_body], name="key.ptr");
     key_val = b.load(key_ptr, name="key.val");
-    # Compare keys (integer comparison for now)
+    # Compare keys - use strcmp for string keys (i8*)
     if isinstance(key_type, ir.IntType) {
         key_eq = b.icmp_signed("==", key_val, k_arg, name="key.eq");
+    } elif key_type == i8_ptr {
+        # String comparison using strcmp
+        strcmp_fn = self._get_or_declare_extern(
+            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+        );
+        cmp_result = b.call(strcmp_fn, [key_val, k_arg], name="strcmp");
+        key_eq = b.icmp_signed(
+            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
     } elif isinstance(key_type, ir.PointerType) {
         key_eq = b.icmp_unsigned("==", key_val, k_arg, name="key.eq");
     } else {
@@ -254,8 +263,17 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bg = b.load(idx_alloca_g, name="idx.body");
     key_ptr_g = b.gep(keys_g, [idx_bg], name="key.ptr");
     key_val_g = b.load(key_ptr_g, name="key.val");
+    # Use strcmp for string keys
     if isinstance(key_type, ir.IntType) {
         key_eq_g = b.icmp_signed("==", key_val_g, k_arg_g, name="key.eq");
+    } elif key_type == i8_ptr {
+        strcmp_fn = self._get_or_declare_extern(
+            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+        );
+        cmp_result_g = b.call(strcmp_fn, [key_val_g, k_arg_g], name="strcmp");
+        key_eq_g = b.icmp_signed(
+            "==", cmp_result_g, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
     } elif isinstance(key_type, ir.PointerType) {
         key_eq_g = b.icmp_unsigned("==", key_val_g, k_arg_g, name="key.eq");
     } else {
@@ -330,8 +348,17 @@ impl NaIRGenPass._emit_dict_helpers(
     idx_bc = b.load(idx_alloca_c, name="idx.body");
     key_ptr_c = b.gep(keys_c, [idx_bc], name="key.ptr");
     key_val_c = b.load(key_ptr_c, name="key.val");
+    # Use strcmp for string keys
     if isinstance(key_type, ir.IntType) {
         key_eq_c = b.icmp_signed("==", key_val_c, k_arg_c, name="key.eq");
+    } elif key_type == i8_ptr {
+        strcmp_fn = self._get_or_declare_extern(
+            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+        );
+        cmp_result_c = b.call(strcmp_fn, [key_val_c, k_arg_c], name="strcmp");
+        key_eq_c = b.icmp_signed(
+            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="key.eq"
+        );
     } elif isinstance(key_type, ir.PointerType) {
         key_eq_c = b.icmp_unsigned("==", key_val_c, k_arg_c, name="key.eq");
     } else {

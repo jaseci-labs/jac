@@ -130,6 +130,54 @@ impl NaIRGenPass._codegen_compare(node: uni.CompareExpr) -> (ir.Value | None) {
         return None;
     }
     op = node.ops[0].name if isinstance(node.ops[0], uni.Token) else str(node.ops[0]);
+    # Handle "in" operator for dicts and sets: left in right
+    if op == Tok.KW_IN or op == Tok.KW_NIN {
+        is_not_in = op == Tok.KW_NIN;
+        # Check if right is a dict
+        for (dict_key, helpers) in self.dict_helpers.items() {
+            dict_type = self.dict_types.get(dict_key);
+            if dict_type is not None and right.type == dict_type.as_pointer() {
+                key_type = helpers["key_type"];
+                left_coerced = self._coerce_type(left, key_type);
+                result = self.builder.call(
+                    helpers["contains"], [right, left_coerced], name="dict.contains"
+                );
+                # Extend i1 result to i64 for consistency
+                result = self.builder.zext(result, ir.IntType(64), name="contains.i64");
+                if is_not_in {
+                    result = self.builder.icmp_signed(
+                        "==", result, ir.Constant(ir.IntType(64), 0), name="not.in"
+                    );
+                    result = self.builder.zext(
+                        result, ir.IntType(64), name="notin.i64"
+                    );
+                }
+                return result;
+            }
+        }
+        # Check if right is a set
+        for (set_key, helpers) in self.set_helpers.items() {
+            set_type = self.set_types.get(set_key);
+            if set_type is not None and right.type == set_type.as_pointer() {
+                elem_type = helpers["elem_type"];
+                left_coerced = self._coerce_type(left, elem_type);
+                result = self.builder.call(
+                    helpers["contains"], [right, left_coerced], name="set.contains"
+                );
+                result = self.builder.zext(result, ir.IntType(64), name="contains.i64");
+                if is_not_in {
+                    result = self.builder.icmp_signed(
+                        "==", result, ir.Constant(ir.IntType(64), 0), name="not.in"
+                    );
+                    result = self.builder.zext(
+                        result, ir.IntType(64), name="notin.i64"
+                    );
+                }
+                return result;
+            }
+        }
+        return None;
+    }
     # Handle identity operators: is / is not (pointer comparison)
     if op == Tok.KW_IS {
         # Coerce both to same pointer type for comparison

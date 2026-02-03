@@ -13,7 +13,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     if func_name == "print" {
         return self._emit_print(node);
     }
-    # Handle len() builtin for lists and strings
+    # Handle len() builtin for lists, dicts, sets, and strings
     if func_name == "len" {
         params_l = node.params or [];
         if params_l {
@@ -24,6 +24,45 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             }
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
+                # Check for dict type first
+                if arg_name is not None and arg_name in self.var_dict_type {
+                    dict_key = self.var_dict_type[arg_name];
+                    helpers = self.dict_helpers.get(dict_key);
+                    if helpers is not None {
+                        return self.builder.call(
+                            helpers["len"], [arg_val], name="dict.len"
+                        );
+                    }
+                }
+                # Check for dict type by inferring from value
+                for (dict_key, helpers) in self.dict_helpers.items() {
+                    dict_type = self.dict_types.get(dict_key);
+                    if dict_type is not None and arg_val.type == dict_type.as_pointer() {
+                        return self.builder.call(
+                            helpers["len"], [arg_val], name="dict.len"
+                        );
+                    }
+                }
+                # Check for set type
+                if arg_name is not None and arg_name in self.var_set_elem_type {
+                    set_key = self.var_set_elem_type[arg_name];
+                    helpers = self.set_helpers.get(set_key);
+                    if helpers is not None {
+                        return self.builder.call(
+                            helpers["len"], [arg_val], name="set.len"
+                        );
+                    }
+                }
+                # Check for set type by inferring from value
+                for (set_key, helpers) in self.set_helpers.items() {
+                    set_type = self.set_types.get(set_key);
+                    if set_type is not None and arg_val.type == set_type.as_pointer() {
+                        return self.builder.call(
+                            helpers["len"], [arg_val], name="set.len"
+                        );
+                    }
+                }
+                # Check for list type
                 if elem_type_name is None {
                     elem_type_name = self._infer_list_elem_type(arg_val);
                 }

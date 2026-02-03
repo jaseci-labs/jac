@@ -90,9 +90,17 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
     idx_body = b.load(idx_alloca, name="idx.body");
     elem_ptr = b.gep(elems_arr, [idx_body], name="elem.ptr");
     elem_val = b.load(elem_ptr, name="elem.val");
-    # Compare elements
+    # Compare elements - use strcmp for string elements (i8*)
     if isinstance(elem_type, ir.IntType) {
         elem_eq = b.icmp_signed("==", elem_val, e_arg, name="elem.eq");
+    } elif elem_type == i8_ptr {
+        strcmp_fn = self._get_or_declare_extern(
+            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+        );
+        cmp_result = b.call(strcmp_fn, [elem_val, e_arg], name="strcmp");
+        elem_eq = b.icmp_signed(
+            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="elem.eq"
+        );
     } elif isinstance(elem_type, ir.PointerType) {
         elem_eq = b.icmp_unsigned("==", elem_val, e_arg, name="elem.eq");
     } else {
@@ -170,8 +178,17 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
     idx_bc = b.load(idx_alloca_c, name="idx.body");
     elem_ptr_c = b.gep(elems_c, [idx_bc], name="elem.ptr");
     elem_val_c = b.load(elem_ptr_c, name="elem.val");
+    # Use strcmp for string elements
     if isinstance(elem_type, ir.IntType) {
         elem_eq_c = b.icmp_signed("==", elem_val_c, e_arg_c, name="elem.eq");
+    } elif elem_type == i8_ptr {
+        strcmp_fn = self._get_or_declare_extern(
+            "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
+        );
+        cmp_result_c = b.call(strcmp_fn, [elem_val_c, e_arg_c], name="strcmp");
+        elem_eq_c = b.icmp_signed(
+            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="elem.eq"
+        );
     } elif isinstance(elem_type, ir.PointerType) {
         elem_eq_c = b.icmp_unsigned("==", elem_val_c, e_arg_c, name="elem.eq");
     } else {

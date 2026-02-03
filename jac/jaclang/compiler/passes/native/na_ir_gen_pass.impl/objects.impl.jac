@@ -457,6 +457,27 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
             return ir.Constant(ir.IntType(64), 0);
         }
     }
+    # Handle set methods: add (simple name target)
+    if target_name is not None and target_name in self.var_set_elem_type {
+        elem_type_name = self.var_set_elem_type[target_name];
+        helpers = self.set_helpers.get(elem_type_name);
+        if helpers is not None and method_name == "add" {
+            set_val = self._codegen_expr(trailer.target);
+            if set_val is None {
+                return None;
+            }
+            params = node.params or [];
+            if params {
+                val = self._codegen_expr(params[0]);
+                if val is not None {
+                    elem_type = helpers["elem_type"];
+                    val = self._coerce_type(val, elem_type);
+                    self.builder.call(helpers["add"], [set_val, val]);
+                }
+            }
+            return ir.Constant(ir.IntType(64), 0);
+        }
+    }
     # Handle string methods: strip, split (on any target expression)
     if method_name in ("strip", "split") {
         str_val = self._codegen_expr(trailer.target);
