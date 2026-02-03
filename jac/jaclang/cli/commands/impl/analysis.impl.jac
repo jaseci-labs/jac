@@ -319,6 +319,12 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int 
         }
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+            if prog.mod.main.has_syntax_errors {
+                for error in prog.errors_had {
+                    console.error(f"{error}");
+                }
+                return (False, False, 0);
+            }
             try {
                 formatted_code = prog.mod.main.gen.jac;
                 original_code = prog.mod.main.source.code;

@@ -2,8 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.14 (Unreleased)
+## jaclang 0.9.15 (Unreleased)
 
+- **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
+
+## jaclang 0.9.14 (Latest Release)
+
+- **Fix: `jac format` No Longer Deletes Files with Syntax Errors**: Fixed a bug where `jac format` would overwrite a file's contents with an empty string when the file contained syntax errors. The formatter now checks for parse errors before writing and leaves the original file untouched.
 - **`jac lint` Command**: Added a dedicated `jac lint` command that reports all lint violations as errors with file, line, and column info. Use `jac lint --fix` to auto-fix violations. Lint rules are configured via `[check.lint]` in `jac.toml`. All enabled rules are treated as errors (not warnings). The `--fix` flag has been removed from `jac format`, which is now pure formatting only.
 - **CLI Autocompletion**: Added `jac completions` command for shell auto completion. Run `jac completions --install` to enable autocompletion for subcommands, options, and file paths. Supports bash, zsh, and fish (auto-install), plus PowerShell and tcsh (manual).
 - **Centralized project URLs**: Project URLs (docs, Discord, GitHub, issues) are now defined as constants in `banners.jac` and reused across the CLI banner, server error messages, and help epilog instead of being hardcoded in multiple places.
@@ -13,9 +18,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **LSP Semantic Token Manager Refactor**: Refactored the language server's `SemTokManager` for production robustness. Deduplicated ~170 lines of shared symbol resolution logic.
 - **Configuration Profiles**: Added multi-file configuration support with profile-based overrides. Projects can now use `jac.<profile>.toml` files (e.g., `jac.prod.toml`, `jac.staging.toml`) for environment-specific settings and `jac.local.toml` for developer-specific overrides that are automatically gitignored. Files are merged in priority order: `jac.toml` (base) < `jac.<profile>.toml` < `[environments.<profile>]` in-file overrides < `jac.local.toml`. Activate a profile via `--profile` flag on execution commands (e.g., `jac run app.jac --profile prod`, `jac start --profile staging`), the `JAC_PROFILE` environment variable, or `[environment].default_profile` in `jac.toml`. The `jac config path` command now displays all loaded config files with their priority labels. The `JAC_ENV` environment variable is deprecated in favor of `JAC_PROFILE`.
 - **Configuration Profile Bug Fixes**: Fixed several issues in the multi-profile config implementation: `storage.type` key now correctly maps to the `storage_type` field during profile merges, nested plugin configs use deep merge instead of shallow overwrite (preserving nested keys), `apply_profile` now handles all config sections (build, format, dot, cache, storage, check, project, dependencies, scripts -- previously only run, serve, test, and plugins), circular profile inheritance is detected and short-circuited instead of causing `RecursionError`, mutable default `config_files` field replaced with `None` sentinel to prevent cross-instance sharing, and config-to-CLI-args bridging added so profile values (e.g., `serve.port`) correctly override argparse defaults at runtime.
+- **JsxElement Builtin Type**: Added `JsxElement` builtin type for strict type checking of JSX expressions for client-side UI components.
 - **1 Small Refactors**
 
-## jaclang 0.9.13 (Latest Release)
+## jaclang 0.9.13
 
 - **Configurable Lint Rules**: Auto-lint rules are now individually configurable via `jac.toml` `[check.lint]` section using a select/ignore model. A `LintRule` enum defines all 12 rules with kebab-case names. Use `select = ["default"]` for code-transforming rules only, `select = ["all"]` to enable every rule including warning-only rules, `ignore = ["rule-name"]` to disable specific ones, or `select = ["rule1", "rule2"]` to enable only listed rules.
 - **No-Print Lint Rule**: Added a `no-print` lint rule that errors on bare `print()` calls in `.jac` files, encouraging use of the console abstraction instead. Included in the `"all"` group; enable via `select = ["all"]` or `select = ["default", "no-print"]` in `[check.lint]`.

@@ -42,6 +42,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return list_inst;
             }
 
+        case uni.JsxElement():
+            if self.prefetch and self.prefetch.jsx_element_class {
+                return self._convert_to_instance(self.prefetch.jsx_element_class);
+            }
+
         # TODO: Boolean literals.
 
         # ----------------------------------------------------------------------
@@ -692,6 +697,18 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if src_type == dest_type {
         return True;
     }
+    # Strict checking for JsxElement type - prevent non-JSX assignment to JsxElement
+    if self.prefetch and self.prefetch.jsx_element_class {
+        if isinstance(dest_type, types.ClassType)
+        and isinstance(src_type, types.ClassType) {
+            if dest_type.shared == self.prefetch.jsx_element_class.shared {
+                # Destination is JsxElement - only allow JsxElement as source
+                if src_type.shared != self.prefetch.jsx_element_class.shared {
+                    return False;
+                }
+            }
+        }
+    }
     # Everything is assignable to object, Any, Unknown, or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
@@ -828,6 +845,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.final_class = get_jac_builtin_type("Final");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
+    self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");
 }
 
 """Load and return builtins stub module."""
@@ -903,6 +921,12 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
     self.jac_builtins_module = self._load_stub_module(
         self._JAC_BUILTINS_STUB_FILE_PATH
     );
+    # This avoids parent_scope chaining which can cause recursion issues
+    for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
+        if name not in self.builtins_module.names_in_scope {
+            self.builtins_module.names_in_scope[name] = sym;
+        }
+    }
     self._prefetch_types();
 }
 # Cache the type, pyright is doing invalidateTypeCacheIfCanceled()

@@ -18,7 +18,7 @@ walker create_todo {
 cl {
     import from .separated_client { app as ClientApp }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <ClientApp />;
     }
 }

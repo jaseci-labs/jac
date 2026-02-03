@@ -1,7 +1,7 @@
 cl import from "@jac/runtime" { Link, useNavigate, jacSignup }
 
 cl {
-    def:pub SignupPage -> any {
+    def:pub page -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";

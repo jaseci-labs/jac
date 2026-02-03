@@ -6,7 +6,7 @@ cl import from .TransactionItem {
 
 cl {
     # Props: transactions list and delete handler
-    def:pub TransactionList(transactions: list, onDelete: any) -> any {
+    def:pub TransactionList(transactions: list, onDelete: any) -> JsxElement {
         if transactions.length == 0 {
             return
                 <div className="empty-state">
@@ -25,7 +25,7 @@ cl {
                     Transactions ({transactions.length})
                 </h3>
                 {transactions.map(
-                    lambda tx: dict  -> any { return
+                    lambda tx: dict  -> JsxElement { return
                         <TransactionItem
                             key={tx["id"]}
                             id={tx["id"]}

@@ -4,7 +4,7 @@ Note: useEffect import is auto-injected from @jac/runtime when `can with entry/e
 """
 
 cl {
-    def:pub user_profile(userId: str) -> any {
+    def:pub user_profile(userId: str) -> JsxElement {
         has userData: dict = {};
         has loading: bool = True;
 

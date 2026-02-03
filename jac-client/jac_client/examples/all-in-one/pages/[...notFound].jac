@@ -1,7 +1,8 @@
 cl import from "@jac/runtime" { Link }
 cl import "..styles/notFoundPage/NotFoundstyle.css";
+
 cl {
-    def:pub NotFound -> any {
+    def:pub page -> JsxElement {
         return
             <div className="not-found-container">
                 <h1>
