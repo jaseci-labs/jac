@@ -102,6 +102,7 @@ jac start --dev app.jac  # specify a different file
 ```
 
 **What happens:**
+
 - Vite dev server runs on port 8000 (frontend)
 - API server runs on port 8001 (backend)
 - File watcher monitors `.jac` changes and auto-reloads

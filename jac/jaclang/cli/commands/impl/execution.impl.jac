@@ -327,7 +327,10 @@ impl start(
 def _ensure_watchdog_installed -> bool {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { get_venv_site_packages, DependencyInstaller }
+    import from jaclang.project.dependencies {
+        get_venv_site_packages,
+        DependencyInstaller
+    }
 
     config = get_config();
     if config is None {
@@ -361,7 +364,9 @@ def _ensure_watchdog_installed -> bool {
         return True;
     } except ImportError {
         # Auto-install watchdog from dev dependencies
-        console.print("\n  📦 Installing watchdog (required for --dev mode)...\n", style="info");
+        console.print(
+            "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
+        );
         installer = DependencyInstaller(config=config, verbose=False);
         if installer.install_all(include_dev=True) {
             console.success("  ✔ watchdog installed\n");

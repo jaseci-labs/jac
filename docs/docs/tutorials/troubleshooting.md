@@ -317,9 +317,9 @@ jac start --dev
 
 Without `--dev`, the app runs in production mode with pre-built static assets that don't auto-update.
 
-2. Hard refresh the browser: `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac)
+1. Hard refresh the browser: `Ctrl+Shift+R` (or `Cmd+Shift+R` on Mac)
 
-3. Restart the server if changes still don't appear
+2. Restart the server if changes still don't appear
 
 ### API endpoint returns 401 Unauthorized
 
