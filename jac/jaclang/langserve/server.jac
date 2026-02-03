@@ -61,6 +61,7 @@ async def completion(
         (params.context.trigger_character if params.context else None)
     );
 }
+
 def hover(
     ls: JacLangServer, params: lspt.TextDocumentPositionParams
 ) -> Optional[lspt.Hover];
