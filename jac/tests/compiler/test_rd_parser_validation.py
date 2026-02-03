@@ -168,20 +168,19 @@ def parse_with_lark(
 def parse_with_rd(
     source: str, file_path: str
 ) -> tuple[CanonicalNode | None, str | None]:
-    """Parse source with RD parser and return canonical AST.
+    """Parse source with RD parser and return canonical AST."""
+    try:
+        from jaclang.parser.parser import parse
 
-    NOTE: This is a placeholder. Once the RD parser is bootstrapped,
-    this function will import and use the new parser.
-    """
-    # TODO: Import and use the RD parser once bootstrapped
-    # from jaclang.parser.parser import parse
-    # module, errors = parse(source, file_path)
-    # if errors:
-    #     return None, str(errors[0])
-    # return canonicalize_rd_ast(module), None
-
-    # For now, return a placeholder indicating RD parser not yet available
-    return None, "RD parser not yet bootstrapped"
+        module, parse_errors, lex_errors = parse(source, file_path)
+        if lex_errors:
+            return None, f"Lexer errors: {lex_errors[0]}"
+        if parse_errors:
+            return None, f"Parser errors: {parse_errors[0]}"
+        # RD parser produces same unitree nodes, so use same canonicalization
+        return canonicalize_lark_ast(module), None
+    except Exception as e:
+        return None, f"Exception: {type(e).__name__}: {e}"
 
 
 def compare_asts(lark_ast: CanonicalNode, rd_ast: CanonicalNode) -> str | None:

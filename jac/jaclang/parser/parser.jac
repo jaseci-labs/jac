@@ -122,7 +122,14 @@ import from jaclang.pycore.unitree {
 }
 import from jaclang.pycore.unitree { JsxText, JsxExpression }
 
-import from jaclang.pycore.constant { Tokens as Tok, SymbolAccess, SymbolType }
+import from jaclang.pycore.constant {
+    Tokens as Tok,
+    SymbolAccess,
+    SymbolType,
+    EdgeDir,
+    CodeContext
+}
+import from jaclang.pycore.unitree { AssignCompr }
 import from jaclang.pycore.codeinfo { CodeLocInfo }
 
 # =============================================================================
@@ -404,6 +411,8 @@ obj Parser {
     def parse_term -> Expr;
     def parse_power -> Expr;
     def parse_factor -> Expr;
+    def parse_connect -> Expr;
+    def parse_connect_op -> ConnectOp | DisconnectOp | None;
     def parse_atomic_pipe -> Expr;
     def parse_atomic_pipe_back -> Expr;
     def parse_unpack -> Expr;
@@ -425,6 +434,8 @@ obj Parser {
     # STATEMENT PARSING
     # =========================================================================
     def parse_element_stmt;
+    def parse_client_block -> ClientBlock;
+    def parse_server_block -> ServerBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
     def parse_statement;
