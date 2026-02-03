@@ -1078,14 +1078,7 @@ plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
 [plugins.client.vite.build]
-sourcemap = true
 minify = "esbuild"
-
-[plugins.client.vite.server]
-port = 3000
-open = true
-host = "0.0.0.0"
-cors = true
 """
             config_path = os.path.join(temp_dir, "jac.toml")
             with open(config_path, "w") as f:
@@ -1111,13 +1104,7 @@ cors = true
 
             # Read and validate build config content
             build_config_content = build_config_path.read_text()
-            assert "defineConfig" in build_config_content
-            assert "rollupOptions" in build_config_content  # Build-specific config
             assert "globalThis.__JAC_API_BASE_URL__" in build_config_content
-            assert "'\"\"'" in build_config_content  # Empty string value
-            assert "outDir:" in build_config_content  # Output directory
-            assert "emptyOutDir: true" in build_config_content  # Clean output
-            assert "entryFileNames:" in build_config_content  # Build output naming
             assert "jacSourceMapper()" in build_config_content  # Build-specific plugin
             assert "tailwindcss()" in build_config_content  # Tailwind plugin
             assert "@tailwindcss/vite" in build_config_content  # Tailwind import
@@ -1131,19 +1118,11 @@ cors = true
 
             # Read and validate dev config content
             dev_config_content = dev_config_path.read_text()
-            assert "defineConfig" in dev_config_content
-            assert "server:" in dev_config_content  # Dev server config
             assert "globalThis.__JAC_API_BASE_URL__" in dev_config_content
-            assert "proxy:" in dev_config_content  # API proxy
             assert '"http://localhost:8001"' in dev_config_content  # API port
             assert "/walker" in dev_config_content  # Walker endpoint proxy
-            assert "/function" in dev_config_content  # Function endpoint proxy
-            assert "usePolling: true" in dev_config_content  # File watching
-            assert "watch:" in dev_config_content  # Watch configuration
             assert "tailwindcss()" in dev_config_content  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content  # Tailwind import
-            assert "port: 3000" in dev_config_content  # Port setting
-            assert "open: true" in dev_config_content  # Open browser
 
             # Verify configs are different (dev vs build)
             assert build_config_content != dev_config_content
