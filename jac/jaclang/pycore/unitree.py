@@ -1625,12 +1625,15 @@ class ModulePath(UniNode):
         return resolve_relative_path(target, self.loc.mod_path)
 
     def resolve_relative_path_list(self) -> list[str]:
-        """Convert an import target string into a relative file path."""
+        """Convert an import target string into file paths, filtering out directories."""
         parts = self.dot_path_str.split(".")
         paths = []
         for i in range(len(parts)):
             sub_path = ".".join(parts[: i + 1])
-            paths.append(resolve_relative_path(sub_path, self.loc.mod_path))
+            resolved = resolve_relative_path(sub_path, self.loc.mod_path)
+            # Only include actual files, not directories
+            if not os.path.isdir(resolved):
+                paths.append(resolved)
         return paths
 
     def normalize(self, deep: bool = False) -> bool:
