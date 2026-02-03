@@ -103,9 +103,11 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     }
     # Install all Python packages in a single pip command
     if specs {
-        console.print(
-            f"Installing {len(specs)} package(s) with dependency resolution..."
-        );
+        console.print(f"\n📦 Installing {len(specs)} package(s):", style="bold");
+        for spec in specs {
+            console.print(f"  • {spec}", style="cyan");
+        }
+        console.print("");
         if not self._install_batch(specs) {
             return False;
         }
@@ -139,13 +141,29 @@ impl DependencyInstaller._install_batch(specs: list[str]) -> bool {
     if not specs {
         return True;
     }
+    import re;
     (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
     if returncode == 0 {
-        console.print(f"  Successfully installed {len(specs)} package(s)");
+        # Parse and display what was actually installed
+        if "Successfully installed" in stdout {
+            console.print("✔ Installation complete:", style="success");
+            # Extract installed packages from pip output
+            installed = re.search(r"Successfully installed (.+)", stdout);
+            if installed {
+                packages = installed.group(1).split();
+                for pkg in packages {
+                    console.print(f"  ✓ {pkg}", style="dim");
+                }
+            }
+        } else {
+            console.print(
+                f"✔ Successfully installed {len(specs)} package(s)", style="success"
+            );
+        }
         return True;
     }
     # Batch failed - show error and suggest checking for conflicts
-    console.error(f"  Batch installation failed: {stderr}");
+    console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
 }
