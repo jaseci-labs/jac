@@ -46,61 +46,57 @@ class DatabaseProviderFactory {
 
     """Create a database client based on type and URI.
 
-    This is for direct database access (not Kubernetes deployment).
+        This is for direct database access (not Kubernetes deployment).
 
-    Args:
-        db_type: Type of database ('mongodb' or 'redis')
-        uri: Optional database URI. If not provided, will use environment variables or config
-        config: Optional provider-specific configuration
+        Args:
+            db_type: Type of database ('mongodb' or 'redis')
+            uri: Optional database URI. If not provided, will use environment variables or config
+            config: Optional provider-specific configuration
 
-    Returns:
-        Database client instance (MongoClient or Redis)
+        Returns:
+            Database client instance (MongoClient or Redis)
 
-    Raises:
-        ValueError: If db_type is not supported
-    """
+        Raises:
+            ValueError: If db_type is not supported
+        """
     static def create_client(
         db_type: (DatabaseType | str),
-        uri: (str | None) = None,
-        config: (dict[str, Any] | None) = None
+        uri: Optional[str] = None,
+        config: Optional[Dict[(str, Any)]] = None
     ) -> Any {
-        # Convert string to enum if needed
         if isinstance(db_type, str) {
-            db_type = DatabaseType(db_type);
+            try {
+                db_type = DatabaseType(db_type);
+            } except ValueError {
+                ;
+            }
         }
-
-        if db_type == DatabaseType.MONGODB {
+        if (db_type == DatabaseType.MONGODB) {
             import from pymongo { MongoClient }
-            import from jac_scale.config_loader { get_scale_config }
-            # Priority: explicit URI > environment variable > config file
-            if uri is None {
+            if (uri is None) {
                 scale_config = get_scale_config();
                 db_config = scale_config.get_database_config();
                 uri = db_config.get('mongodb_uri');
             }
-            if uri is None {
+            if (uri is None) {
                 raise ValueError(
-                    "MongoDB URI not provided. Specify via uri parameter, "
-                    "MONGODB_URI environment variable, or jac.toml config."
+                    'MongoDB URI not provided. Specify via uri parameter, MONGODB_URI environment variable, or jac.toml config.'
                 ) ;
             }
-            return MongoClient(uri);
-        } elif db_type == DatabaseType.REDIS {
+            return MongoClient(cast(str, uri), **(config or {}));
+        } elif (db_type == DatabaseType.REDIS) {
             import from redis { Redis }
-            import from jac_scale.config_loader { get_scale_config }
-            # Priority: explicit URI > environment variable > config file
-            if uri is None {
+            if (uri is None) {
                 scale_config = get_scale_config();
                 db_config = scale_config.get_database_config();
                 uri = db_config.get('redis_url');
             }
-            if uri is None {
+            if (uri is None) {
                 raise ValueError(
-                    "Redis URL not provided. Specify via uri parameter, "
-                    "REDIS_URL environment variable, or jac.toml config."
+                    'Redis URL not provided. Specify via uri parameter, REDIS_URL environment variable, or jac.toml config.'
                 ) ;
             }
-            return Redis.from_url(uri);
+            return Redis.from_url(cast(str, uri), **(config or {}));
         } else {
             raise ValueError(f"Unsupported database type: {db_type}") ;
         }
