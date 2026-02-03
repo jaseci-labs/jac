@@ -314,3 +314,4 @@ jaccomplete.jac
 jaccomplete.impl.jac
 route_scanner.impl.jac
 nested.jac
+docstring_errors.jac
