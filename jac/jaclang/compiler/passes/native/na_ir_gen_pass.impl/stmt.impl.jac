@@ -162,6 +162,11 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
     if isinstance(node.target, (<>list, <>tuple))
     else [(node.target)];
     for target_expr in targets {
+        # Handle tuple unpacking: (a, b) = expr
+        if isinstance(target_expr, uni.TupleVal) {
+            self._codegen_tuple_unpack(target_expr.values, value, node.value);
+            continue;
+        }
         # Handle field assignment: self.x = val or obj.field = val
         if isinstance(target_expr, uni.AtomTrailer) and target_expr.is_attr {
             self._codegen_field_assign(target_expr, value);

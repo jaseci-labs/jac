@@ -77,6 +77,37 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                 }
             }
         }
+        # Handle tuple[T1, T2, ...] type annotations
+        if target_name == "tuple" {
+            if type_expr?.right and type_expr.right?.slices {
+                slices = type_expr.right.slices or [];
+                elem_types: list[ir.Type] = [];
+                for s in slices {
+                    # Check if slice.start is a TupleVal (tuple[int, int] parses as tuple[(int, int)])
+                    if s?.start and isinstance(s.start, uni.TupleVal) {
+                        for tv in s.start.values {
+                            et = self._resolve_jac_type(tv);
+                            elem_types.append(et);
+                        }
+                    } elif s?.start and s.start is not None {
+                        et = self._resolve_jac_type(s.start);
+                        elem_types.append(et);
+                    } else {
+                        et = self._resolve_jac_type(s);
+                        elem_types.append(et);
+                    }
+                }
+                if elem_types {
+                    n = len(elem_types);
+                    tuple_key = f"Tuple.{n}." + ".".join([str(t) for t in elem_types]);
+                    if tuple_key not in self.tuple_types {
+                        struct_type = ir.LiteralStructType(elem_types);
+                        self.tuple_types[tuple_key] = struct_type;
+                    }
+                    return self.tuple_types[tuple_key].as_pointer();
+                }
+            }
+        }
     }
     # Try expr_type string
     if type_expr?.expr_type and type_expr.expr_type in self.type_map {
@@ -243,6 +274,34 @@ impl NaIRGenPass._emit_binary_op(
         } elif op == Tok.MOD {
             return self.builder.srem(left, right, name="mod");
         }
+    }
+    # Power operator (integer exponentiation via loop, float via pow)
+    if op == Tok.STAR_POW {
+        if is_float {
+            pow_fn = self._get_or_declare_extern(
+                "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
+            );
+            return self.builder.call(pow_fn, [left, right], name="pow");
+        } else {
+            # Integer power: use loop-based exponentiation
+            return self._codegen_int_pow(left, right);
+        }
+    }
+    # Bitwise operators (integer only)
+    if op == Tok.BW_AND {
+        return self.builder.and_(left, right, name="bwand");
+    }
+    if op == Tok.BW_OR {
+        return self.builder.or_(left, right, name="bwor");
+    }
+    if op == Tok.BW_XOR {
+        return self.builder.xor(left, right, name="bwxor");
+    }
+    if op == Tok.LSHIFT {
+        return self.builder.shl(left, right, name="shl");
+    }
+    if op == Tok.RSHIFT {
+        return self.builder.ashr(left, right, name="ashr");
     }
     # Logical operators
     if op == Tok.KW_AND {

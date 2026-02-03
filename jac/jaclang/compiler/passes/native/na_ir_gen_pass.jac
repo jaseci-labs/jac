@@ -66,6 +66,7 @@ obj NaIRGenPass(Transform) {
         op: str, left: ir.Value, right: ir.Value, is_float: bool
     ) -> (ir.Value | None);
 
+    def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(<>node: uni.Enum) -> None;
     def _codegen_atom_trailer(node: uni.AtomTrailer) -> (ir.Value | None);
@@ -126,4 +127,34 @@ obj NaIRGenPass(Transform) {
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(<>node: uni.ModuleCode) -> None;
+    # Phase 9: Tuples
+    def _codegen_tuple_val(node: uni.TupleVal) -> (ir.Value | None);
+    def _codegen_tuple_unpack(
+        targets: list, tuple_val: ir.Value, tuple_node: (object | None)
+    ) -> None;
+
+    def _codegen_tuple_index(
+        tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
+    ) -> (ir.Value | None);
+
+    def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
+    # Phase 10: Comprehensions
+    def _codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None);
+    def _codegen_compr_loops(
+        comprs: list,
+        idx: int,
+        list_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str
+    ) -> None;
+
+    def _codegen_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        list_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str,
+        conditionals: list
+    ) -> None;
 }

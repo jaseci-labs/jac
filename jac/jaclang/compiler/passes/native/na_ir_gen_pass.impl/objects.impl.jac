@@ -184,10 +184,9 @@ impl NaIRGenPass._codegen_archetype(<>node: uni.Archetype) -> None {
             }
         }
     }
-    # Define the struct body
-    if field_types {
-        struct_type.set_body(*field_types);
-    }
+    # Define the struct body (always call set_body, even with empty field_types,
+    # to make the struct type non-opaque so GEP operations work)
+    struct_type.set_body(*field_types);
     self.struct_field_indices[arch_name] = field_index_map;
     self.struct_field_types[arch_name] = field_type_map;
     self.struct_field_defaults[arch_name] = field_default_map;
@@ -240,8 +239,12 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_builder = self.builder;
     saved_locals = self.local_vars;
     saved_type_map = dict(self.type_var_map);
+    saved_type_node = dict(self.var_type_node);
+    saved_list_elem = dict(self.var_list_elem_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.var_type_node = {};
+    self.var_list_elem_type = {};
     # Store self pointer
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -308,6 +311,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.builder = saved_builder;
     self.local_vars = saved_locals;
     self.type_var_map = saved_type_map;
+    self.var_type_node = saved_type_node;
+    self.var_list_elem_type = saved_list_elem;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""

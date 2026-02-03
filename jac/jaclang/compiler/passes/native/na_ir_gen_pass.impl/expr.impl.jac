@@ -5,7 +5,17 @@ impl NaIRGenPass._codegen_expr(node: (uni.UniNode | None)) -> (ir.Value | None) 
         return None;
     }
     if isinstance(node, uni.Int) {
-        return ir.Constant(ir.IntType(64), int(node.value));
+        # Handle hex, octal, binary literals based on name attribute
+        tok_name = node?.name;
+        if tok_name == Tok.HEX {
+            return ir.Constant(ir.IntType(64), int(node.value, 16));
+        } elif tok_name == Tok.OCT {
+            return ir.Constant(ir.IntType(64), int(node.value, 8));
+        } elif tok_name == Tok.BIN {
+            return ir.Constant(ir.IntType(64), int(node.value, 2));
+        } else {
+            return ir.Constant(ir.IntType(64), int(node.value));
+        }
     }
     if isinstance(node, uni.Float) {
         return ir.Constant(ir.DoubleType(), float(node.value));
@@ -52,6 +62,16 @@ impl NaIRGenPass._codegen_expr(node: (uni.UniNode | None)) -> (ir.Value | None) 
     }
     if isinstance(node, uni.ListVal) {
         return self._codegen_list_val(node);
+    }
+    if isinstance(node, uni.ListCompr) {
+        # Skip set/dict comprehensions for now (SetCompr/DictCompr extend ListCompr)
+        if isinstance(node, uni.SetCompr) or isinstance(node, uni.DictCompr) {
+            return None;
+        }
+        return self._codegen_list_compr(node);
+    }
+    if isinstance(node, uni.TupleVal) {
+        return self._codegen_tuple_val(node);
     }
     # Handle parenthesized expressions: (expr) → AtomUnit
     if isinstance(node, uni.AtomUnit) {
@@ -148,6 +168,12 @@ impl NaIRGenPass._codegen_unary(node: uni.UnaryExpr) -> (ir.Value | None) {
         } elif isinstance(operand.type, ir.IntType) {
             zero = ir.Constant(operand.type, 0);
             return self.builder.icmp_signed("==", operand, zero, name="not");
+        }
+    } elif op == Tok.BW_NOT {
+        # Bitwise NOT: ~x = x XOR -1 (all 1s)
+        if isinstance(operand.type, ir.IntType) {
+            all_ones = ir.Constant(operand.type, -1);
+            return self.builder.xor(operand, all_ones, name="bwnot");
         }
     }
     return None;
@@ -408,6 +434,25 @@ impl NaIRGenPass._codegen_atom_trailer(node: uni.AtomTrailer) -> (ir.Value | Non
                                 self._last_type_node_hint = inner_node;
                             }
                             return result;
+                        }
+                    }
+                }
+                # Check for tuple indexing (pointer to LiteralStructType)
+                if isinstance(target_val.type, ir.PointerType) {
+                    pointee = target_val.type.pointee;
+                    if isinstance(pointee, ir.LiteralStructType) {
+                        slices = node.right.slices or [];
+                        if slices {
+                            idx_node = slices[0];
+                            idx_val = self._codegen_expr(idx_node);
+                            if idx_val is None and idx_node?.start {
+                                idx_val = self._codegen_expr(idx_node.start);
+                            }
+                            if idx_val is not None {
+                                return self._codegen_tuple_index(
+                                    target_val, idx_val, pointee
+                                );
+                            }
                         }
                     }
                 }

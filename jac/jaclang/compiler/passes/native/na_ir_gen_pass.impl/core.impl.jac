@@ -46,6 +46,8 @@ impl NaIRGenPass.init(
     self.vtable_layouts: dict[(str, list[str])] = {};
     self.vtable_method_indices: dict[(str, dict)] = {};
     self.vtable_globals: dict[(str, ir.GlobalVariable)] = {};
+    # Tuple support (Phase 9)
+    self.tuple_types: dict[(str, object)] = {};  # type_key → LiteralStructType
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 
