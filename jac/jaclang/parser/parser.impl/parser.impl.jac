@@ -777,17 +777,30 @@ impl Parser.parse_atomic_chain -> Expr {
             kid.append(self.gen_token(Tok.RPAREN.value, ")"));
             expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
         } elif self.match_tok(TokenKind.LSQUARE) {
-            index = self.parse_expression();
+            # Handle generic type params or index slices (may have commas)
+            indices: list = [];
+            slices: list = [];
+            kid = [expr, self.gen_token(Tok.LSQUARE.value, "[")];
+            # Parse first index/slice
+            if not self.check(TokenKind.RSQUARE) {
+                first = self.parse_expression();
+                indices.append(first);
+                kid.append(first);
+                slices.append(IndexSlice.Slice(start=None, stop=first, step=None));
+                # Parse additional comma-separated indices
+                while self.match_tok(TokenKind.COMMA) {
+                    kid.append(self.gen_token(Tok.COMMA.value, ","));
+                    if self.check(TokenKind.RSQUARE) {
+                        break;
+                    }
+                    idx = self.parse_expression();
+                    indices.append(idx);
+                    kid.append(idx);
+                    slices.append(IndexSlice.Slice(start=None, stop=idx, step=None));
+                }
+            }
             self.expect(TokenKind.RSQUARE);
-            slices = [
-                IndexSlice.Slice(start=None, stop=index, step=None, is_range=False)
-            ];
-            kid = [
-                expr,
-                self.gen_token(Tok.LSQUARE.value, "["),
-                index,
-                self.gen_token(Tok.RSQUARE.value, "]")
-            ];
+            kid.append(self.gen_token(Tok.RSQUARE.value, "]"));
             expr = IndexSlice(slices=slices, is_range=False, kid=kid);
         } else {
             break;
@@ -897,6 +910,50 @@ impl Parser.parse_atom -> Expr {
             name = self.make_name(name_tok);
             return TypeRef(target=name, kid=[type_op, name]);
         }
+        # Handle archetype keywords: `node, `edge, `walker, etc.
+        if self.check_any(
+            TokenKind.KW_NODE,
+            TokenKind.KW_EDGE,
+            TokenKind.KW_WALKER,
+            TokenKind.KW_OBJECT,
+            TokenKind.KW_CLASS
+        ) {
+            tok = self.advance();
+            # Treat the keyword as a name for type reference
+            name = self.make_special_name(tok);
+            return TypeRef(target=name, kid=[type_op, name]);
+        }
+        # Handle builtin types: `int, `str, etc.
+        if self.check_any(
+            TokenKind.TYP_STRING,
+            TokenKind.TYP_INT,
+            TokenKind.TYP_FLOAT,
+            TokenKind.TYP_LIST,
+            TokenKind.TYP_TUPLE,
+            TokenKind.TYP_SET,
+            TokenKind.TYP_DICT,
+            TokenKind.TYP_BOOL,
+            TokenKind.TYP_BYTES,
+            TokenKind.TYP_ANY,
+            TokenKind.TYP_TYPE
+        ) {
+            tok = self.advance();
+            builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
+            if tok.kind in TOKEN_KIND_TO_TOK
+            else tok.kind.value;
+            builtin = BuiltinType(
+                orig_src=self.get_source(),
+                name=builtin_name,
+                value=tok.value,
+                line=tok.loc.line,
+                end_line=tok.loc.end_line,
+                col_start=tok.loc.col_start,
+                col_end=tok.loc.col_end,
+                pos_start=tok.loc.pos_start,
+                pos_end=tok.loc.pos_end
+            );
+            return TypeRef(target=builtin, kid=[type_op, builtin]);
+        }
     }
     if self.check_any(
         TokenKind.KW_SELF,
@@ -956,6 +1013,25 @@ impl Parser.parse_atom -> Expr {
         );
     }
     if self.match_tok(TokenKind.LSQUARE) {
+        # Check if this is an edge reference chain [-->], [<--], [<-->], etc.
+        if self.check_any(
+            TokenKind.ARROW_R,
+            TokenKind.ARROW_L,
+            TokenKind.ARROW_BI,
+            TokenKind.KW_ASYNC,
+            TokenKind.KW_NODE,
+            TokenKind.KW_EDGE
+        )
+        or (
+            self.check(TokenKind.NAME)
+            and self.peek().kind in [
+                TokenKind.ARROW_R,
+                TokenKind.ARROW_L,
+                TokenKind.ARROW_BI
+            ]
+        ) {
+            return self.parse_edge_ref_chain();
+        }
         return self.parse_list_or_compr();
     }
     if self.match_tok(TokenKind.LBRACE) {
@@ -1058,6 +1134,51 @@ impl Parser.parse_list_or_compr -> Expr {
     }
     kid.append(self.gen_token(Tok.RSQUARE.value));
     return ListVal(values=values, kid=kid);
+}
+
+impl Parser.parse_edge_ref_chain -> Expr {
+    # Parse edge reference chain: [-->], [<--], [<-->], [node -->], etc.
+    # Already consumed LSQUARE
+    kid: list = [self.gen_token(Tok.LSQUARE.value)];
+    is_async = False;
+    if self.match_tok(TokenKind.KW_ASYNC) {
+        is_async = True;
+        kid.append(self.gen_token(Tok.KW_ASYNC.value));
+    }
+    # Optional node/edge filter keyword
+    filter_type = None;
+    if self.check_any(TokenKind.KW_NODE, TokenKind.KW_EDGE) {
+        filter_type = self.advance();
+        kid.append(self.make_uni_token(filter_type));
+    }
+    # Parse edge operations
+    edge_ops: list = [];
+    while self.check_any(
+        TokenKind.ARROW_R,
+        TokenKind.ARROW_L,
+        TokenKind.ARROW_BI,
+        TokenKind.ARROW_R_P1,
+        TokenKind.ARROW_L_P1
+    ) {
+        edge_tok = self.advance();
+        edge_op = self.make_uni_token(edge_tok);
+        edge_ops.append(EdgeOpRef(filter_cond=None, edge_dir=edge_op, kid=[edge_op]));
+        kid.append(edge_op);
+        # Check for filter expressions after edge operator
+        if self.check(TokenKind.NAME) and not self.check(TokenKind.RSQUARE) {
+            filter_expr = self.parse_expression();
+            kid.append(filter_expr);
+        }
+    }
+    self.expect(TokenKind.RSQUARE);
+    kid.append(self.gen_token(Tok.RSQUARE.value));
+    # Create an AtomUnit to wrap the edge reference
+    # The first edge_op becomes the main target
+    if len(edge_ops) > 0 {
+        return AtomUnit(value=edge_ops[0], kid=kid);
+    }
+    # Fallback - return empty list for malformed edge ref
+    return ListVal(values=[], kid=kid);
 }
 
 impl Parser.parse_dict_or_set -> Expr {
@@ -1203,6 +1324,21 @@ impl Parser.parse_lambda_expr -> Expr {
         self.error("Expected ':' or '{' after lambda parameters");
         body = self.parse_expression();
     }
+    # Build FuncSignature kid list
+    sig_kid: list = [];
+    if len(params) > 0 {
+        sig_kid.append(self.gen_token(Tok.LPAREN.value, "("));
+        sig_kid.extend(params);
+        sig_kid.append(self.gen_token(Tok.RPAREN.value, ")"));
+    }
+    if return_type {
+        sig_kid.append(self.gen_token(Tok.RETURN_HINT.value, "->"));
+        sig_kid.append(return_type);
+    }
+    # Ensure non-empty kid list
+    if len(sig_kid) == 0 {
+        sig_kid.append(EmptyToken());
+    }
     signature = FuncSignature(
         posonly_params=[],
         params=params,
@@ -1210,7 +1346,7 @@ impl Parser.parse_lambda_expr -> Expr {
         kwonlyargs=[],
         kwargs=None,
         return_type=return_type,
-        kid=[]
+        kid=sig_kid
     );
     kid: list = [lambda_tok];
     kid.extend(params);
@@ -1228,8 +1364,47 @@ impl Parser.parse_lambda_params -> list {
         name_tok = self.advance();
         name = self.make_name(name_tok);
         type_tag: SubTag | None = None;
-        if self.match_tok(TokenKind.COLON) {
-            type_tag = SubTag(tag=(te := self.parse_expression()), kid=[te]);
+        # Check for type annotation: name: type
+        # But we need to distinguish from lambda body colon: lambda x, y: expr
+        # Type annotation COLON is followed by a type and then COMMA, EQ, COLON (for more params), or RETURN_HINT
+        # Body COLON is followed by an expression
+        # Heuristic: if we see COLON, check if peek is a type-starting token (name, builtin)
+        # and peek(2) is COMMA or EQ or RETURN_HINT - then it's a type annotation
+        if self.check(TokenKind.COLON) {
+            # Save position for potential backtrack
+            next_tok = self.peek();
+            # Type annotation should be: : TYPE (COMMA|EQ|COLON|RETURN_HINT|LBRACE)
+            # For simple types, check if after type there's a comma or equals
+            is_type_annotation = False;
+            if next_tok.kind in [
+                TokenKind.NAME,
+                TokenKind.TYP_STRING,
+                TokenKind.TYP_INT,
+                TokenKind.TYP_FLOAT,
+                TokenKind.TYP_LIST,
+                TokenKind.TYP_TUPLE,
+                TokenKind.TYP_SET,
+                TokenKind.TYP_DICT,
+                TokenKind.TYP_BOOL,
+                TokenKind.TYP_BYTES,
+                TokenKind.TYP_ANY,
+                TokenKind.TYP_TYPE
+            ] {
+                # Check what follows the type
+                after_type = self.peek(2);
+                if after_type.kind in [
+                    TokenKind.COMMA,
+                    TokenKind.EQ,
+                    TokenKind.RETURN_HINT,
+                    TokenKind.LBRACE
+                ] {
+                    is_type_annotation = True;
+                }
+            }
+            if is_type_annotation {
+                self.advance();  # consume COLON
+                type_tag = SubTag(tag=(te := self.parse_pipe()), kid=[te]);
+            }
         }
         default_val: Expr | None = None;
         if self.match_tok(TokenKind.EQ) {
@@ -1286,6 +1461,14 @@ impl Parser.parse_element_stmt{
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         return self.parse_ability();
+    }
+    # Handle global variables: glob VAR: type = value;
+    if self.check(TokenKind.KW_GLOBAL) {
+        return self.parse_global_var();
+    }
+    # Handle impl blocks at top level: impl Name.method { ... }
+    if self.check(TokenKind.KW_IMPL) {
+        return self.parse_impl_def();
     }
     # Handle 'with entry { ... }' module code
     if self.check(TokenKind.KW_WITH) {
@@ -1350,6 +1533,10 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
     }
+    # Handle async for loops
+    if self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR {
+        return self.parse_for_stmt();
+    }
     if self.check(TokenKind.KW_FOR) {
         return self.parse_for_stmt();
     }
@@ -1361,6 +1548,10 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_MATCH) {
         return self.parse_match_stmt();
+    }
+    # Handle switch statements
+    if self.check(TokenKind.KW_SWITCH) {
+        return self.parse_switch_stmt();
     }
     if self.check(TokenKind.KW_RETURN) {
         return self.parse_return_stmt();
@@ -1393,8 +1584,37 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_DELETE) {
         return self.parse_delete_stmt();
     }
+    # Handle visit statement
+    if self.check(TokenKind.KW_VISIT) {
+        return self.parse_visit_stmt();
+    }
+    # Handle disengage statement
+    if self.check(TokenKind.KW_DISENGAGE) {
+        self.advance();
+        self.match_tok(TokenKind.SEMI);
+        return DisengageStmt(kid=[self.gen_token(Tok.KW_DISENGAGE.value)]);
+    }
+    # Handle report statement
+    if self.check(TokenKind.KW_REPORT) {
+        return self.parse_report_stmt();
+    }
     expr = self.parse_expression();
-    if self.check(TokenKind.EQ) or self.check(TokenKind.COLON) {
+    if self.check(TokenKind.EQ)
+    or self.check(TokenKind.COLON)
+    or self.check_any(
+        TokenKind.ADD_EQ,
+        TokenKind.SUB_EQ,
+        TokenKind.MUL_EQ,
+        TokenKind.DIV_EQ,
+        TokenKind.FLOOR_DIV_EQ,
+        TokenKind.MOD_EQ,
+        TokenKind.STAR_POW_EQ,
+        TokenKind.BW_AND_EQ,
+        TokenKind.BW_OR_EQ,
+        TokenKind.BW_XOR_EQ,
+        TokenKind.LSHIFT_EQ,
+        TokenKind.RSHIFT_EQ
+    ) {
         return self.parse_assignment_with_target(expr);
     }
     self.match_tok(TokenKind.SEMI);
@@ -1491,7 +1711,83 @@ impl Parser.parse_for_stmt{
         is_async = True;
     }
     self.expect(TokenKind.KW_FOR);
+    # Parse target (could be assignment for iter_for_stmt or atomic_chain for in_for_stmt)
     target = self.parse_atomic_chain();
+    # Check if this is a for...to...by loop (IterForStmt)
+    if self.check(TokenKind.EQ) {
+        # This is: for i = 0 to 10 by i += 1 { ... }
+        self.advance();  # consume '='
+        start_val = self.parse_expression();
+        self.expect(TokenKind.KW_TO);
+        end_val = self.parse_pipe();
+        self.expect(TokenKind.KW_BY);
+        # Parse the step assignment
+        step_target = self.parse_atomic_chain();
+        step_assign: Assignment;
+        if self.check_any(
+            TokenKind.ADD_EQ,
+            TokenKind.SUB_EQ,
+            TokenKind.MUL_EQ,
+            TokenKind.DIV_EQ,
+            TokenKind.FLOOR_DIV_EQ,
+            TokenKind.MOD_EQ,
+            TokenKind.STAR_POW_EQ
+        ) {
+            step_assign = self.parse_assignment_with_target(step_target);
+        } else {
+            self.error("Expected augmented assignment in for...to...by step");
+            step_assign = Assignment(
+                target=[step_target],
+                value=None,
+                type_tag=None,
+                kid=[step_target],
+                mutable=True,
+                aug_op=None,
+                is_enum_stmt=False
+            );
+        }
+        self.expect(TokenKind.LBRACE);
+        body = self.parse_code_block_stmts();
+        self.expect(TokenKind.RBRACE);
+        else_body = None;
+        if self.check(TokenKind.KW_ELSE) {
+            else_body = self.parse_else_stmt();
+        }
+        # Create the initial assignment
+        init_assign = Assignment(
+            target=[target],
+            value=start_val,
+            type_tag=None,
+            kid=[target, self.gen_token(Tok.EQ.value), start_val],
+            mutable=True,
+            aug_op=None,
+            is_enum_stmt=False
+        );
+        kid: list = [
+            self.gen_token(Tok.KW_FOR.value),
+            init_assign,
+            self.gen_token(Tok.KW_TO.value),
+            end_val,
+            self.gen_token(Tok.KW_BY.value),
+            step_assign,
+            self.gen_token(Tok.LBRACE.value)
+        ];
+        kid.extend(body);
+        kid.append(self.gen_token(Tok.RBRACE.value));
+        if else_body {
+            kid.append(else_body);
+        }
+        return IterForStmt(
+            iter=init_assign,
+            is_async=is_async,
+            condition=end_val,
+            count_by=step_assign,
+            body=body,
+            else_body=else_body,
+            kid=kid
+        );
+    }
+    # Standard for...in loop
     self.expect(TokenKind.KW_IN);
     iter_expr = self.parse_expression();
     self.expect(TokenKind.LBRACE);
@@ -1968,8 +2264,25 @@ impl Parser.parse_archetype_member{
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
     }
-    if self.check(TokenKind.KW_HAS) or self.check(TokenKind.KW_STATIC) {
+    # Handle decorators for methods
+    if self.check(TokenKind.DECOR_OP) {
+        return self.parse_ability();
+    }
+    # Handle static has or static def/can
+    if self.check(TokenKind.KW_STATIC) {
+        # Look ahead to see if it's static has or static def/can
+        if self.peek().kind == TokenKind.KW_HAS {
+            return self.parse_has_stmt();
+        }
+        # static def or static can
+        return self.parse_ability();
+    }
+    if self.check(TokenKind.KW_HAS) {
         return self.parse_has_stmt();
+    }
+    # Handle async def/can methods
+    if self.check(TokenKind.KW_ASYNC) {
+        return self.parse_ability();
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_OVERRIDE) {
         return self.parse_ability();
@@ -2031,23 +2344,33 @@ impl Parser.parse_has_stmt -> ArchHas {
 }
 
 impl Parser.parse_has_var -> HasVar {
+    # Check for per-variable access modifier: :pub name: type
+    # Note: HasVar doesn't have access field - access modifiers are at ArchHas level
+    if self.match_tok(TokenKind.COLON) {
+        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
+            # Skip the access modifier token - it's consumed but not stored per-var
+            self.advance();
+        }
+    }
     name_tok = self.expect(TokenKind.NAME);
     name = self.make_name(name_tok);
     self.expect(TokenKind.COLON);
     type_expr = self.parse_pipe();
     type_tag = SubTag(tag=type_expr, kid=[type_expr]);
     value = None;
+    defer = False;
     if self.match_tok(TokenKind.EQ) {
         value = self.parse_expression();
     } elif self.match_tok(TokenKind.KW_BY) {
         self.expect(TokenKind.KW_POST_INIT);
+        defer = True;
     }
     kid: list = [name, self.gen_token(Tok.COLON.value), type_expr];
     if value {
         kid.append(self.gen_token(Tok.EQ.value));
         kid.append(value);
     }
-    return HasVar(name=name, type_tag=type_tag, value=value, defer=False, kid=kid);
+    return HasVar(name=name, type_tag=type_tag, value=value, defer=defer, kid=kid);
 }
 
 impl Parser.parse_ability -> Ability {
@@ -2089,8 +2412,15 @@ impl Parser.parse_ability -> Ability {
         if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
         else None;
         event_tok = self.advance();
+        event_uni_tok = self.make_uni_token(event_tok);
+        # Build EventSignature kid list
+        sig_kid: list = [self.gen_token(Tok.KW_WITH.value)];
+        if event_type {
+            sig_kid.append(event_type);
+        }
+        sig_kid.append(event_uni_tok);
         signature = EventSignature(
-            event=self.make_uni_token(event_tok), arch_tag_info=event_type, kid=[]
+            event=event_uni_tok, arch_tag_info=event_type, kid=sig_kid
         );
     } else {
         signature = self.parse_func_signature();
@@ -2331,6 +2661,269 @@ impl Parser.parse_test -> Test {
     kid.extend(body);
     kid.append(self.gen_token(Tok.RBRACE.value));
     return Test(name=name, body=body, kid=kid, doc=None);
+}
+
+# =============================================================================
+# Switch Statement Implementation
+# =============================================================================
+impl Parser.parse_switch_stmt -> SwitchStmt {
+    self.expect(TokenKind.KW_SWITCH);
+    target = self.parse_expression();
+    self.expect(TokenKind.LBRACE);
+    cases: list = [];
+    while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
+        cases.append(self.parse_switch_case());
+    }
+    self.expect(TokenKind.RBRACE);
+    kid: list = [
+        self.gen_token(Tok.KW_SWITCH.value),
+        target,
+        self.gen_token(Tok.LBRACE.value)
+    ];
+    kid.extend(cases);
+    kid.append(self.gen_token(Tok.RBRACE.value));
+    return SwitchStmt(target=target, cases=cases, kid=kid);
+}
+
+impl Parser.parse_switch_case -> SwitchCase {
+    is_default = False;
+    pattern = None;
+    if self.match_tok(TokenKind.KW_DEFAULT) {
+        is_default = True;
+    } else {
+        self.expect(TokenKind.KW_CASE);
+        pattern = self.parse_pattern();
+    }
+    self.expect(TokenKind.COLON);
+    body: list = [];
+    while not self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE)
+    and not self.at_end() {
+        stmt = self.parse_statement();
+        if stmt is not None {
+            body.append(stmt);
+        }
+    }
+    kid: list = [];
+    if is_default {
+        kid.append(self.gen_token(Tok.KW_DEFAULT.value));
+    } else {
+        kid.append(self.gen_token(Tok.KW_CASE.value));
+        if pattern {
+            kid.append(pattern);
+        }
+    }
+    kid.append(self.gen_token(Tok.COLON.value));
+    kid.extend(body);
+    return SwitchCase(pattern=pattern, body=body, kid=kid);
+}
+
+# =============================================================================
+# Global Variable Implementation
+# =============================================================================
+impl Parser.parse_global_var -> GlobalVars {
+    self.expect(TokenKind.KW_GLOBAL);
+    access = None;
+    if self.match_tok(TokenKind.COLON) {
+        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
+            access_tok = self.advance();
+            access = SubTag(tag=(at := self.make_uni_token(access_tok)), kid=[at]);
+        }
+    }
+    # Parse assignment list
+    assignments: list = [];
+    assignments.append(self.parse_global_var_assignment());
+    while self.match_tok(TokenKind.COMMA) {
+        assignments.append(self.parse_global_var_assignment());
+    }
+    self.expect(TokenKind.SEMI);
+    kid: list = [self.gen_token(Tok.KW_GLOBAL.value)];
+    if access {
+        kid.append(self.gen_token(Tok.COLON.value));
+        kid.append(access);
+    }
+    kid.extend(assignments);
+    return GlobalVars(
+        access=access, assignments=assignments, is_frozen=False, kid=kid, doc=None
+    );
+}
+
+impl Parser.parse_global_var_assignment -> Assignment {
+    name_tok = self.expect(TokenKind.NAME);
+    name = self.make_name(name_tok);
+    type_tag: SubTag | None = None;
+    if self.match_tok(TokenKind.COLON) {
+        type_tag = SubTag(tag=(tp := self.parse_pipe()), kid=[tp]);
+    }
+    value = None;
+    if self.match_tok(TokenKind.EQ) {
+        value = self.parse_expression();
+    }
+    kid: list = [name];
+    if type_tag {
+        kid.append(self.gen_token(Tok.COLON.value));
+        kid.append(type_tag.tag);
+    }
+    if value {
+        kid.append(self.gen_token(Tok.EQ.value));
+        kid.append(value);
+    }
+    return Assignment(
+        target=[name],
+        value=value,
+        type_tag=type_tag,
+        kid=kid,
+        mutable=True,
+        aug_op=None,
+        is_enum_stmt=False
+    );
+}
+
+# =============================================================================
+# Impl Definition Implementation
+# =============================================================================
+impl Parser.parse_impl_def -> ImplDef {
+    decorators: list = [];
+    while self.check(TokenKind.DECOR_OP) {
+        self.advance();
+        decorators.append(self.parse_atomic_chain());
+    }
+    self.expect(TokenKind.KW_IMPL);
+    # Parse dotted name as a list of Name objects (e.g., [MyClass, my_method])
+    target_names: list = [];
+    target_names.append(self.parse_impl_target_name());
+    while self.match_tok(TokenKind.DOT) {
+        target_names.append(self.parse_impl_target_name());
+    }
+    # Parse optional impl_spec (inherited_archs, func_decl, or event_clause)
+    spec: FuncSignature | EventSignature | list | None = None;
+    base_classes: list = [];
+    if self.match_tok(TokenKind.LPAREN) {
+        # inherited_archs
+        if not self.check(TokenKind.RPAREN) {
+            base_classes.append(self.parse_atomic_chain());
+            while self.match_tok(TokenKind.COMMA) {
+                base_classes.append(self.parse_atomic_chain());
+            }
+        }
+        self.expect(TokenKind.RPAREN);
+        spec = base_classes;
+    } elif self.check(TokenKind.KW_WITH) {
+        # event_clause
+        self.advance();
+        event_type = self.parse_expression()
+        if not self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT)
+        else None;
+        event_tok = self.advance();
+        spec = EventSignature(
+            event=self.make_uni_token(event_tok),
+            arch_tag_info=event_type,
+            kid=[self.make_uni_token(event_tok)]
+            if event_type is None
+            else [event_type, self.make_uni_token(event_tok)]
+        );
+    } elif self.check(TokenKind.RETURN_HINT)
+    or (self.check(TokenKind.LPAREN) and not self.check(TokenKind.LBRACE)) {
+        # func_decl
+        spec = self.parse_func_signature();
+    }
+    # Parse impl_tail (enum_block or block_tail)
+    body: list | Expr = [];
+    if self.match_tok(TokenKind.LBRACE) {
+        body = self.parse_code_block_stmts();
+        self.expect(TokenKind.RBRACE);
+    } elif self.match_tok(TokenKind.KW_BY) {
+        body = self.parse_expression();
+        self.expect(TokenKind.SEMI);
+    } else {
+        self.expect(TokenKind.SEMI);
+    }
+    kid: list = [];
+    kid.extend(decorators);
+    kid.append(self.gen_token(Tok.KW_IMPL.value));
+    for (i, n) in enumerate(target_names) {
+        kid.append(n);
+        if i < len(target_names) - 1 {
+            kid.append(self.gen_token(Tok.DOT.value));
+        }
+    }
+    if isinstance(body, list) {
+        kid.append(self.gen_token(Tok.LBRACE.value));
+        kid.extend(body);
+        kid.append(self.gen_token(Tok.RBRACE.value));
+    } else {
+        kid.append(self.gen_token(Tok.KW_BY.value));
+        kid.append(body);
+    }
+    return ImplDef(
+        decorators=decorators,
+        target=target_names,
+        spec=spec,
+        body=body,
+        kid=kid,
+        doc=None
+    );
+}
+
+impl Parser.parse_impl_target_name -> Name {
+    name_tok = self.expect(TokenKind.NAME);
+    return self.make_name(name_tok);
+}
+
+impl Parser.parse_dotted_name -> Expr {
+    name_tok = self.expect(TokenKind.NAME);
+    result: Expr = self.make_name(name_tok);
+    while self.match_tok(TokenKind.DOT) {
+        next_name_tok = self.expect(TokenKind.NAME);
+        next_name = self.make_name(next_name_tok);
+        kid: list = [result, self.gen_token(Tok.DOT.value, "."), next_name];
+        result = AtomTrailer(
+            target=result, right=next_name, is_attr=True, is_null_ok=False, kid=kid
+        );
+    }
+    return result;
+}
+
+# =============================================================================
+# Visit Statement Implementation
+# =============================================================================
+impl Parser.parse_visit_stmt -> VisitStmt {
+    self.expect(TokenKind.KW_VISIT);
+    # Check for optional insert location: visit :SomeExpr: target
+    insert_loc = None;
+    if self.match_tok(TokenKind.COLON) {
+        insert_loc = self.parse_expression();
+        self.expect(TokenKind.COLON);
+    }
+    target = self.parse_expression();
+    else_body = None;
+    if self.check(TokenKind.KW_ELSE) {
+        else_body = self.parse_else_stmt();
+    } else {
+        self.match_tok(TokenKind.SEMI);
+    }
+    kid: list = [self.gen_token(Tok.KW_VISIT.value)];
+    if insert_loc {
+        kid.append(self.gen_token(Tok.COLON.value));
+        kid.append(insert_loc);
+        kid.append(self.gen_token(Tok.COLON.value));
+    }
+    kid.append(target);
+    if else_body {
+        kid.append(else_body);
+    }
+    return VisitStmt(
+        insert_loc=insert_loc, target=target, else_body=else_body, kid=kid
+    );
+}
+
+# =============================================================================
+# Report Statement Implementation
+# =============================================================================
+impl Parser.parse_report_stmt -> ReportStmt {
+    self.expect(TokenKind.KW_REPORT);
+    expr = self.parse_expression();
+    self.match_tok(TokenKind.SEMI);
+    return ReportStmt(expr=expr, kid=[self.gen_token(Tok.KW_REPORT.value), expr]);
 }
 
 # =============================================================================

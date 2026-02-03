@@ -417,6 +417,7 @@ obj Parser {
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
+    def parse_edge_ref_chain -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params -> list;
@@ -438,11 +439,15 @@ obj Parser {
     def parse_match_stmt -> MatchStmt;
     def parse_match_case -> MatchCase;
     def parse_pattern;
+    def parse_switch_stmt -> SwitchStmt;
+    def parse_switch_case -> SwitchCase;
     def parse_return_stmt -> ReturnStmt;
     def parse_yield_stmt -> YieldExpr;
     def parse_raise_stmt -> RaiseStmt;
     def parse_assert_stmt -> AssertStmt;
     def parse_delete_stmt -> DeleteStmt;
+    def parse_visit_stmt -> VisitStmt;
+    def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(target: Expr) -> Assignment;
     # =========================================================================
     # DECLARATION PARSING
@@ -458,6 +463,11 @@ obj Parser {
     def parse_enum -> Enum;
     def parse_enum_member -> Assignment;
     def parse_test -> Test;
+    def parse_global_var -> GlobalVars;
+    def parse_global_var_assignment -> Assignment;
+    def parse_impl_def -> ImplDef;
+    def parse_impl_target_name -> Name;
+    def parse_dotted_name -> Expr;
 }
 
 # =============================================================================
