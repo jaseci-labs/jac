@@ -1,11 +1,17 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
+# JSX element representation
+obj JsxElement {
+    has tag: any,
+        props: dict = {},
+        children: list = [];
+}
 # JSX factory function
 def __jacJsx(
     tag: any, props: dict = {}, children: list = []
-) -> dict;
+) -> JsxElement;
 # DOM rendering function
-def renderJsxTree(node: any, container: any) -> None;
+def renderJsxTree(node: JsxElement, container: any) -> None;
 # Internal: Build DOM from JSX tree
 def __buildDom(node: any) -> any;
 # Internal: Apply property to DOM element

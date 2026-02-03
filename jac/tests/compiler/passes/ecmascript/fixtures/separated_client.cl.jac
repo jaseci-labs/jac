@@ -3,7 +3,7 @@ import from react { useState }
 # Import walker from server module
 sv import from .separated { create_todo }
 
-def:pub app()  -> any {
+def:pub app()  -> JsxElement {
     [todos, setTodos] = useState([]);
     [input, setInput] = useState("");
 

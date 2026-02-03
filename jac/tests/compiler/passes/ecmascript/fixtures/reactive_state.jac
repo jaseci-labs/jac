@@ -4,7 +4,7 @@ Note: useState import is auto-injected from @jac/runtime when `has` variables ar
 """
 
 cl {
-    def:pub counter_app() -> any {
+    def:pub counter_app() -> JsxElement {
         has count: int = 0;
         has name: str = "test";
 

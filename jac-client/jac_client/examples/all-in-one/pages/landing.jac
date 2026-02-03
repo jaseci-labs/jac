@@ -1,7 +1,7 @@
 cl import from "@jac/runtime" { Link }
 
 cl {
-    def:pub page -> any {
+    def:pub page -> JsxElement {
         return
             <div className="landing-container">
                 <section className="hero-section">

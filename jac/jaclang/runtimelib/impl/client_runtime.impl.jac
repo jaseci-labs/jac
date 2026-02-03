@@ -1,8 +1,8 @@
-impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> dict {
-    return {"tag": tag, "props": props, "children": children};
+impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
+    return JsxElement(tag=tag, props=props, children=children);
 }
 
-impl renderJsxTree(node: any, container: any) -> None {
+impl renderJsxTree(node: JsxElement, container: any) -> None {
     container.replaceChildren(__buildDom(node));
 }
 
@@ -25,10 +25,10 @@ impl __buildDom(node: any) -> any {
         return document.createTextNode(String(node));
     }
     # Handle component functions
-    tag = node.get("tag");
+    tag = node.tag;
     if __isFunction(tag) {
-        props = node.get("props", {});
-        children = node.get("children", []);
+        props = node.props;
+        children = node.children;
         # Merge children into props for component
         if children and children.length > 0 {
             props["children"] = children;
@@ -38,13 +38,13 @@ impl __buildDom(node: any) -> any {
     # Create element
     element = document.createElement(tag or "div");
     # Apply properties
-    props = node.get("props", {});
+    props = node.props;
     for key in __objectKeys(props) {
         value = props.get(key);
         __applyProp(element, key, value);
     }
     # Render children
-    children = node.get("children", []);
+    children = node.children;
     for child in children {
         childDom = __buildDom(child);
         if childDom {

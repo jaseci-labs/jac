@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast as py_ast
+import atexit
 import marshal
 import os
+import sys
 import types
 from threading import Event
 from typing import TYPE_CHECKING
@@ -123,6 +125,66 @@ def get_lint_sched() -> list[type[Transform[uni.Module, uni.Module]]]:
     ]
 
 
+class _SetupProgress:
+    """Tracks and displays progress during first-run compilation of internal modules."""
+
+    def __init__(self) -> None:
+        self._banner_shown = False
+        self._compile_count = 0
+        self._seen_files: set[str] = set()
+        self._jaclang_root: str | None = None
+
+    def _get_jaclang_root(self) -> str:
+        if self._jaclang_root is None:
+            self._jaclang_root = os.path.dirname(os.path.dirname(__file__))
+        return self._jaclang_root
+
+    def _atexit_handler(self) -> None:
+        """Print the completion summary when the process exits."""
+        if self._banner_shown and self._compile_count > 0:
+            print(  # noqa: T201
+                f"Jac setup complete!"
+                f" ({self._compile_count} modules compiled and cached)",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def on_internal_compile(self, file_path: str) -> None:
+        """Called when an internal jaclang module needs compilation (cache miss)."""
+        normalized = os.path.normpath(file_path)
+        if normalized in self._seen_files:
+            return
+        self._seen_files.add(normalized)
+        if not self._banner_shown:
+            self._banner_shown = True
+            atexit.register(self._atexit_handler)
+            print(  # noqa: T201
+                "\nSetting up Jac for first use (compiling and caching compiler)...",
+                file=sys.stderr,
+                flush=True,
+            )
+        # Show relative path from jaclang root for readability
+        jaclang_root = self._get_jaclang_root()
+        rel_path = file_path
+        if normalized.startswith(jaclang_root + os.sep):
+            rel_path = os.path.relpath(normalized, os.path.dirname(jaclang_root))
+        self._compile_count += 1
+        print(  # noqa: T201
+            f"  Compiling {rel_path}...",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    @property
+    def is_active(self) -> bool:
+        """Whether we're currently in a first-run setup."""
+        return self._banner_shown
+
+
+# Module-level singleton shared between JacCompiler and JacMetaImporter
+setup_progress = _SetupProgress()
+
+
 class JacCompiler:
     """Jac Compiler singleton.
 
@@ -212,6 +274,9 @@ class JacCompiler:
             return cached_code
 
         # Tier 3: Compile
+        is_internal = actual_program is self._internal_program
+        if is_internal:
+            setup_progress.on_internal_compile(full_target)
         result = self.compile(
             file_path=full_target, target_program=actual_program, minimal=minimal
         )

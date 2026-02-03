@@ -1,7 +1,7 @@
 # Header component
 # Demonstrates: simple component, CSS classes
 cl {
-    def:pub Header -> any {
+    def:pub Header -> JsxElement {
         return
             <header className="header">
                 <div className="header-content">

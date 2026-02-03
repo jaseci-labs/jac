@@ -2,13 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.5 (Unreleased)
+## jac-scale 0.1.6 (Unreleased)
 
+## jac-scale 0.1.5 (Latest Release)
+
+- **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Client bundle error help message**: When the client bundle build fails during `jac start`, the server now prints a troubleshooting suggestion to run `jac clean --all` and a link to the Discord community for support.
 - **`db` Builtin Implementation**: The `db()` builtin is now fully implemented in jac-scale, providing direct MongoDB access. Use `db()` for the default database or `db(db_name="my_db")` for a custom database name. Supports `find_one`, `find`, `insert_one`, `update_one`, and `delete_one` operations.
 - **Fix: Plugin Hook Keyword Arguments**: Fixed an issue where hook methods with default parameters (like `db(db_name="jac_db")`) were not receiving their arguments from pluggy. The `strip_defaults()` helper now ensures all hook method signatures have defaults removed, matching the behavior of `generate_plugin_helpers` in jaclang core.
 
-## jac-scale 0.1.4 (Latest Release)
+## jac-scale 0.1.4
 
 - **Console infrastructure**: Replaced bare `print()` calls with `console` abstraction for consistent output formatting.
 - **Hot fix: call state**: Normal spawn calls inside API spawn calls supported.
