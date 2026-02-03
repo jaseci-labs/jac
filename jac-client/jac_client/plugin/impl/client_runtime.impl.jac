@@ -59,20 +59,12 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     if right != "" {
         url = f"{base_url}/walker/{left}/{right}";
     }
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    };
+    headers = {"Content-Type": "application/json", "Accept": "application/json"};
     if token {
         headers["Authorization"] = f"Bearer {token}";
     }
     response = await fetch(
-        url,
-        {
-            "method": "POST",
-            "headers": headers,
-            "body": JSON.stringify(fields)
-        }
+        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
     );
     if not response.ok {
         error_text = await response.text();
@@ -96,11 +88,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     }
     response = await fetch(
         f"{base_url}/function/{function_name}",
-        {
-            "method": "POST",
-            "headers": headers,
-            "body": JSON.stringify(args)
-        }
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
         error_text = await response.text();
