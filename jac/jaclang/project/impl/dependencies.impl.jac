@@ -88,10 +88,10 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     }
 }
 
+"""Install all Python package dependencies in a single batch so pip can
+resolve compatible versions across interdependent packages."""
 impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
     self.ensure_venv();
-    # Collect all package specs for batch installation
-    # This allows pip to resolve compatible versions across all dependencies
     specs: list[str] = [];
     for (name, version) in self.config.dependencies.items() {
         specs.append(self._make_spec(name, version));
