@@ -434,7 +434,9 @@ impl add(
         (name, version) = resolver.parse_spec(pkg_spec);
         version_str = version or ">=0.0.0";
         with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
-            pkg_success = installer.install_package(name, version);
+            pkg_success = installer.install_package(
+                [installer._make_spec(name, version_str)]
+            );
         }
         if pkg_success {
             config.add_dependency(name, version_str, dev=dev, dep_type="python");

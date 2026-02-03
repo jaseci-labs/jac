@@ -108,7 +108,7 @@ impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
             console.print(f"  • {spec}", style="cyan");
         }
         console.print("");
-        if not self._install_batch(specs) {
+        if not self.install_package(specs) {
             return False;
         }
     }
@@ -136,11 +136,12 @@ impl DependencyInstaller._make_spec(name: str, version: str) -> str {
     return f"{name}=={version}";
 }
 
-"""Install packages in batch for proper dependency resolution."""
-impl DependencyInstaller._install_batch(specs: list[str]) -> bool {
+"""Install packages given a list of pip specs."""
+impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     if not specs {
         return True;
     }
+    self.ensure_venv();
     import re;
     (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
     if returncode == 0 {
@@ -166,21 +167,6 @@ impl DependencyInstaller._install_batch(specs: list[str]) -> bool {
     console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
-}
-
-impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
-    import sys;
-    self.ensure_venv();
-    spec = self._make_spec(name, version);
-    console.print(f"Installing {spec}...");
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
-    if returncode == 0 {
-        console.print(f"  {name} installed successfully");
-        return True;
-    } else {
-        console.error(f"  Failed to install {name}: {stderr}");
-        return False;
-    }
 }
 
 impl DependencyInstaller.install_git_package(

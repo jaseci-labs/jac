@@ -118,7 +118,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "Successfully installed", "")
 
-            result = installer.install_package("requests", ">=2.28.0")
+            result = installer.install_package(["requests>=2.28.0"])
 
             assert result is True
             mock_pip.assert_called_once()
@@ -140,7 +140,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (1, "", "Package not found")
 
-            result = installer.install_package("nonexistent-package")
+            result = installer.install_package(["nonexistent-package"])
 
             assert result is False
 
@@ -155,7 +155,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "", "")
 
-            installer.install_package("requests")
+            installer.install_package(["requests"])
 
             call_args = mock_pip.call_args[0][0]
             assert "requests" in call_args
