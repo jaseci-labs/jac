@@ -363,9 +363,10 @@ def count_pieces_by_kind(pieces: list[Piece]) -> dict[PieceKind, int] {
     return counts;
 }
 
-def merge_piece_info(**kwargs: int) -> dict[str, int] {
-    # Unpack operator in function parameter (**kwargs)
-    return {**kwargs};  # Dict unpack expression
+def merge_piece_info(white_pawns: int, black_pawns: int) -> dict[str, int] {
+    # Simplified: explicit parameters instead of **kwargs
+    result: dict[str, int] = {"white_pawns": white_pawns, "black_pawns": black_pawns};
+    return result;
 }
 
 def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
@@ -908,10 +909,10 @@ obj Game {
             white_counts: dict[PieceKind, int] = count_pieces_by_kind(white_pieces);
             black_counts: dict[PieceKind, int] = count_pieces_by_kind(black_pieces);
 
-            # Create piece summary using dict unpack helper
+            # Create piece summary
             piece_info: dict[str, int] = merge_piece_info(
-                white_pawns=white_counts[PieceKind.PAWN],
-                black_pawns=black_counts[PieceKind.PAWN]
+                white_counts[PieceKind.PAWN],
+                black_counts[PieceKind.PAWN]
             );
             print(f"Pawns - W: {piece_info['white_pawns']}, B: {piece_info['black_pawns']}");
 
