@@ -248,18 +248,13 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self.node_list: list[uni.UniNode] = []
         self._node_ids: set[int] = set()
 
-        # Always call Transform.__init__ to initialize errors_had and other attributes
         Transform.__init__(self, ir_in=root_ir, prog=prog, cancel_token=cancel_token)
 
     def transform(self, ir_in: uni.Source) -> uni.Module:
         """Transform input IR."""
         try:
-            import sys
-            import time
-
             # Check for cancellation before starting
             if self.is_canceled():
-                print(f"CANCELLED {time.time()}", file=sys.stderr)
                 mod = uni.Module.make_stub(inject_src=ir_in)
                 mod.has_syntax_errors = False
                 return mod
@@ -275,7 +270,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             # Check for cancellation again after parsing
             if self.is_canceled():
-                print(f"CANCELLED {time.time()}", file=sys.stderr)
                 mod = uni.Module.make_stub(inject_src=ir_in)
                 mod.has_syntax_errors = False
                 return mod

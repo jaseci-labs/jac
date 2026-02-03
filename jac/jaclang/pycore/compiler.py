@@ -416,9 +416,6 @@ class JacCompiler:
         """Run a list of passes on a module."""
         for current_pass in passes:
             if cancel_token and cancel_token.is_set():
-                import time
-
-                print(f"CANCELLED {time.time()}", file=sys.stderr)  # noqa: T201
                 break
             current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token)  # type: ignore
 
