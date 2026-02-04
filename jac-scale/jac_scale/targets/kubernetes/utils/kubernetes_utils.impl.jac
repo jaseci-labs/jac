@@ -171,6 +171,20 @@ impl sync_code_to_pvc(
                 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
+        # Remove profile-specific config files (jac.local.toml, jac.prod.toml, etc.)
+        # that could override deployment settings like the serve port.
+        run_kubectl_command(
+            [
+                'exec',
+                '-n',
+                namespace,
+                sync_pod_name,
+                '--',
+                'sh',
+                '-c',
+                'rm -f /data/workspace/jac.*.toml'
+            ]
+        );
 
         if os.path.isfile(same_directory_toml_path) {
             run_kubectl_command(
