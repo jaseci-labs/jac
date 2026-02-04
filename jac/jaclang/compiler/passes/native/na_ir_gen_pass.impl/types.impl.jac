@@ -139,12 +139,18 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                         elem_type = self._resolve_jac_type(elem_node);
                     }
                     elem_type_name = "i64";
+                    elem_size = 0;
                     if isinstance(elem_type, ir.DoubleType) {
                         elem_type_name = "f64";
                     } elif isinstance(elem_type, ir.PointerType) {
                         elem_type_name = "ptr";
+                        # Check if this is a tuple (pointer to LiteralStructType)
+                        if isinstance(elem_type.pointee, ir.LiteralStructType) {
+                            elem_size = self._get_struct_size(elem_type.pointee);
+                            elem_type_name = f"tuple{elem_size}";
+                        }
                     }
-                    self._emit_set_helpers(elem_type_name, elem_type);
+                    self._emit_set_helpers(elem_type_name, elem_type, elem_size);
                     return self.set_types[elem_type_name].as_pointer();
                 }
             }

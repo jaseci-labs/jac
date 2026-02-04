@@ -272,6 +272,27 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             is_newline, null_byte, last_byte, name="strip.nl"
         );
         self.builder.store(store_val, last_ptr);
+        # Also strip \r if present (for \r\n line endings in WSL2/Windows)
+        strip_cr_bb = func.append_basic_block(name="input.strip.cr");
+        self.builder.cbranch(is_newline, strip_cr_bb, nostrip_bb);
+        self.builder.position_at_start(strip_cr_bb);
+        # Check if slen >= 2 (need at least 2 chars for \r\n)
+        has_cr_len = self.builder.icmp_signed(
+            ">=", slen, ir.Constant(ir.IntType(64), 2), name="has.cr.len"
+        );
+        strip_cr_check_bb = func.append_basic_block(name="input.strip.cr.check");
+        self.builder.cbranch(has_cr_len, strip_cr_check_bb, nostrip_bb);
+        self.builder.position_at_start(strip_cr_check_bb);
+        # Check if char at slen-2 is \r (13)
+        cr_idx = self.builder.sub(slen, ir.Constant(ir.IntType(64), 2), name="cr.idx");
+        cr_ptr = self.builder.gep(result_ptr, [cr_idx], name="cr.ptr");
+        cr_byte = self.builder.load(cr_ptr, name="cr.byte");
+        is_cr = self.builder.icmp_signed(
+            "==", cr_byte, ir.Constant(ir.IntType(8), 13), name="is.cr"
+        );
+        # Conditionally null-terminate at CR position
+        store_cr_val = self.builder.select(is_cr, null_byte, cr_byte, name="strip.cr");
+        self.builder.store(store_cr_val, cr_ptr);
         self.builder.branch(nostrip_bb);
         self.builder.position_at_start(nostrip_bb);
         self.builder.branch(merge_bb);

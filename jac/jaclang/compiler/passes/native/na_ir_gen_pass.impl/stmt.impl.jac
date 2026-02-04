@@ -565,6 +565,72 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         self.builder.position_at_end(end_bb);
         return;
     }
+    # ── Dict iteration: for k in dict ──
+    # Only use dict iteration if the collection variable is explicitly tracked as a dict
+    # (This avoids premature code generation from type inference)
+    coll_name = self._get_name(node.collection);
+    dict_type_key: (str | None) = None;
+    if coll_name is not None and coll_name in self.var_dict_type {
+        dict_type_key = self.var_dict_type[coll_name];
+    }
+    if dict_type_key is not None {
+        # This is dict iteration
+        helpers = self.dict_helpers.get(dict_type_key);
+        if helpers is not None {
+            collection_val = self._codegen_expr(node.collection);
+            if collection_val is not None {
+                i64 = ir.IntType(64);
+                key_type = helpers["key_type"];
+                # Get dict length
+                len_val = self.builder.call(
+                    helpers["len"], [collection_val], name="ford.len"
+                );
+                # Allocate loop index
+                idx_alloca = self.builder.alloca(i64, name="ford.idx");
+                self.builder.store(ir.Constant(i64, 0), idx_alloca);
+                # Allocate loop variable (key)
+                loop_alloca = self.builder.alloca(key_type, name=loop_var_name);
+                self.local_vars[loop_var_name] = loop_alloca;
+                func = self.builder.function;
+                cond_bb = func.append_basic_block(name="ford.cond");
+                body_bb = func.append_basic_block(name="ford.body");
+                incr_bb = func.append_basic_block(name="ford.incr");
+                end_bb = func.append_basic_block(name="ford.end");
+                self.builder.branch(cond_bb);
+                # Condition: idx < len
+                self.builder.position_at_end(cond_bb);
+                cur_idx = self.builder.load(idx_alloca, name="ford.cur.idx");
+                cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="ford.cmp");
+                self.builder.cbranch(cmp, body_bb, end_bb);
+                # Body: load key at index, store in loop var, execute body
+                self.loop_stack.append((incr_bb, end_bb));
+                self.builder.position_at_end(body_bb);
+                body_idx = self.builder.load(idx_alloca, name="ford.body.idx");
+                key_val = self.builder.call(
+                    helpers["get_key"], [collection_val, body_idx], name="ford.key"
+                );
+                self.builder.store(key_val, loop_alloca);
+                if isinstance(node.body, (<>list, <>tuple)) {
+                    self._codegen_body(node.body);
+                }
+                if not self.builder.block.is_terminated {
+                    self.builder.branch(incr_bb);
+                }
+                self.loop_stack.pop();
+                # Increment: idx = idx + 1
+                self.builder.position_at_end(incr_bb);
+                inc_idx = self.builder.load(idx_alloca, name="ford.inc.idx");
+                next_idx = self.builder.add(
+                    inc_idx, ir.Constant(i64, 1), name="ford.next.idx"
+                );
+                self.builder.store(next_idx, idx_alloca);
+                self.builder.branch(cond_bb);
+                # Continue after loop
+                self.builder.position_at_end(end_bb);
+                return;
+            }
+        }
+    }
     # ── List iteration: for x in items ──
     # Set list type hint in case collection is a list literal
     self._list_type_hint = None;

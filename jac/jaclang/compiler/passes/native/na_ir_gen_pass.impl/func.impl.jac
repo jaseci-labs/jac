@@ -61,6 +61,8 @@ impl NaIRGenPass._codegen_ability(<>node: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
     # Store parameters as local variables (alloca + store pattern)
     sig = (<>node).signature;
     for (i, p) in enumerate(sig.get_parameters()) {
@@ -123,6 +125,8 @@ impl NaIRGenPass._codegen_entry(<>node: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
     # Initialize global variables that have complex initializers (dicts, lists, etc.)
     if self?._global_init_nodes and self._global_init_nodes {
         for init_tuple in self._global_init_nodes {

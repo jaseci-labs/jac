@@ -63,11 +63,15 @@ impl NaIRGenPass._codegen_expr(node: (uni.UniNode | None)) -> (ir.Value | None) 
     if isinstance(node, uni.ListVal) {
         return self._codegen_list_val(node);
     }
+    # Check dict and set comprehensions BEFORE list comprehension
+    # (DictCompr and SetCompr do NOT inherit from ListCompr)
+    if isinstance(node, uni.DictCompr) {
+        return self._codegen_dict_compr(node);
+    }
+    if isinstance(node, uni.SetCompr) {
+        return self._codegen_set_compr(node);
+    }
     if isinstance(node, uni.ListCompr) {
-        # Skip set/dict comprehensions for now (SetCompr/DictCompr extend ListCompr)
-        if isinstance(node, uni.SetCompr) or isinstance(node, uni.DictCompr) {
-            return None;
-        }
         return self._codegen_list_compr(node);
     }
     if isinstance(node, uni.TupleVal) {

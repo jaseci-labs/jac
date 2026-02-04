@@ -338,26 +338,32 @@ def opposite_color(color: Color) -> Color {
     return Color.WHITE;
 }
 
-def combine_move_lists(*move_lists: list[Move]) -> list[Move] {
-    # Unpack operator in function parameter (*args)
+def combine_move_lists(list1: list[Move], list2: list[Move]) -> list[Move] {
+    # Combine two move lists (varargs not yet supported in native)
     result: list[Move] = [];
-    for moves in move_lists {
-        # Extend result with unpacked moves using spread
-        result = [*result, *moves];  # Unpack expressions
+    for m in list1 {
+        result.append(m);
+    }
+    for m in list2 {
+        result.append(m);
     }
     return result;
 }
 
 def count_pieces_by_kind(pieces: list[Piece]) -> dict[PieceKind, int] {
-    # Use generator comprehension with sum for counting
+    # Count pieces by kind (sum with generator not yet supported in native)
     counts: dict[PieceKind, int] = {};
     all_kinds: list[PieceKind] = [
         PieceKind.PAWN, PieceKind.KNIGHT, PieceKind.BISHOP,
         PieceKind.ROOK, PieceKind.QUEEN, PieceKind.KING
     ];
     for kind in all_kinds {
-        # Generator comprehension inside sum()
-        count: int = sum((1 for p in pieces if p.kind == kind));
+        count: int = 0;
+        for p in pieces {
+            if p.kind == kind {
+                count += 1;
+            }
+        }
         counts[kind] = count;
     }
     return counts;
@@ -953,6 +959,7 @@ obj Game {
 
             # Handle empty input - make a random move
             found: Move | None = None;
+            move_str = move_str.strip();
             if len(move_str) == 0 {
                 if len(legal_moves) == 0 {
                     print("No legal moves available!");

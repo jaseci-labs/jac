@@ -372,6 +372,27 @@ impl NaIRGenPass._emit_dict_helpers(
     b.ret(ir.Constant(ir.IntType(1), 1));
     b.position_at_end(not_found_c);
     b.ret(ir.Constant(ir.IntType(1), 0));
+    # --- __dict_get_key: return key at index i (for iteration) ---
+    get_key_fnty = ir.FunctionType(key_type, [dict_ptr_type, i64]);
+    get_key_fn = ir.Function(
+        self.llvm_module,
+        get_key_fnty,
+        name=f"__dict_get_key_{key_type_name}_{val_type_name}"
+    );
+    get_key_fn.linkage = "private";
+    get_key_fn.args[0].name = "dict";
+    get_key_fn.args[1].name = "idx";
+    bb_gk = get_key_fn.append_basic_block("entry");
+    b = ir.IRBuilder(bb_gk);
+    d_arg_gk = get_key_fn.args[0];
+    idx_arg_gk = get_key_fn.args[1];
+    keys_ptr_gk = b.gep(
+        d_arg_gk, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
+    );
+    keys_arr_gk = b.load(keys_ptr_gk, name="keys");
+    key_elem_ptr = b.gep(keys_arr_gk, [idx_arg_gk], name="key.elem.ptr");
+    key_result = b.load(key_elem_ptr, name="key.result");
+    b.ret(key_result);
     # Store helpers
     self.dict_helpers[dict_key] = {
         "new": new_fn,
@@ -379,6 +400,7 @@ impl NaIRGenPass._emit_dict_helpers(
         "get": get_fn,
         "len": len_fn,
         "contains": contains_fn,
+        "get_key": get_key_fn,
         "key_type": key_type,
         "val_type": val_type
     };

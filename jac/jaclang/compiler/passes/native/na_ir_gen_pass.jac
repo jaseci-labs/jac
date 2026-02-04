@@ -158,6 +158,46 @@ obj NaIRGenPass(Transform) {
         elem_type_name: str,
         conditionals: list
     ) -> None;
+
+    def _codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None);
+    def _codegen_dict_compr_loops(
+        comprs: list,
+        idx: int,
+        dict_val: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: uni.UniNode,
+        dict_key: str
+    ) -> None;
+
+    def _codegen_dict_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        dict_val: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: uni.UniNode,
+        dict_key: str,
+        conditionals: list
+    ) -> None;
+
+    def _codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None);
+    def _codegen_set_compr_loops(
+        comprs: list,
+        idx: int,
+        set_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str
+    ) -> None;
+
+    def _codegen_set_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        set_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str,
+        conditionals: list
+    ) -> None;
     # Phase 11: Global Variables
     def _register_globals(module: uni.Module) -> None;
     def _codegen_global_vars(node: uni.GlobalVars) -> None;
@@ -184,7 +224,10 @@ obj NaIRGenPass(Transform) {
 
     def _infer_dict_type(val: ir.Value) -> (tuple | None);
     # Phase 13: Sets
-    def _emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
+    def _emit_set_helpers(
+        elem_type_name: str, elem_type: ir.Type, elem_size: int = 0
+    ) -> None;
+
     def _codegen_set_val(node: uni.SetVal) -> (ir.Value | None);
     def _codegen_set_contains(
         set_val: ir.Value, elem_val: ir.Value, elem_type_name: str

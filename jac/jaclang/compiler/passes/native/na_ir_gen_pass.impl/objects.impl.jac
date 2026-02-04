@@ -243,10 +243,14 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
+    saved_dict_type = dict(self.var_dict_type);
+    saved_set_elem = dict(self.var_set_elem_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.var_type_node = {};
     self.var_list_elem_type = {};
+    self.var_dict_type = {};
+    self.var_set_elem_type = {};
     # Store self pointer
     self_alloca = self.builder.alloca(func.args[0].type, name="self");
     self.builder.store(func.args[0], self_alloca);
@@ -315,6 +319,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
+    self.var_dict_type = saved_dict_type;
+    self.var_set_elem_type = saved_set_elem;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""

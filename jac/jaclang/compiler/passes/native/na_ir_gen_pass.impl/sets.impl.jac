@@ -3,8 +3,12 @@
 
 Uses a simple linear-search set: {len, cap, elems*}
 This is O(n) for lookups but sufficient for small sets.
+
+For pointer types with known size (e.g., tuples), uses memcmp for comparison.
 """
-impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> None {
+impl NaIRGenPass._emit_set_helpers(
+    elem_type_name: str, elem_type: ir.Type, elem_size: int = 0
+) -> None {
     if elem_type_name in self.set_helpers {
         return;
     }
@@ -41,8 +45,8 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
     # Allocate elems: 8 * sizeof(elem)
     elem_null = ir.Constant(elem_type.as_pointer(), None);
     elem_gep = b.gep(elem_null, [ir.Constant(i32, 1)], name="elem.sizeof");
-    elem_size = b.ptrtoint(elem_gep, i64, name="elem.size");
-    elems_bytes = b.mul(ir.Constant(i64, 8), elem_size, name="elems.bytes");
+    elem_sizeof_val = b.ptrtoint(elem_gep, i64, name="elem.size");
+    elems_bytes = b.mul(ir.Constant(i64, 8), elem_sizeof_val, name="elems.bytes");
     elems_raw = b.call(gc_malloc, [elems_bytes], name="elems.raw");
     elems = b.bitcast(elems_raw, elem_type.as_pointer(), name="elems");
     elems_p = b.gep(
@@ -90,7 +94,7 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
     idx_body = b.load(idx_alloca, name="idx.body");
     elem_ptr = b.gep(elems_arr, [idx_body], name="elem.ptr");
     elem_val = b.load(elem_ptr, name="elem.val");
-    # Compare elements - use strcmp for string elements (i8*)
+    # Compare elements - use strcmp for strings, memcmp for tuples, etc.
     if isinstance(elem_type, ir.IntType) {
         elem_eq = b.icmp_signed("==", elem_val, e_arg, name="elem.eq");
     } elif elem_type == i8_ptr {
@@ -98,6 +102,19 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
         );
         cmp_result = b.call(strcmp_fn, [elem_val, e_arg], name="strcmp");
+        elem_eq = b.icmp_signed(
+            "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="elem.eq"
+        );
+    } elif isinstance(elem_type, ir.PointerType) and elem_size > 0 {
+        # Pointer with known size (e.g., tuples) - use memcmp
+        memcmp_fn = self._get_or_declare_extern(
+            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
+        );
+        elem_i8 = b.bitcast(elem_val, i8_ptr, name="elem.i8");
+        arg_i8 = b.bitcast(e_arg, i8_ptr, name="arg.i8");
+        cmp_result = b.call(
+            memcmp_fn, [elem_i8, arg_i8, ir.Constant(i64, elem_size)], name="memcmp"
+        );
         elem_eq = b.icmp_signed(
             "==", cmp_result, ir.Constant(ir.IntType(32), 0), name="elem.eq"
         );
@@ -178,7 +195,7 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
     idx_bc = b.load(idx_alloca_c, name="idx.body");
     elem_ptr_c = b.gep(elems_c, [idx_bc], name="elem.ptr");
     elem_val_c = b.load(elem_ptr_c, name="elem.val");
-    # Use strcmp for string elements
+    # Use strcmp for strings, memcmp for tuples, etc.
     if isinstance(elem_type, ir.IntType) {
         elem_eq_c = b.icmp_signed("==", elem_val_c, e_arg_c, name="elem.eq");
     } elif elem_type == i8_ptr {
@@ -186,6 +203,21 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]
         );
         cmp_result_c = b.call(strcmp_fn, [elem_val_c, e_arg_c], name="strcmp");
+        elem_eq_c = b.icmp_signed(
+            "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="elem.eq"
+        );
+    } elif isinstance(elem_type, ir.PointerType) and elem_size > 0 {
+        # Pointer with known size (e.g., tuples) - use memcmp
+        memcmp_fn = self._get_or_declare_extern(
+            "memcmp", ir.IntType(32), [i8_ptr, i8_ptr, i64]
+        );
+        elem_i8_c = b.bitcast(elem_val_c, i8_ptr, name="elem.i8");
+        arg_i8_c = b.bitcast(e_arg_c, i8_ptr, name="arg.i8");
+        cmp_result_c = b.call(
+            memcmp_fn,
+            [elem_i8_c, arg_i8_c, ir.Constant(i64, elem_size)],
+            name="memcmp"
+        );
         elem_eq_c = b.icmp_signed(
             "==", cmp_result_c, ir.Constant(ir.IntType(32), 0), name="elem.eq"
         );
@@ -222,7 +254,8 @@ impl NaIRGenPass._emit_set_helpers(elem_type_name: str, elem_type: ir.Type) -> N
         "add": add_fn,
         "contains": contains_fn,
         "len": len_fn,
-        "elem_type": elem_type
+        "elem_type": elem_type,
+        "elem_size": elem_size
     };
 }
 
@@ -237,16 +270,22 @@ impl NaIRGenPass._codegen_set_val(node: uni.SetVal) -> (ir.Value | None) {
     if first_val is None {
         return None;
     }
-    # Determine type name
+    # Determine type name and size for pointer types (e.g., tuples)
     elem_type = first_val.type;
     elem_type_name = "i64";
+    elem_size = 0;
     if isinstance(elem_type, ir.DoubleType) {
         elem_type_name = "f64";
     } elif isinstance(elem_type, ir.PointerType) {
         elem_type_name = "ptr";
+        # Check if this is a tuple (pointer to LiteralStructType)
+        if isinstance(elem_type.pointee, ir.LiteralStructType) {
+            elem_size = self._get_struct_size(elem_type.pointee);
+            elem_type_name = f"tuple{elem_size}";
+        }
     }
     # Ensure helpers exist
-    self._emit_set_helpers(elem_type_name, elem_type);
+    self._emit_set_helpers(elem_type_name, elem_type, elem_size);
     helpers = self.set_helpers[elem_type_name];
     # Create new set
     set_val = self.builder.call(helpers["new"], [], name="set.new");
