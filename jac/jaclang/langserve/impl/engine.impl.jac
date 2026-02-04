@@ -57,6 +57,7 @@ impl JacLangServer.type_check_file(
             use_str=document.source,
             file_path=document.path,
             type_check=True,
+            no_cgen=True,
             cancel_token=cancel_token,
         );
 
