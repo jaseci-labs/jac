@@ -39,7 +39,7 @@ We'll walk through each piece of `main.jac` below.
 import from uuid { uuid4 }
 cl import "./styles.css";
 
-# A node is a persistent data container in the graph
+# A node becomes a persistent data container in the graph when attached to a root node
 node Todo {
     has id: str,
         title: str,
@@ -47,7 +47,7 @@ node Todo {
 }
 ```
 
-A `node` is a data type that lives in Jac's built-in graph database. Unlike a regular class, nodes persist across server restarts -- no external database setup needed. `has` declares the node's properties with types and optional defaults.
+A `node` is a data type that can live in Jac's built-in graph database. Unlike a regular class, nodes can persist across server restarts (when attached to the global `root`) -- no external database setup needed. `has` declares the node's properties with types and optional defaults.
 
 Two imports: `uuid` is a standard Python library (Jac can import any Python package), and `cl import` is a client-side import that loads CSS in the browser.
 
