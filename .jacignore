@@ -314,3 +314,12 @@ jaccomplete.jac
 jaccomplete.impl.jac
 route_scanner.impl.jac
 nested.jac
+func.impl.jac
+stmt.impl.jac
+expr.impl.jac
+builtins.impl.jac
+objects.impl.jac
+lists.impl.jac
+tuples.impl.jac
+dicts.impl.jac
+core.impl.jac

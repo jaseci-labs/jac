@@ -6,6 +6,12 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
 - **LSP Responsiveness During Rapid Typing**: Improved editor responsiveness when typing quickly by properly cancelling outdated type-check operations.
+- **Native Compiler: Dictionaries and Sets**: The native backend now supports `dict` and `set` types with full codegen for literals, `len()`, key/value access, subscript assignment, `in` membership testing, `set.add()`, and iteration over dict keys. Both integer and string keyed dictionaries are supported. Global-scope dict and set declarations are also handled. Validated with a comprehensive `dicts_sets.na.jac` test suite.
+- **Native Compiler: Comprehensions**: Added code generation for list, dict, and set comprehensions including nested `for` clauses and `if` filters. List comprehensions with conditions, dict comprehensions mapping positions to pieces, and set comprehensions collecting move targets all compile to native LLVM IR.
+- **Native Compiler: Tuples**: Tuples are now a first-class type in the native backend. Supports tuple literals, tuple indexing, tuple unpacking assignments (e.g., `(row, col) = pos;`), and tuples as dict keys and set elements. Positions throughout the chess test case are now represented as `tuple[int, int]`.
+- **Native Compiler: Inherited Method Wrappers**: The native backend now generates wrapper functions for inherited methods, enabling vtable-based virtual dispatch to correctly resolve methods defined on base classes when called through subclass instances.
+- **Native Compiler: Bitwise and Extended Operators**: Full support for bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`), power operator (`**`), and all augmented assignment variants (`&=`, `|=`, `^=`, `<<=`, `>>=`, `**=`, `//=`, `%=`). Hex (`0x`), octal (`0o`), and binary (`0b`) integer literals are also handled.
+- **Native Compiler: Dict/Set Comprehensions and Iteration**: Dict comprehensions, set comprehensions, and `for`-over-dict iteration (iterating keys of a dictionary) now compile to native code. Tuple membership testing in sets (`target in attacked_set`) is also supported.
 
 ## jaclang 0.9.14 (Latest Release)
 
