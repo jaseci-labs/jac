@@ -28,6 +28,12 @@ impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
         self._codegen_ctrl(node);
     } elif isinstance(node, uni.ExprStmt) {
         self._codegen_expr(node.expr);
+    } elif isinstance(node, uni.TryStmt) {
+        self._codegen_try(node);
+    } elif isinstance(node, uni.RaiseStmt) {
+        self._codegen_raise(node);
+    } elif isinstance(node, uni.WithStmt) {
+        self._codegen_with(node);
     }
 }
 

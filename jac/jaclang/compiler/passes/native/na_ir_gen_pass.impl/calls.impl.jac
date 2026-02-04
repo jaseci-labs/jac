@@ -304,6 +304,10 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
         phi.add_incoming(result_ptr, ok_bb_end);
         return phi;
     }
+    # Handle open() builtin for file I/O
+    if func_name == "open" {
+        return self._emit_open(node);
+    }
     # Handle object instantiation: ClassName(args)
     if func_name in self.struct_types {
         return self._codegen_instantiation(node);
