@@ -204,10 +204,22 @@ impl NaIRGenPass._emit_runtime_raise(
     # Raise block
     self.builder.position_at_end(raise_bb);
     exc_type_id = self._get_or_register_exc_type(exc_type_name);
-    msg_val = self._make_global_string(msg, name_prefix=f".rt.{exc_type_name}");
-    if isinstance(msg_val.type, ir.PointerType) and msg_val.type != i8p {
-        msg_val = self.builder.bitcast(msg_val, i8p, name="rt.msg.cast");
+    # Deduplicate global error message strings
+    if msg in self._rt_error_msgs {
+        global_str = self._rt_error_msgs[msg];
+    } else {
+        str_bytes = bytearray((msg + "\0").encode("utf8"));
+        c_str = ir.Constant(ir.ArrayType(ir.IntType(8), len(str_bytes)), str_bytes);
+        global_str = ir.GlobalVariable(
+            self.llvm_module, c_str.type, name=f".rt.{exc_type_name}.{self._str_count}"
+        );
+        self._str_count = self._str_count + 1;
+        global_str.linkage = "private";
+        global_str.global_constant = True;
+        global_str.initializer = c_str;
+        self._rt_error_msgs[msg] = global_str;
     }
+    msg_val = self.builder.bitcast(global_str, i8p, name="rt.msg.cast");
     self.builder.call(self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id)]);
     self.builder.unreachable();
     # Continue on ok path

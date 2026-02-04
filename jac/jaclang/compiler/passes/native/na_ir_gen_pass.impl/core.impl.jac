@@ -67,6 +67,7 @@ impl NaIRGenPass.init(
     self._exc_raise_fn: (object | None) = None;  # __jac_exc_raise function
     self._exc_type_registry: dict[(str, int)] = {"Exception": 0};  # exc_name → type_id
     self._exc_type_counter: int = 1;  # Next type ID to assign
+    self._rt_error_msgs: dict[(str, object)] = {};  # msg → ir.GlobalVariable (dedup cache)
     # File I/O support (Phase 15)
     self._file_struct_type: (object | None) = None;  # File struct type
     self._file_helpers_emitted: bool = False;
