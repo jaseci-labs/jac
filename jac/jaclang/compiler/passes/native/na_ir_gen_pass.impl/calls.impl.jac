@@ -95,17 +95,44 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle int() builtin: call atoi
+    # Handle int() builtin: call strtol with ValueError check
     if func_name == "int" {
         params_l = node.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
-                atoi = self._get_or_declare_extern(
-                    "atoi", ir.IntType(32), [ir.IntType(8).as_pointer()]
+                i8p = ir.IntType(8).as_pointer();
+                i64 = ir.IntType(64);
+                i32 = ir.IntType(32);
+                # strtol(str, &endptr, base) -> long
+                strtol_fn = self._get_or_declare_extern(
+                    "strtol", i64, [i8p, i8p.as_pointer(), i32]
                 );
-                result32 = self.builder.call(atoi, [arg_val], name="atoi.result");
-                return self.builder.sext(result32, ir.IntType(64), name="int.val");
+                # Allocate endptr on the stack
+                endptr_alloca = self.builder.alloca(i8p, name="endptr");
+                # Call strtol(str, &endptr, 10)
+                result_val = self.builder.call(
+                    strtol_fn,
+                    [arg_val, endptr_alloca, ir.Constant(i32, 10)],
+                    name="strtol.result"
+                );
+                # Check 1: endptr == str → nothing parsed
+                endptr_val = self.builder.load(endptr_alloca, name="endptr.val");
+                no_parse = self.builder.icmp_unsigned(
+                    "==", endptr_val, arg_val, name="int.noparse"
+                );
+                self._emit_runtime_raise(
+                    no_parse, "ValueError", "invalid literal for int()"
+                );
+                # Check 2: *endptr != '\0' → trailing characters
+                end_char = self.builder.load(endptr_val, name="end.char");
+                has_trail = self.builder.icmp_unsigned(
+                    "!=", end_char, ir.Constant(ir.IntType(8), 0), name="int.trail"
+                );
+                self._emit_runtime_raise(
+                    has_trail, "ValueError", "invalid literal for int()"
+                );
+                return result_val;
             }
         }
     }

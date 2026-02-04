@@ -34,6 +34,15 @@ impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
         self._codegen_raise(node);
     } elif isinstance(node, uni.WithStmt) {
         self._codegen_with(node);
+    } elif isinstance(node, uni.AssertStmt) {
+        # AssertionError: evaluate condition, raise if false
+        cond = self._codegen_expr(node.condition);
+        if cond is not None {
+            cond_bool = self._to_bool(cond);
+            # assert fires when condition is FALSE
+            is_false = self.builder.not_(cond_bool, name="assert.fail");
+            self._emit_runtime_raise(is_false, "AssertionError", "assertion failed");
+        }
     }
 }
 
@@ -372,20 +381,56 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "//=" {
                     if isinstance(current.type, ir.IntType) {
+                        # ZeroDivisionError check
+                        izero = ir.Constant(current.type, 0);
+                        is_zero = self.builder.icmp_signed(
+                            "==", coerced, izero, name=f"{var_name}.div.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero,
+                            "ZeroDivisionError",
+                            "integer division or modulo by zero"
+                        );
                         value = self.builder.sdiv(
                             current, coerced, name=f"{var_name}.div"
                         );
                     } else {
+                        # ZeroDivisionError check for float
+                        fzero = ir.Constant(ir.DoubleType(), 0.0);
+                        is_zero = self.builder.fcmp_ordered(
+                            "==", coerced, fzero, name=f"{var_name}.fdiv.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero, "ZeroDivisionError", "float division by zero"
+                        );
                         value = self.builder.fdiv(
                             current, coerced, name=f"{var_name}.fdiv"
                         );
                     }
                 } elif aug_op_val == "%=" {
                     if isinstance(current.type, ir.IntType) {
+                        # ZeroDivisionError check
+                        izero = ir.Constant(current.type, 0);
+                        is_zero = self.builder.icmp_signed(
+                            "==", coerced, izero, name=f"{var_name}.mod.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero,
+                            "ZeroDivisionError",
+                            "integer division or modulo by zero"
+                        );
                         value = self.builder.srem(
                             current, coerced, name=f"{var_name}.mod"
                         );
                     } else {
+                        # ZeroDivisionError check for float
+                        fzero = ir.Constant(ir.DoubleType(), 0.0);
+                        is_zero = self.builder.fcmp_ordered(
+                            "==", coerced, fzero, name=f"{var_name}.fmod.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero, "ZeroDivisionError", "float modulo by zero"
+                        );
                         value = self.builder.frem(
                             current, coerced, name=f"{var_name}.fmod"
                         );

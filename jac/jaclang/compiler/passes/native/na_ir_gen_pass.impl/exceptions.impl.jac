@@ -183,6 +183,37 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     self._exc_raise_fn = func;
 }
 
+# ─── Conditional Runtime Raise ───────────────────────────────
+"""Emit a conditional runtime error check.
+If is_error is true, raises the given exception type with the message.
+After this call, the builder is positioned in the 'ok' continuation block."""
+impl NaIRGenPass._emit_runtime_raise(
+    is_error: ir.Value, exc_type_name: str, msg: str
+) -> None {
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    func = self.builder.function;
+    raise_bb = func.append_basic_block(name=f"raise.{exc_type_name}");
+    ok_bb = func.append_basic_block(name=f"ok.{exc_type_name}");
+    # Ensure is_error is i1
+    is_error = self._to_bool(is_error);
+    self.builder.cbranch(is_error, raise_bb, ok_bb);
+    # Raise block
+    self.builder.position_at_end(raise_bb);
+    exc_type_id = self._get_or_register_exc_type(exc_type_name);
+    msg_val = self._make_global_string(msg, name_prefix=f".rt.{exc_type_name}");
+    if isinstance(msg_val.type, ir.PointerType) and msg_val.type != i8p {
+        msg_val = self.builder.bitcast(msg_val, i8p, name="rt.msg.cast");
+    }
+    self.builder.call(self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id)]);
+    self.builder.unreachable();
+    # Continue on ok path
+    self.builder.position_at_end(ok_bb);
+}
+
 # ─── Exception Type Registry ────────────────────────────────
 """Get or register an exception type ID for type-based matching."""
 impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
