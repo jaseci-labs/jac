@@ -173,9 +173,10 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "", "")
 
-            result = installer.install_git_package(
+            specs = installer._make_git_spec(
                 "my-plugin", "https://github.com/user/plugin.git", branch="main"
             )
+            result = installer.install_package([specs])
 
             assert result is True
             call_args = mock_pip.call_args[0][0]
@@ -191,8 +192,9 @@ class TestDependencyInstaller:
             patch.object(installer, "_run_pip") as mock_pip,
         ):
             mock_pip.return_value = (0, "", "")
-
-            result = installer.install_all(include_dev=False)
+            pip_packages = installer.get_pip_package_specs(include_dev=False)
+            git_packages = installer.get_git_package_specs()
+            result = installer.install_package(pip_packages + git_packages)
 
             assert result is True
             # Single batch call for all Python packages
@@ -208,8 +210,9 @@ class TestDependencyInstaller:
             patch.object(installer, "_run_pip") as mock_pip,
         ):
             mock_pip.return_value = (0, "", "")
-
-            result = installer.install_all(include_dev=True)
+            pip_packages = installer.get_pip_package_specs(include_dev=True)
+            git_packages = installer.get_git_package_specs()
+            result = installer.install_package(pip_packages + git_packages)
 
             assert result is True
             # Single batch call with both regular and dev dependencies

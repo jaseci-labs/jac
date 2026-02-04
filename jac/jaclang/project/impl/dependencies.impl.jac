@@ -90,43 +90,34 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
 
 """Install all Python package dependencies in a single batch so pip can
 resolve compatible versions across interdependent packages."""
-impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
-    self.ensure_venv();
+impl DependencyInstaller.get_pip_package_specs(include_dev: bool = False) -> list[str] {
     specs: list[str] = [];
     for (name, version) in self.config.dependencies.items() {
-        specs.append(self._make_spec(name, version));
+        specs.append(self._make_pip_spec(name, version));
     }
     if include_dev {
         for (name, version) in self.config.dev_dependencies.items() {
-            specs.append(self._make_spec(name, version));
+            specs.append(self._make_pip_spec(name, version));
         }
     }
-    # Install all Python packages in a single pip command
-    if specs {
-        console.print(f"\n📦 Installing {len(specs)} package(s):", style="bold");
-        for spec in specs {
-            console.print(f"  • {spec}", style="cyan");
-        }
-        console.print("");
-        if not self.install_package(specs) {
-            return False;
-        }
-    }
-    # Install git dependencies separately
+    return specs;
+}
+
+impl DependencyInstaller.get_git_package_specs -> list[str] {
+    specs: list[str] = [];
     for (name, git_info) in self.config.git_dependencies.items() {
-        if isinstance(git_info, dict) {
-            git_url = git_info.get("git", "");
+        if isinstance(git_info, dict) and "url" in git_info {
+            git_url = git_info["url"];
             branch = git_info.get("branch", "");
-            if not self.install_git_package(name, git_url, branch) {
-                return False;
-            }
+            spec = self._make_git_spec(name, git_url, branch);
+            specs.append(spec);
         }
     }
-    return True;
+    return specs;
 }
 
 """Create pip spec from package name and version."""
-impl DependencyInstaller._make_spec(name: str, version: str) -> str {
+impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
     if not version {
         return name;
     }
@@ -134,6 +125,15 @@ impl DependencyInstaller._make_spec(name: str, version: str) -> str {
         return f"{name}{version}";
     }
     return f"{name}=={version}";
+}
+
+impl DependencyInstaller._make_git_spec(
+    name: str, git_url: str, branch: str = ""
+) -> str {
+    if branch {
+        return f"git+{git_url}@{branch}";
+    }
+    return f"git+{git_url}";
 }
 
 """Install packages given a list of pip specs."""
@@ -167,27 +167,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
-}
-
-impl DependencyInstaller.install_git_package(
-    name: str, git_url: str, branch: str = ""
-) -> bool {
-    import sys;
-    self.ensure_venv();
-    if branch {
-        spec = f"git+{git_url}@{branch}";
-    } else {
-        spec = f"git+{git_url}";
-    }
-    console.print(f"Installing {name} from git...");
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
-    if returncode == 0 {
-        console.print(f"  {name} installed successfully from git");
-        return True;
-    } else {
-        console.error(f"  Failed to install {name} from git: {stderr}");
-        return False;
-    }
 }
 
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
