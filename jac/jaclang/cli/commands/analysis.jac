@@ -170,6 +170,12 @@ def format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int;
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
