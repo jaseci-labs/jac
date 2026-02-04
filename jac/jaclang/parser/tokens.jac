@@ -60,6 +60,8 @@ enum TokenKind {
     KW_SEM = "sem",
     KW_TEST = "test",
     KW_GLOBAL = "glob",
+    KW_GLOBAL_REF = "global",
+    KW_NONLOCAL = "nonlocal",
     # -------------------------------------------------------------------------
     # Keywords - Import/Include
     # -------------------------------------------------------------------------
@@ -357,6 +359,8 @@ glob KEYWORDS:
          "sem": TokenKind.KW_SEM,
          "test": TokenKind.KW_TEST,
          "glob": TokenKind.KW_GLOBAL,
+         "global": TokenKind.KW_GLOBAL_REF,
+         "nonlocal": TokenKind.KW_NONLOCAL,
          # Import keywords
          "import": TokenKind.KW_IMPORT,
          "include": TokenKind.KW_INCLUDE,

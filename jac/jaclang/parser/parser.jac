@@ -364,9 +364,11 @@ obj Parser {
     def at_end -> bool;
     def check(kind: TokenKind) -> bool;
     def check_any(*kinds: TokenKind) -> bool;
+    def check_name -> bool;
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
+    def expect_name -> Token;
     def error(message: str);
     # -------------------------------------------------------------------------
     # UniToken Creation
@@ -413,8 +415,10 @@ obj Parser {
     def parse_factor -> Expr;
     def parse_connect -> Expr;
     def parse_connect_op -> ConnectOp | DisconnectOp | None;
+    def parse_edge_op_ref_inline -> EdgeOpRef | None;
     def parse_atomic_pipe -> Expr;
     def parse_atomic_pipe_back -> Expr;
+    def parse_spawn -> Expr;
     def parse_unpack -> Expr;
     def parse_ref -> Expr;
     def parse_await_expr -> Expr;
@@ -422,11 +426,14 @@ obj Parser {
     def parse_atomic_chain -> Expr;
     def parse_call_args -> list;
     def parse_call_arg -> Expr | KWPair;
+    def parse_filter_compr_inner -> FilterCompr;
+    def parse_assign_compr_inner -> AssignCompr;
     def parse_atom -> Expr;
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
     def parse_edge_ref_chain -> Expr;
+    def continue_edge_ref_chain(start_expr: Expr) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params -> list;
@@ -450,6 +457,13 @@ obj Parser {
     def parse_match_stmt -> MatchStmt;
     def parse_match_case -> MatchCase;
     def parse_pattern;
+    def parse_or_pattern;
+    def parse_single_pattern;
+    def parse_sequence_pattern;
+    def parse_tuple_sequence_pattern;
+    def parse_mapping_pattern;
+    def parse_literal_for_mapping;
+    def parse_class_pattern_args(names: list);
     def parse_switch_stmt -> SwitchStmt;
     def parse_switch_case -> SwitchCase;
     def parse_return_stmt -> ReturnStmt;
@@ -457,6 +471,8 @@ obj Parser {
     def parse_raise_stmt -> RaiseStmt;
     def parse_assert_stmt -> AssertStmt;
     def parse_delete_stmt -> DeleteStmt;
+    def parse_global_stmt -> GlobalStmt;
+    def parse_nonlocal_stmt -> NonLocalStmt;
     def parse_visit_stmt -> VisitStmt;
     def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(target: Expr) -> Assignment;
@@ -478,6 +494,8 @@ obj Parser {
     def parse_global_var_assignment -> Assignment;
     def parse_impl_def -> ImplDef;
     def parse_impl_target_name -> Name;
+    def parse_impl_enum_body -> list;
+    def parse_sem_def -> SemDef;
     def parse_dotted_name -> Expr;
 }
 
