@@ -16,9 +16,7 @@ impl NaIRGenPass._get_file_struct_type -> ir.Type {
     i8p = ir.IntType(8).as_pointer();
     i1 = ir.IntType(1);
     file_struct = self.llvm_module.context.get_identified_type("File");
-    file_struct.set_body(
-        i8p,  # [0] handle (FILE*) i8p,  # [1] path i8p,  # [2] mode i1  # [3] closed
-    );
+    file_struct.set_body(i8p, i8p, i8p, i1);
     self._file_struct_type = file_struct;
     # Register as a known struct type for method calls and field access
     self.struct_types["File"] = file_struct;

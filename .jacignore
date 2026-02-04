@@ -323,3 +323,5 @@ lists.impl.jac
 tuples.impl.jac
 dicts.impl.jac
 core.impl.jac
+context_mgr.impl.jac
+runtime_errors.na.jac
