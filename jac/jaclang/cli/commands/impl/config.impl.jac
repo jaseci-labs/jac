@@ -3,6 +3,7 @@
 Direct implementations - no delegation.
 """
 
+import from pathlib { Path }
 import from jaclang.cli.console { console }
 
 # Configuration groups available in jac.toml
@@ -488,14 +489,42 @@ impl config(
     return 0;
 }
 
-"""Show the path to the active jac.toml configuration file."""
+"""Generate a display label for a config file path."""
+def _config_file_label(path: Path, active_profile: str) -> str {
+    fname = path.name;
+    if fname == "jac.toml" {
+        return " (base)";
+    }
+    if fname == "jac.local.toml" {
+        return " (local)";
+    }
+    if active_profile {
+        return f" (profile: {active_profile})";
+    }
+    return "";
+}
+
+"""Show the path to the active configuration files."""
 def _config_path -> None {
     import from jaclang.project.config { get_config, find_project_root }
 
     config = get_config();
     if config and config.toml_path {
-        console.print(f"Config file: {config.toml_path}", style="info");
         console.print(f"Project root: {config.project_root}", style="muted");
+        if config.active_profile {
+            console.print(f"Active profile: {config.active_profile}", style="info");
+        }
+        if config.config_files and len(config.config_files) > 1 {
+            console.print(
+                f"\nLoaded config files (lowest to highest priority):", style="info"
+            );
+            for (i, path) in enumerate(config.config_files) {
+                label = _config_file_label(path, config.active_profile);
+                console.print(f"  {i + 1}. {path}{label}");
+            }
+        } else {
+            console.print(f"Config file: {config.toml_path}", style="info");
+        }
     } else {
         result = find_project_root();
         if result {
