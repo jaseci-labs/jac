@@ -30,6 +30,7 @@ nav:
           - Jac as a Python Library: "tutorials/language/library-mode.md"
           - Object-Spatial Programming: "tutorials/language/osp.md"
           - Testing Your Code: "tutorials/language/testing.md"
+          - Debugging in VS Code: "tutorials/language/debugging.md"
       - AI Integration:
           - byLLM Quickstart: "tutorials/ai/quickstart.md"
           - Structured Outputs: "tutorials/ai/structured-outputs.md"
