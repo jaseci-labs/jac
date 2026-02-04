@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.6 (Unreleased)
 
+- **fix: Exclude profile config files during K8s code sync**: Profile-specific config files (`jac.local.toml`, `jac.prod.toml`, etc.) are now excluded when syncing application code to the Kubernetes PVC. Previously, these files could override deployment settings such as the serve port, causing health check failures.
+
 ## jac-scale 0.1.5 (Latest Release)
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
