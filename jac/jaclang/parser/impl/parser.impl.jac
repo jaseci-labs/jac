@@ -1494,6 +1494,10 @@ impl Parser.parse_atom -> Expr {
         }
         return MultiString(strings=strings, kid=strings);
     }
+    # JSX element: <Tag>...</Tag> or <>...</>
+    if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
+        return self.parse_jsx_element();
+    }
     self.error(f"Unexpected token in expression: {self.current().kind}");
     return self.make_name(self.advance());
 }
@@ -2092,6 +2096,165 @@ impl Parser.parse_lambda_params -> list {
 }
 
 # =============================================================================
+# JSX PARSING Implementations
+# =============================================================================
+"""Parse a JSX element: <Tag>...</Tag> or <Tag /> or <>...</>"""
+impl Parser.parse_jsx_element -> Expr {
+    kid: list = [];
+    # Check for fragment: <>...</>
+    if self.check(TokenKind.JSX_FRAG_OPEN) {
+        frag_open = self.advance();
+        kid.append(self.make_uni_token(frag_open));
+        children = self.parse_jsx_children();
+        kid.extend(children);
+        self.expect(TokenKind.JSX_FRAG_CLOSE);
+        kid.append(self.gen_token(Tok.JSX_FRAG_CLOSE.value, "</>"));
+        return JsxElement(
+            name=None,
+            attributes=[],
+            children=children,
+            is_self_closing=False,
+            is_fragment=True,
+            kid=kid
+        );
+    }
+    # Regular element: <Tag>...</Tag> or <Tag />
+    self.expect(TokenKind.JSX_OPEN_START);
+    kid.append(self.gen_token(Tok.LT.value, "<"));
+    # Parse tag name
+    name_tok = self.expect(TokenKind.JSX_NAME);
+    name = self.make_name(name_tok);
+    elem_name = JsxElementName(parts=[name], kid=[name]);
+    kid.append(elem_name);
+    # Parse attributes
+    attrs = self.parse_jsx_attributes();
+    kid.extend(attrs);
+    # Check for self-closing: />
+    if self.check(TokenKind.JSX_SELF_CLOSE) {
+        self.advance();
+        kid.append(self.gen_token(Tok.JSX_SELF_CLOSE.value, "/>"));
+        return JsxElement(
+            name=elem_name,
+            attributes=attrs,
+            children=[],
+            is_self_closing=True,
+            is_fragment=False,
+            kid=kid
+        );
+    }
+    # Regular element with children
+    self.expect(TokenKind.JSX_TAG_END);
+    kid.append(self.gen_token(Tok.GT.value, ">"));
+    # Parse children
+    children = self.parse_jsx_children();
+    kid.extend(children);
+    # Parse closing tag: </Tag>
+    self.expect(TokenKind.JSX_CLOSE_START);
+    kid.append(self.gen_token(Tok.JSX_CLOSE_START.value, "</"));
+    close_name_tok = self.expect(TokenKind.JSX_NAME);
+    close_name = self.make_name(close_name_tok);
+    kid.append(close_name);
+    self.expect(TokenKind.JSX_TAG_END);
+    kid.append(self.gen_token(Tok.GT.value, ">"));
+    return JsxElement(
+        name=elem_name,
+        attributes=attrs,
+        children=children,
+        is_self_closing=False,
+        is_fragment=False,
+        kid=kid
+    );
+}
+
+"""Parse JSX opening element and return (name, attrs, is_self_closing)."""
+impl Parser.parse_jsx_opening_element -> tuple {
+    self.expect(TokenKind.JSX_OPEN_START);
+    name_tok = self.expect(TokenKind.JSX_NAME);
+    name = self.make_name(name_tok);
+    attrs = self.parse_jsx_attributes();
+    if self.check(TokenKind.JSX_SELF_CLOSE) {
+        self.advance();
+        return (name, attrs, True);
+    }
+    self.expect(TokenKind.JSX_TAG_END);
+    return (name, attrs, False);
+}
+
+"""Parse JSX attributes: attr="value" or attr={expr}"""
+impl Parser.parse_jsx_attributes -> list {
+    attrs: list = [];
+    while self.check(TokenKind.JSX_NAME) {
+        attr_name_tok = self.advance();
+        attr_name = self.make_name(attr_name_tok);
+        attr_value: Expr | None = None;
+        if self.match_tok(TokenKind.EQ) {
+            # Check for string value or expression
+            if self.check(TokenKind.STRING) {
+                str_tok = self.advance();
+                attr_value = self.make_string(str_tok);
+            } elif self.check(TokenKind.LBRACE) {
+                self.advance();  # consume {
+                attr_value = self.parse_expression();
+                self.expect(TokenKind.RBRACE);
+            }
+        }
+        attr_kid: list = [attr_name];
+        if attr_value {
+            attr_kid.append(attr_value);
+        }
+        attrs.append(
+            JsxNormalAttribute(name=attr_name, value=attr_value, kid=attr_kid)
+        );
+    }
+    return attrs;
+}
+
+"""Parse JSX children: text, expressions, or nested elements."""
+impl Parser.parse_jsx_children -> list {
+    children: list = [];
+    while not self.at_end() {
+        # Check for closing tag or fragment close
+        if self.check(TokenKind.JSX_CLOSE_START)
+        or self.check(TokenKind.JSX_FRAG_CLOSE) {
+            break;
+        }
+        child = self.parse_jsx_child();
+        if child {
+            children.append(child);
+        }
+    }
+    return children;
+}
+
+"""Parse a single JSX child: text, expression {expr}, or nested element."""
+impl Parser.parse_jsx_child -> Expr {
+    # Text content
+    if self.check(TokenKind.JSX_TEXT) {
+        text_tok = self.advance();
+        text_node = self.make_uni_token(text_tok);
+        return JsxText(value=text_tok.value, kid=[text_node]);
+    }
+    # Expression: {expr}
+    if self.check(TokenKind.LBRACE) {
+        lbrace = self.advance();  # consume {
+        expr = self.parse_expression();
+        self.expect(TokenKind.RBRACE);
+        kid: list = [
+            self.make_uni_token(lbrace),
+            expr,
+            self.gen_token(Tok.RBRACE.value, "}")
+        ];
+        return JsxExpression(expr=expr, kid=kid);
+    }
+    # Nested JSX element
+    if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
+        return self.parse_jsx_element();
+    }
+    # Nothing more to parse
+    return None;
+}
+
+# =============================================================================
 # STATEMENT PARSING Implementations
 # =============================================================================
 impl Parser.parse_element_stmt{
@@ -2169,6 +2332,16 @@ impl Parser.parse_element_stmt{
     }
     # Handle abstract/async prefixes
     if self.check_any(TokenKind.KW_ABSTRACT, TokenKind.KW_ASYNC) {
+        # Look ahead to see if it's an ability (def/can) or archetype (class/obj/etc)
+        save_pos = self.pos;
+        while self.check_any(TokenKind.KW_ABSTRACT, TokenKind.KW_ASYNC) {
+            self.advance();
+        }
+        is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
+        self.pos = save_pos;
+        if is_ability {
+            return self.parse_ability();
+        }
         return self.parse_archetype();
     }
     expr = self.parse_expression();

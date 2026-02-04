@@ -43,13 +43,17 @@ obj Lexer {
         col: int = 1,
         errors: list[LexerError] = [],
         mode_stack: list[LexerMode] = [],
-        fstring_brace_depth: int = 0;  # Track nested braces in f-string expressions
+        fstring_brace_depth: int = 0,  # Track nested braces in f-string expressions
+        jsx_depth: int = 0,  # Track nested JSX elements
+        jsx_brace_depth: int = 0,  # Track nested braces in JSX expressions
+        jsx_closing_tag: bool = False;  # True when scanning a closing tag </...>
 
     # Mode management
     def push_mode(mode: LexerMode);
     def pop_mode -> LexerMode | None;
     def current_mode -> LexerMode;
     def in_fstring -> bool;
+    def in_jsx -> bool;
     # Character access
     def current -> str;
     def peek(offset: int = 1) -> str;
@@ -85,6 +89,11 @@ obj Lexer {
     def get_fstring_text_kind(mode: LexerMode) -> TokenKind;
     def get_fstring_end_kind(mode: LexerMode) -> TokenKind;
     def scan_fstring_expr_token -> Token;
+    # JSX scanning
+    def scan_jsx_open_start -> Token;
+    def scan_jsx_tag_token -> Token;
+    def scan_jsx_content -> Token;
+    def scan_jsx_expr_token -> Token;
     def scan_regular_token -> Token;
     def scan_pynline -> Token;
     def scan_operator -> Token;

@@ -437,6 +437,12 @@ obj Parser {
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params -> list;
+    # JSX parsing
+    def parse_jsx_element -> Expr;
+    def parse_jsx_opening_element -> tuple;
+    def parse_jsx_attributes -> list;
+    def parse_jsx_children -> list;
+    def parse_jsx_child -> Expr;
     # =========================================================================
     # STATEMENT PARSING
     # =========================================================================

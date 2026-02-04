@@ -38,6 +38,11 @@ impl Lexer.in_fstring -> bool {
     ];
 }
 
+impl Lexer.in_jsx -> bool {
+    mode = self.current_mode();
+    return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
+}
+
 # =============================================================================
 # Character Access Implementations
 # =============================================================================
@@ -669,6 +674,193 @@ impl Lexer.scan_fstring_expr_token -> Token {
     return self.scan_regular_token();
 }
 
+# =============================================================================
+# JSX Scanning
+# =============================================================================
+"""Scan JSX opening tag start: < followed by identifier."""
+impl Lexer.scan_jsx_open_start -> Token {
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
+    self.advance();  # consume <
+    self.jsx_depth += 1;
+    self.push_mode(LexerMode.JSX_TAG);
+    return self.make_token(
+        TokenKind.JSX_OPEN_START, "<", start_line, start_col, start_pos
+    );
+}
+
+"""Scan tokens inside JSX tag: <Tag attr="value" ...>"""
+impl Lexer.scan_jsx_tag_token -> Token {
+    self.skip_whitespace_and_comments();
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
+    ch = self.current();
+    # Self-closing: />
+    if ch == "/" and self.peek() == ">" {
+        self.advance();
+        self.advance();
+        self.jsx_depth -= 1;
+        self.pop_mode();
+        return self.make_token(
+            TokenKind.JSX_SELF_CLOSE, "/>", start_line, start_col, start_pos
+        );
+    }
+    # Tag end: > - switch to JSX_CONTENT mode or finish closing tag
+    if ch == ">" {
+        self.advance();
+        self.pop_mode();  # Pop JSX_TAG
+        if self.jsx_closing_tag {
+            # End of closing tag - decrement depth and return to parent context
+            self.jsx_closing_tag = False;
+            self.jsx_depth -= 1;
+            # Don't push JSX_CONTENT - we're done with this element
+        } else {
+            # End of opening tag - switch to content mode
+            self.push_mode(LexerMode.JSX_CONTENT);
+        }
+        return self.make_token(
+            TokenKind.JSX_TAG_END, ">", start_line, start_col, start_pos
+        );
+    }
+    # Opening brace for expression attribute: {expr}
+    if ch == "{" {
+        self.advance();
+        self.jsx_brace_depth = 1;
+        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
+    }
+    # Attribute name (JSX identifiers can contain hyphens)
+    if self.is_alpha(ch) {
+        value = "";
+        while self.is_alnum(self.current())
+        or self.current() == "-"
+        or self.current() == "_" {
+            value += self.advance();
+        }
+        return self.make_token(
+            TokenKind.JSX_NAME, value, start_line, start_col, start_pos
+        );
+    }
+    # Equals sign for attribute
+    if ch == "=" {
+        self.advance();
+        return self.make_token(TokenKind.EQ, "=", start_line, start_col, start_pos);
+    }
+    # String attribute value
+    if ch == "\"" or ch == "'" {
+        return self.scan_string(ch);
+    }
+    # Unknown - return error token
+    self.error(
+        f"Unexpected character in JSX tag: '{ch}'", start_line, start_col, start_pos
+    );
+    self.advance();
+    return self.make_token(TokenKind.ERROR, ch, start_line, start_col, start_pos);
+}
+
+"""Scan JSX content between tags."""
+impl Lexer.scan_jsx_content -> Token {
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
+    ch = self.current();
+    # Check for closing tag: </
+    if ch == "<" and self.peek() == "/" {
+        self.advance();
+        self.advance();
+        self.pop_mode();  # Pop JSX_CONTENT
+        self.push_mode(LexerMode.JSX_TAG);  # For scanning closing tag name
+        self.jsx_closing_tag = True;  # Mark that we're in a closing tag
+        return self.make_token(
+            TokenKind.JSX_CLOSE_START, "</", start_line, start_col, start_pos
+        );
+    }
+    # Check for nested JSX element: <identifier
+    if ch == "<" and self.is_alpha(self.peek()) {
+        self.advance();  # consume <
+        self.jsx_depth += 1;
+        # Push JSX_TAG on top of current JSX_CONTENT
+        self.push_mode(LexerMode.JSX_TAG);
+        return self.make_token(
+            TokenKind.JSX_OPEN_START, "<", start_line, start_col, start_pos
+        );
+    }
+    # Check for JSX fragment: <>
+    if ch == "<" and self.peek() == ">" {
+        self.advance();
+        self.advance();
+        self.jsx_depth += 1;
+        return self.make_token(
+            TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
+        );
+    }
+    # Check for JSX fragment close: </>
+    if ch == "<" and self.peek() == "/" and self.peek(2) == ">" {
+        self.advance();
+        self.advance();
+        self.advance();
+        self.jsx_depth -= 1;
+        if self.jsx_depth == 0 {
+            self.pop_mode();
+        }
+        return self.make_token(
+            TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
+        );
+    }
+    # Opening brace for expression: {expr}
+    if ch == "{" {
+        self.advance();
+        self.jsx_brace_depth = 1;
+        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
+    }
+    # Text content - collect until we hit <, {, or end
+    value = "";
+    while not self.at_end() {
+        ch = self.current();
+        if ch == "<" or ch == "{" {
+            break;
+        }
+        value += self.advance();
+    }
+    if len(value) > 0 {
+        return self.make_token(
+            TokenKind.JSX_TEXT, value, start_line, start_col, start_pos
+        );
+    }
+    # Empty - shouldn't happen
+    self.error("Unexpected end of JSX content", start_line, start_col, start_pos);
+    return self.make_token(TokenKind.ERROR, "", start_line, start_col, start_pos);
+}
+
+"""Scan tokens inside JSX expression: {expr}"""
+impl Lexer.scan_jsx_expr_token -> Token {
+    # This is handled by normal mode scanning, but we track brace depth
+    # to know when to return to JSX mode
+    self.skip_whitespace_and_comments();
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
+    ch = self.current();
+    if ch == "{" {
+        self.jsx_brace_depth += 1;
+        self.advance();
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
+    }
+    if ch == "}" {
+        self.jsx_brace_depth -= 1;
+        self.advance();
+        if self.jsx_brace_depth == 0 {
+            # End of JSX expression, pop back to previous mode
+            self.pop_mode();
+        }
+        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
+    }
+    return self.scan_regular_token();
+}
+
 impl Lexer.scan_regular_token -> Token {
     self.skip_whitespace_and_comments();
     if self.at_end() {
@@ -1017,15 +1209,19 @@ impl Lexer.scan_operator -> Token {
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
     }
-    if self.match_string("{{") {
-        return self.make_token(
-            TokenKind.D_LBRACE, "{{", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("}}") {
-        return self.make_token(
-            TokenKind.D_RBRACE, "}}", start_line, start_col, start_pos
-        );
+    # Only match {{ and }} as single tokens outside of JSX expressions
+    # Inside JSX, we need to track each brace separately for depth management
+    if self.jsx_brace_depth == 0 {
+        if self.match_string("{{") {
+            return self.make_token(
+                TokenKind.D_LBRACE, "{{", start_line, start_col, start_pos
+            );
+        }
+        if self.match_string("}}") {
+            return self.make_token(
+                TokenKind.D_RBRACE, "}}", start_line, start_col, start_pos
+            );
+        }
     }
     # Single-character operators and delimiters
     self.advance();
@@ -1041,11 +1237,23 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "{":
+            # Track nested braces inside JSX expressions
+            if self.jsx_brace_depth > 0 {
+                self.jsx_brace_depth += 1;
+            }
             return self.make_token(
                 TokenKind.LBRACE, "{", start_line, start_col, start_pos
             );
 
         case "}":
+            # Check if we're closing a JSX expression
+            if self.jsx_brace_depth > 0 {
+                self.jsx_brace_depth -= 1;
+                if self.jsx_brace_depth == 0 {
+                    # End of JSX expression, pop back to previous JSX mode
+                    self.pop_mode();
+                }
+            }
             return self.make_token(
                 TokenKind.RBRACE, "}", start_line, start_col, start_pos
             );
@@ -1166,6 +1374,12 @@ impl Lexer.next_token -> Token {
     } elif mode == LexerMode.FSTRING_EXPR {
         return self.scan_fstring_expr_token();
     }
+    # Handle JSX modes
+    if mode == LexerMode.JSX_TAG {
+        return self.scan_jsx_tag_token();
+    } elif mode == LexerMode.JSX_CONTENT {
+        return self.scan_jsx_content();
+    }
     # Normal mode - continue to regular scanning
     self.skip_whitespace_and_comments();
     if self.at_end() {
@@ -1187,6 +1401,10 @@ impl Lexer.next_token -> Token {
     # Check for keyword-escaped name: <>identifier
     if ch == "<" and self.peek() == ">" and self.is_alpha(self.peek(2)) {
         return self.scan_kwesc_name();
+    }
+    # Check for JSX opening tag: <identifier (but not <> which is kwesc or fragment)
+    if ch == "<" and self.is_alpha(self.peek()) {
+        return self.scan_jsx_open_start();
     }
     # Identifier or keyword
     if self.is_alpha(ch) {
