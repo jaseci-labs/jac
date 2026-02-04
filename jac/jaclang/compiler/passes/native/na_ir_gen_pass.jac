@@ -66,6 +66,7 @@ obj NaIRGenPass(Transform) {
         op: str, left: ir.Value, right: ir.Value, is_float: bool
     ) -> (ir.Value | None);
 
+    def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(<>node: uni.Enum) -> None;
     def _codegen_atom_trailer(node: uni.AtomTrailer) -> (ir.Value | None);
@@ -107,6 +108,7 @@ obj NaIRGenPass(Transform) {
         obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
     ) -> (ir.Value | None);
 
+    def _generate_inherited_method_wrappers -> None;
     # Phase 6: Complex Chains and Type Inference
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
@@ -126,4 +128,112 @@ obj NaIRGenPass(Transform) {
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
     # Phase 8: Entry Block
     def _codegen_entry(<>node: uni.ModuleCode) -> None;
+    # Phase 9: Tuples
+    def _codegen_tuple_val(node: uni.TupleVal) -> (ir.Value | None);
+    def _codegen_tuple_unpack(
+        targets: list, tuple_val: ir.Value, tuple_node: (object | None)
+    ) -> None;
+
+    def _codegen_tuple_index(
+        tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
+    ) -> (ir.Value | None);
+
+    def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
+    # Phase 10: Comprehensions
+    def _codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None);
+    def _codegen_compr_loops(
+        comprs: list,
+        idx: int,
+        list_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str
+    ) -> None;
+
+    def _codegen_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        list_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str,
+        conditionals: list
+    ) -> None;
+
+    def _codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None);
+    def _codegen_dict_compr_loops(
+        comprs: list,
+        idx: int,
+        dict_val: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: uni.UniNode,
+        dict_key: str
+    ) -> None;
+
+    def _codegen_dict_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        dict_val: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: uni.UniNode,
+        dict_key: str,
+        conditionals: list
+    ) -> None;
+
+    def _codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None);
+    def _codegen_set_compr_loops(
+        comprs: list,
+        idx: int,
+        set_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str
+    ) -> None;
+
+    def _codegen_set_compr_range_loop(
+        inner: uni.InnerCompr,
+        comprs: list,
+        idx: int,
+        set_val: ir.Value,
+        out_expr: uni.UniNode,
+        elem_type_name: str,
+        conditionals: list
+    ) -> None;
+    # Phase 11: Global Variables
+    def _register_globals(module: uni.Module) -> None;
+    def _codegen_global_vars(node: uni.GlobalVars) -> None;
+    def _codegen_const_expr(
+        node: uni.UniNode, target_type: ir.Type
+    ) -> (ir.Constant | None);
+    # Phase 12: Dictionaries
+    def _emit_dict_helpers(
+        key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
+    ) -> None;
+
+    def _codegen_dict_val(node: uni.DictVal) -> (ir.Value | None);
+    def _codegen_dict_access(
+        target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_dict_set(
+        target_val: ir.Value,
+        key_val: ir.Value,
+        value: ir.Value,
+        key_type_name: str,
+        val_type_name: str
+    ) -> None;
+
+    def _infer_dict_type(val: ir.Value) -> (tuple | None);
+    # Phase 13: Sets
+    def _emit_set_helpers(
+        elem_type_name: str, elem_type: ir.Type, elem_size: int = 0
+    ) -> None;
+
+    def _codegen_set_val(node: uni.SetVal) -> (ir.Value | None);
+    def _codegen_set_contains(
+        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
+    ) -> (ir.Value | None);
+
+    def _codegen_set_add(
+        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
+    ) -> None;
 }

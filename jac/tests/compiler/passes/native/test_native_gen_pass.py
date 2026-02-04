@@ -591,6 +591,164 @@ class TestNativeChess:
             assert addr != 0, f"{method} not found"
 
 
+class TestNativeDicts:
+    """Verify native dictionary operations produce correct results."""
+
+    def test_dict_new_empty(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_new_empty", ctypes.c_int64)
+        assert f() == 0
+
+    def test_dict_literal_len(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_literal_len", ctypes.c_int64)
+        assert f() == 3
+
+    def test_dict_get_value(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_get_value", ctypes.c_int64)
+        assert f() == 200
+
+    def test_dict_set_value(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_set_value", ctypes.c_int64)
+        assert f() == 20
+
+    def test_dict_update_value(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_update_value", ctypes.c_int64)
+        assert f() == 99
+
+    def test_dict_len_after_set(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_len_after_set", ctypes.c_int64)
+        assert f() == 3
+
+    def test_dict_contains_true(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_contains_true", ctypes.c_int64)
+        assert f() == 1
+
+    def test_dict_contains_false(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_contains_false", ctypes.c_int64)
+        assert f() == 0
+
+    def test_dict_string_keys(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_string_keys", ctypes.c_int64)
+        assert f() == 2
+
+    def test_dict_string_values(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_string_values", ctypes.c_char_p)
+        result = f()
+        assert result == b"two"
+
+    def test_dict_sum_values(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_sum_values", ctypes.c_int64)
+        assert f() == 100
+
+    def test_dict_overwrite(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_overwrite", ctypes.c_int64)
+        assert f() == 30
+
+    def test_dict_multiple_types(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_multiple_types", ctypes.c_int64)
+        assert f() == 300
+
+    def test_dict_get_first(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_get_first", ctypes.c_int64)
+        assert f() == 100
+
+    def test_dict_get_third(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_get_third", ctypes.c_int64)
+        assert f() == 300
+
+    def test_dict_set_then_get(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "dict_set_then_get", ctypes.c_int64)
+        assert f() == 1500
+
+    def test_global_dict_get(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        # Need to call jac_entry first to initialize globals
+        entry = get_func(engine, "jac_entry", None)
+        entry()
+        f = get_func(engine, "global_dict_get", ctypes.c_int64)
+        assert f() == 200
+
+    def test_global_dict_len(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        entry = get_func(engine, "jac_entry", None)
+        entry()
+        f = get_func(engine, "global_dict_len", ctypes.c_int64)
+        assert f() == 3
+
+
+class TestNativeSets:
+    """Verify native set operations produce correct results."""
+
+    def test_set_new_empty(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_new_empty", ctypes.c_int64)
+        assert f() == 0
+
+    def test_set_literal_len(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_literal_len", ctypes.c_int64)
+        assert f() == 5
+
+    def test_set_add_element(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_add_element", ctypes.c_int64)
+        assert f() == 4
+
+    def test_set_add_duplicate(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_add_duplicate", ctypes.c_int64)
+        assert f() == 3  # Duplicates shouldn't increase length
+
+    def test_set_contains_true(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_contains_true", ctypes.c_int64)
+        assert f() == 1
+
+    def test_set_contains_false(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_contains_false", ctypes.c_int64)
+        assert f() == 0
+
+    def test_set_string_elements(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_string_elements", ctypes.c_int64)
+        assert f() == 1
+
+    def test_set_multiple_adds(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        f = get_func(engine, "set_multiple_adds", ctypes.c_int64)
+        assert f() == 3  # 1, 2, 3 (duplicates ignored)
+
+    def test_global_set_contains(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        entry = get_func(engine, "jac_entry", None)
+        entry()
+        f = get_func(engine, "global_set_contains", ctypes.c_int64)
+        assert f() == 1
+
+    def test_global_set_len(self):
+        engine, _ = compile_native("dicts_sets.na.jac")
+        entry = get_func(engine, "jac_entry", None)
+        entry()
+        f = get_func(engine, "global_set_len", ctypes.c_int64)
+        assert f() == 5
+
+
 class TestNativeLLVMIR:
     """Verify LLVM IR output structure."""
 
