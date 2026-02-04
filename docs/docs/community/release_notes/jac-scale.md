@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.6 (Unreleased)
 
-- **fix: Exclude profile config files during K8s code sync**: Profile-specific config files (`jac.local.toml`, `jac.prod.toml`, etc.) are now excluded when syncing application code to the Kubernetes PVC. Previously, these files could override deployment settings such as the serve port, causing health check failures.
+- **fix: Exclude `jac.local.toml` during K8s code sync**: The local dev override file (`jac.local.toml`) is now excluded when syncing application code to the Kubernetes PVC. Previously, this file could override deployment settings such as the serve port, causing health check failures.
 
 ## jac-scale 0.1.5 (Latest Release)
 
