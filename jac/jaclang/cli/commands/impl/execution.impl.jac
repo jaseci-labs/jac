@@ -26,17 +26,32 @@ def _ensure_jac_runtime -> None {
 
 This ensures that when running `jac start /path/to/project/main.jac` from any directory,
 the jac.toml in /path/to/project/ is found and used for plugin configuration.
+The active profile is forwarded to discover() so the multi-file config
+layering is applied atomically during discovery.
 """
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
-    import from jaclang.project.config { JacConfig, set_config }
+    import from jaclang.project.config { JacConfig, get_config, set_config }
     import from jaclang.project.dependencies { add_venv_to_path }
 
     file_path = Path(filename).resolve();
     file_dir = file_path.parent;
 
-    # Re-discover config starting from the file's directory
-    config = JacConfig.discover(start_path=file_dir);
+    # Capture active profile from current config before re-discovery
+    old_config = get_config();
+    active_profile = old_config.active_profile if old_config else "";
+
+    # Re-discover config with profile applied in one step
+    try {
+        config = JacConfig.discover(
+            start_path=file_dir, profile=active_profile or None
+        );
+    } except (OSError, KeyError, ValueError) as e {
+        console.print(
+            f"Warning: Failed to discover config from {file_dir}: {e}", style="warning"
+        );
+        return;
+    }
     if config is not None {
         set_config(config);
         add_venv_to_path(config);

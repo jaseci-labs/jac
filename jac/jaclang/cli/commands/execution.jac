@@ -22,11 +22,18 @@ glob registry = get_registry();
         Arg.create(
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
         ("jac run hello.jac", "Run a simple program"),
         ("jac run app.jac --no-cache", "Run without caching"),
+        ("jac run app.jac --profile prod", "Run with production profile"),
 
     ],
     group="execution"
@@ -46,6 +53,12 @@ def run(filename: str, main: bool = True, cache: bool = True) -> int;
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create("root", default="", help="Root executor ID", short="r"),
         Arg.create("node", default="", help="Starting node ID", short="n"),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
@@ -103,6 +116,12 @@ def enter(
             default=False,
             help="Skip client bundling/serving (API only)"
         ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
@@ -112,6 +131,7 @@ def enter(
         ("jac start app.jac --faux", "Generate API docs without starting"),
         ("jac start --dev", "Start with hot module replacement"),
         ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
+        ("jac start --profile prod", "Start with production profile"),
 
     ],
     group="execution"
@@ -135,6 +155,12 @@ def start(
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create(
             "cache", typ=bool, default=False, help="Use cached compilation", short="c"
+        ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],
