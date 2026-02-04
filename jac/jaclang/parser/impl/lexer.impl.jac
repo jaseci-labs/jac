@@ -311,7 +311,8 @@ impl Lexer.scan_number -> Token {
         if self.current() == "x" or self.current() == "X" {
             value += self.advance();
             kind = TokenKind.HEX;
-            while not self.at_end() and self.is_hex_digit(self.current()) {
+            while not self.at_end()
+            and (self.is_hex_digit(self.current()) or self.current() == "_") {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
@@ -319,28 +320,37 @@ impl Lexer.scan_number -> Token {
             value += self.advance();
             kind = TokenKind.BIN;
             while not self.at_end()
-            and (self.current() == "0" or self.current() == "1") {
+            and (
+                self.current() == "0" or self.current() == "1" or self.current() == "_"
+            ) {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
         } elif self.current() == "o" or self.current() == "O" {
             value += self.advance();
             kind = TokenKind.OCT;
-            while not self.at_end() and self.current() >= "0" and self.current() <= "7" {
+            while not self.at_end()
+            and (
+                self.current() >= "0"
+                and self.current() <= "7"
+                or self.current() == "_"
+            ) {
                 value += self.advance();
             }
             return self.make_token(kind, value, start_line, start_col, start_pos);
         }
     }
-    # Scan integer part
-    while not self.at_end() and self.is_digit(self.current()) {
+    # Scan integer part (with underscore separators)
+    while not self.at_end()
+    and (self.is_digit(self.current()) or self.current() == "_") {
         value += self.advance();
     }
     # Check for decimal point
     if self.current() == "." and self.is_digit(self.peek()) {
         kind = TokenKind.FLOAT;
         value += self.advance();  # .
-        while not self.at_end() and self.is_digit(self.current()) {
+        while not self.at_end()
+        and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
@@ -351,11 +361,35 @@ impl Lexer.scan_number -> Token {
         if self.current() == "+" or self.current() == "-" {
             value += self.advance();
         }
-        while not self.at_end() and self.is_digit(self.current()) {
+        while not self.at_end()
+        and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
     return self.make_token(kind, value, start_line, start_col, start_pos);
+}
+
+impl Lexer.scan_leading_dot_float -> Token {
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
+    value = self.advance();  # consume the '.'
+    while not self.at_end()
+    and (self.is_digit(self.current()) or self.current() == "_") {
+        value += self.advance();
+    }
+    # Check for exponent
+    if not self.at_end() and (self.current() == "e" or self.current() == "E") {
+        value += self.advance();
+        if not self.at_end() and (self.current() == "+" or self.current() == "-") {
+            value += self.advance();
+        }
+        while not self.at_end()
+        and (self.is_digit(self.current()) or self.current() == "_") {
+            value += self.advance();
+        }
+    }
+    return self.make_token(TokenKind.FLOAT, value, start_line, start_col, start_pos);
 }
 
 impl Lexer.scan_string(quote: str) -> Token {
@@ -574,6 +608,7 @@ impl Lexer.scan_fstring_content -> Token {
             }
             self.advance();
             self.push_mode(LexerMode.FSTRING_EXPR);
+            self.fstring_brace_depth_stack.append(self.fstring_brace_depth);
             self.fstring_brace_depth = 1;
             return self.make_token(
                 TokenKind.LBRACE, "{", start_line, start_col, start_pos
@@ -654,6 +689,10 @@ impl Lexer.scan_fstring_expr_token -> Token {
         if self.fstring_brace_depth == 0 {
             # End of f-string expression, pop back to f-string content mode
             self.pop_mode();
+            # Restore previous fstring_brace_depth from stack
+            if self.fstring_brace_depth_stack {
+                self.fstring_brace_depth = self.fstring_brace_depth_stack.pop();
+            }
         }
         return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
@@ -727,6 +766,7 @@ impl Lexer.scan_jsx_tag_token -> Token {
     # Opening brace for expression attribute: {expr}
     if ch == "{" {
         self.advance();
+        self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
@@ -751,6 +791,11 @@ impl Lexer.scan_jsx_tag_token -> Token {
     # String attribute value
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
+    }
+    # Dot for namespaced JSX names like <UI.Button />
+    if ch == "." {
+        self.advance();
+        return self.make_token(TokenKind.DOT, ".", start_line, start_col, start_pos);
     }
     # Unknown - return error token
     self.error(
@@ -812,6 +857,7 @@ impl Lexer.scan_jsx_content -> Token {
     # Opening brace for expression: {expr}
     if ch == "{" {
         self.advance();
+        self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
@@ -855,6 +901,10 @@ impl Lexer.scan_jsx_expr_token -> Token {
         if self.jsx_brace_depth == 0 {
             # End of JSX expression, pop back to previous mode
             self.pop_mode();
+            # Restore previous jsx_brace_depth from stack
+            if self.jsx_brace_depth_stack {
+                self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
+            }
         }
         return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
@@ -899,6 +949,10 @@ impl Lexer.scan_regular_token -> Token {
     if self.is_digit(ch) {
         return self.scan_number();
     }
+    # Leading-dot float (e.g. .5, .435e-2)
+    if ch == "." and not self.at_end() and self.is_digit(self.peek()) {
+        return self.scan_leading_dot_float();
+    }
     # String
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
@@ -911,6 +965,11 @@ impl Lexer.scan_regular_token -> Token {
     and self.peek(4) == ":"
     and self.peek(5) == ":" {
         return self.scan_pynline();
+    }
+    # Check for keyword-escaped name: <>identifier (before operator scanning
+    # which would incorrectly match <> as JSX_FRAG_OPEN)
+    if ch == "<" and self.peek() == ">" and self.is_alpha(self.peek(2)) {
+        return self.scan_kwesc_name();
     }
     # Operators and delimiters
     return self.scan_operator();
@@ -1209,9 +1268,10 @@ impl Lexer.scan_operator -> Token {
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
     }
-    # Only match {{ and }} as single tokens outside of JSX expressions
-    # Inside JSX, we need to track each brace separately for depth management
-    if self.jsx_brace_depth == 0 {
+    # Only match {{ and }} as single tokens in JSX content mode
+    # where they represent literal brace escape sequences.
+    # In normal code, }} should be two separate RBRACE tokens.
+    if self.in_jsx() and self.jsx_brace_depth == 0 {
         if self.match_string("{{") {
             return self.make_token(
                 TokenKind.D_LBRACE, "{{", start_line, start_col, start_pos
@@ -1252,6 +1312,10 @@ impl Lexer.scan_operator -> Token {
                 if self.jsx_brace_depth == 0 {
                     # End of JSX expression, pop back to previous JSX mode
                     self.pop_mode();
+                    # Restore previous jsx_brace_depth from stack
+                    if self.jsx_brace_depth_stack {
+                        self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
+                    }
                 }
             }
             return self.make_token(
@@ -1426,9 +1490,22 @@ impl Lexer.next_token -> Token {
     if self.is_digit(ch) {
         return self.scan_number();
     }
+    # Leading-dot float (e.g. .5, .435e-2)
+    if ch == "." and not self.at_end() and self.is_digit(self.peek()) {
+        return self.scan_leading_dot_float();
+    }
     # String
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
+    }
+    # Check for inline Python block ::py::
+    if ch == ":"
+    and self.peek() == ":"
+    and self.peek(2) == "p"
+    and self.peek(3) == "y"
+    and self.peek(4) == ":"
+    and self.peek(5) == ":" {
+        return self.scan_pynline();
     }
     # Operators and delimiters
     return self.scan_operator();

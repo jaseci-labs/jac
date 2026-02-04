@@ -44,8 +44,10 @@ obj Lexer {
         errors: list[LexerError] = [],
         mode_stack: list[LexerMode] = [],
         fstring_brace_depth: int = 0,  # Track nested braces in f-string expressions
+        fstring_brace_depth_stack: list[int] = [],  # Stack for nested f-string brace depth
         jsx_depth: int = 0,  # Track nested JSX elements
         jsx_brace_depth: int = 0,  # Track nested braces in JSX expressions
+        jsx_brace_depth_stack: list[int] = [],  # Stack for nested JSX brace depth
         jsx_closing_tag: bool = False;  # True when scanning a closing tag </...>
 
     # Mode management
@@ -83,6 +85,7 @@ obj Lexer {
     def scan_identifier -> Token;
     def scan_kwesc_name -> Token;
     def scan_number -> Token;
+    def scan_leading_dot_float -> Token;
     def scan_string(quote: str) -> Token;
     def scan_fstring(prefix: str) -> Token;
     def scan_fstring_content -> Token;

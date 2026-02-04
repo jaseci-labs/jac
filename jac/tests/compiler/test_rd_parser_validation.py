@@ -17,7 +17,18 @@ import pytest
 from conftest import get_micro_jac_files
 from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.program import JacProgram
-from jaclang.pycore.unitree import Module, Source, Token, UniNode
+from jaclang.pycore.unitree import (
+    FString,
+    JsxText,
+    Module,
+    Source,
+    String,
+    Token,
+    UniNode,
+)
+from jaclang.pycore.unitree import (
+    Test as JacTest,
+)
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 # =============================================================================
@@ -25,20 +36,60 @@ from jaclang.runtimelib.utils import read_file_with_encoding
 # =============================================================================
 
 
-def canonicalize(node: UniNode, indent: int = 0) -> str:
+def canonicalize(node: UniNode, indent: int = 0, in_jsx_text: bool = False) -> str:
     """Produce a canonical string representation of a unitree AST.
 
     Captures node types and semantic values (names, literals, operators)
     while ignoring position info so that the two parsers can be compared
     purely on structural output.
+
+    JSX text whitespace is normalized (stripped) since the RD parser
+    correctly preserves raw whitespace while Lark strips it at lex time.
     """
     prefix = "  " * indent
     if isinstance(node, Token):
-        return f"{prefix}{node.__class__.__name__}: {node.value!r}\n"
+        value = node.value.strip() if in_jsx_text else node.value
+        return f"{prefix}{node.__class__.__name__}: {value!r}\n"
 
+    is_jsx_text = isinstance(node, JsxText)
+    # Skip whitespace-only JsxText nodes (RD parser correctly preserves them,
+    # Lark silently discards them — not a meaningful structural difference).
+    if is_jsx_text and all(
+        isinstance(c, Token) and c.value.strip() == "" for c in node.kid
+    ):
+        return ""
+    # Skip comment-only JsxText nodes (RD parser preserves #-comments in JSX
+    # content, Lark strips them during lexing — not a structural difference).
+    if is_jsx_text and all(
+        isinstance(c, Token) and c.value.strip().startswith("#") for c in node.kid
+    ):
+        return ""
     lines = f"{prefix}{node.__class__.__name__}\n"
-    for child in node.kid:
-        lines += canonicalize(child, indent + 1)
+
+    # Merge adjacent String nodes inside FString: the RD parser correctly
+    # keeps f-string text as contiguous segments while Lark splits at escape
+    # boundaries (e.g. '\\' + 'n' vs '\\n', or separate '{' / '}' segments
+    # for literal braces).  Merging normalizes these harmless differences.
+    children = list(node.kid)
+    if isinstance(node, FString):
+        child_prefix = "  " * (indent + 1)
+        i = 0
+        while i < len(children):
+            child = children[i]
+            if isinstance(child, String):
+                merged_value = child.value
+                while i + 1 < len(children) and isinstance(children[i + 1], String):
+                    i += 1
+                    next_str: String = children[i]  # type: ignore[assignment]
+                    merged_value += next_str.value
+                lines += f"{child_prefix}String: {merged_value!r}\n"
+            else:
+                lines += canonicalize(child, indent + 1, in_jsx_text=is_jsx_text)
+            i += 1
+        return lines
+
+    for child in children:
+        lines += canonicalize(child, indent + 1, in_jsx_text=is_jsx_text)
     return lines
 
 
@@ -83,11 +134,13 @@ def rd_parser_comparison_test(filename: str) -> None:
     """Compare Lark and RD parse trees for a single file."""
     source = read_file_with_encoding(filename)
 
+    saved_test_count = JacTest.TEST_COUNT
     lark_ast = parse_with_lark(source, filename)
     if lark_ast is None:
         pytest.skip(f"Lark parser cannot parse {filename}")
         return  # unreachable, but helps mypy
 
+    JacTest.TEST_COUNT = saved_test_count
     rd_ast = parse_with_rd(source, filename)
     assert rd_ast is not None, f"RD parser failed to parse {filename}"
 

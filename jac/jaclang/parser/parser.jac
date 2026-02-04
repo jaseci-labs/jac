@@ -67,7 +67,13 @@ import from jaclang.pycore.unitree {
     AssertStmt,
     DeleteStmt
 }
-import from jaclang.pycore.unitree { CtrlStmt, ReportStmt, VisitStmt, DisengageStmt }
+import from jaclang.pycore.unitree {
+    CtrlStmt,
+    ReportStmt,
+    VisitStmt,
+    DisengageStmt,
+    ExprStmt
+}
 import from jaclang.pycore.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
 import from jaclang.pycore.unitree {
     BinaryExpr,
@@ -76,7 +82,13 @@ import from jaclang.pycore.unitree {
     BoolExpr,
     IfElseExpr
 }
-import from jaclang.pycore.unitree { AtomTrailer, AtomUnit, FuncCall, IndexSlice }
+import from jaclang.pycore.unitree {
+    AtomTrailer,
+    AtomUnit,
+    FuncCall,
+    IndexSlice,
+    EdgeRefTrailer
+}
 import from jaclang.pycore.unitree {
     ListVal,
     TupleVal,
@@ -365,6 +377,7 @@ obj Parser {
     def check(kind: TokenKind) -> bool;
     def check_any(*kinds: TokenKind) -> bool;
     def check_name -> bool;
+    def is_keyword_token -> bool;
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
@@ -377,12 +390,14 @@ obj Parser {
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;
     def make_string(tok: Token) -> String;
+    def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;
     def make_float(tok: Token) -> Float;
     def make_bool(tok: Token) -> Bool;
     def make_null(tok: Token) -> Null;
     def make_ellipsis(tok: Token) -> EllipsisLit;
     def gen_token(tok_type: str, value: str | None = None) -> UniToken;
+    def make_semi -> Semi;
     # -------------------------------------------------------------------------
     # Synchronization (Error Recovery)
     # -------------------------------------------------------------------------
@@ -424,7 +439,7 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
-    def parse_call_args -> list;
+    def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
     def parse_filter_compr_inner -> FilterCompr;
     def parse_assign_compr_inner -> AssignCompr;
@@ -432,11 +447,12 @@ obj Parser {
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
+    def parse_dict_with_spread -> DictVal;
     def parse_edge_ref_chain -> Expr;
     def continue_edge_ref_chain(start_expr: Expr) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
-    def parse_lambda_params -> list;
+    def parse_lambda_params(sig_kid: list) -> list;
     # JSX parsing
     def parse_jsx_element -> Expr;
     def parse_jsx_opening_element -> tuple;
@@ -492,7 +508,7 @@ obj Parser {
     def parse_has_var -> HasVar;
     def parse_ability -> Ability;
     def parse_func_signature -> FuncSignature;
-    def parse_func_params -> list;
+    def parse_func_params(kid: list) -> list;
     def parse_enum -> Enum;
     def parse_enum_member -> Assignment;
     def parse_test -> Test;
