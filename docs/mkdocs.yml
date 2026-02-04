@@ -85,6 +85,7 @@ nav:
       - Contributing: "community/contributing.md"
       - Breaking Changes: "community/breaking-changes.md"
       - Contributors: "community/contributors.md"
+      - Top Voices: "community/top_voices.md"
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
