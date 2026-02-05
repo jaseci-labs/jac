@@ -21,6 +21,7 @@ from jaclang.pycore.helpers import read_file_with_encoding
 from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.passes import (
     DeclImplMatchPass,
+    InteropAnalysisPass,
     JacAnnexPass,
     PyastGenPass,
     PyBytecodeGenPass,
@@ -65,7 +66,10 @@ def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
     from jaclang.compiler.passes.ecmascript import EsastGenPass
     from jaclang.compiler.passes.main import PyJacAstLinkPass
 
-    passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass]
+    passes: list[type[Transform[uni.Module, uni.Module]]] = [
+        InteropAnalysisPass,
+        EsastGenPass,
+    ]
 
     # Include native compilation passes
     from jaclang.compiler.passes.native import NaIRGenPass, NativeCompilePass

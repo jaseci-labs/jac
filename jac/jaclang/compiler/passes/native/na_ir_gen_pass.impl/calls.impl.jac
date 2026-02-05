@@ -341,6 +341,20 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     func = self.func_symtab.get(func_name);
     if func is None {
+        # Check interop manifest for Python functions callable from native
+        manifest = self.ir_in.gen.interop_manifest;
+        binding = manifest.bindings.get(func_name);
+        if binding is not None and binding.source_context.value == "server" {
+            # Declare extern function for this Python function
+            param_ir_types: list = [];
+            for pt in binding.param_types {
+                param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+            }
+            ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+            func = self._get_or_declare_extern(func_name, ret_ir_type, param_ir_types);
+        }
+    }
+    if func is None {
         return None;
     }
     # Build arguments

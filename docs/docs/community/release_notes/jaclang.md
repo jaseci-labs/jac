@@ -21,6 +21,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: File I/O**: The `open()` builtin now compiles to native code, returning a `File` struct backed by C `fopen`. File methods `read()`, `write()`, `readline()`, `close()`, and `flush()` are all supported. NULL handle checks are generated for failed opens.
 - **Native Compiler: Context Managers**: `with` statements compile to native LLVM IR. `__enter__` is called on entry, `__exit__` on exit (including when exceptions occur). The `as` binding form (`with open(path) as f`) is supported. File objects implement the context manager protocol for automatic resource cleanup.
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
+- **Native Compiler: Python↔Native Interop**: Added cross-boundary function call support between Python (`sv`) and native (`na`) codespaces within the same module. Native functions can now call Python functions via LLVM extern declarations backed by ctypes callbacks, and Python code can call native functions via auto-generated ctypes stubs.
 - **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
 
 ## jaclang 0.9.14
