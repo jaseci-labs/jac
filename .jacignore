@@ -170,6 +170,7 @@ jserver.impl.jac
 kubernetes_utils.impl.jac
 lang_tools.impl.jac
 level.impl.jac
+lexer.impl.jac
 level_genarator.jac
 level_manager.jac
 line_spacing.jac
@@ -199,6 +200,7 @@ other_root_access.jac
 package_builder.impl.jac
 package_installer.impl.jac
 param_syntax_err.jac
+parser.impl.jac
 pass_keyword_errors.jac
 player.impl.jac
 plugin.jac

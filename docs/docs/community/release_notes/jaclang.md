@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.9.15 (Unreleased)
 
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
+- **Self-Hosted Recursive Descent Parser**: Added a hand-written recursive descent parser and lexer implemented entirely in Jac (`jac/jaclang/compiler/parser/`). The parser is designed for native compilation with no runtime reflection - grammar rules are encoded directly in AST type definitions. Features include a 28-level expression precedence chain matching the Lark grammar, contextual lexing for f-strings and JSX, and comprehensive pattern matching support. This lays the groundwork for a fully self-hosted Jac compiler.
 - **LSP Responsiveness During Rapid Typing**: Improved editor responsiveness when typing quickly by properly cancelling outdated type-check operations.
 - **Native Compiler: Dictionaries and Sets**: The native backend now supports `dict` and `set` types with full codegen for literals, `len()`, key/value access, subscript assignment, `in` membership testing, `set.add()`, and iteration over dict keys. Both integer and string keyed dictionaries are supported. Global-scope dict and set declarations are also handled. Validated with a comprehensive `dicts_sets.na.jac` test suite.
 - **Native Compiler: Comprehensions**: Added code generation for list, dict, and set comprehensions including nested `for` clauses and `if` filters. List comprehensions with conditions, dict comprehensions mapping positions to pieces, and set comprehensions collecting move targets all compile to native LLVM IR.
@@ -16,6 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: File I/O**: The `open()` builtin now compiles to native code, returning a `File` struct backed by C `fopen`. File methods `read()`, `write()`, `readline()`, `close()`, and `flush()` are all supported. NULL handle checks are generated for failed opens.
 - **Native Compiler: Context Managers**: `with` statements compile to native LLVM IR. `__enter__` is called on entry, `__exit__` on exit (including when exceptions occur). The `as` binding form (`with open(path) as f`) is supported. File objects implement the context manager protocol for automatic resource cleanup.
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
+- **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
 
 ## jaclang 0.9.14 (Latest Release)
 
