@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast as ast3
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -33,6 +34,92 @@ class ClientManifest:
     )  # module_name -> resolved_path
 
 
+class InteropContext(Enum):
+    """Codespace context for interop bindings."""
+
+    SERVER = "server"
+    NATIVE = "native"
+    CLIENT = "client"
+
+
+@dataclass
+class InteropBinding:
+    """A function callable across codespace boundaries.
+
+    Records that a function defined in `source_context` is called from
+    one or more other codespace contexts listed in `callers`.
+    """
+
+    name: str
+    source_context: InteropContext
+    callers: set[InteropContext] = field(default_factory=set)
+    ret_type: str = "int"  # Jac-level type name
+    param_types: list[str] = field(default_factory=list)
+    param_names: list[str] = field(default_factory=list)
+    ast_node: Any = None  # Reference to the Ability AST node
+    route: list[InteropContext] = field(default_factory=list)
+
+    @property
+    def is_direct(self) -> bool:
+        """True if the bridge is a single hop (e.g. sv↔na)."""
+        return len(self.route) == 2
+
+    @property
+    def is_composed(self) -> bool:
+        """True if the bridge requires multiple hops (e.g. cl→sv→na)."""
+        return len(self.route) > 2
+
+
+@dataclass
+class InteropManifest:
+    """All cross-boundary function bindings for a module.
+
+    Built by InteropAnalysisPass, consumed by codegen passes.
+    """
+
+    bindings: dict[str, InteropBinding] = field(default_factory=dict)
+
+    @property
+    def native_imports(self) -> list[InteropBinding]:
+        """Server (Python) functions that native code calls."""
+        return [
+            b
+            for b in self.bindings.values()
+            if b.source_context == InteropContext.SERVER
+            and InteropContext.NATIVE in b.callers
+        ]
+
+    @property
+    def native_exports(self) -> list[InteropBinding]:
+        """Native functions that server (Python) code calls."""
+        return [
+            b
+            for b in self.bindings.values()
+            if b.source_context == InteropContext.NATIVE
+            and InteropContext.SERVER in b.callers
+        ]
+
+    @property
+    def server_exports_to_client(self) -> list[InteropBinding]:
+        """Server functions that client (JS) code calls."""
+        return [
+            b
+            for b in self.bindings.values()
+            if b.source_context == InteropContext.SERVER
+            and InteropContext.CLIENT in b.callers
+        ]
+
+    # Jac type → ctypes type name mapping for sv↔na bridges
+    JAC_TO_CTYPES: dict[str, str] = field(
+        default_factory=lambda: {
+            "int": "ctypes.c_int64",
+            "float": "ctypes.c_double",
+            "bool": "ctypes.c_bool",
+            "str": "ctypes.c_char_p",
+        }
+    )
+
+
 class CodeGenTarget:
     """Code generation target."""
 
@@ -50,6 +137,7 @@ class CodeGenTarget:
         self.es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None
         self.llvm_ir: Any = None
         self.native_engine: Any = None
+        self.interop_manifest: InteropManifest = InteropManifest()
 
     @property
     def doc_ir(self) -> Doc:
