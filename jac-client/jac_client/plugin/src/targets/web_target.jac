@@ -20,7 +20,7 @@ class WebTarget(ClientTarget) {
     override def setup(self: WebTarget, project_dir: Path) -> None;
 
     """Build web bundle using existing Vite pipeline.
-    
+
     Args:
         script_loading: Script loading strategy - 'module' (default, ES modules) or 'defer' (classic script for Tauri file://)
     """
