@@ -17,6 +17,7 @@ from jaclang.pycore.archetype import ObjectSpatialPath as OPath
 from jaclang.pycore.constant import EdgeDir
 from jaclang.pycore.constructs import Archetype as Obj
 from jaclang.pycore.constructs import EdgeArchetype as Edge
+from jaclang.pycore.constructs import JsxElement
 from jaclang.pycore.constructs import NodeArchetype as Node
 from jaclang.pycore.constructs import WalkerArchetype as Walker
 from jaclang.pycore.runtime import JacRuntimeInterface
@@ -29,6 +30,7 @@ __all__ = [
     "Obj",
     "Root",
     "GenericEdge",
+    "JsxElement",
     "OPath",
     "DSFunc",
     # Constants

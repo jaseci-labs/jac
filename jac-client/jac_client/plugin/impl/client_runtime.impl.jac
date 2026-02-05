@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> any {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -203,6 +203,17 @@ impl __removeLocalStorage(key: str) -> None {
     if storage {
         storage.removeItem(key);
     }
+}
+
+"""Auth guard component for file-based routing. Renders child routes if
+authenticated, otherwise redirects to the login path."""
+impl AuthGuard(redirect: str = "/login") -> any {
+    if jacIsLoggedIn() {
+        return
+            <ReactRouterOutlet />;
+    }
+    return
+        <ReactRouterNavigate to={redirect} replace={True} />;
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {

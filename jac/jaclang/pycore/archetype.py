@@ -471,3 +471,12 @@ class ObjectSpatialFunction:
             ty = second_param.annotation
             return ty if ty != _empty else None
         return None
+
+
+@dataclass(eq=False)
+class JsxElement:
+    """JSX Element representation."""
+
+    tag: object
+    props: dict[str, object]
+    children: list[object]

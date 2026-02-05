@@ -8,10 +8,10 @@ impl NativeCompilePass.init(
 }
 
 """Compile the LLVM IR module if one was generated."""
-impl NativeCompilePass.before_pass -> None {
-    module = self.ir_in;
+impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
+    module = ir_in;
     if module.gen.llvm_ir is None {
-        return;
+        return ir_in;
     }
     llvm_ir_str = str(module.gen.llvm_ir);
     try {
@@ -40,4 +40,5 @@ impl NativeCompilePass.before_pass -> None {
     } except Exception as e {
         self.log_error(f"Native compilation failed: {e}");
     }
+    return ir_in;
 }

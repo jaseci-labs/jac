@@ -4,7 +4,7 @@ cl import from "@jac/runtime" { renderJsxTree, jacLogin, }
 
 cl glob: pub APP_TITLE: str = "Import Test App";
 
-cl def: pub test_page() {
+cl def: pub test_page() -> JsxElement {
     return <div class="container">
         <h1>
             {APP_TITLE}
