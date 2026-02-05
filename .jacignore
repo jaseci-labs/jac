@@ -327,3 +327,4 @@ dicts.impl.jac
 core.impl.jac
 context_mgr.impl.jac
 runtime_errors.na.jac
+bare_except_error.jac
