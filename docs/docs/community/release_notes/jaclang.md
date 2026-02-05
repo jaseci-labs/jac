@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.15 (Unreleased)
 
+- **Fix: Type Errors in Impl Files Now Show Correct Location**: Type errors in `.impl.jac` files now point to the actual error location instead of the declaration in the main file.
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
 - **LSP Responsiveness During Rapid Typing**: Improved editor responsiveness when typing quickly by properly cancelling outdated type-check operations.
 - **Native Compiler: Dictionaries and Sets**: The native backend now supports `dict` and `set` types with full codegen for literals, `len()`, key/value access, subscript assignment, `in` membership testing, `set.add()`, and iteration over dict keys. Both integer and string keyed dictionaries are supported. Global-scope dict and set declarations are also handled. Validated with a comprehensive `dicts_sets.na.jac` test suite.
