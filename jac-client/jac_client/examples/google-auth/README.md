@@ -249,8 +249,8 @@ See the example files in this directory for complete implementations:
 ### 1. Start the Development Server
 
 ```bash
-cd jac-client/jac_client/examples/google-auth-v2
-jac serve main.jac
+cd jac-client/jac_client/examples/google-auth
+jac start main.jac
 ```
 
 ### 2. Test the Authentication Flow

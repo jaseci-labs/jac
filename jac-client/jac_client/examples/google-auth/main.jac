@@ -17,7 +17,7 @@ cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 # Client-side component
 cl {
-    def NaviigationMenu -> any {
+    def NavigationMenu -> any {
         return
             <nav style={{"display": "flex", "gap": "10px", "marginBottom": "20px"}}>
                 <button>
@@ -47,12 +47,16 @@ cl {
         return
             <AuthProvider>
                 <Router>
-                    <NaviigationMenu />
+                    <NavigationMenu />
                     <Routes>
                         <Route path="/" element={<Home />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/auth/callback" element={<OAuthCallback />} />
-                        <Route path="/sample" element={<Sample />} />
+                        <Route path="/sample" element={
+                            <Protected>
+                                <Sample />
+                            </Protected>
+                        } />
                         <Route
                             path="/dashboard"
                             element={<Protected>

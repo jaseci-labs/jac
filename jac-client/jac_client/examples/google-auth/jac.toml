@@ -24,7 +24,7 @@ base_route_app = "app"
 
 [plugins.scale]
 [plugins.scale.jwt]
-secret = "your_jwt_secret_key"
+secret = "${JWT_SECRET}"
 algorithm = "HS256"
 exp_delta_days = 7
 
