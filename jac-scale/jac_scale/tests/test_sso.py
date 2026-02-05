@@ -325,7 +325,9 @@ class TestJacScaleUserManagerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
+            assert isinstance(
+                result, (RedirectResponse, JSONResponse, TransportResponse)
+            )
             body = self._get_response_body(result)
 
             assert "Login successful" in body
