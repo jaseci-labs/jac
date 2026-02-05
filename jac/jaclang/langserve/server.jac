@@ -32,7 +32,7 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    debug("Did change: Type checking started...");
+    debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
 }
 

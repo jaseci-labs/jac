@@ -321,7 +321,7 @@ class JacCompiler:
         else:
             source = uni.Source(source_str, mod_path=file_path)
             jac_ast_ret: Transform[uni.Source, uni.Module] = JacParser(
-                root_ir=source, prog=target_program
+                root_ir=source, prog=target_program, cancel_token=cancel_token
             )
             had_error = len(jac_ast_ret.errors_had) > 0
             mod = jac_ast_ret.ir_out
@@ -415,6 +415,8 @@ class JacCompiler:
     ) -> None:
         """Run a list of passes on a module."""
         for current_pass in passes:
+            if cancel_token and cancel_token.is_set():
+                break
             current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token)  # type: ignore
 
     @staticmethod

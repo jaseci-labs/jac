@@ -1,0 +1,11 @@
+[serve]
+port = 80
+
+[plugins.client]
+minify = true
+
+[plugins.client.app_meta_data]
+title = "All-In-One Prod"
+
+[plugins.client.api]
+base_url = "http://prod-api.example.com"

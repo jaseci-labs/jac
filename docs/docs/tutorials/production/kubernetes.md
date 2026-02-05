@@ -1,37 +1,41 @@
 # Kubernetes Deployment
 
-Scale your Jac application with jac-scale on Kubernetes.
+Deploy your Jac application to Kubernetes with a single command.
 
 > **Prerequisites**
 >
 > - Completed: [Local API Server](local.md)
-> - Familiar with: Kubernetes basics (kubectl, deployments)
-> - Time: ~30 minutes
+> - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
+> - `kubectl` configured
+> - jac-scale installed: `pip install jac-scale`
+> - Time: ~10 minutes
 
 ---
 
 ## Overview
 
-jac-scale provides cloud-native deployment for Jac applications:
+`jac start --scale` handles everything automatically:
+
+- Deploys your application to Kubernetes
+- Auto-provisions Redis (caching) and MongoDB (persistence)
+- Creates all necessary Kubernetes resources
+- Exposes your application via NodePort
 
 ```mermaid
 graph TD
-    subgraph cluster["Kubernetes Cluster"]
-        LB["Load Balancer"]
-        LB --> P1["Pod 1<br/>jac-app"]
-        LB --> P2["Pod 2<br/>jac-app"]
-        LB --> P3["Pod 3<br/>jac-app"]
+    subgraph cluster["Kubernetes Cluster (Auto-Created)"]
+        subgraph app["Application"]
+            P1["Pod: jac-app"]
+        end
+        subgraph data["Data Layer (Auto-Provisioned)"]
+            R["Redis<br/>Caching"]
+            M["MongoDB<br/>Persistence"]
+        end
+        P1 --> R
+        P1 --> M
     end
+    LB["NodePort :30001"] --> P1
 ```
-
----
-
-## Prerequisites
-
-- Docker installed
-- Kubernetes cluster (local: minikube, kind; cloud: GKE, EKS, AKS)
-- `kubectl` configured
-- jac-scale installed: `pip install jac-scale`
 
 ---
 
@@ -41,31 +45,24 @@ graph TD
 
 ```jac
 # app.jac
-node Counter {
-    has value: int = 0;
+node Todo {
+    has title: str;
+    has done: bool = False;
 }
 
-walker:pub increment {
-    can inc with `root entry {
-        counters = [-->](`?Counter);
-        if len(counters) == 0 {
-            root ++> Counter();
-            counters = [-->](`?Counter);
-        }
+walker:pub add_todo {
+    has title: str;
 
-        counters[0].value += 1;
-        report {"value": counters[0].value};
+    can create with `root entry {
+        todo = here ++> Todo(title=self.title);
+        report {"id": todo[0].id, "title": todo[0].title};
     }
 }
 
-walker:pub get_count {
+walker:pub list_todos {
     can fetch with `root entry {
-        counters = [-->](`?Counter);
-        if len(counters) > 0 {
-            report {"value": counters[0].value};
-        } else {
-            report {"value": 0};
-        }
+        todos = [-->](`?Todo);
+        report [{"id": t.id, "title": t.title, "done": t.done} for t in todos];
     }
 }
 
@@ -76,527 +73,249 @@ walker:pub health {
 }
 ```
 
-### 2. Create Dockerfile
-
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install Jac
-RUN pip install jaclang
-
-# Copy application
-COPY app.jac .
-
-# Expose port
-EXPOSE 8000
-
-# Run server
-CMD ["jac", "start", "app.jac", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### 3. Build and Push Image
+### 2. Deploy to Kubernetes
 
 ```bash
-# Build image
-docker build -t myapp:latest .
-
-# Tag for registry
-docker tag myapp:latest myregistry.com/myapp:v1.0.0
-
-# Push to registry
-docker push myregistry.com/myapp:v1.0.0
+jac start app.jac --scale
 ```
+
+That's it. Your application is now running on Kubernetes.
+
+**Access your application:**
+
+- API: http://localhost:30001
+- Swagger docs: http://localhost:30001/docs
 
 ---
 
-## Kubernetes Manifests
+## Deployment Modes
 
-### Deployment
+### Development Mode (Default)
 
-```yaml
-# k8s/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jac-app
-  labels:
-    app: jac-app
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: jac-app
-  template:
-    metadata:
-      labels:
-        app: jac-app
-    spec:
-      containers:
-      - name: jac-app
-        image: myregistry.com/myapp:v1.0.0
-        ports:
-        - containerPort: 8000
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: app-secrets
-              key: database-url
-```
-
-### Service
-
-```yaml
-# k8s/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: jac-app-service
-spec:
-  selector:
-    app: jac-app
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 8000
-  type: ClusterIP
-```
-
-### Ingress
-
-```yaml
-# k8s/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: jac-app-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: api.myapp.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: jac-app-service
-            port:
-              number: 80
-```
-
-### Secrets
-
-```yaml
-# k8s/secrets.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: app-secrets
-type: Opaque
-stringData:
-  database-url: "postgresql://user:pass@db-host:5432/mydb"
-  api-key: "your-api-key-here"
-```
-
----
-
-## Using jac-scale CLI
-
-jac-scale simplifies Kubernetes deployment:
-
-### Initialize Project
+Deploys without building a Docker image. Fastest for iteration.
 
 ```bash
-jac scale init
+jac start app.jac --scale
 ```
 
-This creates:
+### Production Mode
 
-```
-k8s/
-├── deployment.yaml
-├── service.yaml
-├── ingress.yaml
-├── configmap.yaml
-└── secrets.yaml
-```
-
-### Deploy Application
+Builds a Docker image and pushes to DockerHub before deploying.
 
 ```bash
-# Deploy to current kubectl context
-jac scale deploy
-
-# Deploy with custom replicas
-jac scale deploy --replicas 5
-
-# Deploy to specific namespace
-jac scale deploy --namespace production
+jac start app.jac --scale --build
 ```
 
-### Scale Application
+**Requirements for production mode:**
+
+Create a `.env` file with your Docker credentials:
+
+```env
+DOCKER_USERNAME=your-dockerhub-username
+DOCKER_PASSWORD=your-dockerhub-password-or-token
+```
+
+---
+
+## Configuration
+
+Configure deployment via environment variables in `.env`:
+
+### Application Settings
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP_NAME` | Name of your application | `jaseci` |
+| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
+| `K8s_NODE_PORT` | Port for accessing the app | `30001` |
+
+### Resource Limits
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `K8s_CPU_REQUEST` | CPU request | - |
+| `K8s_CPU_LIMIT` | CPU limit | - |
+| `K8s_MEMORY_REQUEST` | Memory request | - |
+| `K8s_MEMORY_LIMIT` | Memory limit | - |
+
+### Health Checks
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `K8s_READINESS_INITIAL_DELAY` | Readiness probe delay (seconds) | `10` |
+| `K8s_READINESS_PERIOD` | Readiness probe interval | `20` |
+| `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe delay (seconds) | `10` |
+| `K8s_LIVENESS_PERIOD` | Liveness probe interval | `20` |
+
+### Database Options
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `K8s_MONGODB` | Enable MongoDB | `True` |
+| `K8s_REDIS` | Enable Redis | `True` |
+| `MONGODB_URI` | External MongoDB URL | Auto-provisioned |
+| `REDIS_URL` | External Redis URL | Auto-provisioned |
+
+### Authentication
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `JWT_SECRET` | JWT signing key | Auto-generated |
+| `JWT_EXP_DELTA_DAYS` | Token expiration (days) | `7` |
+| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
+| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth secret | - |
+
+---
+
+## Managing Your Deployment
+
+### Check Status
 
 ```bash
-# Scale up
-jac scale replicas 10
-
-# Scale down
-jac scale replicas 2
-
-# Autoscale based on CPU
-jac scale autoscale --min 2 --max 10 --cpu-percent 80
+kubectl get pods
+kubectl get services
 ```
 
-### Monitor
+### View Logs
 
 ```bash
-# View pods
-jac scale status
-
-# View logs
-jac scale logs
-
-# Follow logs
-jac scale logs -f
+kubectl logs -l app=jaseci -f
 ```
 
----
+### Clean Up
 
-## Horizontal Pod Autoscaler
-
-```yaml
-# k8s/hpa.yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: jac-app-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: jac-app
-  minReplicas: 2
-  maxReplicas: 20
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
-
----
-
-## Persistent Storage
-
-### For Graph Database
-
-```yaml
-# k8s/pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: jac-data-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: standard
-```
-
-Mount in deployment:
-
-```yaml
-spec:
-  containers:
-  - name: jac-app
-    volumeMounts:
-    - name: data
-      mountPath: /data
-  volumes:
-  - name: data
-    persistentVolumeClaim:
-      claimName: jac-data-pvc
-```
-
-### Using External Database
-
-```toml
-# Configure in jac.toml
-[database]
-url = "${DATABASE_URL}"
-pool_size = 10
-```
-
----
-
-## Configuration Management
-
-### ConfigMap
-
-```yaml
-# k8s/configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: jac-app-config
-data:
-  LOG_LEVEL: "info"
-  MAX_CONNECTIONS: "100"
-  CACHE_TTL: "3600"
-```
-
-Use in deployment:
-
-```yaml
-envFrom:
-- configMapRef:
-    name: jac-app-config
-```
-
-### Environment-Specific Configs
+Remove all Kubernetes resources created by jac-scale:
 
 ```bash
-# Development
-kubectl apply -f k8s/overlays/dev/
-
-# Staging
-kubectl apply -f k8s/overlays/staging/
-
-# Production
-kubectl apply -f k8s/overlays/prod/
+jac destroy app.jac
 ```
+
+This removes:
+
+- Application deployments and pods
+- Redis and MongoDB StatefulSets
+- Services and persistent volumes
+- ConfigMaps and secrets
 
 ---
 
-## Rolling Updates
+## How It Works
 
-### Update Image
+When you run `jac start --scale`, the following happens automatically:
+
+1. **Namespace Setup** - Creates or uses the specified Kubernetes namespace
+2. **Database Provisioning** - Deploys Redis and MongoDB as StatefulSets with persistent storage (first run only)
+3. **Application Deployment** - Creates a deployment for your Jac application
+4. **Service Exposure** - Exposes the application via NodePort
+
+Subsequent deployments only update the application - databases persist across deployments.
+
+---
+
+## Setting Up Kubernetes
+
+### Option A: Docker Desktop (Easiest)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Open Settings > Kubernetes
+3. Check "Enable Kubernetes"
+4. Click "Apply & Restart"
+
+### Option B: Minikube
 
 ```bash
-# Update deployment with new image
-kubectl set image deployment/jac-app jac-app=myregistry.com/myapp:v1.1.0
+# Install minikube
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
 
-# Or using jac-scale
-jac scale update --image myregistry.com/myapp:v1.1.0
+# Start cluster
+minikube start
+
+# For minikube, access via:
+minikube service jaseci -n default
 ```
 
-### Rollback
+### Option C: MicroK8s (Linux)
 
 ```bash
-# View rollout history
-kubectl rollout history deployment/jac-app
-
-# Rollback to previous version
-kubectl rollout undo deployment/jac-app
-
-# Rollback to specific revision
-kubectl rollout undo deployment/jac-app --to-revision=2
+sudo snap install microk8s --classic
+microk8s enable dns storage
+alias kubectl='microk8s kubectl'
 ```
 
 ---
 
-## Monitoring
+## Troubleshooting
 
-### Prometheus Metrics
+### Application not accessible
 
-```jac
-# Add metrics endpoint
-walker:pub metrics {
-    can export with `root entry {
-        import psutil;
+```bash
+# Check pod status
+kubectl get pods
 
-        report {
-            "requests_total": get_request_count(),
-            "memory_usage_bytes": psutil.virtual_memory().used,
-            "cpu_percent": psutil.cpu_percent()
-        };
-    }
-}
+# Check service
+kubectl get svc
+
+# For minikube, use tunnel
+minikube service jaseci
 ```
 
-### ServiceMonitor for Prometheus
+### Database connection issues
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: jac-app-monitor
-spec:
-  selector:
-    matchLabels:
-      app: jac-app
-  endpoints:
-  - port: http
-    path: /metrics
-    interval: 30s
+```bash
+# Check StatefulSets
+kubectl get statefulsets
+
+# Check persistent volumes
+kubectl get pvc
+
+# View database logs
+kubectl logs -l app=mongodb
+kubectl logs -l app=redis
 ```
 
----
+### Build failures (--build mode)
 
-## Production Checklist
+- Ensure Docker daemon is running
+- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+- Check disk space for image building
 
-### Security
+### General debugging
 
-- [ ] Use non-root user in container
-- [ ] Enable network policies
-- [ ] Store secrets in Vault or sealed-secrets
-- [ ] Enable RBAC
-- [ ] Scan images for vulnerabilities
+```bash
+# Describe a pod for events
+kubectl describe pod <pod-name>
 
-### Reliability
+# Get all resources
+kubectl get all
 
-- [ ] Set resource requests and limits
-- [ ] Configure liveness and readiness probes
-- [ ] Set up HPA for autoscaling
-- [ ] Configure PodDisruptionBudget
-- [ ] Enable persistent storage
-
-### Observability
-
-- [ ] Configure logging to stdout
-- [ ] Set up Prometheus metrics
-- [ ] Configure distributed tracing
-- [ ] Set up alerting
-
-### Deployment
-
-- [ ] Use immutable tags (not :latest)
-- [ ] Configure rolling update strategy
-- [ ] Test rollback procedure
-- [ ] Set up CI/CD pipeline
-
----
-
-## Example: Complete Production Setup
-
-```yaml
-# k8s/production/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jac-app
-  namespace: production
-spec:
-  replicas: 3
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  selector:
-    matchLabels:
-      app: jac-app
-  template:
-    metadata:
-      labels:
-        app: jac-app
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-      containers:
-      - name: jac-app
-        image: myregistry.com/myapp:v1.0.0
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-          name: http
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 15
-          periodSeconds: 20
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        envFrom:
-        - configMapRef:
-            name: jac-app-config
-        - secretRef:
-            name: jac-app-secrets
-        volumeMounts:
-        - name: data
-          mountPath: /data
-      volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: jac-data-pvc
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchLabels:
-                  app: jac-app
-              topologyKey: kubernetes.io/hostname
+# Check events
+kubectl get events --sort-by='.lastTimestamp'
 ```
 
 ---
 
-## CLI Reference
+## Example: Full-Stack App with Auth
 
-| Command | Description |
-|---------|-------------|
-| `jac scale init` | Initialize k8s manifests |
-| `jac scale deploy` | Deploy application |
-| `jac scale status` | Show deployment status |
-| `jac scale logs` | View application logs |
-| `jac scale replicas N` | Scale to N replicas |
-| `jac scale autoscale` | Configure HPA |
-| `jac scale update` | Update deployment |
-| `jac scale rollback` | Rollback deployment |
+```bash
+# Create a new full-stack project
+jac create todo --use client
+cd todo
+
+# Deploy to Kubernetes
+jac start app.jac --scale
+```
+
+Access:
+
+- Frontend: http://localhost:30001/cl/app
+- Backend API: http://localhost:30001
+- Swagger docs: http://localhost:30001/docs
 
 ---
 
 ## Next Steps
 
-- [Local API Server](local.md) - Development setup
-- [Authentication](../fullstack/auth.md) - Secure your API
+- [Local API Server](local.md) - Development without Kubernetes
+- [Authentication](../fullstack/auth.md) - Add user authentication
+- [jac-scale Reference](../../reference/plugins/jac-scale.md) - Full configuration options
