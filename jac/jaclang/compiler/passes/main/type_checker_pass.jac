@@ -23,7 +23,6 @@ class TypeCheckPass(UniPass) {
     def exit_ability(self: TypeCheckPass, <>node: uni.Ability) -> None;
     def exit_archetype(self: TypeCheckPass, <>node: uni.Archetype) -> None;
     def exit_enum(self: TypeCheckPass, <>node: uni.Enum) -> None;
-    def exit_impl_def(self: TypeCheckPass, <>node: uni.ImplDef) -> None;
     def exit_import(self: TypeCheckPass, <>node: uni.Import) -> None;
     def exit_assignment(self: TypeCheckPass, <>node: uni.Assignment) -> None;
     def exit_atom_trailer(self: TypeCheckPass, <>node: uni.AtomTrailer) -> None;
