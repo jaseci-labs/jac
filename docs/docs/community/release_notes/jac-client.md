@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.15 (Unreleased)
+## jac-client 0.2.16 (Unreleased)
+ **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
 
-- **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
 
-## jac-client 0.2.14 (Latest Release)
+## jac-client 0.2.15 (Latest Release)
+
+## jac-client 0.2.14
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Updated Fullstack Template**: Modernized the `fullstack` jacpack template to use idiomatic Jac patterns -- `can with entry` lifecycle effects instead of `useEffect`, JSX comprehensions instead of `.map()`, and impl separation (`frontend.impl.jac`) for cleaner code organization. Updated template README with project structure and pattern documentation.
