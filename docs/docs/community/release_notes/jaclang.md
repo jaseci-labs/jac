@@ -6,7 +6,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.15 (Latest Release)
 
+- **Fix: Type Errors in Impl Files Now Show Correct Location**: Type errors in `.impl.jac` files now point to the actual error location instead of the declaration in the main file.
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
+- **`jac add` Dependency Resolution**: `jac add` now installs all Python dependencies in a single batch, allowing `pip` to resolve compatible versions across interdependent packages and preventing runtime errors caused by version mismatches.
 - **Self-Hosted Recursive Descent Parser**: Added a hand-written recursive descent parser and lexer implemented entirely in Jac (`jac/jaclang/compiler/parser/`). The parser is designed for native compilation with no runtime reflection - grammar rules are encoded directly in AST type definitions. Features include a 28-level expression precedence chain matching the Lark grammar, contextual lexing for f-strings and JSX, and comprehensive pattern matching support. This lays the groundwork for a fully self-hosted Jac compiler.
 - **LSP Responsiveness During Rapid Typing**: Improved editor responsiveness when typing quickly by properly cancelling outdated type-check operations.
 - **Native Compiler: Dictionaries and Sets**: The native backend now supports `dict` and `set` types with full codegen for literals, `len()`, key/value access, subscript assignment, `in` membership testing, `set.add()`, and iteration over dict keys. Both integer and string keyed dictionaries are supported. Global-scope dict and set declarations are also handled. Validated with a comprehensive `dicts_sets.na.jac` test suite.

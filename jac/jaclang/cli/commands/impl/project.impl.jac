@@ -360,8 +360,17 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
     installer = DependencyInstaller(config=config, verbose=verbose);
-    with console.status("[cyan]Installing packages...[/cyan]", spinner="dots") as status {
-        install_success = installer.install_all(include_dev=dev);
+    pip_packages = installer.get_pip_package_specs(include_dev=dev);
+    git_packages = installer.get_git_package_specs();
+    if not pip_packages and not git_packages {
+        console.info("No dependencies to install.");
+        return 0;
+    }
+    all_packages = pip_packages + git_packages;
+    with console.status(
+        f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
+    ) as status {
+        install_success = installer.install_package(all_packages);
     }
     if install_success {
         console.success("All dependencies installed");
@@ -383,16 +392,26 @@ impl add(
         # Skip silently if jac.toml doesn't exist (for regular Python deps)
         return 0;
     }
-    # If no packages specified and not git, install all Python dependencies
+    # If no packages specified and not git, install all dependencies
     if not packages and not git {
         installer = DependencyInstaller(config=config, verbose=verbose);
-        console.print(
-            "\n📦 Installing all Python dependencies from jac.toml", style="bold"
-        );
+        console.print("\n📦 Installing all dependencies from jac.toml", style="bold");
+        pip_packages = installer.get_pip_package_specs(include_dev=dev);
+        git_packages = installer.get_git_package_specs();
+        if not pip_packages and not git_packages {
+            console.info("No dependencies to install.");
+            return 0;
+        }
+        all_packages = pip_packages + git_packages;
+        for spec in all_packages {
+            console.print(f"  • {spec}", style="cyan");
+        }
+        console.print("");
         with console.status(
-            "[cyan]Installing Python packages...[/cyan]", spinner="dots"
+            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
+            spinner="dots"
         ) as status {
-            install_success = installer.install_all(include_dev=dev);
+            install_success = installer.install_package(all_packages);
         }
         if install_success {
             console.success("All dependencies installed");
@@ -417,7 +436,8 @@ impl add(
         console.print(f"  Repository: {git}", style="muted");
         config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
         with console.status(f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots") as status {
-            git_success = installer.install_git_package(pkg_name, git);
+            specs = installer._make_git_spec(pkg_name, git);
+            git_success = installer.install_package([specs]);
         }
         if git_success {
             config.save();
@@ -434,7 +454,8 @@ impl add(
         (name, version) = resolver.parse_spec(pkg_spec);
         version_str = version or ">=0.0.0";
         with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
-            pkg_success = installer.install_package(name, version);
+            specs = installer._make_pip_spec(name, version_str);
+            pkg_success = installer.install_package([specs]);
         }
         if pkg_success {
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
