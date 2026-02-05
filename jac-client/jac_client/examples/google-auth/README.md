@@ -77,6 +77,7 @@ exp_delta_days = 7  # Token expires in 7 days
 # SSO Configuration
 [plugins.scale.sso]
 host = "http://localhost:8000/sso"  # Change to your domain in production
+frontend_callback_url = "http://localhost:8000/auth/callback"  # Redirect URL after OAuth
 
 # Google OAuth Provider
 [plugins.scale.sso.google]
@@ -90,6 +91,7 @@ client_secret = "${GOOGLE_CLIENT_SECRET}"
 - `jwt.algorithm`: Algorithm for JWT signing (HS256 recommended)
 - `jwt.exp_delta_days`: How long tokens remain valid
 - `sso.host`: Base URL for SSO endpoints
+- `sso.frontend_callback_url`: URL to redirect to after OAuth callback (with token or error params). If not set, returns JSON response.
 - `sso.google.*`: Google OAuth credentials (loaded from environment variables)
 
 ---

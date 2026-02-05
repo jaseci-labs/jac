@@ -30,6 +30,8 @@ exp_delta_days = 7
 
 [plugins.scale.sso]
 host = "http://localhost:8000/sso"
+# Redirect to frontend after OAuth callback (optional - if not set, returns JSON)
+frontend_callback_url = "http://localhost:8000/auth/callback"
 
 # Configure specific providers
 [plugins.scale.sso.google]

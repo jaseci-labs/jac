@@ -73,6 +73,7 @@ obj JacAPIServer(JServer) {
     def register_create_user_endpoint -> None;
     def register_refresh_token_endpoint -> None;
     def register_sso_endpoints -> None;
+    def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
     def create_walker_callback(
         walker_name: str, has_node_param: bool = False
     ) -> Callable[..., TransportResponse];
