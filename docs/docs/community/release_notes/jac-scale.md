@@ -4,6 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.7 (Unreleased)
 
+- **SSO Frontend Callback URL**: Added configurable `frontend_callback_url` option for SSO authentication. When configured in `jac.toml`, the SSO callback endpoint redirects to the specified frontend URL with token or error parameters instead of returning JSON. This enables seamless browser-based OAuth flows while maintaining backwards compatibility (JSON response when not configured).
+
+  ```bash
+  [plugins.scale.sso]
+  host = "http://localhost:8000/sso"
+  frontend_callback_url = "http://localhost:8000/auth/callback"  # Optional
+  ```
+
 ## jac-scale 0.1.6 (Latest Release)
 
 - **fix: Exclude `jac.local.toml` during K8s code sync**: The local dev override file (`jac.local.toml`) is now excluded when syncing application code to the Kubernetes PVC. Previously, this file could override deployment settings such as the serve port, causing health check failures.
