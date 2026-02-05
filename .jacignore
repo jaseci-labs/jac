@@ -185,6 +185,8 @@ member_access_type_inferred.jac
 member_access_type_resolve.jac
 memory.impl.jac
 memory_hierarchy.mongo.impl.jac
+memory_hierarchy.redis.impl.jac
+builtin.impl.jac
 method_tool.jac
 model.impl.jac
 mtir.impl.jac
@@ -327,3 +329,4 @@ dicts.impl.jac
 core.impl.jac
 context_mgr.impl.jac
 runtime_errors.na.jac
+checker_impl_body.impl.jac
