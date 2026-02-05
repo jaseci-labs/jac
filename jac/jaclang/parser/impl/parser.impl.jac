@@ -2066,49 +2066,65 @@ impl Parser.parse_list_or_compr -> Expr {
 """Continue parsing edge ref chain when start expression is already parsed."""
 impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
     # Already consumed LSQUARE and parsed start_expr
+    # This follows the same structure as parse_edge_ref_chain but with
+    # an already-parsed starting expression.
     kid: list = [self.gen_token(Tok.LSQUARE.value), start_expr];
-    edge_ops: list = [];
+    chain: list = [start_expr];
     while True {
+        edge_op_ref: EdgeOpRef | None = None;
         # Check for simple edge operators: -->, <--, <-->
         if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
             edge_tok = self.advance();
-            edge_op = self.make_uni_token(edge_tok);
-            edge_ops.append(
-                EdgeOpRef(filter_cond=None, edge_dir=edge_op, kid=[edge_op])
-            );
-            kid.append(edge_op);
+            edge_uni = self.make_uni_token(edge_tok);
+            dir = EdgeDir.OUT;
+            if edge_tok.kind == TokenKind.ARROW_L {
+                dir = EdgeDir.IN;
+            } elif edge_tok.kind == TokenKind.ARROW_BI {
+                dir = EdgeDir.ANY;
+            }
+            edge_op_ref = EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
         } elif self.check(TokenKind.ARROW_R_P1) {
-            start_tok = self.advance();
-            kid.append(self.make_uni_token(start_tok));
+            self.advance();
+            start_uni = self.make_uni_token(self.previous());
+            f_type = None;
+            fcompr_kid: list = [];
             if self.check_name() {
-                type_name = self.parse_atom();
-                kid.append(type_name);
+                f_type = self.parse_atom();
+                fcompr_kid.append(f_type);
             }
+            fcond = UniFilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
+            end_uni = self.gen_token(Tok.ARROW_R_P2.value);
             if self.check(TokenKind.ARROW_R_P2) {
-                end_tok = self.advance();
-                edge_op = self.make_uni_token(end_tok);
-                edge_ops.append(
-                    EdgeOpRef(filter_cond=None, edge_dir=edge_op, kid=[edge_op])
-                );
-                kid.append(edge_op);
+                self.advance();
             }
+            edge_op_ref = EdgeOpRef(
+                filter_cond=fcond,
+                edge_dir=EdgeDir.OUT,
+                kid=[start_uni, fcond, end_uni]
+            );
         } elif self.check(TokenKind.ARROW_L_P1) {
-            start_tok = self.advance();
-            kid.append(self.make_uni_token(start_tok));
+            self.advance();
+            start_uni = self.make_uni_token(self.previous());
+            f_type = None;
+            fcompr_kid: list = [];
             if self.check_name() {
-                type_name = self.parse_atom();
-                kid.append(type_name);
+                f_type = self.parse_atom();
+                fcompr_kid.append(f_type);
             }
+            fcond = UniFilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
+            end_uni = self.gen_token(Tok.ARROW_L_P2.value);
             if self.check(TokenKind.ARROW_L_P2) {
-                end_tok = self.advance();
-                edge_op = self.make_uni_token(end_tok);
-                edge_ops.append(
-                    EdgeOpRef(filter_cond=None, edge_dir=edge_op, kid=[edge_op])
-                );
-                kid.append(edge_op);
+                self.advance();
             }
+            edge_op_ref = EdgeOpRef(
+                filter_cond=fcond, edge_dir=EdgeDir.IN, kid=[start_uni, fcond, end_uni]
+            );
         } else {
             break;
+        }
+        if edge_op_ref is not None {
+            chain.append(edge_op_ref);
+            kid.append(edge_op_ref);
         }
         # Check for filter expressions after edge operator
         if self.check(TokenKind.LPAREN) {
@@ -2119,12 +2135,14 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
             ) {
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
+                chain.append(filter_expr);
                 kid.append(filter_expr);
                 self.expect(TokenKind.RPAREN);
             } else {
                 self.advance();
                 kid.append(self.gen_token(Tok.LPAREN.value));
                 filter_expr = self.parse_expression();
+                chain.append(filter_expr);
                 kid.append(filter_expr);
                 self.expect(TokenKind.RPAREN);
                 kid.append(self.gen_token(Tok.RPAREN.value));
@@ -2133,10 +2151,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
     }
     self.expect(TokenKind.RSQUARE);
     kid.append(self.gen_token(Tok.RSQUARE.value));
-    if len(edge_ops) > 0 {
-        return AtomUnit(value=edge_ops[0], kid=kid);
-    }
-    return ListVal(values=[], kid=kid);
+    return EdgeRefTrailer(chain=chain, edges_only=False, is_async=False, kid=kid);
 }
 
 impl Parser.parse_edge_ref_chain -> Expr {
@@ -3913,8 +3928,8 @@ impl Parser.parse_single_pattern{
         if self.check(TokenKind.LPAREN) {
             return self.parse_class_pattern_args([name]);
         }
-        # It's a simple capture pattern
-        return MatchValue(value=name, kid=[name]);
+        # It's a simple capture pattern (capture_pattern: NAME -> MatchAs)
+        return MatchAs(name=name, pattern=None, kid=[name]);
     }
     # Handle builtin types (tuple, type, list, etc.) used as class patterns
     if self.is_keyword_token()
@@ -4045,17 +4060,22 @@ impl Parser.parse_mapping_pattern{
 
 impl Parser.parse_literal_for_mapping{
     # Parse literal for mapping pattern key: INT, FLOAT, or STRING
+    # literal_pattern wraps the literal in MatchValue (and strings in MultiString)
     if self.check(TokenKind.INT) {
         tok = self.advance();
-        return self.make_int(tok);
+        val = self.make_int(tok);
+        return MatchValue(value=val, kid=[val]);
     }
     if self.check(TokenKind.FLOAT) {
         tok = self.advance();
-        return self.make_float(tok);
+        val = self.make_float(tok);
+        return MatchValue(value=val, kid=[val]);
     }
     if self.check(TokenKind.STRING) {
         tok = self.advance();
-        return self.make_string(tok);
+        str_val = self.make_string(tok);
+        ms = MultiString(strings=[str_val], kid=[str_val]);
+        return MatchValue(value=ms, kid=[ms]);
     }
     if self.check_any(
         TokenKind.F_DQ_START,
@@ -4063,27 +4083,31 @@ impl Parser.parse_literal_for_mapping{
         TokenKind.F_TDQ_START,
         TokenKind.F_TSQ_START
     ) {
-        return self.parse_fstring();
+        fstr = self.parse_fstring();
+        ms = MultiString(strings=[fstr], kid=[fstr]);
+        return MatchValue(value=ms, kid=[ms]);
     }
     if self.check(TokenKind.MINUS) {
         minus_tok = self.advance();
         if self.check(TokenKind.INT) {
             tok = self.advance();
             num = self.make_int(tok);
-            return UnaryExpr(
+            val = UnaryExpr(
                 operand=num,
                 op=self.make_uni_token(minus_tok),
                 kid=[self.make_uni_token(minus_tok), num]
             );
+            return MatchValue(value=val, kid=[val]);
         }
         if self.check(TokenKind.FLOAT) {
             tok = self.advance();
             num = self.make_float(tok);
-            return UnaryExpr(
+            val = UnaryExpr(
                 operand=num,
                 op=self.make_uni_token(minus_tok),
                 kid=[self.make_uni_token(minus_tok), num]
             );
+            return MatchValue(value=val, kid=[val]);
         }
     }
     # Error fallback
