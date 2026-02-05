@@ -456,7 +456,7 @@ impl NaIRGenPass._codegen_dict_val(node: uni.DictVal) -> (ir.Value | None) {
     return dict_val;
 }
 
-"""Get value from dictionary by key."""
+"""Get value from dictionary by key (with KeyError check)."""
 impl NaIRGenPass._codegen_dict_access(
     target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
 ) -> (ir.Value | None) {
@@ -467,6 +467,12 @@ impl NaIRGenPass._codegen_dict_access(
     }
     key_type = helpers["key_type"];
     key_val = self._coerce_type(key_val, key_type);
+    # KeyError: check if key exists before accessing
+    key_exists = self.builder.call(
+        helpers["contains"], [target_val, key_val], name="dict.has"
+    );
+    not_exists = self.builder.not_(key_exists, name="dict.nokey");
+    self._emit_runtime_raise(not_exists, "KeyError", "key not found");
     return self.builder.call(helpers["get"], [target_val, key_val], name="dict.get");
 }
 

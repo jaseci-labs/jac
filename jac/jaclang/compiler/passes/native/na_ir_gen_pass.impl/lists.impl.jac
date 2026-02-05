@@ -237,7 +237,7 @@ impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
     return list_val;
 }
 
-"""Get element at index from a list."""
+"""Get element at index from a list (with IndexError bounds check)."""
 impl NaIRGenPass._codegen_index(
     target_val: ir.Value, index_val: ir.Value, elem_type_name: str
 ) -> (ir.Value | None) {
@@ -245,11 +245,21 @@ impl NaIRGenPass._codegen_index(
     if helpers is None {
         return None;
     }
-    index_val = self._coerce_type(index_val, ir.IntType(64));
+    i64 = ir.IntType(64);
+    index_val = self._coerce_type(index_val, i64);
+    # IndexError: check index < 0
+    is_neg = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="idx.neg.chk"
+    );
+    self._emit_runtime_raise(is_neg, "IndexError", "list index out of range");
+    # IndexError: check index >= len
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.len.chk");
+    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="idx.oob.chk");
+    self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
     return self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
 }
 
-"""Set element at index in a list."""
+"""Set element at index in a list (with IndexError bounds check)."""
 impl NaIRGenPass._codegen_index_set(
     target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
 ) -> None {
@@ -257,7 +267,21 @@ impl NaIRGenPass._codegen_index_set(
     if helpers is None {
         return;
     }
-    index_val = self._coerce_type(index_val, ir.IntType(64));
+    i64 = ir.IntType(64);
+    index_val = self._coerce_type(index_val, i64);
+    # IndexError: check index < 0
+    is_neg = self.builder.icmp_signed(
+        "<", index_val, ir.Constant(i64, 0), name="setidx.neg.chk"
+    );
+    self._emit_runtime_raise(
+        is_neg, "IndexError", "list assignment index out of range"
+    );
+    # IndexError: check index >= len
+    len_val = self.builder.call(helpers["len"], [target_val], name="list.setlen.chk");
+    is_oob = self.builder.icmp_signed(">=", index_val, len_val, name="setidx.oob.chk");
+    self._emit_runtime_raise(
+        is_oob, "IndexError", "list assignment index out of range"
+    );
     elem_type = helpers["elem_type"];
     value = self._coerce_type(value, elem_type);
     self.builder.call(helpers["set"], [target_val, index_val, value]);

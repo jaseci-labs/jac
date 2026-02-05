@@ -132,8 +132,13 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
     def enter_node(self, node: uni.UniNode) -> None:
         """Enter node."""
-        # Prune ClientBlocks and NativeBlocks from Python generation
-        if isinstance(node, (uni.ClientBlock, uni.NativeBlock)) or (
+        # Handle NativeBlocks: generate interop stubs if cross-boundary calls exist
+        if isinstance(node, uni.NativeBlock):
+            self._gen_native_interop_stubs(node)
+            self.prune()
+            return
+        # Prune ClientBlocks and NATIVE/CLIENT context nodes
+        if isinstance(node, uni.ClientBlock) or (
             isinstance(node, uni.ContextAwareNode)
             and node.code_context in (CodeContext.CLIENT, CodeContext.NATIVE)
             and (node.parent is None or isinstance(node.parent, uni.Module))
@@ -158,6 +163,49 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         ):
             return
         super().exit_node(node)
+
+    def _gen_native_interop_stubs(self, node: uni.NativeBlock) -> None:
+        """Generate Python stubs for native interop at the NativeBlock position.
+
+        For native_exports (native functions called from Python):
+          Generates a Python stub function that calls the native function via ctypes.
+        For native_imports (Python functions called from native):
+          Generates a registration statement that stores the Python function
+          in the interop callback table.
+        """
+        manifest = self.ir_in.gen.interop_manifest
+        if not manifest or not manifest.bindings:
+            return
+
+        from jaclang.pycore.interop_bridge import JAC_TO_CTYPES_STR
+
+        parts: list[str] = []
+
+        # Stubs for native functions callable from Python (native_exports)
+        for binding in manifest.native_exports:
+            params = ", ".join(binding.param_names)
+            ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, "ctypes.c_int64")
+            arg_cts = ", ".join(
+                JAC_TO_CTYPES_STR.get(pt, "ctypes.c_int64")
+                for pt in binding.param_types
+            )
+            parts.append(
+                f"def {binding.name}({params}):\n"
+                f"    import ctypes\n"
+                f"    _addr = __jac_native_engine__"
+                f".get_function_address('{binding.name}')\n"
+                f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n"
+                f"    return _fn({params})"
+            )
+
+        # Registration for Python functions callable from native (native_imports)
+        for binding in manifest.native_imports:
+            parts.append(f"__jac_interop_py_funcs__['{binding.name}'] = {binding.name}")
+
+        if parts:
+            src = "\n".join(parts)
+            parsed = ast3.parse(src)
+            node.gen.py_ast = list(parsed.body)
 
     def jaclib_obj(self, obj_name: str) -> ast3.Name:
         """Return the object from jaclib as ast node based on the import config."""

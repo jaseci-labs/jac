@@ -560,6 +560,16 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
     if obj_val is None {
         return None;
     }
+    # AttributeError: check for null pointer (None) before method call
+    if isinstance(obj_val.type, ir.PointerType) {
+        null_ptr = ir.Constant(obj_val.type, None);
+        is_null = self.builder.icmp_unsigned(
+            "==", obj_val, null_ptr, name="null.method.chk"
+        );
+        self._emit_runtime_raise(
+            is_null, "AttributeError", "'NoneType' object has no attribute"
+        );
+    }
     # Build args: [self_ptr, arg1, arg2, ...]
     args: list[ir.Value] = [obj_val];
     params = node.params or [];
@@ -596,13 +606,23 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
     return result;
 }
 
-"""Generate field access: GEP into struct + load."""
+"""Generate field access: GEP into struct + load (with AttributeError null check)."""
 impl NaIRGenPass._codegen_field_access(
     obj_val: ir.Value, field_name: str, type_name: str
 ) -> (ir.Value | None) {
     field_indices = self.struct_field_indices.get(type_name);
     if field_indices is None or field_name not in field_indices {
         return None;
+    }
+    # AttributeError: check for null pointer (None) before accessing field
+    if isinstance(obj_val.type, ir.PointerType) {
+        null_ptr = ir.Constant(obj_val.type, None);
+        is_null = self.builder.icmp_unsigned(
+            "==", obj_val, null_ptr, name="null.field.chk"
+        );
+        self._emit_runtime_raise(
+            is_null, "AttributeError", "'NoneType' object has no attribute"
+        );
     }
     idx = field_indices[field_name];
     field_ptr = self.builder.gep(

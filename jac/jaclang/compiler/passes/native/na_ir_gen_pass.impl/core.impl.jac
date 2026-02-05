@@ -59,6 +59,18 @@ impl NaIRGenPass.init(
     self.set_types: dict[(str, object)] = {};  # elem_type_name → set struct type
     self.set_helpers: dict[(str, dict)] = {};  # elem_type_name → {new, add, contains, len}
     self.var_set_elem_type: dict[(str, str)] = {};  # var_name → elem_type_name
+    # Exception handling support (Phase 14)
+    self._exc_state_type: (object | None) = None;  # JacExceptionState struct type
+    self._exc_handler_global: (object | None) = None;  # @__jac_current_handler global
+    self._exc_push_fn: (object | None) = None;  # __jac_exc_push function
+    self._exc_pop_fn: (object | None) = None;  # __jac_exc_pop function
+    self._exc_raise_fn: (object | None) = None;  # __jac_exc_raise function
+    self._exc_type_registry: dict[(str, int)] = {"Exception": 0};  # exc_name → type_id
+    self._exc_type_counter: int = 1;  # Next type ID to assign
+    self._rt_error_msgs: dict[(str, object)] = {};  # msg → ir.GlobalVariable (dedup cache)
+    # File I/O support (Phase 15)
+    self._file_struct_type: (object | None) = None;  # File struct type
+    self._file_helpers_emitted: bool = False;
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 

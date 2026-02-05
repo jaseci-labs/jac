@@ -334,22 +334,87 @@ impl NaIRGenPass._emit_binary_op(
         } elif op == Tok.STAR_MUL {
             return self.builder.fmul(left, right, name="fmul");
         } elif op == Tok.DIV {
+            # ZeroDivisionError check for float division
+            fzero = ir.Constant(ir.DoubleType(), 0.0);
+            is_zero = self.builder.fcmp_ordered(
+                "==", right, fzero, name="fdiv.zero.chk"
+            );
+            self._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "float division by zero"
+            );
             return self.builder.fdiv(left, right, name="fdiv");
         } elif op == Tok.MOD {
+            # ZeroDivisionError check for float modulo
+            fzero = ir.Constant(ir.DoubleType(), 0.0);
+            is_zero = self.builder.fcmp_ordered(
+                "==", right, fzero, name="fmod.zero.chk"
+            );
+            self._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "float modulo by zero"
+            );
             return self.builder.frem(left, right, name="fmod");
         }
     } else {
+        i64 = ir.IntType(64);
+        i1 = ir.IntType(1);
         if op == Tok.PLUS {
-            return self.builder.add(left, right, name="add");
+            # OverflowError check via LLVM intrinsic
+            overflow_ret = ir.LiteralStructType([i64, i1]);
+            intrinsic = self._get_or_declare_extern(
+                "llvm.sadd.with.overflow.i64", overflow_ret, [i64, i64]
+            );
+            result = self.builder.call(intrinsic, [left, right], name="add.ovf");
+            val = self.builder.extract_value(result, 0, name="add.val");
+            overflow = self.builder.extract_value(result, 1, name="add.overflow");
+            self._emit_runtime_raise(overflow, "OverflowError", "integer overflow");
+            return val;
         } elif op == Tok.MINUS {
-            return self.builder.sub(left, right, name="sub");
+            # OverflowError check via LLVM intrinsic
+            overflow_ret = ir.LiteralStructType([i64, i1]);
+            intrinsic = self._get_or_declare_extern(
+                "llvm.ssub.with.overflow.i64", overflow_ret, [i64, i64]
+            );
+            result = self.builder.call(intrinsic, [left, right], name="sub.ovf");
+            val = self.builder.extract_value(result, 0, name="sub.val");
+            overflow = self.builder.extract_value(result, 1, name="sub.overflow");
+            self._emit_runtime_raise(overflow, "OverflowError", "integer overflow");
+            return val;
         } elif op == Tok.STAR_MUL {
-            return self.builder.mul(left, right, name="mul");
+            # OverflowError check via LLVM intrinsic
+            overflow_ret = ir.LiteralStructType([i64, i1]);
+            intrinsic = self._get_or_declare_extern(
+                "llvm.smul.with.overflow.i64", overflow_ret, [i64, i64]
+            );
+            result = self.builder.call(intrinsic, [left, right], name="mul.ovf");
+            val = self.builder.extract_value(result, 0, name="mul.val");
+            overflow = self.builder.extract_value(result, 1, name="mul.overflow");
+            self._emit_runtime_raise(overflow, "OverflowError", "integer overflow");
+            return val;
         } elif op == Tok.DIV {
+            # ZeroDivisionError check for integer division
+            izero = ir.Constant(i64, 0);
+            is_zero = self.builder.icmp_signed("==", right, izero, name="div.zero.chk");
+            self._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "integer division or modulo by zero"
+            );
             return self.builder.sdiv(left, right, name="div");
         } elif op == Tok.FLOOR_DIV {
+            # ZeroDivisionError check for floor division
+            izero = ir.Constant(i64, 0);
+            is_zero = self.builder.icmp_signed(
+                "==", right, izero, name="floordiv.zero.chk"
+            );
+            self._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "integer division or modulo by zero"
+            );
             return self.builder.sdiv(left, right, name="floordiv");
         } elif op == Tok.MOD {
+            # ZeroDivisionError check for integer modulo
+            izero = ir.Constant(i64, 0);
+            is_zero = self.builder.icmp_signed("==", right, izero, name="mod.zero.chk");
+            self._emit_runtime_raise(
+                is_zero, "ZeroDivisionError", "integer division or modulo by zero"
+            );
             return self.builder.srem(left, right, name="mod");
         }
     }

@@ -749,6 +749,456 @@ class TestNativeSets:
         assert f() == 5
 
 
+class TestNativeExceptions:
+    """Verify exception handling: try/except/else/finally, raise, nested."""
+
+    def test_basic_try_except(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_basic_try_except", ctypes.c_int64)
+        assert f() == 2
+
+    def test_try_no_exception(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_try_no_exception", ctypes.c_int64)
+        assert f() == 42
+
+    def test_except_as_binding(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_except_as_binding", ctypes.c_char_p)
+        assert f() == b"caught me"
+
+    def test_try_else_no_exception(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_try_else_no_exception", ctypes.c_int64)
+        assert f() == 11
+
+    def test_try_else_with_exception(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_try_else_with_exception", ctypes.c_int64)
+        assert f() == 5
+
+    def test_try_finally(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_try_finally", ctypes.c_int64)
+        assert f() == 111
+
+    def test_try_finally_no_exception(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_try_finally_no_exception", ctypes.c_int64)
+        assert f() == 105
+
+    def test_multiple_except(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_multiple_except", ctypes.c_int64)
+        assert f() == 2
+
+    def test_catch_all(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_catch_all", ctypes.c_int64)
+        assert f() == 42
+
+    def test_nested_try(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_nested_try", ctypes.c_int64)
+        assert f() == 111
+
+    def test_raise_func_form(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_raise_func_form", ctypes.c_int64)
+        assert f() == 77
+
+    def test_full_combo_no_exc(self):
+        engine, _ = compile_native("exceptions.na.jac")
+        f = get_func(engine, "test_full_combo_no_exc", ctypes.c_int64)
+        assert f() == 321
+
+
+class TestNativeFileIO:
+    """Verify file I/O: open, read, write, readline, close."""
+
+    def test_open_write(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_open_write", ctypes.c_int64)
+        assert f() == 1
+
+    def test_write_file(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_write_file", ctypes.c_int64)
+        assert f() == 11
+
+    def test_write_read(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_write_read", ctypes.c_char_p)
+        assert f() == b"NativeIO"
+
+    def test_readline(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_readline", ctypes.c_char_p)
+        assert f() == b"line1\n"
+
+    def test_close_idempotent(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_close_idempotent", ctypes.c_int64)
+        assert f() == 1
+
+    def test_open_nonexistent(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_open_nonexistent", ctypes.c_int64)
+        assert f() == 1
+
+    def test_file_methods_exist(self):
+        engine, _ = compile_native("file_io.na.jac")
+        f = get_func(engine, "test_file_methods_exist", ctypes.c_int64)
+        assert f() == 1
+
+
+class TestNativeContextManagers:
+    """Verify context managers: with statement, __enter__/__exit__, as binding."""
+
+    def test_with_enter(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_with_enter", ctypes.c_int64)
+        assert f() == 1
+
+    def test_with_exit(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_with_exit", ctypes.c_int64)
+        assert f() == 1
+
+    def test_with_body(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_with_body", ctypes.c_int64)
+        assert f() == 99
+
+    def test_with_as_binding(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_with_as_binding", ctypes.c_int64)
+        assert f() == 77
+
+    def test_file_context_manager(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_file_context_manager", ctypes.c_int64)
+        assert f() == 1
+
+    def test_with_enter_exit_once(self):
+        engine, _ = compile_native("context_mgr.na.jac")
+        f = get_func(engine, "test_with_enter_exit_once", ctypes.c_int64)
+        assert f() == 101
+
+
+class TestNativeRuntimeErrors:
+    """Verify runtime error checks: div-by-zero, index OOB, key missing, overflow, null deref."""
+
+    # -- ZeroDivisionError --
+
+    def test_int_div_by_zero(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_div_by_zero", ctypes.c_int64)
+        assert f() == 1
+
+    def test_int_mod_by_zero(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_mod_by_zero", ctypes.c_int64)
+        assert f() == 1
+
+    def test_div_by_zero_var(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_div_by_zero_var", ctypes.c_int64)
+        assert f() == 1
+
+    def test_float_div_by_zero(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_float_div_by_zero", ctypes.c_int64)
+        assert f() == 1
+
+    def test_div_no_error(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_div_no_error", ctypes.c_int64)
+        assert f() == 5
+
+    # -- IndexError --
+
+    def test_list_index_oob(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_list_index_oob", ctypes.c_int64)
+        assert f() == 1
+
+    def test_list_negative_index(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_list_negative_index", ctypes.c_int64)
+        assert f() == 1
+
+    def test_list_index_at_len(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_list_index_at_len", ctypes.c_int64)
+        assert f() == 1
+
+    def test_list_valid_index(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_list_valid_index", ctypes.c_int64)
+        assert f() == 20
+
+    def test_list_set_oob(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_list_set_oob", ctypes.c_int64)
+        assert f() == 1
+
+    def test_empty_list_access(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_empty_list_access", ctypes.c_int64)
+        assert f() == 1
+
+    # -- KeyError --
+
+    def test_dict_missing_key(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_dict_missing_key", ctypes.c_int64)
+        assert f() == 1
+
+    def test_dict_valid_key(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_dict_valid_key", ctypes.c_int64)
+        assert f() == 2
+
+    def test_dict_int_missing_key(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_dict_int_missing_key", ctypes.c_int64)
+        assert f() == 1
+
+    # -- OverflowError --
+
+    def test_int_add_overflow(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_add_overflow", ctypes.c_int64)
+        assert f() == 1
+
+    def test_int_sub_underflow(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_sub_underflow", ctypes.c_int64)
+        assert f() == 1
+
+    def test_int_mul_overflow(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_mul_overflow", ctypes.c_int64)
+        assert f() == 1
+
+    def test_int_no_overflow(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_no_overflow", ctypes.c_int64)
+        assert f() == 1
+
+    # -- AttributeError (None dereference) --
+
+    def test_none_field_access(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_none_field_access", ctypes.c_int64)
+        assert f() == 1
+
+    def test_none_method_call(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_none_method_call", ctypes.c_int64)
+        assert f() == 1
+
+    def test_valid_obj_access(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_valid_obj_access", ctypes.c_int64)
+        assert f() == 42
+
+    # -- ValueError --
+
+    def test_int_parse_invalid(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_parse_invalid", ctypes.c_int64)
+        assert f() == 1
+
+    def test_int_parse_valid(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_parse_valid", ctypes.c_int64)
+        assert f() == 123
+
+    def test_int_parse_empty(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_int_parse_empty", ctypes.c_int64)
+        assert f() == 1
+
+    # -- AssertionError --
+
+    def test_assert_false(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_assert_false", ctypes.c_int64)
+        assert f() == 1
+
+    def test_assert_true(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_assert_true", ctypes.c_int64)
+        assert f() == 1
+
+    # -- MemoryError --
+
+    def test_alloc_ok(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_alloc_ok", ctypes.c_int64)
+        assert f() == 1
+
+    # -- Combined / edge cases --
+
+    def test_catch_base_exception(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_catch_base_exception", ctypes.c_int64)
+        assert f() == 1
+
+    def test_sequential_errors(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_sequential_errors", ctypes.c_int64)
+        assert f() == 11
+
+    def test_error_in_loop(self):
+        engine, _ = compile_native("runtime_errors.na.jac")
+        f = get_func(engine, "test_error_in_loop", ctypes.c_int64)
+        assert f() == 1
+
+
+class TestNativePyInterop:
+    """Verify cross-boundary calls between native (na) and Python code.
+
+    Fixture call chain:
+      with entry {}  (Python)
+        → call_native(x)          (Python — calls into na block)
+          → native_add_one_to_doubled(x)  (native — calls back to Python)
+            → py_double(x)         (Python — returns x * 2)
+          returns py_double(x) + 1
+        returns the native result
+      prints result
+    """
+
+    def test_interop_module_compiles(self):
+        """Module with na block, Python functions, and entry compiles."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        errors = [str(e) for e in prog.errors_had] if prog.errors_had else []
+        assert not prog.errors_had, f"Compilation errors: {errors}"
+
+    def test_native_function_exists_in_engine(self):
+        """Native function from na block is available in the JIT engine."""
+        engine, _ = compile_native("na_py_interop.jac")
+        addr = engine.get_function_address("native_add_one_to_doubled")
+        assert addr != 0, "native_add_one_to_doubled not found in JIT engine"
+
+    def test_py_function_not_defined_in_native_ir(self):
+        """py_double should be declared (external) but NOT defined in LLVM IR."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        assert ir.gen.llvm_ir is not None, "No LLVM IR generated"
+        llvm_ir_str = str(ir.gen.llvm_ir)
+        # Must not have a define (body) for py_double — it lives in Python
+        assert 'define i64 @"py_double"' not in llvm_ir_str
+        # Should have an external declare so the native code can call it
+        assert 'declare i64 @"py_double"' in llvm_ir_str
+
+    def test_py_functions_in_python_codegen(self):
+        """py_double and call_native should appear in Python codegen output."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        py_src = ir.gen.py
+        assert "py_double" in py_src
+        assert "call_native" in py_src
+
+    def test_native_function_has_stub_in_python(self):
+        """Native function should have a ctypes stub in Python codegen output.
+
+        The native function body (py_double(x) + 1) should NOT appear,
+        but a ctypes bridge stub should be generated for Python → native calls.
+        """
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        py_src = ir.gen.py
+        # Stub for the native function should exist
+        assert "native_add_one_to_doubled" in py_src
+        # The native function body should NOT appear as executable code in Python
+        # (it may appear in the module docstring, but not as a return statement)
+        assert "return py_double(x) + 1" not in py_src
+        # Should reference ctypes for the bridge
+        assert "CFUNCTYPE" in py_src
+        assert "get_function_address" in py_src
+
+    def test_interop_manifest_built(self):
+        """InteropAnalysisPass should detect cross-boundary calls."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        manifest = ir.gen.interop_manifest
+        assert manifest is not None
+        # py_double: defined in SERVER, called from NATIVE
+        assert "py_double" in manifest.bindings
+        b = manifest.bindings["py_double"]
+        assert b.source_context.value == "server"
+        # native_add_one_to_doubled: defined in NATIVE, called from SERVER
+        assert "native_add_one_to_doubled" in manifest.bindings
+        b2 = manifest.bindings["native_add_one_to_doubled"]
+        assert b2.source_context.value == "native"
+
+    def test_native_calls_python_function(self):
+        """Native→Python: native_add_one_to_doubled calls py_double.
+
+        native_add_one_to_doubled(x) calls py_double(x) then adds 1.
+        py_double(5) = 10, so native_add_one_to_doubled(5) = 11.
+        """
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        engine = ir.gen.native_engine
+        assert engine is not None
+        # Register the Python function in the interop callback table
+        py_func_table = ir.gen.interop_py_funcs
+        py_func_table["py_double"] = lambda x: x * 2
+        # Now call the native function
+        f = get_func(
+            engine,
+            "native_add_one_to_doubled",
+            ctypes.c_int64,
+            ctypes.c_int64,
+        )
+        assert f(5) == 11  # py_double(5) = 10, + 1 = 11
+        assert f(0) == 1  # py_double(0) = 0,  + 1 = 1
+        assert f(-3) == -5  # py_double(-3) = -6, + 1 = -5
+
+    def test_full_entry_chain(self):
+        """Full chain: entry (Py) → call_native (Py) → native (na) → py_double (Py).
+
+        Runs the module and verifies the printed output is 11.
+        call_native(5) → native_add_one_to_doubled(5) → py_double(5)=10 → +1 → 11.
+        """
+        import contextlib
+        import io
+
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        assert not prog.errors_had
+        # Execute the compiled module with interop context injected
+        py_code = compile(ir.gen.py, str(FIXTURES / "na_py_interop.jac"), "exec")
+        namespace = {
+            "__jac_native_engine__": ir.gen.native_engine,
+            "__jac_interop_py_funcs__": ir.gen.interop_py_funcs,
+        }
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            exec(py_code, namespace)  # noqa: S102
+        output = buf.getvalue().strip()
+        assert output == "11"
+
+
 class TestNativeLLVMIR:
     """Verify LLVM IR output structure."""
 

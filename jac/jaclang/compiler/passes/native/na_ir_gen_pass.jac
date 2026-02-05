@@ -236,4 +236,21 @@ obj NaIRGenPass(Transform) {
     def _codegen_set_add(
         set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
     ) -> None;
+    # Phase 14: Exception Handling
+    def _get_exception_state_type -> ir.Type;
+    def _declare_exception_runtime -> None;
+    def _emit_exc_push_helper -> None;
+    def _emit_exc_pop_helper -> None;
+    def _emit_exc_raise_helper -> None;
+    def _emit_runtime_raise(is_error: ir.Value, exc_type_name: str, msg: str) -> None;
+    def _get_or_register_exc_type(exc_name: str) -> int;
+    def _codegen_raise(node: uni.RaiseStmt) -> None;
+    def _codegen_try(node: uni.TryStmt) -> None;
+    # Phase 15: File I/O
+    def _get_file_struct_type -> ir.Type;
+    def _emit_file_helpers -> None;
+    def _emit_open(node: uni.FuncCall) -> (ir.Value | None);
+    # Phase 16: Context Managers
+    def _codegen_with(node: uni.WithStmt) -> None;
+    def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
 }
