@@ -118,7 +118,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "Successfully installed", "")
 
-            result = installer.install_package("requests", ">=2.28.0")
+            result = installer.install_package(["requests>=2.28.0"])
 
             assert result is True
             mock_pip.assert_called_once()
@@ -140,7 +140,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (1, "", "Package not found")
 
-            result = installer.install_package("nonexistent-package")
+            result = installer.install_package(["nonexistent-package"])
 
             assert result is False
 
@@ -155,7 +155,7 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "", "")
 
-            installer.install_package("requests")
+            installer.install_package(["requests"])
 
             call_args = mock_pip.call_args[0][0]
             assert "requests" in call_args
@@ -173,16 +173,17 @@ class TestDependencyInstaller:
         ):
             mock_pip.return_value = (0, "", "")
 
-            result = installer.install_git_package(
+            specs = installer._make_git_spec(
                 "my-plugin", "https://github.com/user/plugin.git", branch="main"
             )
+            result = installer.install_package([specs])
 
             assert result is True
             call_args = mock_pip.call_args[0][0]
             assert "git+https://github.com/user/plugin.git@main" in call_args
 
     def test_install_all(self, temp_project: Path) -> None:
-        """Test installing all dependencies."""
+        """Test installing all dependencies with batch resolution."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
@@ -191,15 +192,16 @@ class TestDependencyInstaller:
             patch.object(installer, "_run_pip") as mock_pip,
         ):
             mock_pip.return_value = (0, "", "")
-
-            result = installer.install_all(include_dev=False)
+            pip_packages = installer.get_pip_package_specs(include_dev=False)
+            git_packages = installer.get_git_package_specs()
+            result = installer.install_package(pip_packages + git_packages)
 
             assert result is True
-            # Should install requests (from dependencies)
-            assert mock_pip.call_count >= 1
+            # Single batch call for all Python packages
+            assert mock_pip.call_count == 1
 
     def test_install_all_with_dev(self, temp_project: Path) -> None:
-        """Test installing all dependencies including dev."""
+        """Test installing all dependencies including dev with batch resolution."""
         config = JacConfig.load(temp_project / "jac.toml")
         installer = DependencyInstaller(config=config)
 
@@ -208,12 +210,13 @@ class TestDependencyInstaller:
             patch.object(installer, "_run_pip") as mock_pip,
         ):
             mock_pip.return_value = (0, "", "")
-
-            result = installer.install_all(include_dev=True)
+            pip_packages = installer.get_pip_package_specs(include_dev=True)
+            git_packages = installer.get_git_package_specs()
+            result = installer.install_package(pip_packages + git_packages)
 
             assert result is True
-            # Should install both requests and pytest
-            assert mock_pip.call_count >= 2
+            # Single batch call with both regular and dev dependencies
+            assert mock_pip.call_count == 1
 
     def test_is_installed(self, temp_project: Path) -> None:
         """Test checking if package is installed."""

@@ -44,7 +44,8 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         target = llvm.Target.from_default_triple();
         target_machine = target.create_target_machine();
 
-        # Register Python function callbacks (sv↔na interop)
+        # Register Python function callbacks before creating engine
+        # so MCJIT can resolve them during code generation (sv↔na interop)
         manifest = module.gen.interop_manifest;
         native_imports = manifest.native_imports;
         if native_imports {
