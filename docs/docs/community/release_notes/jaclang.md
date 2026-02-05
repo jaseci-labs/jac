@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.16 (Unreleased)
 
+- **Native Compiler: Cross-Module Linking**: Native `.na.jac` modules can now import and call functions from other `.na.jac` modules. The compiler performs LLVM IR-level linking enabling modular native code organization with `import from module { func1, func2 }` syntax.
+
 ## jaclang 0.9.15 (Latest Release)
 
 - **Fix: Type Errors in Impl Files Now Show Correct Location**: Type errors in `.impl.jac` files now point to the actual error location instead of the declaration in the main file.
