@@ -1198,9 +1198,11 @@ If frontend_callback_url is configured in jac.toml [plugins.scale.sso],
 the wrapper redirects to that URL with token (success) or error params (failure).
 If not configured, returns JSON response (backwards compatible).
 """
-impl JacAPIServer._create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)] {
+impl JacAPIServer._create_sso_callback_wrapper -> Callable[
+    ...,
+    (Response | TransportResponse)
+] {
     import from urllib.parse { quote }
-
     async def sso_callback_wrapper(
         request: Request, platform: str, operation: str
     ) -> (Response | TransportResponse) {
@@ -1230,7 +1232,6 @@ impl JacAPIServer._create_sso_callback_wrapper -> Callable[..., (Response | Tran
             );
         }
     }
-
     return sso_callback_wrapper;
 }
 
