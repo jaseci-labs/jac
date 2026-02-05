@@ -273,7 +273,6 @@ MICRO_JAC_FILES: list[str] = [
     "tests/compiler/passes/ecmascript/fixtures/mixed_explicit.jac",
     "tests/compiler/passes/ecmascript/fixtures/mixed_sv_default.sv.jac",
     "tests/compiler/passes/ecmascript/fixtures/root_render.jac",
-    "tests/compiler/passes/ecmascript/fixtures/separated_client.cl.jac",
     "tests/compiler/passes/ecmascript/fixtures/side_effect_imports.jac",
     "tests/compiler/passes/main/fixtures/M1.jac",
     "tests/compiler/passes/main/fixtures/access_checker.jac",
