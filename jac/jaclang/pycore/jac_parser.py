@@ -396,9 +396,9 @@ class JacParser(Transform[uni.Source, uni.Module]):
                     error_tok,
                 )
 
-                # Feed a SEMI token to help the parser recover
+                # Feed a SEMI token to close the docstring as a statement and continue
                 iparser.feed_token(jl.Token(Tok.SEMI.name, ";"))
-                return feed_current_token(iparser, e.token)
+                return True
 
             # Check for unsupported python keywords in code blocks
             if (
