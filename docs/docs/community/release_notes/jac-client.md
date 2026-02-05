@@ -7,6 +7,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 
 ## jac-client 0.2.14 (Latest Release)
+
 ## jac-client 0.2.15 (Latest Release)
 
 ## jac-client 0.2.14
