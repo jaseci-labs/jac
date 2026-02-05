@@ -2,9 +2,10 @@
 
 Usage:
     python scripts/release.py --jaclang patch --jac-client minor
-    python scripts/release.py --jaclang patch --jac-byllm skip --dry-run
+    python scripts/release.py --jaclang patch --dry-run
 
-Each package flag accepts: skip, patch, minor, major
+Each package flag accepts: skip (default), patch, minor, major
+Omit a package flag to skip it.
 
 This script:
   1. Reads the current version from each package's pyproject.toml
