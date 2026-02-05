@@ -32,7 +32,7 @@ import from jaclang.pycore.unitree {
     ModuleCode,
     PyInlineCode
 }
-import from jaclang.pycore.unitree { ClientBlock, ServerBlock, NativeBlock }
+import from jaclang.pycore.unitree { ClientBlock, ServerBlock }
 import from jaclang.pycore.unitree { Import, ModulePath, ModuleItem }
 import from jaclang.pycore.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
 import from jaclang.pycore.unitree {
@@ -106,11 +106,7 @@ import from jaclang.pycore.unitree {
 }
 import from jaclang.pycore.unitree { FString, FormattedValue, MultiString, LambdaExpr }
 import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr, TypeRef }
-import from jaclang.pycore.unitree {
-    EdgeOpRef,
-    FilterCompr as UniFilterCompr,
-    AssignCompr as UniAssignCompr
-}
+import from jaclang.pycore.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.pycore.unitree { ConnectOp, DisconnectOp }
 import from jaclang.pycore.unitree {
     MatchOr,
@@ -141,8 +137,6 @@ import from jaclang.pycore.constant {
     EdgeDir,
     CodeContext
 }
-import from jaclang.pycore.unitree { AssignCompr }
-import from jaclang.pycore.codeinfo { CodeLocInfo }
 
 # =============================================================================
 # Parser Error
@@ -389,6 +383,8 @@ obj Parser {
     def make_uni_token(tok: Token) -> UniToken;
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;
+    def make_name_or_special(tok: Token) -> Name;
+    def parse_access_tag -> SubTag | None;
     def make_string(tok: Token) -> String;
     def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;

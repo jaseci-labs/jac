@@ -716,7 +716,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
 # =============================================================================
 # JSX Scanning
 # =============================================================================
-"""Scan JSX opening tag start: < followed by identifier."""
+"""Scan JSX opening tag start: consume < and enter tag mode."""
 impl Lexer.scan_jsx_open_start -> Token {
     start_line = self.line;
     start_col = self.col;
@@ -729,7 +729,7 @@ impl Lexer.scan_jsx_open_start -> Token {
     );
 }
 
-"""Scan tokens inside JSX tag: <Tag attr="value" ...>"""
+"""Scan the next token inside a JSX tag (name, attribute, =, >, />)."""
 impl Lexer.scan_jsx_tag_token -> Token {
     self.skip_whitespace_and_comments();
     start_line = self.line;
@@ -881,10 +881,10 @@ impl Lexer.scan_jsx_content -> Token {
     return self.make_token(TokenKind.ERROR, "", start_line, start_col, start_pos);
 }
 
-"""Scan tokens inside JSX expression: {expr}"""
+"""Scan next token inside a JSX expression ({expr}), tracking brace depth."""
 impl Lexer.scan_jsx_expr_token -> Token {
-    # This is handled by normal mode scanning, but we track brace depth
-    # to know when to return to JSX mode
+    # Normal token scanning applies, but we track brace depth
+    # to know when to return to JSX content mode
     self.skip_whitespace_and_comments();
     start_line = self.line;
     start_col = self.col;

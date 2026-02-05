@@ -318,10 +318,6 @@ obj Token {
         loc: SourceLoc;
 
     def is_keyword -> bool;
-    def is_literal -> bool;
-    def is_operator -> bool;
-    def is_assignment -> bool;
-    def is_compare_op -> bool;
     def __str__ -> str;
 }
 

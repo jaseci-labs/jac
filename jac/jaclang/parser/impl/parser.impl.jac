@@ -100,11 +100,7 @@ import from jaclang.pycore.unitree {
 }
 import from jaclang.pycore.unitree { FString, FormattedValue, MultiString, LambdaExpr }
 import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr, TypeRef }
-import from jaclang.pycore.unitree {
-    EdgeOpRef,
-    FilterCompr as UniFilterCompr,
-    AssignCompr as UniAssignCompr
-}
+import from jaclang.pycore.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.pycore.unitree { ConnectOp, DisconnectOp }
 import from jaclang.pycore.unitree {
     MatchOr,
@@ -372,6 +368,31 @@ impl Parser.make_special_name(tok: Token) -> Name {
         pos_end=tok.loc.pos_end,
         is_enum_stmt=False
     );
+}
+
+impl Parser.make_name_or_special(tok: Token) -> Name {
+    # Create a Name or special Name depending on token kind.
+    # NAME/KWESC_NAME tokens produce regular Names; keyword tokens produce
+    # special names with the appropriate Tok mapping for SpecialVarRef.
+    if tok.kind == TokenKind.NAME or tok.kind == TokenKind.KWESC_NAME {
+        return self.make_name(tok);
+    }
+    return self.make_special_name(tok);
+}
+
+impl Parser.parse_access_tag -> SubTag | None {
+    # Parse optional access modifier: :pub, :priv, or :prot
+    # Returns a SubTag wrapping the access token, or None if not present.
+    if self.match_tok(TokenKind.COLON) {
+        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
+            access_tok = self.advance();
+            return SubTag(
+                tag=(at := self.make_uni_token(access_tok)),
+                kid=[self.gen_token(Tok.COLON.value, ":"), at]
+            );
+        }
+    }
+    return None;
 }
 
 impl Parser.make_string(tok: Token) -> String {
@@ -1461,7 +1482,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
     return expr;
 }
 
-impl Parser.parse_filter_compr_inner -> UniFilterCompr {
+impl Parser.parse_filter_compr_inner -> FilterCompr {
     # Parse inner part of filter_compr after LPAREN is consumed
     # filter_compr: LPAREN NULL_OK filter_compare_list RPAREN
     #             | LPAREN TYPE_OP NULL_OK typed_filter_compare_list RPAREN
@@ -1497,10 +1518,10 @@ impl Parser.parse_filter_compr_inner -> UniFilterCompr {
         }
     }
     kid.append(self.gen_token(Tok.RPAREN.value, ")"));
-    return UniFilterCompr(f_type=f_type, compares=compares, kid=kid);
+    return FilterCompr(f_type=f_type, compares=compares, kid=kid);
 }
 
-impl Parser.parse_assign_compr_inner -> UniAssignCompr {
+impl Parser.parse_assign_compr_inner -> AssignCompr {
     # Parse inner part of assign_compr after LPAREN is consumed
     # assign_compr: LPAREN EQ kw_expr_list RPAREN
     kid: list = [self.gen_token(Tok.LPAREN.value, "(")];
@@ -1535,7 +1556,7 @@ impl Parser.parse_assign_compr_inner -> UniAssignCompr {
         }
     }
     kid.append(self.gen_token(Tok.RPAREN.value, ")"));
-    return UniAssignCompr(assigns=assigns, kid=kid);
+    return AssignCompr(assigns=assigns, kid=kid);
 }
 
 impl Parser.parse_atom -> Expr {
@@ -2092,7 +2113,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
                 f_type = self.parse_atom();
                 fcompr_kid.append(f_type);
             }
-            fcond = UniFilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
+            fcond = FilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
             end_uni = self.gen_token(Tok.ARROW_R_P2.value);
             if self.check(TokenKind.ARROW_R_P2) {
                 self.advance();
@@ -2111,7 +2132,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
                 f_type = self.parse_atom();
                 fcompr_kid.append(f_type);
             }
-            fcond = UniFilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
+            fcond = FilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
             end_uni = self.gen_token(Tok.ARROW_L_P2.value);
             if self.check(TokenKind.ARROW_L_P2) {
                 self.advance();
@@ -2247,7 +2268,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
                     }
                 }
             }
-            fcond = UniFilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
             # Expect closing :->
             end_uni = self.gen_token(Tok.ARROW_R_P2.value);
             if self.check(TokenKind.ARROW_R_P2) {
@@ -2285,7 +2306,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
                     }
                 }
             }
-            fcond = UniFilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
             end_uni = self.gen_token(Tok.ARROW_L_P2.value);
             if self.check(TokenKind.ARROW_L_P2) {
                 self.advance();
@@ -2305,7 +2326,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
                 f_type = self.parse_atom();
                 fcompr_kid.append(f_type);
             }
-            fcond = UniFilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
+            fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
             end_uni = self.gen_token(Tok.ARROW_R_P2.value);
             if self.check(TokenKind.ARROW_R_P2) {
                 self.advance();
@@ -2315,11 +2336,6 @@ impl Parser.parse_edge_ref_chain -> Expr {
                 edge_dir=EdgeDir.OUT,
                 kid=[start_uni, fcond, end_uni]
             );
-        }
-        # Typed edge any: <-:type:->
-        elif self.check(TokenKind.ARROW_L_P1) and False {
-            # Handled above - placeholder for bidirectional typed edges
-            skip;
         } else {
             break;
         }
@@ -2610,12 +2626,7 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
     params: list = [];
     while self.check_name() or self.is_keyword_token() {
         name_tok = self.advance();
-        name: Name;
-        if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME {
-            name = self.make_name(name_tok);
-        } else {
-            name = self.make_special_name(name_tok);
-        }
+        name = self.make_name_or_special(name_tok);
         type_tag: SubTag | None = None;
         # Check for type annotation: name: type
         # But we need to distinguish from lambda body colon: lambda x, y: expr
@@ -4424,19 +4435,14 @@ impl Parser.parse_import_stmt -> Import {
             path_kid.append(str_node);
         } elif self.check_name() or self.is_keyword_token() {
             name_tok = self.advance();
-            nm = self.make_name(name_tok)
-            if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME
-            else self.make_special_name(name_tok);
+            nm = self.make_name_or_special(name_tok);
             path_names.append(nm);
             path_kid.append(nm);
             while self.match_tok(TokenKind.DOT) {
                 path_kid.append(self.gen_token(Tok.DOT.value, "."));
                 if self.check_name() or self.is_keyword_token() {
                     name_tok = self.advance();
-                    nm = self.make_name(name_tok)
-                    if name_tok.kind == TokenKind.NAME
-                    or name_tok.kind == TokenKind.KWESC_NAME
-                    else self.make_special_name(name_tok);
+                    nm = self.make_name_or_special(name_tok);
                 } else {
                     name_tok = self.expect(TokenKind.NAME);
                     nm = self.make_name(name_tok);
@@ -4472,10 +4478,7 @@ impl Parser.parse_import_stmt -> Import {
                     item_name = self.make_name(item_name_tok);
                 } elif self.is_keyword_token() {
                     item_name_tok = self.advance();
-                    item_name = self.make_name(item_name_tok)
-                    if item_name_tok.kind == TokenKind.NAME
-                    or item_name_tok.kind == TokenKind.KWESC_NAME
-                    else self.make_special_name(item_name_tok);
+                    item_name = self.make_name_or_special(item_name_tok);
                 } else {
                     item_name_tok = self.expect_name();
                     item_name = self.make_name(item_name_tok);
@@ -4513,10 +4516,7 @@ impl Parser.parse_import_stmt -> Import {
                 path_kid.append(str_node);
             } elif self.check_name() or self.is_keyword_token() {
                 name_tok = self.advance();
-                nm = self.make_name(name_tok)
-                if name_tok.kind == TokenKind.NAME
-                or name_tok.kind == TokenKind.KWESC_NAME
-                else self.make_special_name(name_tok);
+                nm = self.make_name_or_special(name_tok);
                 path_names.append(nm);
                 path_kid.append(nm);
                 while self.match_tok(TokenKind.DOT) {
@@ -4526,10 +4526,7 @@ impl Parser.parse_import_stmt -> Import {
                     } else {
                         name_tok = self.expect_name();
                     }
-                    nm = self.make_name(name_tok)
-                    if name_tok.kind == TokenKind.NAME
-                    or name_tok.kind == TokenKind.KWESC_NAME
-                    else self.make_special_name(name_tok);
+                    nm = self.make_name_or_special(name_tok);
                     path_names.append(nm);
                     path_kid.append(nm);
                 }
@@ -4586,16 +4583,7 @@ impl Parser.parse_archetype -> Archetype {
     }
     arch_tok = self.advance();
     arch_type = self.make_uni_token(arch_tok);
-    access = None;
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
-            access = SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[self.gen_token(Tok.COLON.value, ":"), at]
-            );
-        }
-    }
+    access = self.parse_access_tag();
     name_tok: Token;
     if self.check_name() {
         name_tok = self.advance();
@@ -4604,9 +4592,7 @@ impl Parser.parse_archetype -> Archetype {
     } else {
         name_tok = self.expect_name();
     }
-    name = self.make_name(name_tok)
-    if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME
-    else self.make_special_name(name_tok);
+    name = self.make_name_or_special(name_tok);
     base_classes: list = [];
     if self.match_tok(TokenKind.LPAREN) {
         if not self.check(TokenKind.RPAREN) {
@@ -4806,16 +4792,7 @@ impl Parser.parse_has_stmt -> ArchHas {
         is_static = True;
     }
     self.expect(TokenKind.KW_HAS);
-    access = None;
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
-            access = SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[self.gen_token(Tok.COLON.value, ":"), at]
-            );
-        }
-    }
+    access = self.parse_access_tag();
     vars: list = [];
     vars.append(self.parse_has_var());
     while self.match_tok(TokenKind.COMMA) {
@@ -4938,16 +4915,7 @@ impl Parser.parse_ability -> Ability {
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
-    access = None;
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
-            access = SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[self.gen_token(Tok.COLON.value, ":"), at]
-            );
-        }
-    }
+    access = self.parse_access_tag();
     name = None;
     # Allow NAME or certain keywords as method names (per named_ref grammar)
     if self.check_name() {
@@ -5210,16 +5178,7 @@ impl Parser.parse_enum -> Enum {
         decorators.append(self.parse_atomic_chain());
     }
     self.expect(TokenKind.KW_ENUM);
-    access = None;
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
-            access = SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[self.gen_token(Tok.COLON.value, ":"), at]
-            );
-        }
-    }
+    access = self.parse_access_tag();
     name_tok: Token;
     if self.check_name() {
         name_tok = self.advance();
@@ -5228,9 +5187,7 @@ impl Parser.parse_enum -> Enum {
     } else {
         name_tok = self.expect_name();
     }
-    name = self.make_name(name_tok)
-    if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME
-    else self.make_special_name(name_tok);
+    name = self.make_name_or_special(name_tok);
     base_classes: list = [];
     if self.match_tok(TokenKind.LPAREN) {
         if not self.check(TokenKind.RPAREN) {
@@ -5395,16 +5352,7 @@ impl Parser.parse_switch_case -> SwitchCase {
 # =============================================================================
 impl Parser.parse_global_var -> GlobalVars {
     self.expect(TokenKind.KW_GLOBAL);
-    access = None;
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            access_tok = self.advance();
-            access = SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[self.gen_token(Tok.COLON.value, ":"), at]
-            );
-        }
-    }
+    access = self.parse_access_tag();
     # Parse assignment list
     assignments: list = [];
     assignments.append(self.parse_global_var_assignment());
@@ -5451,9 +5399,7 @@ impl Parser.parse_global_var_assignment -> Assignment {
     } else {
         name_tok = self.expect_name();
     }
-    name = self.make_name(name_tok)
-    if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME
-    else self.make_special_name(name_tok);
+    name = self.make_name_or_special(name_tok);
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         gv_colon = self.gen_token(Tok.COLON.value, ":");
