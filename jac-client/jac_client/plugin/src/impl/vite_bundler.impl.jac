@@ -332,6 +332,11 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
+// Check if project has a public folder for static assets
+const publicDir = fs.existsSync(path.resolve(projectRoot, "public"))
+  ? path.resolve(projectRoot, "public")
+  : false;
+
 // Jac source mapper plugin - maps errors back to original .jac files
 function jacSourceMapper() {{
   const sourceMap = new Map(); // compiled path -> original jac path
@@ -381,6 +386,7 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  base: "./", // Use relative paths for Tauri and static file serving
   define: {{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
@@ -404,7 +410,7 @@ export default defineConfig({{
     emptyOutDir: true,
 {build_overrides_str}
   }},
-  publicDir: false,
+  publicDir: publicDir, // Copy static assets from public/ folder if it exists
 {server_section}  resolve: {{
       alias: {{
         "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
@@ -626,10 +632,19 @@ impl ViteBundler.create_dev_vite_config(
 import path from "path";
 import {{ fileURLToPath }} from "url";
 import react from "@vitejs/plugin-react";
+import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
+
+// Check if project has a public folder
+const publicDir = fs.existsSync(path.resolve(projectRoot, "public"))
+  ? path.resolve(projectRoot, "public")
+  : false;
+
+// Asset file extensions that should be proxied to the backend server
+const assetExtensions = /\\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|pdf|txt|xml)$/i;
 
 /**
  * Vite DEV configuration for HMR mode
@@ -639,9 +654,36 @@ export default defineConfig({{
   define: {{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Custom plugin to proxy root-level asset requests to backend
+    {{
+      name: 'proxy-root-assets',
+      configureServer(server) {{
+        server.middlewares.use((req, res, next) => {{
+          // Check if this is a root-level asset request (not already handled by Vite)
+          const url = req.url || '';
+          if (assetExtensions.test(url) && !url.startsWith('/static/') && !url.startsWith('/@')) {{
+            // Proxy to backend server
+            const targetUrl = `http://localhost:{api_port}${{url}}`;
+            import('http').then((http) => {{
+              const proxyReq = http.get(targetUrl, (proxyRes) => {{
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                proxyRes.pipe(res);
+              }});
+              proxyReq.on('error', () => {{
+                next(); // Fall through to Vite's 404
+              }});
+            }});
+          }} else {{
+            next();
+          }}
+        }});
+      }},
+    }},
+  ],
   root: buildDir,
-  publicDir: false,
+  publicDir: publicDir,
   appType: 'spa',
   build: {{
     sourcemap: true, // Enable source maps for better error messages
@@ -669,6 +711,11 @@ export default defineConfig({{
         changeOrigin: true,
       }},
       "/static": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      // Proxy /assets path to backend for assets folder
+      "/assets": {{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
