@@ -35,6 +35,18 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         mod.verify();
         target = llvm.Target.from_default_triple();
         target_machine = target.create_target_machine();
+        # Register Python function callbacks before creating engine
+        # so MCJIT can resolve them during code generation
+        manifest = module.gen.interop_manifest;
+        native_imports = manifest.native_imports;
+        if native_imports {
+            import from jaclang.pycore.interop_bridge { register_py_callbacks }
+            py_func_table: dict = {};
+            callbacks_list: list = [];
+            register_py_callbacks(manifest, py_func_table, callbacks_list);
+            module.gen.interop_py_funcs = py_func_table;
+            module.gen._interop_callbacks = callbacks_list;
+        }
         engine = llvm.create_mcjit_compiler(mod, target_machine);
         module.gen.native_engine = engine;
     } except Exception as e {
