@@ -992,8 +992,9 @@ def test_vite_build_prompts_for_missing_client_deps() -> None:
 
 def test_vite_build_error_maps_to_source() -> None:
     """Test that build errors show original .jac file paths, not compiled .js paths."""
-    from jac_client.plugin.src.vite_bundler import ViteBundler
     from pathlib import Path
+
+    from jac_client.plugin.src.vite_bundler import ViteBundler
 
     with tempfile.TemporaryDirectory() as temp_dir:
         project_dir = Path(temp_dir)
