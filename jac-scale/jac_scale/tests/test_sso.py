@@ -259,7 +259,7 @@ class TestJacScaleUserManagerSSO:
             "invalid_platform", Operations.LOGIN.value
         )
 
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "Invalid platform" in body
 
@@ -273,7 +273,7 @@ class TestJacScaleUserManagerSSO:
             Platforms.GOOGLE.value, Operations.LOGIN.value
         )
 
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "not configured" in body
 
@@ -284,7 +284,7 @@ class TestJacScaleUserManagerSSO:
             Platforms.GOOGLE.value, "invalid_operation"
         )
 
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "Invalid operation" in body
 
@@ -296,7 +296,7 @@ class TestJacScaleUserManagerSSO:
                 Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "Failed to initialize SSO" in body
 
@@ -325,7 +325,7 @@ class TestJacScaleUserManagerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
 
             assert "Login successful" in body
@@ -362,7 +362,7 @@ class TestJacScaleUserManagerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
             )
 
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             self.user_manager.create_user.assert_called_once_with(
                 "newuser@example.com", "random_pass"
             )
@@ -380,7 +380,7 @@ class TestJacScaleUserManagerSSO:
             result = await self.user_manager.sso_callback(
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "User not found" in body
 
@@ -400,7 +400,7 @@ class TestJacScaleUserManagerSSO:
             result = await self.user_manager.sso_callback(
                 mock_request, Platforms.GOOGLE.value, Operations.REGISTER.value
             )
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "User already exists" in body
 
@@ -412,7 +412,7 @@ class TestJacScaleUserManagerSSO:
         result = await self.user_manager.sso_callback(
             mock_request, "invalid_platform", Operations.LOGIN.value
         )
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "Invalid platform" in body
 
@@ -424,7 +424,7 @@ class TestJacScaleUserManagerSSO:
         result = await self.user_manager.sso_callback(
             mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
         )
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "not configured" in body
 
@@ -435,7 +435,7 @@ class TestJacScaleUserManagerSSO:
         result = await self.user_manager.sso_callback(
             mock_request, Platforms.GOOGLE.value, "invalid_operation"
         )
-        assert isinstance(result, (JSONResponse, TransportResponse))
+        assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
         body = self._get_response_body(result)
         assert "Invalid operation" in body
 
@@ -447,7 +447,7 @@ class TestJacScaleUserManagerSSO:
             result = await self.user_manager.sso_callback(
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "Failed to initialize SSO" in body
 
@@ -463,7 +463,7 @@ class TestJacScaleUserManagerSSO:
             result = await self.user_manager.sso_callback(
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "Email not provided" in body
 
@@ -479,7 +479,7 @@ class TestJacScaleUserManagerSSO:
             result = await self.user_manager.sso_callback(
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
-            assert isinstance(result, (JSONResponse, TransportResponse))
+            assert isinstance(result, (RedirectResponse, JSONResponse, TransportResponse))
             body = self._get_response_body(result)
             assert "Authentication failed" in body
 
