@@ -18,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: Context Managers**: `with` statements compile to native LLVM IR. `__enter__` is called on entry, `__exit__` on exit (including when exceptions occur). The `as` binding form (`with open(path) as f`) is supported. File objects implement the context manager protocol for automatic resource cleanup.
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
 - **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
+- **Fix: ESM Script Loading in Legacy Runtime**: Added `type="module"` to the generated `<script>` tag in the legacy runtime HTML renderer, matching the same fix applied in jac-client.
 
 ## jaclang 0.9.14 (Latest Release)
 
