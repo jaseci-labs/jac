@@ -60,8 +60,7 @@ impl start_cli -> None {
     args_dict = vars(args);
     args_dict.pop('command');
     args_dict.pop('version', None);
-    # Apply environment profile if specified
-    _apply_env_profile(args_dict);
+    _apply_profile(args_dict);
     # Execute using the new executor with hook support
     executor = get_executor();
     result = executor.execute(command_spec, args_dict);
@@ -117,8 +116,12 @@ def _initialize_template_registry -> None {
     }
 }
 
-"""Apply environment profile from --env flag or JAC_ENV environment variable."""
-def _apply_env_profile(args_dict: dict) -> None {
+"""Resolve the active profile name and apply multi-file config overlay.
+
+Profile priority: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default_profile
+"""
+def _apply_profile(args_dict: dict) -> None {
+    import from jaclang.cli.console { console }
     try {
         import from jaclang.project.config { get_config }
 
@@ -127,19 +130,65 @@ def _apply_env_profile(args_dict: dict) -> None {
             return;
         }
 
-        # Check for --env argument or JAC_ENV environment variable
-        profile = args_dict.pop('env', None);
-        if profile is None {
-            profile = os.environ.get('JAC_ENV');
+        # Determine profile name: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default
+        profile = args_dict.pop('profile', None);
+        if not profile {
+            profile = os.environ.get('JAC_PROFILE');
         }
-        if profile is None and config.environment.default_profile {
+        if not profile {
+            jac_env = os.environ.get('JAC_ENV');
+            if jac_env {
+                console.print(
+                    "Warning: JAC_ENV is deprecated, use JAC_PROFILE instead.",
+                    style="warning"
+                );
+                profile = jac_env;
+            }
+        }
+        if not profile and config.environment.default_profile {
             profile = config.environment.default_profile;
         }
 
-        if profile {
-            config.apply_profile(profile);
+        config.apply_profile_overlay(profile or None);
+
+        # Bridge config values into args_dict when the CLI arg is at its
+        # argparse default so that config file values take effect.
+        # Only override when the config explicitly sets the value (in _raw_data
+        # or via profile overlay) — otherwise leave the argparse default alone.
+        _apply_config_defaults(config, args_dict);
+    } except (KeyError, ValueError, OSError) as e {
+        console.print(f"Warning: Failed to apply profile: {e}", style="warning");
+    }
+}
+
+"""Apply config values to args_dict for keys still at their argparse defaults.
+
+Maps config fields to CLI arg names with their argparse defaults.
+Only overrides an arg if:
+  1. The arg exists in args_dict (the command accepts it)
+  2. The arg value equals the argparse default (user didn't explicitly pass it)
+  3. The config has an explicitly-set value (from file or profile, not just the object default)
+"""
+def _apply_config_defaults(config: object, args_dict: dict) -> None {
+    # (arg_name, argparse_default, config_value, raw_data_section, raw_data_key)
+    bridges: list = [
+        ("port", 8000, config.serve.port, "serve", "port"),
+        ("cache", True, config.run.cache, "run", "cache"),
+        ("main", True, config.run.main, "run", "main"),
+        ("verbose", False, config.test.verbose, "test", "verbose"),
+
+    ];
+    for (arg_name, arg_default, config_value, section, key) in bridges {
+        if arg_name not in args_dict {
+            continue;
         }
-    } except Exception {
-    # Silently ignore profile loading errors
+        if args_dict[arg_name] != arg_default {
+            continue;  # User explicitly passed this arg
+        }
+        # Check if the config explicitly sets this value
+        raw = config._raw_data.get(section, {});
+        if isinstance(raw, dict) and key in raw {
+            args_dict[arg_name] = config_value;
+        }
     }
 }

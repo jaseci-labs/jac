@@ -4,7 +4,7 @@ Note: useEffect import is auto-injected from @jac/runtime when `can with entry/e
 """
 
 cl {
-    def:pub title_component() -> any {
+    def:pub title_component() -> JsxElement {
         has title: str = "Default";
 
         # Sync mount effect - no IIFE wrapping needed

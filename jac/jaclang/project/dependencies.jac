@@ -28,9 +28,11 @@ obj DependencyInstaller {
     def postinit -> None;
     def ensure_venv -> None;
     def _run_pip(args: list[str]) -> tuple[int, str, str];
-    def install_all(include_dev: bool = False) -> bool;
-    def install_package(name: str, version: str = "") -> bool;
-    def install_git_package(name: str, git_url: str, branch: str = "") -> bool;
+    def _make_pip_spec(name: str, version: str) -> str;
+    def _make_git_spec(name: str, git_url: str, branch: str = "") -> str;
+    def get_pip_package_specs(include_dev: bool = False) -> list[str];
+    def get_git_package_specs -> list[str];
+    def install_package(specs: list[str]) -> bool;
     def uninstall_package(name: str) -> bool;
     def is_installed(name: str) -> bool;
     def list_installed -> list[str];

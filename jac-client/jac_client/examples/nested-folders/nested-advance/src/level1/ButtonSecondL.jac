@@ -2,7 +2,7 @@
 cl import from antd { Button }
 cl import from ..ButtonRoot { ButtonRoot }
 
-cl def:pub ButtonSecondL -> any {
+cl def:pub ButtonSecondL -> JsxElement {
     return
         <div>
             <Button type="default" size="large">

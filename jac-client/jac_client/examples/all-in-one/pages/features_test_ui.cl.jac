@@ -21,7 +21,7 @@ import from ..utils.helpers {
 import from ..utils.formatters { formatCurrency }
 
 # Import walkers from server module
-sv import from .FeaturesTest {
+sv import from ..main {
     create_test_data,
     read_test_data,
     update_test_data,
@@ -38,7 +38,7 @@ sv import from .FeaturesTest {
 # Button component demonstrating props - NEW PATTERN: Direct parameters
 def:pub TestButton(
     text: str, onClick: any, variant: str
-) -> any {
+) -> JsxElement {
     bg_color = "#3b82f6" if variant == "primary" else "#6b7280";
     hover_color = "#2563eb" if variant == "primary" else "#4b5563";
 
@@ -66,7 +66,7 @@ def:pub TestButton(
 # # Card component with props - NEW PATTERN: Direct parameters
 def:pub TestCard(
     title: str, children: any, color: str
-) -> any {
+) -> JsxElement {
     return
         <div
             style={{
@@ -106,7 +106,7 @@ def:pub TestCard(
 # Result display component - NEW PATTERN: Direct parameters
 def:pub ResultDisplay(
     data: any, label: str
-) -> any {
+) -> JsxElement {
     if not data {
         return
             <div style={{"color": "#9ca3af", "fontStyle": "italic"}}>
@@ -146,7 +146,7 @@ def:pub ResultDisplay(
 # ============================================================================
 # MAIN PAGE COMPONENT
 # ============================================================================
-def:pub FeaturesTest -> any {
+def:pub FeaturesTest -> JsxElement {
     navigate = useNavigate();
 
     # State management
@@ -408,7 +408,7 @@ def:pub FeaturesTest -> any {
                             No data yet. Create some!
                         </p>}
                         {testData.map(
-                            lambda item: any  -> any { return
+                            lambda item: any  -> JsxElement { return
                                 <div
                                     key={item._jac_id}
                                     style={{
@@ -480,7 +480,7 @@ def:pub FeaturesTest -> any {
                             }}
                         >
                             {Object.keys(string_demos).map(
-                                lambda key: str  -> any { return
+                                lambda key: str  -> JsxElement { return
                                     <div key={key} style={{"marginBottom": "5px"}}>
                                         <span style={{"fontWeight": "600"}}>
                                             {key}:
