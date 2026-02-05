@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.6 (Unreleased)
+## jac-scale 0.1.7 (Unreleased)
+
+## jac-scale 0.1.6 (Latest Release)
 
 - **fix: Exclude `jac.local.toml` during K8s code sync**: The local dev override file (`jac.local.toml`) is now excluded when syncing application code to the Kubernetes PVC. Previously, this file could override deployment settings such as the serve port, causing health check failures.
 
-## jac-scale 0.1.5 (Latest Release)
+## jac-scale 0.1.5
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Client bundle error help message**: When the client bundle build fails during `jac start`, the server now prints a troubleshooting suggestion to run `jac clean --all` and a link to the Discord community for support.
