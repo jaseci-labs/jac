@@ -69,7 +69,9 @@ permissions: {}
 
 jobs:
   create-release-pr:
+    if: github.repository == 'Jaseci-Labs/jaseci'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -82,12 +84,12 @@ jobs:
           submodules: true
 
       - name: Set up Python
-        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install tomlkit
+        run: pip install tomlkit==0.14.0
 
       - name: Run release script
         id: release
