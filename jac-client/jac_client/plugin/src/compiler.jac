@@ -8,6 +8,7 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .asset_processor { AssetProcessor }
 import from .import_processor { ImportProcessor }
 import from .jac_to_js { JacToJSCompiler }
+import from .route_scanner { RouteScanner, RouteEntry }
 import from .vite_bundler { ViteBundler }
 
 with entry {
@@ -23,12 +24,16 @@ class ViteCompiler {
             'Route',
             'Link',
             'Navigate',
+            'Outlet',
             'useNavigate',
             'useLocation',
-            'useParams'
+            'useParams',
+            'AuthGuard'
         ];
+        COMPOUND_EXTENSIONS = ['.cl.jac', '.impl.jac', '.test.jac'];
     }
 
+    def _jac_path_to_js(self: ViteCompiler, rel_str: str) -> str;
     def init(
         self: ViteCompiler,
         vite_package_json: Path,
@@ -60,7 +65,20 @@ class ViteCompiler {
 
     def copy_root_assets(self: ViteCompiler) -> None;
     def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
+    def _create_pages_entry_content(self: ViteCompiler, module_path: Path) -> str;
+    def _scan_and_compile_pages(
+        self: ViteCompiler,
+        visited: (set[Path] | None) = None,
+        collected_exports: (set[str] | None) = None,
+        collected_globals: (dict[(str, Any)] | None) = None
+    ) -> bool;
+
+    def _generate_routes_manifest(self: ViteCompiler) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];
+
+    def compile(
+        self: ViteCompiler, module: ModuleType, module_path: Path
+    ) -> tuple[list[str], list[str]];
 }

@@ -34,7 +34,7 @@ class JacScalePluginConfig {
                     "nested": {
                         "secret": {
                             "type": "string",
-                            "default": "supersecretkey",
+                            "default": "supersecretkey_for_testing_only!",
                             "description": "Secret key for JWT signing"
                         },
                         "algorithm": {

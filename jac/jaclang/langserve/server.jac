@@ -32,7 +32,7 @@ async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) ->
 async def did_change(
     ls: JacLangServer, params: lspt.DidChangeTextDocumentParams
 ) -> None {
-    debug("Did change: Type checking started...");
+    debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
 }
 
@@ -44,6 +44,8 @@ def formatting(
 def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) -> None { }
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
+
+def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> None;
 
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 

@@ -247,29 +247,28 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error while requesting /cl/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # "/cl/app#/nested" – relative paths / nested route
-                # (hash fragment is client-side only but server should still serve the app shell)
+                # "/nested" – SPA catch-all serves app shell for client-side routing
                 try:
-                    print("[DEBUG] Sending GET request to /cl/app#/nested endpoint")
+                    print(
+                        "[DEBUG] Sending GET request to /nested endpoint (SPA catch-all)"
+                    )
                     with urlopen(
-                        f"http://127.0.0.1:{server_port}/cl/app#/nested",
+                        f"http://127.0.0.1:{server_port}/nested",
                         timeout=200,
                     ) as resp_nested:
                         nested_body = resp_nested.read().decode(
                             "utf-8", errors="ignore"
                         )
                         print(
-                            "[DEBUG] Received response from /cl/app#/nested endpoint\n"
+                            "[DEBUG] Received response from /nested endpoint\n"
                             f"Status: {resp_nested.status}\n"
                             f"Body (truncated to 500 chars):\n{nested_body[:500]}"
                         )
                         assert resp_nested.status == 200
                         assert "<html" in nested_body.lower()
                 except (URLError, HTTPError) as exc:
-                    print(
-                        f"[DEBUG] Error while requesting /cl/app#/nested endpoint: {exc}"
-                    )
-                    pytest.fail("Failed to GET /cl/app#/nested endpoint")
+                    print(f"[DEBUG] Error while requesting /nested endpoint: {exc}")
+                    pytest.fail("Failed to GET /nested endpoint (SPA catch-all)")
 
                 # Note: CSS serving is tested separately in test_css_with_image
                 # The CSS is bundled into client.js so no separate /static/styles.css endpoint
@@ -521,10 +520,10 @@ def test_all_in_one_app_endpoints() -> None:
                     print(f"[DEBUG] Error verifying TypeScript component: {exc}")
                     pytest.fail("Failed to verify TypeScript component integration")
 
-                # Verify nested folder imports are working - /cl/app#/nested route
+                # Verify nested folder imports are working - /nested route (SPA catch-all)
                 # This route uses nested folder imports (components.button and button)
                 try:
-                    print("[DEBUG] Verifying nested folder imports via /cl/app#/nested")
+                    print("[DEBUG] Verifying nested folder imports via /nested")
                     # The nested route should load successfully (already tested above)
                     # Nested imports are compiled and included in the bundle
                     assert "<html" in nested_body.lower(), (
@@ -776,5 +775,451 @@ def test_default_client_app_renders() -> None:
 
         finally:
             print(f"[DEBUG] Restoring working directory to {original_cwd}")
+            os.chdir(original_cwd)
+            gc.collect()
+
+
+def test_configurable_api_base_url_in_bundle() -> None:
+    """Test that [plugins.client.api] base_url is baked into the served JS bundle.
+
+    End-to-end verification of the configurable API base URL feature:
+    1. Creates a client app using the all-in-one example (which uses walkers/auth)
+    2. Injects [plugins.client.api] base_url into jac.toml
+    3. Starts the server and waits for the bundle to build
+    4. Fetches the served JS bundle
+    5. Asserts the configured URL appears in the bundled JavaScript
+    """
+    import re
+    import tomllib
+
+    print("[DEBUG] Starting test_configurable_api_base_url_in_bundle")
+
+    # Resolve the all-in-one example (uses walkers/auth so base URL won't be tree-shaken)
+    tests_dir = os.path.dirname(__file__)
+    jac_client_root = os.path.dirname(tests_dir)
+    all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one")
+
+    print(f"[DEBUG] Resolved all-in-one source path: {all_in_one_path}")
+    assert os.path.isdir(all_in_one_path), "all-in-one example directory missing"
+
+    app_name = "e2e-api-base-url"
+    configured_base_url = "http://my-custom-backend:9000"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # 1. Create a client app and copy all-in-one into it
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            print(f"[DEBUG] Running 'jac create --use client {app_name}'")
+            process = Popen(
+                [*jac_cmd, "create", "--use", "client", app_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                env=env,
+            )
+            stdout, stderr = process.communicate()
+            returncode = process.returncode
+
+            print(
+                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}\n"
+            )
+
+            if returncode != 0 and "unrecognized arguments: --use" in stderr:
+                pytest.fail(
+                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                )
+
+            assert returncode == 0, (
+                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+            )
+
+            project_path = os.path.join(temp_dir, app_name)
+            assert os.path.isdir(project_path)
+
+            # Copy all-in-one contents (which uses walkers, auth, etc.)
+            print("[DEBUG] Copying @all-in-one contents into created Jac app")
+            for entry in os.listdir(all_in_one_path):
+                src = os.path.join(all_in_one_path, entry)
+                dst = os.path.join(project_path, entry)
+                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
+                    continue
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src, dst)
+
+            # 2. Inject [plugins.client.api] base_url into jac.toml
+            jac_toml_path = os.path.join(project_path, "jac.toml")
+            assert os.path.isfile(jac_toml_path), "jac.toml should exist"
+
+            with open(jac_toml_path, "rb") as f:
+                original_config = tomllib.load(f)
+            print(f"[DEBUG] Original jac.toml keys: {list(original_config.keys())}")
+
+            # Append api config (the all-in-one jac.toml may already have [plugins.client])
+            with open(jac_toml_path, "a") as f:
+                f.write(f'\n[plugins.client.api]\nbase_url = "{configured_base_url}"\n')
+
+            with open(jac_toml_path, "rb") as f:
+                updated_config = tomllib.load(f)
+            api_base = (
+                updated_config.get("plugins", {})
+                .get("client", {})
+                .get("api", {})
+                .get("base_url", "")
+            )
+            print(f"[DEBUG] Verified jac.toml base_url = {api_base!r}")
+            assert api_base == configured_base_url
+
+            # 3. Install packages
+            print("[DEBUG] Running 'jac add --npm' to install packages")
+            jac_add_result = run(
+                [*jac_cmd, "add", "--npm"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            print(
+                f"[DEBUG] 'jac add --npm' returncode={jac_add_result.returncode}\n"
+                f"STDOUT (truncated):\n{jac_add_result.stdout[:1000]}\n"
+                f"STDERR (truncated):\n{jac_add_result.stderr[:1000]}\n"
+            )
+            if jac_add_result.returncode != 0:
+                pytest.fail(
+                    f"jac add --npm failed\n"
+                    f"STDOUT:\n{jac_add_result.stdout}\n"
+                    f"STDERR:\n{jac_add_result.stderr}\n"
+                )
+
+            # 4. Start the server
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            try:
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # 5. Fetch root HTML to find the JS bundle path
+                try:
+                    root_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}",
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8", errors="ignore")
+                    print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
+                    assert "<html" in root_body.lower(), "Root should return HTML"
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    pytest.fail(f"Failed to GET root endpoint: {exc}")
+
+                # 6. Extract JS bundle path and fetch it
+                # URL format is /static/client.js?hash=... or /static/client.HASH.js
+                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
+                assert script_match, (
+                    f"Could not find client JS bundle path in HTML:\n{root_body[:1000]}"
+                )
+
+                js_path = script_match.group(1)
+                js_url = f"http://127.0.0.1:{server_port}{js_path}"
+                print(f"[DEBUG] Fetching JS bundle from {js_url}")
+
+                with urlopen(js_url, timeout=30) as resp:
+                    js_body = resp.read().decode("utf-8", errors="ignore")
+                    assert resp.status == 200, "JS bundle should return 200"
+                    assert len(js_body) > 0, "JS bundle should not be empty"
+                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
+
+                # 7. Assert the configured base URL is baked into the bundle
+                assert configured_base_url in js_body, (
+                    f"Expected configured base_url '{configured_base_url}' to appear "
+                    f"in the bundled JavaScript, but it was not found.\n"
+                    f"Bundle size: {len(js_body)} bytes"
+                )
+                print(f"[DEBUG] Confirmed '{configured_base_url}' found in JS bundle")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                        print("[DEBUG] Server terminated cleanly")
+                    except Exception:
+                        print("[DEBUG] Server did not terminate cleanly, killing")
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            print(f"[DEBUG] Restoring working directory to {original_cwd}")
+            os.chdir(original_cwd)
+            gc.collect()
+
+
+def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str:
+    """Shared helper: scaffold a jac client app, copy all-in-one into it, install npm deps.
+
+    Returns the project directory path.
+    """
+    tests_dir = os.path.dirname(__file__)
+    jac_client_root = os.path.dirname(tests_dir)
+    all_in_one_path = os.path.join(jac_client_root, "examples", "all-in-one")
+
+    assert os.path.isdir(all_in_one_path), "all-in-one example directory missing"
+
+    jac_cmd = get_jac_command()
+    env = get_env_with_npm()
+
+    # Create a new Jac client app
+    process = Popen(
+        [*jac_cmd, "create", "--use", "client", app_name],
+        stdin=PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
+        text=True,
+        env=env,
+    )
+    stdout, stderr = process.communicate()
+    if process.returncode != 0 and "unrecognized arguments: --use" in stderr:
+        pytest.fail(
+            "Test failed: installed `jac` CLI does not support `create --use client`."
+        )
+    assert process.returncode == 0, (
+        f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+    )
+
+    project_path = os.path.join(temp_dir, app_name)
+    assert os.path.isdir(project_path)
+
+    # Copy all-in-one contents (skip build artifacts)
+    for entry in os.listdir(all_in_one_path):
+        src = os.path.join(all_in_one_path, entry)
+        dst = os.path.join(project_path, entry)
+        if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
+            continue
+        if os.path.isdir(src):
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
+
+    # Install npm packages
+    jac_add_result = run(
+        [*jac_cmd, "add", "--npm"],
+        cwd=project_path,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if jac_add_result.returncode != 0:
+        pytest.fail(
+            f"jac add --npm failed\nSTDOUT:\n{jac_add_result.stdout}\n"
+            f"STDERR:\n{jac_add_result.stderr}\n"
+        )
+
+    return project_path
+
+
+def test_profile_config_applies_to_server() -> None:
+    """Verify that ``--profile prod`` loads jac.prod.toml and its settings take effect.
+
+    The prod profile overrides ``[plugins.client.app_meta_data] title``.
+    We start the server with ``--profile prod`` and confirm the HTML ``<title>``
+    reflects the prod value, proving the profile overlay pipeline works end-to-end.
+    """
+    print("[DEBUG] Starting test_profile_config_applies_to_server")
+
+    prod_title = "All-In-One Prod"
+    base_title = "All-In-One"
+    app_name = "e2e-profile-test"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            project_path = _setup_all_in_one_project(temp_dir, app_name)
+            print(f"[DEBUG] Project set up at {project_path}")
+
+            prod_toml = os.path.join(project_path, "jac.prod.toml")
+            assert os.path.isfile(prod_toml), (
+                "jac.prod.toml should be copied from all-in-one example"
+            )
+
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            try:
+                print(
+                    f"[DEBUG] Starting server with "
+                    f"'jac start main.jac -p {server_port} --profile prod'"
+                )
+                server = Popen(
+                    [
+                        *jac_cmd,
+                        "start",
+                        "main.jac",
+                        "-p",
+                        str(server_port),
+                        "--profile",
+                        "prod",
+                    ],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                root_bytes = _wait_for_endpoint(
+                    f"http://127.0.0.1:{server_port}",
+                    timeout=120.0,
+                    poll_interval=2.0,
+                    request_timeout=30.0,
+                )
+                root_body = root_bytes.decode("utf-8", errors="ignore")
+                print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
+                assert "<html" in root_body.lower(), "Root should return HTML"
+
+                assert f"<title>{prod_title}</title>" in root_body, (
+                    f"Expected prod title '{prod_title}' in HTML, "
+                    f"but found base title instead. "
+                    f"This means --profile prod did not load jac.prod.toml correctly.\n"
+                    f"HTML (first 500 chars): {root_body[:500]}"
+                )
+                assert f"<title>{base_title}</title>" not in root_body, (
+                    "Base title should be overridden by prod profile"
+                )
+                print(
+                    f"[DEBUG] Confirmed title='{prod_title}' in HTML "
+                    f"- profile config applied successfully"
+                )
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                    except Exception:
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            os.chdir(original_cwd)
+            gc.collect()
+
+
+def test_no_profile_omits_profile_settings() -> None:
+    """Verify that without ``--profile``, prod-only settings are NOT applied.
+
+    Starts the server without any profile flag and confirms the HTML
+    ``<title>`` uses the base config value, not the prod override.
+    This is the control test for ``test_profile_config_applies_to_server``.
+    """
+    print("[DEBUG] Starting test_no_profile_omits_profile_settings")
+
+    prod_title = "All-In-One Prod"
+    base_title = "All-In-One"
+    app_name = "e2e-no-profile-test"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            project_path = _setup_all_in_one_project(temp_dir, app_name)
+            print(f"[DEBUG] Project set up at {project_path}")
+
+            local_toml = os.path.join(project_path, "jac.local.toml")
+            if os.path.isfile(local_toml):
+                os.remove(local_toml)
+
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            try:
+                print(
+                    f"[DEBUG] Starting server with "
+                    f"'jac start main.jac -p {server_port}' (no profile)"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                root_bytes = _wait_for_endpoint(
+                    f"http://127.0.0.1:{server_port}",
+                    timeout=120.0,
+                    poll_interval=2.0,
+                    request_timeout=30.0,
+                )
+                root_body = root_bytes.decode("utf-8", errors="ignore")
+                assert "<html" in root_body.lower()
+
+                assert f"<title>{base_title}</title>" in root_body, (
+                    f"Expected base title '{base_title}' in HTML when no profile is set.\n"
+                    f"HTML (first 500 chars): {root_body[:500]}"
+                )
+                assert f"<title>{prod_title}</title>" not in root_body, (
+                    f"Prod title '{prod_title}' should NOT appear "
+                    f"when no profile is specified. "
+                    f"Profile settings are leaking without --profile."
+                )
+                print(
+                    f"[DEBUG] Confirmed title='{base_title}' in HTML "
+                    f"- profile settings correctly isolated"
+                )
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                    except Exception:
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
             os.chdir(original_cwd)
             gc.collect()

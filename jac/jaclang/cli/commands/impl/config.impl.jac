@@ -3,7 +3,8 @@
 Direct implementations - no delegation.
 """
 
-import sys;
+import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 # Configuration groups available in jac.toml
 glob CONFIG_GROUPS = [
@@ -97,7 +98,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     }
     # Handle disable action
     if action == 'disable' {
-        import from jaclang.cli.console { console }
         if not names {
             console.error("Plugin or package name required for disable action.");
             console.print(
@@ -194,7 +194,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     }
     # Handle enable action
     if action == 'enable' {
-        import from jaclang.cli.console { console }
         if not names {
             console.error("Plugin or package name required for enable action.");
             console.print(
@@ -269,7 +268,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     }
     # Handle disabled action - show currently disabled plugins
     if action == 'disabled' {
-        import from jaclang.cli.console { console }
         if not disabled_plugins {
             console.info("No plugins are currently disabled");
         } elif '*' in disabled_plugins {
@@ -295,7 +293,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     }
     # Handle list action (default)
     if action != 'list' {
-        import from jaclang.cli.console { console }
         console.error(
             f"Unknown action '{action}'. Use 'list', 'disable', 'enable', or 'disabled'."
         );
@@ -330,7 +327,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
         );
     }
     if not plugins_by_dist {
-        import from jaclang.cli.console { console }
         console.info("No Jac plugins installed");
         return 0;
     }
@@ -346,7 +342,6 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             commands_by_package[pkg].append(command.name);
         }
     }
-    import from jaclang.cli.console { console }
     console.print(
         f"\n🔌 [bold cyan]Installed Jac Plugins[/bold cyan] ({named_plugin_count} plugins from {len(
             plugins_by_dist
@@ -468,7 +463,6 @@ impl config(
     config = get_config();
     # Validate group if specified
     if group and group not in CONFIG_GROUPS {
-        import from jaclang.cli.console { console }
         console.error(f"Unknown group '{group}'.");
         console.print(f"Available groups: {', '.join(CONFIG_GROUPS)}", style="muted");
         return 1;
@@ -485,7 +479,6 @@ impl config(
     } elif action == 'unset' {
         return _config_unset(config, key);
     } else {
-        import from jaclang.cli.console { console }
         console.error(f"Unknown action '{action}'.");
         console.print(
             "Available actions: list, show, get, set, unset, path, groups",
@@ -496,15 +489,42 @@ impl config(
     return 0;
 }
 
-"""Show the path to the active jac.toml configuration file."""
+"""Generate a display label for a config file path."""
+def _config_file_label(path: Path, active_profile: str) -> str {
+    fname = path.name;
+    if fname == "jac.toml" {
+        return " (base)";
+    }
+    if fname == "jac.local.toml" {
+        return " (local)";
+    }
+    if active_profile {
+        return f" (profile: {active_profile})";
+    }
+    return "";
+}
+
+"""Show the path to the active configuration files."""
 def _config_path -> None {
     import from jaclang.project.config { get_config, find_project_root }
-    import from jaclang.cli.console { console }
 
     config = get_config();
     if config and config.toml_path {
-        console.print(f"Config file: {config.toml_path}", style="info");
         console.print(f"Project root: {config.project_root}", style="muted");
+        if config.active_profile {
+            console.print(f"Active profile: {config.active_profile}", style="info");
+        }
+        if config.config_files and len(config.config_files) > 1 {
+            console.print(
+                f"\nLoaded config files (lowest to highest priority):", style="info"
+            );
+            for (i, path) in enumerate(config.config_files) {
+                label = _config_file_label(path, config.active_profile);
+                console.print(f"  {i + 1}. {path}{label}");
+            }
+        } else {
+            console.print(f"Config file: {config.toml_path}", style="info");
+        }
     } else {
         result = find_project_root();
         if result {
@@ -520,7 +540,6 @@ def _config_path -> None {
 
 """List available configuration groups."""
 def _config_groups -> None {
-    import from jaclang.cli.console { console }
     console.print("\nAvailable configuration groups:\n", style="info");
     group_descriptions = {
         "project": "Project metadata (name, version, description, authors)",
@@ -639,7 +658,6 @@ def _is_explicitly_set(config: object, group_name: str, key: str) -> bool {
 """List configuration settings."""
 def _config_list(config: object, group: str, output: str, show_all: bool) -> None {
     import json;
-    import from jaclang.cli.console { console }
 
     if config is None {
         console.warning("No jac.toml found. Run 'jac create' to initialize a project.");
@@ -690,7 +708,6 @@ def _config_list(config: object, group: str, output: str, show_all: bool) -> Non
 
 """Output settings as a formatted table."""
 def _output_table(settings: dict, show_all: bool) -> None {
-    import from jaclang.cli.console { console }
     if not settings {
         if show_all {
             console.info("No configuration settings found.");
@@ -739,8 +756,8 @@ def _output_table(settings: dict, show_all: bool) -> None {
         separator = "-" * len(header);
     }
 
-    print(header);
-    print(separator);
+    console.print(header);
+    console.print(separator);
 
     # Print settings
     for grp in sorted(settings.keys()) {
@@ -756,19 +773,21 @@ def _output_table(settings: dict, show_all: bool) -> None {
                 fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
                     max_value
                 ) + "}  {:<" + str(max_default) + "}  {}";
-                print(fmt_str.format(grp, key, value_str, default_str, set_marker));
+                console.print(
+                    fmt_str.format(grp, key, value_str, default_str, set_marker)
+                );
             } else {
                 fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
                     max_value
                 ) + "}";
-                print(fmt_str.format(grp, key, value_str));
+                console.print(fmt_str.format(grp, key, value_str));
             }
         }
     }
 
     if show_all {
-        print();
-        print("* = explicitly set in jac.toml");
+        console.print();
+        console.print("* = explicitly set in jac.toml");
     }
 }
 
@@ -788,7 +807,7 @@ def _output_json(settings: dict) -> None {
             };
         }
     }
-    print(json.dumps(output, indent=2, default=str));
+    console.print(json.dumps(output, indent=2, default=str));
 }
 
 """Output settings as TOML (only explicitly set values)."""
@@ -817,9 +836,9 @@ def _output_toml(settings: dict, show_all: bool) -> None {
     }
 
     if lines {
-        print("\n".join(lines));
+        console.print("\n".join(lines));
     } else {
-        print("# No settings explicitly set");
+        console.print("# No settings explicitly set");
     }
 }
 
@@ -877,7 +896,6 @@ def _to_toml_value(value: object) -> str {
 
 """Get a specific configuration setting."""
 def _config_get(config: object, key: str) -> int {
-    import from jaclang.cli.console { console }
     if not key {
         console.error("Key required for 'get' action.");
         console.print("Usage: jac config get <group>.<key>", style="muted");
@@ -924,7 +942,7 @@ def _config_get(config: object, key: str) -> int {
     is_set = _is_explicitly_set(config, group_name, setting_name);
 
     # Output the value
-    print(_format_value(value).strip('"'));
+    console.print(_format_value(value).strip('"'));
 
     if is_set {
         console.print("  (explicitly set in jac.toml)", style="muted");
@@ -937,7 +955,6 @@ def _config_get(config: object, key: str) -> int {
 """Set a specific configuration setting."""
 def _config_set(config: object, key: str, value: str) -> int {
     import from jaclang.project.config { JacConfig, find_project_root }
-    import from jaclang.cli.console { console }
 
     if not key {
         console.error("Key required for 'set' action.");
@@ -1029,7 +1046,6 @@ def _config_set(config: object, key: str, value: str) -> int {
 """Unset (remove) a specific configuration setting."""
 def _config_unset(config: object, key: str) -> int {
     import from jaclang.project.config { find_project_root }
-    import from jaclang.cli.console { console }
 
     if not key {
         console.error("Key required for 'unset' action.");
@@ -1096,7 +1112,6 @@ def _config_unset(config: object, key: str) -> int {
 
 """Parse a string value into the appropriate type."""
 def _parse_value(value: str, target_type: type) -> object {
-    import from jaclang.cli.console { console }
     # Handle boolean
     if target_type == bool {
         lower = value.lower();
@@ -1156,7 +1171,6 @@ def _save_config_with_setting(
     config: object, group_name: str, setting_name: str, value: object
 ) -> None {
     import tomllib;
-    import from jaclang.cli.console { console }
 
     if config.toml_path is None {
         console.error("No toml_path set, cannot save configuration.");
@@ -1192,7 +1206,6 @@ def _save_config_without_setting(
     config: object, group_name: str, setting_name: str
 ) -> None {
     import tomllib;
-    import from jaclang.cli.console { console }
 
     if config.toml_path is None {
         console.error("No toml_path set, cannot save configuration.");

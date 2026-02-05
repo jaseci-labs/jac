@@ -10,7 +10,6 @@ configuration system, registering:
 
 import os;
 import subprocess;
-import sys;
 import json;
 import from pathlib { Path }
 import from typing { Any }
@@ -147,9 +146,7 @@ def _load_template(template_name: str) -> dict[str, Any] | None {
 
         return data;
     } except Exception as e {
-        print(
-            f"Warning: Could not load {template_name} template: {e}", file=sys.stderr
-        );
+        console.error(f"Warning: Could not load {template_name} template: {e}");
         return None;
     }
 }
@@ -191,10 +188,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         # Verify jac.toml exists
         toml_path = project_path / "jac.toml";
         if not toml_path.exists() {
-            print(
-                "Warning: jac.toml not found, skipping package installation",
-                file=sys.stderr
-            );
+            console.error("Warning: jac.toml not found, skipping package installation");
             return;
         }
 
@@ -213,9 +207,8 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         build_package_json = client_dir / 'package.json';
 
         if not configs_package_json.exists() {
-            print(
-                "Warning: package.json was not generated, skipping package installation",
-                file=sys.stderr
+            console.error(
+                "Warning: package.json was not generated, skipping package installation"
             );
             return;
         }

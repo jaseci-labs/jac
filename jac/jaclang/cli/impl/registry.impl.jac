@@ -1,6 +1,7 @@
 """Implementation of command registry."""
 
 import argparse;
+import from jaclang.cli.banners { JAC_GITHUB_URL }
 
 # ===============================================================================
 # CommandRegistry Implementation
@@ -13,7 +14,7 @@ impl CommandRegistry.init -> None {
     self.parser = argparse.ArgumentParser(
         prog='jac',
         description='Jac Programming Language CLI',
-        epilog='For more information, visit: https://github.com/Jaseci-Labs/jaseci',
+        epilog=f'For more information, visit: {JAC_GITHUB_URL}',
         formatter_class=argparse.RawDescriptionHelpFormatter
     );
     self.parser.add_argument(

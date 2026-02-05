@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> any {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -42,14 +42,22 @@ impl useRouter -> dict {
 }
 
 impl navigate(path: str) -> None {
-    window.location.hash = "#" + path;
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
+}
+
+impl __getApiBaseUrl -> str {
+    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
+    # Falls back to empty string (same-origin) when not configured.
+    return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
-    url = f"/walker/{left}";
+    base_url = __getApiBaseUrl();
+    url = f"{base_url}/walker/{left}";
     if right != "" {
-        url = f"/walker/{left}/{right}";
+        url = f"{base_url}/walker/{left}/{right}";
     }
     response = await fetch(
         url,
@@ -78,8 +86,9 @@ impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
 
 impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
+    base_url = __getApiBaseUrl();
     response = await fetch(
-        f"/function/{function_name}",
+        f"{base_url}/function/{function_name}",
         {
             "method": "POST",
             "headers": {
@@ -104,8 +113,9 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
 }
 
 impl jacSignup(username: str, password: str) -> dict {
+    base_url = __getApiBaseUrl();
     response = await fetch(
-        "/user/register",
+        f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -140,8 +150,9 @@ impl jacSignup(username: str, password: str) -> dict {
 }
 
 impl jacLogin(username: str, password: str) -> bool {
+    base_url = __getApiBaseUrl();
     response = await fetch(
-        "/user/login",
+        f"{base_url}/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -192,6 +203,17 @@ impl __removeLocalStorage(key: str) -> None {
     if storage {
         storage.removeItem(key);
     }
+}
+
+"""Auth guard component for file-based routing. Renders child routes if
+authenticated, otherwise redirects to the login path."""
+impl AuthGuard(redirect: str = "/login") -> any {
+    if jacIsLoggedIn() {
+        return
+            <ReactRouterOutlet />;
+    }
+    return
+        <ReactRouterNavigate to={redirect} replace={True} />;
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {

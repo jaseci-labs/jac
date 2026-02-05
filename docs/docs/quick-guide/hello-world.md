@@ -47,90 +47,61 @@ with entry {
 
 ---
 
-## A Bit More
+## Run a Full-Stack App
 
-### Variables and Functions
+Want to go beyond a single file? Jac can scaffold a complete full-stack application in one command.
 
-```jac
-def greet(name: str) -> str {
-    return f"Hello, {name}!";
-}
+With the `jac-client` plugin installed, run:
 
-with entry {
-    message = greet("Jac");
-    print(message);
-}
+```bash
+jac create example --use fullstack
+cd example
+jac add
+jac start main.jac
 ```
 
-Output: `Hello, Jac!`
-
-### Using Python Libraries
-
-Jac is a Python superset - use any Python library directly:
-
-```jac
-import math;
-
-with entry {
-    result = math.sqrt(16);
-    print(f"Square root of 16 is {result}");
-}
-```
-
-Output: `Square root of 16 is 4.0`
-
-### Control Flow
-
-```jac
-with entry {
-    numbers = [1, 2, 3, 4, 5];
-
-    for n in numbers {
-        if n % 2 == 0 {
-            print(f"{n} is even");
-        } else {
-            print(f"{n} is odd");
-        }
-    }
-}
-```
+This creates a full-stack project with a Jac backend and a React frontend, ready to go at `http://localhost:8000`.
 
 ---
 
-## Key Syntax Differences from Python
+## Run Community Jacpacks
 
-| Python | Jac |
-|--------|-----|
-| Indentation-based blocks | `{ }` braces |
-| No semicolons | `;` required |
-| `def func():` | `def func() { }` |
-| `if x:` | `if x { }` |
-| `elif` | `elif` (same) |
-| `for x in y:` | `for x in y { }` |
+[Jacpacks](https://github.com/jaseci-labs/jacpacks) are ready-made Jac project templates you can spin up instantly. Since `--use` accepts a URL, you can run any jacpack directly from GitHub:
 
----
-
-## Quick AI Example
-
-If you have `byllm` installed, try this:
-
-```jac
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini");
-
-"""Translate the given text to French."""
-def translate(text: str) -> str by llm();
-
-with entry {
-    result = translate("Hello, World!");
-    print(result);
-}
+```bash
+jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
+cd my-todo
+jac add
+jac start main.jac
 ```
 
-Output: `Bonjour, le monde!`
+Here are some jacpacks to try:
 
-(Requires `OPENAI_API_KEY` environment variable)
+| Jacpack | Description |
+|---------|-------------|
+| `multi-user-todo-app` | Full-stack authenticated todo application |
+| `multi-user-todo-meals-app` | Todo app + AI meal planner powered by Jac's AI integration |
+| `AI_Study_Helper` | Educational platform with specialized AI agents |
+| `TasteTalk` | Restaurant feedback management system |
+| `jac-gpt` | Documentation assistant for the Jac language |
+| `jac-playground` | Browser-based Jac code editor |
+| `Algo` | Voice-enabled personal AI assistant |
+
+Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI integration features to generate smart shopping lists with costs and nutritional info. It works out of the box with an Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
+cd meals-app
+jac add
+jac start main.jac
+```
+
+To use any of the other jacpacks, just swap the URL:
+
+```bash
+jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/<jacpack-name>/<jacpack-name>.jacpack
+```
 
 ---
 
@@ -138,6 +109,7 @@ Output: `Bonjour, le monde!`
 
 Ready for something more substantial?
 
-- [Your First Graph](first-graph.md) - Learn nodes, edges, and walkers (5 min)
-- [Your First App](first-app.md) - Build a complete todo application (10 min)
+- [Core Concepts](what-makes-jac-different.md) - Codespaces, OSP, and compiler-integrated AI
+- [Build Your First App](../tutorials/first-app/part1-todo-app.md) - Build a complete full-stack AI app in Jac
+- [Jac vs Traditional Stack](jac-vs-traditional-stack.md) - See how Jac compares side-by-side
 - [Next Steps](next-steps.md) - Choose a learning path based on your goals

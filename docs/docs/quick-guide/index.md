@@ -76,13 +76,13 @@ Note: `jac` is shorthand for `jac run` - both work identically.
 
     ---
 
-    Jump to [Your First Full-Stack AI App](first-fullstack-ai-app.md) - build a complete app in 15 minutes.
+    Jump to [Build Your First App](../tutorials/first-app/part1-todo-app.md) - build a complete app with a 3-part tutorial.
 
 - :material-robot:{ .lg .middle } **Working with AI/LLMs?**
 
     ---
 
-    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics, or try the AI phase in [Your First Full-Stack AI App](first-fullstack-ai-app.md).
+    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics, or try [Part 2: Add AI](../tutorials/first-app/part2-ai-features.md) in the first app tutorial.
 
 - :material-book-open-variant:{ .lg .middle } **Want the full picture?**
 
@@ -125,6 +125,9 @@ Jac is designed for developers who want to build AI-powered applications without
 | **Frontend Engineer** | Write UI components with full access to npm ecosystem |
 | **Student/Learner** | Modern language designed for clarity and simplicity |
 
+!!! note "What You Should Know"
+    Jac is a Python superset, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
+
 ---
 
 ## When to Use Jac
@@ -151,7 +154,7 @@ Jac is designed for developers who want to build AI-powered applications without
 |----------|-------------|
 | [Installation](install.md) | Detailed setup with IDE configuration |
 | [Hello World](hello-world.md) | Your first Jac program (2 min) |
-| [First Full-Stack AI App](first-fullstack-ai-app.md) | Complete tutorial: API, frontend, AI, walkers (15 min) |
+| [Build Your First App](../tutorials/first-app/part1-todo-app.md) | Complete 3-part tutorial: todo app, AI, walkers |
 | [Tutorials](../tutorials/index.md) | In-depth learning paths |
 | [Language Reference](../reference/language/index.md) | Complete language documentation |
 | [CLI Reference](../reference/cli/index.md) | All `jac` commands |

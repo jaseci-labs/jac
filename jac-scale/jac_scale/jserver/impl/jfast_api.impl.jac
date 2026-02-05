@@ -379,6 +379,10 @@ impl JFastApiServer._create_endpoint_function(
     if accepts_kwargs {
         param_strs.append('request: Request');
         param_mapping['__request__'] = 'request';
+        # If the callback also explicitly accepts a request parameter, map it
+        if needs_request {
+            param_mapping['request'] = 'request';
+        }
     } elif needs_request {
         param_strs.append('request: Request');
         param_mapping['request'] = 'request';

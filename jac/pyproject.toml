@@ -1,6 +1,6 @@
 [project]
 name = "jaclang"
-version = "0.9.12"
+version = "0.9.14"
 description = "Jac programming language - a superset of both Python and TypeScript/JavaScript with novel constructs for AI-integrated programming."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]

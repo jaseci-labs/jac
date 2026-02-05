@@ -43,11 +43,11 @@ repos:
     hooks:
       - id: jac-format
         name: jac-format
-        description: Format Jac files with consistent code style
+        description: Format and lint-fix Jac files
         entry: env PYTHONPATH=jac python3 -m jaclang format
         language: python
         types: [file]
-        args: [--fix]
+        args: [--lintfix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
@@ -88,10 +88,3 @@ repos:
         language: pygrep
         entry: '—'
         types: [markdown]
-
-      - id: check-release-notes
-        name: Check release notes updated
-        language: script
-        entry: scripts/check-release-notes.sh
-        always_run: true
-        pass_filenames: false

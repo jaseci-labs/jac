@@ -1,18 +1,8 @@
-# Nested folder imports (same pattern as nested-basic/)
-cl import from ..components.nestedDemo.CustomButton.tsx {
-    CustomButton
-}
-cl import from ..button { CustomButtonRoot }
-cl import from "@jac/runtime" { Navigate, jacIsLoggedIn }
+cl import from ...components.nestedDemo.CustomButton.tsx { CustomButton }
+cl import from ...button { CustomButtonRoot }
 
 cl {
-    def:pub NestedImportsDemo -> any {
-        # Check if user is logged in, redirect if not
-        if not jacIsLoggedIn() {
-            return
-                <Navigate to="/login" />;
-        }
-
+    def:pub page -> JsxElement {
         return
             <div
                 style={{

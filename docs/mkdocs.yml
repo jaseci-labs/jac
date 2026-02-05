@@ -12,17 +12,25 @@ nav:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
-      - Your First Full-Stack AI App: "quick-guide/first-fullstack-ai-app.md"
+      - Core Concepts: "quick-guide/what-makes-jac-different.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+      - FAQ: "quick-guide/faq.md"
       - Next Steps: "quick-guide/next-steps.md"
 
   - Tutorials:
       - Overview: "tutorials/index.md"
       - Learning Roadmap: "tutorials/roadmap.md"
+      - Build Your First App:
+          - "Part 1: Todo App": "tutorials/first-app/part1-todo-app.md"
+          - "Part 2: Add AI": "tutorials/first-app/part2-ai-features.md"
+          - "Part 3: Walkers, Auth & Structure": "tutorials/first-app/part3-multi-user.md"
       - Core Language:
           - Jac Basics (from Python): "tutorials/language/basics.md"
+          - Mixing Jac and Python: "tutorials/language/mixing-jac-python.md"
+          - Jac as a Python Library: "tutorials/language/library-mode.md"
           - Object-Spatial Programming: "tutorials/language/osp.md"
           - Testing Your Code: "tutorials/language/testing.md"
+          - Debugging in VS Code: "tutorials/language/debugging.md"
       - AI Integration:
           - byLLM Quickstart: "tutorials/ai/quickstart.md"
           - Structured Outputs: "tutorials/ai/structured-outputs.md"
@@ -47,6 +55,8 @@ nav:
       - Troubleshooting: "tutorials/troubleshooting.md"
 
   - Reference:
+      - CLI Reference: "reference/cli/index.md"
+      - Configuration: "reference/config/index.md"
       - Language Reference:
           - Overview: "reference/language/index.md"
           - "Part I: Foundation": "reference/language/foundation.md"
@@ -66,19 +76,16 @@ nav:
           - Quick Reference:
               - Walker Responses: "reference/language/walker-responses.md"
               - Graph Operations: "reference/language/graph-operations.md"
-      - CLI Reference: "reference/cli/index.md"
-      - Configuration: "reference/config/index.md"
+      - AI-Programming Reference: "reference/plugins/byllm.md"
+      - Full-Stack Reference: "reference/plugins/jac-client.md"
+      - Cloud-Scale Reference: "reference/plugins/jac-scale.md"
       - Testing: "reference/testing.md"
-      - Plugin Reference:
-          - Overview: "reference/plugins/index.md"
-          - byLLM: "reference/plugins/byllm.md"
-          - jac-client: "reference/plugins/jac-client.md"
-          - jac-scale: "reference/plugins/jac-scale.md"
 
   - Community:
       - Contributing: "community/contributing.md"
       - Breaking Changes: "community/breaking-changes.md"
       - Contributors: "community/contributors.md"
+      - Top Voices: "community/top_voices.md"
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
@@ -218,8 +225,10 @@ plugins:
 
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
-        quick-guide/first-graph.md: quick-guide/first-fullstack-ai-app.md
-        quick-guide/first-app.md: quick-guide/first-fullstack-ai-app.md
+        quick-guide/first-graph.md: quick-guide/what-makes-jac-different.md
+        quick-guide/thinking-in-graphs.md: quick-guide/what-makes-jac-different.md
+        quick-guide/first-app.md: tutorials/first-app/part1-todo-app.md
+        quick-guide/first-fullstack-ai-app.md: tutorials/first-app/part1-todo-app.md
         cli/index.md: reference/cli/index.md
         configuration/index.md: reference/config/index.md
 

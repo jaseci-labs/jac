@@ -69,7 +69,8 @@ obj PrefetchedTypes {
         final_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
-        walker_class: TypeBase | None = None;
+        walker_class: TypeBase | None = None,
+        jsx_element_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -88,6 +89,13 @@ obj MatchArgsToParamsResult {
     has arg_params: dict[(uni.Expr | uni.KWPair, types.Parameter | None)],
         overload: types.FunctionType | None = None,
         argument_errors: bool = False;
+}
+
+"""Represents a narrowing operation from a conditional predicate."""
+obj NarrowingPredicate {
+    has sym_name: str,
+        narrow_type: TypeBase,
+        is_inverted: bool = False;
 }
 
 """Type evaluator for JacLang."""
@@ -194,6 +202,28 @@ obj TypeEvaluator {
     ) -> types.FunctionType;
 
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
+    # -------------------------------------------------------------------------
+    # Type narrowing support (CFG-based, flow-sensitive)
+    # -------------------------------------------------------------------------
+    def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
+    def _compute_narrowed_at(
+        symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+    ) -> TypeBase | None;
+
+    def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
+    def _find_predicate_for(
+        symbol: uni.Symbol, condition: uni.Expr
+    ) -> NarrowingPredicate | None;
+
+    def _apply_narrowing(
+        predicate: NarrowingPredicate,
+        incoming: TypeBase | None,
+        is_true_branch: bool,
+        symbol: uni.Symbol
+    ) -> TypeBase | None;
+
+    def _union_narrowed_types(types_list: list) -> TypeBase;
+    def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }
 # FIXME: This class implementation is modified from pyright to make it
 # simple and work for now, however this needs to be revisited and

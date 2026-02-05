@@ -1,11 +1,17 @@
+import from jaclang.cli.console { console }
+
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
-    # Try to get from project config
+    # Try to get from project config, but only if it matches our project dir
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
         if config is not None {
-            return config.get_client_dir();
+            config_root = config.project_root;
+            if config_root is not None
+            and config_root.resolve() == self.project_dir.resolve() {
+                return config.get_client_dir();
+            }
         }
     } except ImportError { }
     # Fallback to default
@@ -216,6 +222,19 @@ impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str
     return '{ ' + ', '.join(items) + ' }';
 }
 
+"""Resolve the API base URL using a consistent priority chain.
+
+Priority: jac.toml base_url > direct override > env var (desktop start) > "" (same-origin)
+"""
+impl ViteBundler._resolve_api_base_url(
+    self: ViteBundler, api_base_url_override: str = ""
+) -> str {
+    api_config_data = self.config_loader.get_api_config();
+    toml_base_url = api_config_data.get('base_url', '');
+    env_override = os.environ.get(API_BASE_URL_ENV_VAR, '');
+    return toml_base_url or api_base_url_override or env_override;
+}
+
 """Get a valid JavaScript variable name from plugin module name."""
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
@@ -224,13 +243,20 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
-"""Create vite.config.js from config.json during bundling."""
-impl ViteBundler.create_vite_config(self: ViteBundler, entry_file: Path) -> Path {
+"""Create vite.config.js from config.json during bundling.
+
+api_base_url_override: overrides jac.toml base_url for desktop targets
+    where the CLI knows the backend port at startup time.
+"""
+impl ViteBundler.create_vite_config(
+    self: ViteBundler, entry_file: Path, api_base_url_override: str = ""
+) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
+    api_base_url = self._resolve_api_base_url(api_base_url_override);
     config_path = configs_dir / 'vite.config.js';
     # TypeScript is always enabled by default
     try {
@@ -355,6 +381,9 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [
     jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
@@ -459,7 +488,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             }
             try {
                 # Install to .jac/client/node_modules with progress feedback
-                print("\n  ⏳ Installing dependencies...\n", flush=True);
+                console.print("\n  ⏳ Installing dependencies...\n");
                 start_time = time.time();
                 result = subprocess.run(
                     ['bun', 'install'],
@@ -474,7 +503,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
                     error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
                     raise ClientBundleError(error_msg) from None ;
                 }
-                print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+                console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
             } except FileNotFoundError {
                 # This shouldn't happen since we check for bun at the start
                 raise ClientBundleError(
@@ -507,7 +536,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             command = ['bun', 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
-        print("\n  ⏳ Building client bundle...\n", flush=True);
+        console.print("\n  ⏳ Building client bundle...\n");
         start_time = time.time();
         result = subprocess.run(
             command, cwd=build_dir, check=False, text=True, capture_output=True
@@ -520,7 +549,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             )}";
             raise ClientBundleError(error_msg) from None ;
         }
-        print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)", flush=True);
+        console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
     } finally {
         # Clean up temporary package.json in client build dir
         build_package_json = build_dir / 'package.json';
@@ -555,15 +584,23 @@ impl ViteBundler.init(
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
 
-"""Create a dev-mode vite config with API proxy for HMR."""
+"""Create a dev-mode vite config with API proxy for HMR.
+
+api_base_url_override: when set, API calls go directly to this URL
+    instead of via proxy (used by desktop targets).
+"""
 impl ViteBundler.create_dev_vite_config(
-    self: ViteBundler, entry_file: Path, api_port: int = 8000
+    self: ViteBundler,
+    entry_file: Path,
+    api_port: int = 8000,
+    api_base_url_override: str = ""
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     config_path = configs_dir / 'vite.dev.config.js';
+    api_base_url = self._resolve_api_base_url(api_base_url_override);
     # Get entry file relative path
     try {
         entry_relative = entry_file.relative_to(build_dir).as_posix();
@@ -599,9 +636,13 @@ const projectRoot = path.resolve(__dirname, "../../..");
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
   plugins: [react()],
   root: buildDir,
   publicDir: false,
+  appType: 'spa',
   build: {{
     sourcemap: true, // Enable source maps for better error messages
   }},
@@ -731,19 +772,17 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
             shutil.copy2(generated_package_json, build_package_json);
         }
         try {
-            print("\n  ⏳ Installing dependencies...\n", flush=True);
+            console.print("\n  ⏳ Installing dependencies...\n");
             start_time = time.time();
             result = subprocess.run(
                 ['bun', 'install'], cwd=build_dir, check=False, text=True
             );
             elapsed = time.time() - start_time;
             if result.returncode != 0 {
-                print(
-                    f"\n  ✖ bun install failed after {elapsed:.1f}s", file=sys.stderr
-                );
+                console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
                 raise ClientBundleError("Failed to install dependencies") ;
             }
-            print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)", flush=True);
+            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
         } finally {
             # Clean up temp package.json
             if build_package_json.exists() {

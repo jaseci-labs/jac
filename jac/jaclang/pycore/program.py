@@ -53,12 +53,16 @@ class JacProgram:
         self.warnings_had: list[Alert] = []
         self.type_evaluator: TypeEvaluator | None = None
         self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache()
+        self._compiler: JacCompiler | None = None
 
     def _get_compiler(self) -> JacCompiler:
         """Get a JacCompiler instance configured with this program's cache."""
+        if self._compiler:
+            return self._compiler
         from jaclang.pycore.compiler import JacCompiler
 
-        return JacCompiler(bytecode_cache=self._bytecode_cache)
+        self._compiler = JacCompiler(bytecode_cache=self._bytecode_cache)
+        return self._compiler
 
     def get_type_evaluator(self) -> TypeEvaluator:
         """Return the type evaluator, creating one if needed."""
@@ -186,3 +190,14 @@ class JacProgram:
         from jaclang.pycore.compiler import JacCompiler
 
         return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint)
+
+    @staticmethod
+    def jac_file_linter(file_path: str) -> JacProgram:
+        """Lint a Jac file (report only, no formatting or output generation).
+
+        Args:
+            file_path: Path to the Jac file to lint.
+        """
+        from jaclang.pycore.compiler import JacCompiler
+
+        return JacCompiler.jac_file_linter(file_path)

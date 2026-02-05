@@ -56,6 +56,20 @@ class SymTabBuildPass(UniPass):
             node = node.parent
         return None
 
+    @staticmethod
+    def _outer_has_type_annotation(sym: uni.Symbol) -> bool:
+        """Check if a symbol's declaration has an explicit type annotation."""
+        decl = sym.decl
+        if decl is None:
+            return False
+        name_of = decl.name_of if hasattr(decl, "name_of") else None
+        if name_of is None:
+            return False
+        parent = name_of.parent if hasattr(name_of, "parent") else None
+        return (
+            isinstance(parent, uni.Assignment) and parent.type_tag is not None
+        ) or isinstance(name_of, (uni.HasVar, uni.ParamVar))
+
     def _bind_import_path_symbols(self, module_path: uni.ModulePath) -> None:
         """Create symbols for Name nodes in a module path."""
         if module_path.path:
@@ -85,10 +99,23 @@ class SymTabBuildPass(UniPass):
             if isinstance(i, uni.AstSymbolNode):
                 if isinstance(i, (uni.ListVal, uni.TupleVal)):
                     self._def_insert_unpacking(i, i.sym_tab)
-                elif (sym := i.sym_tab.lookup(i.sym_name, deep=False)) is None:
-                    i.sym_tab.def_insert(i, single_decl="local var")
-                else:
+                elif (sym := i.sym_tab.lookup(i.sym_name, deep=False)) is not None:
                     sym.add_use(i.name_spec)
+                elif (
+                    node.type_tag is None
+                    and not isinstance(
+                        i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
+                    )
+                    and (outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
+                    and self._outer_has_type_annotation(outer)
+                ):
+                    # Untyped re-assignment in a non-Python-scoping scope
+                    # (for/while/if/try/etc.) where the outer declaration
+                    # has an explicit type annotation: reuse the outer
+                    # symbol instead of shadowing it with a new local.
+                    outer.add_use(i.name_spec)
+                else:
+                    i.sym_tab.def_insert(i, single_decl="local var")
 
     def exit_binary_expr(self, node: uni.BinaryExpr) -> None:
         """Handle walrus operator (:=) assignments."""

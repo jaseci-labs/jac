@@ -9,7 +9,7 @@ cl {
     glob setUiState = _uiState[1];
 
     # UI Component
-    def Button(label: str) -> any {
+    def: pub Button(label: str) -> JsxElement {
         return <button
             onclick={handleClick}
         >
@@ -17,12 +17,12 @@ cl {
         </button>;
     }
 
-    def handleClick()  -> None {
+    def: pub handleClick()  -> None {
         navigate("/clicked");
     }
 
     # Another component
-    def Card(title: str) -> any {
+    def: pub Card(title: str) -> JsxElement {
         return <div class="card">
             <h2>
                 {title}

@@ -65,10 +65,38 @@ impl is_in_project -> bool {
 }
 
 # ===============================================================================
+# Multi-File Config Discovery
+# ===============================================================================
+impl discover_config_files(
+    project_root: Path, profile: str | None = None
+) -> list[Path] {
+    import from pathlib { Path }
+    files: list[Path] = [];
+    # 1. Base config (always)
+    base = project_root / "jac.toml";
+    if base.exists() {
+        files.append(base);
+    }
+    # 2. Profile-specific file (only when profile is set)
+    if profile {
+        profile_path = project_root / f"jac.{profile}.toml";
+        if profile_path.exists() {
+            files.append(profile_path);
+        }
+    }
+    # 3. Local overrides (always, if present)
+    local_path = project_root / "jac.local.toml";
+    if local_path.exists() {
+        files.append(local_path);
+    }
+    return files;
+}
+
+# ===============================================================================
 # JacConfig Implementation
 # ===============================================================================
 impl JacConfig.discover(
-    start_path: Path | None = None
+    start_path: Path | None = None, profile: str | None = None
 ) -> JacConfig | None {
     import from pathlib { Path }
     result = find_project_root(start_path);
@@ -76,7 +104,11 @@ impl JacConfig.discover(
         return None;
     }
     (project_root, toml_path) = result;
-    return JacConfig.load(toml_path);
+    config = JacConfig.load(toml_path);
+    if profile {
+        config.apply_profile_overlay(profile);
+    }
+    return config;
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
@@ -88,6 +120,7 @@ impl JacConfig.load(toml_path: Path) -> JacConfig {
         data = tomllib.load(f);
     }
     config = _parse_toml_data(data, toml_path);
+    config.config_files = [toml_path];
     config.apply_env_interpolation();
     return config;
 }
@@ -132,53 +165,281 @@ impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
     }
 }
 
-impl JacConfig.apply_profile(profile_name: str) -> None {
+"""Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
+def _deep_merge(base: dict, override: dict) -> dict {
+    result = base.copy();
+    for (key, value) in override.items() {
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict) {
+            result[key] = _deep_merge(result[key], value);
+        } else {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
+impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
     if profile_name not in self.environments {
         return;
     }
+    # Cycle detection
+    if _visited is None {
+        _visited = set();
+    }
+    if profile_name in _visited {
+        return;
+    }
+    _visited.add(profile_name);
     profile = self.environments[profile_name];
+    # Handle inheritance first
     if "inherits" in profile {
         parent_name = profile["inherits"];
         if parent_name in self.environments {
-            self.apply_profile(parent_name);
+            self.apply_profile(parent_name, _visited=_visited);
         }
     }
-    def deep_merge(base: dict, override: dict) -> dict {
-        result = base.copy();
-        for (key, value) in override.items() {
-            if key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict) {
-                result[key] = deep_merge(result[key], value);
-            } else {
-                result[key] = value;
-            }
-        }
-        return result;
-    }
-    if "run" in profile {
-        for (key, value) in profile["run"].items() {
-            if hasattr(self.run, key) {
-                setattr(self.run, key, value);
-            }
-        }
-    }
-    if "serve" in profile {
-        for (key, value) in profile["serve"].items() {
-            if hasattr(self.serve, key) {
-                setattr(self.serve, key, value);
+    # Generic sections: setattr loop
+    section_map: dict = {
+        "run": self.run,
+        "build": self.build,
+        "test": self.test,
+        "serve": self.serve,
+        "format": self.format,
+        "dot": self.dot,
+        "cache": self.cache,
+        "environment": self.environment
+    };
+    for (section, obj) in section_map.items() {
+        if section in profile {
+            for (key, value) in profile[section].items() {
+                if hasattr(obj, key) {
+                    setattr(obj, key, value);
+                }
             }
         }
     }
-    if "test" in profile {
-        for (key, value) in profile["test"].items() {
-            if hasattr(self.test, key) {
-                setattr(self.test, key, value);
+    # Special case: project (kebab-case -> snake_case)
+    if "project" in profile {
+        for (key, value) in profile["project"].items() {
+            attr = key.replace("-", "_");
+            if hasattr(self.project, attr) {
+                setattr(self.project, attr, value);
             }
         }
     }
+    # Special case: check (nested lint)
+    if "check" in profile {
+        check_data = profile["check"];
+        for (key, value) in check_data.items() {
+            if key == "lint" and isinstance(value, dict) {
+                for (lk, lv) in value.items() {
+                    if hasattr(self.check.lint, lk) {
+                        setattr(self.check.lint, lk, lv);
+                    }
+                }
+            } elif hasattr(self.check, key) {
+                setattr(self.check, key, value);
+            }
+        }
+    }
+    # Special case: storage (type -> storage_type)
+    if "storage" in profile {
+        storage_data = profile["storage"];
+        for (key, value) in storage_data.items() {
+            if key == "type" {
+                self.storage.storage_type = value;
+            } elif hasattr(self.storage, key) {
+                setattr(self.storage, key, value);
+            }
+        }
+    }
+    # Plugins: deep merge
     if "plugins" in profile {
-        self.plugins = deep_merge(self.plugins, profile["plugins"]);
+        self.plugins = _deep_merge(self.plugins, profile["plugins"]);
+    }
+    # Dict sections: merge
+    if "dependencies" in profile {
+        for (key, value) in profile["dependencies"].items() {
+            if isinstance(value, str) {
+                self.dependencies[key] = value;
+            }
+        }
+    }
+    if "dev-dependencies" in profile {
+        for (key, value) in profile["dev-dependencies"].items() {
+            if isinstance(value, str) {
+                self.dev_dependencies[key] = value;
+            }
+        }
+    }
+    if "scripts" in profile {
+        self.scripts.update(profile["scripts"]);
+    }
+}
+
+"""Apply profile overlay files on top of the base config.
+
+Handles the full multi-file merge sequence in correct priority order:
+  1. jac.<profile>.toml (if profile is set and file exists)
+  2. [environments.<profile>] in-file overrides (if profile is set)
+  3. jac.local.toml (always, if present — highest file priority)
+"""
+impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
+    if self.project_root is None {
+        return;
+    }
+    if profile_name {
+        # Step 1: Merge profile-specific file (e.g. jac.prod.toml)
+        profile_path = self.project_root / f"jac.{profile_name}.toml";
+        self.merge_from_toml_file(profile_path);
+        # Step 2: Apply in-file [environments.<profile>] overrides
+        self.apply_profile(profile_name);
+        self.active_profile = profile_name;
+    }
+    # Step 3: Merge local overrides (always highest file priority)
+    local_path = self.project_root / "jac.local.toml";
+    self.merge_from_toml_file(local_path);
+}
+
+impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
+    import tomllib;
+    if not toml_path.exists() {
+        return;
+    }
+    with open(toml_path, "rb") as f {
+        data = tomllib.load(f);
+    }
+    data = _interpolate_recursive(data);
+    section_map: dict = {
+        "run": self.run,
+        "build": self.build,
+        "test": self.test,
+        "serve": self.serve,
+        "format": self.format,
+        "dot": self.dot,
+        "cache": self.cache,
+        "environment": self.environment
+    };
+    for (section, obj) in section_map.items() {
+        if section in data {
+            for (key, value) in data[section].items() {
+                if hasattr(obj, key) {
+                    setattr(obj, key, value);
+                }
+            }
+        }
+    }
+    if "project" in data {
+        proj = data["project"];
+        for (key, value) in proj.items() {
+            attr = key.replace("-", "_");
+            if hasattr(self.project, attr) {
+                setattr(self.project, attr, value);
+            }
+        }
+    }
+    # Check section with nested lint
+    if "check" in data {
+        check_data = data["check"];
+        for (key, value) in check_data.items() {
+            if key == "lint" and isinstance(value, dict) {
+                for (lk, lv) in value.items() {
+                    if hasattr(self.check.lint, lk) {
+                        setattr(self.check.lint, lk, lv);
+                    }
+                }
+            } elif hasattr(self.check, key) {
+                setattr(self.check, key, value);
+            }
+        }
+    }
+    # Storage section with type -> storage_type mapping
+    if "storage" in data {
+        storage_data = data["storage"];
+        for (key, value) in storage_data.items() {
+            if key == "type" {
+                self.storage.storage_type = value;
+            } elif hasattr(self.storage, key) {
+                setattr(self.storage, key, value);
+            }
+        }
+    }
+    if "plugins" in data {
+        plugins_data = data["plugins"];
+        if "discovery" in plugins_data {
+            self.plugins_config.discovery = plugins_data["discovery"];
+        }
+        if "enabled" in plugins_data {
+            self.plugins_config.enabled = plugins_data["enabled"];
+        }
+        if "disabled" in plugins_data {
+            self.plugins_config.disabled = plugins_data["disabled"];
+        }
+        for (key, value) in plugins_data.items() {
+            if isinstance(value, dict) {
+                if key in self.plugins {
+                    self.plugins[key] = _deep_merge(self.plugins[key], value);
+                } else {
+                    self.plugins[key] = value;
+                }
+            }
+        }
+    }
+    # Dict sections: merge rather than replace
+    if "dependencies" in data {
+        deps = data["dependencies"];
+        for (key, value) in deps.items() {
+            if isinstance(value, str) {
+                self.dependencies[key] = value;
+            } elif isinstance(value, dict) {
+                if key == "git" {
+                    self.git_dependencies.update(value);
+                } else {
+                    if key not in self.plugin_dependencies {
+                        self.plugin_dependencies[key] = {};
+                    }
+                    self.plugin_dependencies[key].update(value);
+                }
+            }
+        }
+    }
+    if "dev-dependencies" in data {
+        dev_deps = data["dev-dependencies"];
+        for (key, value) in dev_deps.items() {
+            if isinstance(value, str) {
+                self.dev_dependencies[key] = value;
+            } elif isinstance(value, dict) {
+                if key not in self.plugin_dependencies {
+                    self.plugin_dependencies[key] = {};
+                }
+                if "dev" not in self.plugin_dependencies[key] {
+                    self.plugin_dependencies[key]["dev"] = {};
+                }
+                self.plugin_dependencies[key]["dev"].update(value);
+            }
+        }
+    }
+    if "environments" in data {
+        self.environments.update(data["environments"]);
+    }
+    if "scripts" in data {
+        self.scripts.update(data["scripts"]);
+    }
+    if self.config_files is None {
+        self.config_files = [];
+    }
+    if toml_path not in self.config_files {
+        self.config_files.append(toml_path);
+    }
+    # Merge raw data for _is_explicitly_set checks
+    for (key, value) in data.items() {
+        if key in self._raw_data
+        and isinstance(self._raw_data[key], dict)
+        and isinstance(value, dict) {
+            self._raw_data[key].update(value);
+        } else {
+            self._raw_data[key] = value;
+        }
     }
 }
 
@@ -559,9 +820,19 @@ impl _parse_toml_data(
     }
     if "check" in data {
         check_data = data["check"];
+        lint_config = LintConfig();
+        if "lint" in check_data {
+            lint_data = check_data["lint"];
+            lint_config = LintConfig(
+                select=lint_data.get("select", ["default"]),
+                ignore=lint_data.get("ignore", []),
+                exclude=lint_data.get("exclude", [])
+            );
+        }
         config.check = CheckConfig(
             print_errs=check_data.get("print_errs", True),
-            warnonly=check_data.get("warnonly", False)
+            warnonly=check_data.get("warnonly", False),
+            lint=lint_config
         );
     }
     if "dot" in data {

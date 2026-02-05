@@ -1,3 +1,6 @@
+import from jaclang.cli.console { console }
+import from jaclang.cli.banners { JAC_DISCORD_URL }
+
 """Helper function to convert TransportResponse to dict for JSONResponse."""
 def _transport_response_to_dict(
     transport_response: TransportResponse
@@ -57,15 +60,14 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(dev: bool = False) -> None {
+impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev mode)
-    if not dev {
+    # Eagerly build client bundle if there are client exports (skip in dev or no_client mode)
+    if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
             import sys;
-            import from jaclang.cli.console { console }
             start_time = time.time();
             try {
                 with console.status(
@@ -84,6 +86,11 @@ impl JacAPIServer.start(dev: bool = False) -> None {
                     style="muted",
                     file=sys.stderr
                 );
+                console.info('Try again after running: jac clean --all', emoji=True);
+                console.info(
+                    f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                    emoji=True
+                );
             }
         }
     }
@@ -96,14 +103,17 @@ impl JacAPIServer.start(dev: bool = False) -> None {
     self.register_static_file_endpoint();
     self.register_update_username_endpoint();
     self.register_update_password_endpoint();
+    self.register_api_key_endpoints();
     # Use dynamic routing for HMR support, static routing for production
     if dev {
         self.register_dynamic_walker_endpoint();
         self.register_dynamic_function_endpoint();
         self.register_dynamic_introspection_endpoints();
+        self.register_dynamic_webhook_endpoint();
     } else {
         self.register_walkers_endpoints();
         self.register_functions_endpoints();
+        self.register_webhook_endpoints();
     }
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
@@ -177,19 +187,35 @@ impl JacAPIServer._configure_openapi_security -> None {
     self.server.app.openapi = custom_openapi;
 }
 
-"""Serve root-level assets like /img.png, /icons/logo.svg, etc."""
+"""Serve root-level assets like /img.png, /icons/logo.svg, etc.
+Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServer.serve_root_asset(file_path: str) -> Response {
     allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
     file_ext = Path(file_path).suffix.lower();
-    if (not file_ext or (file_ext not in allowed_extensions)) {
-        return Response(status_code=404, content='Not found', media_type='text/plain');
-    }
     import from jaclang.project.config { get_config }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
-    if file_path.startswith(
-        (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/')
-    ) {
+    api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
+    if (not file_ext or (file_ext not in allowed_extensions)) {
+        # SPA catch-all: serve base_route_app for extensionless paths
+        base_route_app = config.serve.base_route_app if config else "";
+        if (not file_ext and base_route_app and not file_path.startswith(api_prefixes)) {
+            try {
+                render_payload = self.introspector.render_page(
+                    base_route_app, {}, '__guest__'
+                );
+                return HTMLResponse(content=render_payload['html']);
+            } except ValueError {
+                return HTMLResponse(content="<h1>404 Not Found</h1>", status_code=404);
+            } except RuntimeError {
+                return HTMLResponse(
+                    content="<h1>503 Service Unavailable</h1>", status_code=503
+                );
+            }
+        }
+        return Response(status_code=404, content='Not found', media_type='text/plain');
+    }
+    if file_path.startswith(api_prefixes) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
     # Find project root (where jac.toml is) instead of using base_path_dir
@@ -452,7 +478,7 @@ impl JacAPIServer.render_page_callback -> Callable[..., HTMLResponse] {
         } except ValueError as exc {
             return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
         } except RuntimeError as exc {
-            print(f"Error rendering page '{page_name}': {exc}");
+            console.print(f"Error rendering page '{page_name}': {exc}");
             return HTMLResponse(
                 content=f"<h1>503 Service Unavailable</h1>", status_code=503
             );
@@ -475,7 +501,7 @@ impl JacAPIServer.render_base_route_callback(
         } except ValueError as exc {
             return HTMLResponse(content=f"<h1>404 Not Found</h1>", status_code=404);
         } except RuntimeError as exc {
-            print(f"Error rendering base route app '{app_name}': {exc}");
+            console.print(f"Error rendering base route app '{app_name}': {exc}");
             return HTMLResponse(
                 content=f"<h1>503 Service Unavailable</h1>", status_code=503
             );
@@ -498,7 +524,9 @@ impl JacAPIServer.register_functions_endpoints -> None {
                 method=spec_method,
                 path=final_path,
                 callback=self.create_function_callback(func_name),
-                parameters=self.create_function_parameters(func_name),
+                parameters=self.create_function_parameters(
+                    func_name, method=spec_method
+                ),
                 response_model=None,
                 tags=['Functions'],
                 summary='This is a summary',
@@ -508,7 +536,9 @@ impl JacAPIServer.register_functions_endpoints -> None {
     }
 }
 
-impl JacAPIServer.create_function_parameters(func_name: str) -> list[APIParameter] {
+impl JacAPIServer.create_function_parameters(
+    func_name: str, method: HTTPMethod = HTTPMethod.POST
+) -> list[APIParameter] {
     parameters: list[APIParameter] = [];
     if self.introspector.is_auth_required_for_function(func_name) {
         parameters.append(
@@ -527,8 +557,13 @@ impl JacAPIServer.create_function_parameters(func_name: str) -> list[APIParamete
     )['parameters'];
     for field_name in func_fields {
         field_type = func_fields[field_name]['type'];
-        # Determine parameter type based on field type
-        if ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
+        # Determine parameter type based on field type and method
+        if (
+            method == HTTPMethod.GET
+            and not ('UploadFile' in field_type or 'uploadfile' in field_type.lower())
+        ) {
+            param_type = ParameterType.QUERY;
+        } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
             # Support UploadFile type for file uploads
             param_type = ParameterType.FILE;
         } else {
@@ -574,7 +609,7 @@ impl JacAPIServer.create_function_callback(
                 );
             }
         }
-        print(f"Executing function '{func_name}' with params: {kwargs}");
+        console.print(f"Executing function '{func_name}' with params: {kwargs}");
         result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or '__guest__')
         );
@@ -607,6 +642,11 @@ impl JacAPIServer.create_function_callback(
 
 impl JacAPIServer.register_walkers_endpoints -> None {
     for walker_name in self.get_walkers() {
+        # Skip walkers configured for webhook transport - they use /webhook/{walker_name} instead
+        transport_type = self.get_transport_type_for_walker(walker_name);
+        if transport_type == TransportType.WEBHOOK {
+            continue;
+        }
         walker_cls = self.get_walkers()[walker_name];
         restspec = walker_cls.restspec if walker_cls?.restspec else None;
         spec_method = restspec.method if restspec?.method else HTTPMethod.POST;
@@ -618,7 +658,7 @@ impl JacAPIServer.register_walkers_endpoints -> None {
                 path=f"{spec_path}/{{node}}",
                 callback=self.create_walker_callback(walker_name, has_node_param=True),
                 parameters=self.create_walker_parameters(
-                    walker_name, invoke_on_root=False
+                    walker_name, invoke_on_root=False, method=spec_method
                 ),
                 response_model=None,
                 tags=['Walkers'],
@@ -632,7 +672,7 @@ impl JacAPIServer.register_walkers_endpoints -> None {
                 path=spec_path,
                 callback=self.create_walker_callback(walker_name, has_node_param=False),
                 parameters=self.create_walker_parameters(
-                    walker_name, invoke_on_root=True
+                    walker_name, invoke_on_root=True, method=spec_method
                 ),
                 response_model=None,
                 tags=['Walkers'],
@@ -644,7 +684,7 @@ impl JacAPIServer.register_walkers_endpoints -> None {
 }
 
 impl JacAPIServer.create_walker_parameters(
-    walker_name: str, invoke_on_root: bool
+    walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
 ) -> list[APIParameter] {
     parameters: list[APIParameter] = [];
     if self.introspector.is_auth_required_for_walker(walker_name) {
@@ -667,9 +707,14 @@ impl JacAPIServer.create_walker_parameters(
             continue;
         }
         field_type = walker_fields[field_name]['type'];
-        # Determine parameter type based on field type
+        # Determine parameter type based on field type and method
         if (field_name == '_jac_spawn_node') {
             param_type = ParameterType.PATH;
+        } elif (
+            method == HTTPMethod.GET
+            and not ('UploadFile' in field_type or 'uploadfile' in field_type.lower())
+        ) {
+            param_type = ParameterType.QUERY;
         } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
             # Support UploadFile type for file uploads
             param_type = ParameterType.FILE;
@@ -850,7 +895,7 @@ impl JacAPIServer.create_user(username: str, password: str) -> TransportResponse
         );
     } except Exception as e {
         error_trace = traceback.format_exc();
-        print(f"Error in create_user: {e}\n{error_trace}");
+        console.print(f"Error in create_user: {e}\n{error_trace}");
         return TransportResponse.fail(
             code='INTERNAL_ERROR',
             message=f"Registration failed: {e}",
@@ -1109,6 +1154,7 @@ impl JacAPIServer.login(username: str, password: str) -> TransportResponse {
 
 impl JacAPIServer.postinit -> None {
     super.postinit();
+    self._api_key_manager = ApiKeyManager();
     self.server.app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -1239,13 +1285,17 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
         node: str | None = None,
         Authorization: str | None = None
     ) -> TransportResponse {
-        # Parse request body to get walker fields
-        try {
-            body = await request.json();
-        } except Exception {
-            body = {};
+        # Parse request body or query params to get walker fields
+        if request.method == 'GET' {
+            kwargs: dict[str, Any] = dict(request.query_params);
+        } else {
+            try {
+                body = await request.json();
+            } except Exception {
+                body = {};
+            }
+            kwargs = dict(body) if body else {};
         }
-        kwargs: dict[str, Any] = dict(body) if body else {};
 
         # Reload introspector if files changed (HMR)
         if self._hmr_pending {
@@ -1262,6 +1312,16 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
                     walkers.keys()
                 )}",
                 meta=Meta(extra={'http_status': 404})
+            );
+        }
+
+        # Reject walkers configured for webhook transport - they use /webhook/{walker_name} instead
+        transport_type = self.get_transport_type_for_walker(walker_name);
+        if transport_type == TransportType.WEBHOOK {
+            return TransportResponse.fail(
+                code='BAD_REQUEST',
+                message=f"Walker '{walker_name}' is configured as a webhook. Use /webhook/{walker_name} instead.",
+                meta=Meta(extra={'http_status': 400})
             );
         }
 
@@ -1321,7 +1381,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
             data=result, meta=Meta(extra={'http_status': 200})
         );
     }
-    # Register catch-all route for walkers with node parameter
+    # Register catch-all route for walkers with node parameter (POST)
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
@@ -1359,10 +1419,78 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
             description='Dynamically routes to any registered walker. Supports HMR - walker changes are reflected immediately.'
         )
     );
-    # Register catch-all route for walkers without node parameter (root)
+    # Register catch-all route for walkers with node parameter (GET)
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/walker/{walker_name}/{node}',
+            callback=dynamic_walker_handler,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the walker to execute',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='node',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Node ID to spawn walker on',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Walkers (Dynamic)'],
+            summary='Execute walker on node (dynamic HMR)',
+            description='Dynamically routes to any registered walker. Supports HMR - walker changes are reflected immediately.'
+        )
+    );
+    # Register catch-all route for walkers without node parameter (root) (POST)
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
+            path='/walker/{walker_name}',
+            callback=dynamic_walker_handler,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the walker to execute',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Walkers (Dynamic)'],
+            summary='Execute walker on root (dynamic HMR)',
+            description='Dynamically routes to any registered walker. Supports HMR - walker changes are reflected immediately.'
+        )
+    );
+    # Register catch-all route for walkers without node parameter (root) (GET)
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
             path='/walker/{walker_name}',
             callback=dynamic_walker_handler,
             parameters=[
@@ -1402,13 +1530,17 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
     async def dynamic_function_handler(
         request: Request, function_name: str, Authorization: str | None = None
     ) -> TransportResponse {
-        # Parse request body to get function arguments
-        try {
-            body = await request.json();
-        } except Exception {
-            body = {};
+        # Parse request body or query params to get function arguments
+        if request.method == 'GET' {
+            kwargs: dict[str, Any] = dict(request.query_params);
+        } else {
+            try {
+                body = await request.json();
+            } except Exception {
+                body = {};
+            }
+            kwargs = dict(body) if body else {};
         }
-        kwargs: dict[str, Any] = dict(body) if body else {};
 
         # Reload introspector if files changed (HMR)
         if self._hmr_pending {
@@ -1477,9 +1609,40 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
             data=result, meta=Meta(extra={'http_status': 200})
         );
     }
+    # Register POST endpoint
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
+            path='/function/{function_name}',
+            callback=dynamic_function_handler,
+            parameters=[
+                APIParameter(
+                    name='function_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the function to call',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Functions (Dynamic)'],
+            summary='Call function (dynamic HMR)',
+            description='Dynamically routes to any registered function. Supports HMR - function changes are reflected immediately.'
+        )
+    );
+    # Register GET endpoint
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
             path='/function/{function_name}',
             callback=dynamic_function_handler,
             parameters=[
@@ -1628,6 +1791,485 @@ impl JacAPIServer.register_dynamic_introspection_endpoints -> None {
             tags=['Introspection'],
             summary='Get walker information',
             description='Returns detailed information about a specific walker. Supports HMR.'
+        )
+    );
+}
+
+"""Get or create the API key manager instance."""
+impl JacAPIServer.get_api_key_manager -> ApiKeyManager {
+    if self._api_key_manager is None {
+        self._api_key_manager = ApiKeyManager();
+    }
+    return self._api_key_manager;
+}
+
+"""Create a new API key for the authenticated user."""
+impl JacAPIServer.create_api_key(
+    name: str, expiry_days: int | None = None, Authorization: str | None = None
+) -> TransportResponse {
+    # Validate JWT token to get username
+    token: str | None = None;
+    if Authorization and Authorization.startswith('Bearer ') {
+        token = Authorization[7:];
+    }
+    username = self.user_manager.validate_jwt_token(token) if token else None;
+    if not username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Valid authentication required to create API keys',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    return self.get_api_key_manager().create_api_key(
+        username=username, name=name, expiry_days=expiry_days
+    );
+}
+
+"""List all API keys for the authenticated user."""
+impl JacAPIServer.list_api_keys(Authorization: str | None = None) -> TransportResponse {
+    # Validate JWT token to get username
+    token: str | None = None;
+    if Authorization and Authorization.startswith('Bearer ') {
+        token = Authorization[7:];
+    }
+    username = self.user_manager.validate_jwt_token(token) if token else None;
+    if not username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Valid authentication required to list API keys',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    return self.get_api_key_manager().list_api_keys(username);
+}
+
+"""Revoke an API key for the authenticated user."""
+impl JacAPIServer.revoke_api_key(
+    api_key_id: str, Authorization: str | None = None
+) -> TransportResponse {
+    # Validate JWT token to get username
+    token: str | None = None;
+    if Authorization and Authorization.startswith('Bearer ') {
+        token = Authorization[7:];
+    }
+    username = self.user_manager.validate_jwt_token(token) if token else None;
+    if not username {
+        return TransportResponse.fail(
+            code='UNAUTHORIZED',
+            message='Valid authentication required to revoke API keys',
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    return self.get_api_key_manager().revoke_api_key(username, api_key_id);
+}
+
+"""Register API key management endpoints."""
+impl JacAPIServer.register_api_key_endpoints -> None {
+    # Create API key
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/api-key/create',
+            callback=self.create_api_key,
+            parameters=[
+                APIParameter(
+                    name='name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='A friendly name for the API key',
+                    type=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='expiry_days',
+                    data_type='integer',
+                    required=False,
+                    default=None,
+                    description='Number of days until expiry (default from config)',
+                    type=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['API Keys'],
+            summary='Create a new API key',
+            description='Creates a new API key for webhook authentication. The API key is wrapped in a JWT and can be used with HMAC-SHA256 signature verification.'
+        )
+    );
+    # List API keys
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/api-key/list',
+            callback=self.list_api_keys,
+            parameters=[
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['API Keys'],
+            summary='List all API keys',
+            description='Lists all API keys for the authenticated user (metadata only, not the actual keys).'
+        )
+    );
+    # Revoke API key
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.DELETE,
+            path='/api-key/{api_key_id}',
+            callback=self.revoke_api_key,
+            parameters=[
+                APIParameter(
+                    name='api_key_id',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='The ID of the API key to revoke',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='Authorization',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Bearer token for authentication',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['API Keys'],
+            summary='Revoke an API key',
+            description='Revokes an API key, making it invalid for future webhook requests.'
+        )
+    );
+}
+
+"""Get the transport type for a walker by checking its restspec."""
+impl JacAPIServer.get_transport_type_for_walker(walker_name: str) -> str {
+    walkers = self.get_walkers();
+    if walker_name not in walkers {
+        return TransportType.HTTP;
+    }
+    walker_cls = walkers[walker_name];
+    restspec = walker_cls.restspec if walker_cls?.restspec else None;
+    if restspec?.webhook {
+        return TransportType.WEBHOOK;
+    }
+    return TransportType.HTTP;
+}
+
+"""Create webhook callback for a walker with HMAC-SHA256 signature verification."""
+impl JacAPIServer.create_webhook_callback(
+    walker_name: str
+) -> Callable[..., TransportResponse] {
+    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        webhook_config = get_scale_config().get_webhook_config();
+        signature_header = webhook_config.get(
+            'signature_header', 'X-Webhook-Signature'
+        );
+        verify_signature = webhook_config.get('verify_signature', True);
+
+        # Get API key from header
+        api_key = request.headers.get('X-API-Key');
+        if not api_key {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Missing X-API-Key header',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+
+        # Validate API key and get username
+        username = self.get_api_key_manager().validate_api_key(api_key);
+        if not username {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Invalid or expired API key',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+
+        # Verify HMAC-SHA256 signature if enabled
+        if verify_signature {
+            signature = request.headers.get(signature_header);
+            if not signature {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message=f"Missing {signature_header} header",
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            # Get raw body for signature verification
+            body = await request.body();
+            extracted_signature = WebhookUtils.extract_signature(signature);
+            # Use the API key as the secret for HMAC verification
+            if not WebhookUtils.verify_signature(body, extracted_signature, api_key) {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Invalid webhook signature',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+        }
+
+        # Parse body for walker fields
+        try {
+            body_bytes = await request.body();
+            body_data = json.loads(body_bytes) if body_bytes else {};
+        } except Exception {
+            body_data = {};
+        }
+
+        walker_kwargs: dict[str, Any] = dict(body_data) if body_data else {};
+
+        # Execute the walker
+        result = await self.execution_manager.spawn_walker(
+            self.get_walkers()[walker_name], walker_kwargs, username
+        );
+
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Walker execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
+        );
+    }
+    return callback;
+}
+
+"""Create parameters for webhook endpoint."""
+impl JacAPIServer.create_webhook_parameters(walker_name: str) -> list[APIParameter] {
+    parameters: list[APIParameter] = [];
+    # API key header (required for webhooks)
+    # Use underscore naming for valid Python identifiers - FastAPI auto-converts to hyphenated headers
+    parameters.append(
+        APIParameter(
+            name='x_api_key',
+            data_type='string',
+            required=True,
+            default=None,
+            description='API key for webhook authentication (X-API-Key header)',
+            type=ParameterType.HEADER
+        )
+    );
+    # Signature header (for HMAC verification)
+    # Use underscore naming for valid Python identifiers
+    parameters.append(
+        APIParameter(
+            name='x_webhook_signature',
+            data_type='string',
+            required=False,
+            default=None,
+            description='HMAC-SHA256 signature of the request body (X-Webhook-Signature header)',
+            type=ParameterType.HEADER
+        )
+    );
+    # Add walker fields as body parameters (excluding transport_type)
+    walker_fields = self.introspector.introspect_walker(
+        self.get_walkers()[walker_name]
+    )['fields'];
+    for field_name in walker_fields {
+        if field_name in ('_jac_spawn_node', ) {
+            continue;
+        }
+        field_type = walker_fields[field_name]['type'];
+        parameters.append(
+            APIParameter(
+                name=field_name,
+                data_type=field_type,
+                required=walker_fields[field_name]['required'],
+                default=walker_fields[field_name]['default'],
+                description=f"Field {field_name} for webhook walker {walker_name}",
+                type=ParameterType.BODY
+            )
+        );
+    }
+    return parameters;
+}
+
+"""Register webhook endpoints for walkers with transport_type=WEBHOOK."""
+impl JacAPIServer.register_webhook_endpoints -> None {
+    for walker_name in self.get_walkers() {
+        transport_type = self.get_transport_type_for_walker(walker_name);
+
+        if transport_type == TransportType.WEBHOOK {
+            self.server.add_endpoint(
+                JEndPoint(
+                    method=HTTPMethod.POST,
+                    path=f"/webhook/{walker_name}",
+                    callback=self.create_webhook_callback(walker_name),
+                    parameters=self.create_webhook_parameters(walker_name),
+                    response_model=None,
+                    tags=['Webhooks'],
+                    summary=f'Webhook endpoint for {walker_name}',
+                    description=f'Webhook endpoint for {walker_name}. Requires API key authentication and HMAC-SHA256 signature verification.'
+                )
+            );
+        }
+    }
+}
+
+"""Register dynamic webhook endpoint for HMR support."""
+impl JacAPIServer.register_dynamic_webhook_endpoint -> None {
+    async def dynamic_webhook_handler(
+        request: Request, walker_name: str
+    ) -> TransportResponse {
+        # Reload introspector if files changed (HMR)
+        if self._hmr_pending {
+            self.introspector.load(force_reload=True);
+            self._hmr_pending = False;
+        }
+
+        walkers = self.get_walkers();
+
+        if walker_name not in walkers {
+            return TransportResponse.fail(
+                code='NOT_FOUND',
+                message=f"Webhook walker '{walker_name}' not found",
+                meta=Meta(extra={'http_status': 404})
+            );
+        }
+
+        # Verify this walker is configured for webhook transport
+        transport_type = self.get_transport_type_for_walker(walker_name);
+        if transport_type != TransportType.WEBHOOK {
+            return TransportResponse.fail(
+                code='BAD_REQUEST',
+                message=f"Walker '{walker_name}' is not configured as a webhook. Use /walker/{walker_name} instead.",
+                meta=Meta(extra={'http_status': 400})
+            );
+        }
+
+        webhook_config = get_scale_config().get_webhook_config();
+        signature_header = webhook_config.get(
+            'signature_header', 'X-Webhook-Signature'
+        );
+        verify_signature = webhook_config.get('verify_signature', True);
+
+        # Get API key from header
+        api_key = request.headers.get('X-API-Key');
+        if not api_key {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Missing X-API-Key header',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+
+        # Validate API key and get username
+        username = self.get_api_key_manager().validate_api_key(api_key);
+        if not username {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Invalid or expired API key',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+
+        # Verify HMAC-SHA256 signature if enabled
+        if verify_signature {
+            signature = request.headers.get(signature_header);
+            if not signature {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message=f"Missing {signature_header} header",
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            body = await request.body();
+            extracted_signature = WebhookUtils.extract_signature(signature);
+            if not WebhookUtils.verify_signature(body, extracted_signature, api_key) {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Invalid webhook signature',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+        }
+
+        # Parse body for walker fields
+        try {
+            body_bytes = await request.body();
+            body_data = json.loads(body_bytes) if body_bytes else {};
+        } except Exception {
+            body_data = {};
+        }
+
+        walker_kwargs: dict[str, Any] = dict(body_data) if body_data else {};
+
+        # Execute the walker
+        result = await self.execution_manager.spawn_walker(
+            walkers[walker_name], walker_kwargs, username
+        );
+
+        if 'error' in result {
+            return TransportResponse.fail(
+                code='EXECUTION_ERROR',
+                message=result.get('error', 'Walker execution failed'),
+                details=result.get('traceback') if 'traceback' in result else None,
+                meta=Meta(extra={'http_status': 500})
+            );
+        }
+
+        return TransportResponse.success(
+            data=result, meta=Meta(extra={'http_status': 200})
+        );
+    }
+    # Register dynamic webhook route
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/webhook/{walker_name}',
+            callback=dynamic_webhook_handler,
+            parameters=[
+                APIParameter(
+                    name='walker_name',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='Name of the webhook walker to execute',
+                    type=ParameterType.PATH
+                ),
+                APIParameter(
+                    name='x_api_key',
+                    data_type='string',
+                    required=True,
+                    default=None,
+                    description='API key for webhook authentication (X-API-Key header)',
+                    type=ParameterType.HEADER
+                ),
+                APIParameter(
+                    name='x_webhook_signature',
+                    data_type='string',
+                    required=False,
+                    default=None,
+                    description='HMAC-SHA256 signature of the request body (X-Webhook-Signature header)',
+                    type=ParameterType.HEADER
+                )
+            ],
+            response_model=None,
+            tags=['Webhooks (Dynamic)'],
+            summary='Execute webhook walker (dynamic HMR)',
+            description='Dynamically routes to webhook walkers. Supports HMR - walker changes are reflected immediately.'
         )
     );
 }

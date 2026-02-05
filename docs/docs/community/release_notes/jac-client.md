@@ -2,11 +2,28 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.13 (Unreleased)
+## jac-client 0.2.15 (Unreleased)
 
-## jac-client 0.2.12 (Latest Release)
+## jac-client 0.2.14 (Latest Release)
 
+- **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
+- **Updated Fullstack Template**: Modernized the `fullstack` jacpack template to use idiomatic Jac patterns -- `can with entry` lifecycle effects instead of `useEffect`, JSX comprehensions instead of `.map()`, and impl separation (`frontend.impl.jac`) for cleaner code organization. Updated template README with project structure and pattern documentation.
+- **E2E Tests**: Now use jacpack workflow for testing.
+- **Multi-Profile Config Support**: Added integration test coverage for `--profile` flag to verify profile-specific settings propagate through the client bundling pipeline.
+- **File-Based Routing**: Added Next.js-style file-based routing via a `pages/` directory convention. Place `.jac` files under `pages/` and routes are generated automatically -- `pages/index.jac` maps to `/`, `pages/about.jac` to `/about`, `pages/users/[id].jac` to `/users/:id`, and `pages/[...slug].jac` to a catch-all `*` route. Organize routes with parenthesized group directories: `pages/(auth)/` marks enclosed pages as requiring authentication, while `pages/(public)/` keeps them open -- groups control auth without adding URL segments. Add `layout.jac` files at any level for shared layout wrappers rendered via React Router `<Outlet/>`. The compiler detects `pages/`, generates a route manifest (`_routes.js`) with lazy imports, and produces an `_entry.js` that wires up `BrowserRouter`, `Routes`, layout nesting, and an `AuthGuard` component that checks `jacIsLoggedIn()` and redirects unauthenticated users (configurable via `auth_redirect` in `jac.toml` routing config). Duplicate route paths and duplicate layouts at the same level raise `ClientBundleError` at compile time. Projects without a `pages/` directory continue to use explicit routing unchanged.
+
+## jac-client 0.2.13
+
+- **Console infrastructure**: Replaced bare `print()` calls with `console` abstraction for consistent output formatting.
+- **Desktop App Auto-Start & Port Discovery**: Running `jac start` or `jac dev` for a desktop (Tauri) target now automatically launches the backend API server and connects the app to it -- no manual setup needed. The backend port is dynamically allocated and injected into the webview before any page JavaScript runs, so API calls just work out of the box. Configure a fixed backend URL via `base_url` in `jac.toml` if needed.
+- **Bug fixes**: Fixed a sidecar crash caused by writing to a closed stdout pipe, and fixed an environment variable leak during desktop builds.
+- **Enhanced Compilation for Hot Module Replacement**: Added initial module compilation for HMR without bundling'.
+
+## jac-client 0.2.12
+
+- **Configurable API Base URL**: Added `[plugins.client.api]` config section with `base_url` option. By default (empty), API calls use same-origin relative URLs. Set `base_url = "http://localhost:8000"` for cross-origin setups.
 - **Improved client bundling error handling and reliability:** Captures Vite/Bun output and displays concise, formatted errors after the API endpoint list; fixed the Bun install invocation to improve build reliability.
+- **BrowserRouter Migration**: Migrated client-side routing from `HashRouter` to `BrowserRouter`. URLs now use clean paths (`/about`, `/user/123`) instead of hash-based URLs (`#/about`, `#/user/123`). The `navigate()` helper uses `window.history.pushState` with synthetic `PopStateEvent` dispatch instead of setting `window.location.hash`. The Vite dev server config includes `appType: 'spa'` for history API fallback during development. [Breaking Change - See Migration Guide](../breaking-changes.md)
 - **Auto-Prompt for Missing Client Dependencies**: When running `jac start` on a project without npm dependencies configured (no `jac.toml` or empty `[dependencies.npm]`), the CLI now detects the missing dependencies and interactively prompts the user to install the default jac-client packages (react, vite, etc.). Accepting writes the defaults to `jac.toml` and proceeds with the build. This follows the same pattern as the existing Bun auto-install prompt and eliminates the cryptic "Cannot find package 'vite'" error that previously occurred. Additionally, stale `node_modules` directories from prior failed installs are now automatically detected and cleaned up before reinstalling.
 
 ## jac-client 0.2.11

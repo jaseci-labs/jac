@@ -27,22 +27,22 @@ impl prompt_install_bun -> bool {
     import subprocess;
     import sys;
     import shutil;
-    print("\n  ⚠ Bun is required but not installed.", file=sys.stderr);
-    print(
-        "  Bun is a fast JavaScript runtime used for package management and bundling.",
-        file=sys.stderr
+    import from jaclang.cli.console { console }
+    console.error("\n  ⚠ Bun is required but not installed.");
+    console.error(
+        "  Bun is a fast JavaScript runtime used for package management and bundling."
     );
-    print("  Learn more: https://bun.sh\n", file=sys.stderr);
+    console.error("  Learn more: https://bun.sh\n");
     try {
         response = input("  Install Bun now? [Y/n]: ").strip().lower();
     } except (EOFError, KeyboardInterrupt) {
-        print("", file=sys.stderr);
+        console.error("");
         return False;
     }
     if response and response not in ('y', 'yes', '') {
         return False;
     }
-    print("\n  ⏳ Installing Bun...", flush=True);
+    console.print("\n  ⏳ Installing Bun...");
     try {
         # Check if curl is available
         subprocess.run(
@@ -57,7 +57,7 @@ impl prompt_install_bun -> bool {
         );
 
         if result.returncode == 0 {
-            print("  ✔ Bun installed successfully!", flush=True);
+            console.print("  ✔ Bun installed successfully!");
             # Add Bun to PATH for current session
             bun_bin = os.path.expanduser("~/.bun/bin");
             if os.path.exists(bun_bin) {
@@ -69,31 +69,28 @@ impl prompt_install_bun -> bool {
                         ["bun", "--version"], capture_output=True, text=True
                     );
                     if verify.returncode == 0 {
-                        print(f"  ✔ Verified: Bun {verify.stdout.strip()}", flush=True);
+                        console.print(f"  ✔ Verified: Bun {verify.stdout.strip()}");
                         return True;
                     }
                 }
             }
-            print(
-                "  ⚠ Bun installed but may require terminal restart.", file=sys.stderr
-            );
-            print("  Run: source ~/.bashrc (or restart terminal)", file=sys.stderr);
+            console.error("  ⚠ Bun installed but may require terminal restart.");
+            console.error("  Run: source ~/.bashrc (or restart terminal)");
             return True;
         } else {
-            print("  ✖ Bun installation failed.", file=sys.stderr);
+            console.error("  ✖ Bun installation failed.");
             return False;
         }
     } except subprocess.TimeoutExpired {
-        print("  ✖ Installation timed out.", file=sys.stderr);
+        console.error("  ✖ Installation timed out.");
         return False;
     } except FileNotFoundError {
-        print(
-            "  ✖ curl not found. Please install Bun manually: https://bun.sh",
-            file=sys.stderr
+        console.error(
+            "  ✖ curl not found. Please install Bun manually: https://bun.sh"
         );
         return False;
     } except Exception as e {
-        print(f"  ✖ Installation failed: {e}", file=sys.stderr);
+        console.error(f"  ✖ Installation failed: {e}");
         return False;
     }
 }

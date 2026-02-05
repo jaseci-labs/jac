@@ -1,4 +1,4 @@
-"""Analysis commands: check, format, test, gen_parser.
+"""Analysis commands: check, lint, format, test, gen_parser.
 
 Commands for analyzing and testing Jac code.
 """
@@ -75,6 +75,36 @@ def check(
     nowarn: bool = False
 ) -> int;
 
+"""Lint .jac files and report violations."""
+@registry.command(
+    name="lint",
+    help="Lint Jac files and report violations",
+    args=[
+        Arg.create(
+            "paths", kind=ArgKind.MULTI, help="Paths to .jac files or directories"
+        ),
+        Arg.create(
+            "fix", typ=bool, default=False, help="Auto-fix lint violations", short="f"
+        ),
+        Arg.create(
+            "ignore",
+            typ=str,
+            default="",
+            help="Comma-separated list of files/folders to ignore"
+        ),
+
+    ],
+    examples=[
+        ("jac lint myfile.jac", "Lint a single file"),
+        ("jac lint myproject/", "Lint all files in directory"),
+        ("jac lint myfile.jac --fix", "Auto-fix lint violations"),
+        ("jac lint . --ignore fixtures", "Lint excluding folders"),
+
+    ],
+    group="analysis"
+)
+def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
+
 """Format .jac files with improved code style."""
 @registry.command(
     name="format",
@@ -91,11 +121,11 @@ def check(
             short="s"
         ),
         Arg.create(
-            "fix",
+            "lintfix",
             typ=bool,
             default=False,
-            help="Apply auto-linting corrections",
-            short="f"
+            help="Also apply auto-lint fixes in the same pass",
+            short="l"
         ),
 
     ],
@@ -103,12 +133,12 @@ def check(
         ("jac format myfile.jac", "Format a single file"),
         ("jac format myproject/", "Format all files in directory"),
         ("jac format myfile.jac --to_screen", "Preview formatted output"),
-        ("jac format myfile.jac --fix", "Format with auto-linting"),
+        ("jac format . --lintfix", "Format and auto-fix lint violations"),
 
     ],
     group="analysis"
 )
-def format(paths: list, to_screen: bool = False, fix: bool = False) -> int;
+def format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int;
 
 """Run the test suite in the specified .jac file or directory."""
 @registry.command(
@@ -139,6 +169,12 @@ def format(paths: list, to_screen: bool = False, fix: bool = False) -> int;
         Arg.create("directory", default="", help="Test directory", short="d"),
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
+        ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],

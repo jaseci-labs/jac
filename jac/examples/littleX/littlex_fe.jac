@@ -30,7 +30,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard(tweet: ClientTweet) -> any {
+    def TweetCard(tweet: ClientTweet) -> JsxElement {
         return
             <div
                 class="tweet-card"
@@ -66,7 +66,7 @@ cl {
 
     # Handle liking a tweet - calls server walker directly
     # The compiler automatically transforms this to __jacCallFunction at compile time!
-    async def like_tweet_action(tweet_id: str) -> any {
+    async def like_tweet_action(tweet_id: str) -> JsxElement {
         try {
             result = await like_tweet(tweet_id);
             print("Tweet liked:", result);
@@ -78,7 +78,7 @@ cl {
     }
 
     # Render the main feed view
-    def FeedView(tweets: list) -> any {
+    def FeedView(tweets: list) -> JsxElement {
         return
             <div
                 class="feed-container"
@@ -103,7 +103,7 @@ cl {
     }
 
     # Render login form
-    def LoginForm -> any {
+    def LoginForm -> JsxElement {
         return
             <div
                 class="login-container"
@@ -185,7 +185,7 @@ cl {
     }
 
     # Render signup form
-    def SignupForm -> any {
+    def SignupForm -> JsxElement {
         return
             <div
                 class="signup-container"
@@ -306,26 +306,26 @@ cl {
     }
 
     # Main App component with declarative router
-    def App -> any {
+    def App -> JsxElement {
         # Create routes array manually (workaround for JS compiler bug with named args)
         login_route = {
             "path": "/login",
-            "component": lambda -> any { return LoginForm(); },
+            "component": lambda -> JsxElement { return LoginForm(); },
             "guard": None
         };
         signup_route = {
             "path": "/signup",
-            "component": lambda -> any { return SignupForm(); },
+            "component": lambda -> JsxElement { return SignupForm(); },
             "guard": None
         };
         home_route = {
             "path": "/home",
-            "component": lambda -> any { return HomeView(); },
+            "component": lambda -> JsxElement { return HomeView(); },
             "guard": jacIsLoggedIn
         };
         profile_route = {
             "path": "/profile",
-            "component": lambda -> any { return ProfileView(); },
+            "component": lambda -> JsxElement { return ProfileView(); },
             "guard": jacIsLoggedIn
         };
 
@@ -405,7 +405,7 @@ cl {
     }
 
     # Home view - simplified for testing reactive routing
-    def HomeView -> any {
+    def HomeView -> JsxElement {
         if not jacIsLoggedIn() {
             navigate("/login");
             return
@@ -433,7 +433,7 @@ cl {
     }
 
     # Profile view
-    def ProfileView -> any {
+    def ProfileView -> JsxElement {
         if not jacIsLoggedIn() {
             navigate("/login");
             return

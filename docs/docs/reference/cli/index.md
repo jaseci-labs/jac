@@ -31,6 +31,8 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac tool` | Language tools (IR, AST) |
 | `jac lsp` | Language server |
 | `jac js` | JavaScript output |
+| `jac build` | Build for target platform (jac-client) |
+| `jac setup` | Setup build target (jac-client) |
 
 ---
 
@@ -237,17 +239,16 @@ jac test main.jac -v
 
 ### jac format
 
-Format Jac code according to style guidelines.
+Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-t] [-f] paths [paths ...]
+jac format [-h] [-t] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to format | Required |
 | `-t, --to_screen` | Print to screen (don't write) | `False` |
-| `-f, --fix` | Apply fixes in place | `False` |
 
 **Examples:**
 
@@ -256,11 +257,47 @@ jac format [-h] [-t] [-f] paths [paths ...]
 jac format main.jac -t
 
 # Apply formatting
-jac format main.jac --fix
+jac format main.jac
 
 # Format entire directory
-jac format . --fix
+jac format .
 ```
+
+> **Note**: For auto-linting (code corrections), use `jac lint --fix` instead. See [`jac lint`](#jac-lint) below.
+
+---
+
+### jac lint
+
+Lint Jac files and report violations. Use `--fix` to auto-fix violations.
+
+```bash
+jac lint [-h] [-f] [--ignore IGNORE] paths [paths ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `paths` | Files/directories to lint | Required |
+| `-f, --fix` | Auto-fix lint violations | `False` |
+| `--ignore` | Comma-separated files/folders to ignore | `""` |
+
+**Examples:**
+
+```bash
+# Report lint violations
+jac lint main.jac
+
+# Auto-fix violations
+jac lint main.jac --fix
+
+# Lint entire directory
+jac lint .
+
+# Lint excluding folders
+jac lint . --ignore fixtures
+```
+
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. All enabled rules are treated as errors.
 
 ---
 
@@ -853,6 +890,49 @@ jac tool ir py main.jac
 
 ---
 
+### jac completions
+
+Generate and install shell completion scripts for the `jac` CLI.
+
+```bash
+jac completions [-h] [-s SHELL] [-i] [--no-install]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-s, --shell` | Shell type (`bash`, `zsh`, `fish`) | `bash` |
+| `-i, --install` | Auto-install completion to shell config | `False` |
+
+When `--install` is used, the completion script is written to `~/.jac/completions.<shell>` (e.g. `~/.jac/completions.bash`) and a source line is added to your shell config file (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`).
+
+**Installed files:**
+
+| Shell | Completion script | Config modified |
+|-------|------------------|-----------------|
+| bash | `~/.jac/completions.bash` | `~/.bashrc` |
+| zsh | `~/.jac/completions.zsh` | `~/.zshrc` |
+| fish | `~/.jac/completions.fish` | `~/.config/fish/config.fish` |
+
+**Examples:**
+
+```bash
+# Print bash completion script to stdout
+jac completions
+
+# Auto-install for bash (writes to ~/.jac/completions.bash)
+jac completions --install
+
+# Generate zsh completions
+jac completions --shell zsh
+
+# Auto-install for fish
+jac completions --shell fish --install
+```
+
+> **Note:** After installing, run `source ~/.bashrc` (or restart your shell) to activate completions. Completions cover subcommands, options, and file paths.
+
+---
+
 ### jac lsp
 
 Start the Language Server Protocol server (for IDE integration).
@@ -860,6 +940,68 @@ Start the Language Server Protocol server (for IDE integration).
 ```bash
 jac lsp
 ```
+
+---
+
+## Plugin Commands
+
+Plugins can add new commands and extend existing ones. These commands are available when the corresponding plugin is installed.
+
+### jac-client Commands
+
+Requires: `pip install jac-client`
+
+#### jac build
+
+Build a Jac application for a specific target.
+
+```bash
+jac build [filename] [--client TARGET] [-p PLATFORM]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | Path to .jac file | `main.jac` |
+| `--client` | Build target (`web`, `desktop`) | `web` |
+| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+
+**Examples:**
+
+```bash
+# Build web target (default)
+jac build
+
+# Build desktop app
+jac build --client desktop
+
+# Build for Windows
+jac build --client desktop --platform windows
+```
+
+#### jac setup
+
+One-time initialization for a build target.
+
+```bash
+jac setup <target>
+```
+
+**Examples:**
+
+```bash
+# Setup Tauri for desktop builds
+jac setup desktop
+```
+
+#### Extended Flags
+
+| Base Command | Added Flag | Description |
+|-------------|-----------|-------------|
+| `jac create` | `--use client` | Create full-stack project template |
+| `jac create` | `--skip` | Skip npm package installation |
+| `jac start` | `--client <target>` | Client build target for dev server |
+| `jac add` | `--npm` | Add npm (client-side) dependency |
+| `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
 
@@ -878,8 +1020,8 @@ jac run main.jac
 # Test
 jac test -v
 
-# Format
-jac format . --fix
+# Lint and fix
+jac lint . --fix
 ```
 
 ### Production

@@ -7,7 +7,7 @@ cl import from "@jac/runtime" {
 }
 
 cl {
-    def:pub Navigation -> any {
+    def:pub Navigation -> JsxElement {
         location = useLocation();
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
@@ -93,19 +93,13 @@ cl {
                                 <Link to="/nested" style={linkStyle("/nested")}>
                                     Nested Imports
                                 </Link>
-                                <Link
-                                    to="/features-test"
-                                    style={linkStyle("/features-test")}
-                                >
+                                <Link to="/features" style={linkStyle("/features")}>
                                     Features Test
                                 </Link>
                                 <Link to="/landing" style={linkStyle("/landing")}>
                                     Landing Page
                                 </Link>
-                                <Link
-                                    to="/budget-planner"
-                                    style={linkStyle("/budget-planner")}
-                                >
+                                <Link to="/budget" style={linkStyle("/budget")}>
                                     Budget Planner
                                 </Link>
                             </>

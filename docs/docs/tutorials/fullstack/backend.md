@@ -5,7 +5,7 @@ Connect your frontend components to Jac walkers for data fetching and mutations.
 > **Prerequisites**
 >
 > - Completed: [State Management](state.md)
-> - Familiar with: [Your First Graph](../../quick-guide/first-graph.md) (walkers)
+> - Familiar with: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (core concepts)
 > - Time: ~30 minutes
 
 ---
@@ -18,11 +18,9 @@ In Jac full-stack apps:
 2. **Frontend** = Components in `cl { }` blocks
 3. **Connection** = `useWalker` hook fetches walker results
 
-```
-┌─────────────┐     HTTP/WS      ┌─────────────┐
-│  Frontend   │ ←───────────────→ │   Walker    │
-│  Component  │    useWalker()    │   API       │
-└─────────────┘                   └─────────────┘
+```mermaid
+graph LR
+    Frontend["Frontend<br/>Component"] <-- "HTTP/WS<br/>useWalker()" --> Backend["Walker<br/>API"]
 ```
 
 ---
@@ -519,3 +517,4 @@ cl {
 
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
 - [Graph Operations](../../reference/language/graph-operations.md) - Node creation, traversal, deletion
+- [Part III: OSP Reference](../../reference/language/osp.md) - Complete walker and node language reference
