@@ -460,105 +460,6 @@ except ImportError:
     );
 }
 
-"""Ensure icon exists and is valid (square, 1024x1024, RGBA).
-
-Converts existing icons to meet requirements, or generates default if missing/invalid.
-"""
-def _ensure_valid_icon(tauri_dir: Path) -> None {
-    icon_path = tauri_dir / "icons" / "icon.png";
-    if icon_path.exists() {
-        try {
-            # Try to convert icon to meet requirements using PIL
-            import subprocess;
-            convert_code = '''
-import sys
-from PIL import Image
-
-icon_path = sys.argv[1]
-target_size = 1024
-
-try:
-    img = Image.open(icon_path)
-    original_mode = img.mode
-    original_size = (img.width, img.height)
-    needs_conversion = False
-
-    # Check if conversion is needed
-    if img.width != img.height:
-        needs_conversion = True
-    if img.width != target_size or img.height != target_size:
-        needs_conversion = True
-    if img.mode != "RGBA":
-        needs_conversion = True
-
-    if not needs_conversion:
-        # Icon already meets requirements
-        sys.exit(0)
-
-    # Convert to RGBA if needed
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
-
-    # Make square by padding or cropping to center
-    if img.width != img.height:
-        # Create a square canvas with the larger dimension
-        max_dim = max(img.width, img.height)
-        square_img = Image.new("RGBA", (max_dim, max_dim), (0, 0, 0, 0))
-        # Paste original centered
-        x_offset = (max_dim - img.width) // 2
-        y_offset = (max_dim - img.height) // 2
-        square_img.paste(img, (x_offset, y_offset))
-        img = square_img
-
-    # Resize to target size (1024x1024) using high-quality resampling
-    if img.width != target_size or img.height != target_size:
-        img = img.resize((target_size, target_size), Image.LANCZOS)
-
-    # Save the converted icon
-    img.save(icon_path, "PNG")
-
-    # Print conversion info for logging
-    print(f"Converted: {original_size} {original_mode} -> {target_size}x{target_size} RGBA")
-    sys.exit(0)
-except Exception as e:
-    print(f"Error: {e}", file=sys.stderr)
-    sys.exit(1)
-''';
-            result = subprocess.run(
-                ["python3", "-c", convert_code, str(icon_path)],
-                capture_output=True,
-                text=True,
-                timeout=10
-            );
-            if result.returncode == 0 {
-                if result.stdout.strip() {
-                    console.print(
-                        f"  ✔ Icon converted: {result.stdout.strip()}", style="success"
-                    );
-                }
-            } else {
-                console.warning(
-                    f"  Could not convert icon: {result.stderr.strip() if result.stderr else 'unknown error'}"
-                );
-                console.print("  Generating default icon instead...", style="muted");
-                # Delete invalid icon before generating default
-                if icon_path.exists() {
-                    icon_path.unlink();
-                }
-                _generate_default_icons(tauri_dir);
-            }
-        } except Exception as e {
-            # If conversion fails, generate default
-            console.warning(f"  Could not process icon: {e}");
-            console.print("  Generating default icon...", style="muted");
-            _generate_default_icons(tauri_dir);
-        }
-    } else {
-        # Icon doesn't exist, generate it
-        _generate_default_icons(tauri_dir);
-    }
-}
-
 """Generate main.rs.
 
 api_base_url: embed this URL and skip sidecar port discovery.
@@ -1664,8 +1565,51 @@ impl DesktopTarget.build(
         );
         sidecar_bundled = False;
     }
-    # Check and convert icon if needed (AppImage requires square 1024x1024 RGBA icons)
-    _ensure_valid_icon(tauri_dir);
+    # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
+    icon_path = tauri_dir / "icons" / "icon.png";
+    if icon_path.exists() {
+        try {
+            # Try to check icon size and squareness using PIL
+            import subprocess;
+            check_code = '''
+import sys
+from PIL import Image
+try:
+    img = Image.open(sys.argv[1])
+    # AppImage requires square icons, and 1024x1024 is recommended
+    if img.width != img.height or img.width < 512:
+        sys.exit(1)  # Not square or too small
+    # Verify it's RGBA format
+    if img.mode != "RGBA":
+        sys.exit(1)  # Not RGBA
+    sys.exit(0)  # Icon OK
+except:
+    sys.exit(1)  # Error or invalid
+''';
+            result = subprocess.run(
+                ["python3", "-c", check_code, str(icon_path)],
+                capture_output=True,
+                timeout=5
+            );
+            if result.returncode != 0 {
+                console.warning(
+                    "  Icon is invalid or too small for AppImage, regenerating..."
+                );
+                # Delete old icon before regenerating
+                if icon_path.exists() {
+                    icon_path.unlink();
+                }
+                _generate_default_icons(tauri_dir);
+            }
+        } except Exception {
+            # If check fails, try to regenerate anyway
+            console.warning("  Could not verify icon, regenerating...");
+            _generate_default_icons(tauri_dir);
+        }
+    } else {
+        # Icon doesn't exist, generate it
+        _generate_default_icons(tauri_dir);
+    }
     # Step 2: Update tauri.conf.json to point to web bundle
     console.print("  Step 2: Updating Tauri configuration...", style="muted");
     _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
@@ -2207,8 +2151,6 @@ impl DesktopTarget.dev(
     if not tauri_dir.exists() {
         raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.") ;
     }
-    # Check and convert icon if needed (Tauri requires RGBA icons)
-    _ensure_valid_icon(tauri_dir);
     # Step 1: Update tauri.conf.json for dev mode
     console.print("  Configuring Tauri for dev mode...", style="muted");
     _update_tauri_config_for_dev(tauri_dir);
