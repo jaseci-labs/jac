@@ -65,6 +65,13 @@ PACKAGES: dict[str, dict[str, str]] = {
         "pypi_name": "jac-super",
         "notes_display": "jac-super",
     },
+    "jaseci": {
+        "dir": "jaseci-package",
+        "pyproject": "jaseci-package/pyproject.toml",
+        "release_notes": "",  # Meta package - no release notes
+        "pypi_name": "jaseci",
+        "notes_display": "jaseci",
+    },
 }
 
 # Internal dependency graph: pypi_name -> list of pypi_names it depends on
@@ -74,6 +81,7 @@ INTERNAL_DEPS: dict[str, list[str]] = {
     "jac-client": ["jaclang"],
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
+    "jaseci": ["jaclang", "byllm", "jac-client", "jac-scale", "jac-super"],
 }
 
 # Reverse map: pypi_name -> list of package keys that depend on it
@@ -334,7 +342,8 @@ def main() -> None:
                 if dep_key in releasing_packages:
                     dep_info = PACKAGES[dep_key]
                     print(f"[dry-run] Would update {dep_info['pyproject']} -> {rel['pypi_name']}>={new_version}")
-            print(f"[dry-run] Would update {rel['release_notes']}")
+            if rel["release_notes"]:
+                print(f"[dry-run] Would update {rel['release_notes']}")
             print()
             continue
 
@@ -350,12 +359,13 @@ def main() -> None:
             if dep_file not in modified_files:
                 modified_files.append(dep_file)
 
-        # 3. Update release notes
-        print("Updating release notes...")
-        release_notes_path = repo_root / rel["release_notes"]
-        update_release_notes(release_notes_path, rel["notes_display"], new_version)
-        if rel["release_notes"] not in modified_files:
-            modified_files.append(rel["release_notes"])
+        # 3. Update release notes (if applicable)
+        if rel["release_notes"]:
+            print("Updating release notes...")
+            release_notes_path = repo_root / rel["release_notes"]
+            update_release_notes(release_notes_path, rel["notes_display"], new_version)
+            if rel["release_notes"] not in modified_files:
+                modified_files.append(rel["release_notes"])
         print()
 
     if args.dry_run:

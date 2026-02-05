@@ -53,6 +53,16 @@ on:
           - patch
           - minor
           - major
+      jaseci:
+        description: "jaseci (meta package) version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
 
 # Deny all permissions by default; grant only at job level.
 permissions: {}
@@ -87,7 +97,8 @@ jobs:
             --jac-byllm ${{ inputs['jac-byllm'] }} \
             --jac-client ${{ inputs['jac-client'] }} \
             --jac-scale ${{ inputs['jac-scale'] }} \
-            --jac-super ${{ inputs['jac-super'] }}
+            --jac-super ${{ inputs['jac-super'] }} \
+            --jaseci ${{ inputs.jaseci }}
 
       - name: Configure git
         run: |
