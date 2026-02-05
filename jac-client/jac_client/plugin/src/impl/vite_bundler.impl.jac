@@ -332,49 +332,6 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
-// Jac source mapper plugin - maps errors back to original .jac files
-function jacSourceMapper() {{
-  const sourceMap = new Map(); // compiled path -> original jac path
-
-  return {{
-    name: 'jac-source-mapper',
-    enforce: 'pre',
-
-    // Extract source mapping from compiled files
-    transform(code, id) {{
-      if (id.includes('/compiled/') && id.endsWith('.js')) {{
-        const match = code.match(/^\\/\\* Source: (.+?) \\*\\//);
-        if (match) {{
-          sourceMap.set(id, match[1]);
-        }}
-      }}
-      return null;
-    }},
-
-    // Enhance error messages with original source info
-    buildEnd() {{
-      // Store source map for error reporting
-      this._jacSourceMap = sourceMap;
-    }},
-
-    // Handle resolve errors to show original source
-    resolveId(source, importer) {{
-      if (importer && sourceMap.has(importer)) {{
-        const originalSource = sourceMap.get(importer);
-        // Check for common issues like double slashes
-        if (source.includes('//') && !source.startsWith('http')) {{
-          this.error({{
-            message: `Cannot resolve "${{source}}" - path contains invalid double slash. Check your import in the original Jac file.`,
-            id: originalSource,
-            loc: {{ line: 1, column: 0 }}
-          }});
-        }}
-      }}
-      return null;
-    }}
-  }};
-}}
-
 /**
  * Vite configuration generated from config.json (in project root)
  * To customize, edit config.json instead of this file.
@@ -384,8 +341,9 @@ export default defineConfig({{
   define: {{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
-  plugins: [
-    jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+  plugins: [{(newline + '    ' + plugins_str + newline + '  ')
+    if plugins_str
+    else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     sourcemap: true, // Enable source maps for better error messages
@@ -448,6 +406,57 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
         return file;
     }
     return None;
+}
+
+"""Extract source mappings from compiled JS files by reading /* Source: ... */ headers."""
+impl ViteBundler._extract_source_mappings(self: ViteBundler) -> dict[str, str] {
+    import re;
+    build_dir = self._get_client_dir();
+    compiled_dir = build_dir / 'compiled';
+    source_map = {};
+    if not compiled_dir.exists() {
+        return source_map;
+    }
+    for js_file in compiled_dir.rglob('*.js') {
+        try {
+            with open(js_file, 'r', encoding='utf-8') as f {
+                first_line = f.readline();
+            }
+            match_err = re.match(r'^/\* Source: (.+?) \*/', first_line);
+            if match_err {
+                original_path = match_err.group(1);
+                source_map[str(js_file)] = original_path;
+                source_map[str(js_file.relative_to(build_dir))] = original_path;
+                source_map[js_file.name] = original_path;
+            }
+        } except Exception {
+            continue;
+        }
+    }
+    return source_map;
+}
+
+"""Transform Vite error messages by replacing compiled paths with original .jac paths."""
+impl ViteBundler._map_error_paths_to_source(self: ViteBundler, error_text: str) -> str {
+    import re;
+    source_map = self._extract_source_mappings();
+    if not source_map {
+        return error_text;
+    }
+    result = error_text;
+    for (compiled_path, original_path) in source_map.items() {
+        result = result.replace(str(compiled_path), original_path);
+        if 'compiled/' in compiled_path {
+            rel_path = compiled_path[compiled_path.find('compiled/'):];
+            result = result.replace(rel_path, original_path);
+        }
+        filename = Path(compiled_path).name;
+        escaped_filename = re.escape(filename);
+        pattern = f'(["\'])compiled/[^"\']*/{escaped_filename}(["\'])';
+        replacement = f'\\1{original_path}\\2';
+        result = re.sub(pattern, replacement, result);
+    }
+    return result;
 }
 
 """Run Vite build with generated config in .jac/client/configs/."""
@@ -544,7 +553,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         elapsed = time.time() - start_time;
         if result.returncode != 0 {
             error_output = result.stderr or result.stdout;
-            error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{error_output}\nCommand: {' '.join(
+            # Transform compiled paths to original .jac paths in error messages
+            transformed_output = self._map_error_paths_to_source(error_output);
+            error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{transformed_output}\nCommand: {' '.join(
                 command
             )}";
             raise ClientBundleError(error_msg) from None ;

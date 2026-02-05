@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.15 (Unreleased)
 
+- **Build Error Source Mapping**: Vite errors now show original `.jac` paths instead of compiled `.js` paths.
+
 ## jac-client 0.2.14 (Latest Release)
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.

@@ -24,6 +24,8 @@ class ViteBundler {
     );
 
     def _get_client_dir(self: ViteBundler) -> Path;
+    def _extract_source_mappings(self: ViteBundler) -> dict[str, str];
+    def _map_error_paths_to_source(self: ViteBundler, error_text: str) -> str;
     def build(self: ViteBundler, entry_file: Optional[Path] = None) -> None;
     def find_bundle(self: ViteBundler) -> Optional[Path];
     def find_css(self: ViteBundler) -> Optional[Path];

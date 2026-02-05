@@ -990,6 +990,29 @@ def test_vite_build_prompts_for_missing_client_deps() -> None:
         assert pkg["devDependencies"].get("vite"), "package.json should have vite"
 
 
+def test_vite_build_error_maps_to_source() -> None:
+    """Test that build errors show original .jac file paths, not compiled .js paths."""
+    from jac_client.plugin.src.vite_bundler import ViteBundler
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        project_dir = Path(temp_dir)
+        compiled_dir = project_dir / ".jac" / "client" / "compiled"
+        compiled_dir.mkdir(parents=True)
+
+        test_file = compiled_dir / "main.js"
+        test_file.write_text(
+            "/* Source: /home/user/project/main.jac */\nimport { foo } from './bar';"
+        )
+
+        bundler = ViteBundler(project_dir)
+        error_text = f'Could not resolve "./bar.js" from "{test_file}"'
+        transformed = bundler._map_error_paths_to_source(error_text)
+
+        assert "/home/user/project/main.jac" in transformed
+        assert str(test_file) not in transformed
+
+
 def test_start_dev_with_client_does_initial_compilation() -> None:
     """Test that `jac start --dev` with client enabled performs initial compilation."""
     import time
