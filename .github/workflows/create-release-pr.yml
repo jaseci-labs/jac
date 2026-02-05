@@ -1,23 +1,55 @@
-name: Release Package
+name: Create Release PR
 
 on:
   workflow_dispatch:
     inputs:
-      package:
-        description: "Package to release"
+      jaclang:
+        description: "jaclang version bump"
         required: true
         type: choice
+        default: skip
         options:
-          - jaclang
-          - jac-byllm
-          - jac-client
-          - jac-scale
-          - jac-super
-      bump:
-        description: "Version bump type"
+          - skip
+          - patch
+          - minor
+          - major
+      jac-byllm:
+        description: "jac-byllm version bump"
         required: true
         type: choice
+        default: skip
         options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-client:
+        description: "jac-client version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-scale:
+        description: "jac-scale version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-super:
+        description: "jac-super version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
           - patch
           - minor
           - major
@@ -44,9 +76,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies
+        run: pip install tomlkit
+
       - name: Run release script
         id: release
-        run: python scripts/release.py --package ${{ inputs.package }} --bump ${{ inputs.bump }}
+        run: |
+          python scripts/release.py \
+            --jaclang ${{ inputs.jaclang }} \
+            --jac-byllm ${{ inputs['jac-byllm'] }} \
+            --jac-client ${{ inputs['jac-client'] }} \
+            --jac-scale ${{ inputs['jac-scale'] }} \
+            --jac-super ${{ inputs['jac-super'] }}
 
       - name: Configure git
         run: |

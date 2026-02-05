@@ -1,11 +1,13 @@
 """Unified release script for the jaseci monorepo.
 
 Usage:
-    python scripts/release.py --package <name> --bump <major|minor|patch>
-    python scripts/release.py --package <name> --bump patch --dry-run
+    python scripts/release.py --jaclang patch --jac-client minor
+    python scripts/release.py --jaclang patch --jac-byllm skip --dry-run
+
+Each package flag accepts: skip, patch, minor, major
 
 This script:
-  1. Reads the current version from the package's pyproject.toml
+  1. Reads the current version from each package's pyproject.toml
   2. Computes the new version based on the bump type
   3. Updates pyproject.toml with the new version
   4. Syncs internal dependency versions in dependent packages
@@ -18,8 +20,9 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import tomllib
 from pathlib import Path
+
+import tomlkit
 
 # ---------------------------------------------------------------------------
 # Package registry
@@ -86,8 +89,9 @@ for _pkg_key, _pkg_info in PACKAGES.items():
 
 def read_version(pyproject_path: Path) -> str:
     """Read the version string from a pyproject.toml file."""
-    data = tomllib.loads(pyproject_path.read_text())
-    return data["project"]["version"]
+    with open(pyproject_path, "r") as f:
+        data = tomlkit.load(f)
+    return str(data["project"]["version"])  # type: ignore[index]
 
 
 def bump_version(current: str, bump_type: str) -> str:
@@ -119,17 +123,11 @@ def bump_version(current: str, bump_type: str) -> str:
 
 def update_pyproject_version(pyproject_path: Path, new_version: str) -> None:
     """Update the version field in a pyproject.toml file."""
-    content = pyproject_path.read_text()
-    updated = re.sub(
-        r'^(version\s*=\s*")[^"]*(")',
-        rf"\g<1>{new_version}\2",
-        content,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if updated == content:
-        raise RuntimeError(f"Failed to update version in {pyproject_path}")
-    pyproject_path.write_text(updated)
+    with open(pyproject_path, "r") as f:
+        data = tomlkit.load(f)
+    data["project"]["version"] = new_version  # type: ignore[index]
+    with open(pyproject_path, "w") as f:
+        tomlkit.dump(data, f)
 
 
 def update_dependency_version(
@@ -139,23 +137,47 @@ def update_dependency_version(
 
     Returns True if a change was made, False otherwise.
     """
-    content = pyproject_path.read_text()
-    # Match lines like: "jaclang>=0.9.12" or "jaclang>=0.9.9"
-    pattern = rf'("{re.escape(dep_pypi_name)}>=)[^"]*(")'
-    updated = re.sub(pattern, rf"\g<1>{new_version}\2", content)
-    if updated == content:
-        return False
-    pyproject_path.write_text(updated)
-    return True
+    with open(pyproject_path, "r") as f:
+        data = tomlkit.load(f)
+
+    dependencies = data["project"]["dependencies"]  # type: ignore[index]
+    modified = False
+
+    for i, dep in enumerate(dependencies):  # type: ignore[arg-type]
+        dep_str = str(dep)
+        if dep_str.startswith(f"{dep_pypi_name}>="):
+            dependencies[i] = f"{dep_pypi_name}>={new_version}"  # type: ignore[index]
+            modified = True
+            break
+
+    if modified:
+        with open(pyproject_path, "w") as f:
+            tomlkit.dump(data, f)
+
+    return modified
 
 
-def sync_dependents(repo_root: Path, pkg_pypi_name: str, new_version: str) -> list[str]:
-    """Update all packages that depend on pkg_pypi_name.
+def sync_dependents(
+    repo_root: Path,
+    pkg_pypi_name: str,
+    new_version: str,
+    releasing_packages: set[str],
+) -> list[str]:
+    """Update packages that depend on pkg_pypi_name (only if they are also being released).
+
+    Args:
+        repo_root: Path to repository root.
+        pkg_pypi_name: PyPI name of the package whose version changed.
+        new_version: The new version of the package.
+        releasing_packages: Set of package keys being released in this run.
 
     Returns list of modified file paths (relative to repo root).
     """
     modified: list[str] = []
     for dep_key in DEPENDENTS.get(pkg_pypi_name, []):
+        # Only update dependency if the dependent package is also being released
+        if dep_key not in releasing_packages:
+            continue
         dep_info = PACKAGES[dep_key]
         dep_pyproject = repo_root / dep_info["pyproject"]
         if update_dependency_version(dep_pyproject, pkg_pypi_name, new_version):
@@ -238,20 +260,16 @@ def set_output(name: str, value: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Release a package in the jaseci monorepo"
+        description="Release packages in the jaseci monorepo"
     )
-    parser.add_argument(
-        "--package",
-        required=True,
-        choices=PACKAGES.keys(),
-        help="Package to release",
-    )
-    parser.add_argument(
-        "--bump",
-        required=True,
-        choices=["major", "minor", "patch"],
-        help="Version bump type",
-    )
+    bump_choices = ["skip", "patch", "minor", "major"]
+    for pkg_name in PACKAGES.keys():
+        parser.add_argument(
+            f"--{pkg_name}",
+            choices=bump_choices,
+            default="skip",
+            help=f"Version bump type for {pkg_name} (default: skip)",
+        )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -262,63 +280,109 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    pkg = PACKAGES[args.package]
     repo_root = Path(__file__).resolve().parent.parent
 
-    # Read current version
-    pyproject_path = repo_root / pkg["pyproject"]
-    current_version = read_version(pyproject_path)
-    new_version = bump_version(current_version, args.bump)
+    # Collect packages to release (those not set to "skip")
+    releases: list[dict[str, str]] = []
+    for pkg_name, pkg_info in PACKAGES.items():
+        # Convert hyphens to underscores for attribute access
+        attr_name = pkg_name.replace("-", "_")
+        bump_type = getattr(args, attr_name)
+        if bump_type != "skip":
+            releases.append({
+                "name": pkg_name,
+                "bump": bump_type,
+                **pkg_info,
+            })
 
-    print(f"Package:  {args.package}")
-    print(f"Current:  {current_version}")
-    print(f"Bump:     {args.bump}")
-    print(f"New:      {new_version}")
-    print()
-
-    if args.dry_run:
-        print("[dry-run] Would update the following files:")
-        print(f"  {pkg['pyproject']} -> version {new_version}")
-        for dep_key in DEPENDENTS.get(pkg["pypi_name"], []):
-            dep_info = PACKAGES[dep_key]
-            print(f"  {dep_info['pyproject']} -> {pkg['pypi_name']}>={new_version}")
-        print(f"  {pkg['release_notes']} -> release notes updated")
+    if not releases:
+        print("No packages selected for release (all set to 'skip').")
         return
 
-    # 1. Update primary pyproject.toml version
-    print("Updating version...")
-    update_pyproject_version(pyproject_path, new_version)
-    modified_files = [pkg["pyproject"]]
+    # Print summary
+    print("Packages to release:")
+    for rel in releases:
+        print(f"  - {rel['name']}: {rel['bump']}")
+    print()
 
-    # 2. Sync dependents
-    print("Syncing dependents...")
-    modified_files.extend(sync_dependents(repo_root, pkg["pypi_name"], new_version))
+    # Set of package keys being released (for filtering dependent updates)
+    releasing_packages: set[str] = {rel["name"] for rel in releases}
 
-    # 3. Update release notes
-    print("Updating release notes...")
-    release_notes_path = repo_root / pkg["release_notes"]
-    update_release_notes(release_notes_path, pkg["notes_display"], new_version)
-    modified_files.append(pkg["release_notes"])
+    modified_files: list[str] = []
+    version_updates: list[tuple[str, str, str]] = []  # (name, old, new)
+
+    # Process each package
+    for rel in releases:
+        pkg_name = rel["name"]
+        bump_type = rel["bump"]
+        pyproject_path = repo_root / rel["pyproject"]
+
+        current_version = read_version(pyproject_path)
+        new_version = bump_version(current_version, bump_type)
+        version_updates.append((pkg_name, current_version, new_version))
+
+        print(f"Package:  {pkg_name}")
+        print(f"Current:  {current_version}")
+        print(f"Bump:     {bump_type}")
+        print(f"New:      {new_version}")
+        print()
+
+        if args.dry_run:
+            print(f"[dry-run] Would update {rel['pyproject']} -> version {new_version}")
+            for dep_key in DEPENDENTS.get(rel["pypi_name"], []):
+                if dep_key in releasing_packages:
+                    dep_info = PACKAGES[dep_key]
+                    print(f"[dry-run] Would update {dep_info['pyproject']} -> {rel['pypi_name']}>={new_version}")
+            print(f"[dry-run] Would update {rel['release_notes']}")
+            print()
+            continue
+
+        # 1. Update primary pyproject.toml version
+        print("Updating version...")
+        update_pyproject_version(pyproject_path, new_version)
+        if rel["pyproject"] not in modified_files:
+            modified_files.append(rel["pyproject"])
+
+        # 2. Sync dependents (only for packages being released)
+        print("Syncing dependents...")
+        for dep_file in sync_dependents(repo_root, rel["pypi_name"], new_version, releasing_packages):
+            if dep_file not in modified_files:
+                modified_files.append(dep_file)
+
+        # 3. Update release notes
+        print("Updating release notes...")
+        release_notes_path = repo_root / rel["release_notes"]
+        update_release_notes(release_notes_path, rel["notes_display"], new_version)
+        if rel["release_notes"] not in modified_files:
+            modified_files.append(rel["release_notes"])
+        print()
+
+    if args.dry_run:
+        return
 
     # 4. Output metadata for the workflow
-    branch_name = f"release/{args.package}-{new_version}"
-    pr_title = f"release: {args.package} {new_version}"
-    pr_body = (
-        f"## Release {args.package} {new_version}\n\n"
-        f"- Bump version: {current_version} -> {new_version}\n"
-        f"- Bump type: {args.bump}\n"
-    )
-    if len(modified_files) > 1:
+    # Build branch name and PR title from all released packages
+    pkg_versions = [f"{name}-{new}" for name, _, new in version_updates]
+    branch_name = "release/" + "_".join(pkg_versions)
+    pr_title = "release: " + ", ".join(f"{name} {new}" for name, _, new in version_updates)
+
+    # Build PR body
+    pr_body = "## Release\n\n"
+    for name, old, new in version_updates:
+        rel = next(r for r in releases if r["name"] == name)
+        pr_body += f"### {name}\n"
+        pr_body += f"- Version: {old} → {new}\n"
+        pr_body += f"- Bump type: {rel['bump']}\n\n"
+
+    if any(DEPENDENTS.get(rel["pypi_name"]) for rel in releases):
         pr_body += "- Updated internal dependency versions in dependent packages\n"
     pr_body += "- Updated release notes\n"
 
-    set_output("new_version", new_version)
     set_output("branch_name", branch_name)
     set_output("pr_title", pr_title)
     set_output("pr_body", pr_body)
     set_output("modified_files", " ".join(modified_files))
 
-    print()
     print(f"Done. Modified files: {', '.join(modified_files)}")
 
 
