@@ -98,7 +98,7 @@ for _pkg_key, _pkg_info in PACKAGES.items():
 
 def read_version(pyproject_path: Path) -> str:
     """Read the version string from a pyproject.toml file."""
-    with open(pyproject_path, "r") as f:
+    with open(pyproject_path) as f:
         data = tomlkit.load(f)
     return str(data["project"]["version"])  # type: ignore[index]
 
@@ -132,7 +132,7 @@ def bump_version(current: str, bump_type: str) -> str:
 
 def update_pyproject_version(pyproject_path: Path, new_version: str) -> None:
     """Update the version field in a pyproject.toml file."""
-    with open(pyproject_path, "r") as f:
+    with open(pyproject_path) as f:
         data = tomlkit.load(f)
     data["project"]["version"] = new_version  # type: ignore[index]
     with open(pyproject_path, "w") as f:
@@ -146,7 +146,7 @@ def update_dependency_version(
 
     Returns True if a change was made, False otherwise.
     """
-    with open(pyproject_path, "r") as f:
+    with open(pyproject_path) as f:
         data = tomlkit.load(f)
 
     dependencies = data["project"]["dependencies"]  # type: ignore[index]
@@ -272,7 +272,7 @@ def parse_args() -> argparse.Namespace:
         description="Release packages in the jaseci monorepo"
     )
     bump_choices = ["skip", "patch", "minor", "major"]
-    for pkg_name in PACKAGES.keys():
+    for pkg_name in PACKAGES:
         parser.add_argument(
             f"--{pkg_name}",
             choices=bump_choices,
@@ -298,11 +298,13 @@ def main() -> None:
         attr_name = pkg_name.replace("-", "_")
         bump_type = getattr(args, attr_name)
         if bump_type != "skip":
-            releases.append({
-                "name": pkg_name,
-                "bump": bump_type,
-                **pkg_info,
-            })
+            releases.append(
+                {
+                    "name": pkg_name,
+                    "bump": bump_type,
+                    **pkg_info,
+                }
+            )
 
     if not releases:
         print("No packages selected for release (all set to 'skip').")
@@ -341,7 +343,9 @@ def main() -> None:
             for dep_key in DEPENDENTS.get(rel["pypi_name"], []):
                 if dep_key in releasing_packages:
                     dep_info = PACKAGES[dep_key]
-                    print(f"[dry-run] Would update {dep_info['pyproject']} -> {rel['pypi_name']}>={new_version}")
+                    print(
+                        f"[dry-run] Would update {dep_info['pyproject']} -> {rel['pypi_name']}>={new_version}"
+                    )
             if rel["release_notes"]:
                 print(f"[dry-run] Would update {rel['release_notes']}")
             print()
@@ -355,7 +359,9 @@ def main() -> None:
 
         # 2. Sync dependents (only for packages being released)
         print("Syncing dependents...")
-        for dep_file in sync_dependents(repo_root, rel["pypi_name"], new_version, releasing_packages):
+        for dep_file in sync_dependents(
+            repo_root, rel["pypi_name"], new_version, releasing_packages
+        ):
             if dep_file not in modified_files:
                 modified_files.append(dep_file)
 
@@ -375,7 +381,9 @@ def main() -> None:
     # Build branch name and PR title from all released packages
     pkg_versions = [f"{name}-{new}" for name, _, new in version_updates]
     branch_name = "release/" + "_".join(pkg_versions)
-    pr_title = "release: " + ", ".join(f"{name} {new}" for name, _, new in version_updates)
+    pr_title = "release: " + ", ".join(
+        f"{name} {new}" for name, _, new in version_updates
+    )
 
     # Build PR body
     pr_body = "## Release\n\n"
