@@ -1002,16 +1002,27 @@ def test_vite_build_error_maps_to_source() -> None:
         compiled_dir.mkdir(parents=True)
 
         test_file = compiled_dir / "main.js"
+        bar_file = compiled_dir / "bar.js"
         test_file.write_text(
             "/* Source: /home/user/project/main.jac */\nimport { foo } from './bar';"
         )
+        bar_file.write_text(
+            "/* Source: /home/user/project/bar.jac */\nconst baz = 1;\nexport { baz };"
+        )
 
         bundler = ViteBundler(project_dir)
-        error_text = f'Could not resolve "./bar.js" from "{test_file}"'
-        transformed = bundler._map_error_paths_to_source(error_text)
 
+        resolution_error = f'Could not resolve "./bar.js" from "{test_file}"'
+        transformed = bundler._map_error_paths_to_source(resolution_error)
         assert "/home/user/project/main.jac" in transformed
         assert str(test_file) not in transformed
+
+        export_error = (
+            f"export 'foo' (imported as 'foo') was not found in \"{bar_file}\""
+        )
+        transformed = bundler._map_error_paths_to_source(export_error)
+        assert "/home/user/project/bar.jac" in transformed
+        assert str(bar_file) not in transformed
 
 
 def test_start_dev_with_client_does_initial_compilation() -> None:
