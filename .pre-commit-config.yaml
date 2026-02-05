@@ -1,3 +1,6 @@
+ci:
+  skip: [jac-format]
+
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
@@ -41,19 +44,6 @@ repos:
         exclude: (/fixtures/|lark_jac_parser\.py|lark_ts_parser\.py|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
-      - id: jac-format
-        name: jac-format
-        description: Format and lint-fix Jac files
-        entry: env PYTHONPATH=jac python3 -m jaclang format
-        language: python
-        types: [file]
-        args: [--lintfix]
-        files: \.jac$
-        require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
-        additional_dependencies: [llvmlite>=0.43.0]
-  - repo: local
-    hooks:
       - id: check-no-binary-files
         name: Check for binary files
         entry: Binary files are not allowed
@@ -88,3 +78,15 @@ repos:
         language: pygrep
         entry: '—'
         types: [markdown]
+
+      - id: jac-format
+        name: jac-format
+        description: Format and lint-fix Jac files
+        entry: env PYTHONPATH=jac python3 -m jaclang format
+        language: python
+        types: [file]
+        args: [--lintfix]
+        files: \.jac$
+        require_serial: true
+        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
+        additional_dependencies: [llvmlite>=0.43.0]
