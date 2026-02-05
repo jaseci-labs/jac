@@ -4,12 +4,17 @@ import from pathlib { Path }
 import from typing { Optional }
 import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
-"""Build web bundle using existing Vite pipeline."""
+"""Build web bundle using existing Vite pipeline.
+
+Args:
+    script_loading: Script loading strategy - 'module' (default, ES modules) or 'defer' (classic script for Tauri file://)
+"""
 impl WebTarget.build(
     self: WebTarget,
     entry_file: Path,
     project_dir: Path,
-    platform: Optional[str] = None
+    platform: Optional[str] = None,
+    script_loading: str = "module"
 ) -> Path {
     import os;
     import shutil;
@@ -56,17 +61,23 @@ impl WebTarget.build(
         bundle_path=bundle_path,
         bundler=bundler,
         loaded_mod=loaded_mod,
-        project_dir=project_dir
+        project_dir=project_dir,
+        script_loading=script_loading
     );
     return bundle_path;
 }
 
-"""Generate static index.html file for the built bundle."""
+"""Generate static index.html file for the built bundle.
+
+Args:
+    script_loading: 'module' for ES modules (web) or 'defer' for classic scripts (Tauri file://)
+"""
 def _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
-    project_dir: Path
+    project_dir: Path,
+    script_loading: str = "module"
 ) -> None {
     import html;
     import hashlib;
@@ -147,7 +158,7 @@ def _generate_index_html(
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
-    <script src="{bundle_filename}" defer></script>
+    <script src="{bundle_filename}" {"defer" if script_loading == "defer" else 'type="module"'}></script>
   </body>
 </html>''';
 
