@@ -7,7 +7,7 @@ The parser outputs unitree.py AST nodes directly, ensuring compatibility with
 the existing Jac compiler pipeline.
 
 Usage:
-    import from jaclang.parser { Parser, Lexer, parse }
+    import from jaclang.compiler.parser { Parser, Lexer, parse }
 
     source = '''
     obj Hello {

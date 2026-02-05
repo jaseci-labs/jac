@@ -115,7 +115,7 @@ def parse_with_lark(source: str, file_path: str) -> Module | None:
 def parse_with_rd(source: str, file_path: str) -> Module | None:
     """Parse source with the RD parser, returning a Module or None on error."""
     try:
-        from jaclang.parser.parser import parse
+        from jaclang.compiler.parser.parser import parse
 
         module, parse_errors, lex_errors = parse(source, file_path)
         if lex_errors or parse_errors:
