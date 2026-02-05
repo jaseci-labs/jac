@@ -1537,11 +1537,15 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt):
         new_kid: list[UniNode] = []
         if self.doc:
             new_kid.append(self.doc)
-        client_tok = self._source_context_token()
+        ctx_tok = self._source_context_token()
         if self.code_context == CodeContext.CLIENT and (
-            client_tok is not None or not self.in_client_context()
+            ctx_tok is not None or not self.in_client_context()
         ):
-            new_kid.append(client_tok if client_tok else self.gen_token(Tok.KW_CLIENT))
+            new_kid.append(ctx_tok if ctx_tok else self.gen_token(Tok.KW_CLIENT))
+        elif self.code_context == CodeContext.SERVER and (
+            ctx_tok is not None or self.in_client_context()
+        ):
+            new_kid.append(ctx_tok if ctx_tok else self.gen_token(Tok.KW_SERVER))
         if self.is_absorb:
             new_kid.append(self.gen_token(Tok.KW_INCLUDE))
         else:

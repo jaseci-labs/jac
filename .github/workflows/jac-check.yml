@@ -28,6 +28,15 @@ jobs:
           pip install -e ./jac-byllm
           pip install -e ./jac-super
 
+      - name: Run jac format (check formatting)
+        run: |
+          find . -name "*.jac" ! -path "*/fixtures/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --lintfix
+          if ! git diff --quiet; then
+            echo "::error::jac format found unformatted files. Run 'jac format . --lintfix' locally."
+            git diff --name-only
+            exit 1
+          fi
+
       - name: Run jac check (using .jacignore)
         run: |
           IGNORE_LIST=$(paste -sd, .jacignore)
