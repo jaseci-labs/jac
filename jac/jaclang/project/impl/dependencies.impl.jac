@@ -88,8 +88,6 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     }
 }
 
-"""Install all Python package dependencies in a single batch so pip can
-resolve compatible versions across interdependent packages."""
 impl DependencyInstaller.get_pip_package_specs(include_dev: bool = False) -> list[str] {
     specs: list[str] = [];
     for (name, version) in self.config.dependencies.items() {
@@ -106,8 +104,8 @@ impl DependencyInstaller.get_pip_package_specs(include_dev: bool = False) -> lis
 impl DependencyInstaller.get_git_package_specs -> list[str] {
     specs: list[str] = [];
     for (name, git_info) in self.config.git_dependencies.items() {
-        if isinstance(git_info, dict) and "url" in git_info {
-            git_url = git_info["url"];
+        if isinstance(git_info, dict) and "git" in git_info {
+            git_url = git_info.get("git", "");
             branch = git_info.get("branch", "");
             spec = self._make_git_spec(name, git_url, branch);
             specs.append(spec);
