@@ -160,9 +160,7 @@ class TestJacScaleUserManagerSSO:
             shutil.rmtree(self.test_dir)
 
     @staticmethod
-    def _get_response_body(
-        result: RedirectResponse | JSONResponse | TransportResponse,
-    ) -> str:
+    def _get_response_body(result: JSONResponse | TransportResponse) -> str:
         """Extract body content from JSONResponse or TransportResponse."""
         if isinstance(result, JSONResponse):
             return result.body.decode("utf-8")
@@ -327,9 +325,7 @@ class TestJacScaleUserManagerSSO:
                 mock_request, Platforms.GOOGLE.value, Operations.LOGIN.value
             )
 
-            assert isinstance(
-                result, (RedirectResponse, JSONResponse, TransportResponse)
-            )
+            assert isinstance(result, (JSONResponse, TransportResponse))
             body = self._get_response_body(result)
 
             assert "Login successful" in body
