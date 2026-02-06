@@ -630,18 +630,19 @@ def test_return_type(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_return_type.jac")
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
+    # foo() has no annotation: 2 errors for returning values without annotation.
+    # bar() -> int: 2 errors for type mismatches ("" and 1.1).
     assert len(program.errors_had) == 4
 
     expected_errors = [
         """
-        Cannot return <class int>, expected <class NoneType>
-        def foo() {
-            return 1;  # <-- Error
+        Return type annotation required when function returns a value
+            return 1;  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^
         """,
         """
-        Cannot return <class str>, expected <class NoneType>
-            return "";  # <-- Error
+        Return type annotation required when function returns a value
+            return "";  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^^
         """,
         """
@@ -1323,3 +1324,35 @@ def test_postinit_fields_not_required_in_constructor(
         f"Expected no type checking errors, but got {len(program.errors_had)}: "
         + "\n".join([err.pretty_print() for err in program.errors_had])
     )
+
+
+def test_impl_body_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test that type errors in impl bodies."""
+    program = JacProgram()
+    path = fixture_path("checker_impl_body.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expect 3 errors from the impl file (function, archetype method, enum)
+    assert len(program.errors_had) == 3, (
+        f"Expected 3 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+    _assert_error_pretty_found(
+        """x = "wrong";  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^""",
+        program.errors_had[0].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[0].loc.mod_path
+    _assert_error_pretty_found(
+        """result = "wrong";  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^^^^^^""",
+        program.errors_had[1].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[1].loc.mod_path
+    _assert_error_pretty_found(
+        """PENDING: int = "wrong",  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^^^^^^^^^^^""",
+        program.errors_had[2].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path

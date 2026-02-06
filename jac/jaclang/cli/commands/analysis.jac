@@ -206,3 +206,33 @@ def test(
     group="analysis"
 )
 def gen_parser -> int;
+
+"""Extract grammar from the Jac parser and print in EBNF or Lark format."""
+@registry.command(
+    name="grammar",
+    help="Extract and print the Jac grammar",
+    args=[
+        Arg.create(
+            "lark",
+            typ=bool,
+            default=False,
+            help="Output in Lark format instead of EBNF"
+        ),
+        Arg.create(
+            "output",
+            default="",
+            help="Write output to file instead of stdout",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        ("jac grammar", "Print EBNF grammar to stdout"),
+        ("jac grammar --lark", "Print Lark grammar to stdout"),
+        ("jac grammar -o jac.ebnf", "Write EBNF grammar to file"),
+        ("jac grammar --lark -o jac.lark", "Write Lark grammar to file"),
+
+    ],
+    group="analysis"
+)
+def grammar(lark: bool = False, output: str = "") -> int;

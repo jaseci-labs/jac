@@ -4,10 +4,17 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.9.16 (Unreleased)
 
+- **Native Compiler: Cross-Module Linking**: Native `.na.jac` modules can now import and call functions from other `.na.jac` modules. The compiler performs LLVM IR-level linking enabling modular native code organization with `import from module { func1, func2 }` syntax.
+- **LSP Debounced Type Checking**: The language server now waits for a brief pause in typing (300ms) before starting analysis, eliminating lag during rapid edits.
+- **`jac grammar` Command**: Added a `jac grammar` CLI command that extracts the Jac grammar directly from the recursive descent parser's AST and prints it in EBNF or Lark format. Use `jac grammar` for EBNF output, `jac grammar --lark` for Lark format, and `-o <file>` to write to a file. Powered by a new `GrammarExtractPass` compiler pass that analyzes `parse_*` method implementations to reconstruct grammar rules from token-consumption patterns and control-flow structures.
+- **Type Checker Improvements**: Fixed several systemic issues in the type checker: `UnionType` operands are now handled correctly in connection operations (`++>`, `-->`) and instance conversion; the `_get_enclosing_class` helper no longer silently crashes due to a variable name bug; unannotated functions no longer produce false return-type errors; and a new rule requires return type annotations on top-level functions that return a value (bare `return` and `return None` remain annotation-free).
+- **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+
 ## jaclang 0.9.15 (Latest Release)
 
+- **Fix: Type Errors in Impl Files Now Show Correct Location**: Type errors in `.impl.jac` files now point to the actual error location instead of the declaration in the main file.
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
-- **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+- **`jac add` Dependency Resolution**: `jac add` now installs all Python dependencies in a single batch, allowing `pip` to resolve compatible versions across interdependent packages and preventing runtime errors caused by version mismatches.
 - **Self-Hosted Recursive Descent Parser**: Added a hand-written recursive descent parser and lexer implemented entirely in Jac (`jac/jaclang/compiler/parser/`). The parser is designed for native compilation with no runtime reflection - grammar rules are encoded directly in AST type definitions. Features include a 28-level expression precedence chain matching the Lark grammar, contextual lexing for f-strings and JSX, and comprehensive pattern matching support. This lays the groundwork for a fully self-hosted Jac compiler.
 - **LSP Responsiveness During Rapid Typing**: Improved editor responsiveness when typing quickly by properly cancelling outdated type-check operations.
 - **Native Compiler: Dictionaries and Sets**: The native backend now supports `dict` and `set` types with full codegen for literals, `len()`, key/value access, subscript assignment, `in` membership testing, `set.add()`, and iteration over dict keys. Both integer and string keyed dictionaries are supported. Global-scope dict and set declarations are also handled. Validated with a comprehensive `dicts_sets.na.jac` test suite.
@@ -20,6 +27,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: File I/O**: The `open()` builtin now compiles to native code, returning a `File` struct backed by C `fopen`. File methods `read()`, `write()`, `readline()`, `close()`, and `flush()` are all supported. NULL handle checks are generated for failed opens.
 - **Native Compiler: Context Managers**: `with` statements compile to native LLVM IR. `__enter__` is called on entry, `__exit__` on exit (including when exceptions occur). The `as` binding form (`with open(path) as f`) is supported. File objects implement the context manager protocol for automatic resource cleanup.
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
+- **Native Compiler: Python↔Native Interop**: Added cross-boundary function call support between Python (`sv`) and native (`na`) codespaces within the same module. Native functions can now call Python functions via LLVM extern declarations backed by ctypes callbacks, and Python code can call native functions via auto-generated ctypes stubs.
 - **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
 
 ## jaclang 0.9.14

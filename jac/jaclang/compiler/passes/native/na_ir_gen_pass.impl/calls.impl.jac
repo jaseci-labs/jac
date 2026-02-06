@@ -341,6 +341,44 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     func = self.func_symtab.get(func_name);
     if func is None {
+        # Check interop manifest for cross-boundary functions callable from native
+        manifest = self.ir_in.gen.interop_manifest;
+        binding = manifest.bindings.get(func_name);
+        if binding is not None {
+            if binding.source_context.value == "server" {
+                # Declare extern function for this Python function (sv↔na)
+                param_ir_types: list = [];
+                for pt in binding.param_types {
+                    param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                }
+                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                func = self._get_or_declare_extern(
+                    func_name, ret_ir_type, param_ir_types
+                );
+            } elif binding.source_context.value == "native"
+            and binding.source_module is not None {
+                # Declare extern function for imported native function (na↔na)
+                # The symbol will be resolved at link time by NativeCompilePass
+                param_ir_types: list = [];
+                if binding.param_types {
+                    for pt in binding.param_types {
+                        param_ir_types.append(self.type_map.get(pt, ir.IntType(64)));
+                    }
+                } else {
+                    # Infer parameter types from call arguments
+                    params = node.params or [];
+                    for param in params {
+                        param_ir_types.append(ir.IntType(64));  # Default to i64
+                    }
+                }
+                ret_ir_type = self.type_map.get(binding.ret_type, ir.IntType(64));
+                func = self._get_or_declare_extern(
+                    func_name, ret_ir_type, param_ir_types
+                );
+            }
+        }
+    }
+    if func is None {
         return None;
     }
     # Build arguments

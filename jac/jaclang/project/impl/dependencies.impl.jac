@@ -88,75 +88,83 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     }
 }
 
-impl DependencyInstaller.install_all(include_dev: bool = False) -> bool {
-    self.ensure_venv();
-    all_success = True;
+impl DependencyInstaller.get_pip_package_specs(include_dev: bool = False) -> list[str] {
+    specs: list[str] = [];
     for (name, version) in self.config.dependencies.items() {
-        if not self.install_package(name, version) {
-            all_success = False;
-        }
+        specs.append(self._make_pip_spec(name, version));
     }
     if include_dev {
         for (name, version) in self.config.dev_dependencies.items() {
-            if not self.install_package(name, version) {
-                all_success = False;
-            }
+            specs.append(self._make_pip_spec(name, version));
         }
     }
+    return specs;
+}
+
+impl DependencyInstaller.get_git_package_specs -> list[str] {
+    specs: list[str] = [];
     for (name, git_info) in self.config.git_dependencies.items() {
-        if isinstance(git_info, dict) {
+        if isinstance(git_info, dict) and "git" in git_info {
             git_url = git_info.get("git", "");
             branch = git_info.get("branch", "");
-            if not self.install_git_package(name, git_url, branch) {
-                all_success = False;
-            }
+            spec = self._make_git_spec(name, git_url, branch);
+            specs.append(spec);
         }
     }
-    return all_success;
+    return specs;
 }
 
-impl DependencyInstaller.install_package(name: str, version: str = "") -> bool {
-    import sys;
-    self.ensure_venv();
-    if version {
-        if version.startswith(("=", ">", "<", "~", "!")) {
-            spec = f"{name}{version}";
-        } else {
-            spec = f"{name}=={version}";
-        }
-    } else {
-        spec = name;
+"""Create pip spec from package name and version."""
+impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
+    if not version {
+        return name;
     }
-    console.print(f"Installing {spec}...");
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
-    if returncode == 0 {
-        console.print(f"  {name} installed successfully");
-        return True;
-    } else {
-        console.error(f"  Failed to install {name}: {stderr}");
-        return False;
+    if version.startswith(("=", ">", "<", "~", "!")) {
+        return f"{name}{version}";
     }
+    return f"{name}=={version}";
 }
 
-impl DependencyInstaller.install_git_package(
+impl DependencyInstaller._make_git_spec(
     name: str, git_url: str, branch: str = ""
-) -> bool {
-    import sys;
-    self.ensure_venv();
+) -> str {
     if branch {
-        spec = f"git+{git_url}@{branch}";
-    } else {
-        spec = f"git+{git_url}";
+        return f"git+{git_url}@{branch}";
     }
-    console.print(f"Installing {name} from git...");
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade", spec]);
-    if returncode == 0 {
-        console.print(f"  {name} installed successfully from git");
+    return f"git+{git_url}";
+}
+
+"""Install packages given a list of pip specs."""
+impl DependencyInstaller.install_package(specs: list[str]) -> bool {
+    if not specs {
         return True;
-    } else {
-        console.error(f"  Failed to install {name} from git: {stderr}");
-        return False;
     }
+    self.ensure_venv();
+    import re;
+    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
+    if returncode == 0 {
+        # Parse and display what was actually installed
+        if "Successfully installed" in stdout {
+            console.print("✔ Installation complete:", style="success");
+            # Extract installed packages from pip output
+            installed = re.search(r"Successfully installed (.+)", stdout);
+            if installed {
+                packages = installed.group(1).split();
+                for pkg in packages {
+                    console.print(f"  ✓ {pkg}", style="dim");
+                }
+            }
+        } else {
+            console.print(
+                f"✔ Successfully installed {len(specs)} package(s)", style="success"
+            );
+        }
+        return True;
+    }
+    # Batch failed - show error and suggest checking for conflicts
+    console.error(f"✗ Batch installation failed: {stderr}");
+    console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
+    return False;
 }
 
 impl DependencyInstaller.uninstall_package(name: str) -> bool {

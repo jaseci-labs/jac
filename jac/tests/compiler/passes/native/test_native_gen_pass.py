@@ -1058,6 +1058,240 @@ class TestNativeRuntimeErrors:
         assert f() == 1
 
 
+class TestNativePyInterop:
+    """Verify cross-boundary calls between native (na) and Python code.
+
+    Fixture call chain:
+      with entry {}  (Python)
+        → call_native(x)          (Python — calls into na block)
+          → native_add_one_to_doubled(x)  (native — calls back to Python)
+            → py_double(x)         (Python — returns x * 2)
+          returns py_double(x) + 1
+        returns the native result
+      prints result
+    """
+
+    def test_interop_module_compiles(self):
+        """Module with na block, Python functions, and entry compiles."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        errors = [str(e) for e in prog.errors_had] if prog.errors_had else []
+        assert not prog.errors_had, f"Compilation errors: {errors}"
+
+    def test_native_function_exists_in_engine(self):
+        """Native function from na block is available in the JIT engine."""
+        engine, _ = compile_native("na_py_interop.jac")
+        addr = engine.get_function_address("native_add_one_to_doubled")
+        assert addr != 0, "native_add_one_to_doubled not found in JIT engine"
+
+    def test_py_function_not_defined_in_native_ir(self):
+        """py_double should be declared (external) but NOT defined in LLVM IR."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        assert ir.gen.llvm_ir is not None, "No LLVM IR generated"
+        llvm_ir_str = str(ir.gen.llvm_ir)
+        # Must not have a define (body) for py_double — it lives in Python
+        assert 'define i64 @"py_double"' not in llvm_ir_str
+        # Should have an external declare so the native code can call it
+        assert 'declare i64 @"py_double"' in llvm_ir_str
+
+    def test_py_functions_in_python_codegen(self):
+        """py_double and call_native should appear in Python codegen output."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        py_src = ir.gen.py
+        assert "py_double" in py_src
+        assert "call_native" in py_src
+
+    def test_native_function_has_stub_in_python(self):
+        """Native function should have a ctypes stub in Python codegen output.
+
+        The native function body (py_double(x) + 1) should NOT appear,
+        but a ctypes bridge stub should be generated for Python → native calls.
+        """
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        py_src = ir.gen.py
+        # Stub for the native function should exist
+        assert "native_add_one_to_doubled" in py_src
+        # The native function body should NOT appear as executable code in Python
+        # (it may appear in the module docstring, but not as a return statement)
+        assert "return py_double(x) + 1" not in py_src
+        # Should reference ctypes for the bridge
+        assert "CFUNCTYPE" in py_src
+        assert "get_function_address" in py_src
+
+    def test_interop_manifest_built(self):
+        """InteropAnalysisPass should detect cross-boundary calls."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        manifest = ir.gen.interop_manifest
+        assert manifest is not None
+        # py_double: defined in SERVER, called from NATIVE
+        assert "py_double" in manifest.bindings
+        b = manifest.bindings["py_double"]
+        assert b.source_context.value == "server"
+        # native_add_one_to_doubled: defined in NATIVE, called from SERVER
+        assert "native_add_one_to_doubled" in manifest.bindings
+        b2 = manifest.bindings["native_add_one_to_doubled"]
+        assert b2.source_context.value == "native"
+
+    def test_native_calls_python_function(self):
+        """Native→Python: native_add_one_to_doubled calls py_double.
+
+        native_add_one_to_doubled(x) calls py_double(x) then adds 1.
+        py_double(5) = 10, so native_add_one_to_doubled(5) = 11.
+        """
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        engine = ir.gen.native_engine
+        assert engine is not None
+        # Register the Python function in the interop callback table
+        py_func_table = ir.gen.interop_py_funcs
+        py_func_table["py_double"] = lambda x: x * 2
+        # Now call the native function
+        f = get_func(
+            engine,
+            "native_add_one_to_doubled",
+            ctypes.c_int64,
+            ctypes.c_int64,
+        )
+        assert f(5) == 11  # py_double(5) = 10, + 1 = 11
+        assert f(0) == 1  # py_double(0) = 0,  + 1 = 1
+        assert f(-3) == -5  # py_double(-3) = -6, + 1 = -5
+
+    def test_full_entry_chain(self):
+        """Full chain: entry (Py) → call_native (Py) → native (na) → py_double (Py).
+
+        Runs the module and verifies the printed output is 11.
+        call_native(5) → native_add_one_to_doubled(5) → py_double(5)=10 → +1 → 11.
+        """
+        import contextlib
+        import io
+
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
+        assert not prog.errors_had
+        # Execute the compiled module with interop context injected
+        py_code = compile(ir.gen.py, str(FIXTURES / "na_py_interop.jac"), "exec")
+        namespace = {
+            "__jac_native_engine__": ir.gen.native_engine,
+            "__jac_interop_py_funcs__": ir.gen.interop_py_funcs,
+        }
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            exec(py_code, namespace)  # noqa: S102
+        output = buf.getvalue().strip()
+        assert output == "11"
+
+
+class TestNativeMultiModuleInterop:
+    """Test NATIVE↔NATIVE cross-module imports and linking.
+
+    These tests verify that .na.jac modules can import and call functions
+    from other .na.jac modules, requiring LLVM module linking.
+
+    NOTE: Some of these tests may fail until full NATIVE↔NATIVE
+    linking is implemented.
+    """
+
+    def test_na_module_compiles(self):
+        """A standalone .na.jac module compiles to LLVM IR."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_math_utils.na.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        assert ir.gen.llvm_ir is not None, "No LLVM IR generated"
+        llvm_ir_str = str(ir.gen.llvm_ir)
+        assert "triple" in llvm_ir_str
+        assert "square" in llvm_ir_str
+
+    def test_module_level_na_import(self):
+        """Module-level import of .na.jac file is recognized."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        # Should compile without errors
+        assert ir is not None
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        # triple should be in manifest as a cross-module import
+        manifest = ir.gen.interop_manifest
+        assert "triple" in manifest.bindings
+        assert manifest.bindings["triple"].source_module == "na_math_utils.na"
+
+    def test_na_scoped_import(self):
+        """Import inside na {} block is recognized."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        # The na-scoped import should be tracked in manifest
+        manifest = ir.gen.interop_manifest
+        # add_ten should be recognized as a NATIVE→NATIVE binding
+        assert "add_ten" in manifest.bindings
+        assert manifest.bindings["add_ten"].source_module == "na_transformers.na"
+
+    def test_native_module_linking(self):
+        """Functions from imported .na.jac modules are callable."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        engine = ir.gen.native_engine
+        assert engine is not None, "No native engine created"
+        # Imported native functions should be resolvable
+        triple_addr = engine.get_function_address("triple")
+        assert triple_addr != 0, "triple not linked into engine"
+
+    def test_full_multi_module_chain(self):
+        """Full call chain with multi-module native imports works.
+
+        call_native(5) = triple(5) + native_compute(5)
+                       = 15 + add_ten(py_double(5))
+                       = 15 + add_ten(10)
+                       = 15 + 20
+                       = 35
+        """
+        import contextlib
+        import io
+
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        assert ir.gen.native_engine is not None, "No native engine created"
+
+        py_code = compile(ir.gen.py, str(FIXTURES / "na_py_interop_multi.jac"), "exec")
+        namespace = {
+            "__jac_native_engine__": ir.gen.native_engine,
+            "__jac_interop_py_funcs__": getattr(ir.gen, "interop_py_funcs", {}),
+        }
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            exec(py_code, namespace)  # noqa: S102
+        output = buf.getvalue().strip()
+        assert output == "35"
+
+
 class TestNativeLLVMIR:
     """Verify LLVM IR output structure."""
 

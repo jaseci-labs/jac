@@ -234,9 +234,12 @@ impl ClientBundleBuilder._compile_to_js(source_path: Path) -> tuple[str, Module]
         mod = program.mod.hub[source_key];
         return ((mod.gen.js or ''), mod);
     }
+    # Save current error count so we only check for NEW errors from this compile.
+    prev_error_count = len(program.errors_had);
     mod = program.compile(source_key);
-    if program.errors_had {
-        formatted = '\n'.join(str(err) for err in program.errors_had);
+    new_errors = program.errors_had[prev_error_count:];
+    if new_errors {
+        formatted = '\n'.join(str(err) for err in new_errors);
         raise ClientBundleError(
             f"Failed to compile '{source_path}' for client bundle:{formatted}"
         ) ;
