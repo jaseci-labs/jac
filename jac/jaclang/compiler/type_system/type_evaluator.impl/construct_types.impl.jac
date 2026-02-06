@@ -67,10 +67,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         return_type = self._convert_to_instance(
             self.get_type_of_expression(node_.signature.return_type)
         );
-    } else {
-        if self.prefetch and self.prefetch.none_type_class {
-            return_type = self._convert_to_instance(self.prefetch.none_type_class);
-        }
     }
     # Define helper function for parameter conversion.
     def _get_param_category(param: uni.ParamVar) -> types.ParameterCategory {
