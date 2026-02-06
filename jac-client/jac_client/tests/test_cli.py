@@ -1054,7 +1054,7 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-                
+
             assert found_watchdog_install, (
                 f"Expected watchdog auto-install in output, but got: {output}"
             )
