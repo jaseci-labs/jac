@@ -7,11 +7,14 @@ for native/Python interop.
 from __future__ import annotations
 
 import ctypes
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jaclang.pycore.codeinfo import InteropManifest
+
+logger = logging.getLogger(__name__)
 
 # Map Jac type names to ctypes types
 JAC_TO_CTYPES: dict[str, type] = {
@@ -58,10 +61,21 @@ def register_py_callbacks(
         def _make_callback(
             func_name: str, table: dict[str, Callable[..., object]]
         ) -> Callable[..., object]:
+            # Track whether we've already warned about this function
+            warned = [False]
+
             def callback(*args: object) -> object:
                 fn = table.get(func_name)
                 if fn is not None:
                     return fn(*args)
+                # Log warning once per function to avoid spam
+                if not warned[0]:
+                    logger.warning(
+                        f"Native code called Python function '{func_name}' but it's not "
+                        f"registered. Returning 0. Ensure Python code defining '{func_name}' "
+                        f"executes before native code calls it."
+                    )
+                    warned[0] = True
                 return 0
 
             return callback
