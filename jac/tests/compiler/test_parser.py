@@ -506,8 +506,8 @@ walker MyWalker {
     ability = abilities[0]
     assert isinstance(ability, uni.Ability)
     assert ability.name_ref is not None
-    # Check that py_resolve_name generates a name
-    resolved_name = ability.py_resolve_name()
+    # Check that resolve_sym_name generates a name
+    resolved_name = ability.resolve_sym_name()
     assert resolved_name.startswith("__ability_entry_")
     assert resolved_name.endswith("__")
 
@@ -529,7 +529,7 @@ walker MyWalker {
     abilities = [stmt for stmt in walker.body if type(stmt).__name__ == "Ability"]
     ability = abilities[0]
     assert isinstance(ability, uni.Ability)
-    resolved_name = ability.py_resolve_name()
+    resolved_name = ability.resolve_sym_name()
     assert resolved_name.startswith("__ability_exit_")
 
     # Test 3: Named ability still works
@@ -551,7 +551,7 @@ walker MyWalker {
     ability = abilities[0]
     assert isinstance(ability, uni.Ability)
     assert ability.name_ref is not None
-    assert ability.py_resolve_name() == "my_ability"
+    assert ability.resolve_sym_name() == "my_ability"
 
     # Test 4: Multiple anonymous abilities generate unique names
     source = """
@@ -578,8 +578,8 @@ walker MyWalker {
     ability1 = abilities[1]
     assert isinstance(ability0, uni.Ability)
     assert isinstance(ability1, uni.Ability)
-    name1 = ability0.py_resolve_name()
-    name2 = ability1.py_resolve_name()
+    name1 = ability0.resolve_sym_name()
+    name2 = ability1.resolve_sym_name()
     # Names should be different due to different locations
     assert name1 != name2
 

@@ -29,9 +29,6 @@ from jaclang.pycore.constant import (
     SymbolType,
 )
 from jaclang.pycore.constant import (
-    Constants as Con,
-)
-from jaclang.pycore.constant import (
     JacSemTokenModifier as SemTokMod,
 )
 from jaclang.pycore.constant import (
@@ -2186,7 +2183,7 @@ class Ability(
 
         AstSymbolNode.__init__(
             self,
-            sym_name=self.py_resolve_name(),
+            sym_name=self.resolve_sym_name(),
             name_spec=name_spec_for_init,
             sym_category=SymbolType.ABILITY,
         )
@@ -2248,7 +2245,8 @@ class Ability(
                 mx += 1
         return mn, mx
 
-    def py_resolve_name(self) -> str:
+    def resolve_sym_name(self) -> str:
+        """Resolve the symbol name for this ability."""
         if self.name_ref is None:
             # Generate anonymous name based on event type and location
             event_type = (
@@ -2260,10 +2258,8 @@ class Ability(
             return (
                 f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__"
             )
-        elif isinstance(self.name_ref, Name):
+        elif isinstance(self.name_ref, (Name, SpecialVarRef)):
             return self.name_ref.value
-        elif isinstance(self.name_ref, SpecialVarRef):
-            return self.name_ref.py_resolve_name()
         else:
             raise NotImplementedError
 
@@ -5315,7 +5311,7 @@ class SpecialVarRef(Name):
             self,
             orig_src=var.orig_src,
             name=var.name,
-            value=self.py_resolve_name(),  # TODO: This shouldnt be necessary
+            value=var.value,
             line=var.line_no,
             end_line=var.end_line,
             col_start=var.c_start,
@@ -5326,30 +5322,10 @@ class SpecialVarRef(Name):
         NameAtom.__init__(self, is_enum_stmt=is_enum_stmt)
         AstSymbolNode.__init__(
             self,
-            sym_name=self.py_resolve_name(),
+            sym_name=var.value,
             name_spec=self,
             sym_category=SymbolType.VAR,
         )
-
-    def py_resolve_name(self) -> str:
-        if self.orig.name == Tok.KW_SELF:
-            return "self"
-        if self.orig.name == Tok.KW_PROPS:
-            return "props"
-        elif self.orig.name == Tok.KW_SUPER:
-            return "super"
-        elif self.orig.name == Tok.KW_ROOT:
-            return Con.ROOT.value
-        elif self.orig.name == Tok.KW_HERE:
-            return Con.HERE.value
-        elif self.orig.name == Tok.KW_VISITOR:
-            return Con.VISITOR.value
-        elif self.orig.name == Tok.KW_INIT:
-            return "__init__"
-        elif self.orig.name == Tok.KW_POST_INIT:
-            return "__post_init__"
-        else:
-            raise NotImplementedError("ICE: Special var reference not implemented")
 
 
 class Literal(Token, AtomExpr):

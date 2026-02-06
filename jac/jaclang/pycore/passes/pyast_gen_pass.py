@@ -269,6 +269,14 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
         self._temp_name_counter += 1
         return f"__jac_{prefix}_{self._temp_name_counter}"
 
+    def _jac_to_py_name(self, name: str) -> str:
+        """Convert Jac special names to Python equivalents."""
+        jac_to_py_map = {
+            "init": "__init__",
+            "postinit": "__post_init__",
+        }
+        return jac_to_py_map.get(name, name)
+
     def _function_expr_from_def(
         self,
         func_def: ast3.FunctionDef | ast3.AsyncFunctionDef,
@@ -1084,13 +1092,15 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             caller = self.sync(
                 ast3.Attribute(
                     value=owner,
-                    attr=node.name_ref.sym_name,
+                    attr=self._jac_to_py_name(node.name_ref.sym_name),
                     ctx=ast3.Load(),
                 ),
                 jac_node=node.method_owner,
             )
         else:
-            caller = self.sync(ast3.Name(node.name_ref.sym_name, ctx=ast3.Load()))
+            caller = self.sync(
+                ast3.Name(self._jac_to_py_name(node.name_ref.sym_name), ctx=ast3.Load())
+            )
 
         # Codegen for arguments of the function.
         #
@@ -1235,7 +1245,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
         func_def = self.sync(
             func_type(
-                name=node.name_ref.sym_name,
+                name=self._jac_to_py_name(node.resolve_sym_name()),
                 args=(
                     cast(ast3.arguments, node.signature.gen.py_ast[0])
                     if node.signature
@@ -2834,7 +2844,7 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                     self.sync(
                         ast3.Attribute(
                             value=cast(ast3.expr, node.target.gen.py_ast[0]),
-                            attr=node.right.sym_name,
+                            attr=self._jac_to_py_name(node.right.sym_name),
                             ctx=cast(ast3.expr_context, node.right.py_ctx_func()),
                         )
                     )
@@ -3121,7 +3131,11 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
         else:
             node.gen.py_ast = [
-                self.sync(ast3.Name(id=node.sym_name, ctx=node.py_ctx_func()))
+                self.sync(
+                    ast3.Name(
+                        id=self._jac_to_py_name(node.sym_name), ctx=node.py_ctx_func()
+                    )
+                )
             ]
 
     def exit_edge_ref_trailer(self, node: uni.EdgeRefTrailer) -> None:

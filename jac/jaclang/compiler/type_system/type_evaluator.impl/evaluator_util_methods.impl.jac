@@ -30,9 +30,9 @@ impl TypeEvaluator._create_dataclass_init_method(
             );
         }
     }
-    # Create and return the __init__ method type.
+    # Create and return the init method type.
     return types.FunctionType(
-        func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
+        func_name="init", return_type=types.UnknownType(), parameters=parameters,
     );
 }
 

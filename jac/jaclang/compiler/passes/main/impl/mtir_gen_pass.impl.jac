@@ -290,7 +290,7 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
 
 """Extract comprehensive information from an Ability node."""
 impl MTIRGenPass._extract_function_info(node: uni.Ability) -> FunctionInfo {
-    function_name = node.py_resolve_name();
+    function_name = node.resolve_sym_name();
     parameters: list[ParamInfo] = [];
     if node.signature and isinstance(node.signature, uni.FuncSignature) {
         all_params = node.signature.get_parameters();

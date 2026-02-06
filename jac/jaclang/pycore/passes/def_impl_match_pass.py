@@ -105,7 +105,7 @@ class DeclImplMatchPass(Transform[uni.Module, uni.Module]):
                 continue
             elif isinstance(decl_node, uni.Ability) and decl_node.is_abstract:
                 self.log_warning(
-                    f"Abstract ability {decl_node.py_resolve_name()} should not have a definition.",
+                    f"Abstract ability {decl_node.resolve_sym_name()} should not have a definition.",
                     decl_node,
                 )
                 continue
