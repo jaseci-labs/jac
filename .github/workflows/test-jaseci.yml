@@ -31,7 +31,7 @@ jobs:
         pip install watchdog
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto
+      run: pytest jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
@@ -71,7 +71,7 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      run: pytest -x jac-client -n auto
+      run: pytest jac-client -n auto
 
   test-packages-and-docs:
     runs-on: ubuntu-latest
@@ -99,10 +99,10 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-byllm
+      run: pytest jac-byllm
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_validate_md_files.py
+      run: pytest -q docs/tests/test_validate_md_files.py
 
   test-scale:
     runs-on: ubuntu-latest
@@ -134,19 +134,19 @@ jobs:
 
     - name: Run Backend tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.py
+        pytest -vv -s jac-scale/jac_scale/tests/test_serve.py
 
     - name: Run Memory Hierarchy tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.py
+        pytest -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.py
 
     - name: Run jac-client examples
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.py
+        pytest jac-scale/jac_scale/tests/test_examples.py
 
     - name: Run SSO tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.py
+        pytest jac-scale/jac_scale/tests/test_sso.py
 
   test-scale-k8s:
     runs-on: ubuntu-latest
