@@ -11,6 +11,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Type Checker Improvements**: Fixed several systemic issues in the type checker: `UnionType` operands are now handled correctly in connection operations (`++>`, `-->`) and instance conversion; the `_get_enclosing_class` helper no longer silently crashes due to a variable name bug; unannotated functions no longer produce false return-type errors; and a new rule requires return type annotations on top-level functions that return a value (bare `return` and `return None` remain annotation-free).
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 - **Auto-install watchdog for `--dev` mode**: `jac start --dev` automatically installs `watchdog` if missing, eliminating the manual `jac install --dev` step.
+- **1 Small Refactors**
 
 ## jaclang 0.9.15 (Latest Release)
 
