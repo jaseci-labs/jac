@@ -226,30 +226,32 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     or isinstance(ability_node.name_ref, uni.SpecialVarRef) {
         return;
     }
-    new_tok: Tok | None = None;
-    if ability_node.name_ref.value == "__init__" {
-        new_tok = Tok.KW_INIT;
-    } elif ability_node.name_ref.value == "__post_init__" {
-        new_tok = Tok.KW_POST_INIT;
+    # Python dunder → Jac keyword mapping (mirrors _jac_to_py_name in pyast_gen_pass)
+    py_to_jac_map: dict[str, tuple[Tok, str]] = {
+        "__init__": (Tok.KW_INIT, "init"),
+        "__post_init__": (Tok.KW_POST_INIT, "postinit"),
+
+    };
+    if ability_node.name_ref.value not in py_to_jac_map {
+        return;
     }
-    if new_tok is not None {
-        init_name = ability_node.name_ref.value;
-        self.log_error(
-            f"'{init_name}' should use Jac keyword [init-to-can]",
-            node_override=ability_node
-        );
-        old_ref = ability_node.name_ref;
-        old_ref.name = new_tok.value;
-        old_ref.value = new_tok.value;
-        special_ref = uni.SpecialVarRef(var=old_ref);
-        special_ref.parent = ability_node;
-        ability_node.name_ref = special_ref;
-        ability_node.name_spec = special_ref;
-        for (idx, kid) in enumerate(ability_node.kid) {
-            if kid is old_ref {
-                ability_node.kid[idx] = special_ref;
-                break;
-            }
+    (new_tok, new_value) = py_to_jac_map[ability_node.name_ref.value];
+    init_name = ability_node.name_ref.value;
+    self.log_error(
+        f"'{init_name}' should use Jac keyword [init-to-can]",
+        node_override=ability_node
+    );
+    old_ref = ability_node.name_ref;
+    old_ref.name = new_tok;
+    old_ref.value = new_value;
+    special_ref = uni.SpecialVarRef(var=old_ref);
+    special_ref.parent = ability_node;
+    ability_node.name_ref = special_ref;
+    ability_node.name_spec = special_ref;
+    for (idx, kid) in enumerate(ability_node.kid) {
+        if kid is old_ref {
+            ability_node.kid[idx] = special_ref;
+            break;
         }
     }
 }
