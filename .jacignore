@@ -25,6 +25,7 @@ __init__.jac
 abc_check.jac
 ability_has.jac
 access_mod_check.jac
+actions.jac
 advanced_language_features.jac
 app.cl.jac
 app.jac
@@ -87,6 +88,7 @@ circle_template.jac
 class_separate_impl.impl.jac
 cli.impl.jac
 cli.jac
+client.cl.jac
 client.impl.jac
 client_bundle.impl.jac
 client_fullstack_app.jac
@@ -109,6 +111,7 @@ core_language_features.jac
 corelib_fmt.jac
 custom_access_validation.jac
 data_spatial_types.jac
+decorator_stack.jac
 deep_import.jac
 deep_import_interp.jac
 deep_import_mods.jac
@@ -117,6 +120,7 @@ dep_registry.impl.jac
 dependencies.impl.jac
 desktop_target.impl.jac
 doc_ir.impl.jac
+doc_ir_gen_pass.impl.jac
 ds_entry_exit.jac
 dynamic_archetype.jac
 enemy.impl.jac
@@ -140,6 +144,7 @@ funccall_genexpr.jac
 game.impl.jac
 game_obj.jac
 grammar_checker.jac
+grammar_extract_pass.impl.jac
 guess_game2.jac
 guess_game3.jac
 guess_game6.jac
@@ -150,6 +155,7 @@ hyphenated_imports.jac
 iife_functions.jac
 iife_functions_client.jac
 image_types.jac
+impl_grab.impl.jac
 import_all.jac
 import_sym_test.jac
 import_symbol_type_infer.jac
@@ -184,13 +190,16 @@ method_tool.jac
 model.impl.jac
 mtir.impl.jac
 mtir.jac
+mtir_gen_pass.impl.jac
 multiple_syntax_errors.jac
 multistatement_lambda.jac
 multistatement_lambda_client.jac
 na_compile_pass.impl.jac
 nested.jac
 nested_class_sig.jac
+nested_impls.jac
 new_keyword_errors.jac
+one.jac
 other_root_access.jac
 package_installer.impl.jac
 param_syntax_err.jac
@@ -208,6 +217,7 @@ registry.impl.jac
 rename.jac
 route_scanner.impl.jac
 runtime_errors.na.jac
+safe_call_operator.jac
 schema.impl.jac
 sem_def_match_pass.impl.jac
 sem_manager.impl.jac
@@ -256,4 +266,3 @@ watcher.impl.jac
 web_target.impl.jac
 with_context.jac
 with_llm_method.jac
-grammar_extract_pass.impl.jac
