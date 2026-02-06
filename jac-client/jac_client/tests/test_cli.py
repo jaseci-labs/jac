@@ -1029,12 +1029,12 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
             found_watchdog_install = False
             found_compilation = False
             while time.time() - start_time < 30:  # 30 seconds timeout
-                if process.poll() is not None:
-                    break
                 if process.stdout is None:
                     break
                 line = process.stdout.readline()
                 if not line:
+                    if process.poll() is not None:
+                        break
                     time.sleep(0.1)
                     continue
                 output += line
@@ -1054,7 +1054,6 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-
             assert found_watchdog_install, (
                 f"Expected watchdog auto-install in output, but got: {output}"
             )
