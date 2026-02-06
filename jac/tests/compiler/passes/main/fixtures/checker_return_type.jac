@@ -1,11 +1,11 @@
 def foo() {
-    return 1;  # <-- Error
+    return 1;  # <-- Error (no return annotation, but returning a value)
 
 
     return;  # <-- Ok
 
 
-    return "";  # <-- Error
+    return "";  # <-- Error (no return annotation, but returning a value)
 
 
     return None;  # <-- Ok

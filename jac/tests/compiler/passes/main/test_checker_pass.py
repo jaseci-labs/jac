@@ -630,18 +630,19 @@ def test_return_type(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_return_type.jac")
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
+    # foo() has no annotation: 2 errors for returning values without annotation.
+    # bar() -> int: 2 errors for type mismatches ("" and 1.1).
     assert len(program.errors_had) == 4
 
     expected_errors = [
         """
-        Cannot return <class int>, expected <class NoneType>
-        def foo() {
-            return 1;  # <-- Error
+        Return type annotation required when function returns a value
+            return 1;  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^
         """,
         """
-        Cannot return <class str>, expected <class NoneType>
-            return "";  # <-- Error
+        Return type annotation required when function returns a value
+            return "";  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^^
         """,
         """
