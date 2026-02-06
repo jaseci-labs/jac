@@ -8,6 +8,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **LSP Debounced Type Checking**: The language server now waits for a brief pause in typing (300ms) before starting analysis, eliminating lag during rapid edits.
 - **`jac grammar` Command**: Added a `jac grammar` CLI command that extracts the Jac grammar directly from the recursive descent parser's AST and prints it in EBNF or Lark format. Use `jac grammar` for EBNF output, `jac grammar --lark` for Lark format, and `-o <file>` to write to a file. Powered by a new `GrammarExtractPass` compiler pass that analyzes `parse_*` method implementations to reconstruct grammar rules from token-consumption patterns and control-flow structures.
 - **Type Checker Improvements**: Fixed several systemic issues in the type checker: `UnionType` operands are now handled correctly in connection operations (`++>`, `-->`) and instance conversion; the `_get_enclosing_class` helper no longer silently crashes due to a variable name bug; unannotated functions no longer produce false return-type errors; and a new rule requires return type annotations on top-level functions that return a value (bare `return` and `return None` remain annotation-free).
+- **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 - **Auto-install watchdog for `--dev` mode**: `jac start --dev` automatically installs `watchdog` if missing, eliminating the manual `jac install --dev` step.
 
 ## jaclang 0.9.15 (Latest Release)

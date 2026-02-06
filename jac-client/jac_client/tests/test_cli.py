@@ -1062,3 +1062,74 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
             )
         finally:
             os.chdir(original_cwd)
+
+
+def test_vite_config_generation() -> None:
+    """Test that create_vite_config(build/dev)  generate correct files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create a basic jac.toml for the project
+            toml_content = """
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[plugins.client.vite.build]
+minify = "esbuild"
+"""
+            config_path = os.path.join(temp_dir, "jac.toml")
+            with open(config_path, "w") as f:
+                f.write(toml_content)
+
+            # Import ViteBundler
+            from pathlib import Path
+
+            from jac_client.plugin.src.vite_bundler import ViteBundler
+
+            # Initialize bundler
+            bundler = ViteBundler(Path(temp_dir))
+
+            # Create a mock entry file
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js"
+            entry_file.parent.mkdir(parents=True, exist_ok=True)
+            entry_file.write_text("// Mock entry file")
+
+            # Test create_vite_config (build config)
+            build_config_path = bundler.create_vite_config(entry_file)
+            assert build_config_path.exists()
+            assert build_config_path.name == "vite.config.js"
+
+            # Read and validate build config content
+            build_config_content = build_config_path.read_text()
+            assert "globalThis.__JAC_API_BASE_URL__" in build_config_content
+            assert "jacSourceMapper()" in build_config_content  # Build-specific plugin
+            assert "tailwindcss()" in build_config_content  # Tailwind plugin
+            assert "@tailwindcss/vite" in build_config_content  # Tailwind import
+
+            # Test create_vite_config (dev config)
+            dev_config_path = bundler.create_vite_config(
+                entry_file, is_dev=True, api_port=8001
+            )
+            assert dev_config_path.exists()
+            assert dev_config_path.name == "vite.dev.config.js"
+
+            # Read and validate dev config content
+            dev_config_content = dev_config_path.read_text()
+            assert "globalThis.__JAC_API_BASE_URL__" in dev_config_content
+            assert '"http://localhost:8001"' in dev_config_content  # API port
+            assert "/walker" in dev_config_content  # Walker endpoint proxy
+            assert "tailwindcss()" in dev_config_content  # Tailwind plugin
+            assert "@tailwindcss/vite" in dev_config_content  # Tailwind import
+
+            # Verify configs are different (dev vs build)
+            assert build_config_content != dev_config_content
+            assert (
+                "sourcemap: true" in build_config_content
+            )  # Both should have sourcemaps
+            assert "sourcemap: true" in dev_config_content
+
+        finally:
+            os.chdir(original_cwd)
