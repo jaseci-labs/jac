@@ -2,7 +2,6 @@ AuthForm.cl.jac
 Button.cl.jac
 Card.jac
 CategoryFilter.jac
-Checked 628 '.jac
 ControlBar.cl.jac
 GraphViewer.cl.jac
 Header.cl.jac
@@ -27,6 +26,7 @@ ability_has.jac
 access_mod_check.jac
 actions.jac
 advanced_language_features.jac
+analysis.impl.jac
 app.cl.jac
 app.jac
 asset_processor.impl.jac
@@ -37,8 +37,10 @@ basellm.impl.jac
 budget_planner_ui.cl.jac
 builtin.impl.jac
 builtin_printgraph.jac
+builtins.impl.jac
 button.jac
 by_expr.jac
+calls.impl.jac
 category2_default_imports.jac
 category4_namespace_imports.jac
 cfg_build_pass.impl.jac
@@ -106,6 +108,7 @@ config.impl.jac
 config_loader.impl.jac
 console.impl.jac
 context.impl.jac
+context_mgr.impl.jac
 core.impl.jac
 core_language_features.jac
 corelib_fmt.jac
@@ -119,6 +122,7 @@ defn_decl_mismatch.jac
 dep_registry.impl.jac
 dependencies.impl.jac
 desktop_target.impl.jac
+dicts.impl.jac
 doc_ir.impl.jac
 doc_ir_gen_pass.impl.jac
 ds_entry_exit.jac
@@ -130,15 +134,18 @@ err2.jac
 es_unparse.impl.jac
 esast_gen_pass.impl.jac
 essay_review.jac
+evaluator_util_methods.impl.jac
 example.jac
 execution.impl.jac
 expert_answer.jac
+expr.impl.jac
 fam.jac
 fantasy_trading_game.jac
 formatters.jac
 frontend.cl.jac
 frontend.impl.jac
 fstrings.jac
+func.impl.jac
 func.jac
 funccall_genexpr.jac
 game.impl.jac
@@ -165,6 +172,7 @@ imports.jac
 index.cl.jac
 infer_type_assignment.jac
 init_conversion.jac
+jac_auto_lint_pass.impl.jac
 jac_formatter_pass.impl.jac
 jaccomplete.impl.jac
 jaccomplete.jac
@@ -178,6 +186,7 @@ level.impl.jac
 level_genarator.jac
 level_manager.jac
 line_spacing.jac
+lists.impl.jac
 llm_params.jac
 main.impl.jac
 main.jac
@@ -186,6 +195,8 @@ media.impl.jac
 member_access_type_inferred.jac
 member_access_type_resolve.jac
 memory.impl.jac
+memory_hierarchy.mongo.impl.jac
+memory_hierarchy.redis.impl.jac
 method_tool.jac
 model.impl.jac
 mtir.impl.jac
@@ -199,10 +210,12 @@ nested.jac
 nested_class_sig.jac
 nested_impls.jac
 new_keyword_errors.jac
+objects.impl.jac
 one.jac
 other_root_access.jac
 package_installer.impl.jac
 param_syntax_err.jac
+parameter_type_check.impl.jac
 parser.impl.jac
 pass_keyword_errors.jac
 player.impl.jac
@@ -228,6 +241,7 @@ sig_mismatch.jac
 simple.jac
 sprites.jac
 start_screen.impl.jac
+stmt.impl.jac
 storage_factory.jac
 streaming_with_react.jac
 stub_hover.impl.jac
@@ -249,7 +263,9 @@ tool_function.jac
 tool_method.jac
 tools.impl.jac
 tools.jac
+tuples.impl.jac
 type_annotation_assignment.jac
+type_evaluator.impl.jac
 type_info.jac
 types.impl.jac
 uninitialized_hasvars.jac
