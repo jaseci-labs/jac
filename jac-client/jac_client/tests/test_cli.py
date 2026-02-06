@@ -1023,7 +1023,9 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
             output = ""
             found_watchdog = False
             found_compilation = False
-            while time.time() - start_time < 50:  # 60 seconds timeout for install + compile
+            while (
+                time.time() - start_time < 50
+            ):  # 60 seconds timeout for install + compile
                 if process.stdout is None:
                     break
                 line = process.stdout.readline()
