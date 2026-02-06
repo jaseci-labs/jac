@@ -13,29 +13,56 @@ impl JacLangServer.postinit -> None {
     JacProgram.init(self);
     self._state_lock = threading.RLock();
     self.module_manager = ModuleManager(self, self.sem_managers);
+    # Initialize idle event as set (server starts idle)
+    self._idle_event = threading.Event();
+    self._idle_event.set();
     # Worker for type checking using flow.
     self.worker_future = flow self.dispatcher() ;
     logging.getLogger().setLevel(logging.CRITICAL);
 }
 
+"""Debounced type check - waits for typing to pause before starting analysis."""
 impl JacLangServer.type_check(file_uri: str) -> None {
-    if self.last_task and not self.last_task.cancel_token.is_set() {
-        self.last_task.cancel_token.set();
-        self.debug(
-            " Cancelling id: " + str(self.last_task.task_id) + " " + str(time.time())
-        );
-    }
-    self.last_task = Task(file_uri);
-    # Remove all the previous tasks.
-    while True {
-        try {
-            self.queue.get_nowait();
-            self.queue.task_done();
-        } except Empty {
-            break;
+    DEBOUNCE_DELAY = 0.3;  # 300ms debounce delay
+    with self._state_lock {
+        # Cancel any pending debounce timer
+        if self._debounce_timer {
+            self._debounce_timer.cancel();
+            self._debounce_timer = None;
         }
+        # Cancel any running task
+        if self.last_task and not self.last_task.cancel_token.is_set() {
+            self.last_task.cancel_token.set();
+            if file_uri != self.last_task.file_uri {
+                self.dirty_files[self.last_task.file_uri] = True;
+            }
+            self.debug(
+                " Cancelling id: " + str(self.last_task.task_id) + " " + str(
+                    time.time()
+                )
+            );
+        }
+        # Store for _flush_debounce and start timer with file_uri as argument
+        self._debounce_timer = threading.Timer(
+            DEBOUNCE_DELAY, self._do_type_check, args=[file_uri]
+        );
+        self._debounce_timer.start();
     }
-    self.queue.put(self.last_task);
+}
+
+"""Actually queue the type check task after debounce delay."""
+impl JacLangServer._do_type_check(file_uri: str) -> None {
+    with self._state_lock {
+        # Clear timer reference and pending file
+        self._debounce_timer = None;
+        # Clear idle event since we're about to add work
+        self._idle_event.clear();
+    }
+    self.debug("Debounce triggered, starting type check for " + file_uri);
+    self.last_task = Task(file_uri);
+    self.pipe.append(self.last_task);
+    # Trigger the worker to pick up the new task.
+    self._work_event.set();
 }
 
 """Rebuild a file and its dependencies (typecheck)."""
@@ -100,12 +127,27 @@ impl JacLangServer.type_check_file(
 impl JacLangServer.dispatcher -> None {
     while True {
         start_time = time.time();
-        task: Task | None = self.queue.get();
-
-        if task is None {
-            self.queue.task_done();
-            self.debug("Task was None, exiting dispatcher.");
+        self.debug(
+            "Dispatcher waiting for work..." + str(start_time) + str(
+                self.dirty_files.keys()
+            )
+        );
+        # Wait until there's a task to process or shutdown is called.
+        self._work_event.wait();
+        if self._shutdown_called {
+            self.debug("Shutting down dispatcher");
             break;
+        } elif self.pipe {
+            task = self.pipe.popleft();
+        } elif self.dirty_files {
+            # Get the most recent dirty file and create a NEW task for it
+            (file_uri, _) = self.dirty_files.popitem();
+            task = Task(file_uri);
+        } else {
+            # No tasks to process, signal idle and wait for the next one.
+            self._work_event.clear();
+            self._idle_event.set();
+            continue;
         }
 
         self.debug("Dispatching task id: " + str(task.task_id));
@@ -113,15 +155,25 @@ impl JacLangServer.dispatcher -> None {
             self.type_check_file(task.file_uri, cancel_token=task.cancel_token);
             self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
         } finally {
-            self.queue.task_done();
+        # self.queue.task_done();
         }
         if task.cancel_token.is_set() {
             self.debug(
                 "Task cancled id: " + str(task.task_id) + " " + str(time.time())
             );
         } else {
+            # Mark task as done so type_check won't try to "cancel" it later
+            task.cancel_token.set();
             elapsed = time.time() - start_time;
-            self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
+            self.debug(
+                f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s {str(
+                    task.file_uri
+                )}"
+            );
+        }
+        # Check if there's more work, otherwise signal idle
+        if not self.pipe and not self.dirty_files {
+            self._idle_event.set();
         }
     }
 }
@@ -133,8 +185,15 @@ impl JacLangServer.shutdown -> None {
     }
     self._shutdown_called = True;
     try {
+        # Cancel any pending debounce timer
+        with self._state_lock {
+            if self._debounce_timer {
+                self._debounce_timer.cancel();
+                self._debounce_timer = None;
+            }
+        }
         if self?.worker_future and not self?.worker_future.done() {
-            self.queue.put(None);  # Signal the worker to exit
+            self._work_event.set();  # Wake up the worker to let it exit gracefully.
             wait self.worker_future ;  # Wait for the worker to finish
         }
     } finally {
@@ -458,17 +517,20 @@ impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
     return None;
 }
 
-impl JacLangServer.wait_till_idle -> None {
-    self.debug("Waiting for queue to empty...");
-    await asyncio.to_thread(self.queue.join);
-    self.debug("Queue is now empty");
-}
-
 """Synchronous version of wait_till_idle for testing."""
-impl JacLangServer.wait_till_idle_sync -> None {
-    self.debug("Waiting for queue to empty (sync)...");
-    self.queue.join();
-    self.debug("Queue is now empty");
+impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
+    self.debug("Waiting for server to be idle (sync)...");
+    # First, flush any pending debounce timer
+    with self._state_lock {
+        if self._debounce_timer {
+            self._debounce_timer.cancel();
+            self._debounce_timer = None;
+        }
+    }
+    self._do_type_check(file_uri);
+    # Wait for dispatcher to become idle
+    self._idle_event.wait();
+    self.debug("Server is now idle");
 }
 
 """Return completion for a file."""

@@ -496,7 +496,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
         entry_file = client_dir / 'build' / 'main.js';
 
         # Create the config even if entry doesn't exist yet
-        bundler.create_dev_vite_config(entry_file, api_port);
+        bundler.create_vite_config(entry_file, is_dev=True, api_port=api_port);
 
         # Ensure package.json exists
         if not (client_dir / 'configs' / 'package.json').exists() {

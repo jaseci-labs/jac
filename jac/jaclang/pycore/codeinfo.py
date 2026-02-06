@@ -43,6 +43,26 @@ class InteropContext(Enum):
 
 
 @dataclass
+class NativeFunctionInfo:
+    """Metadata for an exported native function."""
+
+    name: str
+    ret_type: str = "int"
+    param_types: list[str] = field(default_factory=list)
+    param_names: list[str] = field(default_factory=list)
+
+
+@dataclass
+class NativeModuleInfo:
+    """Metadata for a compiled .na.jac module."""
+
+    mod_path: str
+    llvm_module: Any = None  # llvmlite Module (before JIT)
+    native_engine: Any = None  # MCJIT engine (after JIT)
+    exported_functions: dict[str, NativeFunctionInfo] = field(default_factory=dict)
+
+
+@dataclass
 class InteropBinding:
     """A function callable across codespace boundaries.
 
@@ -58,6 +78,7 @@ class InteropBinding:
     param_names: list[str] = field(default_factory=list)
     ast_node: Any = None  # Reference to the Ability AST node
     route: list[InteropContext] = field(default_factory=list)
+    source_module: str | None = None  # Path to source module (for cross-module imports)
 
     @property
     def is_direct(self) -> bool:
@@ -69,6 +90,11 @@ class InteropBinding:
         """True if the bridge requires multiple hops (e.g. cl→sv→na)."""
         return len(self.route) > 2
 
+    @property
+    def is_cross_module(self) -> bool:
+        """True if the function is imported from another module."""
+        return self.source_module is not None
+
 
 @dataclass
 class InteropManifest:
@@ -78,6 +104,7 @@ class InteropManifest:
     """
 
     bindings: dict[str, InteropBinding] = field(default_factory=dict)
+    native_module_imports: dict[str, NativeModuleInfo] = field(default_factory=dict)
 
     @property
     def native_imports(self) -> list[InteropBinding]:
@@ -97,6 +124,17 @@ class InteropManifest:
             for b in self.bindings.values()
             if b.source_context == InteropContext.NATIVE
             and InteropContext.SERVER in b.callers
+        ]
+
+    @property
+    def native_cross_module_imports(self) -> list[InteropBinding]:
+        """Native functions imported from other .na.jac modules."""
+        return [
+            b
+            for b in self.bindings.values()
+            if b.source_context == InteropContext.NATIVE
+            and InteropContext.NATIVE in b.callers
+            and b.source_module is not None
         ]
 
     @property
@@ -138,6 +176,8 @@ class CodeGenTarget:
         self.llvm_ir: Any = None
         self.native_engine: Any = None
         self.interop_manifest: InteropManifest = InteropManifest()
+        self.interop_py_funcs: dict[str, Any] = {}  # Python funcs for native callbacks
+        self._interop_callbacks: list[Any] = []  # Prevent callback garbage collection
 
     @property
     def doc_ir(self) -> Doc:

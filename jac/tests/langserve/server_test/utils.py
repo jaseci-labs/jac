@@ -107,7 +107,7 @@ class LanguageServerTestHelper:
             )
         )
         asyncio.run(did_open(self.ls, params))
-        self.ls.wait_till_idle_sync()
+        self.ls.wait_till_idle_sync(self.test_file.uri)
 
     def save_document(self, code: str | None = None) -> None:
         """Save a document in the language server."""
@@ -125,7 +125,7 @@ class LanguageServerTestHelper:
             text_document=TextDocumentIdentifier(uri=self.test_file.uri), text=content
         )
         asyncio.run(did_save(self.ls, params))
-        self.ls.wait_till_idle_sync()
+        self.ls.wait_till_idle_sync(self.test_file.uri)
 
     def change_document(self, code: str) -> None:
         """Change document content in the language server."""
@@ -141,7 +141,7 @@ class LanguageServerTestHelper:
             content_changes=[{"text": code}],  # type: ignore
         )
         asyncio.run(did_change(self.ls, params))
-        self.ls.wait_till_idle_sync()
+        self.ls.wait_till_idle_sync(self.test_file.uri)
 
     def _update_workspace(self, code: str, version: int) -> None:
         """Update workspace with new document content."""

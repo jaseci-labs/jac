@@ -156,12 +156,16 @@ class DiskBytecodeCache(BytecodeCache):
         source:  /project/src/main.jac
         cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
                  ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
-                 ~/.cache/jac/cache/main.a1b2c3d4.cpython-312.mtir.pkl
+                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.mtir.pkl
+                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.llvmir  (native modules)
+                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.interop.pkl  (native interop)
     """
 
     EXTENSION: Final[str] = ".jbc"
     MINIMAL_SUFFIX: Final[str] = ".minimal"
     MTIR_EXTENSION: Final[str] = ".mtir.pkl"
+    LLVMIR_EXTENSION: Final[str] = ".llvmir"
+    INTEROP_EXTENSION: Final[str] = ".interop.pkl"
 
     def __init__(self, config: JacConfig | None = None) -> None:
         """Initialize the cache with optional config."""
@@ -300,6 +304,92 @@ class DiskBytecodeCache(BytecodeCache):
             mtir_cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(mtir_cache_path, "wb") as f:
                 pickle.dump(mtir_map, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except (OSError, pickle.PickleError):
+            pass  # Silently ignore write failures
+
+    # ─── LLVM IR Caching (for native modules) ────────────────────────
+
+    def _get_llvmir_cache_path(self, key: CacheKey) -> Path:
+        """Generate the LLVM IR cache file path for a given key."""
+        source = Path(key.source_path).resolve()
+        cache_dir = self._get_cache_dir()
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+        major, minor = key.python_version
+        py_version = f"cpython-{major}{minor}"
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.LLVMIR_EXTENSION}"
+        return cache_dir / cache_name
+
+    def _get_interop_cache_path(self, key: CacheKey) -> Path:
+        """Generate the interop manifest cache file path for a given key."""
+        source = Path(key.source_path).resolve()
+        cache_dir = self._get_cache_dir()
+        path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8]
+        major, minor = key.python_version
+        py_version = f"cpython-{major}{minor}"
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.INTEROP_EXTENSION}"
+        return cache_dir / cache_name
+
+    def get_llvmir(self, key: CacheKey) -> str | None:
+        """Retrieve cached LLVM IR string if valid.
+
+        Returns:
+            The LLVM IR string, or None if not cached/invalid.
+        """
+        llvmir_cache_path = self._get_llvmir_cache_path(key)
+
+        if not self._is_valid(key, llvmir_cache_path):
+            return None
+
+        try:
+            return llvmir_cache_path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+
+    def put_llvmir(self, key: CacheKey, llvm_ir: str) -> None:
+        """Store LLVM IR string in the cache.
+
+        Args:
+            key: Cache key identifying the source file
+            llvm_ir: The LLVM IR string to cache
+        """
+        llvmir_cache_path = self._get_llvmir_cache_path(key)
+
+        try:
+            llvmir_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            llvmir_cache_path.write_text(llvm_ir, encoding="utf-8")
+        except OSError:
+            pass  # Silently ignore write failures
+
+    def get_interop(self, key: CacheKey) -> dict[str, Any] | None:
+        """Retrieve cached interop manifest data if valid.
+
+        Returns:
+            Dictionary with interop binding data, or None if not cached/invalid.
+        """
+        interop_cache_path = self._get_interop_cache_path(key)
+
+        if not self._is_valid(key, interop_cache_path):
+            return None
+
+        try:
+            with open(interop_cache_path, "rb") as f:
+                return pickle.load(f)
+        except (OSError, pickle.PickleError, EOFError):
+            return None
+
+    def put_interop(self, key: CacheKey, interop_data: dict[str, Any]) -> None:
+        """Store interop manifest data in the cache.
+
+        Args:
+            key: Cache key identifying the source file
+            interop_data: Dictionary with serializable interop binding data
+        """
+        interop_cache_path = self._get_interop_cache_path(key)
+
+        try:
+            interop_cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(interop_cache_path, "wb") as f:
+                pickle.dump(interop_data, f, protocol=pickle.HIGHEST_PROTOCOL)
         except (OSError, pickle.PickleError):
             pass  # Silently ignore write failures
 

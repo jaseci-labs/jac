@@ -5,6 +5,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.16 (Unreleased)
 
 - **Fix: Desktop Asset Loading** : Fixed an issue where images, fonts, and other static files weren't loading in desktop applications. Static assets now work correctly in both development and production modes.
+- **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+
+## jac-client 0.2.14 (Latest Release)
 
 ## jac-client 0.2.15 (Latest Release)
 

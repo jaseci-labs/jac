@@ -43,6 +43,28 @@ impl TypeCheckPass.exit_return_stmt(
         returning_type = self.evaluator.get_type_of_expression(<>node.expr);
     }
     if (fn := self.evaluator._get_enclosing_function(<>node)) {
+        # Check if return type annotation is missing.
+        has_annotation = (
+            isinstance(fn.signature, uni.FuncSignature)
+            and fn.signature.return_type is not None
+        );
+        # If returning a non-None value but no annotation, require one.
+        # `return None` and bare `return` don't need an annotation.
+        # Skip for nested/inline functions (lambdas, IIFEs, closures).
+        is_toplevel_fn = isinstance(
+            fn.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
+        );
+        if (
+            <>node.expr
+            and not has_annotation
+            and not isinstance(<>node.expr, uni.Null)
+            and is_toplevel_fn
+        ) {
+            self.log_error(
+                "Return type annotation required when function returns a value", <>node
+            );
+            return;
+        }
         fn_type = self.evaluator.get_type_of_ability(fn);
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
         if not self.evaluator.assign_type(returning_type, return_type) {

@@ -1199,6 +1199,99 @@ class TestNativePyInterop:
         assert output == "11"
 
 
+class TestNativeMultiModuleInterop:
+    """Test NATIVE↔NATIVE cross-module imports and linking.
+
+    These tests verify that .na.jac modules can import and call functions
+    from other .na.jac modules, requiring LLVM module linking.
+
+    NOTE: Some of these tests may fail until full NATIVE↔NATIVE
+    linking is implemented.
+    """
+
+    def test_na_module_compiles(self):
+        """A standalone .na.jac module compiles to LLVM IR."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_math_utils.na.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        assert ir.gen.llvm_ir is not None, "No LLVM IR generated"
+        llvm_ir_str = str(ir.gen.llvm_ir)
+        assert "triple" in llvm_ir_str
+        assert "square" in llvm_ir_str
+
+    def test_module_level_na_import(self):
+        """Module-level import of .na.jac file is recognized."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        # Should compile without errors
+        assert ir is not None
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        # triple should be in manifest as a cross-module import
+        manifest = ir.gen.interop_manifest
+        assert "triple" in manifest.bindings
+        assert manifest.bindings["triple"].source_module == "na_math_utils.na"
+
+    def test_na_scoped_import(self):
+        """Import inside na {} block is recognized."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        # The na-scoped import should be tracked in manifest
+        manifest = ir.gen.interop_manifest
+        # add_ten should be recognized as a NATIVE→NATIVE binding
+        assert "add_ten" in manifest.bindings
+        assert manifest.bindings["add_ten"].source_module == "na_transformers.na"
+
+    def test_native_module_linking(self):
+        """Functions from imported .na.jac modules are callable."""
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        engine = ir.gen.native_engine
+        assert engine is not None, "No native engine created"
+        # Imported native functions should be resolvable
+        triple_addr = engine.get_function_address("triple")
+        assert triple_addr != 0, "triple not linked into engine"
+
+    def test_full_multi_module_chain(self):
+        """Full call chain with multi-module native imports works.
+
+        call_native(5) = triple(5) + native_compute(5)
+                       = 15 + add_ten(py_double(5))
+                       = 15 + add_ten(10)
+                       = 15 + 20
+                       = 35
+        """
+        import contextlib
+        import io
+
+        from jaclang.pycore.program import JacProgram
+
+        prog = JacProgram()
+        ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
+        assert not prog.errors_had, f"Errors: {prog.errors_had}"
+        assert ir.gen.native_engine is not None, "No native engine created"
+
+        py_code = compile(ir.gen.py, str(FIXTURES / "na_py_interop_multi.jac"), "exec")
+        namespace = {
+            "__jac_native_engine__": ir.gen.native_engine,
+            "__jac_interop_py_funcs__": getattr(ir.gen, "interop_py_funcs", {}),
+        }
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            exec(py_code, namespace)  # noqa: S102
+        output = buf.getvalue().strip()
+        assert output == "35"
+
+
 class TestNativeLLVMIR:
     """Verify LLVM IR output structure."""
 
