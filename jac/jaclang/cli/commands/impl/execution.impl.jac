@@ -383,7 +383,8 @@ def _ensure_watchdog_installed -> bool {
             "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
         );
         installer = DependencyInstaller(config=config, verbose=False);
-        if installer.install_all(include_dev=True) {
+        specs = installer.get_pip_package_specs(include_dev=True);
+        if installer.install_package(specs) {
             console.success("  ✔ watchdog installed\n");
             return True;
         } else {
