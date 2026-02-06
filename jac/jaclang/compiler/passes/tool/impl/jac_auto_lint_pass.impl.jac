@@ -229,8 +229,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     # Python dunder → Jac keyword mapping (mirrors _jac_to_py_name in pyast_gen_pass)
     py_to_jac_map: dict[str, tuple[Tok, str]] = {
         "__init__": (Tok.KW_INIT, "init"),
-        "__post_init__": (Tok.KW_POST_INIT, "postinit"),
-
+        "__post_init__": (Tok.KW_POST_INIT, "postinit")
     };
     if ability_node.name_ref.value not in py_to_jac_map {
         return;
