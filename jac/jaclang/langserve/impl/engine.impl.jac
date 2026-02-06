@@ -162,6 +162,8 @@ impl JacLangServer.dispatcher -> None {
                 "Task cancled id: " + str(task.task_id) + " " + str(time.time())
             );
         } else {
+            # Mark task as done so type_check won't try to "cancel" it later
+            task.cancel_token.set();
             elapsed = time.time() - start_time;
             self.debug(
                 f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s {str(
