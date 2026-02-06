@@ -1081,6 +1081,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
 
         # Codegen for the caller of the LLM call.
         caller: ast3.expr
+        # Only convert to Python names for SpecialVarRef (init -> __init__)
+        caller_name = (
+            self._jac_to_py_name(node.name_ref.sym_name)
+            if isinstance(node.name_ref, uni.SpecialVarRef)
+            else node.name_ref.sym_name
+        )
         if node.method_owner:
             owner = self.sync(
                 ast3.Name(
@@ -1092,15 +1098,13 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             caller = self.sync(
                 ast3.Attribute(
                     value=owner,
-                    attr=self._jac_to_py_name(node.name_ref.sym_name),
+                    attr=caller_name,
                     ctx=ast3.Load(),
                 ),
                 jac_node=node.method_owner,
             )
         else:
-            caller = self.sync(
-                ast3.Name(self._jac_to_py_name(node.name_ref.sym_name), ctx=ast3.Load())
-            )
+            caller = self.sync(ast3.Name(caller_name, ctx=ast3.Load()))
 
         # Codegen for arguments of the function.
         #
@@ -2840,11 +2844,18 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             node.gen.py_ast = []
         if node.is_attr:
             if isinstance(node.right, uni.AstSymbolNode):
+                # Only convert Jac keywords to Python names for SpecialVarRef (e.g., super.init -> super().__init__)
+                # Regular attribute access should NOT be converted (e.g., node.init stays as node.init)
+                attr_name = (
+                    self._jac_to_py_name(node.right.sym_name)
+                    if isinstance(node.right, uni.SpecialVarRef)
+                    else node.right.sym_name
+                )
                 node.gen.py_ast = [
                     self.sync(
                         ast3.Attribute(
                             value=cast(ast3.expr, node.target.gen.py_ast[0]),
-                            attr=self._jac_to_py_name(node.right.sym_name),
+                            attr=attr_name,
                             ctx=cast(ast3.expr_context, node.right.py_ctx_func()),
                         )
                     )
