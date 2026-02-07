@@ -415,6 +415,14 @@ def test_python_sem_decorator() -> None:
     # Class-level semstring should appear in the response schema description
     assert "A customer record in the CRM system" in stdout_value
 
+    # inner_semstr field descriptions should appear in the response schema properties
+    assert "Full legal name of the customer" in stdout_value
+    assert "Service tier: basic, premium, or enterprise" in stdout_value
+
+    # inner_semstr param descriptions should appear in the user message for greet_customer
+    assert "The customer to greet" in stdout_value
+    assert "Whether to use formal tone" in stdout_value
+
 
 def test_python_sem_tool_description() -> None:
     """Test that @sem with inner_semstr flows into tool descriptions and parameter schemas."""

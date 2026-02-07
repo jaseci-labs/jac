@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from byllm.lib import MockLLM, by, sem
 
 
-@sem("A customer record in the CRM system")
+@sem(
+    "A customer record in the CRM system",
+    {"name": "Full legal name of the customer", "tier": "Service tier: basic, premium, or enterprise"},
+)
 @dataclass
 class Customer:
     name: str
@@ -41,7 +44,10 @@ def extract_customer(text: str) -> Customer: ...
 
 
 @by(llm_greet)
-@sem("Generate a personalized greeting based on the customer's tier and name")
+@sem(
+    "Generate a personalized greeting based on the customer's tier and name",
+    {"customer": "The customer to greet", "formal": "Whether to use formal tone"},
+)
 def greet_customer(customer: Customer, formal: bool) -> str: ...
 
 

@@ -59,21 +59,33 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             }
         }
     } else {
-        # Python library mode: use runtime introspection (old behavior)
+        # Python library mode: use runtime introspection with optional semstring fallback
         param_names = list(inspect.signature(caller).parameters.keys());
+        inner_semstr: dict[str, str] = getattr(caller, "_jac_semstr_inner", {}) or {};
         for (key, value) in args.items() {
             if isinstance(value, Media) {
-                # Use tuple format for consistency, but without semantic strings
-                media_inputs.append((value, ""));
+                sem_desc = inner_semstr.get(key, "") if isinstance(key, str) else "";
+                media_inputs.append((value, sem_desc));
                 continue;
             }
 
             if isinstance(key, str) {
-                inputs_detail.append(f"{key} = {value}");
+                sem_desc = inner_semstr.get(key, "");
+                if sem_desc {
+                    inputs_detail.append(f"{key} = {(value, sem_desc)}");
+                } else {
+                    inputs_detail.append(f"{key} = {value}");
+                }
             } else {
                 # TODO: Handle *args, **kwargs properly.
                 if key < len(param_names) {
-                    inputs_detail.append(f"{param_names[key]} = {value}");
+                    param_name = param_names[key];
+                    sem_desc = inner_semstr.get(param_name, "");
+                    if sem_desc {
+                        inputs_detail.append(f"{param_name} = {(value, sem_desc)}");
+                    } else {
+                        inputs_detail.append(f"{param_name} = {value}");
+                    }
                 } else {
                     inputs_detail.append(f"arg = {value}");
                 }
