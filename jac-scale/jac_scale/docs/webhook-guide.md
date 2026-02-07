@@ -44,12 +44,12 @@ export WEBHOOK_SECRET="your-secure-random-secret"
 
 ## 2. Creating Webhook Walkers
 
-To create a webhook endpoint, use the `@restspec(webhook=True)` decorator on your walker definition.
+To create a webhook endpoint, use the `@restspec(protocol=APIProtocol.WEBHOOK)` decorator on your walker definition.
 
 ### Basic Webhook Walker
 
 ```jac
-@restspec(webhook=True)
+@restspec(protocol=APIProtocol.WEBHOOK)
 walker PaymentReceived {
     has payment_id: str,
         amount: float,
@@ -72,7 +72,7 @@ This walker will be accessible at `POST /webhook/PaymentReceived`.
 ### Minimal Webhook Walker
 
 ```jac
-@restspec(webhook=True)
+@restspec(protocol=APIProtocol.WEBHOOK)
 walker WebhookHandler {
     can process with `root entry {
         report {"status": "received", "message": "Webhook processed"};

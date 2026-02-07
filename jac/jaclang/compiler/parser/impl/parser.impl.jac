@@ -5229,6 +5229,16 @@ impl Parser.parse_enum -> Enum {
         kid.append(access);
     }
     kid.append(name);
+    if base_classes {
+        kid.append(self.gen_token(Tok.LPAREN.value));
+        for (i, base) in enumerate(base_classes) {
+            kid.append(base);
+            if i < len(base_classes) - 1 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+        }
+        kid.append(self.gen_token(Tok.RPAREN.value));
+    }
     if has_body {
         kid.append(self.gen_token(Tok.LBRACE.value));
         kid.extend(body_kid);

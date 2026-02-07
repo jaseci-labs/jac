@@ -2,7 +2,14 @@
 import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
+import from enum { StrEnum }
 import from typing { TYPE_CHECKING, Any, ClassVar, override }
+
+enum APIProtocol ( StrEnum ) {
+    HTTP = 'http',
+    WEBHOOK = 'webhook',
+    WEBSOCKET = 'websocket'
+}
 
 with entry {
     if TYPE_CHECKING {
@@ -76,5 +83,6 @@ glob __all__ = [
          'ReadPerm',
          'ConnectPerm',
          'WritePerm',
-         'restspec'
+         'restspec',
+         'APIProtocol'
      ];
