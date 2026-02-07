@@ -198,6 +198,12 @@ _gap_files = [
         "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
         "tests/compiler/fixtures/rd_parser_gaps/lambda_star_params.jac",
         "tests/compiler/fixtures/rd_parser_gaps/yield_in_assignment.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_with.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_compr.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_for.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_event_clause.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_by_expr.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/fstring_nested_fmt.jac",
     ]
 ]
 

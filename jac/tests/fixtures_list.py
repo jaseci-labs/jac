@@ -463,6 +463,13 @@ RD_PARSER_GAP_FILES: list[str] = [
     "tests/compiler/fixtures/rd_parser_gaps/skip_stmt.jac",
     "tests/compiler/fixtures/rd_parser_gaps/typed_ctx_block.jac",
     "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/yield_in_assignment.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/async_with.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/async_compr.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/async_for.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/impl_event_clause.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/impl_by_expr.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/fstring_nested_fmt.jac",
 ]
 
 # Fixed list of Python files in the jaclang package for py2jac testing.
