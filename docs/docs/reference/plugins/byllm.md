@@ -430,6 +430,31 @@ def extract_person(text: str) -> Person:
     ...
 ```
 
+### Semantic Strings in Python
+
+The `sem` decorator is available directly from `byllm.lib`, allowing you to attach semantic metadata to Python classes and functions without a separate `jaclang` import:
+
+```python
+from byllm.lib import Model, by, sem
+from dataclasses import dataclass
+
+llm = Model(model_name="gpt-4o")
+
+@sem("A customer record in the CRM system", {"name": "Full legal name", "tier": "Service tier: basic, premium, or enterprise"})
+@dataclass
+class Customer:
+    name: str
+    tier: str
+
+@by(llm)
+@sem("Generate a personalized greeting based on the customer's tier and name")
+def greet_customer(customer: Customer) -> str:
+    ...
+```
+
+??? note "Decorator ordering: `@by` must come before `@sem`"
+    When combining `@by` and `@sem` on a function, `@by` must be the outermost (top) decorator and `@sem` must come after it (closer to the function). If `@sem` is placed before `@by`, the semantic metadata will be dropped because `@by` replaces the function, discarding the attributes set by `@sem`.
+
 ---
 
 ## Best Practices

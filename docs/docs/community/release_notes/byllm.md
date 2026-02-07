@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.18 (Unreleased)
 
+- **`sem` Decorator Re-exported from `byllm.lib`**: The `sem` semantic string decorator (from `jaclang`) is now directly available via `byllm.lib`. Python users can now `from byllm.lib import sem` (or `import from byllm.lib { sem }` in Jac) to attach semantic metadata to classes, functions, and attributes without a separate `jaclang` import.
+
 ## byllm 0.4.17 (Latest Release)
 
 - **Enum Semantic Strings in Schema**: Added support for extracting semantic strings from enum members at compile time. Enum member descriptions (e.g., `sem Personality.INTROVERT = "Person who is reserved..."`) are now included in LLM schemas, providing richer context for enum selection.
