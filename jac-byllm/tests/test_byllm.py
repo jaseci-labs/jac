@@ -360,7 +360,7 @@ def test_visit_by_for_routing(fixture_path: Callable[[str], str]) -> None:
     assert "Math Result: 35" in stdout_value
 
 
-def test_http_client_with_system_prompt_override(
+def test_http_client_with_pre_text_override(
     fixture_path: Callable[[str], str],
 ) -> None:
     """Test byLLM prompt override and direct HTTP model calling."""

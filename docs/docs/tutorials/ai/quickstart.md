@@ -221,11 +221,11 @@ with entry {
 
 ## Configuration via jac.toml
 
-Set a global system prompt for all LLM calls in `jac.toml`:
+Set a global pre-text for all LLM calls in `jac.toml`:
 
 ```toml
 [plugins.byllm]
-system_prompt = "You are a helpful assistant."
+pre_text = "You are a helpful assistant."
 ```
 
 This applies to all `by llm()` functions, providing consistent behavior without repeating prompts in code.

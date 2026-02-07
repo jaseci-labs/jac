@@ -93,10 +93,10 @@ class JacByllmPluginConfig {
                         }
                     }
                 },
-                "system_prompt": {
+                "pre_text": {
                     "type": "string",
                     "default": "",
-                    "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
+                    "description": "Override the default pre-text for LLM interactions. Leave empty to use built-in default."
                 }
             }
         };

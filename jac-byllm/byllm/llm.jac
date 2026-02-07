@@ -53,7 +53,7 @@ obj BaseLLM {
     has model_name: str,
         config: dict = {},
         api_key: str = "",
-        system_prompt: str = "",
+        pre_text: str = "",
         call_params: dict[(str, object)] = {};
 
     def __call__(**kwargs: object) -> BaseLLM;

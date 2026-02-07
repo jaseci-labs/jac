@@ -116,7 +116,7 @@ Configure byLLM behavior globally using `jac.toml`:
 
 ```toml
 [plugins.byllm]
-system_prompt = "You are a helpful assistant..."
+pre_text = "You are a helpful assistant..."
 
 [plugins.byllm.model]
 default_model = "gpt-4o-mini"

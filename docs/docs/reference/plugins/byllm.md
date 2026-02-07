@@ -33,7 +33,7 @@ glob llm = Model(model_name="gpt-4o");
 | `verbose` | bool | No | Enable debug logging |
 | `method` | str | No | Default method ("Reason" for step-by-step) |
 | `tools` | list | No | Default tool functions |
-| `system_prompt` | str | No | Default system prompt for all calls made with this model |
+| `pre_text` | str | No | Default pre-text for all calls made with this model |
 | `hyperparams` | dict | No | Model-specific parameters (temperature, max_tokens, etc.) |
 | `config` | dict | No | Advanced configuration (http_client, ca_bundle, api_base, etc.) |
 
@@ -53,12 +53,12 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
 
 ## Project Configuration
 
-### System Prompt Configuration
+### Pre-text Configuration
 
-System prompts can be configured at three levels. The priority order (highest to lowest) is:
+Pre-text can be configured at three levels. The priority order (highest to lowest) is:
 
-1. **Per-call** - passed via `by llm(system_prompt="...")` or `llm(system_prompt="...")`
-2. **Per-model** - set on the `Model` constructor via `system_prompt="..."`
+1. **Per-call** - passed via `by llm(pre_text="...")` or `llm(pre_text="...")`
+2. **Per-model** - set on the `Model` constructor via `pre_text="..."`
 3. **Project-wide** - configured in `jac.toml` under `[plugins.byllm]`
 4. **Default** - built-in `SYSTEM_PERSONA`
 
@@ -66,7 +66,7 @@ System prompts can be configured at three levels. The priority order (highest to
 
 ```toml
 [plugins.byllm]
-system_prompt = "You are a helpful assistant that provides concise answers."
+pre_text = "You are a helpful assistant that provides concise answers."
 ```
 
 This is automatically applied to all `by llm()` function calls, providing:
@@ -80,8 +80,8 @@ This is automatically applied to all `by llm()` function calls, providing:
 ```jac
 import from byllm.lib { Model }
 
-glob general_llm = Model(model_name="gpt-4o", system_prompt="You are a helpful assistant.");
-glob code_llm = Model(model_name="gpt-4o", system_prompt="You are an expert programmer. Return only code.");
+glob general_llm = Model(model_name="gpt-4o", pre_text="You are a helpful assistant.");
+glob code_llm = Model(model_name="gpt-4o", pre_text="You are an expert programmer. Return only code.");
 ```
 
 This allows different models to carry different personas without affecting other models or the project-wide setting.
@@ -91,11 +91,11 @@ This allows different models to carry different personas without affecting other
 ```jac
 import from byllm.lib { Model }
 
-glob llm = Model(model_name="gpt-4o", system_prompt="You are a helpful assistant.");
+glob llm = Model(model_name="gpt-4o", pre_text="You are a helpful assistant.");
 
-# This call overrides the model's system_prompt for this invocation only
+# This call overrides the model's pre_text for this invocation only
 def translate(text: str, language: str) -> str
-    by llm(system_prompt="You are a professional translator. Translate accurately and naturally.");
+    by llm(pre_text="You are a professional translator. Translate accurately and naturally.");
 ```
 
 ### HTTP Client for Custom Endpoints
