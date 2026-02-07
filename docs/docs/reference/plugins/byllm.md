@@ -33,6 +33,7 @@ glob llm = Model(model_name="gpt-4o");
 | `verbose` | bool | No | Enable debug logging |
 | `method` | str | No | Default method ("Reason" for step-by-step) |
 | `tools` | list | No | Default tool functions |
+| `system_prompt` | str | No | Default system prompt for all calls made with this model |
 | `hyperparams` | dict | No | Model-specific parameters (temperature, max_tokens, etc.) |
 | `config` | dict | No | Advanced configuration (http_client, ca_bundle, api_base, etc.) |
 
@@ -52,35 +53,49 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
 
 ## Project Configuration
 
-### System Prompt Override
+### System Prompt Configuration
 
-Override the default system prompt globally via `jac.toml`:
+System prompts can be configured at three levels. The priority order (highest to lowest) is:
+
+1. **Per-call** — passed via `by llm(system_prompt="...")` or `llm(system_prompt="...")`
+2. **Per-model** — set on the `Model` constructor via `system_prompt="..."`
+3. **Project-wide** — configured in `jac.toml` under `[plugins.byllm]`
+4. **Default** — built-in `SYSTEM_PERSONA`
+
+#### Project-wide via `jac.toml`
 
 ```toml
 [plugins.byllm]
 system_prompt = "You are a helpful assistant that provides concise answers."
 ```
 
-The system prompt is automatically applied to all `by llm()` function calls, providing:
+This is automatically applied to all `by llm()` function calls, providing:
 
 - Centralized control over LLM behavior across your project
 - Consistent personality without repeating prompts in code
 - Easy updates without touching source code
 
-**Example:**
+#### Per-model
 
 ```jac
 import from byllm.lib { Model }
 
-glob llm = Model(model_name="gpt-4o");
+glob general_llm = Model(model_name="gpt-4o", system_prompt="You are a helpful assistant.");
+glob code_llm = Model(model_name="gpt-4o", system_prompt="You are an expert programmer. Return only code.");
+```
 
-def greet(name: str) -> str by llm();
+This allows different models to carry different personas without affecting other models or the project-wide setting.
 
-with entry {
-    # Uses system prompt from jac.toml
-    result = greet("Alice");
-    print(result);
-}
+#### Per-call override
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o", system_prompt="You are a helpful assistant.");
+
+# This call overrides the model's system_prompt for this invocation only
+def translate(text: str, language: str) -> str
+    by llm(system_prompt="You are a professional translator. Translate accurately and naturally.");
 ```
 
 ### HTTP Client for Custom Endpoints
@@ -432,7 +447,7 @@ def extract_person(text: str) -> Person:
 
 ### Semantic Strings in Python
 
-The `sem` decorator is available directly from `byllm.lib`, allowing you to attach semantic metadata to Python classes and functions without a separate `jaclang` import:
+The `sem` decorator is available directly from `byllm.lib`, allowing you to attach semantic metadata to Python classes and functions without a separate `jaclang` import. The `inner_semstr` parameter (for field-level annotations) is optional — you can use `@sem("description")` when field-level detail is not needed.
 
 ```python
 from byllm.lib import Model, by, sem
@@ -440,12 +455,14 @@ from dataclasses import dataclass
 
 llm = Model(model_name="gpt-4o")
 
+# With field-level annotations (inner_semstr)
 @sem("A customer record in the CRM system", {"name": "Full legal name", "tier": "Service tier: basic, premium, or enterprise"})
 @dataclass
 class Customer:
     name: str
     tier: str
 
+# Without inner_semstr — only a top-level description
 @by(llm)
 @sem("Generate a personalized greeting based on the customer's tier and name")
 def greet_customer(customer: Customer) -> str:
