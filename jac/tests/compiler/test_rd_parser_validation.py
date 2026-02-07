@@ -197,6 +197,7 @@ _gap_files = [
         "tests/compiler/fixtures/rd_parser_gaps/raw_fstrings.jac",
         "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
         "tests/compiler/fixtures/rd_parser_gaps/lambda_star_params.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/yield_in_assignment.jac",
     ]
 ]
 

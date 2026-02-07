@@ -4488,13 +4488,17 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
     aug_op = None;
     targets: list = [target];
     if self.match_tok(TokenKind.EQ) {
-        value = self.parse_expression();
+        value = self.parse_yield_stmt()
+        if self.check(TokenKind.KW_YIELD)
+        else self.parse_expression();
         # Chain assignment: l1 = l2 = ... = expr
         while self.check(TokenKind.EQ)
         and not self.check_any(TokenKind.SEMI, TokenKind.RBRACE) {
             self.advance();
             targets.append(value);
-            value = self.parse_expression();
+            value = self.parse_yield_stmt()
+            if self.check(TokenKind.KW_YIELD)
+            else self.parse_expression();
         }
     } elif self.check_any(
         TokenKind.ADD_EQ,
@@ -4513,7 +4517,9 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
     ) {
         aug_tok = self.advance();
         aug_op = self.make_uni_token(aug_tok);
-        value = self.parse_expression();
+        value = self.parse_yield_stmt()
+        if self.check(TokenKind.KW_YIELD)
+        else self.parse_expression();
     }
     kid: list = [];
     for (ti, tgt) in enumerate(targets) {

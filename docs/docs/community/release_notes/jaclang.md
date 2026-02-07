@@ -14,6 +14,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Auto-install watchdog for `--dev` mode**: `jac start --dev` automatically installs `watchdog` if missing, eliminating the manual `jac install --dev` step.
 - **Trim Redundant Parser Test Fixtures**: Removed 46 redundant entries from the micro parser test suite by eliminating exact duplicates across directories, near-identical examples, and files that add no unique syntax coverage, reducing the fixture list from 481 to 435 files.
 - **RD Parser Grammar Gap Fixes**: Fixed 9 coverage gaps in the recursive descent parser to match the Lark grammar spec: `skip` statement, `@=` operator, `na` context blocks, typed context blocks (`-> Type { ... }`), `is` separator in `sem` definitions, `impl` inside archetype bodies, raw f-strings (`rf"..."`), parenthesized yield expressions, and `*args`/`**kwargs` in lambda parameters.
+- **RD Parser: Yield in Assignments & Grammar Extraction Improvements**: The RD parser now correctly handles `x = yield expr` in assignments. The `jac grammar` extraction pass was improved to accurately display binary operator rules (e.g., `logical_or` now shows `logical_and (KW_OR logical_and)*` instead of the incorrect `logical_and KW_OR*`).
 
 ## jaclang 0.9.15 (Latest Release)
 
