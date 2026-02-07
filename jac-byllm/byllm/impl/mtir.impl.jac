@@ -108,7 +108,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             inputs_detail.insert(0, f"self = {caller.__self__}");
         }
     }
-    # System prompt: Config from jac.toml or default SYSTEM_PERSONA
+    # System prompt priority: call_params > jac.toml config > default SYSTEM_PERSONA
     system_content = SYSTEM_PERSONA;
     try {
         import from jaclang.project.config { find_project_root }
@@ -124,6 +124,10 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             system_content = config_system_prompt;
         }
     } except Exception { }
+    # Per-call/per-model system_prompt takes highest priority
+    if call_params.get("system_prompt") {
+        system_content = str(call_params["system_prompt"]);
+    }
     # Prepare the messages for the LLM call.
     messages: list[MessageType] = [
         Message(

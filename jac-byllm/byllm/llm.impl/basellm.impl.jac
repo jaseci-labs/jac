@@ -4,6 +4,10 @@ Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
 """
 impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
     self.call_params = kwargs;
+    # If model has a system_prompt and it's not overridden per-call, include it
+    if self.system_prompt and "system_prompt" not in self.call_params {
+        self.call_params["system_prompt"] = self.system_prompt;
+    }
     return self;
 }
 
