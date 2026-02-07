@@ -15,6 +15,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Trim Redundant Parser Test Fixtures**: Removed 46 redundant entries from the micro parser test suite by eliminating exact duplicates across directories, near-identical examples, and files that add no unique syntax coverage, reducing the fixture list from 481 to 435 files.
 - **RD Parser Grammar Gap Fixes**: Fixed 9 coverage gaps in the recursive descent parser to match the Lark grammar spec: `skip` statement, `@=` operator, `na` context blocks, typed context blocks (`-> Type { ... }`), `is` separator in `sem` definitions, `impl` inside archetype bodies, raw f-strings (`rf"..."`), parenthesized yield expressions, and `*args`/`**kwargs` in lambda parameters.
 - **RD Parser: Yield in Assignments & Grammar Extraction Improvements**: The RD parser now correctly handles `x = yield expr` in assignments. The `jac grammar` extraction pass was improved to accurately display binary operator rules (e.g., `logical_or` now shows `logical_and (KW_OR logical_and)*` instead of the incorrect `logical_and KW_OR*`).
+- **RD Parser: Async, Impl & F-String Gap Fixes**: Fixed 6 more coverage gaps in the recursive descent parser: `async with` statements, async comprehensions (list/set/gen), `async for` token in AST kid lists, `impl` with event clause missing `with` token, `impl` by-expression extra `by` token, and nested `{expr}` inside f-string format specs (e.g., `f"{value:{width}}"`).
 
 ## jaclang 0.9.15 (Latest Release)
 
