@@ -11,6 +11,7 @@ and semantic field values while ignoring position/location info.
 
 import os
 from difflib import unified_diff
+from pathlib import Path
 
 import pytest
 
@@ -177,3 +178,34 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 def test_micro_suite(micro_jac_file: str) -> None:
     """Compare Lark and RD parse trees for a micro suite file."""
     rd_parser_comparison_test(micro_jac_file)
+
+
+# =============================================================================
+# RD parser gap coverage tests
+# =============================================================================
+
+_gap_base_dir = str(Path(__file__).parent.parent.parent)
+_gap_files = [
+    os.path.normpath(os.path.join(_gap_base_dir, f))
+    for f in [
+        "tests/compiler/fixtures/rd_parser_gaps/skip_stmt.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/matmul_eq.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/native_ctx.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/typed_ctx_block.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/sem_def_is.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_in_archetype.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/raw_fstrings.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/lambda_star_params.jac",
+    ]
+]
+
+
+@pytest.mark.parametrize(
+    "gap_file",
+    _gap_files,
+    ids=lambda f: os.path.basename(f).replace(".jac", ""),
+)
+def test_rd_parser_gap_coverage(gap_file: str) -> None:
+    """Verify RD parser correctly handles previously missing grammar constructs."""
+    rd_parser_comparison_test(gap_file)

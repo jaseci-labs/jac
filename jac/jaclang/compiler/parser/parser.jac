@@ -461,6 +461,7 @@ obj Parser {
     def parse_element_stmt;
     def parse_client_block -> ClientBlock;
     def parse_server_block -> ServerBlock;
+    def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
     def parse_statement;

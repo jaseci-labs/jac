@@ -496,6 +496,21 @@ MICRO_JAC_FILES: list[str] = [
     "tests/runtimelib/fixtures/test_reactive_signals.jac",
 ]
 
+# Fixtures specifically for RD parser gap coverage testing.
+# These test constructs that were missing from the RD parser and
+# are validated by comparing Lark vs RD parser AST output.
+RD_PARSER_GAP_FILES: list[str] = [
+    "tests/compiler/fixtures/rd_parser_gaps/impl_in_archetype.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/lambda_star_params.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/matmul_eq.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/native_ctx.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/raw_fstrings.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/sem_def_is.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/skip_stmt.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/typed_ctx_block.jac",
+    "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
+]
+
 # Fixed list of Python files in the jaclang package for py2jac testing.
 JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/__init__.py",
