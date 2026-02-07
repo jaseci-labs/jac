@@ -226,7 +226,8 @@ obj JacAPIServer {
     obj RestSpecs {
         has method: str = "",
             path: str = "",
-            webhook: bool = False;
+            protocol: APIProtocol = APIProtocol.HTTP,
+            broadcast: bool = False;
     }
 
     def postinit -> None;

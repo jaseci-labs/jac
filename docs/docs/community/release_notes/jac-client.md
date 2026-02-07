@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Google OAuth Example**: Added a complete `google-auth` example demonstrating Google OAuth authentication with jac-scale's SSO support. Includes authentication provider, protected routes, login/callback pages, and comprehensive README with setup instructions for Google Cloud Console, environment variables, and frontend implementation patterns.
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+- **Watchdog auto-install test**: Added test coverage for automatic watchdog installation in dev mode.
 
 ## jac-client 0.2.14 (Latest Release)
 

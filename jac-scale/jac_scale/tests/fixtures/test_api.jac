@@ -190,9 +190,9 @@ walker : pub PublicFileUpload {
 # ============================================================================
 # Webhook Walkers
 # ============================================================================
-"""Test 1: Webhook walker with multiple fields using @restspec(webhook=True).
+"""Test 1: Webhook walker with multiple fields using @restspec(protocol=APIProtocol.WEBHOOK).
 This walker should be accessible ONLY via /webhook/PaymentReceived endpoint."""
-@restspec(webhook=True)
+@restspec(protocol=APIProtocol.WEBHOOK)
 walker PaymentReceived {
     has payment_id: str,
         order_id: str,
@@ -212,7 +212,7 @@ walker PaymentReceived {
     }
 }
 
-"""Test 2: Normal walker without @restspec(webhook=True) (defaults to HTTP).
+"""Test 2: Normal walker without @restspec(protocol=APIProtocol.WEBHOOK) (defaults to HTTP).
 This walker should be accessible via /walker/NormalPayment endpoint, NOT /webhook/."""
 walker NormalPayment {
     has payment_id: str,
@@ -234,15 +234,100 @@ walker NormalPayment {
     }
 }
 
-"""Test 3: Minimal webhook walker with ONLY @restspec(webhook=True).
+"""Test 3: Minimal webhook walker with ONLY @restspec(protocol=APIProtocol.WEBHOOK).
 This walker should be accessible ONLY via /webhook/MinimalWebhook endpoint."""
-@restspec(webhook=True)
+@restspec(protocol=APIProtocol.WEBHOOK)
 walker MinimalWebhook {
     can process with `root entry {
         report {
             "status": "received",
             "message": "Minimal webhook executed successfully",
             "transport": "webhook"
+        };
+    }
+}
+
+# ============================================================================
+# WebSocket Walkers
+# ============================================================================
+
+"""Test 1: Async WebSocket walker with fields using @restspec(protocol=APIProtocol.WEBSOCKET).
+This walker should be accessible ONLY via ws://host/ws/EchoMessage endpoint."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+async walker : pub EchoMessage {
+    has message: str;
+    has client_id: str = "anonymous";
+
+    async can echo with `root entry {
+        report {
+            "status": "success",
+            "echo": self.message,
+            "client_id": self.client_id,
+            "protocol": "websocket"
+        };
+    }
+}
+
+"""Test 2: Minimal async WebSocket walker with ONLY @restspec(protocol=APIProtocol.WEBSOCKET).
+This walker should be accessible ONLY via ws://host/ws/MinimalWebSocket endpoint."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+async walker : pub MinimalWebSocket {
+    async can process with `root entry {
+        report {
+            "status": "connected",
+            "message": "MinimalWebSocket executed successfully",
+            "protocol": "websocket"
+        };
+    }
+}
+
+"""Test 3: Private WebSocket walker (requires JWT auth).
+This walker requires token authentication - no `: pub` modifier."""
+@restspec(protocol=APIProtocol.WEBSOCKET)
+async walker PrivateWebSocket {
+    has message: str = "";
+
+    async can process with `root entry {
+        report {
+            "status": "success",
+            "message": self.message,
+            "authenticated": True,
+            "protocol": "websocket"
+        };
+    }
+}
+
+"""Test 4: Public WebSocket walker with broadcasting enabled.
+All connected clients receive every message."""
+@restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
+async walker : pub BroadcastChat {
+    has message: str;
+    has sender: str = "anonymous";
+
+    async can handle with `root entry {
+        report {
+            "type": "message",
+            "sender": self.sender,
+            "content": self.message,
+            "broadcast": True
+        };
+    }
+}
+
+"""Test 5: Private WebSocket walker with broadcasting (auth + broadcast).
+Authenticated chat room where all messages are broadcast to authenticated users."""
+@restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
+async walker PrivateBroadcastChat {
+    has message: str;
+    has room: str = "general";
+
+    async can handle with `root entry {
+        report {
+            "type": "chat",
+            "room": self.room,
+            "content": self.message,
+            "authenticated": True,
+            "broadcast": True
         };
     }
 }

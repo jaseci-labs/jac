@@ -2088,12 +2088,12 @@ class Enum(
             new_kid.append(self.access)
         new_kid.append(self.name)
         if self.base_classes:
-            new_kid.append(self.gen_token(Tok.COLON))
+            new_kid.append(self.gen_token(Tok.LPAREN))
             for idx, base in enumerate(self.base_classes):
                 new_kid.append(base)
                 if idx < len(self.base_classes) - 1:
                     new_kid.append(self.gen_token(Tok.COMMA))
-            new_kid.append(self.gen_token(Tok.COLON))
+            new_kid.append(self.gen_token(Tok.RPAREN))
         if self.body:
             if isinstance(self.body, ImplDef):
                 new_kid.append(self.gen_token(Tok.SEMI))
