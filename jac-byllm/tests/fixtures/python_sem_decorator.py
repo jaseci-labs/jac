@@ -11,7 +11,10 @@ from byllm.lib import MockLLM, by, sem
 
 @sem(
     "A customer record in the CRM system",
-    {"name": "Full legal name of the customer", "tier": "Service tier: basic, premium, or enterprise"},
+    {
+        "name": "Full legal name of the customer",
+        "tier": "Service tier: basic, premium, or enterprise",
+    },
 )
 @dataclass
 class Customer:
