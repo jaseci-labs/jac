@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 import pytest
 import yaml
-from fixtures import python_lib_mode
+from fixtures import python_lib_mode, python_sem_decorator
 
 from jaclang import JacRuntimeInterface as Jac
 
@@ -393,4 +393,44 @@ def test_max_react_iterations(fixture_path: Callable[[str], str]) -> None:
     assert (
         "Based on the tool calls and their results above, provide only your final answer."
         in stdout_value
+    )
+
+
+def test_python_sem_decorator() -> None:
+    """Test that @sem decorator attaches semantic strings that appear in LLM prompts."""
+    from loguru import logger
+
+    captured_output = io.StringIO()
+    logger.remove()
+    logger.add(captured_output, format="{message}")
+
+    python_sem_decorator.test_sem_in_prompt()
+
+    stdout_value = captured_output.getvalue()
+
+    # Function-level semstring should appear in the user message
+    assert "Extract customer information from the given text" in stdout_value
+    assert "Generate a personalized greeting" in stdout_value
+
+    # Class-level semstring should appear in the response schema description
+    assert "A customer record in the CRM system" in stdout_value
+
+
+def test_python_sem_tool_description() -> None:
+    """Test that @sem with inner_semstr flows into tool descriptions and parameter schemas."""
+    result = python_sem_decorator.test_tool_sem_description()
+
+    # Tool description should come from @sem's first argument
+    assert result["description"] == "Look up a customer by their ID in the database"
+
+    # Tool schema should include the inner_semstr as parameter description
+    schema = result["schema"]
+    assert schema["function"]["name"] == "lookup_customer"
+    assert (
+        schema["function"]["description"]
+        == "Look up a customer by their ID in the database"
+    )
+    params = schema["function"]["parameters"]["properties"]
+    assert params["customer_id"]["description"] == (
+        "The unique customer identifier (UUID format)"
     )
