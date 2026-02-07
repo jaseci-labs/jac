@@ -57,10 +57,10 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
 
 System prompts can be configured at three levels. The priority order (highest to lowest) is:
 
-1. **Per-call** — passed via `by llm(system_prompt="...")` or `llm(system_prompt="...")`
-2. **Per-model** — set on the `Model` constructor via `system_prompt="..."`
-3. **Project-wide** — configured in `jac.toml` under `[plugins.byllm]`
-4. **Default** — built-in `SYSTEM_PERSONA`
+1. **Per-call** - passed via `by llm(system_prompt="...")` or `llm(system_prompt="...")`
+2. **Per-model** - set on the `Model` constructor via `system_prompt="..."`
+3. **Project-wide** - configured in `jac.toml` under `[plugins.byllm]`
+4. **Default** - built-in `SYSTEM_PERSONA`
 
 #### Project-wide via `jac.toml`
 
@@ -447,7 +447,7 @@ def extract_person(text: str) -> Person:
 
 ### Semantic Strings in Python
 
-The `sem` decorator is available directly from `byllm.lib`, allowing you to attach semantic metadata to Python classes and functions without a separate `jaclang` import. The `inner_semstr` parameter (for field-level annotations) is optional — you can use `@sem("description")` when field-level detail is not needed.
+The `sem` decorator is available directly from `byllm.lib`, allowing you to attach semantic metadata to Python classes and functions without a separate `jaclang` import. The `inner_semstr` parameter (for field-level annotations) is optional; you can use `@sem("description")` when field-level detail is not needed.
 
 ```python
 from byllm.lib import Model, by, sem
@@ -462,7 +462,7 @@ class Customer:
     name: str
     tier: str
 
-# Without inner_semstr — only a top-level description
+# Without inner_semstr - only a top-level description
 @by(llm)
 @sem("Generate a personalized greeting based on the customer's tier and name")
 def greet_customer(customer: Customer) -> str:
