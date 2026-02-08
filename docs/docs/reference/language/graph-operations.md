@@ -24,7 +24,7 @@ node Todo {
 }
 
 walker CreateTodo {
-    can create with `root entry {
+    can create with Root entry {
         # Create a Todo node and connect it to the current node (here)
         new_node = here ++> Todo(
             id="123",
@@ -72,7 +72,7 @@ with entry {
 ### Visit Outgoing Edges (`[-->]`)
 
 ```jac
-can traverse with `root entry {
+can traverse with Root entry {
     visit [-->];  # Visit all nodes connected by outgoing edges
 }
 ```
@@ -101,12 +101,12 @@ edge MyEdgeType {
 }
 
 walker FilteredTraversal {
-    can traverse with `root entry {
+    can traverse with Root entry {
         # Only visit nodes connected by a specific edge type
         visit [->:MyEdgeType:->];
     }
 
-    can traverse_weighted with `root entry {
+    can traverse_weighted with Root entry {
         # Visit with edge condition
         visit [->:MyEdgeType:weight > 10:->];
     }
@@ -156,13 +156,13 @@ walker:priv MyWalker {
 node SomeNode {}
 
 walker MyWalker {
-    can work with `root entry {
+    can work with Root entry {
         report "done";
     }
 }
 
 walker GetRootData {
-    can get with `root entry {
+    can get with Root entry {
         report "root data";
     }
 }
@@ -201,7 +201,7 @@ Delete a node and all its related nodes:
 walker:priv DeleteWithChildren {
     has parent_id: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 
@@ -221,7 +221,7 @@ walker:priv DeleteWithChildren {
 ```jac
 walker:priv MyWalker {
     # Runs when entering the root node
-    can on_root with `root entry {
+    can on_root with Root entry {
         visit [-->];
     }
 
@@ -248,7 +248,7 @@ walker:priv MyWalker {
     }
 
     # Runs when exiting root (after all traversal complete)
-    can finish with `root exit {
+    can finish with Root exit {
         report self.collected;
     }
 
@@ -267,7 +267,7 @@ walker:priv MyWalker {
 # Create
 walker:priv CreateItem {
     has name: str;
-    can create with `root entry {
+    can create with Root entry {
         new_item = here ++> Item(name=self.name);
         report new_item[0];
     }
@@ -276,16 +276,16 @@ walker:priv CreateItem {
 # Read (List)
 walker:priv ListItems {
     has items: list = [];
-    can collect with `root entry { visit [-->]; }
+    can collect with Root entry { visit [-->]; }
     can gather with Item entry { self.items.append(here); }
-    can finish with `root exit { report self.items; }
+    can finish with Root exit { report self.items; }
 }
 
 # Update
 walker:priv UpdateItem {
     has item_id: str;
     has new_name: str;
-    can find with `root entry { visit [-->]; }
+    can find with Root entry { visit [-->]; }
     can update with Item entry {
         if here.id == self.item_id {
             here.name = self.new_name;
@@ -297,7 +297,7 @@ walker:priv UpdateItem {
 # Delete
 walker:priv DeleteItem {
     has item_id: str;
-    can find with `root entry { visit [-->]; }
+    can find with Root entry { visit [-->]; }
     can remove with Item entry {
         if here.id == self.item_id {
             del here;
@@ -323,7 +323,7 @@ walker:priv SearchItems {
     has query: str;
     has matches: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -337,7 +337,7 @@ walker:priv SearchItems {
         }
     }
 
-    can finish with `root exit {
+    can finish with Root exit {
         # Sort by relevance
         self.matches.sort(key=lambda x: any: x["score"], reverse=True);
         report self.matches;
@@ -361,7 +361,7 @@ walker:priv GetTree {
         };
     }
 
-    can start with `root entry {
+    can start with Root entry {
         tree = self.build_tree(here);
         report tree;
     }
@@ -375,7 +375,7 @@ walker:priv GetStats {
     has total: int = 0;
     has completed: int = 0;
 
-    can count with `root entry {
+    can count with Root entry {
         visit [-->];
     }
 
@@ -386,7 +386,7 @@ walker:priv GetStats {
         }
     }
 
-    can summarize with `root exit {
+    can summarize with Root exit {
         report {
             "total": self.total,
             "completed": self.completed,
@@ -424,7 +424,7 @@ edge ChildOf {
 }
 
 walker ProcessWithEdge {
-    can setup with `root entry {
+    can setup with Root entry {
         parent = here ++> Todo(id="1", title="Parent");
         child = here ++> Todo(id="2", title="Child");
         # Connect with edge type and data

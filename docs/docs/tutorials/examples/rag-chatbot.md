@@ -134,10 +134,10 @@ walker interact {
 
         # Route to appropriate handler
         match query_type {
-            case QueryType.DOCUMENT: visit [-->](`?DocumentChat);
-            case QueryType.GENERAL: visit [-->](`?GeneralChat);
-            case QueryType.IMAGE: visit [-->](`?ImageChat);
-            case QueryType.VIDEO: visit [-->](`?VideoChat);
+            case QueryType.DOCUMENT: visit [-->](?:DocumentChat);
+            case QueryType.GENERAL: visit [-->](?:GeneralChat);
+            case QueryType.IMAGE: visit [-->](?:ImageChat);
+            case QueryType.VIDEO: visit [-->](?:VideoChat);
         }
     }
 

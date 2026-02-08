@@ -185,7 +185,7 @@ project/
     walker TaskCreator {
         has title: str;
 
-        can create with `root entry {
+        can create with Root entry {
             if utils.validate_title(self.title) {
                 task = models.Task(title=self.title);
                 here ++> task;
@@ -263,7 +263,7 @@ project/
     ::py::
 
     walker TaskCreator {
-        can create with `root entry {
+        can create with Root entry {
             # Use inline Python functions
             task_data = get_sample_task();
 
@@ -326,7 +326,7 @@ project/
     walker TaskCreator {
         has title: str;
 
-        can create with `root entry {
+        can create with Root entry {
             # Call Python module functions
             if validators.validate_title(self.title) {
                 task = models.Task(title=self.title);
@@ -435,7 +435,7 @@ project/
     walker TaskCreator {
         has title: str;
 
-        can create with `root entry {
+        can create with Root entry {
             task = Task(title=self.title);
             here ++> task;
             print(f" Created: {task.title}");

@@ -215,7 +215,7 @@ walker MyWalker {
         if some_condition { disengage; }
         visit [-->];
     }
-    can cleanup with `root exit {
+    can cleanup with Root exit {
         # This WOULD run before disengage in old semantics
         print("Cleanup");
     }
@@ -227,7 +227,7 @@ walker MyWalker {
         if some_condition { disengage; }
         visit [-->];
     }
-    can cleanup with `root entry {
+    can cleanup with Root entry {
         # Use entry to ensure this runs before any disengage
         print("Cleanup will run");
     }
@@ -937,7 +937,7 @@ The permission management API has been renamed to better reflect its purpose and
 
 ```jac
 walker create_item {
-    can create with `root entry {
+    can create with Root entry {
         new_item = spawn Item(name="New Item");
         Jac.unrestrict(new_item, level="CONNECT");  # Grant permissions
         Jac.restrict(new_item, level="WRITE");      # Revoke permissions
@@ -949,7 +949,7 @@ walker create_item {
 
 ```jac
 walker create_item {
-    can create with `root entry {
+    can create with Root entry {
         new_item = spawn Item(name="New Item");
         Jac.perm_grant(new_item, level="CONNECT");  # Grant permissions
         Jac.perm_revoke(new_item, level="WRITE");   # Revoke permissions

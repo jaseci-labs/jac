@@ -712,7 +712,7 @@ cl def homepage() {
 walker LoadUsers {
     has users: list = [];
 
-    can process with `root entry {
+    can process with Root entry {
         # Fetch users from database
         self.users = [{"name": "Alice"}, {"name": "Bob"}];
         report self.users;

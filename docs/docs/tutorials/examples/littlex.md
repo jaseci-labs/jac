@@ -153,7 +153,7 @@ walker follow_user {
 
     can follow with Profile entry {
         # Find target profile
-        for profile in [root -->](`?Profile) {
+        for profile in [root -->](?:Profile) {
             if profile.username == self.target_username {
                 # Create follow edge
                 here +>: Follow() :+> profile;
@@ -178,13 +178,13 @@ walker load_feed {
         tweets: list = [];
 
         # Get own tweets
-        for tweet in [here ->:Post:-> (`?Tweet)] {
+        for tweet in [here ->:Post:-> (?:Tweet)] {
             tweets.append(tweet);
         }
 
         # Get tweets from followed users
-        for followed in [here ->:Follow:-> (`?Profile)] {
-            for tweet in [followed ->:Post:-> (`?Tweet)] {
+        for followed in [here ->:Follow:-> (?:Profile)] {
+            for tweet in [followed ->:Post:-> (?:Tweet)] {
                 tweets.append(tweet);
             }
         }
@@ -244,7 +244,7 @@ test test_create_tweet {
     root spawn create_tweet(content="Hello, World!");
 
     # Verify
-    tweets = [profile[0] ->:Post:-> (`?Tweet)];
+    tweets = [profile[0] ->:Post:-> (?:Tweet)];
     assert len(tweets) == 1;
     assert tweets[0].content == "Hello, World!";
 }
@@ -258,7 +258,7 @@ test test_follow_user {
     alice[0] spawn follow_user(target_username="bob");
 
     # Verify
-    following = [alice[0] ->:Follow:-> (`?Profile)];
+    following = [alice[0] ->:Follow:-> (?:Profile)];
     assert len(following) == 1;
     assert following[0].username == "bob";
 }
