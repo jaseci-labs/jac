@@ -1403,6 +1403,7 @@ class ModulePath(UniNode):
 
         return resolve_relative_path(target, self.loc.mod_path)
 
+
 class ModuleItem(UniNode):
     """ModuleItem node type for Jac Ast.
 
