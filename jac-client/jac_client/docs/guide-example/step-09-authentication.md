@@ -486,8 +486,8 @@ When you add authentication to walkers:
 ```jac
 walker read_todos {
     # No special code needed - Jac handles it!
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 }
 ```

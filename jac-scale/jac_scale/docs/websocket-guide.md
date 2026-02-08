@@ -25,7 +25,7 @@ async walker : pub EchoMessage {
     has message: str;
     has client_id: str = "anonymous";
 
-    async can echo with `root entry {
+    async can echo with Root entry {
         report {
             "echo": self.message,
             "client_id": self.client_id
@@ -41,7 +41,7 @@ This walker will be accessible at `ws://localhost:8000/ws/EchoMessage`.
 ```jac
 @restspec(protocol=APIProtocol.WEBSOCKET)
 async walker : pub PingPong {
-    async can pong with `root entry {
+    async can pong with Root entry {
         report {"status": "pong"};
     }
 }
@@ -56,7 +56,7 @@ Omit `: pub` to require JWT authentication:
 async walker SecureChat {
     has message: str;
 
-    async can respond with `root entry {
+    async can respond with Root entry {
         report {"echo": self.message, "authenticated": True};
     }
 }
@@ -72,7 +72,7 @@ async walker : pub ChatRoom {
     has message: str;
     has sender: str = "anonymous";
 
-    async can handle with `root entry {
+    async can handle with Root entry {
         report {
             "type": "message",
             "sender": self.sender,
@@ -99,7 +99,7 @@ async walker TeamChat {
     has message: str;
     has room: str = "general";
 
-    async can handle with `root entry {
+    async can handle with Root entry {
         report {
             "room": self.room,
             "content": self.message,
