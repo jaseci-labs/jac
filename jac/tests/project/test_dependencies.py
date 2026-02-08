@@ -612,6 +612,72 @@ my-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}
                 os.chdir(original_cwd)
                 self._reset_config()
 
+    def test_install_pip_and_npm_deps(self) -> None:
+        """Test jac install handles both pypi and npm dependencies together."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "fullstack"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.31"
+flask = "~=3.0"
+
+[dependencies.npm]
+react = "^18.0.0"
+typescript = "^5.0.0"
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                mock_install_all = MagicMock()
+                mock_dep_type = MagicMock()
+                mock_dep_type.install_all_handler = mock_install_all
+                mock_dep_type.install_handler = MagicMock()
+
+                mock_registry = MagicMock()
+                mock_registry.get_all.return_value = {"npm": mock_dep_type}
+
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                    patch(
+                        "jaclang.project.dep_registry.get_dependency_registry",
+                        return_value=mock_registry,
+                    ),
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully installed requests-2.31.0 flask-3.0.0",
+                        "",
+                    )
+                    result = project.install()
+
+                assert result == 0
+                # Verify pip packages were installed
+                mock_pip.assert_called()
+                pip_call_args = mock_pip.call_args[0][0]
+                assert "install" in pip_call_args
+                assert "--upgrade" in pip_call_args
+                # Verify npm install_all_handler was also called
+                mock_install_all.assert_called_once()
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
     def test_install_with_plugin_deps(self) -> None:
         """Test jac install calls plugin install_all_handler for plugin deps."""
         from jaclang.cli.commands import project  # type: ignore[attr-defined]

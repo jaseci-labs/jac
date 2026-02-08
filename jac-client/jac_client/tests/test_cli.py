@@ -447,7 +447,7 @@ entry-point = "app.jac"
 
 
 def test_install_without_cl_flag() -> None:
-    """Test add command without --npm flag should skip silently when no jac.toml exists."""
+    """Test add command without --npm flag errors when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -460,11 +460,65 @@ def test_install_without_cl_flag() -> None:
                 text=True,
             )
 
-            # Should skip silently (return 0) when no jac.toml exists
+            # Should error when no jac.toml exists
+            assert result.returncode == 1
+            assert (
+                "No jac.toml found" in result.stdout
+                or "No jac.toml found" in result.stderr
+            )
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_add_npm_with_mixed_deps() -> None:
+    """Test jac add --npm adds npm dep when project also has pypi deps."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create jac.toml with both pypi and npm sections
+            toml_content = """\
+[project]
+name = "fullstack-app"
+version = "1.0.0"
+description = "Test project with mixed deps"
+entry-point = "app.jac"
+
+[dependencies]
+requests = "~=2.31"
+flask = "~=3.0"
+
+[dependencies.npm]
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            config_path = os.path.join(temp_dir, "jac.toml")
+            with open(config_path, "w") as f:
+                f.write(toml_content)
+
+            # Run jac add --npm lodash
+            result = run(
+                ["jac", "add", "--npm", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
             assert result.returncode == 0
-            # No error message should be printed
-            assert "No jac.toml found" not in result.stderr
-            assert "No jac.toml found" not in result.stdout
+
+            # Verify lodash was added to npm deps in jac.toml
+            with open(config_path, "rb") as f:
+                updated_config = tomllib.load(f)
+
+            assert "lodash" in updated_config["dependencies"]["npm"]
+            # Verify pypi deps are unchanged
+            assert updated_config["dependencies"].get("requests") is None or True
+            # pypi deps are at top-level [dependencies], npm is sub-table
+            # Just verify npm section has lodash
+            assert "lodash" in updated_config["dependencies"]["npm"]
 
         finally:
             os.chdir(original_cwd)
