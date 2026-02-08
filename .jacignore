@@ -282,3 +282,6 @@ watcher.impl.jac
 web_target.impl.jac
 with_context.jac
 with_llm_method.jac
+yield_in_assignment.jac
+unparse_pass.impl.jac
+normalize_pass.impl.jac

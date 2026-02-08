@@ -2,7 +2,7 @@ node A {}
 node B {}
 
 walker build {
-    can run with `root entry {
+    can run with Root entry {
         a = A();
         a ++> B();
         # connecting two non persistent nodes
@@ -11,7 +11,7 @@ walker build {
 }
 
 walker view {
-    can run with `root entry {
+    can run with Root entry {
         print(printgraph(here));
     }
 }

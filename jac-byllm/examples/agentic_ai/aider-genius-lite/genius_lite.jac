@@ -89,7 +89,7 @@ walker GeniusAgent {
         results: list[CodeResult] = [],
         current_task_index: int = 0;
 
-    can start with `root entry {
+    can start with Root entry {
         print("Genius Lite - AI Coding Assistant");
         print("Simple, structured code generation with validation");
         print("=" * 50);
@@ -142,7 +142,7 @@ walker GeniusAgent {
 walker generate_code {
     has request: str;
 
-    can execute with `root entry {
+    can execute with Root entry {
         print(f"Processing request: {self.request}");
         agent = GeniusAgent(request=self.request) spawn root;
 

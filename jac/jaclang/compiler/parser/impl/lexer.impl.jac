@@ -1411,11 +1411,6 @@ impl Lexer.scan_operator -> Token {
                 TokenKind.DECOR_OP, "@", start_line, start_col, start_pos
             );
 
-        case "`":
-            return self.make_token(
-                TokenKind.TYPE_OP, "`", start_line, start_col, start_pos
-            );
-
     }
     # Unknown character
     self.error(f"Unexpected character: '{ch}'", start_line, start_col, start_pos);

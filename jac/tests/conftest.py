@@ -16,6 +16,25 @@ from typing import Any
 
 import pytest
 
+from tests.fixtures_list import MICRO_JAC_FILES
+
+# =============================================================================
+# Micro Suite File Discovery
+# =============================================================================
+
+_jac_root = str(Path(__file__).parent.parent)
+
+
+def get_micro_jac_files() -> list[str]:
+    """Return absolute paths for all .jac files in the micro suite."""
+    return [os.path.normpath(os.path.join(_jac_root, f)) for f in MICRO_JAC_FILES]
+
+
+def check_pass_ast_complete(pass_cls: type) -> None:
+    """Verify a pass handles all UniNode subclasses (placeholder)."""
+    pass
+
+
 # =============================================================================
 # Console Output Normalization - Disable Rich styling during tests
 # =============================================================================

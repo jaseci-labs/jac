@@ -6,7 +6,7 @@ node test_node {
 }
 
 walker test_walker {
-    can visit_nodes with `root entry {
+    can visit_nodes with Root entry {
         visit [-->];
     }
 

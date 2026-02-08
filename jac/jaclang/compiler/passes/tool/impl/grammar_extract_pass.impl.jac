@@ -216,7 +216,19 @@ impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
         return GOpt(inner=simp(self, expr.inner));
     }
     if isinstance(expr, GStar) {
-        return GStar(inner=simp(self, expr.inner));
+        simplified_inner = simp(self, expr.inner);
+        # Simplify (A (B A)*)* → (A B)* — common pattern in binary operator loops
+        if isinstance(simplified_inner, GSeq) and len(simplified_inner.items) == 2 {
+            first = simplified_inner.items[0];
+            second = simplified_inner.items[1];
+            if isinstance(second, GStar)
+            and isinstance(second.inner, GSeq)
+            and len(second.inner.items) == 2
+            and repr(second.inner.items[1]) == repr(first) {
+                return GStar(inner=GSeq(items=[first, second.inner.items[0]]));
+            }
+        }
+        return GStar(inner=simplified_inner);
     }
     return expr;
 }
@@ -424,21 +436,32 @@ impl GrammarExtractPass.extract_from_stmt(stmt: uni.UniNode) -> GExpr | None {
 """Determine if a call is grammar-relevant."""
 impl GrammarExtractPass.analyze_func_call(call: uni.FuncCall) -> GExpr | None {
     method = self.get_self_method(call.target);
-    if method is None {
-        return None;
-    }
-    if method == "expect" {
-        tokens = self.get_token_args(call);
-        if len(tokens) > 0 {
-            return GTok(name=tokens[0]);
+    if method is not None {
+        if method == "expect" {
+            tokens = self.get_token_args(call);
+            if len(tokens) > 0 {
+                return GTok(name=tokens[0]);
+            }
+            return None;
+        }
+        if method.startswith("parse_") {
+            return GRef(name=method[6:]);
+        }
+        if method == "expect_name" {
+            return GTok(name="NAME");
         }
         return None;
     }
-    if method.startswith("parse_") {
-        return GRef(name=method[6:]);
-    }
-    if method == "expect_name" {
-        return GTok(name="NAME");
+    # Not a self.method call — scan arguments for grammar-relevant calls.
+    # Handles patterns like: values.append(self.parse_X())
+    for param in call.params {
+        inner_call = self.get_call_from_expr(param);
+        if inner_call is not None {
+            result = self.analyze_func_call(inner_call);
+            if result is not None {
+                return result;
+            }
+        }
     }
     return None;
 }
@@ -609,6 +632,32 @@ impl GrammarExtractPass.collect_elif_chain(stmt: uni.IfStmt) -> list {
 impl GrammarExtractPass.analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None {
     cond_info = self.analyze_condition(stmt.condition);
     if cond_info is None {
+        # Handle `while True { body; if not self.match_tok(X) { break; } }`
+        # This pattern is used in parse_logical_or/and to collect operands.
+        # Extract grammar from body stmts (excluding the break condition)
+        # and include the break condition's token as part of the repetition.
+        if isinstance(stmt.condition, uni.Bool) and stmt.condition.value == "True" {
+            break_info = self.find_break_match_tok(list(stmt.body));
+            if break_info is not None {
+                break_tokens: list = break_info[0];
+                body_stmts: list = break_info[1];
+                body_expr = self.extract_from_stmts(body_stmts);
+                inner_parts: list = [];
+                if body_expr is not None {
+                    inner_parts.append(body_expr);
+                }
+                if len(break_tokens) > 0 {
+                    inner_parts.append(GTok(name=break_tokens[0]));
+                }
+                if len(inner_parts) == 0 {
+                    return None;
+                }
+                inner: GExpr = GSeq(items=inner_parts)
+                if len(inner_parts) > 1
+                else inner_parts[0];
+                return GStar(inner=inner);
+            }
+        }
         return self.extract_from_stmts(list(stmt.body));
     }
     method = cond_info[0];
@@ -642,6 +691,53 @@ impl GrammarExtractPass.analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None 
         return GStar(inner=inner2);
     }
     return None;
+}
+
+# -------------------------------------------------------------------------
+# Find break-match_tok in while True bodies
+# -------------------------------------------------------------------------
+"""Find `if not self.match_tok(X) { break; }` at end of while True body.
+
+Returns (token_names, remaining_body_stmts) or None."""
+impl GrammarExtractPass.find_break_match_tok(stmts: list) -> tuple | None {
+    if len(stmts) == 0 {
+        return None;
+    }
+    last = stmts[-1];
+    if not isinstance(last, uni.IfStmt) {
+        return None;
+    }
+    # Check condition is `not self.match_tok(X)`
+    cond = last.condition;
+    if not isinstance(cond, uni.UnaryExpr) {
+        return None;
+    }
+    if not (cond.op is not None and cond.op.value == "not") {
+        return None;
+    }
+    inner_call = cond.operand;
+    if not isinstance(inner_call, uni.FuncCall) {
+        return None;
+    }
+    method = self.get_self_method(inner_call.target);
+    if method != "match_tok" {
+        return None;
+    }
+    # Check body contains a break
+    has_break = False;
+    for s in last.body {
+        if isinstance(s, uni.CtrlStmt) {
+            if s.ctrl is not None and s.ctrl.value == "break" {
+                has_break = True;
+            }
+        }
+    }
+    if not has_break {
+        return None;
+    }
+    tokens = self.get_token_args(inner_call);
+    body_stmts = stmts[:-1];
+    return (tokens, body_stmts);
 }
 
 # -------------------------------------------------------------------------

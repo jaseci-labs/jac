@@ -16,7 +16,7 @@ Every time a walker executes a `report` statement, the value is appended to a `.
 
 ```jac
 walker:priv MyWalker {
-    can do_work with `root entry {
+    can do_work with Root entry {
         report "first";   # reports[0]
         report "second";  # reports[1]
     }
@@ -43,7 +43,7 @@ node Item {
 walker:priv ListItems {
     has items: list = [];
 
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
     }
 
@@ -51,7 +51,7 @@ walker:priv ListItems {
         self.items.append(here.data);
     }
 
-    can finish with `root exit {
+    can finish with Root exit {
         report self.items;  # Single report with all data
     }
 }
@@ -77,7 +77,7 @@ node Item {
 walker:priv FindMatches {
     has search_term: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 
@@ -109,7 +109,7 @@ node Item {
 walker:priv CreateItem {
     has name: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_item = here ++> Item(name=self.name);
         report new_item[0];  # Report the created item
     }
@@ -130,13 +130,13 @@ When one walker spawns another, their reports combine:
 
 ```jac
 walker:priv InnerWalker {
-    can work with `root entry {
+    can work with Root entry {
         report "inner data";
     }
 }
 
 walker:priv OuterWalker {
-    can work with `root entry {
+    can work with Root entry {
         # Spawn inner walker - its reports go to OUR reports array
         inner_result = root spawn InnerWalker();
 
@@ -169,7 +169,7 @@ def do_processing(input: str) -> list {
 walker:priv ProcessAndSummarize {
     has input: str;
 
-    can process with `root entry {
+    can process with Root entry {
         # First report: raw results
         results = do_processing(self.input);
         report results;
@@ -198,7 +198,7 @@ Always handle the possibility of empty reports:
 
 ```jac
 walker:priv MyWalker {
-    can work with `root entry {
+    can work with Root entry {
         report "data";
     }
 }
@@ -234,7 +234,7 @@ The full response object from `root spawn Walker()`:
 
 ```jac
 walker:priv MyWalker {
-    can work with `root entry {
+    can work with Root entry {
         report "result";
     }
 }
@@ -250,7 +250,7 @@ with entry {
 ## Best Practices
 
 1. **Prefer single reports** - Accumulate data and report once at the end
-2. **Use `with`root exit`** - Best place for final reports after traversal
+2. **Use `with Root exit`** - Best place for final reports after traversal
 3. **Document report structure** - Comment what each report index contains
 4. **Always check `.reports`** - It may be empty or undefined
 5. **Keep reports serializable** - Stick to dicts, lists, strings, numbers, bools
@@ -275,7 +275,7 @@ walker:priv BadPattern {
 walker:priv GoodPattern {
     has items: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -283,7 +283,7 @@ walker:priv GoodPattern {
         self.items.append(here.data);
     }
 
-    can finish with `root exit {
+    can finish with Root exit {
         report self.items;  # One report with all items
     }
 }
@@ -293,7 +293,7 @@ walker:priv GoodPattern {
 
 ```jac
 walker:priv MyWalker {
-    can work with `root entry {
+    can work with Root entry {
         report ["item1", "item2"];
         report {"count": 2};
     }
