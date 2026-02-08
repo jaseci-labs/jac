@@ -99,7 +99,7 @@ import from jaclang.pycore.unitree {
     InnerCompr
 }
 import from jaclang.pycore.unitree { FString, FormattedValue, MultiString, LambdaExpr }
-import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr, TypeRef }
+import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.pycore.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.pycore.unitree { ConnectOp, DisconnectOp }
 import from jaclang.pycore.unitree {
@@ -1231,13 +1231,9 @@ impl Parser.parse_atomic_chain -> Expr {
                 );
             }
         } elif self.check(TokenKind.LPAREN) {
-            # Check if this is filter_compr: (? ...) or (`?Type ...)
-            if self.peek().kind == TokenKind.NULL_OK
-            or (
-                self.peek().kind == TokenKind.TYPE_OP
-                and self.peek(2).kind == TokenKind.NULL_OK
-            ) {
-                # Parse filter comprehension: (?val==10) or (`?Type:val==10)
+            # Check if this is filter_compr: (?...) or (?:Type, ...)
+            if self.peek().kind == TokenKind.NULL_OK {
+                # Parse filter comprehension: (?val==10) or (?:Type, val==10)
                 self.advance();  # consume LPAREN
                 filter_expr = self.parse_filter_compr_inner();
                 self.expect(TokenKind.RPAREN);
@@ -1486,26 +1482,24 @@ impl Parser.parse_call_arg -> Expr | KWPair {
 impl Parser.parse_filter_compr_inner -> FilterCompr {
     # Parse inner part of filter_compr after LPAREN is consumed
     # filter_compr: LPAREN NULL_OK filter_compare_list RPAREN
-    #             | LPAREN TYPE_OP NULL_OK typed_filter_compare_list RPAREN
+    #             | LPAREN NULL_OK COLON expression (COMMA filter_compare_list)? RPAREN
     kid: list = [self.gen_token(Tok.LPAREN.value, "(")];
     f_type = None;
-    # Check for TYPE_OP variant: (`? Type: ...)
-    if self.check(TokenKind.TYPE_OP) {
-        kid.append(self.make_uni_token(self.advance()));  # consume `
-        self.expect(TokenKind.NULL_OK);  # consume ?
-        kid.append(self.gen_token(Tok.NULL_OK.value, "?"));
+    # Consume ? (NULL_OK)
+    self.expect(TokenKind.NULL_OK);
+    kid.append(self.gen_token(Tok.NULL_OK.value, "?"));
+    # Check for typed variant: (?:Type, ...)
+    if self.match_tok(TokenKind.COLON) {
+        kid.append(self.gen_token(Tok.COLON.value, ":"));
         f_type = self.parse_expression();
         kid.append(f_type);
-        if self.match_tok(TokenKind.COLON) {
-            kid.append(self.gen_token(Tok.COLON.value, ":"));
-        }
-    } else {
-        # Simple form: (? ...)
-        self.expect(TokenKind.NULL_OK);  # consume ?
-        kid.append(self.gen_token(Tok.NULL_OK.value, "?"));
     }
-    # Parse filter_compare_list
+    # Parse filter_compare_list (separated by commas)
     compares: list = [];
+    # After f_type, consume comma separator before comparisons
+    if f_type and self.match_tok(TokenKind.COMMA) {
+        kid.append(self.gen_token(Tok.COMMA.value, ","));
+    }
     if not self.check(TokenKind.RPAREN) {
         # Parse comparison: expr cmp_op expr
         comp = self.parse_compare();
@@ -1639,90 +1633,6 @@ impl Parser.parse_atom -> Expr {
             pos_start=tok.loc.pos_start,
             pos_end=tok.loc.pos_end
         );
-    }
-    if self.match_tok(TokenKind.TYPE_OP) {
-        type_op = self.make_uni_token(self.previous());
-        # Handle optional type filter: `?Name (nullable type in edge filter)
-        null_ok_tok: UniToken | None = None;
-        if self.match_tok(TokenKind.NULL_OK) {
-            null_ok_tok = self.make_uni_token(self.previous());
-        }
-        if self.check_name() {
-            name_tok = self.advance();
-            name = self.make_name(name_tok);
-            kid: list = [type_op];
-            if null_ok_tok {
-                kid.append(null_ok_tok);
-            }
-            kid.append(name);
-            return TypeRef(target=name, kid=kid);
-        }
-        # Handle archetype keywords: `node, `edge, `walker, etc.
-        if self.check_any(
-            TokenKind.KW_NODE,
-            TokenKind.KW_EDGE,
-            TokenKind.KW_WALKER,
-            TokenKind.KW_OBJECT,
-            TokenKind.KW_CLASS
-        ) {
-            tok = self.advance();
-            name = self.make_special_name(tok);
-            kid = [type_op];
-            if null_ok_tok {
-                kid.append(null_ok_tok);
-            }
-            kid.append(name);
-            return TypeRef(target=name, kid=kid);
-        }
-        # Handle special var refs: `root, `self, `here, `visitor, `super
-        if self.check_any(
-            TokenKind.KW_ROOT,
-            TokenKind.KW_SELF,
-            TokenKind.KW_HERE,
-            TokenKind.KW_VISITOR,
-            TokenKind.KW_SUPER
-        ) {
-            tok = self.advance();
-            var_name = self.make_special_name(tok);
-            ref = SpecialVarRef(var=var_name, is_enum_stmt=False);
-            kid = [type_op];
-            if null_ok_tok {
-                kid.append(null_ok_tok);
-            }
-            kid.append(ref);
-            return TypeRef(target=ref, kid=kid);
-        }
-        # Handle builtin types: `int, `str, etc.
-        if self.check_any(
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ) {
-            tok = self.advance();
-            builtin_name: str = TOKEN_KIND_TO_TOK[tok.kind]
-            if tok.kind in TOKEN_KIND_TO_TOK
-            else tok.kind.value;
-            builtin = BuiltinType(
-                orig_src=self.get_source(),
-                name=builtin_name,
-                value=tok.value,
-                line=tok.loc.line,
-                end_line=tok.loc.end_line,
-                col_start=tok.loc.col_start,
-                col_end=tok.loc.col_end,
-                pos_start=tok.loc.pos_start,
-                pos_end=tok.loc.pos_end
-            );
-            return TypeRef(target=builtin, kid=[type_op, builtin]);
-        }
     }
     if self.check_any(
         TokenKind.KW_SELF,
@@ -2228,13 +2138,9 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr) -> Expr {
             chain.append(edge_op_ref);
             kid.append(edge_op_ref);
         }
-        # Check for filter expressions after edge operator
+        # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
         if self.check(TokenKind.LPAREN) {
-            if self.peek().kind == TokenKind.NULL_OK
-            or (
-                self.peek().kind == TokenKind.TYPE_OP
-                and self.peek(2).kind == TokenKind.NULL_OK
-            ) {
+            if self.peek().kind == TokenKind.NULL_OK {
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2424,13 +2330,9 @@ impl Parser.parse_edge_ref_chain -> Expr {
             chain.append(edge_op_ref);
             kid.append(edge_op_ref);
         }
-        # Check for filter expressions after edge operator: -->(?val==5) or -->(`?A)
+        # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
         if self.check(TokenKind.LPAREN) {
-            if self.peek().kind == TokenKind.NULL_OK
-            or (
-                self.peek().kind == TokenKind.TYPE_OP
-                and self.peek(2).kind == TokenKind.NULL_OK
-            ) {
+            if self.peek().kind == TokenKind.NULL_OK {
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);

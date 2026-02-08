@@ -7,7 +7,7 @@ node Item {
 walker Collector {
     has items: list = [];
 
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
         -> Item {
             self.items.append(here);

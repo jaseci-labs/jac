@@ -70,7 +70,7 @@ walker create_item {
         metadata: Metadata,
         tax_rate: float;
 
-    can create with `root entry {
+    can create with Root entry {
         final_price = self.core_info.price * (
             1 - self.discount.discount_rate + self.tax_rate
         );

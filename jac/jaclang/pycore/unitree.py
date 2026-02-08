@@ -2778,25 +2778,6 @@ class IndexSlice(AtomExpr):
         AstSymbolStubNode.__init__(self, sym_type=SymbolType.SEQUENCE)
 
 
-class TypeRef(AtomExpr):
-    """ArchRef node type for Jac Ast."""
-
-    def __init__(
-        self,
-        target: NameAtom,
-        kid: Sequence[UniNode],
-    ) -> None:
-        self.target = target
-        UniNode.__init__(self, kid=kid)
-        Expr.__init__(self)
-        AstSymbolNode.__init__(
-            self,
-            sym_name=target.sym_name,
-            name_spec=target,
-            sym_category=SymbolType.TYPE,
-        )
-
-
 class EdgeRefTrailer(Expr):
     """EdgeRefTrailer node type for Jac Ast."""
 

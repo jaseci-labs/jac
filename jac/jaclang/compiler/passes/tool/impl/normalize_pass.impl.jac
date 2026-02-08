@@ -1358,12 +1358,6 @@ impl NormalizePass.enter_index_slice(<>node: uni.IndexSlice) -> None {
     <>node.set_kids(nodes=new_kid);
 }
 
-"""Normalize TypeRef kid list."""
-impl NormalizePass.enter_type_ref(<>node: uni.TypeRef) -> None {
-    new_kid: list[uni.UniNode] = [<>node.gen_token(Tok.TYPE_OP), <>node.target];
-    <>node.set_kids(nodes=new_kid);
-}
-
 """Normalize EdgeRefTrailer kid list."""
 impl NormalizePass.enter_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
     new_kid: list[uni.UniNode] = [];
@@ -1470,17 +1464,21 @@ impl NormalizePass.enter_filter_compr(<>node: uni.FilterCompr) -> None {
     new_kid: list[uni.UniNode] = [];
     if not isinstance(<>node.parent, uni.EdgeOpRef) {
         new_kid.append(<>node.gen_token(Tok.LPAREN));
-        if <>node.f_type {
-            new_kid.append(<>node.gen_token(Tok.TYPE_OP));
-        }
         new_kid.append(<>node.gen_token(Tok.NULL_OK));
     }
     if <>node.f_type {
+        if not isinstance(<>node.parent, uni.EdgeOpRef) {
+            new_kid.append(<>node.gen_token(Tok.COLON));
+        }
         new_kid.append(<>node.f_type);
     }
     if <>node.compares {
         if <>node.f_type {
-            new_kid.append(<>node.gen_token(Tok.COLON));
+            if isinstance(<>node.parent, uni.EdgeOpRef) {
+                new_kid.append(<>node.gen_token(Tok.COLON));
+            } else {
+                new_kid.append(<>node.gen_token(Tok.COMMA));
+            }
         }
         for i in range(len(<>node.compares)) {
             new_kid.append(<>node.compares[i]);

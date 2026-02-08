@@ -1086,7 +1086,7 @@ def test_walker_dynamic_update(
     # and won't run when disengage is called during child traversal)
     new_behavior = """
     # New behavior added during runtime
-    can announce with `root entry {
+    can announce with Root entry {
         "bar_walk has been updated with new behavior!" |> print;
         }
     }

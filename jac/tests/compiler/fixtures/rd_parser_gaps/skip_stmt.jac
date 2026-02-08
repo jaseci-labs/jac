@@ -3,7 +3,7 @@
 walker Searcher {
     has found: bool = False;
 
-    can search with `root entry {
+    can search with Root entry {
         if self.found {
             skip;
         }

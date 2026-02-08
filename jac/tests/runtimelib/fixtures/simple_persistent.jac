@@ -7,7 +7,7 @@ node b {
 }
 
 walker create {
-    can setup with `root entry {
+    can setup with Root entry {
         na = here ++> a(name="node a");
         visit na;
     }
@@ -18,7 +18,7 @@ walker create {
 }
 
 walker traverse {
-    can at_root with `root entry {
+    can at_root with Root entry {
         visit [-->];
     }
 
@@ -33,7 +33,7 @@ walker traverse {
 }
 
 walker indirect_ref {
-    can at_root with `root entry {
+    can at_root with Root entry {
         node_as = [-->];
         print([node_as-->]);
         print([edge node_as-->]);

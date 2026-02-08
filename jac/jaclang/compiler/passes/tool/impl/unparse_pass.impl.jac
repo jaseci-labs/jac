@@ -966,11 +966,6 @@ impl UnparsePass.exit_index_slice(<>node: uni.IndexSlice) -> None {
     <>node.gen.jac = result + "]";
 }
 
-"""TypeRef: :t: target."""
-impl UnparsePass.exit_type_ref(<>node: uni.TypeRef) -> None {
-    <>node.gen.jac = ":t: " + <>node.target.gen.jac;
-}
-
 """EdgeRefTrailer: join kid list (complex edge syntax)."""
 impl UnparsePass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
     <>node.gen.jac = " ".join(
@@ -1009,15 +1004,35 @@ impl UnparsePass.exit_connect_op(<>node: uni.ConnectOp) -> None {
     );
 }
 
-"""FilterCompr: join kid list (complex filter syntax)."""
+"""FilterCompr: produce (?:Type, cmp1, cmp2) or edge-inner Type:cmp syntax."""
 impl UnparsePass.exit_filter_compr(<>node: uni.FilterCompr) -> None {
-    <>node.gen.jac = " ".join(
-        [
-            k.gen.jac
-            for k in <>node.kid
-            if k and k.gen.jac
-        ]
-    );
+    parts: list[str] = [];
+    is_inner = isinstance(<>node.parent, uni.EdgeOpRef);
+    if not is_inner {
+        parts.append("(?");
+        if <>node.f_type {
+            parts.append(":");
+            parts.append(<>node.f_type.gen.jac);
+        }
+        if <>node.compares {
+            if <>node.f_type {
+                parts.append(", ");
+            }
+            parts.append(", ".join([c.gen.jac for c in <>node.compares]));
+        }
+        parts.append(")");
+    } else {
+        if <>node.f_type {
+            parts.append(<>node.f_type.gen.jac);
+        }
+        if <>node.compares {
+            if <>node.f_type {
+                parts.append(":");
+            }
+            parts.append(", ".join([c.gen.jac for c in <>node.compares]));
+        }
+    }
+    <>node.gen.jac = "".join(parts);
 }
 
 """AssignCompr: join kid list."""

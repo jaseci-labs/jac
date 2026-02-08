@@ -314,7 +314,6 @@ class Tokens(str, Enum):
     KW_POST_INIT = "KW_POST_INIT"
     KW_IMPL = "KW_IMPL"
     KW_SEM = "KW_SEM"
-    TYPE_OP = "TYPE_OP"
     A_PIPE_FWD = "A_PIPE_FWD"
     A_PIPE_BKWD = "A_PIPE_BKWD"
     RETURN_HINT = "RETURN_HINT"

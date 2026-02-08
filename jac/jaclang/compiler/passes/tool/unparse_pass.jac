@@ -106,7 +106,6 @@ obj UnparsePass(UniPass) {
     def exit_yield_expr(<>node: uni.YieldExpr) -> None;
     def exit_func_call(<>node: uni.FuncCall) -> None;
     def exit_index_slice(<>node: uni.IndexSlice) -> None;
-    def exit_type_ref(<>node: uni.TypeRef) -> None;
     def exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None;
     def exit_edge_op_ref(<>node: uni.EdgeOpRef) -> None;
     def exit_disconnect_op(<>node: uni.DisconnectOp) -> None;

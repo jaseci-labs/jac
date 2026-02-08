@@ -7,7 +7,7 @@ glob guesses = [50, 25, 35, 30];
 walker GuessGame {
     has correct_number: int = 30;
 
-    can start_game with `root entry;
+    can start_game with Root entry;
     def process_guess(guess: int);
 }
 

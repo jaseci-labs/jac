@@ -23,7 +23,7 @@ walker Walker {
         print("walker entry");
     }
 
-    can entry2 with `root entry {
+    can entry2 with Root entry {
         print("walker enter to root");
         visit [-->];
     }
