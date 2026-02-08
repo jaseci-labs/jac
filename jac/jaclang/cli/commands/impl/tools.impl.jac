@@ -256,21 +256,18 @@ def _install_completion(shell: str, code: str) -> int {
         return 1;
     }
 }
+
 """Purge the Jac bytecode cache."""
 impl purge(force: bool = False) -> int {
     import shutil;
     import from jaclang.pycore.bccache { get_global_cache_dir }
     import from jaclang.cli.console { console }
-
     cache_dir = get_global_cache_dir();
-
     if not cache_dir.exists() {
         console.print("Cache directory does not exist.", style="bold yellow");
         return 0;
     }
-
     console.print(f"Cache directory: {cache_dir}", style="bold");
-
     if not force {
         response = input("Are you sure you want to purge the cache? (y/n): ");
         if response.lower() != 'y' {
@@ -278,7 +275,6 @@ impl purge(force: bool = False) -> int {
             return 1;
         }
     }
-
     try {
         if cache_dir.exists() {
             shutil.rmtree(cache_dir);
