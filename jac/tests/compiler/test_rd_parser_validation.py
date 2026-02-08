@@ -219,3 +219,39 @@ _gap_files = [
 def test_rd_parser_gap_coverage(gap_file: str) -> None:
     """Verify RD parser correctly handles previously missing grammar constructs."""
     rd_parser_comparison_test(gap_file)
+
+
+# =============================================================================
+# RD parser strictness parity tests
+# =============================================================================
+
+# Snippets the RD parser must reject (Lark also rejects these).
+_MUST_REJECT = {
+    "can_without_event_clause": "obj Foo { can bar { } }",
+    "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
+    "pass_keyword": "with entry { match x { case 1: pass; } }",
+    "with_exit_at_module_level": 'with exit { print("bye"); }',
+    "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
+    "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
+    "bare_expression_at_module_level": "5 + 3;",
+    "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
+    "impl_bare_semicolon": "impl Foo.bar;",
+}
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    list(_MUST_REJECT.values()),
+    ids=list(_MUST_REJECT.keys()),
+)
+def test_rd_parser_strictness_parity(snippet: str) -> None:
+    """RD parser must reject constructs that Lark also rejects."""
+    # Confirm Lark rejects
+    saved = JacTest.TEST_COUNT
+    lark_ast = parse_with_lark(snippet, "/tmp/strictness_test.jac")
+    JacTest.TEST_COUNT = saved
+    assert lark_ast is None, f"Lark unexpectedly accepted: {snippet!r}"
+
+    # Confirm RD also rejects
+    rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac")
+    assert rd_ast is None, f"RD parser must reject (Lark rejects): {snippet!r}"
