@@ -90,7 +90,6 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
         # directories - not independently importable modules.
         last = node_.path[-1];
         mod_path = node_.resolve_relative_path();
-
         # Check module type cache first.
         if mod_path in self._module_type_cache {
             last.type = self._module_type_cache[mod_path];
