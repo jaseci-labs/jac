@@ -409,4 +409,3 @@ impl PWATarget.start(
 ) -> None {
     return;
 }
-

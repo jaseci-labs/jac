@@ -1248,7 +1248,9 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
             # 1. Create a new Jac client app
             jac_cmd = get_jac_command()
             env = get_env_with_npm()
-            print(f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'")
+            print(
+                f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'"
+            )
             process = Popen(
                 [*jac_cmd, "create", "--use", "client", app_name],
                 stdin=PIPE,
@@ -1344,7 +1346,9 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
             print(f"[DEBUG] manifest.json content: {json.dumps(manifest, indent=2)}")
             assert "name" in manifest, "manifest.json should have 'name' field"
             assert "icons" in manifest, "manifest.json should have 'icons' field"
-            assert "start_url" in manifest, "manifest.json should have 'start_url' field"
+            assert "start_url" in manifest, (
+                "manifest.json should have 'start_url' field"
+            )
             assert manifest.get("display") == "standalone", (
                 "manifest.json should have display=standalone"
             )
@@ -1355,9 +1359,7 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
 
             print(f"[DEBUG] sw.js content (truncated): {sw_content[:500]}")
             assert "CACHE_NAME" in sw_content, "sw.js should define CACHE_NAME"
-            assert "addEventListener" in sw_content, (
-                "sw.js should have event listeners"
-            )
+            assert "addEventListener" in sw_content, "sw.js should have event listeners"
             assert "install" in sw_content, "sw.js should handle install event"
             assert "fetch" in sw_content, "sw.js should handle fetch event"
 
@@ -1385,14 +1387,24 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
                     f"'jac start --client pwa main.jac -p {server_port}'"
                 )
                 server = Popen(
-                    [*jac_cmd, "start", "--client", "pwa", "main.jac", "-p", str(server_port)],
+                    [
+                        *jac_cmd,
+                        "start",
+                        "--client",
+                        "pwa",
+                        "main.jac",
+                        "-p",
+                        str(server_port),
+                    ],
                     cwd=project_path,
                     env=env,
                 )
 
                 print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
                 wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}")
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
 
                 # Test manifest.json is served
                 try:

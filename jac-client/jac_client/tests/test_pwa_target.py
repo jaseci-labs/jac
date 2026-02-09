@@ -73,7 +73,9 @@ def test_pwa_target_registered() -> None:
     assert register_jac.exists(), f"register.jac not found at {register_jac}"
 
     register_content = register_jac.read_text()
-    assert "PWATarget" in register_content, "PWATarget should be imported in register.jac"
+    assert "PWATarget" in register_content, (
+        "PWATarget should be imported in register.jac"
+    )
     assert "pwa_target = PWATarget()" in register_content, (
         "PWATarget should be instantiated in register.jac"
     )
@@ -117,9 +119,7 @@ def test_get_default_manifest_structure() -> None:
     impl_content = impl_file.read_text()
 
     for field in expected_fields:
-        assert f'"{field}"' in impl_content, (
-            f"Manifest should include '{field}' field"
-        )
+        assert f'"{field}"' in impl_content, f"Manifest should include '{field}' field"
 
 
 def test_pwa_constants_defined() -> None:
@@ -200,8 +200,12 @@ def test_service_worker_content_structure() -> None:
 
     assert "CACHE_NAME" in impl_content, "SW should define CACHE_NAME"
     assert "PRECACHE_ASSETS" in impl_content, "SW should define PRECACHE_ASSETS"
-    assert "addEventListener('install'" in impl_content, "SW should handle install event"
-    assert "addEventListener('activate'" in impl_content, "SW should handle activate event"
+    assert "addEventListener('install'" in impl_content, (
+        "SW should handle install event"
+    )
+    assert "addEventListener('activate'" in impl_content, (
+        "SW should handle activate event"
+    )
     assert "addEventListener('fetch'" in impl_content, "SW should handle fetch event"
     assert "skipWaiting()" in impl_content, "SW should call skipWaiting"
     assert "clients.claim()" in impl_content, "SW should call clients.claim"
@@ -235,10 +239,14 @@ def test_precache_files_filtering() -> None:
         # Count cacheable files
         cacheable_extensions = [".html", ".js", ".css", ".png", ".json"]
         cacheable_files = [
-            f for f in dist_dir.iterdir() if f.is_file() and f.suffix in cacheable_extensions
+            f
+            for f in dist_dir.iterdir()
+            if f.is_file() and f.suffix in cacheable_extensions
         ]
 
-        assert len(cacheable_files) == 5, "Should only cache html, js, css, png, json files"
+        assert len(cacheable_files) == 5, (
+            "Should only cache html, js, css, png, json files"
+        )
         assert not any(f.suffix == ".txt" for f in cacheable_files)
         assert not any(f.suffix == ".map" for f in cacheable_files)
 
@@ -349,7 +357,7 @@ def test_user_icons_preferred_over_defaults() -> None:
     impl_content = impl_file.read_text()
 
     # Verify the implementation checks user's pwa_icons first
-    assert "project_dir / \"pwa_icons\"" in impl_content, (
+    assert 'project_dir / "pwa_icons"' in impl_content, (
         "Should check project_dir/pwa_icons/ first"
     )
     assert "user_icons_dir" in impl_content or "user_icons" in impl_content, (
@@ -409,7 +417,9 @@ def test_empty_dist_directory() -> None:
         # Precache files should be empty
         cacheable_extensions = [".html", ".js", ".css", ".png", ".json"]
         precache_files = [
-            f for f in dist_dir.iterdir() if f.is_file() and f.suffix in cacheable_extensions
+            f
+            for f in dist_dir.iterdir()
+            if f.is_file() and f.suffix in cacheable_extensions
         ]
         assert len(precache_files) == 0
 
