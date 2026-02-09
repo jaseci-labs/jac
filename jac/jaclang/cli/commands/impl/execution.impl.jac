@@ -75,7 +75,7 @@ def _proc_file(filename: str) -> tuple {
         mod = mod[:-3];
     } else {
         console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
-        <>exit(1);
+        `exit(1);
     }
     # Only set base path if not already set (allows tests to override)
     if not Jac.base_path_dir {
@@ -140,8 +140,8 @@ impl enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    <>root: str = '',
-    <>node: str = ''
+    `root: str = '',
+    `node: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -150,8 +150,8 @@ impl enter(
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
     # Set user root if provided (for permission boundary)
-    if <>root {
-        mach.set_user_root(<>root);
+    if `root {
+        mach.set_user_root(`root);
     }
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(
@@ -170,7 +170,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(<>node);
+            mach.set_entry_node(`node);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)

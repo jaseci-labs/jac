@@ -203,7 +203,7 @@ impl Parser.error(message: str) {
 }
 
 impl Parser.check_name -> bool {
-    # Check for NAME or KWESC_NAME (keyword-escaped identifier like <>type)
+    # Check for NAME or KWESC_NAME (keyword-escaped identifier like `type)
     return self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME);
 }
 
@@ -331,10 +331,14 @@ impl Parser.make_uni_token(
 
 impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
     # Create a unitree Name from a token
-    # Strip <>  prefix from keyword-escaped names
+    # Strip backtick prefix from keyword-escaped names
     val = tok.value;
-    if val.startswith("<>") {
-        val = val[2:];
+    if val.startswith("`") {
+        val = val[1:];
+    }
+    # Reject Python-only keywords that are not valid Jac identifiers
+    if val == "pass" {
+        self.error("'pass' keyword is not allowed in Jac");
     }
     return Name(
         orig_src=self.get_source(),
@@ -1425,7 +1429,7 @@ impl Parser.parse_call_args(kid: list) -> list {
 }
 
 impl Parser.parse_call_arg -> Expr | KWPair {
-    # Check for keyword argument: NAME = expr (also KWESC_NAME like <>type)
+    # Check for keyword argument: NAME = expr (also KWESC_NAME like `type)
     if (self.check_name() or self.is_keyword_token())
     and self.peek().kind == TokenKind.EQ {
         name_tok = self.advance();
@@ -3050,7 +3054,6 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_STATIC,
         TokenKind.KW_ASYNC,
-        TokenKind.KW_ABSTRACT,
         TokenKind.DECOR_OP
     ] {
         doc_tok = self.advance();
@@ -3144,15 +3147,25 @@ impl Parser.parse_element_stmt{
             self.advance();
             self.parse_atomic_chain();  # consume decorator expression
         }
-        # Skip async/abstract if present
-        while self.check_any(TokenKind.KW_ASYNC, TokenKind.KW_ABSTRACT) {
+        # Skip async if present
+        while self.check(TokenKind.KW_ASYNC) {
+            self.advance();
+        }
+        # Check for abs prefix - valid before archetypes, NOT before abilities
+        has_abs_prefix = self.check(TokenKind.KW_ABSTRACT);
+        if has_abs_prefix {
             self.advance();
         }
         # Now check what the decorated item is
         is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
         is_enum = self.check(TokenKind.KW_ENUM);
         self.pos = save_pos;  # Restore position
-        if is_ability {
+        if has_abs_prefix and is_ability {
+            self.error(
+                "'abs' is not a valid prefix for abilities (use 'abs' before archetype keywords only)"
+            );
+        }
+        if is_ability and not has_abs_prefix {
             return self.parse_ability();
         } elif is_enum {
             return self.parse_enum();
@@ -3160,11 +3173,11 @@ impl Parser.parse_element_stmt{
             return self.parse_archetype();
         }
     }
-    # Handle abstract/async prefixes
-    if self.check_any(TokenKind.KW_ABSTRACT, TokenKind.KW_ASYNC) {
+    # Handle async prefix (abs is NOT a valid prefix per Lark grammar)
+    if self.check(TokenKind.KW_ASYNC) {
         # Look ahead to see if it's an ability (def/can) or archetype (class/obj/etc)
         save_pos = self.pos;
-        while self.check_any(TokenKind.KW_ABSTRACT, TokenKind.KW_ASYNC) {
+        while self.check(TokenKind.KW_ASYNC) {
             self.advance();
         }
         is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
@@ -3174,9 +3187,9 @@ impl Parser.parse_element_stmt{
         }
         return self.parse_archetype();
     }
-    expr = self.parse_expression();
-    self.match_tok(TokenKind.SEMI);
-    return expr;
+    self.error("Unexpected token at module level");
+    self.advance();
+    return EmptyToken();
 }
 
 """Parse client block: cl { stmts } or cl stmt"""
@@ -3270,12 +3283,16 @@ impl Parser.parse_native_block -> NativeBlock {
 }
 
 impl Parser.parse_module_code -> ModuleCode {
-    # Parse 'with entry { ... }' or 'with entry:__main__ { ... }' or 'with exit { ... }'
+    # Parse 'with entry { ... }' or 'with entry:__main__ { ... }'
     # Grammar: free_code: KW_WITH KW_ENTRY (COLON NAME)? code_block
     self.expect(TokenKind.KW_WITH);
     name = None;
     target_name = None;  # For :__main__ style target
-    if self.check_any(TokenKind.KW_ENTRY, TokenKind.KW_EXIT) {
+    if self.check(TokenKind.KW_EXIT) {
+        self.error("Module-level 'with' blocks only support 'entry', not 'exit'");
+        name_tok = self.advance();
+        name = self.make_uni_token(name_tok);
+    } elif self.check(TokenKind.KW_ENTRY) {
         name_tok = self.advance();
         name = self.make_uni_token(name_tok);
     }
@@ -4967,9 +4984,9 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
-    expr = self.parse_expression();
-    self.match_tok(TokenKind.SEMI);
-    return expr;
+    self.error("Unexpected token in archetype body");
+    self.advance();
+    return EmptyToken();
 }
 
 impl Parser.parse_has_stmt -> ArchHas {
@@ -5026,14 +5043,6 @@ impl Parser.parse_has_stmt -> ArchHas {
 }
 
 impl Parser.parse_has_var -> HasVar {
-    # Check for per-variable access modifier: :pub name: type
-    # Note: HasVar doesn't have access field - access modifiers are at ArchHas level
-    if self.match_tok(TokenKind.COLON) {
-        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
-            # Skip the access modifier token - it's consumed but not stored per-var
-            self.advance();
-        }
-    }
     name_tok: Token;
     if self.check_name() {
         name_tok = self.advance();
@@ -5140,6 +5149,11 @@ impl Parser.parse_ability -> Ability {
         signature = EventSignature(
             event=event_uni_tok, arch_tag_info=event_type, kid=sig_kid
         );
+    } elif is_can {
+        self.error(
+            "Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"
+        );
+        signature = self.parse_func_signature();
     } else {
         signature = self.parse_func_signature();
     }
@@ -5762,6 +5776,7 @@ impl Parser.parse_impl_def -> ImplDef {
         body = self.parse_expression();
         self.expect(TokenKind.SEMI);
     } else {
+        self.error("Expected '{' or 'by' for impl body");
         self.expect(TokenKind.SEMI);
     }
     kid: list = [];

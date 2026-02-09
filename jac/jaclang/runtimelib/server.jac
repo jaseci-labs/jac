@@ -38,7 +38,7 @@ with entry {
     }
 }
 
-glob JsonValue: TypeAlias = None | str | int | float | bool | <>list['JsonValue'] | <>dict[
+glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
@@ -59,7 +59,7 @@ obj UserData {
 
 """Type-safe serializer for Jac objects."""
 obj JacSerializer {
-    static def serialize(<>obj: object) -> JsonValue;
+    static def serialize(`obj: object) -> JsonValue;
     static def _serialize_archetype(arch: Archetype) -> dict[str, JsonValue];
 }
 

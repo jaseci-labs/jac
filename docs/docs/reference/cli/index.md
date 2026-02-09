@@ -24,6 +24,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies |
 | `jac remove` | Remove packages from project |
+| `jac update` | Update dependencies to latest compatible versions |
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac get_object` | Retrieve object by ID |
 | `jac py2jac` | Convert Python to Jac |
@@ -558,7 +559,7 @@ jac destroy main.jac
 
 ### jac add
 
-Add packages to your project's dependencies.
+Add packages to your project's dependencies. Requires at least one package argument (use `jac install` to install all existing dependencies). When no version is specified, the package is installed unconstrained and then the installed version is queried to record a `~=X.Y` compatible-release spec in `jac.toml`.
 
 ```bash
 jac add [-h] [-d] [-g GIT] [-v] [packages ...]
@@ -566,7 +567,7 @@ jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Package names to add | None |
+| `packages` | Package specifications (required) | None |
 | `-d, --dev` | Add as dev dependency | `False` |
 | `-g, --git` | Git repository URL | None |
 | `-v, --verbose` | Show detailed output | `False` |
@@ -580,8 +581,11 @@ jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 **Examples:**
 
 ```bash
-# Add a package
+# Add a package (records ~=2.32 based on installed version)
 jac add requests
+
+# Add with explicit version constraint
+jac add "numpy>=1.24"
 
 # Add multiple packages
 jac add numpy pandas scipy
@@ -600,7 +604,7 @@ jac add react --npm
 
 ### jac install
 
-Install all dependencies defined in jac.toml.
+Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
 
 ```bash
 jac install [-h] [-d] [-v]
@@ -659,6 +663,35 @@ jac remove pytest --dev
 
 # Remove npm package (requires jac-client)
 jac remove react --npm
+```
+
+---
+
+### jac update
+
+Update dependencies to their latest compatible versions. For each updated package, the installed version is queried and a `~=X.Y` compatible-release spec is written back to `jac.toml`.
+
+```bash
+jac update [-h] [-d] [-v] [packages ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `packages` | Specific packages to update (all if empty) | None |
+| `-d, --dev` | Include dev dependencies | `False` |
+| `-v, --verbose` | Show detailed output | `False` |
+
+**Examples:**
+
+```bash
+# Update all dependencies to latest compatible versions
+jac update
+
+# Update a specific package
+jac update requests
+
+# Update all including dev dependencies
+jac update --dev
 ```
 
 ---

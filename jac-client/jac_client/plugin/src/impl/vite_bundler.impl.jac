@@ -187,10 +187,10 @@ impl ViteBundler._format_config_object(
             items.append(f"{indent_str}  {key}: {str(value).lower()},");
         } elif isinstance(value, (int, float)) {
             items.append(f"{indent_str}  {key}: {value},");
-        } elif isinstance(value, <>list) {
+        } elif isinstance(value, list) {
             list_str = ', '.join(repr(v) for v in value);
             items.append(f"{indent_str}  {key}: [{list_str}],");
-        } elif isinstance(value, <>dict) {
+        } elif isinstance(value, dict) {
             nested = self._format_config_object(value, (indent + 2));
             items.append(f"{indent_str}  {key}: {{{nested}{indent_str}  }},");
         } else {
@@ -213,7 +213,7 @@ impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str
             items.append(f"{key}: {str(value).lower()}");
         } elif isinstance(value, (int, float)) {
             items.append(f"{key}: {value}");
-        } elif isinstance(value, <>list) {
+        } elif isinstance(value, list) {
             items.append(f"{key}: [{', '.join(repr(v) for v in value)}]");
         } else {
             items.append(f"{key}: {repr(value)}");
@@ -295,18 +295,18 @@ impl ViteBundler._generate_vite_config_content(
     build_config = vite_config_data.get('build', {});
     resolve_config = vite_config_data.get('resolve', {});
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
-    if (isinstance(resolve_config, <>dict) and resolve_config)
+    if (isinstance(resolve_config, dict) and resolve_config)
     else '';
     imports_section = f"{imports_str}\n" if imports_str else '';
     newline = '\n';
     if is_dev {
         # Dev config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, <>dict) and build_config)
+        if (isinstance(build_config, dict) and build_config)
         else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, <>dict) and server_config)
+        if (isinstance(server_config, dict) and server_config)
         else '';
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
@@ -372,11 +372,11 @@ export default defineConfig({{
     } else {
         # Build config
         build_overrides_str = self._format_config_object(build_config, indent=2)
-        if (isinstance(build_config, <>dict) and build_config)
+        if (isinstance(build_config, dict) and build_config)
         else '';
         server_config = vite_config_data.get('server', {});
         server_config_str = self._format_config_object(server_config, indent=2)
-        if (isinstance(server_config, <>dict) and server_config)
+        if (isinstance(server_config, dict) and server_config)
         else '';
         server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
         if server_config_str

@@ -46,9 +46,10 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | Command | Description |
 |---------|-------------|
 | `jac create` | Create new project |
-| `jac install` | Install dependencies |
+| `jac install` | Install all dependencies (pip, git, plugins) |
 | `jac add <pkg>` | Add dependency |
 | `jac remove <pkg>` | Remove dependency |
+| `jac update [pkg]` | Update dependencies to latest compatible versions |
 | `jac clean` | Clean build artifacts |
 | `jac script <name>` | Run project script |
 
