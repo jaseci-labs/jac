@@ -434,7 +434,6 @@ def _handle_start_target(ctx: HookContext) -> None {
             return;
         }
         (config, entry_path, project_dir) = start_ctx;
-
         # Check if setup has been run
         tauri_dir = project_dir / "src-tauri";
         if not tauri_dir.exists() {
@@ -472,7 +471,6 @@ def _handle_start_target(ctx: HookContext) -> None {
             return;
         }
         (config, entry_path, project_dir) = start_ctx;
-
         dev_mode = ctx.get_arg("dev", False);
         try {
             if dev_mode {
@@ -494,7 +492,6 @@ def _handle_start_target(ctx: HookContext) -> None {
         }
         return;
     }
-
     # Web target: let existing start command handle it
     # (no cancellation, let it run normally)
 }
@@ -553,7 +550,8 @@ def _handle_setup_target(ctx: HookContext) -> None {
                     f"Setup completed but src-tauri directory not found at: {tauri_dir}"
                 );
                 console.print(
-                    "This may indicate the setup function failed silently.", style="muted"
+                    "This may indicate the setup function failed silently.",
+                    style="muted"
                 );
                 ctx.set_data("cancel_execution", True);
                 ctx.set_data("cancel_return_code", 1);
@@ -567,7 +565,8 @@ def _handle_setup_target(ctx: HookContext) -> None {
                     f"Setup completed but pwa_icons directory not found at: {pwa_icons_dir}"
                 );
                 console.print(
-                    "This may indicate the setup function failed silently.", style="muted"
+                    "This may indicate the setup function failed silently.",
+                    style="muted"
                 );
                 ctx.set_data("cancel_execution", True);
                 ctx.set_data("cancel_return_code", 1);
