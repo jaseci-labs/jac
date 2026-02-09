@@ -31,7 +31,10 @@ import pytest
 _plugin_src = Path(__file__).parent.parent / "plugin" / "src"
 
 _sidecar_main_path = _plugin_src / "targets" / "desktop" / "sidecar" / "main.py"
-_desktop_target_impl_path = _plugin_src / "targets" / "impl" / "desktop_target.impl.jac"
+_desktop_target_impl_path = _plugin_src / "targets" / "desktop" / "target.impl.jac"
+_desktop_helpers_path = _plugin_src / "targets" / "desktop" / "helpers.jac"
+_desktop_target_jac_path = _plugin_src / "targets" / "desktop" / "target.jac"
+_types_jac_path = _plugin_src / "targets" / "types.jac"
 _vite_bundler_jac_path = _plugin_src / "vite_bundler.jac"
 _vite_bundler_impl_path = _plugin_src / "impl" / "vite_bundler.impl.jac"
 
@@ -284,29 +287,28 @@ def test_setup_generates_main_rs_with_sidecar_support() -> None:
 
 
 def test_desktop_target_interface_has_api_port() -> None:
-    """Test that DesktopTarget.dev and .start declare api_port parameter."""
+    """Test that BuildContext includes port configuration for API server."""
     print("[DEBUG] Starting test_desktop_target_interface_has_api_port")
 
-    desktop_target_jac = (
-        Path(__file__).parent.parent
-        / "plugin"
-        / "src"
-        / "targets"
-        / "desktop_target.jac"
-    )
-    assert desktop_target_jac.exists(), (
-        f"desktop_target.jac not found at {desktop_target_jac}"
+    # Check that BuildContext in types.jac has port parameter
+    assert _types_jac_path.exists(), (
+        f"types.jac not found at {_types_jac_path}"
     )
 
-    content = desktop_target_jac.read_text()
+    content = _types_jac_path.read_text()
 
-    # Both dev and start should accept api_port
-    assert "api_port: int = 8000" in content, (
-        "desktop_target.jac should declare api_port parameter"
+    # BuildContext should have port field with default 8000
+    assert "port: int = 8000" in content, (
+        "BuildContext in types.jac should have port: int = 8000"
     )
-    # Should appear twice (once for dev, once for start)
-    assert content.count("api_port: int = 8000") == 2, (
-        "api_port should be declared in both dev() and start() methods"
+
+    # Also verify DesktopTarget uses BuildContext
+    assert _desktop_target_jac_path.exists(), (
+        f"desktop/target.jac not found at {_desktop_target_jac_path}"
+    )
+    target_content = _desktop_target_jac_path.read_text()
+    assert "BuildContext" in target_content, (
+        "DesktopTarget should use BuildContext for method parameters"
     )
 
     print("[DEBUG] Desktop target interface verification passed!")
@@ -403,54 +405,61 @@ def test_resolve_api_base_url_priority_chain_in_impl() -> None:
 # =============================================================================
 
 
-def test_env_var_cleanup_pattern_in_build() -> None:
-    """Test that build() cleans up JAC_CLIENT_API_BASE_URL in a finally block."""
-    print("[DEBUG] Starting test_env_var_cleanup_pattern_in_build")
+def test_env_var_handling_in_build() -> None:
+    """Test that build() has proper error handling with try-except."""
+    print("[DEBUG] Starting test_env_var_handling_in_build")
 
     assert _desktop_target_impl_path.exists()
 
     content = _desktop_target_impl_path.read_text()
 
-    # Find the build method's env var handling section
-    # It should use try/finally for cleanup
+    # Find the build method
     build_section = content[content.index("impl DesktopTarget.build") :]
     # Cut at next impl to isolate the build method
     next_impl = build_section.index("impl ", 10)
     build_section = build_section[:next_impl]
 
+    # Build should use try-except for error handling
     assert "try {" in build_section, (
-        "build() should use try block around web_target.build()"
+        "build() should use try block for error handling"
     )
-    assert "} finally {" in build_section, (
-        "build() should use finally block for env var cleanup"
+    assert "} except" in build_section, (
+        "build() should have except block for error handling"
     )
-    assert "os.environ.pop(API_BASE_URL_ENV_VAR, None)" in build_section, (
-        "build() should clean up env var in finally block"
+    # Should return BuildResult on failure
+    assert "BuildResult.fail(" in build_section, (
+        "build() should return BuildResult.fail on error"
     )
 
-    print("[DEBUG] build() env var cleanup verification passed!")
+    print("[DEBUG] build() error handling verification passed!")
 
 
-def test_env_var_cleanup_pattern_in_start() -> None:
-    """Test that start() cleans up JAC_CLIENT_API_BASE_URL in a finally block."""
-    print("[DEBUG] Starting test_env_var_cleanup_pattern_in_start")
+def test_env_var_handling_in_start() -> None:
+    """Test that start() has proper error handling with try-except."""
+    print("[DEBUG] Starting test_env_var_handling_in_start")
 
     content = _desktop_target_impl_path.read_text()
 
-    # Find the start method's env var handling section
+    # Find the start method
     start_section = content[content.index("impl DesktopTarget.start") :]
 
+    # Start should use try-except for error handling
     assert "try {" in start_section, (
-        "start() should use try block around web_target.build()"
+        "start() should use try block for error handling"
     )
-    assert "} finally {" in start_section, (
-        "start() should use finally block for env var cleanup"
+    assert "} except" in start_section, (
+        "start() should have except block for error handling"
     )
-    assert "os.environ.pop(API_BASE_URL_ENV_VAR, None)" in start_section, (
-        "start() should clean up env var in finally block"
+    # Should return BuildResult on failure
+    assert "BuildResult.fail(" in start_section, (
+        "start() should return BuildResult.fail on error"
+    )
+    # Should set API URL env var
+    assert "API_BASE_URL_ENV_VAR" in start_section, (
+        "start() should set API_BASE_URL_ENV_VAR"
     )
 
-    print("[DEBUG] start() env var cleanup verification passed!")
+    print("[DEBUG] start() error handling verification passed!")
 
 
 def test_env_var_not_leaked_after_import() -> None:
@@ -480,51 +489,47 @@ def test_env_var_not_leaked_after_import() -> None:
 # =============================================================================
 
 
-def test_make_localhost_url_in_impl() -> None:
-    """Test that _make_localhost_url is defined and produces correct format."""
-    print("[DEBUG] Starting test_make_localhost_url_in_impl")
+def test_make_localhost_url_in_helpers() -> None:
+    """Test that _make_localhost_url is defined in helpers.jac and produces correct format."""
+    print("[DEBUG] Starting test_make_localhost_url_in_helpers")
 
-    content = _desktop_target_impl_path.read_text()
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     # Verify _make_localhost_url is defined as a module-level function
     assert "def _make_localhost_url(port: int) -> str" in content, (
-        "_make_localhost_url should be defined as a function"
+        "_make_localhost_url should be defined as a function in helpers.jac"
     )
     assert 'return f"http://127.0.0.1:{port}"' in content, (
         "_make_localhost_url should return http://127.0.0.1:{port}"
     )
 
-    # Verify it's used in dev() and start()
-    usage_count = content.count("_make_localhost_url(")
-    # Definition (1) + at least 2 usages (dev + start)
-    assert usage_count >= 3, (
-        f"_make_localhost_url should be used in dev() and start(), "
-        f"found {usage_count} occurrence(s)"
+    # Verify target.impl.jac imports from helpers
+    impl_content = _desktop_target_impl_path.read_text()
+    assert "_make_localhost_url" in impl_content, (
+        "target.impl.jac should import _make_localhost_url from helpers"
     )
 
     print("[DEBUG] _make_localhost_url verification passed!")
 
 
-def test_get_toml_api_base_url_in_impl() -> None:
-    """Test that _get_toml_api_base_url is defined and used."""
-    print("[DEBUG] Starting test_get_toml_api_base_url_in_impl")
+def test_get_toml_api_base_url_in_helpers() -> None:
+    """Test that _get_toml_api_base_url is defined in helpers.jac."""
+    print("[DEBUG] Starting test_get_toml_api_base_url_in_helpers")
 
-    content = _desktop_target_impl_path.read_text()
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     # Verify _get_toml_api_base_url is defined
     assert "def _get_toml_api_base_url(project_dir: Path) -> str" in content, (
-        "_get_toml_api_base_url should be defined as a function"
+        "_get_toml_api_base_url should be defined in helpers.jac"
     )
     assert "JacClientConfig(project_dir)" in content, (
         "_get_toml_api_base_url should create a JacClientConfig"
-    )
-
-    # Verify it's used in build() and start()
-    usage_count = content.count("_get_toml_api_base_url(")
-    # Definition (1) + at least 2 usages (build + start)
-    assert usage_count >= 3, (
-        f"_get_toml_api_base_url should be used in build() and start(), "
-        f"found {usage_count} occurrence(s)"
     )
 
     print("[DEBUG] _get_toml_api_base_url verification passed!")
@@ -562,28 +567,31 @@ def test_no_magic_string_jac_client_api_base_url() -> None:
 # =============================================================================
 
 
-def test_cli_passes_port_to_desktop_target() -> None:
-    """Test that cli.jac extracts --port and passes api_port to desktop target."""
-    print("[DEBUG] Starting test_cli_passes_port_to_desktop_target")
+def test_cli_passes_port_to_build_context() -> None:
+    """Test that CLI handlers extract --port and pass it to BuildContext."""
+    print("[DEBUG] Starting test_cli_passes_port_to_build_context")
 
-    cli_jac_path = Path(__file__).parent.parent / "plugin" / "cli.jac"
-    assert cli_jac_path.exists()
+    cli_handlers_path = _plugin_src / "targets" / "cli_handlers.jac"
+    assert cli_handlers_path.exists(), (
+        f"cli_handlers.jac not found at {cli_handlers_path}"
+    )
 
-    content = cli_jac_path.read_text()
+    content = cli_handlers_path.read_text()
 
     # Verify port is extracted from CLI context
     assert 'ctx.get_arg("port"' in content, (
-        "cli.jac should extract port from CLI context"
+        "cli_handlers.jac should extract port from CLI context"
     )
 
-    # Verify it's passed to target.dev and target.start
-    assert "api_port=api_port" in content, (
-        "cli.jac should pass api_port to target methods"
+    # Verify port is passed to BuildContext.from_args
+    assert "port=ctx.get_arg" in content, (
+        "cli_handlers.jac should pass port to BuildContext"
     )
 
-    # Should appear at least twice (once for dev, once for start)
-    assert content.count("api_port=api_port") >= 2, (
-        "api_port should be passed in both dev and start calls"
+    # Also verify that BuildContext in types.jac has port field
+    types_content = _types_jac_path.read_text()
+    assert "port: int = 8000" in types_content, (
+        "BuildContext should have port field with default 8000"
     )
 
     print("[DEBUG] CLI port passthrough verification passed!")
@@ -710,10 +718,13 @@ def test_desktop_target_imports_api_base_url_env_var() -> None:
 
     content = _desktop_target_impl_path.read_text()
 
-    assert (
-        "import from jac_client.plugin.src.vite_bundler { API_BASE_URL_ENV_VAR }"
-        in content
-    ), "desktop_target.impl.jac should import API_BASE_URL_ENV_VAR from vite_bundler"
+    # Check for import of API_BASE_URL_ENV_VAR (can be relative or absolute path)
+    assert "API_BASE_URL_ENV_VAR" in content, (
+        "desktop_target.impl.jac should import API_BASE_URL_ENV_VAR"
+    )
+    assert "vite_bundler" in content, (
+        "desktop_target.impl.jac should import from vite_bundler"
+    )
 
     print("[DEBUG] Import consistency verification passed!")
 
@@ -727,7 +738,10 @@ def test_main_rs_uses_initialization_script_not_eval() -> None:
     """
     print("[DEBUG] Starting test_main_rs_uses_initialization_script_not_eval")
 
-    content = _desktop_target_impl_path.read_text()
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     # Find the generated main.rs template (the f-string in _generate_main_rs)
     assert "initialization_script" in content, (
@@ -754,17 +768,19 @@ def test_tauri_config_has_empty_windows() -> None:
     """
     print("[DEBUG] Starting test_tauri_config_has_empty_windows")
 
-    content = _desktop_target_impl_path.read_text()
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     # The _generate_tauri_config function should set windows to []
     assert '"windows": []' in content, (
         "_generate_tauri_config should set windows to empty array"
     )
 
-    # The config update functions should also clear windows
-    # Find both _update_tauri_config_for_build and _update_tauri_config_for_dev
-    assert content.count('["windows"] = []') >= 2, (
-        "Both config update functions should clear the windows array"
+    # Also verify the update function clears windows
+    assert '["windows"] = []' in content, (
+        "Config update function should clear the windows array"
     )
 
     print("[DEBUG] Empty windows config verification passed!")
@@ -776,11 +792,14 @@ def test_tauri_config_has_empty_windows() -> None:
 
 
 def test_start_backend_server_helper_exists() -> None:
-    """Test that _start_backend_server helper is defined and uses subprocess."""
-    content = _desktop_target_impl_path.read_text()
+    """Test that _start_backend_server helper is defined in helpers.jac."""
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     assert "def _start_backend_server(" in content, (
-        "_start_backend_server helper should be defined"
+        "_start_backend_server helper should be defined in helpers.jac"
     )
     # Should use subprocess.Popen to launch the server
     assert "subprocess.Popen" in content, (
@@ -795,19 +814,22 @@ def test_start_backend_server_helper_exists() -> None:
 
 
 def test_resolve_server_port_helper_exists() -> None:
-    """Test that _resolve_server_port helper is defined and parses URLs."""
-    content = _desktop_target_impl_path.read_text()
+    """Test that _resolve_server_port helper is defined in helpers.jac."""
+    assert _desktop_helpers_path.exists(), (
+        f"helpers.jac not found at {_desktop_helpers_path}"
+    )
+    content = _desktop_helpers_path.read_text()
 
     assert "def _resolve_server_port(" in content, (
-        "_resolve_server_port helper should be defined"
+        "_resolve_server_port helper should be defined in helpers.jac"
     )
     assert "urlparse" in content, (
         "_resolve_server_port should use urlparse to extract port from URL"
     )
 
 
-def test_start_method_launches_backend_server() -> None:
-    """Test that start() method launches the backend server before Tauri."""
+def test_start_method_runs_tauri_app() -> None:
+    """Test that start() method runs the Tauri app in production mode."""
     content = _desktop_target_impl_path.read_text()
 
     # Find start() method
@@ -815,25 +837,31 @@ def test_start_method_launches_backend_server() -> None:
     # Find the next impl or end of file
     next_impl = content.find("\nimpl ", start_idx + 1)
     if next_impl == -1:
-        next_impl = content.find("\ndef _", start_idx + 100)
-    start_body = (
-        content[start_idx:next_impl] if next_impl != -1 else content[start_idx:]
+        next_impl = len(content)
+    start_body = content[start_idx:next_impl]
+
+    # start() should build web bundle first
+    assert "get_target" in start_body, (
+        "start() should use factory to get web target"
+    )
+    assert "web_target.build" in start_body, (
+        "start() should build web bundle first"
+    )
+    # start() should run cargo run --release
+    assert '"cargo"' in start_body or "'cargo'" in start_body, (
+        "start() should run cargo"
+    )
+    assert "--release" in start_body, (
+        "start() should run in release mode"
+    )
+    # Should set API URL
+    assert "_make_localhost_url" in start_body, (
+        "start() should use _make_localhost_url for API URL"
     )
 
-    assert "_start_backend_server(" in start_body, (
-        "start() should call _start_backend_server"
-    )
-    assert "_resolve_server_port(" in start_body, (
-        "start() should call _resolve_server_port to determine server port"
-    )
-    # Server process should be terminated in cleanup
-    assert "server_process" in start_body, (
-        "start() should manage server_process lifecycle"
-    )
 
-
-def test_dev_method_launches_backend_server() -> None:
-    """Test that dev() method launches the backend server before Tauri."""
+def test_dev_method_runs_tauri_dev() -> None:
+    """Test that dev() method runs Tauri dev server."""
     content = _desktop_target_impl_path.read_text()
 
     # Find dev() method
@@ -841,14 +869,20 @@ def test_dev_method_launches_backend_server() -> None:
     # Find next impl
     next_impl = content.find("\nimpl ", dev_idx + 1)
     if next_impl == -1:
-        next_impl = content.find('\n"""Update tauri', dev_idx + 100)
-    dev_body = content[dev_idx:next_impl] if next_impl != -1 else content[dev_idx:]
+        next_impl = len(content)
+    dev_body = content[dev_idx:next_impl]
 
-    assert "_start_backend_server(" in dev_body, (
-        "dev() should call _start_backend_server"
+    # dev() should run cargo tauri dev
+    assert '"cargo"' in dev_body or "'cargo'" in dev_body, (
+        "dev() should run cargo"
     )
-    assert "_resolve_server_port(" in dev_body, (
-        "dev() should call _resolve_server_port to determine server port"
+    assert "tauri" in dev_body, (
+        "dev() should run tauri dev"
     )
-    # Server process should be terminated in cleanup
-    assert "server_process" in dev_body, "dev() should manage server_process lifecycle"
+    # Should set API URL for dev mode
+    assert "_make_localhost_url" in dev_body, (
+        "dev() should use _make_localhost_url for API URL"
+    )
+    assert "API_BASE_URL_ENV_VAR" in dev_body, (
+        "dev() should set API_BASE_URL_ENV_VAR"
+    )

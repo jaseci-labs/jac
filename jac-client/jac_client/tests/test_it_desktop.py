@@ -217,14 +217,14 @@ def test_desktop_target_files_exist() -> None:
     plugin_dir = Path(__file__).parent.parent / "plugin"
 
     # Verify desktop target files
-    desktop_target_jac = plugin_dir / "src" / "targets" / "desktop_target.jac"
+    desktop_target_jac = plugin_dir / "src" / "targets" / "desktop" / "target.jac"
     assert desktop_target_jac.exists(), (
         f"desktop_target.jac not found at {desktop_target_jac}"
     )
 
     # Verify implementation file
     desktop_impl_jac = (
-        plugin_dir / "src" / "targets" / "impl" / "desktop_target.impl.jac"
+        plugin_dir / "src" / "targets" / "desktop" / "target.impl.jac"
     )
     assert desktop_impl_jac.exists(), (
         f"desktop_target.impl.jac not found at {desktop_impl_jac}"

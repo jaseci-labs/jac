@@ -8,24 +8,18 @@ client-side (frontend) package management:
 For creating client projects, use: `jac create --use client`
 """
 
+import os;
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.pycore.runtime { hookimpl }
-import os;
+
+# Import target CLI handler from the unified architecture
+import from jac_client.plugin.src.targets.cli_handlers { TargetCLIHandler }
 
 glob registry = get_registry();
 
-# Register targets when module loads
-# Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
-import from jac_client.plugin.src.targets.desktop_target {
-    DesktopTarget
-}
-import from jac_client.plugin.src.targets.web_target { WebTarget }
-import from jac_client.plugin.src.targets.register { register_targets }
-
-with entry {
-    register_targets();
-}
+# Module-level CLI handler instance
+glob _target_handler = TargetCLIHandler();
 
 """Register 'build' command at module level."""
 @registry.command(
@@ -80,11 +74,14 @@ def build(
     help="Setup a build target (one-time initialization)",
     args=[
         Arg.create(
-            "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop)"
+            "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop, pwa)"
         ),
 
     ],
-    examples=[("jac setup desktop", "Setup desktop target (Tauri)"), ],
+    examples=[
+        ("jac setup desktop", "Setup desktop target (Tauri)"),
+        ("jac setup pwa", "Setup PWA target with icons"),
+    ],
     group="project",
     source="jac-client"
 )
@@ -149,24 +146,27 @@ class JacCmd {
             source="jac-client"
         );
 
-        # Add pre-hook to build command (command is registered at module level)
+        # Add pre-hook to build command (uses TargetCLIHandler)
         registry.extend_command(
-            command_name="build", pre_hook=_handle_build_target, source="jac-client"
+            command_name="build",
+            pre_hook=_target_handler.handle_build,
+            source="jac-client"
         );
 
-        # Add pre-hook to setup command (command is registered at module level)
+        # Add pre-hook to setup command (uses TargetCLIHandler)
         registry.extend_command(
-            command_name="setup", pre_hook=_handle_setup_target, source="jac-client"
+            command_name="setup",
+            pre_hook=_target_handler.handle_setup,
+            source="jac-client"
         );
 
         # Extend 'start' command with --client flag
-        # Note: jac-scale also uses --client, so we use --client to avoid conflict
         if registry.has_command("start") {
             registry.extend_command(
                 command_name="start",
                 args=[
                     Arg.create(
-                        "client",  # Use client to avoid conflict with jac-scale's --client
+                        "client",
                         typ=str,
                         default="web",
                         help="Client build target for dev server (web, desktop, pwa)",
@@ -175,12 +175,16 @@ class JacCmd {
                     ),
 
                 ],
-                pre_hook=_handle_start_target,
+                pre_hook=_target_handler.handle_start,
                 source="jac-client"
             );
         }
     }
 }
+
+# -----------------------------------------------------------------------------
+# NPM/Create Handlers (not part of target system)
+# -----------------------------------------------------------------------------
 
 """Pre-hook to handle --skip flag for create command."""
 def _handle_create_skip(ctx: HookContext) -> None {
@@ -217,8 +221,8 @@ def _handle_npm_add(ctx: HookContext) -> None {
         return;
     }
 
-    registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
+    dep_registry = get_dependency_registry();
+    dep_type = dep_registry.get_by_flag("--npm");
     if dep_type is None {
         console.error(
             "--npm flag requires jac-client plugin",
@@ -285,312 +289,6 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --client flag for build command."""
-def _handle_build_target(ctx: HookContext) -> None {
-    import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
-    import from pathlib { Path }
-    import from jaclang.project.config { get_config }
-
-    target_name = ctx.get_arg("client", "web");
-    platform = ctx.get_arg("platform", None);
-
-    registry = get_target_registry();
-    target = registry.get(target_name);
-
-    if not target {
-        console.error(f"Unknown client  target: {target_name}");
-        console.print(
-            f"Available client targets: {', '.join(
-                [t.name for t in registry.get_all()]
-            )}",
-            style="muted"
-        );
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
-    # Store target info in context for use by build handler
-    ctx.set_data("build_target", target);
-    ctx.set_data("build_platform", platform);
-
-    # If target requires setup, warn user
-    if target.requires_setup {
-        console.warning(
-            f"Client target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
-        );
-    }
-
-    # Build using target's build method
-    try {
-        config = get_config();
-        if not config {
-            console.error("No jac.toml found. Run 'jac create' to create a project.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-
-        entry_file = ctx.get_arg("filename", None);
-        if not entry_file {
-            entry_file = config.entry_point;
-        }
-        if not entry_file {
-            console.error("No entry file specified. Use: jac build <file>");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-
-        entry_path = Path(entry_file);
-        project_dir = config.project_root or Path.cwd();
-        if not entry_path.is_absolute() {
-            entry_path = project_dir / entry_path;
-        }
-        bundle_path = target.build(entry_path, project_dir, platform);
-
-        console.success(f"Build complete: {bundle_path}");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 0);
-    } except NotImplementedError as e {
-        console.error(
-            f"Target '{target_name}' is not yet implemented. Coming in Phase 2!"
-        );
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-    } except Exception as e {
-        console.error(f"Build failed: {e}");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-    }
-}
-
-"""Extract config, entry path, and project dir from context. Returns None on error."""
-def _get_start_context(ctx: HookContext) -> tuple | None {
-    import from pathlib { Path }
-    import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
-
-    config = get_config();
-    if not config {
-        console.error("No jac.toml found. Run 'jac create' to create a project.");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return None;
-    }
-
-    entry_file = ctx.get_arg("filename", None);
-    if not entry_file {
-        entry_file = config.entry_point;
-    }
-    if not entry_file {
-        console.error("No entry file specified. Use: jac start <file>");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return None;
-    }
-
-    entry_path = Path(entry_file);
-    project_dir = config.project_root or Path.cwd();
-    if not entry_path.is_absolute() {
-        entry_path = project_dir / entry_path;
-    }
-
-    return (config, entry_path, project_dir);
-}
-
-"""Pre-hook to handle --client flag for start command."""
-def _handle_start_target(ctx: HookContext) -> None {
-    import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
-
-    target_name = ctx.get_arg("client", "web");
-
-    registry = get_target_registry();
-    target = registry.get(target_name);
-
-    if not target {
-        console.error(f"Unknown client target:  {target_name}");
-        console.print(
-            f"Available client targets: {', '.join(
-                [t.name for t in registry.get_all()]
-            )}",
-            style="muted"
-        );
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
-    # Store target info in context
-    ctx.set_data("start_client_target", target);
-
-    # Handle desktop target
-    if target_name == "desktop" {
-        import from pathlib { Path }
-        start_ctx = _get_start_context(ctx);
-        if not start_ctx {
-            return;
-        }
-        (config, entry_path, project_dir) = start_ctx;
-
-        # Check if setup has been run
-        tauri_dir = project_dir / "src-tauri";
-        if not tauri_dir.exists() {
-            console.error("Desktop target not set up. Run 'jac setup desktop' first.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-        dev_mode = ctx.get_arg("dev", False);
-        api_port = ctx.get_arg("port", 8000);
-        try {
-            if dev_mode {
-                # Desktop target with --dev: launch Tauri dev mode (hot reload)
-                target.dev(entry_path, project_dir, api_port=api_port);
-            } else {
-                # Desktop target without --dev: build web bundle and launch Tauri with built bundle
-                target.start(entry_path, project_dir, api_port=api_port);
-            }
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 0);
-        } except Exception as e {
-            import traceback;
-            console.error(f"Desktop start failed: {e}");
-            console.print(traceback.format_exc(), style="muted");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-        }
-        return;
-    }
-
-    # Handle PWA target - build PWA files, then let normal jac start serve them
-    if target_name == "pwa" {
-        start_ctx = _get_start_context(ctx);
-        if not start_ctx {
-            return;
-        }
-        (config, entry_path, project_dir) = start_ctx;
-
-        dev_mode = ctx.get_arg("dev", False);
-        try {
-            if dev_mode {
-                target.dev(entry_path, project_dir);
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 0);
-            } else {
-                # Build PWA bundle, then let server serve with no_client (skip rebuild)
-                target.build(entry_path, project_dir, None);
-                # Tell server to skip client building - we already built it
-                ctx.args['no_client'] = True;
-            }
-        } except Exception as e {
-            import traceback;
-            console.error(f"PWA target failed: {e}");
-            console.print(traceback.format_exc(), style="muted");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-        }
-        return;
-    }
-
-    # Web target: let existing start command handle it
-    # (no cancellation, let it run normally)
-}
-
-"""Pre-hook to handle setup command."""
-def _handle_setup_target(ctx: HookContext) -> None {
-    import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
-    import from pathlib { Path }
-    import from jaclang.project.config { get_config }
-
-    target_name = ctx.get_arg("target", None);
-    if not target_name {
-        console.error("No target specified. Use: jac setup <target>");
-        console.print("Available targets: desktop", style="muted");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
-    registry = get_target_registry();
-    target = registry.get(target_name);
-
-    if not target {
-        console.error(f"Unknown client target: {target_name}");
-        console.print(
-            f"Available targets: {', '.join([t.name for t in registry.get_all()])}",
-            style="muted"
-        );
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
-    # Setup using target's setup method
-    try {
-        config = get_config();
-        if not config {
-            console.error("No jac.toml found. Run 'jac create' to create a project.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-
-        project_dir = config.project_root or Path.cwd();
-        console.print(
-            f"Setting up target '{target_name}' in: {project_dir}", style="muted"
-        );
-        target.setup(project_dir);
-
-        # Verify setup completed successfully
-        if target_name == "desktop" {
-            tauri_dir = project_dir / "src-tauri";
-            if not tauri_dir.exists() {
-                console.error(
-                    f"Setup completed but src-tauri directory not found at: {tauri_dir}"
-                );
-                console.print(
-                    "This may indicate the setup function failed silently.", style="muted"
-                );
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 1);
-                return;
-            }
-        }
-        if target_name == "pwa" {
-            pwa_icons_dir = project_dir / "pwa_icons";
-            if not pwa_icons_dir.exists() {
-                console.error(
-                    f"Setup completed but pwa_icons directory not found at: {pwa_icons_dir}"
-                );
-                console.print(
-                    "This may indicate the setup function failed silently.", style="muted"
-                );
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 1);
-                return;
-            }
-        }
-
-        console.success(f"Target '{target_name}' setup complete!");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 0);
-    } except NotImplementedError as e {
-        console.error(f"Target '{target_name}' setup is not yet implemented.");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-    } except Exception as e {
-        import traceback;
-        console.error(f"Setup failed: {e}");
-        console.print(traceback.format_exc(), style="muted");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-    }
-}
-
 """Pre-hook to handle --npm flag for removing npm dependencies."""
 def _handle_npm_remove(ctx: HookContext) -> None {
     # Check if --npm flag is set
@@ -620,8 +318,8 @@ def _handle_npm_remove(ctx: HookContext) -> None {
         return;
     }
 
-    registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
+    dep_registry = get_dependency_registry();
+    dep_type = dep_registry.get_by_flag("--npm");
     if dep_type is None {
         console.error("--npm flag requires jac-client plugin to be installed.");
         console.print("Install with: pip install jac-client", style="muted");

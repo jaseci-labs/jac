@@ -1,11 +1,11 @@
-"""Implementation of PWATarget methods."""
-import from pathlib { Path }
-import from typing { Optional }
-import from jac_client.plugin.src.vite_bundler { ViteBundler }
-import from jaclang.cli.console { console }
-import from jaclang.project.config { get_config }
+"""Implementation of PWATarget methods using new BuildContext/BuildResult interface."""
 import json;
 import shutil;
+import from pathlib { Path }
+import from jaclang.cli.console { console }
+import from jaclang.project.config { get_config }
+import from ..types { BuildContext, BuildResult }
+import from ...vite_bundler { ViteBundler }
 
 # PWA Constants
 glob PWA_DEFAULT_THEME_COLOR = "#000000",
@@ -16,8 +16,90 @@ glob PWA_DEFAULT_THEME_COLOR = "#000000",
      PWA_API_PATH_PREFIX = "/api/",
      PWA_CACHEABLE_EXTENSIONS = ['.html', '.js', '.css', '.png', '.json'];
 
-"""Load PWA config with project metadata in a single config fetch."""
-def _load_pwa_context -> tuple[dict, str] {
+"""Setup PWA target - copies default icons and configures jac.toml."""
+impl PWATarget.setup(self: PWATarget, ctx: BuildContext) -> BuildResult {
+    try {
+        console.print("\n📱 Setting up PWA target", style="bold");
+
+        icons_dest = ctx.project_dir / "pwa_icons";
+        if not icons_dest.exists() {
+            icons_dest.mkdir(parents=True);
+            _copy_pwa_icons_to_project(icons_dest);
+        } else {
+            console.print("  ✔ pwa_icons/ directory already exists", style="muted");
+        }
+
+        _ensure_pwa_config(ctx.project_dir);
+
+        console.print("\n✅ PWA setup complete!", style="bold green");
+        console.print(
+            "  Run 'jac build --client pwa' or 'jac start --client pwa'", style="muted"
+        );
+
+        return BuildResult.ok();
+    } except Exception as e {
+        return BuildResult.fail(str(e));
+    }
+}
+
+"""Build PWA bundle - web bundle + manifest + service worker."""
+impl PWATarget.build(self: PWATarget, ctx: BuildContext) -> BuildResult {
+    try {
+        import from ..factory { get_target }
+
+        console.print("\n📱 Building PWA target", style="bold");
+
+        # Build web bundle first (use factory for consistency)
+        web_target = get_target("web");
+        web_result = web_target.build(ctx);
+
+        if not web_result.success {
+            return web_result;
+        }
+
+        bundler = ViteBundler(project_dir=ctx.project_dir);
+        dist_dir = bundler.output_dir;
+
+        (pwa_config, project_name) = _load_pwa_context();
+
+        console.print("\n  Adding PWA features...", style="muted");
+        _copy_pwa_icons_to_dist(dist_dir, ctx.project_dir);
+        _generate_manifest(dist_dir, project_name, pwa_config);
+        _generate_service_worker(dist_dir, pwa_config);
+        _update_html_for_pwa(dist_dir, pwa_config);
+
+        console.print("\n✅ PWA build complete!", style="bold green");
+        console.print(f"  Output: {dist_dir}", style="muted");
+
+        return BuildResult.ok(output_path=web_result.output_path);
+    } except Exception as e {
+        return BuildResult.fail(str(e));
+    }
+}
+
+"""Start PWA dev server."""
+impl PWATarget.dev(self: PWATarget, ctx: BuildContext) -> BuildResult {
+    try {
+        import from ..factory { get_target }
+
+        console.print("\n📱 Starting PWA dev server", style="bold");
+        console.print(
+            "  Note: Service worker is disabled in dev mode for better DX", style="muted"
+        );
+
+        web_target = get_target("web");
+        return web_target.dev(ctx);
+    } except Exception as e {
+        return BuildResult.fail(str(e));
+    }
+}
+
+# -----------------------------------------------------------------------------
+# Helper Functions (moved from original impl)
+# -----------------------------------------------------------------------------
+
+"""Load PWA config with project metadata."""
+def _load_pwa_context() -> tuple[dict, str] {
     config = get_config();
     project_name = "Jac App";
     pwa_config: dict = {};
@@ -61,7 +143,7 @@ def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
 }
 
 """Get the path to the default PWA icons directory."""
-def _get_default_icons_dir -> Optional[Path] {
+def _get_default_icons_dir() -> Path | None {
     import from jac_client.plugin { defaults }
 
     defaults_file = getattr(defaults, '__file__', None);
@@ -89,7 +171,7 @@ def _copy_icons(src_dir: Path, dest_dir: Path, success_suffix: str = "") -> int 
     return len(icon_files);
 }
 
-"""Copy PWA icons to dist directory, preferring user's project icons over defaults."""
+"""Copy PWA icons to dist directory."""
 def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     try {
         user_icons_dir = project_dir / "pwa_icons";
@@ -111,10 +193,31 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     }
 }
 
+"""Copy PWA icons to project directory."""
+def _copy_pwa_icons_to_project(dest_dir: Path) -> None {
+    try {
+        icons_dir = _get_default_icons_dir();
+        if not icons_dir {
+            console.print(
+                "  Creating pwa_icons/ directory (add your icons here)", style="muted"
+            );
+            return;
+        }
+        copied = _copy_icons(icons_dir, dest_dir, "to pwa_icons/");
+        if copied == 0 {
+            console.print(
+                "  Created pwa_icons/ directory (add pwa-192x192.png and pwa-512x512.png)",
+                style="muted"
+            );
+        }
+    } except Exception as e {
+        console.warning(f"  Failed to copy default icons: {e}");
+    }
+}
+
 """Generate manifest.json for PWA."""
 def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> None {
     manifest = _get_default_manifest(project_name, pwa_config);
-
     user_manifest = pwa_config.get("manifest", {});
     manifest.update(user_manifest);
 
@@ -123,7 +226,7 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> N
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8');
         console.print("  ✔ Generated manifest.json", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate manifest.json: {e}") ;
+        raise RuntimeError(f"Failed to generate manifest.json: {e}");
     }
 }
 
@@ -210,7 +313,7 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict) -> None {
         sw_path.write_text(sw_content, encoding='utf-8');
         console.print("  ✔ Generated sw.js (service worker)", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate service worker: {e}") ;
+        raise RuntimeError(f"Failed to generate service worker: {e}");
     }
 }
 
@@ -223,7 +326,7 @@ def _build_pwa_head_tags(theme_color: str) -> str {
 }
 
 """Build service worker registration script."""
-def _build_sw_registration_script -> str {
+def _build_sw_registration_script() -> str {
     return '''
     <script>
       if ('serviceWorker' in navigator) {
@@ -263,9 +366,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             html_content = html_content.replace('</body>', f'{sw_script}\n  </body>');
             modified = True;
         } else {
-            console.warning(
-                "  No </body> tag found, skipping SW registration injection"
-            );
+            console.warning("  No </body> tag found, skipping SW registration injection");
         }
 
         if modified {
@@ -273,46 +374,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             console.print("  ✔ Updated index.html with PWA support", style="success");
         }
     } except Exception as e {
-        raise RuntimeError(f"Failed to update index.html for PWA: {e}") ;
-    }
-}
-
-"""Setup PWA target - copies default icons and configures jac.toml."""
-impl PWATarget.setup(self: PWATarget, project_dir: Path) -> None {
-    console.print("\n📱 Setting up PWA target", style="bold");
-    icons_dest = project_dir / "pwa_icons";
-    if not icons_dest.exists() {
-        icons_dest.mkdir(parents=True);
-        _copy_pwa_icons_to_project(icons_dest);
-    } else {
-        console.print("  ✔ pwa_icons/ directory already exists", style="muted");
-    }
-    _ensure_pwa_config(project_dir);
-    console.print("\n✅ PWA setup complete!", style="bold green");
-    console.print(
-        "  Run 'jac build --client pwa' or 'jac start --client pwa'", style="muted"
-    );
-}
-
-"""Copy PWA icons to project directory."""
-def _copy_pwa_icons_to_project(dest_dir: Path) -> None {
-    try {
-        icons_dir = _get_default_icons_dir();
-        if not icons_dir {
-            console.print(
-                "  Creating pwa_icons/ directory (add your icons here)", style="muted"
-            );
-            return;
-        }
-        copied = _copy_icons(icons_dir, dest_dir, "to pwa_icons/");
-        if copied == 0 {
-            console.print(
-                "  Created pwa_icons/ directory (add pwa-192x192.png and pwa-512x512.png)",
-                style="muted"
-            );
-        }
-    } except Exception as e {
-        console.warning(f"  Failed to copy default icons: {e}");
+        raise RuntimeError(f"Failed to update index.html for PWA: {e}");
     }
 }
 
@@ -355,46 +417,4 @@ background_color = "#ffffff"
     } except Exception as e {
         console.warning(f"  Failed to update jac.toml: {e}");
     }
-}
-
-"""Build PWA bundle - web bundle + manifest + service worker."""
-impl PWATarget.build(
-    self: PWATarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
-) -> Path {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
-    console.print("\n📱 Building PWA target", style="bold");
-    web_target = WebTarget();
-    bundle_path = web_target.build(entry_file, project_dir, platform);
-    bundler = ViteBundler(project_dir=project_dir);
-    dist_dir = bundler.output_dir;
-    (pwa_config, project_name) = _load_pwa_context();
-    console.print("\n  Adding PWA features...", style="muted");
-    _copy_pwa_icons_to_dist(dist_dir, project_dir);
-    _generate_manifest(dist_dir, project_name, pwa_config);
-    _generate_service_worker(dist_dir, pwa_config);
-    _update_html_for_pwa(dist_dir, pwa_config);
-    console.print("\n✅ PWA build complete!", style="bold green");
-    console.print(f"  Output: {dist_dir}", style="muted");
-    return bundle_path;
-}
-
-"""Start PWA dev server."""
-impl PWATarget.dev(self: PWATarget, entry_file: Path, project_dir: Path) -> None {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
-    console.print("\n📱 Starting PWA dev server", style="bold");
-    console.print(
-        "  Note: Service worker is disabled in dev mode for better DX", style="muted"
-    );
-    web_target = WebTarget();
-    web_target.dev(entry_file, project_dir);
-}
-
-"""Start PWA - no-op, handled by cli.jac which builds PWA then lets normal jac start serve."""
-impl PWATarget.start(
-    self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-) -> None {
-    return;
 }

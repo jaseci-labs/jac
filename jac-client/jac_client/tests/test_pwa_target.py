@@ -19,10 +19,10 @@ def test_pwa_target_files_exist() -> None:
     """Test that the PWA target implementation files exist."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
 
-    pwa_target_jac = plugin_dir / "src" / "targets" / "pwa_target.jac"
+    pwa_target_jac = plugin_dir / "src" / "targets" / "pwa" / "target.jac"
     assert pwa_target_jac.exists(), f"pwa_target.jac not found at {pwa_target_jac}"
 
-    pwa_impl_jac = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    pwa_impl_jac = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     assert pwa_impl_jac.exists(), f"pwa_target.impl.jac not found at {pwa_impl_jac}"
 
     pwa_target_content = pwa_target_jac.read_text()
@@ -36,7 +36,7 @@ def test_pwa_target_files_exist() -> None:
 def test_pwa_setup_implementation_exists() -> None:
     """Test that PWA setup implementation exists with expected functions."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert "_copy_pwa_icons_to_project" in impl_content
@@ -65,22 +65,19 @@ background_color = "#ffffff"
     assert "[plugins.client.pwa]" in pwa_section
 
 
-def test_pwa_target_registered() -> None:
-    """Test that PWATarget is registered in register.jac."""
+def test_pwa_target_registered_in_factory() -> None:
+    """Test that PWATarget is registered in factory.jac."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    register_jac = plugin_dir / "src" / "targets" / "register.jac"
+    factory_jac = plugin_dir / "src" / "targets" / "factory.jac"
 
-    assert register_jac.exists(), f"register.jac not found at {register_jac}"
+    assert factory_jac.exists(), f"factory.jac not found at {factory_jac}"
 
-    register_content = register_jac.read_text()
-    assert "PWATarget" in register_content, (
-        "PWATarget should be imported in register.jac"
+    factory_content = factory_jac.read_text()
+    assert "PWATarget" in factory_content, (
+        "PWATarget should be imported in factory.jac"
     )
-    assert "pwa_target = PWATarget()" in register_content, (
-        "PWATarget should be instantiated in register.jac"
-    )
-    assert "registry.register(pwa_target)" in register_content, (
-        "pwa_target should be registered"
+    assert "pwa" in factory_content.lower(), (
+        "factory.jac should handle 'pwa' target"
     )
 
 
@@ -115,7 +112,7 @@ def test_get_default_manifest_structure() -> None:
     ]
 
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     for field in expected_fields:
@@ -125,7 +122,7 @@ def test_get_default_manifest_structure() -> None:
 def test_pwa_constants_defined() -> None:
     """Test that PWA constants are properly defined in implementation."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert "PWA_DEFAULT_THEME_COLOR" in impl_content
@@ -195,7 +192,7 @@ def test_manifest_user_override() -> None:
 def test_service_worker_content_structure() -> None:
     """Test that generated service worker has correct structure."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert "CACHE_NAME" in impl_content, "SW should define CACHE_NAME"
@@ -214,7 +211,7 @@ def test_service_worker_content_structure() -> None:
 def test_service_worker_caching_strategies() -> None:
     """Test that service worker implements correct caching strategies."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert "PWA_API_PATH_PREFIX" in impl_content, "Should use API path prefix constant"
@@ -353,7 +350,7 @@ def test_icon_copy_with_icons() -> None:
 def test_user_icons_preferred_over_defaults() -> None:
     """Test that user's custom icons in pwa_icons/ are preferred over defaults."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     # Verify the implementation checks user's pwa_icons first
@@ -389,7 +386,7 @@ def test_manifest_generation_error_handling() -> None:
 def test_service_worker_generation_error_handling() -> None:
     """Test that service worker generation raises RuntimeError on failure."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert 'raise RuntimeError(f"Failed to generate service worker' in impl_content
@@ -398,7 +395,7 @@ def test_service_worker_generation_error_handling() -> None:
 def test_html_update_error_handling() -> None:
     """Test that HTML update raises RuntimeError on failure."""
     plugin_dir = Path(__file__).parent.parent / "plugin"
-    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_file = plugin_dir / "src" / "targets" / "pwa" / "target.impl.jac"
     impl_content = impl_file.read_text()
 
     assert 'raise RuntimeError(f"Failed to update index.html for PWA' in impl_content

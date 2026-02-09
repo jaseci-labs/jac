@@ -1,10 +1,14 @@
-"""Implementation of DesktopTarget methods."""
+"""Desktop target helper functions.
+
+Contains utilities for Tauri project generation, dependency checking,
+and build configuration.
+"""
 import from pathlib { Path }
 import from typing { Optional, Any }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
-import from jac_client.plugin.src.config_loader { JacClientConfig }
-import from jac_client.plugin.src.vite_bundler { API_BASE_URL_ENV_VAR }
+import from ...config_loader { JacClientConfig }
+import from ...vite_bundler { API_BASE_URL_ENV_VAR }
 import subprocess;
 import json;
 import shutil;
@@ -19,200 +23,6 @@ def _make_localhost_url(port: int) -> str {
 def _get_toml_api_base_url(project_dir: Path) -> str {
     config_loader = JacClientConfig(project_dir);
     return config_loader.get_api_config().get('base_url', '');
-}
-
-"""Setup desktop target - scaffold Tauri project structure."""
-impl DesktopTarget.setup(self: DesktopTarget, project_dir: Path) -> None {
-    # Define tauri_dir early so we can use it in error handling
-    tauri_dir = project_dir / "src-tauri";
-    # Create src-tauri directory structure FIRST (before ANY other operations)
-    # This ensures the directory exists even if later steps fail
-    console.print("\n🖥️  Setting up desktop target (Tauri)", style="bold");
-    console.print(f"  Project directory: {project_dir}", style="muted");
-    # Check if already set up
-    if tauri_dir.exists() {
-        console.warning("Desktop target already set up. Skipping...");
-        return;
-    }
-    # Ensure project directory exists
-    if not project_dir.exists() {
-        try {
-            project_dir.mkdir(parents=True, exist_ok=True);
-        } except Exception as e {
-            raise RuntimeError(f"Failed to create project directory: {e}") ;
-        }
-    }
-    # Create src-tauri directory structure IMMEDIATELY (before imports or any other operations)
-    console.print("  Creating src-tauri/ directory structure...", style="muted");
-    try {
-        tauri_dir.mkdir(parents=True, exist_ok=True);
-        (tauri_dir / "src").mkdir(exist_ok=True);
-        (tauri_dir / "binaries").mkdir(exist_ok=True);
-        console.print(f"  ✔ Created {tauri_dir}", style="success");
-    } except Exception as e {
-        raise RuntimeError(f"Failed to create src-tauri directory: {e}") ;
-    }
-    # Wrap rest of setup in try-finally to ensure directory exists even if exceptions occur
-    try {
-        # Now import and do other operations (directory already exists, so if these fail, directory is still there)
-        import from jac_client.plugin.src.desktop_config { DesktopConfig }
-
-        # Load desktop config (will use defaults if [desktop] section doesn't exist)
-        # Wrap in try-except to handle config loading errors gracefully
-        try {
-            desktop_config = DesktopConfig(project_dir=project_dir);
-            config_data = desktop_config.load();
-
-            project_name = config_data.get('name', 'my-jac-app');
-            project_version = config_data.get('version', '1.0.0');
-            identifier = config_data.get('identifier', 'com.myapp');
-        } except Exception as e {
-            console.warning(f"  Failed to load desktop config: {e}, using defaults");
-            project_name = 'my-jac-app';
-            project_version = '1.0.0';
-            identifier = 'com.myapp';
-        }
-
-        console.print(
-            f"  Project name: {project_name}, version: {project_version}",
-            style="muted"
-        );
-        console.print(f"  Identifier: {identifier}", style="muted");
-
-        # Generate tauri.conf.json (don't fail setup if this fails)
-        try {
-            _generate_tauri_config(
-                tauri_dir, project_name, identifier, project_version
-            );
-        } except Exception as e {
-            console.warning(f"  Failed to generate tauri.conf.json: {e}");
-            console.print(
-                "  Setup will continue, but tauri.conf.json may be missing.",
-                style="muted"
-            );
-        }
-
-        # Generate Cargo.toml (don't fail setup if this fails)
-        try {
-            _generate_cargo_toml(tauri_dir, project_name, identifier);
-        } except Exception as e {
-            console.warning(f"  Failed to generate Cargo.toml: {e}");
-            console.print(
-                "  Setup will continue, but Cargo.toml may be missing.", style="muted"
-            );
-        }
-
-        # Generate build.rs (don't fail setup if this fails)
-        try {
-            _generate_build_rs(tauri_dir);
-        } except Exception as e {
-            console.warning(f"  Failed to generate build.rs: {e}");
-            console.print(
-                "  Setup will continue, but build.rs may be missing.", style="muted"
-            );
-        }
-
-        # Generate icons (don't fail setup if this fails)
-        try {
-            _generate_default_icons(tauri_dir);
-        } except Exception as e {
-            console.warning(f"  Failed to generate icons: {e}");
-            console.print(
-                "  Setup will continue, but icons may be missing.", style="muted"
-            );
-        }
-
-        # Update tauri.conf.json to include icons
-        try {
-            config_path = tauri_dir / "tauri.conf.json";
-            if config_path.exists() {
-                with open(config_path, "r") as f {
-                    config = json.load(f);
-                }
-                _populate_icon_array(tauri_dir, config);
-                with open(config_path, "w") as f {
-                    json.dump(config, f, indent=2);
-                }
-            }
-        } except Exception as e {
-            console.warning(f"  Failed to update icon array in tauri.conf.json: {e}");
-        }
-
-        # Generate main.rs (don't fail setup if this fails)
-        try {
-            _generate_main_rs(tauri_dir);
-        } except Exception as e {
-            console.warning(f"  Failed to generate main.rs: {e}");
-            console.print(
-                "  Setup will continue, but main.rs may be missing.", style="muted"
-            );
-        }
-
-        # Add [desktop] section to jac.toml (don't fail setup if this fails)
-        try {
-            _add_desktop_config(project_dir, project_name, identifier, project_version);
-        } except Exception as e {
-            console.warning(f"  Failed to add [desktop] section to jac.toml: {e}");
-            console.print(
-                "  Setup will continue, but jac.toml may not be updated.",
-                style="muted"
-            );
-        }
-
-        # Check and install required dependencies (wrap in try-except to not fail setup)
-        console.print("\n📦 Checking required dependencies...", style="bold");
-        try {
-            _check_and_install_dependencies();
-        } except Exception as e {
-            console.warning(f"  Dependency check encountered an issue: {e}");
-            console.print(
-                "  Setup will continue, but some dependencies may be missing.",
-                style="muted"
-            );
-        }
-
-        # Verify essential files exist, recreate if missing
-        essential_files = {
-            "tauri.conf.json": lambda :
-                _generate_tauri_config(
-                    tauri_dir, project_name, identifier, project_version
-                ),
-            "Cargo.toml": lambda :
-                _generate_cargo_toml(tauri_dir, project_name, identifier),
-            "build.rs": lambda : _generate_build_rs(tauri_dir),
-            "src/main.rs": lambda : _generate_main_rs(tauri_dir)
-        };
-
-        for file_path in essential_files {
-            full_path = tauri_dir / file_path;
-            if not full_path.exists() {
-                console.warning(f"  {file_path} not found, regenerating...");
-                try {
-                    generator = essential_files[file_path];
-                    generator();
-                } except Exception as e {
-                    console.warning(f"  Failed to regenerate {file_path}: {e}");
-                }
-            }
-        }
-
-        console.success("Desktop target setup complete!");
-        console.print("\nNext steps:", style="bold");
-        console.print("  1. Build: jac build main.jac --client desktop");
-        console.print("  2. Dev:   jac start main.jac --client desktop");
-    } finally {
-        # ABSOLUTE GUARANTEE: Ensure src-tauri directory exists no matter what
-        if not tauri_dir.exists() {
-            try {
-                tauri_dir.mkdir(parents=True, exist_ok=True);
-                (tauri_dir / "src").mkdir(exist_ok=True);
-                (tauri_dir / "binaries").mkdir(exist_ok=True);
-                console.print(f"  ✔ Ensured {tauri_dir} exists", style="success");
-            } except Exception as e {
-                console.error(f"  CRITICAL: Could not create src-tauri directory: {e}");
-            }
-        }
-    }
 }
 
 """Generate identifier from project name."""
@@ -460,11 +270,6 @@ except ImportError:
     );
 }
 
-"""Generate main.rs.
-
-api_base_url: embed this URL and skip sidecar port discovery.
-    Empty string means dynamic discovery at runtime.
-"""
 def _generate_main_rs(tauri_dir: Path, api_base_url: str = "") -> None {
     import json;
 
@@ -1517,110 +1322,6 @@ def _check_and_install_tauri_cli -> None {
     }
 }
 
-"""Build desktop app - build web bundle first, then wrap with Tauri."""
-impl DesktopTarget.build(
-    self: DesktopTarget,
-    entry_file: Path,
-    project_dir: Path,
-    platform: Optional[str] = None
-) -> Path {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
-    # Check if setup has been run
-    tauri_dir = project_dir / "src-tauri";
-    if not tauri_dir.exists() {
-        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.") ;
-    }
-    # Bake TOML base_url into the bundle; otherwise sidecar discovers port at runtime.
-    toml_base_url = _get_toml_api_base_url(project_dir);
-    if toml_base_url {
-        os.environ[API_BASE_URL_ENV_VAR] = toml_base_url;
-    }
-    # Step 1: Build web bundle first (reuse existing pipeline)
-    console.print("  Step 1: Building web bundle...", style="muted");
-    web_target = WebTarget();
-    try {
-        web_bundle_path = web_target.build(entry_file, project_dir, platform);
-    } finally {
-        os.environ.pop(API_BASE_URL_ENV_VAR, None);
-    }
-    console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
-    # Regenerate main.rs with latest TOML config (base_url may have changed since setup)
-    _generate_main_rs(tauri_dir, api_base_url=toml_base_url);
-    # Step 1.5: Bundle sidecar (optional - can be skipped if not needed)
-    # This bundles the Jac backend as an executable for local use
-    sidecar_bundled = False;
-    try {
-        console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
-        sidecar_path = _bundle_sidecar(entry_file, project_dir, tauri_dir, platform);
-        if sidecar_path and sidecar_path.exists() {
-            console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
-            sidecar_bundled = True;
-        }
-    } except Exception as e {
-        console.warning(f"  Sidecar bundling skipped: {e}");
-        console.print(
-            "  Note: Desktop app will need external API server", style="muted"
-        );
-        sidecar_bundled = False;
-    }
-    # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
-    icon_path = tauri_dir / "icons" / "icon.png";
-    if icon_path.exists() {
-        try {
-            # Try to check icon size and squareness using PIL
-            import subprocess;
-            check_code = '''
-import sys
-from PIL import Image
-try:
-    img = Image.open(sys.argv[1])
-    # AppImage requires square icons, and 1024x1024 is recommended
-    if img.width != img.height or img.width < 512:
-        sys.exit(1)  # Not square or too small
-    # Verify it's RGBA format
-    if img.mode != "RGBA":
-        sys.exit(1)  # Not RGBA
-    sys.exit(0)  # Icon OK
-except:
-    sys.exit(1)  # Error or invalid
-''';
-            result = subprocess.run(
-                ["python3", "-c", check_code, str(icon_path)],
-                capture_output=True,
-                timeout=5
-            );
-            if result.returncode != 0 {
-                console.warning(
-                    "  Icon is invalid or too small for AppImage, regenerating..."
-                );
-                # Delete old icon before regenerating
-                if icon_path.exists() {
-                    icon_path.unlink();
-                }
-                _generate_default_icons(tauri_dir);
-            }
-        } except Exception {
-            # If check fails, try to regenerate anyway
-            console.warning("  Could not verify icon, regenerating...");
-            _generate_default_icons(tauri_dir);
-        }
-    } else {
-        # Icon doesn't exist, generate it
-        _generate_default_icons(tauri_dir);
-    }
-    # Step 2: Update tauri.conf.json to point to web bundle
-    console.print("  Step 2: Updating Tauri configuration...", style="muted");
-    _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
-    # Step 3: Run cargo tauri build
-    console.print("  Step 3: Building Tauri app...", style="muted");
-    bundle_path = _run_tauri_build(tauri_dir, platform);
-    console.success(f"Desktop app built successfully!");
-    console.print(f"  Output: {bundle_path}", style="muted");
-    return bundle_path;
-}
-
 """Add sidecar binary to tauri.conf.json if it exists."""
 def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
     binaries_dir = tauri_dir / "binaries";
@@ -1734,17 +1435,13 @@ def _update_tauri_config_for_build(
         config = json.load(f);
     }
 
-    # Calculate relative path from tauri_dir to dist directory (not the bundle file)
-    # web_bundle_path is the JS file, but frontendDist needs the directory containing index.html
+    # Calculate relative path from tauri_dir to dist directory
     dist_dir = web_bundle_path.parent;
 
     try {
-        # Dist directory is typically in .jac/client/dist
-        # Relative to src-tauri, that's ../.jac/client/dist
         dist_relative = dist_dir.relative_to(project_dir);
         dist_relative_str = "../" + str(dist_relative.as_posix());
     } except ValueError {
-        # If paths don't share a common root, use absolute path
         dist_relative_str = str(dist_dir.as_posix());
     }
 
@@ -1752,7 +1449,6 @@ def _update_tauri_config_for_build(
     if "build" not in config {
         config["build"] = {};
     }
-    # Tauri v2 uses 'frontendDist' to point to the directory containing index.html
     config["build"]["frontendDist"] = dist_relative_str;
     # Remove devUrl and other invalid properties
     if "devUrl" in config["build"] {
@@ -1767,7 +1463,6 @@ def _update_tauri_config_for_build(
     if "withGlobalTauri" in config["build"] {
         del config["build"]["withGlobalTauri"];
     }
-    # Clean up null values
     if "beforeBuildCommand" in config["build"]
     and config["build"]["beforeBuildCommand"] is None {
         del config["build"]["beforeBuildCommand"];
@@ -1786,8 +1481,6 @@ def _update_tauri_config_for_build(
     with open(config_path, "w") as f {
         json.dump(config, f, indent=2);
     }
-
-    console.print("  ✔ Updated tauri.conf.json", style="success");
 }
 
 """Check if appimagetool is available and can run."""
@@ -2077,7 +1770,7 @@ def _bundle_sidecar(
     entry_file: Path,
     project_dir: Path,
     tauri_dir: Path,
-    platform: Optional[str] = None
+    platform_str: Optional[str] = None
 ) -> Path | None {
     import platform as platform_module;
     import stat;
@@ -2087,8 +1780,8 @@ def _bundle_sidecar(
     binaries_dir.mkdir(parents=True, exist_ok=True);
 
     # Determine script name based on platform
-    if platform == "windows"
-    or (platform is None and platform_module.system() == "Windows") {
+    if platform_str == "windows"
+    or (platform_str is None and platform_module.system() == "Windows") {
         script_name = "jac-sidecar.bat";
         is_windows = True;
     } else {
@@ -2099,7 +1792,6 @@ def _bundle_sidecar(
     output_path = binaries_dir / script_name;
 
     # Create wrapper script that runs Python module
-    # This approach avoids PyInstaller issues and is much simpler
     if is_windows {
         # Windows batch script
         script_content = f'''@echo off
@@ -2136,133 +1828,6 @@ exec python -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
     console.print(f"  Run: pip install jaclang", style="muted");
 
     return output_path;
-}
-
-"""Start desktop dev server - start web dev server and launch tauri dev."""
-impl DesktopTarget.dev(
-    self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-) -> None {
-    import from jac_client.plugin.src.vite_bundler { ViteBundler }
-    import signal;
-    import sys;
-    console.print("\n🖥️  Starting desktop dev server (Tauri)", style="bold");
-    # Check if setup has been run
-    tauri_dir = project_dir / "src-tauri";
-    if not tauri_dir.exists() {
-        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.") ;
-    }
-    # Step 1: Update tauri.conf.json for dev mode
-    console.print("  Configuring Tauri for dev mode...", style="muted");
-    _update_tauri_config_for_dev(tauri_dir);
-    # Step 1.5: Prepare package.json and get compiler
-    # We need compiled/_entry.js and compiled/main.js to exist before Vite can serve them
-    console.print("  Preparing compilation setup...", style="muted");
-    vite_port = 5173;
-    bundler = ViteBundler(
-        project_dir=project_dir, output_dir=None, minify=False, config_path=None
-    );
-    # Ensure package.json exists (needed for ViteCompiler)
-    package_json_path = bundler._get_client_dir() / 'configs' / 'package.json';
-    if not package_json_path.exists() {
-        bundler.create_package_json();
-    }
-    # Get the compiler via JacClient (this provides all the compile functions)
-    import from jac_client.plugin.client { JacClient }
-    builder = JacClient.get_client_bundle_builder();
-    # Set the package.json path if not already set
-    if not builder.vite_package_json or not builder.vite_package_json.exists() {
-        builder.vite_package_json = package_json_path;
-    }
-    compiler = builder._get_compiler();
-    # Ensure compiled directory exists
-    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
-    # Compile runtime utils (creates client_runtime.js)
-    compiler.compile_runtime_utils();
-    # Compile the module to create compiled/main.js (or whatever the module name is)
-    (module_js, mod, module_manifest) = compiler.jac_compiler.compile_module(
-        entry_file
-    );
-    # Write the compiled module to compiled directory
-    module_name = entry_file.stem;
-    compiled_module_path = compiler.compiled_dir / f"{module_name}.js";
-    compiled_module_path.write_text(module_js, encoding='utf-8');
-    # Create the entry file (this will be used by Vite dev server)
-    compiler.create_entry_file(entry_file);
-    console.print("  ✔ Module compiled for dev mode", style="success");
-    # Step 2: Start web dev server
-    console.print("  Starting web dev server...", style="muted");
-    # Desktop webview needs an explicit backend URL (same-origin doesn't work)
-    dev_config_path = bundler.create_vite_config(
-        entry_file,
-        api_base_url_override=_make_localhost_url(api_port),
-        is_dev=True,
-        api_port=api_port
-    );
-    # Start Vite dev server
-    vite_process = bundler.start_dev_server(port=vite_port);
-    if not vite_process {
-        raise RuntimeError("Failed to start Vite dev server") ;
-    }
-    console.print(
-        f"  ✔ Web dev server running on http://localhost:{vite_port}", style="success"
-    );
-    # Step 3: Start backend API server
-    toml_base_url = _get_toml_api_base_url(project_dir);
-    server_port = _resolve_server_port(toml_base_url, api_port);
-    # Regenerate main.rs with the actual backend URL so sidecar is skipped
-    _generate_main_rs(
-        tauri_dir, api_base_url=toml_base_url or _make_localhost_url(server_port)
-    );
-    console.print(
-        f"  Step 3: Starting backend server on port {server_port}...", style="muted"
-    );
-    server_process = _start_backend_server(entry_file, project_dir, server_port);
-    console.print(
-        f"  ✔ Backend server starting on port {server_port}", style="success"
-    );
-    # Step 4: Launch tauri dev
-    console.print("  Step 4: Launching Tauri dev window...", style="muted");
-    console.print("  (Press Ctrl+C to stop)", style="muted");
-    # Setup signal handlers for cleanup
-    def cleanup -> None {
-        console.print("\n  Stopping dev servers...", style="muted");
-        if vite_process {
-            try {
-                vite_process.terminate();
-                vite_process.wait(timeout=5);
-            } except Exception {
-                vite_process.kill();
-            }
-        }
-        if server_process {
-            try {
-                server_process.terminate();
-                server_process.wait(timeout=5);
-            } except Exception {
-                server_process.kill();
-            }
-        }
-        console.print("  ✔ Dev servers stopped", style="success");
-    }
-    def signal_handler(signum: int, frame: Any) -> None {
-        cleanup();
-        sys.exit(0);
-    }
-    signal.signal(signal.SIGINT, signal_handler);
-    signal.signal(signal.SIGTERM, signal_handler);
-    try {
-        # Run tauri dev
-        tauri_process = _run_tauri_dev(tauri_dir);
-
-        # Wait for tauri process to finish
-        tauri_process.wait();
-    } except KeyboardInterrupt {
-        console.print(
-            "\n  Keyboard interrupt detected. Stopping dev servers...", style="muted"
-        );
-    } finally {
-        cleanup();
-    }
 }
 
 """Update tauri.conf.json for dev mode (point to dev server)."""
@@ -2456,105 +2021,4 @@ def _resolve_server_port(toml_base_url: str, api_port: int) -> int {
         return parsed.port or api_port;
     }
     return api_port;
-}
-
-"""Start desktop app - build web bundle and launch Tauri with built bundle."""
-impl DesktopTarget.start(
-    self: DesktopTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
-) -> None {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
-    import signal;
-    import sys;
-    import os;
-    console.print("\n🖥️  Starting desktop app (Tauri)", style="bold");
-    # Check if setup has been run
-    tauri_dir = project_dir / "src-tauri";
-    if not tauri_dir.exists() {
-        raise RuntimeError("Desktop target not set up. Run 'jac setup desktop' first.") ;
-    }
-    # Step 1: Build web bundle with explicit backend URL for desktop webview.
-    toml_base_url = _get_toml_api_base_url(project_dir);
-    if not toml_base_url {
-        os.environ[API_BASE_URL_ENV_VAR] = _make_localhost_url(api_port);
-    }
-    console.print("  Step 1: Building web bundle...", style="muted");
-    web_target = WebTarget();
-    try {
-        web_bundle_path = web_target.build(entry_file, project_dir, None);
-    } finally {
-        os.environ.pop(API_BASE_URL_ENV_VAR, None);
-    }
-    console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
-    # Step 2: Update tauri.conf.json to point to web bundle
-    console.print("  Step 2: Updating Tauri configuration...", style="muted");
-    _update_tauri_config_for_build(tauri_dir, project_dir, web_bundle_path);
-    # Step 3: Start backend API server
-    server_port = _resolve_server_port(toml_base_url, api_port);
-    # Regenerate main.rs with the actual backend URL so sidecar is skipped
-    _generate_main_rs(
-        tauri_dir, api_base_url=toml_base_url or _make_localhost_url(server_port)
-    );
-    console.print(
-        f"  Step 3: Starting backend server on port {server_port}...", style="muted"
-    );
-    server_process = _start_backend_server(entry_file, project_dir, server_port);
-    console.print(
-        f"  ✔ Backend server starting on port {server_port}", style="success"
-    );
-    # Step 4: Launch tauri dev (which will use the built bundle)
-    console.print("  Step 4: Launching Tauri app...", style="muted");
-    console.print("  (Press Ctrl+C to stop)", style="muted");
-    # Setup signal handlers for cleanup
-    tauri_process = None;
-    def cleanup -> None {
-        console.print("\n  Stopping app...", style="muted");
-        if tauri_process {
-            try {
-                tauri_process.terminate();
-                tauri_process.wait(timeout=5);
-            } except Exception {
-                tauri_process.kill();
-            }
-        }
-        if server_process {
-            try {
-                server_process.terminate();
-                server_process.wait(timeout=5);
-            } except Exception {
-                server_process.kill();
-            }
-        }
-        console.print("  ✔ App stopped", style="success");
-    }
-    def signal_handler(signum: int, frame: Any) -> None {
-        cleanup();
-        sys.exit(0);
-    }
-    signal.signal(signal.SIGINT, signal_handler);
-    signal.signal(signal.SIGTERM, signal_handler);
-    try {
-        # Run tauri dev (it will use the built bundle from distDir)
-        tauri_process = _run_tauri_dev(tauri_dir);
-
-        if not tauri_process {
-            console.error("  Failed to start Tauri process");
-            return;
-        }
-
-        # Wait for tauri process to finish
-        return_code = tauri_process.wait();
-        if return_code != 0 {
-            console.warning(f"  Tauri process exited with code {return_code}");
-        }
-    } except KeyboardInterrupt {
-        console.print(
-            "\n  Keyboard interrupt detected. Stopping app...", style="muted"
-        );
-    } except Exception as e {
-        console.error(f"  Error starting desktop app: {e}");
-        import traceback;
-        console.print(traceback.format_exc(), style="muted");
-    } finally {
-        cleanup();
-    }
 }
