@@ -480,10 +480,10 @@ def _handle_start_target(ctx: HookContext) -> None {
                 ctx.set_data("cancel_execution", True);
                 ctx.set_data("cancel_return_code", 0);
             } else {
-                # Build PWA bundle (creates manifest.json), then let normal jac start serve
+                # Build PWA bundle, then let server serve with no_client (skip rebuild)
                 target.build(entry_path, project_dir, None);
-                # Don't cancel - normal jac start will serve
-                # render_page detects PWA by checking if manifest.json exists
+                # Tell server to skip client building - we already built it
+                ctx.args['no_client'] = True;
             }
         } except Exception as e {
             import traceback;

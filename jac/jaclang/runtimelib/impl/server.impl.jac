@@ -1624,6 +1624,7 @@ impl JacAPIServer.print_endpoint_docs -> None {
 
 """Start the HTTP server."""
 impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+    import from pathlib { Path }
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
     bundle_error = None;
@@ -1632,10 +1633,16 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         if client_exports {
             try {
                 config = get_config();
-                dist_dir = config.get_client_dir() / 'dist' if config else None;
-                is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
-                if is_pwa {
-                    console.print("  ✔ PWA bundle already built", style="success");
+                # Try config path first, then fallback to base_path
+                if config {
+                    dist_dir = config.get_client_dir() / 'dist';
+                } else {
+                    dist_dir = Path(self.base_path) / '.jac' / 'client' / 'dist';
+                }
+                # Skip building if bundle already exists on disk (PWA or web build already ran)
+                bundle_exists = dist_dir.exists() and any(dist_dir.glob('client.*.js'));
+                if bundle_exists {
+                    console.print("  ✔ Client bundle already built", style="success");
                 } else {
                     self.introspector.ensure_bundle();
                 }
