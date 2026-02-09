@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
-- **Backtick-escape keyword identifiers**: `test` and `has` used as function/method names now use backtick prefix (`` `test ``, `` `has ``) in def/impl declarations for RD parser compatibility.
+- **Code refactors**: Backtick escape, etc.
 
 ## jaclang 0.10.0 (Latest Release)
 

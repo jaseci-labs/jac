@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.17 (Unreleased)
 
-- **Backtick-escape `has` keyword in target registry**: `def has` / `impl TargetRegistry.has` now use `` `has `` to avoid RD parser keyword conflicts.
+- **Code refactors**: Backtick escape, etc.
 
 ## jac-client 0.2.16 (Latest Release)
 

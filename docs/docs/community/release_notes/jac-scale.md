@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.8 (Unreleased)
 
-- **Backtick-escape `has` keyword in memory backends**: `def has` / `impl X.has` in Redis and Mongo backends now use `` `has `` to avoid RD parser keyword conflicts.
+- **Code refactors**: Backtick escape, etc.
 
 ## jac-scale 0.1.7 (Latest Release)
 
