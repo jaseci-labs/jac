@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.17 (Unreleased)
 
+- **PWA Target Support**: Added a new `pwa` target for creating Progressive Web Apps. Run `jac setup pwa` to configure your project with PWA support - this copies default icons to `pwa_icons/` and adds the `[plugins.client.pwa]` config section to `jac.toml`. Then use `jac build --client pwa` to build or `jac start --client pwa` to build and serve. The build generates a web bundle with `manifest.json`, a service worker (`sw.js`) for offline caching, and automatic HTML injection. The service worker implements cache-first for static assets and network-first for API calls (`/api/*`). Configure `theme_color`, `background_color`, `cache_name`, and custom `manifest` overrides in `[plugins.client.pwa]`.
+
 ## jac-client 0.2.16 (Latest Release)
 
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.

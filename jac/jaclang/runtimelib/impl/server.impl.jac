@@ -1190,6 +1190,17 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             path = parsed_path.path;
             if (path == '/static/client.js') {
                 try {
+                    import from jaclang.project.config { get_config }
+                    cfg = get_config();
+                    dist_dir = cfg.get_client_dir() / 'dist' if cfg else None;
+                    is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+                    if is_pwa {
+                        # Vite outputs client.{hash}.js
+                        for client_js in dist_dir.glob('client.*.js') {
+                            Jac.send_javascript(self, client_js.read_text(encoding='utf-8'));
+                            return;
+                        }
+                    }
                     server.introspector.load();
                     server.introspector.ensure_bundle();
                     Jac.send_javascript(self, server.introspector._bundle.code);
@@ -1618,8 +1629,14 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             try {
-                # ViteBundler.build() handles its own progress messages
-                self.introspector.ensure_bundle();
+                config = get_config();
+                dist_dir = config.get_client_dir() / 'dist' if config else None;
+                is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+                if is_pwa {
+                    console.print("  ✔ PWA bundle already built", style="success");
+                } else {
+                    self.introspector.ensure_bundle();
+                }
                 console.print(
                     f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
                 );

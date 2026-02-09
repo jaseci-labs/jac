@@ -31,7 +31,7 @@ impl WebTarget.build(
     # Import the module (Jac.jac_import handles context creation internally)
     Jac.jac_import(target=mod, base_path=base, lng='jac');
     if Jac.program.errors_had {
-        errors = '\n'.join(Jac.program.errors_had);
+        errors = '\n'.join(str(e) for e in Jac.program.errors_had);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}") ;
     }
     # Get the loaded module
