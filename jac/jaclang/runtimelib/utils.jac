@@ -25,7 +25,7 @@ def collect_node_connections(
 ) -> None;
 
 def traverse_graph(
-    <>node: NodeArchetype,
+    `node: NodeArchetype,
     cur_depth: int,
     depth: int,
     edge_type: list[str],
@@ -40,7 +40,7 @@ def traverse_graph(
     edge_limit: int
 ) -> None;
 
-def extract_type(<>node: uni.UniNode) -> list[str];
+def extract_type(`node: uni.UniNode) -> list[str];
 
 def extract_params(
     body: uni.FuncCall
@@ -51,7 +51,7 @@ def extract_params(
 ];
 
 def is_instance(
-    <>obj: object, target: type | UnionType | tuple[((type | UnionType), ...)]
+    `obj: object, target: type | UnionType | tuple[((type | UnionType), ...)]
 ) -> bool;
 
 def all_issubclass(

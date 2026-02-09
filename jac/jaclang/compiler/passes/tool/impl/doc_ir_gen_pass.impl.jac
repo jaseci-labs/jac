@@ -4,85 +4,85 @@ impl DocIRGenPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -
 }
 
 """Generate DocIR for JSX expressions."""
-impl DocIRGenPass.exit_jsx_expression(<>node: uni.JsxExpression) -> None {
+impl DocIRGenPass.exit_jsx_expression(`node: uni.JsxExpression) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for JSX text."""
-impl DocIRGenPass.exit_jsx_text(<>node: uni.JsxText) -> None {
+impl DocIRGenPass.exit_jsx_text(`node: uni.JsxText) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for JSX normal attributes."""
-impl DocIRGenPass.exit_jsx_normal_attribute(<>node: uni.JsxNormalAttribute) -> None {
+impl DocIRGenPass.exit_jsx_normal_attribute(`node: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
-    for child in <>node.kid {
+    for child in `node.kid {
         parts.append(child.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for JSX spread attributes."""
-impl DocIRGenPass.exit_jsx_spread_attribute(<>node: uni.JsxSpreadAttribute) -> None {
+impl DocIRGenPass.exit_jsx_spread_attribute(`node: uni.JsxSpreadAttribute) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for JSX element names."""
-impl DocIRGenPass.exit_jsx_element_name(<>node: uni.JsxElementName) -> None {
+impl DocIRGenPass.exit_jsx_element_name(`node: uni.JsxElementName) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for JSX elements with prettier-inspired formatting."""
-impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
-    has_tokens = <>any(isinstance(kid, uni.Token) for kid in <>node.kid);
+impl DocIRGenPass.exit_jsx_element(`node: uni.JsxElement) -> None {
+    has_tokens = any(isinstance(kid, uni.Token) for kid in `node.kid);
     if has_tokens {
-        first_child = <>node.kid[0] if <>node.kid else None;
+        first_child = `node.kid[0] if `node.kid else None;
         if (
             isinstance(first_child, uni.Token)
             and (first_child.name == Tok.JSX_CLOSE_START)
         ) {
-            <>node.gen.doc_ir = self.group(
-                self.concat([kid.gen.doc_ir for kid in <>node.kid])
+            `node.gen.doc_ir = self.group(
+                self.concat([kid.gen.doc_ir for kid in `node.kid])
             );
             return;
         }
-        start_token = <>node.kid[0]
-        if (<>node.kid and isinstance(<>node.kid[0], uni.Token))
+        start_token = `node.kid[0]
+        if (`node.kid and isinstance(`node.kid[0], uni.Token))
         else None;
-        end_token = <>node.kid[-1]
-        if (<>node.kid and isinstance(<>node.kid[-1], uni.Token))
+        end_token = `node.kid[-1]
+        if (`node.kid and isinstance(`node.kid[-1], uni.Token))
         else None;
         if (not start_token or not end_token) {
-            <>node.gen.doc_ir = self.group(
-                self.concat([kid.gen.doc_ir for kid in <>node.kid])
+            `node.gen.doc_ir = self.group(
+                self.concat([kid.gen.doc_ir for kid in `node.kid])
             );
             return;
         }
         name_node = next(
             (
                 kid
-                for kid in <>node.kid
+                for kid in `node.kid
                 if isinstance(kid, uni.JsxElementName)
             ),
             None
         );
-        attr_docs = [attr.gen.doc_ir for attr in <>node.attributes];
+        attr_docs = [attr.gen.doc_ir for attr in `node.attributes];
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
@@ -92,39 +92,39 @@ impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
             # Indent attributes with soft line breaks
             attr_content: list[doc.DocType] = [self.line()];
             attr_content.extend(self.intersperse(attr_docs, self.line()));
-            parts.append(self.indent(self.concat(attr_content), ast_node=<>node));
+            parts.append(self.indent(self.concat(attr_content), ast_node=`node));
             # When broken: newline before closing bracket; when flat: nothing
             parts.append(self.if_break(self.line(), self.concat([])));
         }
         is_self_closing = end_token.name == Tok.JSX_SELF_CLOSE;
-        if (not is_self_closing and <>node.children) {
+        if (not is_self_closing and `node.children) {
             child_parts: list[doc.DocType] = [];
-            for child in <>node.children {
+            for child in `node.children {
                 child_parts.append(child.gen.doc_ir);
                 child_parts.append(self.hard_line());
             }
             self.trim_trailing_line(child_parts);
             inline_child_types = (uni.JsxText, uni.JsxExpression);
             all_inline_children = (
-                <>node.children
+                `node.children
                 and all(
-                    isinstance(child, inline_child_types) for child in <>node.children
+                    isinstance(child, inline_child_types) for child in `node.children
                 )
             );
             if all_inline_children {
                 inline_doc = self.concat(
-                    [child.gen.doc_ir for child in <>node.children]
+                    [child.gen.doc_ir for child in `node.children]
                 );
                 parts.append(
                     self.indent(
-                        self.concat([self.hard_line(), inline_doc]), ast_node=<>node
+                        self.concat([self.hard_line(), inline_doc]), ast_node=`node
                     )
                 );
                 parts.append(self.hard_line());
             } elif child_parts {
                 parts.append(
                     self.indent(
-                        self.concat([self.hard_line(), *child_parts]), ast_node=<>node
+                        self.concat([self.hard_line(), *child_parts]), ast_node=`node
                     )
                 );
                 parts.append(self.hard_line());
@@ -137,139 +137,135 @@ impl DocIRGenPass.exit_jsx_element(<>node: uni.JsxElement) -> None {
         } else {
             parts.append(end_token.gen.doc_ir);
         }
-        <>node.gen.doc_ir = self.group(self.concat(parts), ast_node=<>node);
+        `node.gen.doc_ir = self.group(self.concat(parts), ast_node=`node);
         return;
     }
-    if not <>node.kid {
-        <>node.gen.doc_ir = self.group(self.concat([]));
+    if not `node.kid {
+        `node.gen.doc_ir = self.group(self.concat([]));
         return;
     }
-    opening_doc = <>node.kid[0].gen.doc_ir;
-    closing_doc = <>node.kid[-1].gen.doc_ir
-    if (len(<>node.kid) > 1)
-    else self.concat([]);
+    opening_doc = `node.kid[0].gen.doc_ir;
+    closing_doc = `node.kid[-1].gen.doc_ir if (len(`node.kid) > 1) else self.concat([]);
     child_parts = [];
-    for child in <>node.children {
+    for child in `node.children {
         child_parts.append(child.gen.doc_ir);
         child_parts.append(self.hard_line());
     }
     self.trim_trailing_line(child_parts);
     inline_child_types = (uni.JsxText, uni.JsxExpression);
     all_inline_children = (
-        <>node.children
-        and all(isinstance(child, inline_child_types) for child in <>node.children)
+        `node.children
+        and all(isinstance(child, inline_child_types) for child in `node.children)
     );
     parts = [opening_doc];
     if all_inline_children {
-        inline_doc = self.concat([child.gen.doc_ir for child in <>node.children]);
+        inline_doc = self.concat([child.gen.doc_ir for child in `node.children]);
         parts.append(
-            self.indent(self.concat([self.hard_line(), inline_doc]), ast_node=<>node)
+            self.indent(self.concat([self.hard_line(), inline_doc]), ast_node=`node)
         );
         parts.append(self.hard_line());
     } elif child_parts {
         parts.append(
-            self.indent(self.concat([self.hard_line(), *child_parts]), ast_node=<>node)
+            self.indent(self.concat([self.hard_line(), *child_parts]), ast_node=`node)
         );
         parts.append(self.hard_line());
     }
     parts.append(closing_doc);
-    <>node.gen.doc_ir = self.group(self.concat(parts), ast_node=<>node);
+    `node.gen.doc_ir = self.group(self.concat(parts), ast_node=`node);
 }
 
 """Generate DocIR for ellipsis."""
-impl DocIRGenPass.exit_ellipsis(<>node: uni.Ellipsis) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_ellipsis(`node: uni.Ellipsis) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for null values."""
-impl DocIRGenPass.exit_null(<>node: uni.Null) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_null(`node: uni.Null) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for boolean values."""
-impl DocIRGenPass.exit_bool(<>node: uni.Bool) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_bool(`node: uni.Bool) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for special variable references."""
-impl DocIRGenPass.exit_special_var_ref(<>node: uni.SpecialVarRef) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value.replace('_', ''), source_token=<>node);
+impl DocIRGenPass.exit_special_var_ref(`node: uni.SpecialVarRef) -> None {
+    `node.gen.doc_ir = self.text(`node.value.replace('_', ''), source_token=`node);
 }
 
 """Generate DocIR for strings."""
-impl DocIRGenPass.exit_string(<>node: uni.String) -> None {
+impl DocIRGenPass.exit_string(`node: uni.String) -> None {
     is_escaped_curly = (
-        (<>node.lit_value in ['{', '}'])
-        and <>node.parent
-        and isinstance(<>node.parent, uni.FString)
+        (`node.lit_value in ['{', '}'])
+        and `node.parent
+        and isinstance(`node.parent, uni.FString)
     );
     if is_escaped_curly {
-        <>node.gen.doc_ir = self.concat(
+        `node.gen.doc_ir = self.concat(
             [
-                self.text(<>node.value, source_token=<>node),
-                self.text(<>node.value, source_token=<>node)
+                self.text(`node.value, source_token=`node),
+                self.text(`node.value, source_token=`node)
             ]
         );
         return;
     }
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for floats."""
-impl DocIRGenPass.exit_float(<>node: uni.Float) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_float(`node: uni.Float) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for builtin type nodes."""
-impl DocIRGenPass.exit_builtin_type(<>node: uni.BuiltinType) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_builtin_type(`node: uni.BuiltinType) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for integers."""
-impl DocIRGenPass.exit_int(<>node: uni.Int) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_int(`node: uni.Int) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for names."""
-impl DocIRGenPass.exit_name(<>node: uni.Name) -> None {
-    if <>node.is_kwesc {
-        <>node.gen.doc_ir = self.text(f"<>{node.value}", source_token=<>node);
+impl DocIRGenPass.exit_name(`node: uni.Name) -> None {
+    if `node.is_kwesc {
+        `node.gen.doc_ir = self.text(f"`{node.value}", source_token=`node);
     } else {
-        <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+        `node.gen.doc_ir = self.text(`node.value, source_token=`node);
     }
 }
 
 """Generate DocIR for semicolons."""
-impl DocIRGenPass.exit_semi(<>node: uni.Semi) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_semi(`node: uni.Semi) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for tokens."""
-impl DocIRGenPass.exit_token(<>node: uni.Token) -> None {
-    <>node.gen.doc_ir = self.text(<>node.value, source_token=<>node);
+impl DocIRGenPass.exit_token(`node: uni.Token) -> None {
+    `node.gen.doc_ir = self.text(`node.value, source_token=`node);
 }
 
 """Generate DocIR for typed context blocks."""
-impl DocIRGenPass.exit_typed_ctx_block(<>node: uni.TypedCtxBlock) -> None {
+impl DocIRGenPass.exit_typed_ctx_block(`node: uni.TypedCtxBlock) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for event signatures."""
-impl DocIRGenPass.exit_event_signature(<>node: uni.EventSignature) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_event_signature(`node: uni.EventSignature) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for semantic definitions."""
-impl DocIRGenPass.exit_sem_def(<>node: uni.SemDef) -> None {
+impl DocIRGenPass.exit_sem_def(`node: uni.SemDef) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
-        if (i in <>node.target) {
+    for i in `node.kid {
+        if (i in `node.target) {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.DOT)) {
             parts.append(i.gen.doc_ir);
@@ -285,28 +281,26 @@ impl DocIRGenPass.exit_sem_def(<>node: uni.SemDef) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for implementation definitions."""
-impl DocIRGenPass.exit_impl_def(<>node: uni.ImplDef) -> None {
+impl DocIRGenPass.exit_impl_def(`node: uni.ImplDef) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
-    for i in <>node.kid {
-        if ((i == <>node.doc) or (<>node.decorators and (i in <>node.decorators))) {
+    for i in `node.kid {
+        if ((i == `node.doc) or (`node.decorators and (i in `node.decorators))) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
-        } elif self.is_within(i, <>node.target) {
+        } elif self.is_within(i, `node.target) {
             parts.append(i.gen.doc_ir);
         } elif (
             in_body
             or (
-                isinstance(<>node.body, Sequence)
-                and <>node.body
-                and (i == <>node.body[0])
+                isinstance(`node.body, Sequence)
+                and `node.body
+                and (i == `node.body[0])
             )
         ) {
             if not in_body {
@@ -319,14 +313,10 @@ impl DocIRGenPass.exit_impl_def(<>node: uni.ImplDef) -> None {
             body_parts.append(i.gen.doc_ir);
             body_parts.append(self.hard_line());
             in_body = True;
-            if (
-                in_body
-                and isinstance(<>node.body, Sequence)
-                and (i == <>node.body[-1])
-            ) {
+            if (in_body and isinstance(`node.body, Sequence) and (i == `node.body[-1])) {
                 in_body = False;
                 body_parts.pop();
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
@@ -338,17 +328,15 @@ impl DocIRGenPass.exit_impl_def(<>node: uni.ImplDef) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for sub-tag nodes."""
-impl DocIRGenPass.exit_sub_tag(<>node: uni.SubTag) -> None {
+impl DocIRGenPass.exit_sub_tag(`node: uni.SubTag) -> None {
     before_colon: list[doc.DocType] = [];
     after_colon: list[doc.DocType] = [];
     seen_colon = False;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COLON) and not seen_colon) {
             colon_tok = i.gen.doc_ir;
             seen_colon = True;
@@ -362,8 +350,8 @@ impl DocIRGenPass.exit_sub_tag(<>node: uni.SubTag) -> None {
         # Access modifiers (pub/priv/protect keywords) don't get space after colon
         # Type annotations and other uses get a space after the colon
         is_access_modifier = (
-            isinstance(<>node.tag, uni.Token)
-            and (<>node.tag.name in [Tok.KW_PUB, Tok.KW_PRIV, Tok.KW_PROT])
+            isinstance(`node.tag, uni.Token)
+            and (`node.tag.name in [Tok.KW_PUB, Tok.KW_PRIV, Tok.KW_PROT])
         );
         if is_access_modifier {
             flat = self.concat([*before_colon, colon_tok, *after_colon]);
@@ -384,21 +372,21 @@ impl DocIRGenPass.exit_sub_tag(<>node: uni.SubTag) -> None {
                 ]
             );
         }
-        <>node.gen.doc_ir = self.group(self.if_break(broke, flat));
+        `node.gen.doc_ir = self.group(self.if_break(broke, flat));
     } else {
-        <>node.gen.doc_ir = self.concat((before_colon + after_colon));
+        `node.gen.doc_ir = self.concat((before_colon + after_colon));
     }
 }
 
 """Generate DocIR for enum declarations."""
-impl DocIRGenPass.exit_enum(<>node: uni.Enum) -> None {
+impl DocIRGenPass.exit_enum(`node: uni.Enum) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (
-            (<>node.doc and (i is <>node.doc))
-            or (<>node.decorators and (i in <>node.decorators))
+            (`node.doc and (i is `node.doc))
+            or (`node.decorators and (i in `node.decorators))
         ) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
@@ -415,7 +403,7 @@ impl DocIRGenPass.exit_enum(<>node: uni.Enum) -> None {
             if (len(body_parts) and isinstance(body_parts[-1], doc.Line)) {
                 body_parts.pop();
             }
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             parts.append(self.line());
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -433,15 +421,13 @@ impl DocIRGenPass.exit_enum(<>node: uni.Enum) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for match architecture patterns."""
-impl DocIRGenPass.exit_match_arch(<>node: uni.MatchArch) -> None {
+impl DocIRGenPass.exit_match_arch(`node: uni.MatchArch) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -449,15 +435,13 @@ impl DocIRGenPass.exit_match_arch(<>node: uni.MatchArch) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for match key-value pairs."""
-impl DocIRGenPass.exit_match_k_v_pair(<>node: uni.MatchKVPair) -> None {
+impl DocIRGenPass.exit_match_k_v_pair(`node: uni.MatchKVPair) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.STAR_POW, Tok.STAR_MUL])) {
             parts.append(i.gen.doc_ir);
         } else {
@@ -466,61 +450,59 @@ impl DocIRGenPass.exit_match_k_v_pair(<>node: uni.MatchKVPair) -> None {
         }
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for match star patterns (e.g., *args, **kwargs)."""
-impl DocIRGenPass.exit_match_star(<>node: uni.MatchStar) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_star(`node: uni.MatchStar) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match wildcard patterns."""
-impl DocIRGenPass.exit_match_wild(<>node: uni.MatchWild) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_wild(`node: uni.MatchWild) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match AS patterns."""
-impl DocIRGenPass.exit_match_as(<>node: uni.MatchAs) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_as(`node: uni.MatchAs) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match OR patterns."""
-impl DocIRGenPass.exit_match_or(<>node: uni.MatchOr) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_or(`node: uni.MatchOr) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match mapping patterns."""
-impl DocIRGenPass.exit_match_mapping(<>node: uni.MatchMapping) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_mapping(`node: uni.MatchMapping) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match sequence patterns."""
-impl DocIRGenPass.exit_match_sequence(<>node: uni.MatchSequence) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_sequence(`node: uni.MatchSequence) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match singleton patterns."""
-impl DocIRGenPass.exit_match_singleton(<>node: uni.MatchSingleton) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_singleton(`node: uni.MatchSingleton) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for match value patterns."""
-impl DocIRGenPass.exit_match_value(<>node: uni.MatchValue) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_match_value(`node: uni.MatchValue) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for switch cases."""
-impl DocIRGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
+impl DocIRGenPass.exit_switch_case(`node: uni.SwitchCase) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
-        } elif (i in <>node.body) {
+        } elif (i in `node.body) {
             self.add_body_stmt_with_spacing(indent_parts, i, prev_body_item);
             prev_body_item = i;
         } else {
@@ -529,19 +511,17 @@ impl DocIRGenPass.exit_switch_case(<>node: uni.SwitchCase) -> None {
         }
     }
     parts.append(
-        self.indent(self.concat(([self.hard_line()] + indent_parts)), ast_node=<>node)
+        self.indent(self.concat(([self.hard_line()] + indent_parts)), ast_node=`node)
     );
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for switch statements."""
-impl DocIRGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
+impl DocIRGenPass.exit_switch_stmt(`node: uni.SwitchStmt) -> None {
     parts: list[doc.DocType] = [];
     switch_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (i == <>node.target) {
+    for i in `node.kid {
+        if (i == `node.target) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif isinstance(i, uni.SwitchCase) {
@@ -552,9 +532,7 @@ impl DocIRGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
                 switch_parts.pop();
             }
             parts.append(
-                self.indent(
-                    self.concat(switch_parts, ast_node=<>node), ast_node=<>node
-                )
+                self.indent(self.concat(switch_parts, ast_node=`node), ast_node=`node)
             );
             parts.append(self.hard_line());
             parts.append(i.gen.doc_ir);
@@ -564,21 +542,19 @@ impl DocIRGenPass.exit_switch_stmt(<>node: uni.SwitchStmt) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for match cases."""
-impl DocIRGenPass.exit_match_case(<>node: uni.MatchCase) -> None {
+impl DocIRGenPass.exit_match_case(`node: uni.MatchCase) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
-        } elif (i in <>node.body) {
+        } elif (i in `node.body) {
             self.add_body_stmt_with_spacing(indent_parts, i, prev_body_item);
             prev_body_item = i;
         } else {
@@ -587,19 +563,17 @@ impl DocIRGenPass.exit_match_case(<>node: uni.MatchCase) -> None {
         }
     }
     parts.append(
-        self.indent(self.concat(([self.hard_line()] + indent_parts)), ast_node=<>node)
+        self.indent(self.concat(([self.hard_line()] + indent_parts)), ast_node=`node)
     );
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for match statements."""
-impl DocIRGenPass.exit_match_stmt(<>node: uni.MatchStmt) -> None {
+impl DocIRGenPass.exit_match_stmt(`node: uni.MatchStmt) -> None {
     parts: list[doc.DocType] = [];
     match_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (i == <>node.target) {
+    for i in `node.kid {
+        if (i == `node.target) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif isinstance(i, uni.MatchCase) {
@@ -610,7 +584,7 @@ impl DocIRGenPass.exit_match_stmt(<>node: uni.MatchStmt) -> None {
                 match_parts.pop();
             }
             parts.append(
-                self.indent(self.concat(match_parts, ast_node=<>node), ast_node=<>node)
+                self.indent(self.concat(match_parts, ast_node=`node), ast_node=`node)
             );
             parts.append(self.hard_line());
             parts.append(i.gen.doc_ir);
@@ -620,22 +594,20 @@ impl DocIRGenPass.exit_match_stmt(<>node: uni.MatchStmt) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for test nodes."""
-impl DocIRGenPass.exit_test(<>node: uni.Test) -> None {
+impl DocIRGenPass.exit_test(`node: uni.Test) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
-        if (i == <>node.doc) {
+    for i in `node.kid {
+        if (i == `node.doc) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
-        } elif ((i == <>node.name) and isinstance(i, uni.Name)) {
+        } elif ((i == `node.name) and isinstance(i, uni.Name)) {
             if not i.value.startswith('_jac_gen_') {
                 parts.append(i.gen.doc_ir);
                 parts.append(self.space());
@@ -647,7 +619,7 @@ impl DocIRGenPass.exit_test(<>node: uni.Test) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_body = False;
             self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             if (len(body_parts) > 0) {
                 parts.append(self.hard_line());
             } else {
@@ -663,16 +635,14 @@ impl DocIRGenPass.exit_test(<>node: uni.Test) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for Python inline code blocks."""
-impl DocIRGenPass.exit_py_inline_code(<>node: uni.PyInlineCode) -> None {
+impl DocIRGenPass.exit_py_inline_code(`node: uni.PyInlineCode) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
-        if (i == <>node.doc) {
+    for i in `node.kid {
+        if (i == `node.doc) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.PYNLINE)) {
@@ -685,44 +655,42 @@ impl DocIRGenPass.exit_py_inline_code(<>node: uni.PyInlineCode) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for assignment comprehensions."""
-impl DocIRGenPass.exit_assign_compr(<>node: uni.AssignCompr) -> None {
+impl DocIRGenPass.exit_assign_compr(`node: uni.AssignCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
     compact_doc = self.remove_all_spaces(self.concat(parts));
-    <>node.gen.doc_ir = self.group(compact_doc);
+    `node.gen.doc_ir = self.group(compact_doc);
 }
 
 """Generate DocIR for filter comprehensions."""
-impl DocIRGenPass.exit_filter_compr(<>node: uni.FilterCompr) -> None {
+impl DocIRGenPass.exit_filter_compr(`node: uni.FilterCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if isinstance(i, uni.Token) and i.name == Tok.COMMA {
             parts.append(doc.Text(", "));
         } else {
             parts.append(self.remove_all_spaces(i.gen.doc_ir));
         }
     }
-    <>node.gen.doc_ir = self.group(self.concat(parts));
+    `node.gen.doc_ir = self.group(self.concat(parts));
 }
 
 """Generate DocIR for expression as item nodes."""
-impl DocIRGenPass.exit_expr_as_item(<>node: uni.ExprAsItem) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_expr_as_item(`node: uni.ExprAsItem) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for atom units (parenthesized expressions)."""
-impl DocIRGenPass.exit_atom_unit(<>node: uni.AtomUnit) -> None {
+impl DocIRGenPass.exit_atom_unit(`node: uni.AtomUnit) -> None {
     parts: list[doc.DocType] = [];
     prev_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN)) {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN)) {
@@ -753,39 +721,39 @@ impl DocIRGenPass.exit_atom_unit(<>node: uni.AtomUnit) -> None {
         )
     );
     if (
-        isinstance(<>node.parent, uni.Assignment)
+        isinstance(`node.parent, uni.Assignment)
         or (
-            isinstance(<>node.parent, uni.IfStmt)
-            and isinstance(<>node.value, uni.BoolExpr)
+            isinstance(`node.parent, uni.IfStmt)
+            and isinstance(`node.value, uni.BoolExpr)
         )
     ) {
-        <>node.gen.doc_ir = self.if_break(
+        `node.gen.doc_ir = self.if_break(
             flat_contents=self.group(self.concat(parts[1:-1])), break_contents=broken
         );
     } else {
-        <>node.gen.doc_ir = broken;
+        `node.gen.doc_ir = broken;
     }
 }
 
 """Generate DocIR for comparison expressions."""
-impl DocIRGenPass.exit_compare_expr(<>node: uni.CompareExpr) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_compare_expr(`node: uni.CompareExpr) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for disconnect operator."""
-impl DocIRGenPass.exit_disconnect_op(<>node: uni.DisconnectOp) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_disconnect_op(`node: uni.DisconnectOp) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for connect operator."""
-impl DocIRGenPass.exit_connect_op(<>node: uni.ConnectOp) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_connect_op(`node: uni.ConnectOp) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for visit statements."""
-impl DocIRGenPass.exit_visit_stmt(<>node: uni.VisitStmt) -> None {
+impl DocIRGenPass.exit_visit_stmt(`node: uni.VisitStmt) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
@@ -795,41 +763,37 @@ impl DocIRGenPass.exit_visit_stmt(<>node: uni.VisitStmt) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for nonlocal statements."""
-impl DocIRGenPass.exit_non_local_stmt(<>node: uni.NonLocalStmt) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_non_local_stmt(`node: uni.NonLocalStmt) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for global statements."""
-impl DocIRGenPass.exit_global_stmt(<>node: uni.GlobalStmt) -> None {
+impl DocIRGenPass.exit_global_stmt(`node: uni.GlobalStmt) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
         if (isinstance(i, uni.Token) and (i.name == Tok.GLOBAL_OP)) {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for module code."""
-impl DocIRGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
+impl DocIRGenPass.exit_module_code(`node: uni.ModuleCode) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
-        if (<>node.doc and (i is <>node.doc)) {
+    for i in `node.kid {
+        if (`node.doc and (i is `node.doc)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
-        } elif (i == <>node.name) {
+        } elif (i == `node.name) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
@@ -842,7 +806,7 @@ impl DocIRGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_body = False;
             self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             if len(body_parts) {
                 parts.append(self.hard_line());
             } else {
@@ -858,18 +822,16 @@ impl DocIRGenPass.exit_module_code(<>node: uni.ModuleCode) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for client blocks (cl { ... })."""
-impl DocIRGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
+impl DocIRGenPass.exit_client_block(`node: uni.ClientBlock) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_CLIENT)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -880,7 +842,7 @@ impl DocIRGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_body = False;
             self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             if len(body_parts) {
                 parts.append(self.hard_line());
             } else {
@@ -896,18 +858,16 @@ impl DocIRGenPass.exit_client_block(<>node: uni.ClientBlock) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for server blocks (sv { ... })."""
-impl DocIRGenPass.exit_server_block(<>node: uni.ServerBlock) -> None {
+impl DocIRGenPass.exit_server_block(`node: uni.ServerBlock) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_SERVER)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -918,7 +878,7 @@ impl DocIRGenPass.exit_server_block(<>node: uni.ServerBlock) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_body = False;
             self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             if len(body_parts) {
                 parts.append(self.hard_line());
             } else {
@@ -934,19 +894,17 @@ impl DocIRGenPass.exit_server_block(<>node: uni.ServerBlock) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for global variables."""
-impl DocIRGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
+impl DocIRGenPass.exit_global_vars(`node: uni.GlobalVars) -> None {
     prefix_parts: list[doc.DocType] = [];
     assignment_parts: list[doc.DocType] = [];
     semi_doc: (doc.DocType | None) = None;
-    has_multiple_assignments = len(<>node.assignments) > 1;
-    for i in <>node.kid {
-        if (i == <>node.doc) {
+    has_multiple_assignments = len(`node.assignments) > 1;
+    for i in `node.kid {
+        if (i == `node.doc) {
             prefix_parts.append(i.gen.doc_ir);
             prefix_parts.append(self.hard_line());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
@@ -981,20 +939,20 @@ impl DocIRGenPass.exit_global_vars(<>node: uni.GlobalVars) -> None {
     if semi_doc {
         prefix_parts.append(semi_doc);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(prefix_parts, ast_node=<>node), ast_node=<>node
+    `node.gen.doc_ir = self.group(
+        self.concat(prefix_parts, ast_node=`node), ast_node=`node
     );
 }
 
 """Generate DocIR for raise statements."""
-impl DocIRGenPass.exit_raise_stmt(<>node: uni.RaiseStmt) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_raise_stmt(`node: uni.RaiseStmt) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for assert statements."""
-impl DocIRGenPass.exit_assert_stmt(<>node: uni.AssertStmt) -> None {
+impl DocIRGenPass.exit_assert_stmt(`node: uni.AssertStmt) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
             parts.pop();
         }
@@ -1002,15 +960,13 @@ impl DocIRGenPass.exit_assert_stmt(<>node: uni.AssertStmt) -> None {
         parts.append(self.space());
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for report statements."""
-impl DocIRGenPass.exit_report_stmt(<>node: uni.ReportStmt) -> None {
+impl DocIRGenPass.exit_report_stmt(`node: uni.ReportStmt) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
             parts.pop();
         }
@@ -1018,20 +974,18 @@ impl DocIRGenPass.exit_report_stmt(<>node: uni.ReportStmt) -> None {
         parts.append(self.space());
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for disengage statements."""
-impl DocIRGenPass.exit_disengage_stmt(<>node: uni.DisengageStmt) -> None {
-    self._assign_group_concat(<>node);
+impl DocIRGenPass.exit_disengage_stmt(`node: uni.DisengageStmt) -> None {
+    self._assign_group_concat(`node);
 }
 
 """Generate DocIR for delete statements."""
-impl DocIRGenPass.exit_delete_stmt(<>node: uni.DeleteStmt) -> None {
+impl DocIRGenPass.exit_delete_stmt(`node: uni.DeleteStmt) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
             parts.pop();
         }
@@ -1039,35 +993,33 @@ impl DocIRGenPass.exit_delete_stmt(<>node: uni.DeleteStmt) -> None {
         parts.append(self.space());
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for control statements (break, continue, skip)."""
-impl DocIRGenPass.exit_ctrl_stmt(<>node: uni.CtrlStmt) -> None {
-    self._assign_group_concat(<>node);
+impl DocIRGenPass.exit_ctrl_stmt(`node: uni.CtrlStmt) -> None {
+    self._assign_group_concat(`node);
 }
 
 """Generate DocIR for yield expressions."""
-impl DocIRGenPass.exit_yield_expr(<>node: uni.YieldExpr) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_yield_expr(`node: uni.YieldExpr) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for await expressions."""
-impl DocIRGenPass.exit_await_expr(<>node: uni.AwaitExpr) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_await_expr(`node: uni.AwaitExpr) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for keyword arguments."""
-impl DocIRGenPass.exit_k_w_pair(<>node: uni.KWPair) -> None {
-    self._assign_group_concat(<>node);
+impl DocIRGenPass.exit_k_w_pair(`node: uni.KWPair) -> None {
+    self._assign_group_concat(`node);
 }
 
 """Generate DocIR for dictionary comprehensions."""
-impl DocIRGenPass.exit_dict_compr(<>node: uni.DictCompr) -> None {
+impl DocIRGenPass.exit_dict_compr(`node: uni.DictCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.STAR_POW, Tok.STAR_MUL])) {
             parts.append(i.gen.doc_ir);
         } else {
@@ -1081,13 +1033,13 @@ impl DocIRGenPass.exit_dict_compr(<>node: uni.DictCompr) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.format_comprehension(parts);
+    `node.gen.doc_ir = self.format_comprehension(parts);
 }
 
 """Generate DocIR for set comprehensions."""
-impl DocIRGenPass.exit_set_compr(<>node: uni.SetCompr) -> None {
+impl DocIRGenPass.exit_set_compr(`node: uni.SetCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if isinstance(i, uni.InnerCompr) {
             parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
         } else {
@@ -1095,13 +1047,13 @@ impl DocIRGenPass.exit_set_compr(<>node: uni.SetCompr) -> None {
         }
         parts.append(self.space());
     }
-    <>node.gen.doc_ir = self.format_comprehension(parts);
+    `node.gen.doc_ir = self.format_comprehension(parts);
 }
 
 """Generate DocIR for generator comprehensions."""
-impl DocIRGenPass.exit_gen_compr(<>node: uni.GenCompr) -> None {
+impl DocIRGenPass.exit_gen_compr(`node: uni.GenCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if isinstance(i, uni.InnerCompr) {
             parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
         } else {
@@ -1109,35 +1061,31 @@ impl DocIRGenPass.exit_gen_compr(<>node: uni.GenCompr) -> None {
         }
         parts.append(self.space());
     }
-    <>node.gen.doc_ir = self.format_comprehension(parts);
+    `node.gen.doc_ir = self.format_comprehension(parts);
 }
 
 """Generate DocIR for index slices."""
-impl DocIRGenPass.exit_index_slice(<>node: uni.IndexSlice) -> None {
+impl DocIRGenPass.exit_index_slice(`node: uni.IndexSlice) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for edge operation references."""
-impl DocIRGenPass.exit_edge_op_ref(<>node: uni.EdgeOpRef) -> None {
+impl DocIRGenPass.exit_edge_op_ref(`node: uni.EdgeOpRef) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for edge reference trailers."""
-impl DocIRGenPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
+impl DocIRGenPass.exit_edge_ref_trailer(`node: uni.EdgeRefTrailer) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name in [Tok.KW_EDGE, Tok.KW_NODE])) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1145,15 +1093,13 @@ impl DocIRGenPass.exit_edge_ref_trailer(<>node: uni.EdgeRefTrailer) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for lambda expressions."""
-impl DocIRGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
+impl DocIRGenPass.exit_lambda_expr(`node: uni.LambdaExpr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             # Don't add trailing space after closing brace of code block lambda
             parts.append(i.gen.doc_ir);
@@ -1172,7 +1118,7 @@ impl DocIRGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
             # For signatures without params (just -> Type), pop the trailing space from lambda keyword
             if (isinstance(i.gen.doc_ir, doc.Text) and (i.gen.doc_ir.text == '()')) {
                 parts.append(i.gen.doc_ir);
-            } elif not <>node.signature.params {
+            } elif not `node.signature.params {
                 # Lambda without params: "lambda -> Type" - don't add extra space
                 parts.pop();
                 parts.append(i.gen.doc_ir);
@@ -1185,15 +1131,13 @@ impl DocIRGenPass.exit_lambda_expr(<>node: uni.LambdaExpr) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for unary expressions."""
-impl DocIRGenPass.exit_unary_expr(<>node: uni.UnaryExpr) -> None {
+impl DocIRGenPass.exit_unary_expr(`node: uni.UnaryExpr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (
             (isinstance(i, uni.Token) and (i.value in ['-', '~', '+', '*']))
             or isinstance(i, uni.Expr)
@@ -1204,13 +1148,11 @@ impl DocIRGenPass.exit_unary_expr(<>node: uni.UnaryExpr) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for boolean expressions (and/or)."""
-impl DocIRGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
+impl DocIRGenPass.exit_bool_expr(`node: uni.BoolExpr) -> None {
     exprs: list[uni.UniNode] = [];
     parts: list[doc.DocType] = [];
     def __flatten_bool_expr(expr: uni.Expr) -> list[uni.UniNode] {
@@ -1226,7 +1168,7 @@ impl DocIRGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
             return [expr];
         }
     }
-    exprs = __flatten_bool_expr(<>node);
+    exprs = __flatten_bool_expr(`node);
     parts += [exprs[0].gen.doc_ir, self.line()];
     for i in range(1, len(exprs), 2) {
         (op, expr) = (exprs[(i + 1)], exprs[i]);
@@ -1234,13 +1176,13 @@ impl DocIRGenPass.exit_bool_expr(<>node: uni.BoolExpr) -> None {
     }
     parts.pop();
     flat = self.concat(parts);
-    <>node.gen.doc_ir = self.group(flat);
+    `node.gen.doc_ir = self.group(flat);
 }
 
 """Generate DocIR for conditional expressions."""
-impl DocIRGenPass.exit_if_else_expr(<>node: uni.IfElseExpr) -> None {
+impl DocIRGenPass.exit_if_else_expr(`node: uni.IfElseExpr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if isinstance(i, uni.Expr) {
             parts.append(i.gen.doc_ir);
             parts.append(self.line());
@@ -1253,37 +1195,31 @@ impl DocIRGenPass.exit_if_else_expr(<>node: uni.IfElseExpr) -> None {
         }
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for formatted value expressions."""
-impl DocIRGenPass.exit_formatted_value(<>node: uni.FormattedValue) -> None {
+impl DocIRGenPass.exit_formatted_value(`node: uni.FormattedValue) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for formatted strings."""
-impl DocIRGenPass.exit_f_string(<>node: uni.FString) -> None {
+impl DocIRGenPass.exit_f_string(`node: uni.FString) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for inner comprehension clauses."""
-impl DocIRGenPass.exit_inner_compr(<>node: uni.InnerCompr) -> None {
+impl DocIRGenPass.exit_inner_compr(`node: uni.InnerCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_IF)) {
             parts.append(self.hard_line());
             parts.append(i.gen.doc_ir);
@@ -1294,15 +1230,13 @@ impl DocIRGenPass.exit_inner_compr(<>node: uni.InnerCompr) -> None {
         }
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for list comprehensions."""
-impl DocIRGenPass.exit_list_compr(<>node: uni.ListCompr) -> None {
+impl DocIRGenPass.exit_list_compr(`node: uni.ListCompr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if isinstance(i, uni.InnerCompr) {
             parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
         } else {
@@ -1310,17 +1244,17 @@ impl DocIRGenPass.exit_list_compr(<>node: uni.ListCompr) -> None {
         }
         parts.append(self.space());
     }
-    <>node.gen.doc_ir = self.format_comprehension(parts);
+    `node.gen.doc_ir = self.format_comprehension(parts);
 }
 
 """Generate DocIR for with statements."""
-impl DocIRGenPass.exit_with_stmt(<>node: uni.WithStmt) -> None {
+impl DocIRGenPass.exit_with_stmt(`node: uni.WithStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (isinstance(<>node.body, Sequence) and self.is_within(i, <>node.body)) {
-            if (i == <>node.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+    for i in `node.kid {
+        if (isinstance(`node.body, Sequence) and self.is_within(i, `node.body)) {
+            if (i == `node.body[0]) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
             body_parts.append(i.gen.doc_ir);
@@ -1336,36 +1270,34 @@ impl DocIRGenPass.exit_with_stmt(<>node: uni.WithStmt) -> None {
     }
     parts.pop();
     body_parts.pop();
-    <>node.gen.doc_ir = self.group(self.concat(parts), ast_node=<>node);
+    `node.gen.doc_ir = self.group(self.concat(parts), ast_node=`node);
 }
 
 """Generate DocIR for set values."""
-impl DocIRGenPass.exit_set_val(<>node: uni.SetVal) -> None {
+impl DocIRGenPass.exit_set_val(`node: uni.SetVal) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for multiline strings."""
-impl DocIRGenPass.exit_multi_string(<>node: uni.MultiString) -> None {
+impl DocIRGenPass.exit_multi_string(`node: uni.MultiString) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(self.intersperse(parts, self.line()), ast_node=<>node),
-        ast_node=<>node
+    `node.gen.doc_ir = self.group(
+        self.concat(self.intersperse(parts, self.line()), ast_node=`node),
+        ast_node=`node
     );
 }
 
 """Generate DocIR for tuple values."""
-impl DocIRGenPass.exit_tuple_val(<>node: uni.TupleVal) -> None {
+impl DocIRGenPass.exit_tuple_val(`node: uni.TupleVal) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1375,7 +1307,7 @@ impl DocIRGenPass.exit_tuple_val(<>node: uni.TupleVal) -> None {
     }
     not_broke = self.concat(parts);
     parts = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
@@ -1395,47 +1327,47 @@ impl DocIRGenPass.exit_tuple_val(<>node: uni.TupleVal) -> None {
     } else {
         broke = self.concat(parts);
     }
-    <>node.gen.doc_ir = self.group(self.if_break(broke, not_broke));
+    `node.gen.doc_ir = self.group(self.if_break(broke, not_broke));
 }
 
 """Generate DocIR for finally statements."""
-impl DocIRGenPass.exit_finally_stmt(<>node: uni.FinallyStmt) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_finally_stmt(`node: uni.FinallyStmt) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for except clauses."""
-impl DocIRGenPass.exit_except(<>node: uni.Except) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_except(`node: uni.Except) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for try statements."""
-impl DocIRGenPass.exit_try_stmt(<>node: uni.TryStmt) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_try_stmt(`node: uni.TryStmt) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for iterative for statements."""
-impl DocIRGenPass.exit_iter_for_stmt(<>node: uni.IterForStmt) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_iter_for_stmt(`node: uni.IterForStmt) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for for-in statements."""
-impl DocIRGenPass.exit_in_for_stmt(<>node: uni.InForStmt) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_in_for_stmt(`node: uni.InForStmt) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for while statements."""
-impl DocIRGenPass.exit_while_stmt(<>node: uni.WhileStmt) -> None {
-    <>node.gen.doc_ir = self.format_simple_stmt_with_body(<>node, <>node.body);
+impl DocIRGenPass.exit_while_stmt(`node: uni.WhileStmt) -> None {
+    `node.gen.doc_ir = self.format_simple_stmt_with_body(`node, `node.body);
 }
 
 """Generate DocIR for architecture has declarations."""
-impl DocIRGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
+impl DocIRGenPass.exit_arch_has(`node: uni.ArchHas) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     first_comma_seen = False;
     semi_doc: (doc.DocType | None) = None;
-    for i in <>node.kid {
-        if (i == <>node.doc) {
+    for i in `node.kid {
+        if (i == `node.doc) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
@@ -1475,23 +1407,19 @@ impl DocIRGenPass.exit_arch_has(<>node: uni.ArchHas) -> None {
     if indent_parts {
         self.trim_trailing_line(indent_parts);
         parts.append(
-            self.indent(
-                self.concat([self.hard_line(), *indent_parts]), ast_node=<>node
-            )
+            self.indent(self.concat([self.hard_line(), *indent_parts]), ast_node=`node)
         );
     }
     if semi_doc {
         parts.append(semi_doc);
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for has variable declarations."""
-impl DocIRGenPass.exit_has_var(<>node: uni.HasVar) -> None {
+impl DocIRGenPass.exit_has_var(`node: uni.HasVar) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ)) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
@@ -1503,16 +1431,14 @@ impl DocIRGenPass.exit_has_var(<>node: uni.HasVar) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for key-value pairs."""
-impl DocIRGenPass.exit_k_v_pair(<>node: uni.KVPair) -> None {
+impl DocIRGenPass.exit_k_v_pair(`node: uni.KVPair) -> None {
     parts: list[doc.DocType] = [];
-    kid_count = len(<>node.kid);
-    for (idx, kid) in enumerate(<>node.kid) {
+    kid_count = len(`node.kid);
+    for (idx, kid) in enumerate(`node.kid) {
         parts.append(kid.gen.doc_ir);
         is_last = idx == (kid_count - 1);
         if (isinstance(kid, uni.Token) and (kid.name == Tok.COLON)) {
@@ -1520,31 +1446,31 @@ impl DocIRGenPass.exit_k_v_pair(<>node: uni.KVPair) -> None {
                 parts.append(self.space());
             }
         } elif not is_last {
-            next_kid = <>node.kid[(idx + 1)];
+            next_kid = `node.kid[(idx + 1)];
             if (isinstance(next_kid, uni.Token) and (next_kid.name == Tok.COLON)) {
                 continue;
             }
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for dictionary values."""
-impl DocIRGenPass.exit_dict_val(<>node: uni.DictVal) -> None {
-    if not <>node.kid {
-        <>node.gen.doc_ir = self.group(self.concat([]));
+impl DocIRGenPass.exit_dict_val(`node: uni.DictVal) -> None {
+    if not `node.kid {
+        `node.gen.doc_ir = self.group(self.concat([]));
         return;
     }
-    if not <>node.kv_pairs {
-        <>node.gen.doc_ir = self.group(
-            self.concat([kid.gen.doc_ir for kid in <>node.kid])
+    if not `node.kv_pairs {
+        `node.gen.doc_ir = self.group(
+            self.concat([kid.gen.doc_ir for kid in `node.kid])
         );
         return;
     }
     inline_parts: list[doc.DocType] = [];
     broken_parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (
             (isinstance(i, uni.Token) and (i.name in [Tok.LBRACE, Tok.RBRACE]))
             or isinstance(i, uni.KVPair)
@@ -1573,20 +1499,18 @@ impl DocIRGenPass.exit_dict_val(<>node: uni.DictVal) -> None {
     broke = self.concat(
         [
             lbrace_doc,
-            self.indent(
-                self.concat([self.hard_line(), *middle_parts]), ast_node=<>node
-            ),
+            self.indent(self.concat([self.hard_line(), *middle_parts]), ast_node=`node),
             self.hard_line(),
             rbrace_doc
         ]
     );
-    <>node.gen.doc_ir = self.group(self.if_break(broke, not_broke));
+    `node.gen.doc_ir = self.group(self.if_break(broke, not_broke));
 }
 
 """Generate DocIR for list values."""
-impl DocIRGenPass.exit_list_val(<>node: uni.ListVal) -> None {
+impl DocIRGenPass.exit_list_val(`node: uni.ListVal) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -1594,9 +1518,9 @@ impl DocIRGenPass.exit_list_val(<>node: uni.ListVal) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    not_broke = self.concat(parts, ast_node=<>node);
+    not_broke = self.concat(parts, ast_node=`node);
     parts = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
@@ -1609,44 +1533,42 @@ impl DocIRGenPass.exit_list_val(<>node: uni.ListVal) -> None {
             [
                 parts[0],
                 self.indent(
-                    self.concat([self.hard_line(), *parts[1:-1]], ast_node=<>node),
-                    ast_node=<>node
+                    self.concat([self.hard_line(), *parts[1:-1]], ast_node=`node),
+                    ast_node=`node
                 ),
                 self.hard_line(),
                 parts[-1]
             ],
-            ast_node=<>node
+            ast_node=`node
         );
     } else {
-        broke = self.concat(parts, ast_node=<>node);
+        broke = self.concat(parts, ast_node=`node);
     }
-    <>node.gen.doc_ir = self.group(self.if_break(broke, not_broke), ast_node=<>node);
+    `node.gen.doc_ir = self.group(self.if_break(broke, not_broke), ast_node=`node);
 }
 
 """Generate DocIR for atom trailers."""
-impl DocIRGenPass.exit_atom_trailer(<>node: uni.AtomTrailer) -> None {
+impl DocIRGenPass.exit_atom_trailer(`node: uni.AtomTrailer) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_BY)) {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for function calls."""
-impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
+impl DocIRGenPass.exit_func_call(`node: uni.FuncCall) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     in_params = False;
-    for i in <>node.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and <>node.params) {
+    for i in `node.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and `node.params) {
             in_params = True;
             parts.append(i.gen.doc_ir);
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and <>node.params) {
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and `node.params) {
             in_params = False;
             if isinstance(indent_parts[-1], doc.Line) {
                 indent_parts.pop();
@@ -1656,7 +1578,7 @@ impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
                     self.concat(
                         [self.tight_line(), self.group(self.concat([*indent_parts]))]
                     ),
-                    ast_node=<>node
+                    ast_node=`node
                 )
             );
             parts.append(self.tight_line());
@@ -1675,17 +1597,15 @@ impl DocIRGenPass.exit_func_call(<>node: uni.FuncCall) -> None {
             }
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for return statements."""
-impl DocIRGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
+impl DocIRGenPass.exit_return_stmt(`node: uni.ReturnStmt) -> None {
     parts: list[doc.DocType] = [];
     # Check if returning a JSX element directly (not wrapped in parens)
-    is_jsx_return = isinstance(<>node.expr, uni.JsxElement);
-    for i in <>node.kid {
+    is_jsx_return = isinstance(`node.expr, uni.JsxElement);
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
             parts.append(i.gen.doc_ir);
@@ -1697,39 +1617,37 @@ impl DocIRGenPass.exit_return_stmt(<>node: uni.ReturnStmt) -> None {
         }
         parts.append(self.space());
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for concurrent expressions."""
-impl DocIRGenPass.exit_concurrent_expr(<>node: uni.ConcurrentExpr) -> None {
+impl DocIRGenPass.exit_concurrent_expr(`node: uni.ConcurrentExpr) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         parts.append(i.gen.doc_ir);
         parts.append(self.space());
     }
-    <>node.gen.doc_ir = self.group(self.concat(parts), ast_node=<>node);
+    `node.gen.doc_ir = self.group(self.concat(parts), ast_node=`node);
 }
 
 """Generate DocIR for expression statements."""
-impl DocIRGenPass.exit_expr_stmt(<>node: uni.ExprStmt) -> None {
-    self._assign_group_concat(<>node);
+impl DocIRGenPass.exit_expr_stmt(`node: uni.ExprStmt) -> None {
+    self._assign_group_concat(`node);
 }
 
 """Generate DocIR for binary expressions."""
-impl DocIRGenPass.exit_binary_expr(<>node: uni.BinaryExpr) -> None {
-    self._assign_space_group(<>node);
+impl DocIRGenPass.exit_binary_expr(`node: uni.BinaryExpr) -> None {
+    self._assign_space_group(`node);
 }
 
 """Generate DocIR for else statements."""
-impl DocIRGenPass.exit_else_stmt(<>node: uni.ElseStmt) -> None {
+impl DocIRGenPass.exit_else_stmt(`node: uni.ElseStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (isinstance(<>node.body, Sequence) and self.is_within(i, <>node.body)) {
-            if (i == <>node.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+    for i in `node.kid {
+        if (isinstance(`node.body, Sequence) and self.is_within(i, `node.body)) {
+            if (i == `node.body[0]) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
             body_parts.append(i.gen.doc_ir);
@@ -1744,19 +1662,17 @@ impl DocIRGenPass.exit_else_stmt(<>node: uni.ElseStmt) -> None {
         }
     }
     body_parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for else if statements."""
-impl DocIRGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
+impl DocIRGenPass.exit_else_if(`node: uni.ElseIf) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (isinstance(<>node.body, Sequence) and self.is_within(i, <>node.body)) {
-            if (i == <>node.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+    for i in `node.kid {
+        if (isinstance(`node.body, Sequence) and self.is_within(i, `node.body)) {
+            if (i == `node.body[0]) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
             body_parts.append(i.gen.doc_ir);
@@ -1771,19 +1687,17 @@ impl DocIRGenPass.exit_else_if(<>node: uni.ElseIf) -> None {
         }
     }
     body_parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for if statements."""
-impl DocIRGenPass.exit_if_stmt(<>node: uni.IfStmt) -> None {
+impl DocIRGenPass.exit_if_stmt(`node: uni.IfStmt) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in <>node.kid {
-        if (isinstance(<>node.body, Sequence) and self.is_within(i, <>node.body)) {
-            if (i == <>node.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+    for i in `node.kid {
+        if (isinstance(`node.body, Sequence) and self.is_within(i, `node.body)) {
+            if (i == `node.body[0]) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
             body_parts.append(i.gen.doc_ir);
@@ -1799,36 +1713,34 @@ impl DocIRGenPass.exit_if_stmt(<>node: uni.IfStmt) -> None {
     }
     parts.pop();
     body_parts.pop();
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for assignments."""
-impl DocIRGenPass.exit_assignment(<>node: uni.Assignment) -> None {
+impl DocIRGenPass.exit_assignment(`node: uni.Assignment) -> None {
     lhs_parts: list[doc.DocType] = [];
     rhs_parts: list[doc.DocType] = [];
     eq_tok: (doc.DocType | None) = None;
     seen_eq = False;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ) and not seen_eq) {
             eq_tok = i.gen.doc_ir;
             seen_eq = True;
         } elif seen_eq {
             rhs_parts.append(i.gen.doc_ir);
         } else {
-            if (i == <>node.aug_op) {
+            if (i == `node.aug_op) {
                 lhs_parts.append(self.space());
             }
             lhs_parts.append(i.gen.doc_ir);
-            if (i == <>node.aug_op) {
+            if (i == `node.aug_op) {
                 lhs_parts.append(self.space());
             }
         }
     }
     if (eq_tok is not None) {
         rhs_concat = self.group(self.concat(rhs_parts));
-        <>node.gen.doc_ir = self.group(
+        `node.gen.doc_ir = self.group(
             self.concat(
                 [
                     *lhs_parts,
@@ -1839,14 +1751,14 @@ impl DocIRGenPass.exit_assignment(<>node: uni.Assignment) -> None {
             )
         );
     } else {
-        <>node.gen.doc_ir = self.group(self.concat((lhs_parts + rhs_parts)));
+        `node.gen.doc_ir = self.group(self.concat((lhs_parts + rhs_parts)));
     }
 }
 
 """Generate DocIR for parameter variables."""
-impl DocIRGenPass.exit_param_var(<>node: uni.ParamVar) -> None {
+impl DocIRGenPass.exit_param_var(`node: uni.ParamVar) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.EQ)) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
@@ -1855,26 +1767,24 @@ impl DocIRGenPass.exit_param_var(<>node: uni.ParamVar) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for function signatures."""
-impl DocIRGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
+impl DocIRGenPass.exit_func_signature(`node: uni.FuncSignature) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];
     in_params = False;
     has_parens = False;
     # Check for any kind of parameters (regular, varargs, kwargs, etc.)
     has_any_params = (
-        <>node.params
-        or <>node.varargs
-        or <>node.kwargs
-        or <>node.kwonlyargs
-        or <>node.posonly_params
+        `node.params
+        or `node.varargs
+        or `node.kwargs
+        or `node.kwonlyargs
+        or `node.posonly_params
     );
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and has_any_params) {
             in_params = True;
             parts.append(i.gen.doc_ir);
@@ -1919,22 +1829,22 @@ impl DocIRGenPass.exit_func_signature(<>node: uni.FuncSignature) -> None {
         }
     }
     parts.pop();
-    <>node.gen.doc_ir = self.group(self.concat(parts, ast_node=<>node));
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node));
 }
 
 """Generate DocIR for abilities."""
-impl DocIRGenPass.exit_ability(<>node: uni.Ability) -> None {
+impl DocIRGenPass.exit_ability(`node: uni.Ability) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
-        if ((i == <>node.doc) or (<>node.decorators and (i in <>node.decorators))) {
+    for i in `node.kid {
+        if ((i == `node.doc) or (`node.decorators and (i in `node.decorators))) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
-        } elif (i == <>node.name_ref) {
+        } elif (i == `node.name_ref) {
             parts.append(i.gen.doc_ir);
-            if not isinstance(<>node.signature, uni.FuncSignature) {
+            if not isinstance(`node.signature, uni.FuncSignature) {
                 parts.append(self.space());
             }
         } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
@@ -1944,7 +1854,7 @@ impl DocIRGenPass.exit_ability(<>node: uni.Ability) -> None {
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             in_body = False;
             self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             if (len(body_parts) > 0) {
                 parts.append(self.hard_line());
             } else {
@@ -1970,25 +1880,23 @@ impl DocIRGenPass.exit_ability(<>node: uni.Ability) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for archetypes."""
-impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
+impl DocIRGenPass.exit_archetype(`node: uni.Archetype) -> None {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     prev_item = None;
     in_body = False;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (
-            (<>node.doc and (i is <>node.doc))
-            or (<>node.decorators and (i in <>node.decorators))
+            (`node.doc and (i is `node.doc))
+            or (`node.decorators and (i in `node.decorators))
         ) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
-        } elif (i == <>node.name) {
+        } elif (i == `node.name) {
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
         } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
@@ -2000,12 +1908,12 @@ impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
-        } elif (isinstance(<>node.body, Sequence) and (i in <>node.body)) {
+        } elif (isinstance(`node.body, Sequence) and (i in `node.body)) {
             if not in_body {
                 body_parts.append(self.hard_line());
             }
             if (
-                (prev_item and (<>type(prev_item) is not <>type(i)))
+                (prev_item and (type(prev_item) is not type(i)))
                 or (prev_item and not self.is_one_line(prev_item))
             ) {
                 body_parts.append(self.hard_line());
@@ -2017,7 +1925,7 @@ impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
         } elif in_body {
             in_body = False;
             body_parts.pop();
-            parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+            parts.append(self.indent(self.concat(body_parts), ast_node=`node));
             parts.append(self.hard_line());
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
@@ -2040,15 +1948,13 @@ impl DocIRGenPass.exit_archetype(<>node: uni.Archetype) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Generate DocIR for module paths."""
-impl DocIRGenPass.exit_module_path(<>node: uni.ModulePath) -> None {
+impl DocIRGenPass.exit_module_path(`node: uni.ModulePath) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_AS)) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
@@ -2057,13 +1963,13 @@ impl DocIRGenPass.exit_module_path(<>node: uni.ModulePath) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Generate DocIR for module items."""
-impl DocIRGenPass.exit_module_item(<>node: uni.ModuleItem) -> None {
+impl DocIRGenPass.exit_module_item(`node: uni.ModuleItem) -> None {
     parts: list[doc.DocType] = [];
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.KW_AS)) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
@@ -2072,15 +1978,15 @@ impl DocIRGenPass.exit_module_item(<>node: uni.ModuleItem) -> None {
             parts.append(i.gen.doc_ir);
         }
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
 }
 
 """Exit import node."""
-impl DocIRGenPass.exit_import(<>node: uni.Import) -> None {
+impl DocIRGenPass.exit_import(`node: uni.Import) -> None {
     parts: list[doc.DocType] = [];
     mod_items: list[doc.DocType] = [];
     is_in_items: bool = False;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COMMA)) {
             if is_in_items {
                 mod_items.pop();
@@ -2119,17 +2025,15 @@ impl DocIRGenPass.exit_import(<>node: uni.Import) -> None {
             parts.append(self.space());
         }
     }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
+    `node.gen.doc_ir = self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Exit module."""
-impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
+impl DocIRGenPass.exit_module(`node: uni.Module) -> None {
     parts: list[doc.DocType] = [];
     prev_kid = None;
     first_kid = True;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (
             (isinstance(i, uni.Import) and isinstance(prev_kid, uni.Import))
             or (
@@ -2137,7 +2041,7 @@ impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
                     isinstance(i, uni.GlobalVars)
                     and isinstance(prev_kid, uni.GlobalVars)
                 )
-                or (prev_kid == <>node.doc)
+                or (prev_kid == `node.doc)
             )
         ) {
             if (prev_kid and self.has_gap(prev_kid, i)) {
@@ -2161,11 +2065,11 @@ impl DocIRGenPass.exit_module(<>node: uni.Module) -> None {
         prev_kid = i;
         first_kid = False;
     }
-    <>node.gen.doc_ir = self.concat(parts, ast_node=<>node);
+    `node.gen.doc_ir = self.concat(parts, ast_node=`node);
     # Traverse impl modules (.impl.jac files)
     # Only do this for the main module (not annex modules themselves)
-    if <>node.annexable_by is None {
-        for impl_mod in <>node.impl_mod {
+    if `node.annexable_by is None {
+        for impl_mod in `node.impl_mod {
             self.traverse(impl_mod);
         }
     }
@@ -2278,10 +2182,10 @@ impl DocIRGenPass.has_gap(prev_kid: uni.UniNode, curr_kid: uni.UniNode) -> bool 
 }
 
 """Check if the node is a one line node."""
-impl DocIRGenPass.is_one_line(<>node: uni.UniNode) -> bool {
+impl DocIRGenPass.is_one_line(`node: uni.UniNode) -> bool {
     return (
-        bool(<>node.kid)
-        and (<>node.kid[0].loc.first_line == <>node.kid[-1].loc.last_line)
+        bool(`node.kid)
+        and (`node.kid[0].loc.first_line == `node.kid[-1].loc.last_line)
     );
 }
 
@@ -2329,15 +2233,15 @@ impl DocIRGenPass.format_comprehension(parts: list[doc.DocType]) -> doc.DocType 
         - possible trailing elements
 """
 impl DocIRGenPass.format_simple_stmt_with_body(
-    <>node: uni.UniNode, body: Sequence[uni.UniNode], space_between_parts: bool = True
+    `node: uni.UniNode, body: Sequence[uni.UniNode], space_between_parts: bool = True
 ) -> doc.DocType {
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [self.hard_line()];
     prev_body_item: (uni.UniNode | None) = None;
-    for i in <>node.kid {
+    for i in `node.kid {
         if (isinstance(body, Sequence) and self.is_within(i, body)) {
             if (body and (i == body[0])) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=<>node));
+                parts.append(self.indent(self.concat(body_parts), ast_node=`node));
                 parts.append(self.hard_line());
             }
             self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
@@ -2355,7 +2259,7 @@ impl DocIRGenPass.format_simple_stmt_with_body(
     if (body_parts and isinstance(body_parts[-1], doc.Line)) {
         body_parts.pop();
     }
-    return self.group(self.concat(parts, ast_node=<>node), ast_node=<>node);
+    return self.group(self.concat(parts, ast_node=`node), ast_node=`node);
 }
 
 """Intersperse separator between items (returns flat list)."""
@@ -2374,28 +2278,28 @@ impl DocIRGenPass.intersperse(
 }
 
 """Assign a grouped, space-joined document for the children."""
-impl DocIRGenPass._assign_space_group(<>node: uni.UniNode) -> None {
-    <>node.gen.doc_ir = self.group(
-        self.join_with_space(self._child_docs(<>node)), ast_node=<>node
+impl DocIRGenPass._assign_space_group(`node: uni.UniNode) -> None {
+    `node.gen.doc_ir = self.group(
+        self.join_with_space(self._child_docs(`node)), ast_node=`node
     );
 }
 
 """Assign a grouped Concat of child documents."""
-impl DocIRGenPass._assign_group_concat(<>node: uni.UniNode) -> None {
-    <>node.gen.doc_ir = self.group(
-        self.concat(self._child_docs(<>node), ast_node=<>node), ast_node=<>node
+impl DocIRGenPass._assign_group_concat(`node: uni.UniNode) -> None {
+    `node.gen.doc_ir = self.group(
+        self.concat(self._child_docs(`node), ast_node=`node), ast_node=`node
     );
 }
 
 """Assign a simple Concat of child documents."""
-impl DocIRGenPass._assign_concat(<>node: uni.UniNode) -> None {
-    <>node.gen.doc_ir = self.concat(self._child_docs(<>node), ast_node=<>node);
+impl DocIRGenPass._assign_concat(`node: uni.UniNode) -> None {
+    `node.gen.doc_ir = self.concat(self._child_docs(`node), ast_node=`node);
 }
 
 """Return generated DocIR for each child."""
-impl DocIRGenPass._child_docs(<>node: uni.UniNode) -> list[doc.DocType] {
+impl DocIRGenPass._child_docs(`node: uni.UniNode) -> list[doc.DocType] {
     docs: list[doc.DocType] = [];
-    for kid in <>node.kid {
+    for kid in `node.kid {
         docs.append(kid.gen.doc_ir);
     }
     return docs;

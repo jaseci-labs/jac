@@ -487,40 +487,40 @@ class TestFormatCommandIntegration:
 
 
 class TestRemoveUnnecessaryEscape:
-    """Tests for removing unnecessary <> escaping from names."""
+    """Tests for removing unnecessary backtick escaping from names."""
 
     def test_unnecessary_escape_removed(
         self, auto_lint_fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that unnecessary <> escaping is removed from non-keyword names."""
+        """Test that unnecessary backtick escaping is removed from non-keyword names."""
         input_path = auto_lint_fixture_path("unnecessary_escape.jac")
 
         prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
         formatted = prog.mod.main.gen.jac
 
-        # Regular variable names should NOT have <> escaping
-        assert "<>foo" not in formatted
-        assert "<>bar" not in formatted
-        assert "<>myvar" not in formatted
-        assert "<>count" not in formatted
-        assert "<>data" not in formatted
-        assert "<>name" not in formatted
-        assert "<>value" not in formatted
-        assert "<>item" not in formatted
-        assert "<>result" not in formatted
-        assert "<>input_val" not in formatted
-        assert "<>output_val" not in formatted
-        assert "<>total" not in formatted
+        # Regular variable names should NOT have backtick escaping
+        assert "`foo" not in formatted
+        assert "`bar" not in formatted
+        assert "`myvar" not in formatted
+        assert "`count" not in formatted
+        assert "`data" not in formatted
+        assert "`name" not in formatted
+        assert "`value" not in formatted
+        assert "`item" not in formatted
+        assert "`result" not in formatted
+        assert "`input_val" not in formatted
+        assert "`output_val" not in formatted
+        assert "`total" not in formatted
 
-        # But the actual names should still be present (without <>)
+        # But the actual names should still be present (without backtick)
         assert "foo = 1" in formatted
         assert "bar = 2" in formatted
         assert "myvar = 3" in formatted
 
-        # Jac keywords SHOULD still have <> escaping
-        assert "<>node = 10" in formatted
-        assert "<>edge = 20" in formatted
-        assert "<>walker = 30" in formatted
+        # Jac keywords SHOULD still have backtick escaping
+        assert "`node = 10" in formatted
+        assert "`edge = 20" in formatted
+        assert "`walker = 30" in formatted
 
 
 class TestRemoveEmptyParens:
@@ -1084,7 +1084,7 @@ class TestCommentPreservation:
         formatted = prog.mod.main.gen.jac
 
         # Comments around escaped names
-        assert "# Test angle bracket escaped names with comments" in formatted
+        assert "# Test backtick escaped names with comments" in formatted
         assert "# Comment before escaped name" in formatted
         assert "# Method with escaped param" in formatted
 

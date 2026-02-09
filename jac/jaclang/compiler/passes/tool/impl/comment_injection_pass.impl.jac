@@ -5,24 +5,24 @@ impl CommentInjectionPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any =
 }
 
 """Remove redundant line breaks after inline comments."""
-impl CommentInjectionPass._remove_redundant_lines(<>node: doc.DocType) -> doc.DocType {
-    if isinstance(<>node, doc.Concat) {
+impl CommentInjectionPass._remove_redundant_lines(`node: doc.DocType) -> doc.DocType {
+    if isinstance(`node, doc.Concat) {
         new_parts = [];
         i = 0;
-        while (i < len(<>node.parts)) {
-            part = <>node.parts[i];
+        while (i < len(`node.parts)) {
+            part = `node.parts[i];
             processed_part = self._remove_redundant_lines(part);
             if (
                 self._ends_with_inline_comment_line(processed_part)
-                and ((i + 1) < len(<>node.parts))
-                and self._is_standalone_comment(<>node.parts[(i + 1)])
+                and ((i + 1) < len(`node.parts))
+                and self._is_standalone_comment(`node.parts[(i + 1)])
             ) {
                 processed_part = self._remove_trailing_line_from_inline_comment(
                     processed_part
                 );
                 new_parts.append(processed_part);
                 new_parts.append(doc.Line(hard=True));
-                next_part = self._remove_redundant_lines(<>node.parts[(i + 1)]);
+                next_part = self._remove_redundant_lines(`node.parts[(i + 1)]);
                 if (isinstance(next_part, doc.Concat) and (len(next_part.parts) == 2)) {
                     new_parts.append(
                         doc.Concat([next_part.parts[0]], ast_node=next_part.ast_node)
@@ -33,9 +33,7 @@ impl CommentInjectionPass._remove_redundant_lines(<>node: doc.DocType) -> doc.Do
                 i += 2;
                 continue;
             }
-            next_line = <>node.parts[(i + 1)]
-            if ((i + 1) < len(<>node.parts))
-            else None;
+            next_line = `node.parts[(i + 1)] if ((i + 1) < len(`node.parts)) else None;
             if (
                 self._ends_with_inline_comment_line(processed_part)
                 and isinstance(next_line, doc.Line)
@@ -69,7 +67,7 @@ impl CommentInjectionPass._remove_redundant_lines(<>node: doc.DocType) -> doc.Do
                     and processed_part.contents.parts
                     and self._is_standalone_comment(processed_part.contents.parts[-1])
                 ) {
-                    indent_parts = <>list(processed_part.contents.parts);
+                    indent_parts = list(processed_part.contents.parts);
                     last_comment = indent_parts[-1];
                     assert isinstance(last_comment, doc.Concat);
                     indent_parts[-1] = doc.Concat(
@@ -90,35 +88,35 @@ impl CommentInjectionPass._remove_redundant_lines(<>node: doc.DocType) -> doc.Do
             new_parts.append(processed_part);
             i += 1;
         }
-        return doc.Concat(new_parts, ast_node=<>node.ast_node);
-    } elif isinstance(<>node, doc.Group) {
+        return doc.Concat(new_parts, ast_node=`node.ast_node);
+    } elif isinstance(`node, doc.Group) {
         return doc.Group(
-            self._remove_redundant_lines(<>node.contents),
-            <>node.break_contiguous,
-            <>node.id,
-            ast_node=<>node.ast_node
+            self._remove_redundant_lines(`node.contents),
+            `node.break_contiguous,
+            `node.id,
+            ast_node=`node.ast_node
         );
-    } elif isinstance(<>node, doc.Indent) {
+    } elif isinstance(`node, doc.Indent) {
         return doc.Indent(
-            self._remove_redundant_lines(<>node.contents), ast_node=<>node.ast_node
+            self._remove_redundant_lines(`node.contents), ast_node=`node.ast_node
         );
-    } elif isinstance(<>node, doc.IfBreak) {
+    } elif isinstance(`node, doc.IfBreak) {
         return doc.IfBreak(
-            self._remove_redundant_lines(<>node.break_contents),
-            self._remove_redundant_lines(<>node.flat_contents)
+            self._remove_redundant_lines(`node.break_contents),
+            self._remove_redundant_lines(`node.flat_contents)
         );
-    } elif isinstance(<>node, doc.Align) {
-        return doc.Align(self._remove_redundant_lines(<>node.contents), <>node.n);
+    } elif isinstance(`node, doc.Align) {
+        return doc.Align(self._remove_redundant_lines(`node.contents), `node.n);
     }
-    return <>node;
+    return `node;
 }
 
 """Remove the trailing hard line from the last inline comment in the node."""
 impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
-    <>node: doc.DocType
+    `node: doc.DocType
 ) -> doc.DocType {
-    if (isinstance(<>node, doc.Concat) and (len(<>node.parts) == 3)) {
-        (first, second, third) = <>node.parts;
+    if (isinstance(`node, doc.Concat) and (len(`node.parts) == 3)) {
+        (first, second, third) = `node.parts;
         if (
             isinstance(first, doc.Text)
             and (first.text.strip() == '')
@@ -127,35 +125,35 @@ impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
             and isinstance(third, doc.Line)
             and third.hard
         ) {
-            return doc.Concat(<>list(<>node.parts[:-1]));
+            return doc.Concat(list(`node.parts[:-1]));
         }
     }
-    if (isinstance(<>node, doc.Concat) and <>node.parts) {
-        new_parts = <>list(<>node.parts);
+    if (isinstance(`node, doc.Concat) and `node.parts) {
+        new_parts = list(`node.parts);
         new_parts[-1] = self._remove_trailing_line_from_inline_comment(new_parts[-1]);
-        return doc.Concat(new_parts, ast_node=<>node.ast_node);
+        return doc.Concat(new_parts, ast_node=`node.ast_node);
     }
-    if isinstance(<>node, doc.Group) {
+    if isinstance(`node, doc.Group) {
         return doc.Group(
-            self._remove_trailing_line_from_inline_comment(<>node.contents),
-            <>node.break_contiguous,
-            <>node.id,
-            ast_node=<>node.ast_node
+            self._remove_trailing_line_from_inline_comment(`node.contents),
+            `node.break_contiguous,
+            `node.id,
+            ast_node=`node.ast_node
         );
     }
-    if isinstance(<>node, doc.Indent) {
+    if isinstance(`node, doc.Indent) {
         return doc.Indent(
-            self._remove_trailing_line_from_inline_comment(<>node.contents),
-            ast_node=<>node.ast_node
+            self._remove_trailing_line_from_inline_comment(`node.contents),
+            ast_node=`node.ast_node
         );
     }
-    return <>node;
+    return `node;
 }
 
 """Check if a node ends with an inline comment that has a hard line break."""
-impl CommentInjectionPass._ends_with_inline_comment_line(<>node: doc.DocType) -> bool {
-    if (isinstance(<>node, doc.Concat) and (len(<>node.parts) == 3)) {
-        (first, second, third) = <>node.parts;
+impl CommentInjectionPass._ends_with_inline_comment_line(`node: doc.DocType) -> bool {
+    if (isinstance(`node, doc.Concat) and (len(`node.parts) == 3)) {
+        (first, second, third) = `node.parts;
         if (
             isinstance(first, doc.Text)
             and (first.text.strip() == '')
@@ -167,14 +165,14 @@ impl CommentInjectionPass._ends_with_inline_comment_line(<>node: doc.DocType) ->
             return True;
         }
     }
-    if (isinstance(<>node, doc.Concat) and <>node.parts) {
-        return self._ends_with_inline_comment_line(<>node.parts[-1]);
+    if (isinstance(`node, doc.Concat) and `node.parts) {
+        return self._ends_with_inline_comment_line(`node.parts[-1]);
     }
-    if isinstance(<>node, doc.Group) {
-        return self._ends_with_inline_comment_line(<>node.contents);
+    if isinstance(`node, doc.Group) {
+        return self._ends_with_inline_comment_line(`node.contents);
     }
-    if isinstance(<>node, doc.Indent) {
-        return self._ends_with_inline_comment_line(<>node.contents);
+    if isinstance(`node, doc.Indent) {
+        return self._ends_with_inline_comment_line(`node.contents);
     }
     return False;
 }
@@ -227,7 +225,7 @@ impl CommentInjectionPass._strip_trailing_line_from_comment(
         and isinstance(comment.parts[-1], doc.Line)
         and comment.parts[-1].hard
     ) {
-        return doc.Concat(<>list(comment.parts[:-1]), ast_node=comment.ast_node);
+        return doc.Concat(list(comment.parts[:-1]), ast_node=comment.ast_node);
     }
     return comment;
 }
@@ -391,12 +389,12 @@ Handle comments inside empty bodies (e.g., empty if/elif/else blocks).
         directly between the { and } tokens at the Concat level.
 """
 impl CommentInjectionPass._handle_empty_body_comments(
-    <>node: uni.UniNode, parts: list[doc.DocType]
+    `node: uni.UniNode, parts: list[doc.DocType]
 ) -> list[doc.DocType] {
     if not self._comments {
         return parts;
     }
-    body = getattr(<>node, 'body', None);
+    body = getattr(`node, 'body', None);
     if ((body is None) or (isinstance(body, Sequence) and (len(body) > 0))) {
         return parts;
     }
@@ -430,7 +428,7 @@ impl CommentInjectionPass._handle_empty_body_comments(
     if not comments {
         return parts;
     }
-    result: list[doc.DocType] = <>list(parts[:(lbrace_idx + 1)]);
+    result: list[doc.DocType] = list(parts[:(lbrace_idx + 1)]);
     comment_parts: list[doc.DocType] = [doc.Line(hard=True)];
     for info in comments {
         comment_parts.append(doc.Text(info.token.value));
@@ -480,7 +478,7 @@ impl CommentInjectionPass._handle_paren_comments(
         None
     );
     if not items {
-        result = <>list(parts[:(delim.open_idx + 1)]);
+        result = list(parts[:(delim.open_idx + 1)]);
         comment_parts: list[doc.DocType] = [doc.Line(hard=True, tight=True)];
         for info in comments {
             comment_parts.append(doc.Text(info.token.value));
@@ -495,13 +493,13 @@ impl CommentInjectionPass._handle_paren_comments(
         return result;
     }
     if (indent_idx is not None) {
-        result = <>list(parts);
+        result = list(parts);
         indent_part = result[indent_idx];
         if (
             isinstance(indent_part, doc.Indent)
             and isinstance(indent_part.contents, doc.Concat)
         ) {
-            new_indent_parts = <>list(indent_part.contents.parts);
+            new_indent_parts = list(indent_part.contents.parts);
             for info in comments {
                 new_indent_parts.append(doc.Line(hard=True));
                 new_indent_parts.append(doc.Text(info.token.value));
@@ -518,21 +516,21 @@ impl CommentInjectionPass._handle_paren_comments(
 
 """Handle comment injection within bodies (functions, classes, etc)."""
 impl CommentInjectionPass._handle_body_comments(
-    <>node: uni.UniNode, indent: doc.Indent
+    `node: uni.UniNode, indent: doc.Indent
 ) -> doc.Indent {
     body: (Sequence[uni.UniNode] | None) = None;
-    if <>node?.body {
-        body = <>node.body;
-    } elif (isinstance(<>node, uni.JsxElement) and <>node.children) {
-        body = <>node.children;
-    } elif (isinstance(<>node, uni.ArchHas) and <>node.vars) {
-        body = <>node.vars;
-    } elif (isinstance(<>node, uni.DictVal) and <>node.kv_pairs) {
-        body = <>node.kv_pairs;
-    } elif (isinstance(<>node, uni.ListVal) and <>node.values) {
-        body = <>node.values;
-    } elif (isinstance(<>node, uni.FuncCall) and <>node.params) {
-        body = <>node.params;
+    if `node?.body {
+        body = `node.body;
+    } elif (isinstance(`node, uni.JsxElement) and `node.children) {
+        body = `node.children;
+    } elif (isinstance(`node, uni.ArchHas) and `node.vars) {
+        body = `node.vars;
+    } elif (isinstance(`node, uni.DictVal) and `node.kv_pairs) {
+        body = `node.kv_pairs;
+    } elif (isinstance(`node, uni.ListVal) and `node.values) {
+        body = `node.values;
+    } elif (isinstance(`node, uni.FuncCall) and `node.params) {
+        body = `node.params;
     }
     if (
         (body is None)
@@ -544,7 +542,7 @@ impl CommentInjectionPass._handle_body_comments(
     body_start: (int | None) = next(
         (
             (k.loc.last_line + 1)
-            for k in <>node.kid
+            for k in `node.kid
             if (isinstance(k, uni.Token) and (k.name == Tok.LBRACE) and k.loc)
         ),
         None
@@ -552,28 +550,28 @@ impl CommentInjectionPass._handle_body_comments(
     body_end: (int | None) = next(
         (
             k.loc.first_line
-            for k in <>node.kid
+            for k in `node.kid
             if (isinstance(k, uni.Token) and (k.name == Tok.RBRACE) and k.loc)
         ),
         None
     );
-    if ((body_start is None) and isinstance(<>node, (uni.MatchCase, uni.SwitchCase))) {
+    if ((body_start is None) and isinstance(`node, (uni.MatchCase, uni.SwitchCase))) {
         body_start = next(
             (
                 (k.loc.last_line + 1)
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.COLON) and k.loc)
             ),
             None
         );
         if (body and body[-1].loc) {
             body_end = body[-1].loc.last_line + 1;
-        } elif <>node.loc {
-            body_end = <>node.loc.last_line + 1;
+        } elif `node.loc {
+            body_end = `node.loc.last_line + 1;
         }
     }
-    if ((body_start is None) and isinstance(<>node, uni.JsxElement) and <>node.kid) {
-        opening_tag = <>node.kid[0];
+    if ((body_start is None) and isinstance(`node, uni.JsxElement) and `node.kid) {
+        opening_tag = `node.kid[0];
         if isinstance(opening_tag, uni.JsxElement) {
             body_start = next(
                 (
@@ -588,7 +586,7 @@ impl CommentInjectionPass._handle_body_comments(
                 None
             );
         }
-        closing_tag = <>node.kid[-1];
+        closing_tag = `node.kid[-1];
         if isinstance(closing_tag, uni.JsxElement) {
             body_end = next(
                 (
@@ -604,11 +602,11 @@ impl CommentInjectionPass._handle_body_comments(
             );
         }
     }
-    if ((body_start is None) and isinstance(<>node, uni.ArchHas)) {
+    if ((body_start is None) and isinstance(`node, uni.ArchHas)) {
         body_start = next(
             (
                 (k.loc.last_line + 1)
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.COMMA) and k.loc)
             ),
             None
@@ -616,17 +614,17 @@ impl CommentInjectionPass._handle_body_comments(
         body_end = next(
             (
                 k.loc.first_line
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.SEMI) and k.loc)
             ),
             None
         );
     }
-    if ((body_start is None) and isinstance(<>node, uni.ListVal)) {
+    if ((body_start is None) and isinstance(`node, uni.ListVal)) {
         body_start = next(
             (
                 (k.loc.last_line + 1)
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.LSQUARE) and k.loc)
             ),
             None
@@ -634,17 +632,17 @@ impl CommentInjectionPass._handle_body_comments(
         body_end = next(
             (
                 k.loc.first_line
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.RSQUARE) and k.loc)
             ),
             None
         );
     }
-    if ((body_start is None) and isinstance(<>node, uni.FuncCall)) {
+    if ((body_start is None) and isinstance(`node, uni.FuncCall)) {
         body_start = next(
             (
                 (k.loc.last_line + 1)
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.LPAREN) and k.loc)
             ),
             None
@@ -652,7 +650,7 @@ impl CommentInjectionPass._handle_body_comments(
         body_end = next(
             (
                 k.loc.first_line
-                for k in <>node.kid
+                for k in `node.kid
                 if (isinstance(k, uni.Token) and (k.name == Tok.RPAREN) and k.loc)
             ),
             None
@@ -714,7 +712,7 @@ impl CommentInjectionPass._handle_body_comments(
         }
         parts_with_standalone.append(part);
     }
-    result = self._inject_into_parts(parts_with_standalone, <>node);
+    result = self._inject_into_parts(parts_with_standalone, `node);
     if (body_end is not None) {
         if body {
             last_body_line = body[-1].loc.last_line
@@ -750,7 +748,7 @@ impl CommentInjectionPass._handle_body_comments(
             }
         }
     }
-    return doc.Indent(doc.Concat(result), ast_node=<>node);
+    return doc.Indent(doc.Concat(result), ast_node=`node);
 }
 
 """Inject standalone comments using token line spans, generically."""
@@ -838,11 +836,11 @@ impl CommentInjectionPass._inject_into_parts(
 
 """Return the first and last line covered by a DocIR node."""
 impl CommentInjectionPass._doc_line_span(
-    <>node: doc.DocType
+    `node: doc.DocType
 ) -> tuple[(int | None), (int | None)] {
     tokens = [
         t
-        for t in self._get_tokens(<>node)
+        for t in self._get_tokens(`node)
         if getattr(t, 'loc', None)
     ];
     if not tokens {
@@ -863,22 +861,20 @@ impl CommentInjectionPass._doc_line_span(
 }
 
 """Extract source tokens from a DocIR node (visitor pattern)."""
-impl CommentInjectionPass._get_tokens(<>node: doc.DocType) -> list[uni.Token] {
-    if isinstance(<>node, doc.Text) {
-        return [<>node.source_token] if <>node.source_token else [];
-    } elif isinstance(<>node, (doc.Concat, doc.Group, doc.Indent, doc.Align)) {
+impl CommentInjectionPass._get_tokens(`node: doc.DocType) -> list[uni.Token] {
+    if isinstance(`node, doc.Text) {
+        return [`node.source_token] if `node.source_token else [];
+    } elif isinstance(`node, (doc.Concat, doc.Group, doc.Indent, doc.Align)) {
         tokens = [];
-        children = <>node.parts
-        if isinstance(<>node, doc.Concat)
-        else [<>node.contents];
+        children = `node.parts if isinstance(`node, doc.Concat) else [`node.contents];
         for child in children {
             tokens.extend(self._get_tokens(child));
         }
         return tokens;
-    } elif isinstance(<>node, doc.IfBreak) {
+    } elif isinstance(`node, doc.IfBreak) {
         return (
-            self._get_tokens(<>node.break_contents) + self._get_tokens(
-                <>node.flat_contents
+            self._get_tokens(`node.break_contents) + self._get_tokens(
+                `node.flat_contents
             )
         );
     }
@@ -921,12 +917,10 @@ impl CommentInjectionPass._find_delimiters(
 }
 
 """Main recursive processor with type-specific handling."""
-impl CommentInjectionPass._process(
-    ctx: uni.UniNode, <>node: doc.DocType
-) -> doc.DocType {
-    if isinstance(<>node, doc.Concat) {
-        ctx = <>node.ast_node or ctx;
-        processed_parts = self._inject_into_parts(<>node.parts, ctx);
+impl CommentInjectionPass._process(ctx: uni.UniNode, `node: doc.DocType) -> doc.DocType {
+    if isinstance(`node, doc.Concat) {
+        ctx = `node.ast_node or ctx;
+        processed_parts = self._inject_into_parts(`node.parts, ctx);
         if isinstance(ctx, (uni.FuncSignature, uni.FuncCall)) {
             items = ctx?.params or [];
             processed_parts = self._handle_paren_comments(items, processed_parts);
@@ -936,7 +930,7 @@ impl CommentInjectionPass._process(
         ) {
             processed_parts = self._handle_empty_body_comments(ctx, processed_parts);
         }
-        target_ctx = <>node.ast_node;
+        target_ctx = `node.ast_node;
         if target_ctx {
             processed_parts = self._inject_standalone_by_spans(
                 processed_parts,
@@ -946,18 +940,18 @@ impl CommentInjectionPass._process(
         }
         processed_parts = self._fix_empty_region_spacing(processed_parts);
         return doc.Concat(processed_parts, ast_node=ctx);
-    } elif isinstance(<>node, doc.Group) {
-        ctx = <>node.ast_node or ctx;
+    } elif isinstance(`node, doc.Group) {
+        ctx = `node.ast_node or ctx;
         return doc.Group(
-            self._process(ctx, <>node.contents),
-            <>node.break_contiguous,
-            <>node.id,
+            self._process(ctx, `node.contents),
+            `node.break_contiguous,
+            `node.id,
             ast_node=ctx
         );
-    } elif isinstance(<>node, doc.Indent) {
-        ctx = <>node.ast_node or ctx;
+    } elif isinstance(`node, doc.Indent) {
+        ctx = `node.ast_node or ctx;
         has_body = (
-            <>node.ast_node
+            `node.ast_node
             and (
                 (getattr(ctx, 'body', None) is not None)
                 or (isinstance(ctx, uni.JsxElement) and ctx.children)
@@ -968,18 +962,18 @@ impl CommentInjectionPass._process(
             )
         );
         if has_body {
-            return self._handle_body_comments(ctx, <>node);
+            return self._handle_body_comments(ctx, `node);
         }
-        return doc.Indent(self._process(ctx, <>node.contents), ast_node=ctx);
-    } elif isinstance(<>node, doc.IfBreak) {
+        return doc.Indent(self._process(ctx, `node.contents), ast_node=ctx);
+    } elif isinstance(`node, doc.IfBreak) {
         return doc.IfBreak(
-            self._process(ctx, <>node.break_contents),
-            self._process(ctx, <>node.flat_contents)
+            self._process(ctx, `node.break_contents),
+            self._process(ctx, `node.flat_contents)
         );
-    } elif isinstance(<>node, doc.Align) {
-        return doc.Align(self._process(ctx, <>node.contents), <>node.n);
+    } elif isinstance(`node, doc.Align) {
+        return doc.Align(self._process(ctx, `node.contents), `node.n);
     }
-    return <>node;
+    return `node;
 }
 
 """Inject comments using token-level precision."""
@@ -1108,16 +1102,16 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         items.append(('comment', idx, comment));
     }
     items.sort(
-        key=lambda <>entry: Any : (<>entry[2].loc.first_line, <>entry[2].loc.col_start)
+        key=lambda `entry: Any : (`entry[2].loc.first_line, `entry[2].loc.col_start)
     );
     inline: dict[(int, list[CommentInfo])] = {};
     standalone: list[CommentInfo] = [];
-    for (offset, <>entry) in enumerate(items) {
-        if (<>entry[0] != 'comment') {
+    for (offset, `entry) in enumerate(items) {
+        if (`entry[0] != 'comment') {
             continue;
         }
-        comment_idx = <>entry[1];
-        comment_raw = <>entry[2];
+        comment_idx = `entry[1];
+        comment_raw = `entry[2];
         if not isinstance(comment_raw, uni.CommentToken) {
             continue;
         }

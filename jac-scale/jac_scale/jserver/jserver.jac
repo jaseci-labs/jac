@@ -25,10 +25,10 @@ class ParameterType(StrEnum) {
 
 obj APIParameter {
     has name: str,
-        <>type: ParameterType = ParameterType.QUERY,
+        `type: ParameterType = ParameterType.QUERY,
         data_type: str = 'str',
         required: bool = True,
-        <>default: Any = None,
+        `default: Any = None,
         description: str = '';
 }
 

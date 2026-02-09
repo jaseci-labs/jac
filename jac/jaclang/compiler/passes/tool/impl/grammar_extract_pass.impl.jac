@@ -261,7 +261,7 @@ impl GrammarExtractPass.after_pass -> None {
 # Visitor: enter_impl_def
 # -------------------------------------------------------------------------
 """Check if this impl targets a parse method and extract its rule."""
-impl GrammarExtractPass.enter_impl_def(<>node: uni.ImplDef) -> None {
+impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
     names = self.get_impl_target_names(node);
     if len(names) < 2 {
         return;

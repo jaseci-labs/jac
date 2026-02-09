@@ -6,6 +6,51 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### KWESC_NAME Syntax Changed from `<>` to Backtick
+
+Keyword-escaped names now use a backtick (`` ` ``) prefix instead of the angle-bracket (`<>`) prefix. This affects any identifier that uses a Jac keyword as a variable, field, or parameter name.
+
+**Before:**
+
+```jac
+glob <>node = 10;
+glob <>walker = 30;
+
+obj Foo {
+    has <>type: str = "default";
+}
+
+myobj = otherobj.<>walker.<>type;
+```
+
+**After:**
+
+```jac
+glob `node = 10;
+glob `walker = 30;
+
+obj Foo {
+    has `type: str = "default";
+}
+
+myobj = otherobj.`walker.`type;
+```
+
+**Note:** Builtin type names (`list`, `dict`, `set`, `tuple`, `any`, `type`, `bytes`, `int`, `float`, `str`, `bool`) do **not** need backtick escaping when used in expression contexts (function calls, type annotations, isinstance arguments). Backtick is only needed when using them as field, variable, or parameter names:
+
+```jac
+# No backtick needed (expression context)
+x = list(items);
+y: tuple[(int, int)] = (1, 2);
+if isinstance(val, dict) { ... }
+
+# Backtick needed (identifier context)
+has `type: str = "default";
+`bytes = read_data();
+```
+
+**Migration:** Find and replace all `<>` keyword escape prefixes with `` ` `` in your `.jac` files.
+
 ### Backtick Type Operator Removed
 
 The backtick (`` ` ``) type operator (`TYPE_OP`) and `TypeRef` AST node have been removed from the language. This affects two areas: walker event signatures and filter comprehensions.

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-super 0.1.1 (Unreleased)
 
+- **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
+
 ## jac-super 0.1.0 (Latest Release)
 
 - **Rich-Enhanced Console Output**: Introduced `jac-super` as a plugin that provides elegant, colorful terminal output for Jac CLI commands. The plugin overrides the base console implementation to add Rich-based formatting with:
