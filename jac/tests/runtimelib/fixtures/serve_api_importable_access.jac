@@ -4,7 +4,7 @@
 walker :pub PublicImportedWalker {
     has message: str = "hello from public imported walker";
 
-    can greet with `root entry {
+    can greet with Root entry {
         report {"message": self.message, "type": "public_imported"};
     }
 }
@@ -13,7 +13,7 @@ walker :pub PublicImportedWalker {
 walker :protect ProtectedImportedWalker {
     has data: str = "protected data";
 
-    can process with `root entry {
+    can process with Root entry {
         report {"data": self.data, "type": "protected_imported"};
     }
 }
@@ -22,7 +22,7 @@ walker :protect ProtectedImportedWalker {
 walker DefaultImportedWalker {
     has value: int = 42;
 
-    can compute with `root entry {
+    can compute with Root entry {
         report {"value": self.value, "type": "default_imported"};
     }
 }

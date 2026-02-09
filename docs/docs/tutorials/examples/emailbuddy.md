@@ -110,7 +110,7 @@ When emails are uploaded, EmailBuddy:
 walker upload_emails {
     has emails: list[dict];
 
-    can process with `root entry {
+    can process with Root entry {
         for email in self.emails {
             # Create or find sender
             sender = find_or_create_person(email["from"]);
@@ -152,7 +152,7 @@ walker FindSenderNode {
     has target: str;
     has person: Person = None;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
         return self.person;
     }
@@ -212,7 +212,7 @@ walker ask_email {
     has query: str;
     has conversation_history: list[dict] = [];
 
-    can start with `root entry {
+    can start with Root entry {
         # Append user query to history
         self.conversation_history.append({
             "role": "user",
@@ -220,13 +220,13 @@ walker ask_email {
         });
 
         # Start exploration
-        visit [-->](`?Person);
+        visit [-->](?:Person);
     }
 
     can explore with Person entry {
         # Gather context from current person
-        sent_emails = [here -->](`?EmailNode);
-        received_emails = [<-- here](`?EmailNode);
+        sent_emails = [here -->](?:EmailNode);
+        received_emails = [<-- here](?:EmailNode);
 
         # Ask AI what to do next
         response = choose_next_email_node(
@@ -238,7 +238,7 @@ walker ask_email {
 
         if response.option == "@selected@" {
             # Visit selected email
-            visit [-->](`?EmailNode).filter(
+            visit [-->](?:EmailNode).filter(
                 lambda e: any -> bool { e.email_uuid == response.selection; }
             );
         } elif response.option == "@query@" {

@@ -2,39 +2,39 @@ import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 
 """Serialize objects to JSON-compatible format."""
-impl JacSerializer.serialize(<>obj: object) -> JsonValue {
+impl JacSerializer.serialize(`obj: object) -> JsonValue {
     import from jaclang.pycore.constructs { Archetype }
-    if ((<>obj is None) or isinstance(<>obj, (str, int, float, bool))) {
-        return <>obj;
+    if ((`obj is None) or isinstance(`obj, (str, int, float, bool))) {
+        return `obj;
     }
-    if isinstance(<>obj, (<>list, <>tuple)) {
-        return [JacSerializer.serialize(item) for item in <>obj];
+    if isinstance(`obj, (list, tuple)) {
+        return [JacSerializer.serialize(item) for item in `obj];
     }
-    if isinstance(<>obj, <>dict) {
-        return {key: JacSerializer.serialize(value) for (key, value) in <>obj.items()};
+    if isinstance(`obj, dict) {
+        return {key: JacSerializer.serialize(value) for (key, value) in `obj.items()};
     }
-    if isinstance(<>obj, Archetype) {
-        return JacSerializer._serialize_archetype(<>obj);
+    if isinstance(`obj, Archetype) {
+        return JacSerializer._serialize_archetype(`obj);
     }
-    if <>obj?.__dict__ {
+    if `obj?.__dict__ {
         with suppress(Exception) {
             return JacSerializer.serialize(
                 {
                     k: v
-                    for (k, v) in <>obj.__dict__.items()
+                    for (k, v) in `obj.__dict__.items()
                     if not k.startswith('_')
                 }
             );
         }
     }
-    return str(<>obj);
+    return str(`obj);
 }
 
 """Serialize Archetype instances."""
 impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
     import from jaclang.pycore.constructs { NodeArchetype, WalkerArchetype }
     result: dict[(str, JsonValue)] = {
-        '_jac_type': <>type(arch).__name__,
+        '_jac_type': type(arch).__name__,
         '_jac_id': arch.__jac__.id.hex,
         '_jac_archetype': 'node'
         if isinstance(arch, NodeArchetype)
@@ -300,7 +300,7 @@ impl ExecutionManager.spawn_walker(
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
-        <>walker = walker_cls(**fields);
+        `walker = walker_cls(**fields);
         if target_node_id {
             target_node = Jac.get_object(target_node_id);
             if not isinstance(target_node, NodeArchetype) {
@@ -309,7 +309,7 @@ impl ExecutionManager.spawn_walker(
         } else {
             target_node = ctx.get_root();
         }
-        spawn_result = Jac.spawn(<>walker, target_node);
+        spawn_result = Jac.spawn(`walker, target_node);
         # Handle async walkers - await the coroutine if spawn returns one
         if iscoroutine(spawn_result) {
             result = await spawn_result;
@@ -453,7 +453,7 @@ impl ModuleIntrospector._extract_access_levels -> None {
             arch_name = item.name.sym_name;
             if hasattr(self._module, arch_name) {
                 cls = getattr(self._module, arch_name);
-                if isinstance(cls, <>type) and issubclass(cls, WalkerArchetype) {
+                if isinstance(cls, type) and issubclass(cls, WalkerArchetype) {
                     self._walker_access[arch_name] = not is_archetype_public(item);
                 }
             }
@@ -462,7 +462,7 @@ impl ModuleIntrospector._extract_access_levels -> None {
     # Process imported walkers - look up their source module's AST
     for (name, cls) in inspect.getmembers(self._module) {
         if (
-            isinstance(cls, <>type)
+            isinstance(cls, type)
             and issubclass(cls, WalkerArchetype)
             and cls is not WalkerArchetype
             and name not in self._walker_access  # Not already processed as direct definition
@@ -499,12 +499,12 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
         return {};
     }
     functions: dict[(str, Callable[(..., Any)])] = {};
-    export_names = <>set(self._client_manifest.get('exports', []));
-    for (name, <>obj) in inspect.getmembers(self._module) {
-        if (inspect.isfunction(<>obj) and not name.startswith('_')) {
-            functions[name] = <>obj;
+    export_names = set(self._client_manifest.get('exports', []));
+    for (name, `obj) in inspect.getmembers(self._module) {
+        if (inspect.isfunction(`obj) and not name.startswith('_')) {
+            functions[name] = `obj;
             if (name in export_names) {
-                self._client_functions[name] = <>obj;
+                self._client_functions[name] = `obj;
             }
         }
     }
@@ -526,13 +526,13 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
         return {};
     }
     walkers: dict[(str, type[WalkerArchetype])] = {};
-    for (name, <>obj) in inspect.getmembers(self._module) {
+    for (name, `obj) in inspect.getmembers(self._module) {
         if (
-            isinstance(<>obj, <>type)
-            and issubclass(<>obj, WalkerArchetype)
-            and (<>obj is not WalkerArchetype)
+            isinstance(`obj, type)
+            and issubclass(`obj, WalkerArchetype)
+            and (`obj is not WalkerArchetype)
         ) {
-            walkers[name] = <>obj;
+            walkers[name] = `obj;
         }
     }
     return walkers;
@@ -585,7 +585,7 @@ impl ModuleIntrospector.get_functions -> dict[str, Callable[(..., Any)]] {
     } else {
         self._check_module_freshness();
     }
-    return <>dict(self._functions);
+    return dict(self._functions);
 }
 
 """Get all walkers."""
@@ -595,7 +595,7 @@ impl ModuleIntrospector.get_walkers -> dict[str, type[WalkerArchetype]] {
     } else {
         self._check_module_freshness();
     }
-    return <>dict(self._walkers);
+    return dict(self._walkers);
 }
 
 """Get client-exportable functions."""
@@ -603,7 +603,7 @@ impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] 
     if not self._client_functions {
         self.load();
     }
-    return <>dict(self._client_functions);
+    return dict(self._client_functions);
 }
 
 """Get callable signature information."""
@@ -990,7 +990,7 @@ impl AuthHandler.get_user_info(token: str) -> TransportResponse {
 impl IntrospectionHandler.list_functions -> TransportResponse {
     self.introspector.load();
     return TransportResponse.success(
-        data={'functions': <>list(self.introspector.get_functions().keys())},
+        data={'functions': list(self.introspector.get_functions().keys())},
         meta=Meta(extra={'http_status': 200})
     );
 }
@@ -999,7 +999,7 @@ impl IntrospectionHandler.list_functions -> TransportResponse {
 impl IntrospectionHandler.list_walkers -> TransportResponse {
     self.introspector.load();
     return TransportResponse.success(
-        data={'walkers': <>list(self.introspector.get_walkers().keys())},
+        data={'walkers': list(self.introspector.get_walkers().keys())},
         meta=Meta(extra={'http_status': 200})
     );
 }
@@ -1704,7 +1704,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     """Format parameter info.""";
     def format_param(name: str, info: dict[(str, Any)]) -> str {
         req = 'required' if info['required'] else 'optional';
-        <>default = f", default: {info['default']}" if info.get('default') else '';
+        `default = f", default: {info['default']}" if info.get('default') else '';
         return f"{name}: {info['type']} ({req}{default})";
     }
     console.print(('\n' + ('=' * 80)));

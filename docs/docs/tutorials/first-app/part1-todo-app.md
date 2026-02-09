@@ -64,12 +64,12 @@ def:pub add_todo(title: str) -> dict {
 
 """Get all todos."""
 def:pub get_todos -> list {
-    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](`?Todo)];
+    return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](?:Todo)];
 }
 
 """Toggle a todo's done status."""
 def:pub toggle_todo(id: str) -> dict {
-    for todo in [root-->](`?Todo) {
+    for todo in [root-->](?:Todo) {
         if todo.id == id {
             todo.done = not todo.done;
             return {"id": todo.id, "title": todo.title, "done": todo.done};
@@ -80,7 +80,7 @@ def:pub toggle_todo(id: str) -> dict {
 
 """Delete a todo."""
 def:pub delete_todo(id: str) -> dict {
-    for todo in [root-->](`?Todo) {
+    for todo in [root-->](?:Todo) {
         if todo.id == id {
             del todo;
             return {"deleted": id};
@@ -96,7 +96,7 @@ There's a lot of new syntax here. Let's unpack it:
 
 **`root ++> Todo(...)`** creates a new Todo node and connects it to `root` with an edge. `root` is the graph's built-in entry point -- think of it as the top of your data tree. The `++>` operator returns a list, so `todo[0]` grabs the newly created node.
 
-**`[root-->](`?Todo)`** reads as "all nodes connected from root that are Todo nodes." It's a graph query -- the backtick-question-mark syntax filters by node type.
+**`[root-->](?:Todo)`** reads as "all nodes connected from root that are Todo nodes." It's a graph query -- the `(?:Type)` syntax filters by node type.
 
 Your data ends up looking like this:
 
@@ -216,12 +216,12 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
 
     """Get all todos."""
     def:pub get_todos -> list {
-        return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](`?Todo)];
+        return [{"id": t.id, "title": t.title, "done": t.done} for t in [root-->](?:Todo)];
     }
 
     """Toggle a todo's done status."""
     def:pub toggle_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 todo.done = not todo.done;
                 return {"id": todo.id, "title": todo.title, "done": todo.done};
@@ -232,7 +232,7 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
 
     """Delete a todo."""
     def:pub delete_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 del todo;
                 return {"deleted": id};
@@ -339,7 +339,7 @@ You built a full-stack app in a single file with no boilerplate. Here are the Ja
 - **`node`** -- persistent data types stored in the graph
 - **`def:pub`** -- functions that auto-become HTTP endpoints
 - **`root ++>`** -- create nodes and connect them to the graph
-- **`[root-->](\`?Todo)`** -- query nodes by type
+- **`[root-->](?:Todo)`** -- query nodes by type
 - **`cl def:pub app`** -- client-side component that runs in the browser
 - **`has`** -- reactive state that triggers re-renders
 - **`can with entry`** -- lifecycle hook (runs on mount)

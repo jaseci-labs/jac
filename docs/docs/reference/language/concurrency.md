@@ -37,7 +37,7 @@ async def process_multiple(urls: list[str]) -> list[dict] {
 async walker DataFetcher {
     has url: str;
 
-    async can fetch with `root entry {
+    async can fetch with Root entry {
         data = await http_get(self.url);
         report data;
     }

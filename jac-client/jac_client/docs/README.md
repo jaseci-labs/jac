@@ -553,7 +553,7 @@ node Todo {
 # Walker: Create a new todo
 walker create_todo {
     has text: str;
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
@@ -569,8 +569,8 @@ walker toggle_todo {
 
 # Walker: Read all todos
 walker read_todos {
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 
     can report_todos with exit {
@@ -609,7 +609,7 @@ async def onAddTodo(e: any) -> None {
 ```jac
 walker create_todo {
     has text: str;
-    can create with `root entry {
+    can create with Root entry {
         # 'text' comes from the walker parameter
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
@@ -671,7 +671,7 @@ node Todo {
 
 walker create_todo {
     has text: str;
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }

@@ -45,8 +45,8 @@ import from datetime { datetime }
 import uuid;
 
 walker:pub get_tasks {
-    can fetch with `root entry {
-        tasks = [-->](`?Task);
+    can fetch with Root entry {
+        tasks = [-->](?:Task);
         report [
             {
                 "id": t.id,
@@ -62,7 +62,7 @@ walker:pub get_tasks {
 walker:pub add_task {
     has title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_task = Task(
             id=str(uuid.uuid4()),
             title=self.title,
@@ -81,8 +81,8 @@ walker:pub add_task {
 walker:pub toggle_task {
     has task_id: str;
 
-    can toggle with `root entry {
-        for task in [-->](`?Task) {
+    can toggle with Root entry {
+        for task in [-->](?:Task) {
             if task.id == self.task_id {
                 task.completed = not task.completed;
                 report {"success": True, "completed": task.completed};
@@ -96,8 +96,8 @@ walker:pub toggle_task {
 walker:pub delete_task {
     has task_id: str;
 
-    can remove with `root entry {
-        for task in [-->](`?Task) {
+    can remove with Root entry {
+        for task in [-->](?:Task) {
             if task.id == self.task_id {
                 del task;
                 report {"success": True};
@@ -406,15 +406,15 @@ node Task {
 }
 
 walker:pub get_tasks {
-    can fetch with `root entry {
-        report [[-->](`?Task)];
+    can fetch with Root entry {
+        report [[-->](?:Task)];
     }
 }
 
 walker:pub add_task {
     has title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         import uuid;
         task = Task(id=str(uuid.uuid4()), title=self.title);
         root ++> task;
@@ -425,8 +425,8 @@ walker:pub add_task {
 walker:pub toggle_task {
     has task_id: str;
 
-    can toggle with `root entry {
-        for t in [-->](`?Task) {
+    can toggle with Root entry {
+        for t in [-->](?:Task) {
             if t.id == self.task_id {
                 t.completed = not t.completed;
                 report t;

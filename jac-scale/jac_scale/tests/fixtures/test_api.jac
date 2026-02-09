@@ -37,14 +37,14 @@ walker CreateTask {
     has title: str;
     has priority: int = 1;
 
-    can create with `root entry {
+    can create with Root entry {
         new_task = here ++> Task(title=self.title, priority=self.priority);
         report new_task ;
     }
 }
 
 walker ListTasks {
-    can list with `root entry {
+    can list with Root entry {
         tasks = [-->];
         report tasks ;
     }
@@ -53,7 +53,7 @@ walker ListTasks {
 walker CompleteTask {
     has title: str;
 
-    can complete with `root entry {
+    can complete with Root entry {
         for task in [-->] {
             if task.title == self.title {
                 visit task;
@@ -77,14 +77,14 @@ walker : priv PrivateCreateTask {
     has title: str;
     has priority: int = 1;
 
-    can create with `root entry {
+    can create with Root entry {
         new_task = here ++> Task(title=self.title, priority=self.priority);
         report {"message": "Private task created", "task": new_task} ;
     }
 }
 
 walker : pub PublicInfo {
-    can get_info with `root entry {
+    can get_info with Root entry {
         report {"message": "This is a public endpoint", "auth_required": False} ;
     }
 }
@@ -93,7 +93,7 @@ walker : pub PublicInfo {
 walker : pub WalkerStream {
     has count: int = 3;
 
-    can stream_reports with `root entry {
+    can stream_reports with Root entry {
         def stream -> str {
             import time;
             for i in range(self.count) {
@@ -126,7 +126,7 @@ async walker AsyncCreateTask {
     has title: str;
     has delay_ms: int = 100;
 
-    async can create with `root entry {
+    async can create with Root entry {
         report {"status": "started", "title": self.title};
         # Simulate async operation (e.g., external API call, DB operation)
         delay_seconds = float(self.delay_ms) / 1000.0;
@@ -147,7 +147,7 @@ walker UploadSingleFile {
     has myfile: UploadFile;
     has description: str = "";
 
-    can process with `root entry {
+    can process with Root entry {
         report {
             "filename": self.myfile.filename,
             "content_type": self.myfile.content_type,
@@ -162,7 +162,7 @@ walker SecureFileUpload {
     has document: UploadFile;
     has notes: str = "";
 
-    can process with `root entry {
+    can process with Root entry {
         report {
             "filename": self.document.filename,
             "content_type": self.document.content_type,
@@ -177,7 +177,7 @@ walker SecureFileUpload {
 walker : pub PublicFileUpload {
     has attachment: UploadFile;
 
-    can process with `root entry {
+    can process with Root entry {
         report {
             "filename": self.attachment.filename,
             "content_type": self.attachment.content_type,
@@ -199,7 +199,7 @@ walker PaymentReceived {
         amount: float,
         currency: str = 'USD';
 
-    can process with `root entry {
+    can process with Root entry {
         response = {
             "status": "success",
             "message": f"Payment {self.payment_id} processed successfully.",
@@ -220,7 +220,7 @@ walker NormalPayment {
         amount: float,
         currency: str = 'USD';
 
-    can process with `root entry {
+    can process with Root entry {
         response = {
             "status": "success",
             "message": f"Normal payment {self.payment_id} processed.",
@@ -238,7 +238,7 @@ walker NormalPayment {
 This walker should be accessible ONLY via /webhook/MinimalWebhook endpoint."""
 @restspec(protocol=APIProtocol.WEBHOOK)
 walker MinimalWebhook {
-    can process with `root entry {
+    can process with Root entry {
         report {
             "status": "received",
             "message": "Minimal webhook executed successfully",
@@ -258,7 +258,7 @@ async walker : pub EchoMessage {
     has message: str;
     has client_id: str = "anonymous";
 
-    async can echo with `root entry {
+    async can echo with Root entry {
         report {
             "status": "success",
             "echo": self.message,
@@ -272,7 +272,7 @@ async walker : pub EchoMessage {
 This walker should be accessible ONLY via ws://host/ws/MinimalWebSocket endpoint."""
 @restspec(protocol=APIProtocol.WEBSOCKET)
 async walker : pub MinimalWebSocket {
-    async can process with `root entry {
+    async can process with Root entry {
         report {
             "status": "connected",
             "message": "MinimalWebSocket executed successfully",
@@ -287,7 +287,7 @@ This walker requires token authentication - no `: pub` modifier."""
 async walker PrivateWebSocket {
     has message: str = "";
 
-    async can process with `root entry {
+    async can process with Root entry {
         report {
             "status": "success",
             "message": self.message,
@@ -304,7 +304,7 @@ async walker : pub BroadcastChat {
     has message: str;
     has sender: str = "anonymous";
 
-    async can handle with `root entry {
+    async can handle with Root entry {
         report {
             "type": "message",
             "sender": self.sender,
@@ -321,7 +321,7 @@ async walker PrivateBroadcastChat {
     has message: str;
     has room: str = "general";
 
-    async can handle with `root entry {
+    async can handle with Root entry {
         report {
             "type": "chat",
             "room": self.room,

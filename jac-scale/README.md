@@ -440,7 +440,7 @@ import asyncio;
 async walker FetchData {
     has url: str;
 
-    async can fetch with `root entry {
+    async can fetch with Root entry {
         report {"status": "fetching"};
         await asyncio.sleep(0.1);  # Simulate API call
         report {"status": "completed", "data": "result"};

@@ -121,8 +121,8 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 }
 
 """Register a struct type — define its field layout from has declarations."""
-impl NaIRGenPass._codegen_archetype(<>node: uni.Archetype) -> None {
-    arch_name = (<>node).name.value if (<>node).name else "unknown";
+impl NaIRGenPass._codegen_archetype(`node: uni.Archetype) -> None {
+    arch_name = (`node).name.value if (`node).name else "unknown";
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
         return;
@@ -161,8 +161,8 @@ impl NaIRGenPass._codegen_archetype(<>node: uni.Archetype) -> None {
         }
     }
     # Add own fields from ArchHas nodes
-    if (<>node).body is not None {
-        for stmt in (<>node).body {
+    if (`node).body is not None {
+        for stmt in (`node).body {
             if isinstance(stmt, uni.ArchHas) {
                 for var in stmt.vars {
                     fname = var.name.value if var.name else "field";
@@ -298,7 +298,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         }
     }
     # Generate body
-    if isinstance(method.body, (<>list, <>tuple)) {
+    if isinstance(method.body, (list, tuple)) {
         self._codegen_body(method.body);
     }
     # Ensure function has a terminator
