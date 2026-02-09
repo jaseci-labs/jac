@@ -500,20 +500,30 @@ impl JacConfig.save -> None {
     } else {
         doc = {};
     }
-    # Update Python dependencies
-    if "dependencies" not in doc {
-        doc["dependencies"] = {};
+    # Replace Python dependencies (use replace to handle removals)
+    # Preserve sub-tables (git, npm, etc.) that live under [dependencies]
+    old_deps = doc.get("dependencies", {});
+    sub_tables = {
+        k: v
+        for (k, v) in old_deps.items()
+        if isinstance(v, dict)
+    };
+    doc["dependencies"] = dict(self.dependencies);
+    # Restore sub-tables
+    for (k, v) in sub_tables.items() {
+        doc["dependencies"][k] = v;
     }
-    for (name, version) in self.dependencies.items() {
-        doc["dependencies"][name] = version;
+    # Replace git dependencies under [dependencies.git]
+    if self.git_dependencies {
+        doc["dependencies"]["git"] = dict(self.git_dependencies);
+    } elif "git" in doc.get("dependencies", {}) {
+        del doc["dependencies"]["git"];
     }
+    # Replace dev-dependencies (use replace to handle removals)
     if self.dev_dependencies {
-        if "dev-dependencies" not in doc {
-            doc["dev-dependencies"] = {};
-        }
-        for (name, version) in self.dev_dependencies.items() {
-            doc["dev-dependencies"][name] = version;
-        }
+        doc["dev-dependencies"] = dict(self.dev_dependencies);
+    } elif "dev-dependencies" in doc {
+        doc["dev-dependencies"] = {};
     }
     # Update plugin dependencies (npm, etc.)
     # Replace the entire plugin dep section to handle removals
