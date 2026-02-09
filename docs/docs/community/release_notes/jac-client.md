@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.16 (Unreleased)
 
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
+
 - **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all examples, docs, tests, and templates.
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 - **Watchdog auto-install test**: Added test coverage for automatic watchdog installation in dev mode.
