@@ -73,12 +73,8 @@ def test_pwa_target_registered_in_factory() -> None:
     assert factory_jac.exists(), f"factory.jac not found at {factory_jac}"
 
     factory_content = factory_jac.read_text()
-    assert "PWATarget" in factory_content, (
-        "PWATarget should be imported in factory.jac"
-    )
-    assert "pwa" in factory_content.lower(), (
-        "factory.jac should handle 'pwa' target"
-    )
+    assert "PWATarget" in factory_content, "PWATarget should be imported in factory.jac"
+    assert "pwa" in factory_content.lower(), "factory.jac should handle 'pwa' target"
 
 
 def test_pwa_defaults_directory_exists() -> None:
