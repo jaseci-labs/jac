@@ -625,7 +625,7 @@ def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
     assert "class X {\n    with entry {\n        a_b = 67;" in output
     assert "br = b'Hello\\\\\\\\nWorld'" in output
     assert "class Circle {\n    def init(self: Circle, radius: float" in output
-    assert "<>node = 90;\n    print(<>node);\n" in output
+    assert "`node = 90;\n    print(`node);\n" in output
 
 
 def test_pyfunc_3(fixture_path: Callable[[str], str]) -> None:
@@ -692,11 +692,11 @@ def test_py2jac_params(fixture_path: Callable[[str], str]) -> None:
             prog=JacProgram(),
         ).ir_out.unparse()
     assert (
-        "def isinstance(<>obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
+        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
         in output
     )
     assert (
-        "def len(<>obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
+        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
         in output
     )
 

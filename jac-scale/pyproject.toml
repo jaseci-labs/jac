@@ -1,12 +1,12 @@
 [project]
 name = "jac-scale"
-version = "0.1.6"
+version = "0.1.7"
 description = ""
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.9.15",
+    "jaclang>=0.10.0",
     "python-dotenv>=1.2.1,<2.0.0",
     "docker>=7.1.0,<8.0.0",
     "kubernetes>=34.1.0,<35.0.0",

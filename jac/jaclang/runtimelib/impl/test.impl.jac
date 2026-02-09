@@ -98,8 +98,8 @@ impl JacTestResult.stop -> None {
 }
 
 """Count failures and stop."""
-impl JacTestResult.addFailure(<>test: Any, err: Any) -> None {
-    super.addFailure(<>test, err);
+impl JacTestResult.addFailure(`test: Any, err: Any) -> None {
+    super.addFailure(`test, err);
     self.failures_count += 1;
     if ((self.max_failures is not None) and (self.failures_count >= self.max_failures)) {
         self.stop();

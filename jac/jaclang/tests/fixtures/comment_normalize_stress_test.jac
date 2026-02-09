@@ -162,17 +162,17 @@ with entry {
     module_level = 100;  # This should become glob with comment
 }
 
-# Test angle bracket escaped names with comments
+# Test backtick escaped names with comments
 obj KeywordEscapeTest {
     # Comment before escaped name
-    has <>type_name: str;  # Inline on escaped name
+    has `type_name: str;  # Inline on escaped name
     # Comment between
-    has <>value_name: str;  # Second escaped inline
+    has `value_name: str;  # Second escaped inline
 
     # Method with escaped param
-    def process(<>input: str) -> str {  # Inline on method with escaped param
+    def process(`input: str) -> str {  # Inline on method with escaped param
         # Comment inside
-        return <>input;  # Return escaped
+        return `input;  # Return escaped
 
     }
 }

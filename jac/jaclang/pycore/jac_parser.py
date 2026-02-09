@@ -3980,7 +3980,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             ret = ret_type(
                 orig_src=self.parse_ref.ir_in,
                 name=token.type,
-                value=token.value[2:] if token.type == Tok.KWESC_NAME else token.value,
+                value=token.value[1:] if token.type == Tok.KWESC_NAME else token.value,
                 line=token.line if token.line is not None else 0,
                 end_line=token.end_line if token.end_line is not None else 0,
                 col_start=token.column if token.column is not None else 0,

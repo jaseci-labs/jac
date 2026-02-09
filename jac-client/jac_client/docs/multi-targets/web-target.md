@@ -132,7 +132,7 @@ The generated HTML includes everything needed to run your app:
     <script id="__jac_init__" type="application/json">
       {"module": "main", "function": "app", "args": {}, "argOrder": [], "globals": {}}
     </script>
-    <script src="client.abc123.js" defer></script>
+    <script type="module" src="client.abc123.js"></script>
   </body>
 </html>
 ```
