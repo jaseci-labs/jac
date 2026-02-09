@@ -158,7 +158,9 @@ def _generate_index_html(
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
-    <script src="{bundle_filename}" {"defer" if script_loading == "defer" else 'type="module"'}></script>
+    <script src="{bundle_filename}" {"defer"
+    if script_loading == "defer"
+    else 'type="module"'}></script>
 
   </body>
 </html>''';

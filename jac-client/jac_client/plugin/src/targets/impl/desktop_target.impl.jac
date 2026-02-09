@@ -1542,7 +1542,9 @@ impl DesktopTarget.build(
     web_target = WebTarget();
     try {
         # Use 'defer' for desktop/Tauri (file:// protocol blocks ES modules)
-        web_bundle_path = web_target.build(entry_file, project_dir, platform, script_loading="defer");
+        web_bundle_path = web_target.build(
+            entry_file, project_dir, platform, script_loading="defer"
+        );
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
@@ -2482,7 +2484,9 @@ impl DesktopTarget.start(
     web_target = WebTarget();
     try {
         # Use 'defer' for desktop/Tauri (file:// protocol blocks ES modules)
-        web_bundle_path = web_target.build(entry_file, project_dir, None, script_loading="defer");
+        web_bundle_path = web_target.build(
+            entry_file, project_dir, None, script_loading="defer"
+        );
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
