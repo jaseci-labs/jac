@@ -41,6 +41,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
 - **Native Compiler: Python↔Native Interop**: Added cross-boundary function call support between Python (`sv`) and native (`na`) codespaces within the same module. Native functions can now call Python functions via LLVM extern declarations backed by ctypes callbacks, and Python code can call native functions via auto-generated ctypes stubs.
 - **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
+- **Fix: ESM Script Loading in Legacy Runtime**: Added `type="module"` to the generated `<script>` tag in the legacy runtime HTML renderer, matching the same fix applied in jac-client.
 
 ## jaclang 0.9.14
 

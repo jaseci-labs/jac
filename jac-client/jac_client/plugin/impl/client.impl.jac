@@ -131,7 +131,7 @@ impl JacClient.render_page(
     if css_link {
         head_content += f"\n            {css_link}";
     }
-    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}</head><body><div id="root"></div><script src="/static/client.js?hash={bundle_hash}" defer></script></body></html>';
+    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}</head><body><div id="root"></div><script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
     return {
         'html': page,
         'bundle_hash': bundle_hash,
