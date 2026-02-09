@@ -1252,29 +1252,3 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
     assert ":7" in stderr or "line 7" in stderr, (
         "stderr should indicate line number 7 where the error occurred"
     )
-
-
-def test_purge_command(
-    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
-) -> None:
-    """Test the jac purge command."""
-    from jaclang.pycore.bccache import get_global_cache_dir
-
-    # Create dummy cache directory
-    cache_dir = get_global_cache_dir()
-    if not cache_dir.exists():
-        cache_dir.mkdir(parents=True)
-
-    (cache_dir / "test_cache_file").touch()
-
-    assert cache_dir.exists()
-
-    with capture_stdout() as output:
-        tools.purge(force=True)
-
-    stdout_value = output.getvalue()
-    assert "Cache purged successfully." in stdout_value
-    assert not cache_dir.exists()
-
-    # Re-create cache dir for other tests
-    cache_dir.mkdir(parents=True)

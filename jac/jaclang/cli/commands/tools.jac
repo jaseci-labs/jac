@@ -128,26 +128,3 @@ def lsp -> int;
     group="tools"
 )
 def completions(shell: str = "bash", install: bool = False) -> int;
-
-"""Purge the Jac bytecode cache."""
-@registry.command(
-    name="purge",
-    help="Purge the Jac bytecode cache",
-    args=[
-        Arg.create(
-            "force",
-            typ=bool,
-            default=False,
-            help="Force purge without confirmation",
-            short="f"
-        ),
-
-    ],
-    examples=[
-        ("jac purge", "Purge the bytecode cache"),
-        ("jac purge --force", "Purge without confirmation"),
-
-    ],
-    group="tools"
-)
-def purge(force: bool = False) -> int;
