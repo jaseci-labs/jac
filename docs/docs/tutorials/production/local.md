@@ -34,8 +34,8 @@ node Task {
 }
 
 walker:pub get_tasks {
-    can fetch with `root entry {
-        tasks = [-->](`?Task);
+    can fetch with Root entry {
+        tasks = [-->](?:Task);
         report [{"id": t.id, "title": t.title, "done": t.done} for t in tasks];
     }
 }
@@ -43,7 +43,7 @@ walker:pub get_tasks {
 walker:pub add_task {
     has title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         import random;
         task = Task(id=random.randint(1, 10000), title=self.title);
         root ++> task;
@@ -150,8 +150,8 @@ Walker `report` values become the response:
 walker:pub get_user {
     has user_id: str;
 
-    can fetch with `root entry {
-        for user in [-->](`?User) {
+    can fetch with Root entry {
+        for user in [-->](?:User) {
             if user.id == self.user_id {
                 report {
                     "id": user.id,
@@ -198,10 +198,10 @@ By default, Jac uses SQLite for persistence (you'll see "Using SQLite for persis
 import json;
 
 walker save_state {
-    can save with `root entry {
+    can save with Root entry {
         data = {
-            "users": [u.__dict__ for u in [-->](`?User)],
-            "posts": [p.__dict__ for p in [-->](`?Post)]
+            "users": [u.__dict__ for u in [-->](?:User)],
+            "posts": [p.__dict__ for p in [-->](?:Post)]
         };
 
         with open("state.json", "w") as f {
@@ -213,7 +213,7 @@ walker save_state {
 }
 
 walker load_state {
-    can load with `root entry {
+    can load with Root entry {
         try {
             with open("state.json", "r") as f {
                 data = json.load(f);
@@ -241,7 +241,7 @@ walker load_state {
 import os;
 
 walker get_config {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report {
             "database_url": os.getenv("DATABASE_URL", "sqlite:///default.db"),
             "api_key": os.getenv("API_KEY"),
@@ -261,7 +261,7 @@ walker get_config {
 walker _before_request {
     has request: dict;
 
-    can log with `root entry {
+    can log with Root entry {
         print(f"Request: {self.request['method']} {self.request['path']}");
     }
 }
@@ -273,7 +273,7 @@ walker _before_request {
 walker _authenticate {
     has headers: dict;
 
-    can check with `root entry {
+    can check with Root entry {
         token = self.headers.get("Authorization", "");
 
         if not token.startswith("Bearer ") {
@@ -295,7 +295,7 @@ walker _authenticate {
 
 ```jac
 walker:pub health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "healthy"};
     }
 }
@@ -310,7 +310,7 @@ curl http://localhost:8000/health
 
 ```jac
 walker:pub ready {
-    can check with `root entry {
+    can check with Root entry {
         # Check dependencies
         db_ok = check_database();
         cache_ok = check_cache();
@@ -354,8 +354,8 @@ node User {
 
 # List all users
 walker:pub list_users {
-    can fetch with `root entry {
-        users = [-->](`?User);
+    can fetch with Root entry {
+        users = [-->](?:User);
         report [{
             "id": u.id,
             "name": u.name,
@@ -368,8 +368,8 @@ walker:pub list_users {
 walker:pub get_user {
     has user_id: str;
 
-    can fetch with `root entry {
-        for u in [-->](`?User) {
+    can fetch with Root entry {
+        for u in [-->](?:User) {
             if u.id == self.user_id {
                 report {
                     "id": u.id,
@@ -389,7 +389,7 @@ walker:pub create_user {
     has name: str;
     has email: str;
 
-    can create with `root entry {
+    can create with Root entry {
         user = User(
             id=str(uuid.uuid4()),
             name=self.name,
@@ -407,8 +407,8 @@ walker:pub update_user {
     has name: str = "";
     has email: str = "";
 
-    can update with `root entry {
-        for u in [-->](`?User) {
+    can update with Root entry {
+        for u in [-->](?:User) {
             if u.id == self.user_id {
                 if self.name { u.name = self.name; }
                 if self.email { u.email = self.email; }
@@ -424,8 +424,8 @@ walker:pub update_user {
 walker:pub delete_user {
     has user_id: str;
 
-    can remove with `root entry {
-        for u in [-->](`?User) {
+    can remove with Root entry {
+        for u in [-->](?:User) {
             if u.id == self.user_id {
                 del u;
                 report {"deleted": True};
@@ -438,7 +438,7 @@ walker:pub delete_user {
 
 # Health check
 walker:pub health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "ok", "timestamp": datetime.now().isoformat()};
     }
 }

@@ -7,8 +7,8 @@ walker test_walker {
         entry_count: int = 0,
         exit_count: int = 0;
 
-    can traverse with `root entry {
-        visit [-->](`?test_node);
+    can traverse with Root entry {
+        visit [-->](?:test_node);
     }
 
     can log_entry with entry {

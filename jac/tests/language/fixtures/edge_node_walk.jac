@@ -1,5 +1,5 @@
 walker creator {
-    can create with `root entry;
+    can create with Root entry;
 }
 
 node node_a {
@@ -42,5 +42,5 @@ with entry {
     print([root->:Edge_c:->]);
     print([root->:Edge_a:->->:Edge_b:->]);
     print([root->:Edge_a:->->:Edge_b:->->:Edge_c:->]);
-    print([root->:Edge_a:->->:Edge_b:->->:Edge_c:->(`?node_b)]);
+    print([root->:Edge_a:->->:Edge_b:->->:Edge_c:->(?:node_b)]);
 }

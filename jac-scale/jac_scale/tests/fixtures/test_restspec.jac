@@ -11,7 +11,7 @@ import from http { HTTPMethod }
 """Walker with GET method via restspec decorator."""
 @restspec(method=HTTPMethod.GET)
 walker : pub GetWalker {
-    can get_data with `root entry {
+    can get_data with Root entry {
         report {"message": "GetWalker executed", "method": "GET"};
     }
 }
@@ -19,7 +19,7 @@ walker : pub GetWalker {
 """Walker with custom path."""
 @restspec(method=HTTPMethod.GET, path="/custom/walker")
 walker : pub CustomPathWalker {
-    can get_data with `root entry {
+    can get_data with Root entry {
         report {"message": "CustomPathWalker executed", "path": "/custom/walker"};
     }
 }
@@ -39,14 +39,14 @@ def custom_path_func() -> dict {
 """Walker with POST method via restspec decorator."""
 @restspec(method=HTTPMethod.POST)
 walker : pub PostWalker {
-    can post_data with `root entry {
+    can post_data with Root entry {
         report {"message": "PostWalker executed", "method": "POST"};
     }
 }
 
 """Walker with default method (POST)."""
 walker : pub DefaultWalker {
-    can post_data with `root entry {
+    can post_data with Root entry {
         report {"message": "DefaultWalker executed", "method": "DEFAULT"};
     }
 }
@@ -68,7 +68,7 @@ walker : pub GetWalkerWithParams {
     has name: str;
     has age: int;
 
-    can get_data with `root entry {
+    can get_data with Root entry {
         report {
             "message": "GetWalkerWithParams executed",
             "name": self.name,

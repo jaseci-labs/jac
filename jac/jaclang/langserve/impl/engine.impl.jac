@@ -1,4 +1,182 @@
 import from jaclang.cli.console { console }
+import time;
+
+impl Task.postinit -> None {
+    self.task_id = Task._task_id;
+    self.cancel_token = threading.Event();
+    Task._task_id += 1;
+}
+
+"""Initialize JacLangServer."""
+impl JacLangServer.postinit -> None {
+    LanguageServer.init(self, 'jac-lsp', 'v0.1');
+    JacProgram.init(self);
+    self._state_lock = threading.RLock();
+    self.module_manager = ModuleManager(self, self.sem_managers);
+    # Initialize idle event as set (server starts idle)
+    self._idle_event = threading.Event();
+    self._idle_event.set();
+    # Worker for type checking using flow.
+    self.worker_future = flow self.dispatcher() ;
+    logging.getLogger().setLevel(logging.CRITICAL);
+}
+
+"""Debounced type check - waits for typing to pause before starting analysis."""
+impl JacLangServer.type_check(file_uri: str) -> None {
+    DEBOUNCE_DELAY = 0.3;  # 300ms debounce delay
+    with self._state_lock {
+        # Cancel any pending debounce timer
+        if self._debounce_timer {
+            self._debounce_timer.cancel();
+            self._debounce_timer = None;
+        }
+        # Cancel any running task
+        if self.last_task and not self.last_task.cancel_token.is_set() {
+            self.last_task.cancel_token.set();
+            if file_uri != self.last_task.file_uri {
+                self.dirty_files[self.last_task.file_uri] = True;
+            }
+            self.debug(
+                " Cancelling id: " + str(self.last_task.task_id) + " " + str(
+                    time.time()
+                )
+            );
+        }
+        # Store for _flush_debounce and start timer with file_uri as argument
+        self._debounce_timer = threading.Timer(
+            DEBOUNCE_DELAY, self._do_type_check, args=[file_uri]
+        );
+        self._debounce_timer.start();
+    }
+}
+
+"""Actually queue the type check task after debounce delay."""
+impl JacLangServer._do_type_check(file_uri: str) -> None {
+    with self._state_lock {
+        # Clear timer reference and pending file
+        self._debounce_timer = None;
+        # Clear idle event since we're about to add work
+        self._idle_event.clear();
+    }
+    self.debug("Debounce triggered, starting type check for " + file_uri);
+    self.last_task = Task(file_uri);
+    self.pipe.append(self.last_task);
+    # Trigger the worker to pick up the new task.
+    self._work_event.set();
+}
+
+"""Rebuild a file and its dependencies (typecheck)."""
+impl JacLangServer.type_check_file(
+    file_uri: str, cancel_token: Event | None = None, annex_view: Optional[str] = None,
+    # This parameter will be passed recursively
+    # and dont need to pass when the function itself is called
+    # outside.
+) -> bool {
+    if cancel_token and cancel_token.is_set() {
+        return False;
+    }
+    try {
+        document = self.workspace.get_text_document(file_uri);
+        fs_path = document.path;
+        self._clear_alerts_for_file(fs_path);
+
+        build = self.compile(
+            use_str=document.source,
+            file_path=document.path,
+            type_check=True,
+            no_cgen=True,
+            cancel_token=cancel_token,
+        );
+
+        if cancel_token and cancel_token.is_set() {
+            return False;
+        }
+        self.update_modules(fs_path, build);
+
+        if build.annexable_by {
+            return self.type_check_file(
+                uris.from_fs_path(build.annexable_by),
+                cancel_token=cancel_token,
+                annex_view=fs_path,
+            );
+        }
+        self.publish_diagnostics(
+            (
+                uris.from_fs_path(annex_view)
+                if annex_view
+                else uris.from_fs_path(fs_path)
+                # to display diagnostic , it need URI starts with "file://"
+            ),
+            utils.gen_diagnostics(
+                (annex_view or fs_path), self.errors_had, self.warnings_had
+            )
+        );
+        if annex_view {
+            self.publish_diagnostics(
+                uris.from_fs_path(fs_path),
+                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
+            );
+        }
+    } except Exception as e {
+        self.log_error(f"Error during type check: {e}");
+        return False;
+    }
+    return True;
+}
+
+impl JacLangServer.dispatcher -> None {
+    while True {
+        start_time = time.time();
+        self.debug(
+            "Dispatcher waiting for work..." + str(start_time) + str(
+                self.dirty_files.keys()
+            )
+        );
+        # Wait until there's a task to process or shutdown is called.
+        self._work_event.wait();
+        if self._shutdown_called {
+            self.debug("Shutting down dispatcher");
+            break;
+        } elif self.pipe {
+            task = self.pipe.popleft();
+        } elif self.dirty_files {
+            # Get the most recent dirty file and create a NEW task for it
+            (file_uri, _) = self.dirty_files.popitem();
+            task = Task(file_uri);
+        } else {
+            # No tasks to process, signal idle and wait for the next one.
+            self._work_event.clear();
+            self._idle_event.set();
+            continue;
+        }
+
+        self.debug("Dispatching task id: " + str(task.task_id));
+        try {
+            self.type_check_file(task.file_uri, cancel_token=task.cancel_token);
+            self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
+        } finally {
+        # self.queue.task_done();
+        }
+        if task.cancel_token.is_set() {
+            self.debug(
+                "Task cancled id: " + str(task.task_id) + " " + str(time.time())
+            );
+        } else {
+            # Mark task as done so type_check won't try to "cancel" it later
+            task.cancel_token.set();
+            elapsed = time.time() - start_time;
+            self.debug(
+                f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s {str(
+                    task.file_uri
+                )}"
+            );
+        }
+        # Check if there's more work, otherwise signal idle
+        if not self.pipe and not self.dirty_files {
+            self._idle_event.set();
+        }
+    }
+}
 
 impl JacLangServer.shutdown -> None {
     # Guard against double shutdown.
@@ -7,8 +185,15 @@ impl JacLangServer.shutdown -> None {
     }
     self._shutdown_called = True;
     try {
+        # Cancel any pending debounce timer
+        with self._state_lock {
+            if self._debounce_timer {
+                self._debounce_timer.cancel();
+                self._debounce_timer = None;
+            }
+        }
         if self?.worker_future and not self?.worker_future.done() {
-            self.queue.put(None);  # Signal the worker to exit
+            self._work_event.set();  # Wake up the worker to let it exit gracefully.
             wait self.worker_future ;  # Wait for the worker to finish
         }
     } finally {
@@ -332,17 +517,20 @@ impl JacLangServer.get_ast_of_file(file_path: str) -> Optional[uni.AstNode] {
     return None;
 }
 
-impl JacLangServer.wait_till_idle -> None {
-    self.debug("Waiting for queue to empty...");
-    await asyncio.to_thread(self.queue.join);
-    self.debug("Queue is now empty");
-}
-
 """Synchronous version of wait_till_idle for testing."""
-impl JacLangServer.wait_till_idle_sync -> None {
-    self.debug("Waiting for queue to empty (sync)...");
-    self.queue.join();
-    self.debug("Queue is now empty");
+impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
+    self.debug("Waiting for server to be idle (sync)...");
+    # First, flush any pending debounce timer
+    with self._state_lock {
+        if self._debounce_timer {
+            self._debounce_timer.cancel();
+            self._debounce_timer = None;
+        }
+    }
+    self._do_type_check(file_uri);
+    # Wait for dispatcher to become idle
+    self._idle_event.wait();
+    self.debug("Server is now idle");
 }
 
 """Return completion for a file."""
@@ -428,82 +616,6 @@ impl JacLangServer.get_token_at_position(
     }
 }
 
-impl JacLangServer.type_check(file_uri: str) -> None {
-    if self.last_task and not self.last_task.cancel_token.is_set() {
-        self.last_task.cancel_token.set();
-        self.debug(f" Cancelling id: " + str(self.last_task.task_id));
-    }
-    self.last_task = Task(file_uri);
-    # Remove all the previous tasks.
-    while True {
-        try {
-            self.queue.get_nowait();
-            self.queue.task_done();
-        } except Empty {
-            break;
-        }
-    }
-    self.queue.put(self.last_task);
-}
-
-"""Rebuild a file and its dependencies (typecheck)."""
-impl JacLangServer.type_check_file(
-    file_uri: str, cancel_token: Event | None = None, annex_view: Optional[str] = None,
-    # This parameter will be passed recursively
-    # and dont need to pass when the function itself is called
-    # outside.
-) -> bool {
-    if cancel_token and cancel_token.is_set() {
-        return False;
-    }
-    try {
-        document = self.workspace.get_text_document(file_uri);
-        fs_path = document.path;
-        self._clear_alerts_for_file(fs_path);
-
-        build = self.compile(
-            use_str=document.source,
-            file_path=document.path,
-            type_check=True,
-            cancel_token=cancel_token,
-        );
-
-        if cancel_token and cancel_token.is_set() {
-            return False;
-        }
-        self.update_modules(fs_path, build);
-
-        if build.annexable_by {
-            return self.type_check_file(
-                uris.from_fs_path(build.annexable_by),
-                cancel_token=cancel_token,
-                annex_view=fs_path,
-            );
-        }
-        self.publish_diagnostics(
-            (
-                uris.from_fs_path(annex_view)
-                if annex_view
-                else uris.from_fs_path(fs_path)
-                # to display diagnostic , it need URI starts with "file://"
-            ),
-            utils.gen_diagnostics(
-                (annex_view or fs_path), self.errors_had, self.warnings_had
-            )
-        );
-        if annex_view {
-            self.publish_diagnostics(
-                uris.from_fs_path(fs_path),
-                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
-            );
-        }
-    } except Exception as e {
-        self.log_error(f"Error during type check: {e}");
-        return False;
-    }
-    return True;
-}
-
 """Update modules in JacProgram's hub and semantic managers."""
 impl JacLangServer.update_modules(
     file_path: str, build: uni.Module, need: bool = True
@@ -537,47 +649,4 @@ impl JacLangServer.diagnostics -> dict[str, list] {
         );
     }
     return result;
-}
-
-impl JacLangServer.dispatcher -> None {
-    while True {
-        start_time = time.time();
-        task: Task | None = self.queue.get();
-
-        if task is None {
-            self.queue.task_done();
-            self.debug("Task was None, exiting dispatcher.");
-            break;
-        }
-
-        self.debug("Dispatching task id: " + str(task.task_id));
-        try {
-            self.type_check_file(task.file_uri);
-            self.lsp.send_request(lspt.WORKSPACE_SEMANTIC_TOKENS_REFRESH);
-        } finally {
-            self.queue.task_done();
-        }
-        if task.cancel_token.is_set() {
-            self.debug("Task cancled id: " + str(task.task_id));
-        } else {
-            elapsed = time.time() - start_time;
-            self.debug(f"Task completed id: {str(task.task_id)}, took: {elapsed:.4f}s");
-        }
-    }
-}
-
-"""Initialize JacLangServer."""
-impl JacLangServer.postinit -> None {
-    LanguageServer.init(self, 'jac-lsp', 'v0.1');
-    JacProgram.init(self);
-    self._state_lock = threading.RLock();
-    self.module_manager = ModuleManager(self, self.sem_managers);
-    # Worker for type checking using flow.
-    self.worker_future = flow self.dispatcher() ;
-}
-
-impl Task.postinit -> None {
-    self.task_id = Task._task_id;
-    self.cancel_token = threading.Event();
-    Task._task_id += 1;
 }

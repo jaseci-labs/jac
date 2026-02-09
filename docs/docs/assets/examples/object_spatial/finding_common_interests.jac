@@ -61,7 +61,7 @@ with entry {
 # 1. Find all nodes connected to Alice by a FriendsWith edge
 glob alice_friends = [alice[
          0
-     ]->:FriendsWith:->(`?Person)];
+     ]->:FriendsWith:->(?:Person)];
 
 with entry {
     print(f"Alice's friends: {[f.name for f in alice_friends]}");

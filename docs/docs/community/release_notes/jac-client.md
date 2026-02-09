@@ -2,15 +2,29 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.15 (Unreleased)
-
+## jac-client 0.2.17 (Unreleased)
 - **Mobile Target (Expo + WebView)**: Added mobile as a build target, enabling Jac web apps to run on iOS and Android with zero code changes. The mobile target wraps the existing web bundle in an Expo app using `react-native-webview`, following the same pattern as the desktop (Tauri) target. Run `jac setup mobile` to scaffold the Expo project under `.jac/mobile/`, then `jac start --client mobile` to launch the Expo dev server with LAN IP detection for physical device testing. Build native binaries with `jac build --client mobile --target ios --profile production` using EAS Build, or export a universal bundle with `jac build --client mobile`. Use `--ios`, `--android`, and `--tunnel` flags on `jac start` to launch simulators or enable remote device access. Manage Expo-compatible packages with `jac add --expo <package>` and `jac remove --expo <package>`, and run arbitrary Expo CLI commands with `jac expo <command>`. A `mobile` jacpack template is available via `jac create --use mobile` for new projects. Mobile-specific configuration lives in `[plugins.client.mobile]` in `jac.toml`, including `scheme`, `bundle_identifier`, `package_name`, and `api_base_url`.
 
-## jac-client 0.2.14 (Latest Release)
+## jac-client 0.2.16 (Latest Release)
+
+ **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
+
+- **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all examples, docs, tests, and templates.
+- **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+- **Watchdog auto-install test**: Added test coverage for automatic watchdog installation in dev mode.
+- **Updated tests for CLI dependency command redesign**: New `jac add` behavior (errors on missing `jac.toml` instead of silently succeeding). Verify `jac add --npm` works in projects with both pypi and npm dependencies.
+
+## jac-client 0.2.14
+
+## jac-client 0.2.15
+
+## jac-client 0.2.14
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
 - **Updated Fullstack Template**: Modernized the `fullstack` jacpack template to use idiomatic Jac patterns -- `can with entry` lifecycle effects instead of `useEffect`, JSX comprehensions instead of `.map()`, and impl separation (`frontend.impl.jac`) for cleaner code organization. Updated template README with project structure and pattern documentation.
 - **E2E Tests**: Now use jacpack workflow for testing.
+- **Multi-Profile Config Support**: Added integration test coverage for `--profile` flag to verify profile-specific settings propagate through the client bundling pipeline.
 - **File-Based Routing**: Added Next.js-style file-based routing via a `pages/` directory convention. Place `.jac` files under `pages/` and routes are generated automatically -- `pages/index.jac` maps to `/`, `pages/about.jac` to `/about`, `pages/users/[id].jac` to `/users/:id`, and `pages/[...slug].jac` to a catch-all `*` route. Organize routes with parenthesized group directories: `pages/(auth)/` marks enclosed pages as requiring authentication, while `pages/(public)/` keeps them open -- groups control auth without adding URL segments. Add `layout.jac` files at any level for shared layout wrappers rendered via React Router `<Outlet/>`. The compiler detects `pages/`, generates a route manifest (`_routes.js`) with lazy imports, and produces an `_entry.js` that wires up `BrowserRouter`, `Routes`, layout nesting, and an `AuthGuard` component that checks `jacIsLoggedIn()` and redirects unauthenticated users (configurable via `auth_redirect` in `jac.toml` routing config). Duplicate route paths and duplicate layouts at the same level raise `ClientBundleError` at compile time. Projects without a `pages/` directory continue to use explicit routing unchanged.
 
 ## jac-client 0.2.13

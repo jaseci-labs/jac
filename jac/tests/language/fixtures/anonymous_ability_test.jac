@@ -9,7 +9,7 @@ node TestNode {
 }
 
 walker TestWalker {
-    can with `root entry {
+    can with Root entry {
         print("Walker root entry executed");
         n = TestNode();
         here ++> n;
@@ -20,7 +20,7 @@ walker TestWalker {
         print("Walker visiting node");
     }
 
-    can with `root exit {
+    can with Root exit {
         print("Walker root exit executed");
     }
 }

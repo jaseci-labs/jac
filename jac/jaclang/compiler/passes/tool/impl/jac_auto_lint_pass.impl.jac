@@ -281,15 +281,15 @@ impl JacAutoLintPass.enter_impl_def(node: uni.ImplDef) -> None {
 }
 
 """Remove empty parentheses from impl signatures with no parameters."""
-impl JacAutoLintPass.exit_impl_def(<>node: uni.ImplDef) -> None {
+impl JacAutoLintPass.exit_impl_def(`node: uni.ImplDef) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_EMPTY_PARENS) {
         return;
     }
-    spec = <>node.spec;
+    spec = `node.spec;
     if not isinstance(spec, uni.FuncSignature) {
         return;
     }
-    self._remove_empty_parens_from_sig(<>node, spec, "spec");
+    self._remove_empty_parens_from_sig(`node, spec, "spec");
 }
 
 """Process Enum to combine consecutive has statements.
@@ -709,86 +709,86 @@ impl JacAutoLintPass.enter_module(node: uni.Module) -> None {
     module.set_kids(nodes=new_kid if len(new_kid) else [uni.EmptyToken()]);
 }
 
-"""Remove unnecessary angle bracket escaping from names that are not actual keywords.
+"""Remove unnecessary backtick escaping from names that are not actual keywords.
 
-Names only need angle bracket escaping if they conflict with:
+Names only need backtick escaping if they conflict with:
 - Python keywords (and, or, if, else, etc.)
 - Jac reserved keywords from the grammar
 
 This also handles SpecialVarRef where the underlying name should
-never have angle bracket escaping since it's already recognized as a special keyword.
+never have backtick escaping since it's already recognized as a special keyword.
 """
-impl JacAutoLintPass.enter_name(<>node: uni.Name) -> None {
+impl JacAutoLintPass.enter_name(`node: uni.Name) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
     # Skip if not escaped or if it's a SpecialVarRef (handled separately)
-    if not <>node.is_kwesc or isinstance(<>node, uni.SpecialVarRef) {
+    if not `node.is_kwesc or isinstance(`node, uni.SpecialVarRef) {
         return;
     }
     jac_keywords = set(TOKEN_MAP.values());
     python_keywords = set(keyword.kwlist);
     reserved = jac_keywords | python_keywords;
-    # If the name value is NOT a reserved keyword, remove the angle bracket escape
-    if <>node.value not in reserved {
+    # If the name value is NOT a reserved keyword, remove the backtick escape
+    if `node.value not in reserved {
         self.log_error(
-            f"Unnecessary keyword escape on '{<>node.value}' [remove-kwesc]",
-            node_override=<>node
+            f"Unnecessary keyword escape on '{`node.value}' [remove-kwesc]",
+            node_override=`node
         );
-        <>node.is_kwesc = False;
+        `node.is_kwesc = False;
         # Also update the token name from KWESC_NAME to NAME
-        if <>node.name == Tok.KWESC_NAME {
-            <>node.name = Tok.NAME;
+        if `node.name == Tok.KWESC_NAME {
+            `node.name = Tok.NAME;
         }
     }
 }
 
-"""Remove angle bracket escaping from SpecialVarRef's underlying name.
+"""Remove backtick escaping from SpecialVarRef's underlying name.
 
 SpecialVarRef wraps special keywords like init, postinit, self, super,
-root, here, visitor. The underlying Name should never have angle bracket escaping
+root, here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
-impl JacAutoLintPass.enter_special_var_ref(<>node: uni.SpecialVarRef) -> None {
+impl JacAutoLintPass.enter_special_var_ref(`node: uni.SpecialVarRef) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
-    if <>node.orig.is_kwesc {
+    if `node.orig.is_kwesc {
         self.log_error(
-            f"Unnecessary keyword escape on '{<>node.orig.value}' [remove-kwesc]",
-            node_override=<>node
+            f"Unnecessary keyword escape on '{`node.orig.value}' [remove-kwesc]",
+            node_override=`node
         );
-        <>node.orig.is_kwesc = False;
-        if <>node.orig.name == Tok.KWESC_NAME {
-            <>node.orig.name = Tok.NAME;
+        `node.orig.is_kwesc = False;
+        if `node.orig.name == Tok.KWESC_NAME {
+            `node.orig.name = Tok.NAME;
         }
     }
     # Also check if the SpecialVarRef itself has is_kwesc set (it inherits from Name)
-    if <>node.is_kwesc {
-        <>node.is_kwesc = False;
+    if `node.is_kwesc {
+        `node.is_kwesc = False;
     }
 }
 
-"""Remove angle bracket escaping from BuiltinType nodes.
+"""Remove backtick escaping from BuiltinType nodes.
 
 BuiltinType represents built-in types like str, int, float, bool, etc.
-These should never have angle bracket escaping since they are recognized as
+These should never have backtick escaping since they are recognized as
 built-in type tokens in the grammar.
 """
-impl JacAutoLintPass.enter_builtin_type(<>node: uni.BuiltinType) -> None {
+impl JacAutoLintPass.enter_builtin_type(`node: uni.BuiltinType) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
     # BuiltinType inherits from Name, so it has is_kwesc
     # Built-in types should never be escaped
-    if <>node.is_kwesc {
+    if `node.is_kwesc {
         self.log_error(
-            f"Unnecessary keyword escape on '{<>node.value}' [remove-kwesc]",
-            node_override=<>node
+            f"Unnecessary keyword escape on '{`node.value}' [remove-kwesc]",
+            node_override=`node
         );
-        <>node.is_kwesc = False;
-        if <>node.name == Tok.KWESC_NAME {
-            <>node.name = Tok.NAME;
+        `node.is_kwesc = False;
+        if `node.name == Tok.KWESC_NAME {
+            `node.name = Tok.NAME;
         }
     }
 }

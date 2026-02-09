@@ -1,6 +1,6 @@
 #=Object=Abilities ===================================================
 impl Game.postinit{
-    pygame.<>init();
+    pygame.`init();
     self.font: pygame.font.Font = pygame.font.Font(GENERAL_FONT, 32);
 }
 

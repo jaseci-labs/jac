@@ -98,10 +98,8 @@ impl HTTPTransport.send(data: Any) -> None {
         self.response_data = response_body;
     } else {
         # For non-TransportResponse data (backward compatibility)
-        self.response_data.update(data) if isinstance(data, <>dict) else None;
-        self.response_data = data
-        if not isinstance(data, <>dict)
-        else self.response_data;
+        self.response_data.update(data) if isinstance(data, dict) else None;
+        self.response_data = data if not isinstance(data, dict) else self.response_data;
     }
     # Trigger on_message callback if registered
     if self.on_message {

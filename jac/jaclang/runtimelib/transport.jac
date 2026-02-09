@@ -20,7 +20,7 @@ obj TransportRequest {
         path: str,
         headers: dict[(str, str)] = {},
         body: Any = None,
-        query_params: dict[(str, <>list[str])] = {},
+        query_params: dict[(str, list[str])] = {},
         metadata: dict[(str, Any)] = {};
 }
 

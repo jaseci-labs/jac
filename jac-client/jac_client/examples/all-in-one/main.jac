@@ -11,20 +11,20 @@ node Todo {
 walker:pub create_todo {
     has text: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
 }
 
 walker:pub ping_server {
-    can ping with `root entry {
+    can ping with Root entry {
         report "pong from backend!";
     }
 }
 
 walker:pub get_server_message {
-    can info with `root entry {
+    can info with Root entry {
         report "hello from a basic walker!";
     }
 }
@@ -40,7 +40,7 @@ node TestData {
 walker create_test_data {
     has message: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_data = here ++> TestData(
             message=self.message,
             count=1,
@@ -52,8 +52,8 @@ walker create_test_data {
 
 # Walker: Read all test data
 walker read_test_data {
-    can read with `root entry {
-        visit [-->(`?TestData)];
+    can read with Root entry {
+        visit [-->(?:TestData)];
     }
 
     can report_data with exit {
@@ -84,7 +84,7 @@ walker delete_test_data {
 walker test_string_methods {
     has input_text: str;
 
-    can process with `root entry {
+    can process with Root entry {
         result = {
             "original": self.input_text,
             "uppercase": self.input_text.upper(),
@@ -104,7 +104,7 @@ walker test_string_methods {
 walker test_list_operations {
     has numbers: list;
 
-    can process with `root entry {
+    can process with Root entry {
         result = {
             "original": self.numbers,
             "sorted": sorted(self.numbers),
@@ -123,7 +123,7 @@ walker test_list_operations {
 walker process_complex_data {
     has items: list;
 
-    can process with `root entry {
+    can process with Root entry {
         processed = [];
         for item in self.items {
             processed.append(

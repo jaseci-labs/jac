@@ -104,7 +104,7 @@ class JacSuperConsole(BaseJacConsole) {
 
     """Override print_urls to use Rich URL styling."""
     def print_urls(self: JacSuperConsole, urls: Any, symbol: str = '➜') -> None {
-        items = urls.items() if isinstance(urls, <>dict) else urls;
+        items = urls.items() if isinstance(urls, dict) else urls;
         for (label, url) in items {
             padded_label = f"{label}:".ljust(10);
             self._console.print(f"  {symbol}  {padded_label} [url]{url}[/url]");

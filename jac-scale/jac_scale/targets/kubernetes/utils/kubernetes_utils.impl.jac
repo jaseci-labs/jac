@@ -171,6 +171,20 @@ impl sync_code_to_pvc(
                 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
+        # Remove jac.local.toml which is meant for local dev overrides only
+        # and could override deployment settings like the serve port.
+        run_kubectl_command(
+            [
+                'exec',
+                '-n',
+                namespace,
+                sync_pod_name,
+                '--',
+                'sh',
+                '-c',
+                'rm -f /data/workspace/jac.local.toml'
+            ]
+        );
 
         if os.path.isfile(same_directory_toml_path) {
             run_kubectl_command(
@@ -316,17 +330,17 @@ impl cluster_type -> str {
         if not nodes.items {
             return 'local';
         }
-        for <>node in nodes.items {
-            provider_id = <>node.spec.provider_id or '';
+        for `node in nodes.items {
+            provider_id = `node.spec.provider_id or '';
             if provider_id.startswith('aws://') {
                 return 'aws';
             }
         }
-        for <>node in nodes.items {
-            labels = <>node.metadata.labels or {};
+        for `node in nodes.items {
+            labels = `node.metadata.labels or {};
             if (
                 ('topology.kubernetes.io/region' in labels)
-                and <>any(
+                and any(
                     (region in labels.get('topology.kubernetes.io/region', ''))
                     for region in ['us-', 'eu-', 'ap-', 'ca-', 'sa-']
                 )

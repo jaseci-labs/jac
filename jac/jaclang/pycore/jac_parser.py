@@ -29,7 +29,7 @@ TOKEN_MAP = {
 TOKEN_MAP.update({
     "CARROW_L": "<++", "CARROW_R": "++>", "GLOBAL_OP": "global", "NONLOCAL_OP": "nonlocal",
     "WALKER_OP": ":walker:", "NODE_OP": ":node:", "EDGE_OP": ":edge:", "CLASS_OP": ":class:",
-    "OBJECT_OP": ":obj:", "TYPE_OP": "`", "ABILITY_OP": ":can:", "NULL_OK": "?", "KW_OR": "|",
+    "OBJECT_OP": ":obj:", "ABILITY_OP": ":can:", "NULL_OK": "?", "KW_OR": "|",
     "ARROW_BI": "<-->", "ARROW_L": "<--", "ARROW_R": "-->", "ARROW_L_P1": "<-:", "ARROW_R_P2": ":->",
     "ARROW_L_P2": ":<-", "ARROW_R_P1": "->:", "CARROW_BI": "<++>", "CARROW_L_P1": "<+:",
     "RSHIFT_EQ": ">>=", "ELLIPSIS": "...", "CARROW_R_P2": ":+>", "CARROW_L_P2": ":<+",
@@ -168,7 +168,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         # Keep elements as direct module children (no ClientBlock wrapper)
         module.body = elements
-        module.normalize(deep=False)
+        new_kid: list[uni.UniNode] = []
+        if module.doc:
+            new_kid.append(module.doc)
+        new_kid.extend(module.body)
+        module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()])
         cls._recalculate_parents(module)
 
     @classmethod
@@ -203,7 +207,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         # Keep elements as direct module children (no ServerBlock wrapper)
         module.body = elements
-        module.normalize(deep=False)
+        new_kid: list[uni.UniNode] = []
+        if module.doc:
+            new_kid.append(module.doc)
+        new_kid.extend(module.body)
+        module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()])
         cls._recalculate_parents(module)
 
     @classmethod
@@ -237,7 +245,11 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
         # Keep elements as direct module children (no NativeBlock wrapper)
         module.body = elements
-        module.normalize(deep=False)
+        new_kid: list[uni.UniNode] = []
+        if module.doc:
+            new_kid.append(module.doc)
+        new_kid.extend(module.body)
+        module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()])
         cls._recalculate_parents(module)
 
     def __init__(
@@ -247,14 +259,18 @@ class JacParser(Transform[uni.Source, uni.Module]):
         self.mod_path = root_ir.loc.mod_path
         self.node_list: list[uni.UniNode] = []
         self._node_ids: set[int] = set()
-
-        if cancel_token and cancel_token.is_set():
-            return
+        self.errors_had: list = []
         Transform.__init__(self, ir_in=root_ir, prog=prog, cancel_token=cancel_token)
 
     def transform(self, ir_in: uni.Source) -> uni.Module:
         """Transform input IR."""
         try:
+            # Check for cancellation before starting
+            if self.is_canceled():
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = False
+                return mod
+
             # Create input for Lark parser transform
             lark_input = LarkParseInput(
                 ir_value=ir_in.value,
@@ -263,11 +279,25 @@ class JacParser(Transform[uni.Source, uni.Module]):
             # Use LarkParseTransform instead of direct parser call
             lark_transform = LarkParseTransform(ir_in=lark_input, prog=self.prog)
             parse_output = lark_transform.ir_out
+
+            # Check for cancellation again after parsing
+            if self.is_canceled():
+                mod = uni.Module.make_stub(inject_src=ir_in)
+                mod.has_syntax_errors = False
+                return mod
+
             # Transform parse tree to AST
             mod = JacParser.TreeToAST(parser=self).transform(parse_output.tree)
-            ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
-            if not isinstance(mod, uni.Module):
+
+            # Check for cancellation after TreeToAST - it may return EmptyToken when cancelled
+            if self.is_canceled() or not isinstance(mod, uni.Module):
+                if self.is_canceled():
+                    mod = uni.Module.make_stub(inject_src=ir_in)
+                    mod.has_syntax_errors = False
+                    return mod
                 raise self.ice()
+
+            ir_in.comments = [self.proc_comment(i, mod) for i in parse_output.comments]
             if len(self.errors_had) != 0:
                 mod.has_syntax_errors = True
             if ir_in.file_path.endswith(".cl.jac"):
@@ -466,7 +496,10 @@ class JacParser(Transform[uni.Source, uni.Module]):
         ) -> uni.UniNode:
             self.cur_nodes = new_children or tree.children  # type: ignore[assignment]
             if self.parse_ref.is_canceled():
-                raise StopIteration
+                # Return empty token instead of raising StopIteration to avoid generator issues
+                empty = uni.EmptyToken()
+                empty.orig_src = self.parse_ref.ir_in
+                return empty
             try:
                 return self._node_update(super()._call_userfunc(tree, new_children))
             finally:
@@ -3036,18 +3069,6 @@ class JacParser(Transform[uni.Source, uni.Module]):
 
             return self.flat_cur_nodes
 
-        def type_ref(self, kid: list[uni.UniNode]) -> uni.TypeRef:
-            """Grammar rule.
-
-            type_ref: TYPE_OP (named_ref | builtin_type)
-            """
-            self.consume(uni.Token)
-            arch_name = self.consume(uni.NameAtom)
-            return uni.TypeRef(
-                target=arch_name,
-                kid=self.cur_nodes,
-            )
-
         def jsx_element(self, _: None) -> uni.JsxElement:
             """Grammar rule.
 
@@ -3503,18 +3524,24 @@ class JacParser(Transform[uni.Source, uni.Module]):
             """Grammar rule.
 
             filter_compr: LPAREN NULL_OK filter_compare_list RPAREN
-                        | LPAREN TYPE_OP NULL_OK typed_filter_compare_list RPAREN
+                        | LPAREN NULL_OK COLON expression (COMMA filter_compare_list)? RPAREN
             """
-            kid = self.cur_nodes
             self.consume_token(Tok.LPAREN)
-            if self.match_token(Tok.TYPE_OP):
-                self.consume_token(Tok.NULL_OK)
-                f_type = self.consume(uni.FilterCompr)
-                f_type.add_kids_left(kid[:3])
-                f_type.add_kids_right(kid[4:])
-                self.consume_token(Tok.RPAREN)
-                return f_type
             self.consume_token(Tok.NULL_OK)
+            f_type: uni.Expr | None = None
+            if self.match_token(Tok.COLON):
+                f_type = self.consume(uni.Expr)
+                compares_list: list[uni.UniNode] | None = None
+                if self.match_token(Tok.COMMA):
+                    compares_list = self.consume(list)
+                self.consume_token(Tok.RPAREN)
+                return uni.FilterCompr(
+                    compares=self.extract_from_list(
+                        compares_list or [], uni.CompareExpr
+                    ),
+                    f_type=f_type,
+                    kid=self.flat_cur_nodes,
+                )
             compares_list = self.consume(list)
             self.consume_token(Tok.RPAREN)
             return uni.FilterCompr(
@@ -3953,7 +3980,7 @@ class JacParser(Transform[uni.Source, uni.Module]):
             ret = ret_type(
                 orig_src=self.parse_ref.ir_in,
                 name=token.type,
-                value=token.value[2:] if token.type == Tok.KWESC_NAME else token.value,
+                value=token.value[1:] if token.type == Tok.KWESC_NAME else token.value,
                 line=token.line if token.line is not None else 0,
                 end_line=token.end_line if token.end_line is not None else 0,
                 col_start=token.column if token.column is not None else 0,

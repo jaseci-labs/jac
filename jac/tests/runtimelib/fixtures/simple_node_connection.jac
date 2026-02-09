@@ -14,31 +14,31 @@ with entry {
 }
 
 walker filter_on_edge_get_edge {
-    can filter with `root entry {
+    can filter with Root entry {
         print([edge ->:simple_edge:index==1:->]);
     }
 }
 
 walker filter_on_edge_get_node {
-    can filter with `root entry {
+    can filter with Root entry {
         print([->:simple_edge:index==1:->]);
     }
 }
 
 walker filter_on_node_get_node {
-    can filter with `root entry {
+    can filter with Root entry {
         print([-->](?tag=="second"));
     }
 }
 
 walker filter_on_node_get_edge {
-    can filter with `root entry {
+    can filter with Root entry {
         print([edge -->](?tag=="second"));
     }
 }
 
 walker filter_on_edge_visit {
-    can filter with `root entry {
+    can filter with Root entry {
         visit ([->:simple_edge:index==0:->]);
     }
 
@@ -48,7 +48,7 @@ walker filter_on_edge_visit {
 }
 
 walker filter_on_node_visit {
-    can filter with `root entry {
+    can filter with Root entry {
         visit ([-->](?tag=="first"));
     }
 

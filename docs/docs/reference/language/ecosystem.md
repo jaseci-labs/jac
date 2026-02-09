@@ -46,9 +46,10 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | Command | Description |
 |---------|-------------|
 | `jac create` | Create new project |
-| `jac install` | Install dependencies |
+| `jac install` | Install all dependencies (pip, git, plugins) |
 | `jac add <pkg>` | Add dependency |
 | `jac remove <pkg>` | Remove dependency |
+| `jac update [pkg]` | Update dependencies to latest compatible versions |
 | `jac clean` | Clean build artifacts |
 | `jac script <name>` | Run project script |
 
@@ -154,15 +155,55 @@ jac script test
 jac script build
 ```
 
-### 3 Environment Profiles
+### 3 Configuration Profiles
+
+Jac supports multi-file configuration with profile-based overrides.
+
+**File loading order** (lowest to highest priority):
+
+| File | When loaded | Git tracked? |
+|------|-------------|--------------|
+| `jac.toml` | Always | Yes |
+| `jac.<profile>.toml` | When `--profile` or `JAC_PROFILE` is set | Yes |
+| `[environments.<profile>]` in `jac.toml` | When profile is set | Yes |
+| `jac.local.toml` | Always if present | No (gitignored) |
+
+**Using profiles:**
 
 ```bash
-# Set environment
-export JAC_ENV=production
+# Via --profile flag
+jac run app.jac --profile prod
+jac start --profile staging
 
-# Run with specific environment
-JAC_ENV=staging jac start main.jac
+# Via JAC_PROFILE environment variable
+JAC_PROFILE=ci jac test
+
+# Via jac.toml default
+# [environment]
+# default_profile = "dev"
 ```
+
+**Example `jac.prod.toml`:**
+
+```toml
+[serve]
+port = 80
+
+[plugins.byllm]
+default_model = "gpt-4"
+```
+
+**Example `jac.local.toml`** (gitignored, developer-specific):
+
+```toml
+[serve]
+port = 9000
+
+[run]
+cache = false
+```
+
+> **Note:** `JAC_ENV` is deprecated. Use `JAC_PROFILE` instead.
 
 ### 4 Environment Variables
 
