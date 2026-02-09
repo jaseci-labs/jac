@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.1 (Unreleased)
+## jac-super 0.1.2 (Unreleased)
+
+## jac-super 0.1.1 (Latest Release)
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 
-## jac-super 0.1.0 (Latest Release)
+## jac-super 0.1.0
 
 - **Rich-Enhanced Console Output**: Introduced `jac-super` as a plugin that provides elegant, colorful terminal output for Jac CLI commands. The plugin overrides the base console implementation to add Rich-based formatting with:
   - **Themed Output**: Custom color themes for success (green), error (red), warning (yellow), and info (cyan) messages
