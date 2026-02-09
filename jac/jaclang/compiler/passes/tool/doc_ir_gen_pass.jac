@@ -73,7 +73,6 @@ obj DocIRGenPass(UniPass) {
     def exit_ability(<>node: uni.Ability) -> None;
     def exit_func_signature(<>node: uni.FuncSignature) -> None;
     def exit_param_var(<>node: uni.ParamVar) -> None;
-    def exit_type_ref(<>node: uni.TypeRef) -> None;
     def exit_assignment(<>node: uni.Assignment) -> None;
     def exit_if_stmt(<>node: uni.IfStmt) -> None;
     def exit_else_if(<>node: uni.ElseIf) -> None;

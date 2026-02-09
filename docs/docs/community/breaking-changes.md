@@ -6,6 +6,81 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Backtick Type Operator Removed
+
+The backtick (`` ` ``) type operator (`TYPE_OP`) and `TypeRef` AST node have been removed from the language. This affects two areas: walker event signatures and filter comprehensions.
+
+#### Walker Entry/Exit Signatures
+
+The `` `root `` syntax for referencing the Root type is replaced with `Root` (capital R).
+
+**Before:**
+
+```jac
+walker MyWalker {
+    can start with `root entry {
+        visit [-->];
+    }
+    can finish with `root exit {
+        print("done");
+    }
+}
+```
+
+**After:**
+
+```jac
+walker MyWalker {
+    can start with Root entry {
+        visit [-->];
+    }
+    can finish with Root exit {
+        print("done");
+    }
+}
+```
+
+**Union types also use `Root`:**
+
+```jac
+# Before: can start with `root | MyNode entry {
+# After:
+can start with Root | MyNode entry {
+    visit [-->];
+}
+```
+
+#### Filter Comprehensions
+
+The typed filter syntax changes from `` (`?Type) `` and `` (`?Type:condition) `` to `(?:Type)` and `(?:Type, condition)`.
+
+**Before:**
+
+```jac
+# Type-only filter
+visit [-->](`?MyNode);
+
+# Typed filter with comparison
+visit [-->](`?Year:year==2025);
+```
+
+**After:**
+
+```jac
+# Type-only filter
+visit [-->](?:MyNode);
+
+# Typed filter with comparison
+visit [-->](?:Year, year==2025);
+```
+
+**Migration Steps:**
+
+1. Replace all `` `root `` with `Root` in walker `entry`/`exit` declarations
+2. Replace `` (`?Type) `` with `(?:Type)` in filter comprehensions
+3. Replace `` (`?Type:condition) `` with `(?:Type, condition)` -- note the comma separator instead of colon
+4. The `root` keyword (lowercase, no backtick) for the root instance is unchanged -- `root spawn`, `root ++>`, etc. remain the same
+
 ### BrowserRouter Migration (jac-client 0.2.12)
 
 Client-side routing has migrated from `HashRouter` to `BrowserRouter`. URLs now use clean paths instead of hash-based URLs.
@@ -215,7 +290,7 @@ walker MyWalker {
         if some_condition { disengage; }
         visit [-->];
     }
-    can cleanup with `root exit {
+    can cleanup with Root exit {
         # This WOULD run before disengage in old semantics
         print("Cleanup");
     }
@@ -227,7 +302,7 @@ walker MyWalker {
         if some_condition { disengage; }
         visit [-->];
     }
-    can cleanup with `root entry {
+    can cleanup with Root entry {
         # Use entry to ensure this runs before any disengage
         print("Cleanup will run");
     }
@@ -937,7 +1012,7 @@ The permission management API has been renamed to better reflect its purpose and
 
 ```jac
 walker create_item {
-    can create with `root entry {
+    can create with Root entry {
         new_item = spawn Item(name="New Item");
         Jac.unrestrict(new_item, level="CONNECT");  # Grant permissions
         Jac.restrict(new_item, level="WRITE");      # Revoke permissions
@@ -949,7 +1024,7 @@ walker create_item {
 
 ```jac
 walker create_item {
-    can create with `root entry {
+    can create with Root entry {
         new_item = spawn Item(name="New Item");
         Jac.perm_grant(new_item, level="CONNECT");  # Grant permissions
         Jac.perm_revoke(new_item, level="WRITE");   # Revoke permissions

@@ -8,7 +8,7 @@ node Todo {
 walker create_todo {
     has text: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo ;
     }

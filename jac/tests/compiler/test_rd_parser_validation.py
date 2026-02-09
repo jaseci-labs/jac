@@ -11,6 +11,7 @@ and semantic field values while ignoring position/location info.
 
 import os
 from difflib import unified_diff
+from pathlib import Path
 
 import pytest
 
@@ -177,3 +178,80 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 def test_micro_suite(micro_jac_file: str) -> None:
     """Compare Lark and RD parse trees for a micro suite file."""
     rd_parser_comparison_test(micro_jac_file)
+
+
+# =============================================================================
+# RD parser gap coverage tests
+# =============================================================================
+
+_gap_base_dir = str(Path(__file__).parent.parent.parent)
+_gap_files = [
+    os.path.normpath(os.path.join(_gap_base_dir, f))
+    for f in [
+        "tests/compiler/fixtures/rd_parser_gaps/skip_stmt.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/matmul_eq.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/native_ctx.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/typed_ctx_block.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/sem_def_is.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_in_archetype.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/raw_fstrings.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/yield_in_parens.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/lambda_star_params.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/yield_in_assignment.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_with.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_compr.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/async_for.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_event_clause.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_by_expr.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/fstring_nested_fmt.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/match_multistring.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/enum_pynline.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/enum_free_code.jac",
+    ]
+]
+
+
+@pytest.mark.parametrize(
+    "gap_file",
+    _gap_files,
+    ids=lambda f: os.path.basename(f).replace(".jac", ""),
+)
+def test_rd_parser_gap_coverage(gap_file: str) -> None:
+    """Verify RD parser correctly handles previously missing grammar constructs."""
+    rd_parser_comparison_test(gap_file)
+
+
+# =============================================================================
+# RD parser strictness parity tests
+# =============================================================================
+
+# Snippets the RD parser must reject (Lark also rejects these).
+_MUST_REJECT = {
+    "can_without_event_clause": "obj Foo { can bar { } }",
+    "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
+    "pass_keyword": "with entry { match x { case 1: pass; } }",
+    "with_exit_at_module_level": 'with exit { print("bye"); }',
+    "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
+    "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
+    "bare_expression_at_module_level": "5 + 3;",
+    "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
+    "impl_bare_semicolon": "impl Foo.bar;",
+}
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    list(_MUST_REJECT.values()),
+    ids=list(_MUST_REJECT.keys()),
+)
+def test_rd_parser_strictness_parity(snippet: str) -> None:
+    """RD parser must reject constructs that Lark also rejects."""
+    # Confirm Lark rejects
+    saved = JacTest.TEST_COUNT
+    lark_ast = parse_with_lark(snippet, "/tmp/strictness_test.jac")
+    JacTest.TEST_COUNT = saved
+    assert lark_ast is None, f"Lark unexpectedly accepted: {snippet!r}"
+
+    # Confirm RD also rejects
+    rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac")
+    assert rd_ast is None, f"RD parser must reject (Lark rejects): {snippet!r}"

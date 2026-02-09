@@ -43,6 +43,28 @@ impl TypeCheckPass.exit_return_stmt(
         returning_type = self.evaluator.get_type_of_expression(<>node.expr);
     }
     if (fn := self.evaluator._get_enclosing_function(<>node)) {
+        # Check if return type annotation is missing.
+        has_annotation = (
+            isinstance(fn.signature, uni.FuncSignature)
+            and fn.signature.return_type is not None
+        );
+        # If returning a non-None value but no annotation, require one.
+        # `return None` and bare `return` don't need an annotation.
+        # Skip for nested/inline functions (lambdas, IIFEs, closures).
+        is_toplevel_fn = isinstance(
+            fn.parent, (uni.Module, uni.Archetype, uni.Enum, uni.ImplDef)
+        );
+        if (
+            <>node.expr
+            and not has_annotation
+            and not isinstance(<>node.expr, uni.Null)
+            and is_toplevel_fn
+        ) {
+            self.log_error(
+                "Return type annotation required when function returns a value", <>node
+            );
+            return;
+        }
         fn_type = self.evaluator.get_type_of_ability(fn);
         return_type = self.evaluator._convert_to_instance(fn_type.return_type);
         if not self.evaluator.assign_type(returning_type, return_type) {
@@ -155,110 +177,21 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, <>node: uni.Ability) -> Non
         }
         # The ImplDef body is not in the Ability's kid list, so it's not traversed by the pass.
         # We need to explicitly traverse the ImplDef body to evaluate types for hover/go-to-def.
-        self._traverse_impl_body(<>node.body);
+        self.traverse(<>node.body);
     }
 }
 
-"""Traverse an ImplDef body and evaluate types for all expression nodes."""
-impl TypeCheckPass._traverse_impl_body(
-    self: TypeCheckPass, impl_def: uni.ImplDef
-) -> None {
-    # Recursively traverse all nodes in the ImplDef body and call type evaluation
-    def traverse_node(node: uni.UniNode) -> None {
-        if node is None {
-            return;
-        }
-
-        # Call the appropriate exit handler for expression nodes
-        if isinstance(node, uni.SpecialVarRef) {
-            self.evaluator.get_type_of_expression(node);
-        } elif isinstance(node, uni.AtomTrailer) {
-            self.evaluator.get_type_of_expression(node);
-        } elif isinstance(node, uni.FuncCall) {
-            self.evaluator.get_type_of_expression(node);
-        } elif isinstance(node, uni.BinaryExpr) {
-            self.evaluator.get_type_of_expression(node);
-        } elif isinstance(node, uni.Assignment) {
-            # Handle assignments - evaluate both sides
-            for target in node.target {
-                self.evaluator.get_type_of_expression(target);
-            }
-            if node.value {
-                self.evaluator.get_type_of_expression(node.value);
-            }
-        } elif isinstance(node, uni.ReturnStmt) {
-            if node.expr {
-                self.evaluator.get_type_of_expression(node.expr);
-            }
-        } elif isinstance(node, uni.Name) {
-            if node.sym is None {
-                self.evaluator.get_type_of_expression(node);
-            }
-        }
-
-        # Recursively traverse children
-        if node?.kid {
-            for child in node.kid {
-                if child {
-                    traverse_node(child);
-                }
-            }
-        }
-    }
-    # Start traversing from the ImplDef's children
-    for child in impl_def.kid {
-        if child {
-            traverse_node(child);
-        }
+"""Exit an archetype node - traverse ImplDef body if present."""
+impl TypeCheckPass.exit_archetype(self: TypeCheckPass, <>node: uni.Archetype) -> None {
+    if isinstance(<>node.body, uni.ImplDef) {
+        self.traverse(<>node.body);
     }
 }
 
-"""Exit an impl def node - ensure parameter type annotations are evaluated."""
-impl TypeCheckPass.exit_impl_def(self: TypeCheckPass, <>node: uni.ImplDef) -> None {
-    # For impl blocks, process type annotation Name nodes to enable hover/go-to-definition.
-    # Directly traverse the FuncSignature's params to find type annotations.
-    if isinstance(<>node.spec, uni.FuncSignature) {
-        sig = <>node.spec;
-        all_params = (
-            list(sig.posonly_params) + list(sig.params) + (
-                [sig.varargs] if sig.varargs else []
-            ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
-        );
-        for param in all_params {
-            # Process the type annotation - access via tag directly
-            if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
-                tag = param.type_tag.tag;
-                if isinstance(tag, uni.Name) {
-                    # Try to resolve the symbol from the module scope if not already resolved
-                    if tag.sym is None {
-                        # Try to find the symbol from all loaded modules
-                        symbol: uni.Symbol | None = None;
-                        # Check all modules in the program hub
-                        for (path, mod) in self.prog.mod.hub.items() {
-                            if symbol := mod.lookup(
-                                tag.value, deep=True, incl_inner_scope=True
-                            ) {
-                                break;
-                            }
-                        }
-                        if symbol {
-                            symbol = self.evaluator.resolve_imported_symbols(symbol);
-                            symbol.add_use(tag);
-                            tag.sym = symbol;
-                            if symbol.decl and symbol.decl.name_of {
-                                tag.name_of = symbol.decl.name_of;
-                            }
-                        }
-                    }
-                    # Also call evaluator for full type processing
-                    self.evaluator.get_type_of_expression(tag);
-                }
-            }
-        }
-        # Also process return type annotation
-        if sig.return_type and isinstance(sig.return_type, uni.Name) {
-            self.evaluator.get_type_of_expression(sig.return_type);
-        }
+"""Exit an enum node - traverse ImplDef body if present."""
+impl TypeCheckPass.exit_enum(self: TypeCheckPass, <>node: uni.Enum) -> None {
+    if isinstance(<>node.body, uni.ImplDef) {
+        self.traverse(<>node.body);
     }
 }
 

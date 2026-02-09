@@ -169,7 +169,7 @@ with entry {
     friends = [alice -->];  # [bob, carol]
 
     # Filter by type
-    only_people = [root -->](`?Person);
+    only_people = [root -->](?:Person);
 }
 ```
 
@@ -191,9 +191,9 @@ def query_examples(node: Person, alice: Person) {
     [node <-->];          # Both directions
 
     # Type filtering
-    [node -->](`?Person);           # Only Person nodes
+    [node -->](?:Person);           # Only Person nodes
     [node ->:Knows:->];             # Only via Knows edges
-    [node ->:Knows:->](`?Person);   # Knows edges to Person nodes
+    [node ->:Knows:->](?:Person);   # Knows edges to Person nodes
 
     # Chained traversal
     [alice ->:Knows:-> ->:Knows:->];  # Friends of friends
@@ -213,7 +213,7 @@ node Person {
 }
 
 walker Greeter {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];  # Visit nodes connected to root
     }
 
@@ -255,7 +255,7 @@ node Person {
 }
 
 walker Greeter {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];  # Start by visiting nodes connected to root
     }
 
@@ -327,7 +327,7 @@ node Person {
 }
 
 walker FindAdults {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -372,7 +372,7 @@ walker DataProcessor {
     has data: str;
 
     # Runs when spawned at root
-    can start with `root entry {
+    can start with Root entry {
         print("Starting from root");
         visit [-->];
     }
@@ -475,15 +475,15 @@ node Todo {
 walker add_todo {
     has title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(title=self.title);
         report new_todo;
     }
 }
 
 walker list_todos {
-    can list with `root entry {
-        for todo in [-->](`?Todo) {
+    can list with Root entry {
+        for todo in [-->](?:Todo) {
             report todo;
         }
     }

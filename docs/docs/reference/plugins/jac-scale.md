@@ -60,7 +60,7 @@ Each walker becomes an API endpoint:
 
 ```jac
 walker get_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -112,7 +112,7 @@ import from http { HTTPMethod }
 
 @restspec(method=HTTPMethod.GET)
 walker :pub get_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -127,7 +127,7 @@ Override the auto-generated path:
 ```jac
 @restspec(method=HTTPMethod.GET, path="/custom/users")
 walker :pub list_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -355,7 +355,7 @@ walker PaymentReceived {
         amount: float,
         currency: str = 'USD';
 
-    can process with `root entry {
+    can process with Root entry {
         report {
             "status": "success",
             "message": f"Payment {self.payment_id} received",
@@ -509,7 +509,7 @@ walker :pub upload_file {
     has file: UploadFile;
     has folder: str = "documents";
 
-    can process with `root entry {
+    can process with Root entry {
         unique_name = f"{uuid4()}.dat";
         path = f"{self.folder}/{unique_name}";
 
@@ -531,7 +531,7 @@ walker :pub list_files {
     has folder: str = "documents";
     has recursive: bool = False;
 
-    can process with `root entry {
+    can process with Root entry {
         files = [];
         for path in storage.list_files(self.folder, self.recursive) {
             metadata = storage.get_metadata(path);
@@ -548,7 +548,7 @@ walker :pub list_files {
 walker :pub download_file {
     has path: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.path) {
             report {"error": "File not found"};
             return;
@@ -642,7 +642,7 @@ curl -X POST http://localhost:8000/traverse \
 walker async_processor {
     has items: list;
 
-    async can process with `root entry {
+    async can process with Root entry {
         results = [];
         for item in self.items {
             result = await process_item(item);
@@ -744,7 +744,7 @@ Create a health walker:
 
 ```jac
 walker health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "healthy"};
     }
 }
@@ -756,7 +756,7 @@ Access at: `POST /walker/health`
 
 ```jac
 walker ready {
-    can check with `root entry {
+    can check with Root entry {
         db_ok = check_database();
         cache_ok = check_cache();
 

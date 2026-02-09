@@ -23,7 +23,7 @@ with entry {
 }
 
 # You can now ask questions about these relationships
-glob children = [parent[0]->:FamilyRelation:relationship_type=="parent":->(`?Person)];
+glob children = [parent[0]->:FamilyRelation:relationship_type=="parent":->(?:Person)];
 
 with entry {
     print(f"{parent[0].name} has {len(children)} children:");

@@ -704,10 +704,13 @@ impl DocIRGenPass.exit_assign_compr(<>node: uni.AssignCompr) -> None {
 impl DocIRGenPass.exit_filter_compr(<>node: uni.FilterCompr) -> None {
     parts: list[doc.DocType] = [];
     for i in <>node.kid {
-        parts.append(i.gen.doc_ir);
+        if isinstance(i, uni.Token) and i.name == Tok.COMMA {
+            parts.append(doc.Text(", "));
+        } else {
+            parts.append(self.remove_all_spaces(i.gen.doc_ir));
+        }
     }
-    compact_doc = self.remove_all_spaces(self.concat(parts));
-    <>node.gen.doc_ir = self.group(compact_doc);
+    <>node.gen.doc_ir = self.group(self.concat(parts));
 }
 
 """Generate DocIR for expression as item nodes."""
@@ -1838,17 +1841,6 @@ impl DocIRGenPass.exit_assignment(<>node: uni.Assignment) -> None {
     } else {
         <>node.gen.doc_ir = self.group(self.concat((lhs_parts + rhs_parts)));
     }
-}
-
-"""Generate DocIR for type references."""
-impl DocIRGenPass.exit_type_ref(<>node: uni.TypeRef) -> None {
-    parts: list[doc.DocType] = [];
-    for i in <>node.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    <>node.gen.doc_ir = self.group(
-        self.concat(parts, ast_node=<>node), ast_node=<>node
-    );
 }
 
 """Generate DocIR for parameter variables."""

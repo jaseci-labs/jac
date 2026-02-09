@@ -21,7 +21,7 @@ sv {
     }
 
     walker MyWalker {
-        can process with `root entry {
+        can process with Root entry {
             report "done";
         }
     }

@@ -36,6 +36,7 @@ class TestJacScaleServe:
     test_file: Path
     port: int
     base_url: str
+    ws_url: str
     server_process: subprocess.Popen[str] | None = None
 
     @classmethod
@@ -51,6 +52,7 @@ class TestJacScaleServe:
         # Use dynamically allocated free port
         cls.port = get_free_port()
         cls.base_url = f"http://localhost:{cls.port}"
+        cls.ws_url = f"ws://localhost:{cls.port}"
 
         # Clean up any existing database files before starting
         cls._cleanup_db_files()
@@ -1573,29 +1575,29 @@ class TestJacScaleServe:
         return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
     def test_webhook_endpoint_exists_for_webhook_walkers(self) -> None:
-        """Test 1: Verify webhook endpoints are registered for walkers with @restspec(webhook=True)."""
+        """Test 1: Verify webhook endpoints are registered for walkers with @restspec(protocol=APIProtocol.WEBHOOK)."""
         response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
         assert response.status_code == 200
         schema = response.json()
         paths = schema.get("paths", {})
 
-        # PaymentReceived has @restspec(webhook=True) -> should have /webhook/ endpoint
+        # PaymentReceived has @restspec(protocol=APIProtocol.WEBHOOK) -> should have /webhook/ endpoint
         assert "/webhook/PaymentReceived" in paths, (
             f"Expected /webhook/PaymentReceived in paths: {list(paths.keys())}"
         )
-        # MinimalWebhook has @restspec(webhook=True) -> should have /webhook/ endpoint
+        # MinimalWebhook has @restspec(protocol=APIProtocol.WEBHOOK) -> should have /webhook/ endpoint
         assert "/webhook/MinimalWebhook" in paths, (
             f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
         )
 
     def test_normal_walker_not_in_webhook_endpoint(self) -> None:
-        """Test 2: Verify normal walkers (without @restspec(webhook=True)) are NOT in /webhook/."""
+        """Test 2: Verify normal walkers (without @restspec(protocol=APIProtocol.WEBHOOK)) are NOT in /webhook/."""
         response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
         assert response.status_code == 200
         schema = response.json()
         paths = schema.get("paths", {})
 
-        # NormalPayment does NOT have @restspec(webhook=True) -> should NOT have /webhook/ endpoint
+        # NormalPayment does NOT have @restspec(protocol=APIProtocol.WEBHOOK) -> should NOT have /webhook/ endpoint
         assert "/webhook/NormalPayment" not in paths, (
             "NormalPayment should NOT have webhook endpoint but found in paths"
         )
@@ -1683,7 +1685,7 @@ class TestJacScaleServe:
         )
 
     def test_minimal_webhook_with_valid_api_key(self) -> None:
-        """Test 3: MinimalWebhook (with @restspec(webhook=True)) works with valid API key."""
+        """Test 3: MinimalWebhook (with @restspec(protocol=APIProtocol.WEBHOOK)) works with valid API key."""
         # Create user and get auth token
         username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}"
         register_response = requests.post(
@@ -1740,7 +1742,7 @@ class TestJacScaleServe:
         assert data["reports"][0]["transport"] == "webhook"
 
     def test_webhook_payment_received_with_fields(self) -> None:
-        """Test 1: PaymentReceived webhook walker with multiple fields + @restspec(webhook=True)."""
+        """Test 1: PaymentReceived webhook walker with multiple fields + @restspec(protocol=APIProtocol.WEBHOOK)."""
         # Create user and get API key
         username = f"payment_user_{uuid.uuid4().hex[:8]}"
         register_response = requests.post(
@@ -1806,7 +1808,7 @@ class TestJacScaleServe:
         assert report["currency"] == "USD"
 
     def test_webhook_not_accessible_via_regular_walker_endpoint(self) -> None:
-        """Test that webhook walkers (with @restspec(webhook=True)) are NOT accessible via /walker/."""
+        """Test that webhook walkers (with @restspec(protocol=APIProtocol.WEBHOOK)) are NOT accessible via /walker/."""
         # Create user and get token
         username = f"webhook_path_user_{uuid.uuid4().hex[:8]}"
         register_response = requests.post(
@@ -1913,6 +1915,381 @@ class TestJacScaleServe:
         assert response.status_code == 401, (
             f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
         )
+
+    def test_websocket_endpoint_not_in_openapi(self) -> None:
+        """WebSocket endpoints should NOT appear in the OpenAPI schema (they are not HTTP routes)."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # WebSocket walkers should not have /walker/ endpoints
+        assert "/walker/EchoMessage" not in paths, (
+            "WebSocket walker EchoMessage should not be in /walker/ paths"
+        )
+        assert "/walker/MinimalWebSocket" not in paths, (
+            "WebSocket walker MinimalWebSocket should not be in /walker/ paths"
+        )
+
+    def test_websocket_connect_and_echo(self) -> None:
+        """Test WebSocket connection and message exchange with EchoMessage walker."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/EchoMessage") as ws:
+                await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                # Walker reports are returned as a list
+                report = data["reports"][0] if "reports" in data else data
+                assert report["echo"] == "hello"
+                assert report["client_id"] == "test-1"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_websocket_minimal_walker(self) -> None:
+        """Test MinimalWebSocket walker with no fields."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/MinimalWebSocket") as ws:
+                await ws.send(json.dumps({}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["status"] == "connected"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_websocket_multiple_messages(self) -> None:
+        """Test sending multiple messages over a single WebSocket connection."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/EchoMessage") as ws:
+                for i in range(3):
+                    await ws.send(
+                        json.dumps({"message": f"msg-{i}", "client_id": f"client-{i}"})
+                    )
+                    response = json.loads(await ws.recv())
+                    assert response["ok"] is True
+                    data = response["data"]
+                    report = data["reports"][0] if "reports" in data else data
+                    assert report["echo"] == f"msg-{i}"
+                    assert report["client_id"] == f"client-{i}"
+
+        asyncio.run(_test())
+
+    def test_websocket_not_accessible_via_walker_endpoint(self) -> None:
+        """WebSocket walkers should NOT be accessible via /walker/ HTTP endpoint."""
+        response = requests.post(
+            f"{self.base_url}/walker/EchoMessage",
+            json={"message": "test", "client_id": "test"},
+            timeout=10,
+        )
+        # Should return 400/404/405 (not registered as HTTP endpoint)
+        assert response.status_code in (400, 404, 405), (
+            f"Expected 400/404/405, got {response.status_code}: {response.text}"
+        )
+
+    def test_websocket_nonexistent_walker(self) -> None:
+        """Connecting to a non-existent WebSocket walker should fail."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            try:
+                async with websockets.connect(
+                    f"{self.ws_url}/ws/NonExistentWalker"
+                ) as ws:
+                    # If connection is accepted, we should get an error or close
+                    await ws.recv()
+                    pytest.fail("Expected connection to be rejected")
+            except (websockets.exceptions.ConnectionClosed, Exception):
+                # Connection should be rejected/closed
+                pass
+
+        asyncio.run(_test())
+
+    def test_http_walker_not_accessible_via_ws(self) -> None:
+        """HTTP walkers should NOT be accessible via /ws/ WebSocket endpoint."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            try:
+                async with websockets.connect(f"{self.ws_url}/ws/CreateTask") as ws:
+                    await ws.recv()
+                    pytest.fail("Expected connection to be rejected for HTTP walker")
+            except (websockets.exceptions.ConnectionClosed, Exception):
+                pass
+
+        asyncio.run(_test())
+
+    def test_private_websocket_requires_auth(self) -> None:
+        """Test that PrivateWebSocket walker requires JWT authentication."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/PrivateWebSocket") as ws:
+                # Send message without token - should get auth error
+                await ws.send(json.dumps({"message": "hello"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is False, f"Expected ok=False, got {response}"
+                assert response["error"]["code"] == "UNAUTHORIZED"
+                assert "token" in response["error"]["message"].lower()
+
+        asyncio.run(_test())
+
+    def test_private_websocket_with_valid_token(self) -> None:
+        """Test that PrivateWebSocket walker works with valid JWT token."""
+        import asyncio
+
+        import websockets
+
+        # First create a user and get a token
+        username = f"ws_test_user_{uuid.uuid4().hex[:8]}"
+        password = "testpass123"
+
+        # Create user
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code in (200, 201), (
+            f"Failed to create user: {response.text}"
+        )
+
+        # Login to get token
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code == 200, f"Failed to login: {response.text}"
+        token = response.json()["data"]["token"]
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/PrivateWebSocket") as ws:
+                # Send message with token in payload
+                await ws.send(
+                    json.dumps({"message": "authenticated hello", "token": token})
+                )
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["authenticated"] is True
+                assert report["message"] == "authenticated hello"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_private_websocket_with_query_token(self) -> None:
+        """Test that PrivateWebSocket walker accepts token via query parameter."""
+        import asyncio
+
+        import websockets
+
+        # First create a user and get a token
+        username = f"ws_query_user_{uuid.uuid4().hex[:8]}"
+        password = "testpass123"
+
+        # Create user
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code in (200, 201)
+
+        # Login to get token
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code == 200
+        token = response.json()["data"]["token"]
+
+        async def _test() -> None:
+            # Connect with token in query string
+            async with websockets.connect(
+                f"{self.ws_url}/ws/PrivateWebSocket?token={token}"
+            ) as ws:
+                # Send message without token in payload (using query token)
+                await ws.send(json.dumps({"message": "query auth hello"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["authenticated"] is True
+
+        asyncio.run(_test())
+
+    def test_broadcast_websocket_all_clients_receive(self) -> None:
+        """Test that BroadcastChat walker broadcasts to all connected clients."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            # Connect two clients
+            async with (
+                websockets.connect(f"{self.ws_url}/ws/BroadcastChat") as ws1,
+                websockets.connect(f"{self.ws_url}/ws/BroadcastChat") as ws2,
+            ):
+                # Give connections time to establish
+                await asyncio.sleep(0.1)
+
+                # Client 1 sends a message
+                await ws1.send(
+                    json.dumps({"message": "hello everyone", "sender": "client1"})
+                )
+
+                # Both clients should receive the broadcast
+                response1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=5))
+                response2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=5))
+
+                # Both should be successful
+                assert response1["ok"] is True, f"Client1 expected ok=True: {response1}"
+                assert response2["ok"] is True, f"Client2 expected ok=True: {response2}"
+
+                # Both should have the same content
+                data1 = response1["data"]
+                data2 = response2["data"]
+                report1 = data1["reports"][0] if "reports" in data1 else data1
+                report2 = data2["reports"][0] if "reports" in data2 else data2
+
+                assert report1["content"] == "hello everyone"
+                assert report1["sender"] == "client1"
+                assert report1["broadcast"] is True
+
+                assert report2["content"] == "hello everyone"
+                assert report2["sender"] == "client1"
+                assert report2["broadcast"] is True
+
+        asyncio.run(_test())
+
+    def test_private_broadcast_requires_auth(self) -> None:
+        """Test that PrivateBroadcastChat requires authentication."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(
+                f"{self.ws_url}/ws/PrivateBroadcastChat"
+            ) as ws:
+                # Send without token
+                await ws.send(json.dumps({"message": "hello", "room": "general"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is False
+                assert response["error"]["code"] == "UNAUTHORIZED"
+
+        asyncio.run(_test())
+
+    def test_private_broadcast_with_auth(self) -> None:
+        """Test that PrivateBroadcastChat broadcasts to authenticated clients."""
+        import asyncio
+
+        import websockets
+
+        # Create two users
+        users = []
+        for i in range(2):
+            username = f"broadcast_user_{i}_{uuid.uuid4().hex[:8]}"
+            password = "testpass123"
+
+            response = requests.post(
+                f"{self.base_url}/user/register",
+                json={"username": username, "password": password},
+                timeout=10,
+            )
+            assert response.status_code in (200, 201)
+
+            response = requests.post(
+                f"{self.base_url}/user/login",
+                json={"username": username, "password": password},
+                timeout=10,
+            )
+            assert response.status_code == 200
+            users.append(
+                {"username": username, "token": response.json()["data"]["token"]}
+            )
+
+        async def _test() -> None:
+            # Connect two authenticated clients
+            async with (
+                websockets.connect(
+                    f"{self.ws_url}/ws/PrivateBroadcastChat?token={users[0]['token']}"
+                ) as ws1,
+                websockets.connect(
+                    f"{self.ws_url}/ws/PrivateBroadcastChat?token={users[1]['token']}"
+                ) as ws2,
+            ):
+                await asyncio.sleep(0.1)
+
+                # Client 1 sends a message
+                await ws1.send(
+                    json.dumps({"message": "secret broadcast", "room": "team"})
+                )
+
+                # Both clients should receive
+                response1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=5))
+                response2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=5))
+
+                assert response1["ok"] is True
+                assert response2["ok"] is True
+
+                data1 = response1["data"]
+                data2 = response2["data"]
+                report1 = data1["reports"][0] if "reports" in data1 else data1
+                report2 = data2["reports"][0] if "reports" in data2 else data2
+
+                assert report1["content"] == "secret broadcast"
+                assert report1["authenticated"] is True
+                assert report1["broadcast"] is True
+
+                assert report2["content"] == "secret broadcast"
+                assert report2["authenticated"] is True
+
+        asyncio.run(_test())
+
+    def test_websocket_walkers_not_in_openapi(self) -> None:
+        """Verify new WebSocket walkers are not in OpenAPI schema."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # None of the WebSocket walkers should be in /walker/ paths
+        ws_walkers = [
+            "EchoMessage",
+            "MinimalWebSocket",
+            "PrivateWebSocket",
+            "BroadcastChat",
+            "PrivateBroadcastChat",
+        ]
+        for walker in ws_walkers:
+            assert f"/walker/{walker}" not in paths, (
+                f"WebSocket walker {walker} should not be in /walker/ paths"
+            )
 
 
 class TestJacScaleServeDevMode:

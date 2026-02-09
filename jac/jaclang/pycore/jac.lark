@@ -339,7 +339,6 @@ atom: named_ref
     | LPAREN (expression | yield_expr | function_decl) RPAREN
     | atom_collection
     | atom_literal
-    | type_ref
     | jsx_element
 
 atom_literal: builtin_type
@@ -352,8 +351,6 @@ atom_literal: builtin_type
             | BIN
             | HEX
             | INT
-
-type_ref: TYPE_OP (named_ref | builtin_type)
 
 multistring: (fstring | STRING)+
 
@@ -433,7 +430,7 @@ connect_any: CARROW_BI | CARROW_L_P1 expression (COLON kw_expr_list)? CARROW_R_P
 
 // [Heading]: Filter and assign comprehensions.
 filter_compr: LPAREN NULL_OK filter_compare_list RPAREN
-            | LPAREN TYPE_OP NULL_OK typed_filter_compare_list RPAREN
+            | LPAREN NULL_OK COLON expression (COMMA filter_compare_list)? RPAREN
 assign_compr: LPAREN EQ kw_expr_list RPAREN
 filter_compare_list: (filter_compare_list COMMA)? filter_compare_item
 typed_filter_compare_list: expression (COLON filter_compare_list)?
@@ -518,7 +515,6 @@ builtin_type: TYP_TYPE
 // ************************************************************************* //
 
 PYNLINE: /::py::(.|\n|\r)*?::py::/
-TYPE_OP: /`/
 GLOBAL_OP: "global"
 NONLOCAL_OP: "nonlocal"
 

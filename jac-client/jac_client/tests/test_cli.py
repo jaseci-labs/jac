@@ -991,7 +991,7 @@ def test_vite_build_prompts_for_missing_client_deps() -> None:
 
 
 def test_start_dev_with_client_does_initial_compilation() -> None:
-    """Test that `jac start --dev` with client enabled performs initial compilation."""
+    """Test that `jac start --dev` auto-installs watchdog and performs initial compilation."""
     import time
 
     test_project_name = "test-start-dev-client"
@@ -1011,40 +1011,34 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
             assert process.returncode == 0
             # Change to project directory
             os.chdir(test_project_name)
-            # Install dependencies
-            install_process = Popen(
-                ["jac", "install", "--dev"],
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-            )
-            install_stdout, install_stderr = install_process.communicate()
-            assert install_process.returncode == 0, (
-                f"jac install --dev failed: {install_stderr}"
-            )
-            # Run jac start --dev main.jac
+            # Run jac start --dev main.jac (should auto-install watchdog and compile)
             process = Popen(
                 ["jac", "start", "--dev", "main.jac"],
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             )
-            # Wait for the initial compilation message or timeout
+            # Wait for watchdog install and compilation messages
             start_time = time.time()
             output = ""
-            found_message = False
-            while time.time() - start_time < 30:  # 30 seconds timeout
-                if process.poll() is not None:
-                    break
+            found_watchdog = False
+            found_compilation = False
+            while (
+                time.time() - start_time < 50
+            ):  # 60 seconds timeout for install + compile
                 if process.stdout is None:
                     break
                 line = process.stdout.readline()
                 if not line:
+                    if process.poll() is not None:
+                        break
                     time.sleep(0.1)
                     continue
                 output += line
-                if "Initial client compilation completed" in output:
-                    found_message = True
+                if "Installing watchdog" in line or "watchdog installed" in line:
+                    found_watchdog = True
+                if "Initial client compilation completed" in line:
+                    found_compilation = True
                     break
             # Terminate the process
             process.terminate()
@@ -1057,8 +1051,82 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-            assert found_message, (
+            assert found_watchdog, (
+                f"Expected watchdog auto-install message in output, but got: {output}"
+            )
+            assert found_compilation, (
                 f"Expected 'Initial client compilation completed' in output, but got: {output}"
             )
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_vite_config_generation() -> None:
+    """Test that create_vite_config(build/dev)  generate correct files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create a basic jac.toml for the project
+            toml_content = """
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+
+[plugins.client.vite.build]
+minify = "esbuild"
+"""
+            config_path = os.path.join(temp_dir, "jac.toml")
+            with open(config_path, "w") as f:
+                f.write(toml_content)
+
+            # Import ViteBundler
+            from pathlib import Path
+
+            from jac_client.plugin.src.vite_bundler import ViteBundler
+
+            # Initialize bundler
+            bundler = ViteBundler(Path(temp_dir))
+
+            # Create a mock entry file
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js"
+            entry_file.parent.mkdir(parents=True, exist_ok=True)
+            entry_file.write_text("// Mock entry file")
+
+            # Test create_vite_config (build config)
+            build_config_path = bundler.create_vite_config(entry_file)
+            assert build_config_path.exists()
+            assert build_config_path.name == "vite.config.js"
+
+            # Read and validate build config content
+            build_config_content = build_config_path.read_text()
+            assert "globalThis.__JAC_API_BASE_URL__" in build_config_content
+            assert "jacSourceMapper()" in build_config_content  # Build-specific plugin
+            assert "tailwindcss()" in build_config_content  # Tailwind plugin
+            assert "@tailwindcss/vite" in build_config_content  # Tailwind import
+
+            # Test create_vite_config (dev config)
+            dev_config_path = bundler.create_vite_config(
+                entry_file, is_dev=True, api_port=8001
+            )
+            assert dev_config_path.exists()
+            assert dev_config_path.name == "vite.dev.config.js"
+
+            # Read and validate dev config content
+            dev_config_content = dev_config_path.read_text()
+            assert "globalThis.__JAC_API_BASE_URL__" in dev_config_content
+            assert '"http://localhost:8001"' in dev_config_content  # API port
+            assert "/walker" in dev_config_content  # Walker endpoint proxy
+            assert "tailwindcss()" in dev_config_content  # Tailwind plugin
+            assert "@tailwindcss/vite" in dev_config_content  # Tailwind import
+
+            # Verify configs are different (dev vs build)
+            assert build_config_content != dev_config_content
+            assert (
+                "sourcemap: true" in build_config_content
+            )  # Both should have sourcemaps
+            assert "sourcemap: true" in dev_config_content
+
         finally:
             os.chdir(original_cwd)

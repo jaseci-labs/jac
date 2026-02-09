@@ -242,7 +242,6 @@ enum TokenKind {
     RETURN_HINT = "->",
     NULL_OK = "?",
     DECOR_OP = "@",
-    TYPE_OP = "`",
     GLOBAL_OP = ":g:",
     NONLOCAL_OP = ":nl:",
     TYPE_OP_ALIAS = ":typ:",  # Type alias definition

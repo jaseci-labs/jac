@@ -14,7 +14,7 @@ impl create_user.spawn_user_root{
             "name": "Yiping Kang"
         };
     }
-    visit [-->(`?user_root)](?jid==self.user_info["jid"]) else {
+    visit [-->(?:user_root)](?jid==self.user_info["jid"]) else {
         n = here ++> user_root(
             jid=self.user_info["jid"],
             email=self.user_info["user"],

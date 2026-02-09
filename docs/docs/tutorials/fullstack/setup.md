@@ -46,8 +46,8 @@ node Todo {
 }
 
 walker:pub get_todos {
-    can fetch with `root entry {
-        for todo in [-->](`?Todo) {
+    can fetch with Root entry {
+        for todo in [-->](?:Todo) {
             report todo;
         }
     }
@@ -126,7 +126,7 @@ The `cl { }` block marks frontend (client) code:
 ```jac
 # This is backend code (runs on server)
 walker api_endpoint {
-    can visit with `root entry { report {}; }
+    can visit with Root entry { report {}; }
 }
 
 # This is frontend code (runs in browser)
@@ -155,7 +155,7 @@ cl {
 # Backend
 node User { has name: str = ""; }
 walker get_user {
-    can visit with `root entry { report {}; }
+    can visit with Root entry { report {}; }
 }
 
 # Frontend
@@ -194,7 +194,7 @@ myapp/
 import from models { User, Todo }
 
 walker get_user {
-    can visit with `root entry { report {}; }
+    can visit with Root entry { report {}; }
 }
 ```
 

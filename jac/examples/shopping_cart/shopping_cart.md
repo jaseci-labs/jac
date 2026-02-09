@@ -298,7 +298,7 @@ walker create_item {
     has metadata: Metadata;
     has tax_rate: float;
 
-    can create with `root entry {
+    can create with Root entry {
         final_price = self.core_info.price * (1 - self.discount.discount_rate + self.tax_rate);
         pricing = Pricing(self.tax_rate, self.core_info.price, self.discount.discount_rate, final_price);
         root ++> Item(self.core_info, self.shipping, self.discount, self.inventory, self.gift_option, self.metadata, pricing);

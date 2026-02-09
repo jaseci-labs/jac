@@ -77,6 +77,11 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
         assert isinstance(jtype, types.ClassType);
         return jtype.clone_as_instance();
     }
+    # Handle UnionType: convert each member type to instance form.
+    if isinstance(jtype, types.UnionType) {
+        converted = [self._convert_to_instance(t) for t in jtype.types];
+        return types.UnionType(types=converted);
+    }
     return jtype;
 }
 
@@ -91,11 +96,11 @@ impl TypeEvaluator._get_enclosing_class
 (
     node: uni.UniNode
 ) -> uni.Archetype | None {
-    impl_ := node_.find_parent_of_type(uni.ImplDef);
+    impl_ := node.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
     }
-    return node_.find_parent_of_type(uni.Archetype);
+    return node.find_parent_of_type(uni.Archetype);
 }
 
 """Get the enclosing method (ability) of the given node."""

@@ -21,7 +21,7 @@ node TaskHandling {
     }
 
     def summarize_tasks -> str {
-        scheduled_tasks = [self-->(`?Task)];
+        scheduled_tasks = [self-->(?:Task)];
         return str(scheduled_tasks);
     }
 
@@ -95,7 +95,7 @@ walker task_manager {
 
     def route_to_node(utterance: str) -> RoutingNodes by llm();
     def plan_tasks(main_task: str) -> list[TaskPartition] by llm();
-    can execute with `root entry {
+    can execute with Root entry {
         # routed_node_name = self.route_to_node(self.utterance);
         subtasks = self.plan_tasks(self.utterance);
 
@@ -108,7 +108,7 @@ walker task_manager {
         };
         for subtask in subtasks {
             node_type = node_map[subtask.agent_type];
-            routed_node = [-->(`?node_type)];
+            routed_node = [-->(?:node_type)];
             if not routed_node {
                 routed_node = here ++> node_type();
             }

@@ -243,37 +243,23 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
-"""Create vite.config.js from config.json during bundling.
-
-api_base_url_override: overrides jac.toml base_url for desktop targets
-    where the CLI knows the backend port at startup time.
-"""
-impl ViteBundler.create_vite_config(
-    self: ViteBundler, entry_file: Path, api_base_url_override: str = ""
-) -> Path {
+"""Generate Vite config content for both build and dev modes."""
+impl ViteBundler._generate_vite_config_content(
+    self: ViteBundler,
+    is_dev: bool,
+    entry_file: Path,
+    api_base_url: str,
+    api_port: int = 8000
+) -> str {
     build_dir = self._get_client_dir();
-    build_dir.mkdir(parents=True, exist_ok=True);
-    configs_dir = build_dir / 'configs';
-    configs_dir.mkdir(exist_ok=True);
     vite_config_data = self.config_loader.get_vite_config();
-    api_base_url = self._resolve_api_base_url(api_base_url_override);
-    config_path = configs_dir / 'vite.config.js';
-    # TypeScript is always enabled by default
+    # Get entry file relative path
     try {
-        # Entry file path relative to client build dir (not project root)
         entry_relative = entry_file.relative_to(build_dir).as_posix();
     } except ValueError {
-        # Fallback: use absolute path
         entry_relative = entry_file.as_posix();
     }
-    try {
-        # Output dir path relative to client build dir (not project root)
-        output_relative = self.output_dir.relative_to(build_dir).as_posix();
-    } except ValueError {
-        # Fallback: use absolute path
-        output_relative = self.output_dir.as_posix();
-    }
-    # Calculate compiled directory path for aliases (relative to client build dir)
+    # Calculate paths for aliases
     if entry_relative.endswith('/build/main.js') {
         compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
         compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
@@ -307,23 +293,101 @@ impl ViteBundler.create_vite_config(
     extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
     extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
     build_config = vite_config_data.get('build', {});
-    build_overrides_str = self._format_config_object(build_config, indent=4)
-    if (isinstance(build_config, <>dict) and build_config)
-    else '';
-    server_config = vite_config_data.get('server', {});
-    server_config_str = self._format_config_object(server_config, indent=2)
-    if (isinstance(server_config, <>dict) and server_config)
-    else '';
     resolve_config = vite_config_data.get('resolve', {});
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
     if (isinstance(resolve_config, <>dict) and resolve_config)
     else '';
     imports_section = f"{imports_str}\n" if imports_str else '';
     newline = '\n';
-    server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
-    if server_config_str
-    else '';
-    config_content = f'''import {{ defineConfig }} from "vite";
+    if is_dev {
+        # Dev config
+        build_overrides_str = self._format_config_object(build_config, indent=2)
+        if (isinstance(build_config, <>dict) and build_config)
+        else '';
+        server_config = vite_config_data.get('server', {});
+        server_config_str = self._format_config_object(server_config, indent=2)
+        if (isinstance(server_config, <>dict) and server_config)
+        else '';
+        config_content = f'''import {{ defineConfig }} from "vite";
+import path from "path";
+import {{ fileURLToPath }} from "url";
+{imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const buildDir = path.resolve(__dirname, "..");
+const projectRoot = path.resolve(__dirname, "../../..");
+
+/**
+ * Vite DEV configuration for HMR mode
+ * Proxies API routes to Python server at localhost:{api_port}
+ */
+export default defineConfig({{
+  define: {{
+    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+  }},
+  plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+  root: buildDir,
+  publicDir: false,
+  appType: 'spa',
+  build: {{
+    sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
+  }},
+  server: {{
+    watch: {{
+      usePolling: true,
+      interval: 100,
+    }},
+    proxy: {{
+      "/walker": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/function": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/user": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/introspect": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/static": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+    }},
+{server_config_str}
+  }},
+  resolve: {{
+    alias: {{
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
+    }},
+    extensions: [{extensions_str}],
+{resolve_overrides_str}
+  }},
+}});
+''';
+    } else {
+        # Build config
+        build_overrides_str = self._format_config_object(build_config, indent=2)
+        if (isinstance(build_config, <>dict) and build_config)
+        else '';
+        server_config = vite_config_data.get('server', {});
+        server_config_str = self._format_config_object(server_config, indent=2)
+        if (isinstance(server_config, <>dict) and server_config)
+        else '';
+        server_section = f"  server: {{{newline}{server_config_str}{newline}  }},{newline}"
+        if server_config_str
+        else '';
+        # Get output dir relative path
+        try {
+            output_relative = self.output_dir.relative_to(build_dir).as_posix();
+        } except ValueError {
+            output_relative = self.output_dir.as_posix();
+        }
+        config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import fs from "fs";
 import {{ fileURLToPath }} from "url";
@@ -385,10 +449,13 @@ export default defineConfig({{
     'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
   }},
   plugins: [
-    jacSourceMapper(),{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
+    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
+        if plugins_str
+        else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
     build: {{
     sourcemap: true, // Enable source maps for better error messages
+{build_overrides_str}
     rollupOptions: {{
       input: path.resolve(buildDir, "{entry_relative}"), // your compiled entry file
       output: {{
@@ -402,7 +469,6 @@ export default defineConfig({{
     }},
     outDir: path.resolve(buildDir, "{output_relative}"), // final bundled output
     emptyOutDir: true,
-{build_overrides_str}
   }},
   publicDir: false,
 {server_section}  resolve: {{
@@ -415,6 +481,37 @@ export default defineConfig({{
   }},
 }});
 ''';
+    }
+    return config_content;
+}
+
+"""Create vite.config.js from config.json during bundling.
+
+api_base_url_override: overrides jac.toml base_url for desktop targets
+    where the CLI knows the backend port at startup time.
+is_dev: if True, creates dev config with HMR proxy, else build config.
+api_port: port for API proxy in dev mode.
+"""
+impl ViteBundler.create_vite_config(
+    self: ViteBundler,
+    entry_file: Path,
+    api_base_url_override: str = "",
+    is_dev: bool = False,
+    api_port: int = 8000
+) -> Path {
+    build_dir = self._get_client_dir();
+    build_dir.mkdir(parents=True, exist_ok=True);
+    configs_dir = build_dir / 'configs';
+    configs_dir.mkdir(exist_ok=True);
+    api_base_url = self._resolve_api_base_url(api_base_url_override);
+    config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
+    config_path = configs_dir / config_filename;
+    config_content = self._generate_vite_config_content(
+        is_dev=is_dev,
+        entry_file=entry_file,
+        api_base_url=api_base_url,
+        api_port=api_port
+    );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
 }
@@ -584,109 +681,6 @@ impl ViteBundler.init(
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
 }
 
-"""Create a dev-mode vite config with API proxy for HMR.
-
-api_base_url_override: when set, API calls go directly to this URL
-    instead of via proxy (used by desktop targets).
-"""
-impl ViteBundler.create_dev_vite_config(
-    self: ViteBundler,
-    entry_file: Path,
-    api_port: int = 8000,
-    api_base_url_override: str = ""
-) -> Path {
-    build_dir = self._get_client_dir();
-    build_dir.mkdir(parents=True, exist_ok=True);
-    configs_dir = build_dir / 'configs';
-    configs_dir.mkdir(exist_ok=True);
-    config_path = configs_dir / 'vite.dev.config.js';
-    api_base_url = self._resolve_api_base_url(api_base_url_override);
-    # Get entry file relative path
-    try {
-        entry_relative = entry_file.relative_to(build_dir).as_posix();
-    } except ValueError {
-        entry_relative = entry_file.as_posix();
-    }
-    # Calculate paths for aliases
-    if entry_relative.endswith('/build/main.js') {
-        compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
-        compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
-    } elif entry_relative.endswith('build/main.js') {
-        compiled_utils_relative = 'compiled/client_runtime.js';
-        compiled_assets_relative = 'compiled/assets';
-    } else {
-        compiled_utils_relative = 'compiled/client_runtime.js';
-        compiled_assets_relative = 'compiled/assets';
-    }
-    # Extensions for TypeScript
-    extensions = ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'];
-    extensions_str = ', '.join(f'"{ext}"' for ext in extensions);
-    # Generate dev config with proxy for API routes
-    config_content = f'''import {{ defineConfig }} from "vite";
-import path from "path";
-import {{ fileURLToPath }} from "url";
-import react from "@vitejs/plugin-react";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const buildDir = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(__dirname, "../../..");
-
-/**
- * Vite DEV configuration for HMR mode
- * Proxies API routes to Python server at localhost:{api_port}
- */
-export default defineConfig({{
-  define: {{
-    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
-  }},
-  plugins: [react()],
-  root: buildDir,
-  publicDir: false,
-  appType: 'spa',
-  build: {{
-    sourcemap: true, // Enable source maps for better error messages
-  }},
-  server: {{
-    watch: {{
-      usePolling: true,
-      interval: 100,
-    }},
-    proxy: {{
-      "/walker": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/function": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/user": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/introspect": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-      "/static": {{
-        target: "http://localhost:{api_port}",
-        changeOrigin: true,
-      }},
-    }},
-  }},
-  resolve: {{
-    alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
-      "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),
-    }},
-    extensions: [{extensions_str}],
-  }},
-}});
-''';
-    config_path.write_text(config_content, encoding='utf-8');
-    return config_path;
-}
-
 """Create config files from jac.toml [plugins.client.configs].
 
 Generates JavaScript config files (e.g., postcss.config.js, tailwind.config.js)
@@ -794,7 +788,7 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
     dev_config = build_dir / 'configs' / 'vite.dev.config.js';
     if not dev_config.exists() {
         raise ClientBundleError(
-            "Dev config not found. Call create_dev_vite_config first."
+            "Dev config not found. Call create_vite_config first(is_dev = True)."
         ) ;
     }
     config_rel = dev_config.relative_to(build_dir);

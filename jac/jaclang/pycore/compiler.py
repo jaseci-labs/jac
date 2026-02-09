@@ -6,6 +6,7 @@ import ast as py_ast
 import atexit
 import marshal
 import os
+import re
 import sys
 import types
 from threading import Event
@@ -15,12 +16,15 @@ import jaclang.pycore.unitree as uni
 from jaclang.pycore.bccache import (
     BytecodeCache,
     CacheKey,
+    DiskBytecodeCache,
     get_bytecode_cache,
 )
+from jaclang.pycore.compile_options import CompileOptions
 from jaclang.pycore.helpers import read_file_with_encoding
 from jaclang.pycore.jac_parser import JacParser
 from jaclang.pycore.passes import (
     DeclImplMatchPass,
+    InteropAnalysisPass,
     JacAnnexPass,
     PyastGenPass,
     PyBytecodeGenPass,
@@ -65,7 +69,10 @@ def get_py_code_gen() -> list[type[Transform[uni.Module, uni.Module]]]:
     from jaclang.compiler.passes.ecmascript import EsastGenPass
     from jaclang.compiler.passes.main import PyJacAstLinkPass
 
-    passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass]
+    passes: list[type[Transform[uni.Module, uni.Module]]] = [
+        InteropAnalysisPass,
+        EsastGenPass,
+    ]
 
     # Include native compilation passes
     from jaclang.compiler.passes.native import NaIRGenPass, NativeCompilePass
@@ -250,10 +257,38 @@ class JacCompiler:
             # Silently ignore MTIR cache saving failures
             pass
 
+    def get_native_interop_setup(
+        self, full_target: str, target_program: JacProgram
+    ) -> tuple[object | None, dict[str, object] | None]:
+        """Get native interop setup for a module.
+
+        Returns:
+            Tuple of (native_engine, interop_py_funcs_dict).
+            native_engine is None if no native code.
+            interop_py_funcs_dict is None if module not found in hub
+            (caller should not inject into module dict in this case).
+        """
+        actual_program = self._resolve_program(full_target, target_program)
+        if full_target in actual_program.mod.hub:
+            mod = actual_program.mod.hub[full_target]
+            native_engine = getattr(mod.gen, "native_engine", None)
+            # IMPORTANT: Don't use `x or {}` - empty dict is falsy but we need
+            # the SAME dict object that callbacks reference for late-binding
+            interop_py_funcs = getattr(mod.gen, "interop_py_funcs", None)
+            if interop_py_funcs is None:
+                interop_py_funcs = {}
+            return (native_engine, interop_py_funcs)
+        return (None, None)
+
     def get_bytecode(
         self, full_target: str, target_program: JacProgram, minimal: bool = False
     ) -> types.CodeType | None:
-        """Get bytecode using 3-tier cache: in-memory -> disk -> compile."""
+        """Get bytecode using 3-tier cache: in-memory -> disk -> compile.
+
+        For native modules (.na.jac or files with na {} blocks), also handles
+        LLVM IR caching to avoid full recompilation while still creating fresh
+        JIT engines each process (required since engines can't be serialized).
+        """
         actual_program = self._resolve_program(full_target, target_program)
 
         # Tier 1: In-memory cache
@@ -264,29 +299,203 @@ class JacCompiler:
             codeobj = actual_program.mod.hub[full_target].gen.py_bytecode
             return marshal.loads(codeobj) if isinstance(codeobj, bytes) else None
 
-        # Tier 2: Disk cache
+        # Check if this might be a native module
+        might_have_native = self._might_have_native_code(full_target)
         cache_key = CacheKey.for_source(full_target, minimal)
-        cached_code = self._bytecode_cache.get(cache_key)
-        if cached_code is not None:
-            # Also load MTIR cache if available (only for non-minimal mode)
-            if not minimal and isinstance(self._bytecode_cache, BytecodeCache):
-                self._load_mtir_cache(cache_key, actual_program)
-            return cached_code
+
+        # Tier 2: Disk cache
+        if isinstance(self._bytecode_cache, DiskBytecodeCache):
+            cached_code = self._bytecode_cache.get(cache_key)
+            if cached_code is not None:
+                if might_have_native:
+                    # For native modules: also need cached LLVM IR
+                    cached_ir = self._bytecode_cache.get_llvmir(cache_key)
+                    cached_interop = self._bytecode_cache.get_interop(cache_key)
+                    if cached_ir is not None:
+                        # Create module stub in hub for native engine storage
+                        self._load_native_from_cache(
+                            full_target, actual_program, cached_ir, cached_interop
+                        )
+                        if not minimal:
+                            self._load_mtir_cache(cache_key, actual_program)
+                        return cached_code
+                    # If no cached IR, fall through to full compile
+                else:
+                    # Non-native modules: just bytecode is enough
+                    if not minimal:
+                        self._load_mtir_cache(cache_key, actual_program)
+                    return cached_code
 
         # Tier 3: Compile
         is_internal = actual_program is self._internal_program
         if is_internal:
             setup_progress.on_internal_compile(full_target)
+        options = CompileOptions(minimal=minimal)
         result = self.compile(
-            file_path=full_target, target_program=actual_program, minimal=minimal
+            file_path=full_target, target_program=actual_program, options=options
         )
         if result.gen.py_bytecode:
-            self._bytecode_cache.put(cache_key, result.gen.py_bytecode)
-            # Cache MTIR map if available (only for non-minimal mode)
-            if not minimal:
-                self._save_mtir_cache(cache_key, actual_program)
+            # Cache bytecode
+            if isinstance(self._bytecode_cache, DiskBytecodeCache):
+                self._bytecode_cache.put(cache_key, result.gen.py_bytecode)
+                if not minimal:
+                    self._save_mtir_cache(cache_key, actual_program)
+                # For native modules: also cache LLVM IR and interop manifest
+                if might_have_native and result.gen.llvm_ir is not None:
+                    self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir))
+                    self._cache_interop_manifest(cache_key, result)
             return marshal.loads(result.gen.py_bytecode)
         return None
+
+    def _load_native_from_cache(
+        self,
+        full_target: str,
+        target_program: JacProgram,
+        cached_ir: str,
+        cached_interop: dict | None,
+    ) -> None:
+        """Load native module from cached LLVM IR.
+
+        Creates a fresh MCJIT engine from the cached IR string and sets up
+        interop callbacks. This is much faster than full recompilation since
+        we skip the Jac→AST→LLVM IR pipeline.
+        """
+        try:
+            import llvmlite.binding as llvm
+
+            # Initialize LLVM (idempotent)
+            llvm.initialize_native_target()
+            llvm.initialize_native_asmprinter()
+
+            # Load required shared libraries
+            import ctypes
+            import ctypes.util
+
+            libc_name = ctypes.util.find_library("c")
+            if libc_name:
+                llvm.load_library_permanently(libc_name)
+            libgc_name = ctypes.util.find_library("gc")
+            if libgc_name:
+                llvm.load_library_permanently(libgc_name)
+            else:
+                # Fallback: map GC_malloc to libc malloc
+                libc = ctypes.CDLL(libc_name)
+                malloc_addr = ctypes.cast(libc.malloc, ctypes.c_void_p).value
+                llvm.add_symbol("GC_malloc", malloc_addr)
+
+            # Parse cached IR and create engine
+            llvm_mod = llvm.parse_assembly(cached_ir)
+            llvm_mod.verify()
+            target = llvm.Target.from_default_triple()
+            target_machine = target.create_target_machine()
+            engine = llvm.create_mcjit_compiler(llvm_mod, target_machine)
+
+            # Create a lightweight stub for get_native_interop_setup
+            # Only needs: gen.native_engine, gen.interop_py_funcs
+            from jaclang.pycore.codeinfo import CodeGenTarget, InteropManifest
+
+            class _NativeModuleStub:
+                """Minimal stub to hold native compilation artifacts."""
+
+                def __init__(self) -> None:
+                    self.gen = CodeGenTarget()
+
+            stub_mod = _NativeModuleStub()
+            stub_mod.gen.native_engine = engine
+
+            # Always initialize interop_py_funcs - generated bytecode may reference it
+            py_func_table: dict = {}
+            callbacks_list: list = []
+            stub_mod.gen.interop_py_funcs = py_func_table
+            stub_mod.gen._interop_callbacks = callbacks_list
+
+            # Restore interop callbacks if we have cached manifest
+            if cached_interop:
+                from jaclang.pycore.codeinfo import InteropBinding, InteropContext
+                from jaclang.pycore.interop_bridge import register_py_callbacks
+
+                manifest = InteropManifest()
+                # Reconstruct bindings from cached data
+                for name, data in cached_interop.get("bindings", {}).items():
+                    binding = InteropBinding(
+                        name=name,
+                        source_context=InteropContext(data["source_context"]),
+                        callers={InteropContext(c) for c in data.get("callers", [])},
+                        ret_type=data.get("ret_type", "int"),
+                        param_types=data.get("param_types", []),
+                        param_names=data.get("param_names", []),
+                        source_module=data.get("source_module"),
+                    )
+                    manifest.bindings[name] = binding
+
+                stub_mod.gen.interop_manifest = manifest
+
+                # Register Python callbacks for sv↔na interop
+                if manifest.native_imports:
+                    register_py_callbacks(manifest, py_func_table, callbacks_list)
+
+            target_program.mod.hub[full_target] = stub_mod  # type: ignore
+
+        except Exception as e:
+            # If loading from cache fails, log and fall through to full compile
+            import logging
+
+            logging.getLogger(__name__).debug(
+                f"Failed to load native module from cache: {e}"
+            )
+
+    def _cache_interop_manifest(self, cache_key: CacheKey, result: uni.Module) -> None:
+        """Cache interop manifest data for native module.
+
+        Serializes the interop bindings to a pickle-able format.
+        """
+        if not isinstance(self._bytecode_cache, DiskBytecodeCache):
+            return
+
+        manifest = getattr(result.gen, "interop_manifest", None)
+        if manifest is None:
+            return
+
+        # Serialize bindings to dict format
+        interop_data: dict = {"bindings": {}}
+        for name, binding in manifest.bindings.items():
+            interop_data["bindings"][name] = {
+                "source_context": binding.source_context.value,
+                "callers": [c.value for c in binding.callers],
+                "ret_type": binding.ret_type,
+                "param_types": binding.param_types,
+                "param_names": binding.param_names,
+                "source_module": binding.source_module,
+            }
+
+        self._bytecode_cache.put_interop(cache_key, interop_data)
+
+    def _might_have_native_code(self, file_path: str) -> bool:
+        """Check if a file might contain native code.
+
+        Returns True for:
+        - .na.jac files (fully native modules)
+        - .jac files that contain 'na {' or 'na{' blocks
+
+        This is a heuristic check to determine if we need full compilation
+        (including native JIT) rather than using cached bytecode.
+        """
+        # .na.jac files are always native
+        if file_path.endswith(".na.jac"):
+            return True
+
+        # For regular .jac files, do a quick text scan for na blocks
+        if file_path.endswith(".jac"):
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    content = f.read()
+                # Quick heuristic: check for 'na {' or 'na{' pattern
+                if re.search(r"\bna\s*\{", content):
+                    return True
+            except OSError:
+                pass
+
+        return False
 
     def parse_str(
         self,
@@ -338,54 +547,65 @@ class JacCompiler:
         file_path: str,
         target_program: JacProgram,
         use_str: str | None = None,
-        no_cgen: bool = False,
-        type_check: bool = False,
-        symtab_ir_only: bool = False,
-        minimal: bool = False,
-        cancel_token: Event | None = None,
+        options: CompileOptions | None = None,
     ) -> uni.Module:
-        """Compile a Jac file into module AST."""
+        """Compile a Jac file into module AST.
+
+        Args:
+            file_path: Path to the Jac file to compile.
+            target_program: JacProgram to store compiled module in.
+            use_str: Optional source string instead of reading from file.
+            options: CompileOptions controlling compilation behavior.
+        """
+        if options is None:
+            options = CompileOptions()
+
         actual_program = self._resolve_program(file_path, target_program)
+
+        # Store options on program so passes can access them
+        actual_program._compile_options = options
 
         keep_str = use_str or read_file_with_encoding(file_path)
         mod_targ = self.parse_str(
-            keep_str, file_path, actual_program, cancel_token=cancel_token
+            keep_str, file_path, actual_program, cancel_token=options.cancel_token
         )
-        if symtab_ir_only:
+        if options.symtab_ir_only:
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
                 passes=get_symtab_ir_sched(),
-                cancel_token=cancel_token,
+                cancel_token=options.cancel_token,
             )
-        elif minimal:
+        elif options.minimal:
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
                 passes=get_minimal_ir_gen_sched(),
-                cancel_token=cancel_token,
+                cancel_token=options.cancel_token,
             )
         else:
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
                 passes=get_ir_gen_sched(),
-                cancel_token=cancel_token,
+                cancel_token=options.cancel_token,
             )
-        if type_check and not minimal:
+        if options.type_check and not options.minimal:
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
                 passes=get_type_check_sched(),
-                cancel_token=cancel_token,
+                cancel_token=options.cancel_token,
             )
-        if (not mod_targ.has_syntax_errors) and (not no_cgen):
-            codegen_sched = get_minimal_py_code_gen() if minimal else get_py_code_gen()
+        if (not mod_targ.has_syntax_errors) and (not options.no_cgen):
+            codegen_sched = (
+                get_minimal_py_code_gen() if options.minimal else get_py_code_gen()
+            )
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
                 passes=codegen_sched,
-                cancel_token=cancel_token,
+                cancel_token=options.cancel_token,
             )
         return mod_targ
 
@@ -400,9 +620,8 @@ class JacCompiler:
 
         actual_program = self._resolve_program(file_path, target_program)
 
-        mod_targ = self.compile(
-            file_path, actual_program, use_str, type_check=type_check
-        )
+        options = CompileOptions(type_check=type_check)
+        mod_targ = self.compile(file_path, actual_program, use_str, options=options)
         SemanticAnalysisPass(ir_in=mod_targ, prog=actual_program)
         return mod_targ
 

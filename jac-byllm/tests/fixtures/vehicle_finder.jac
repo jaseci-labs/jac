@@ -40,7 +40,7 @@ node Van {
 walker showroom_visitor {
     has vehicle_wheel_number: list[int];
 
-    can visit_showroom with `root entry {
+    can visit_showroom with Root entry {
         print("Visitor: Entering the showroom...");
         visit [-->];
     }
