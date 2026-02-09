@@ -219,11 +219,13 @@ class TargetCLIHandler {
         try {
             target = get_target(build_ctx.target_type.value);
 
-            # Validate
-            validation = target.validate(build_ctx);
-            if not validation.success {
-                self._handle_result(ctx, validation);
-                return None;
+            # Skip validation for setup (setup creates the files validation checks for)
+            if operation != TargetCLIHandler.OP_SETUP {
+                validation = target.validate(build_ctx);
+                if not validation.success {
+                    self._handle_result(ctx, validation);
+                    return None;
+                }
             }
 
             # Execute operation
