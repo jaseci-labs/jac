@@ -203,7 +203,7 @@ impl Parser.error(message: str) {
 }
 
 impl Parser.check_name -> bool {
-    # Check for NAME or KWESC_NAME (keyword-escaped identifier like <>type)
+    # Check for NAME or KWESC_NAME (keyword-escaped identifier like `type)
     return self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME);
 }
 
@@ -331,10 +331,10 @@ impl Parser.make_uni_token(
 
 impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
     # Create a unitree Name from a token
-    # Strip <>  prefix from keyword-escaped names
+    # Strip backtick prefix from keyword-escaped names
     val = tok.value;
-    if val.startswith("<>") {
-        val = val[2:];
+    if val.startswith("`") {
+        val = val[1:];
     }
     # Reject Python-only keywords that are not valid Jac identifiers
     if val == "pass" {
@@ -1429,7 +1429,7 @@ impl Parser.parse_call_args(kid: list) -> list {
 }
 
 impl Parser.parse_call_arg -> Expr | KWPair {
-    # Check for keyword argument: NAME = expr (also KWESC_NAME like <>type)
+    # Check for keyword argument: NAME = expr (also KWESC_NAME like `type)
     if (self.check_name() or self.is_keyword_token())
     and self.peek().kind == TokenKind.EQ {
         name_tok = self.advance();

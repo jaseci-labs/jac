@@ -148,7 +148,7 @@ Args:
     symbol: Symbol to use before each line (default: ➜)
 """
 impl JacConsole.print_urls(urls: Any, symbol: str = '➜') -> None {
-    items = urls.items() if isinstance(urls, <>dict) else urls;
+    items = urls.items() if isinstance(urls, `dict) else urls;
     for (label, url) in items {
         padded_label = f"{label}:".ljust(10);
         print(f"  {symbol}  {padded_label} {url}");

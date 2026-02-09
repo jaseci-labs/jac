@@ -34,20 +34,20 @@ obj Position {
 
 """Base obj for all ESTree nodes."""
 obj Node {
-    has <>type: str,
+    has `type: str,
         loc: (SourceLocation | None) = None;
 }
 
 """Identifier node."""
 obj Identifier(Node) {
     has name: str = '',
-        <>type: TypingLiteral['Identifier'] = 'Identifier';
+        `type: TypingLiteral['Identifier'] = 'Identifier';
 }
 
 """Private identifier for obj members (ES2022)."""
 obj PrivateIdentifier(Node) {
     has name: str = '',
-        <>type: TypingLiteral['PrivateIdentifier'] = 'PrivateIdentifier';
+        `type: TypingLiteral['PrivateIdentifier'] = 'PrivateIdentifier';
 }
 
 """Literal value node (supports BigInt in ES2020)."""
@@ -55,102 +55,102 @@ obj Literal(Node) {
     has value: str | bool | None | int | float = None,
         raw: (str | None) = None,
         bigint: (str | None) = None,
-        <>type: TypingLiteral['Literal'] = 'Literal';
+        `type: TypingLiteral['Literal'] = 'Literal';
 }
 
 """Root node of an ESTree."""
 obj Program(Node) {
     has body: list[(Statement | ModuleDeclaration)] = [],
         sourceType: SourceType = 'script',
-        <>type: TypingLiteral['Program'] = 'Program';
+        `type: TypingLiteral['Program'] = 'Program';
 }
 
 """Expression statement."""
 obj ExpressionStatement(Node) {
     has expression: (Expression | None) = None,
-        <>type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
+        `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
 """Directive (e.g., 'use strict') - ES5."""
 obj Directive(ExpressionStatement) {
     has directive: str = '',
-        <>type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
+        `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
 """Block statement."""
 obj BlockStatement(Node) {
     has body: List[Statement] = [],
-        <>type: TypingLiteral['BlockStatement'] = 'BlockStatement';
+        `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
 """Empty statement (;)."""
 obj EmptyStatement(Node) {
-    has <>type: TypingLiteral['EmptyStatement'] = 'EmptyStatement';
+    has `type: TypingLiteral['EmptyStatement'] = 'EmptyStatement';
 }
 
 """Debugger statement."""
 obj DebuggerStatement(Node) {
-    has <>type: TypingLiteral['DebuggerStatement'] = 'DebuggerStatement';
+    has `type: TypingLiteral['DebuggerStatement'] = 'DebuggerStatement';
 }
 
 """With statement."""
 obj WithStatement(Node) {
     has object: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['WithStatement'] = 'WithStatement';
+        `type: TypingLiteral['WithStatement'] = 'WithStatement';
 }
 
 """Return statement."""
 obj ReturnStatement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
+        `type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
 }
 
 """Labeled statement."""
 obj LabeledStatement(Node) {
     has label: (Identifier | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
+        `type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
 }
 
 """Break statement."""
 obj BreakStatement(Node) {
     has label: (Identifier | None) = None,
-        <>type: TypingLiteral['BreakStatement'] = 'BreakStatement';
+        `type: TypingLiteral['BreakStatement'] = 'BreakStatement';
 }
 
 """Continue statement."""
 obj ContinueStatement(Node) {
     has label: (Identifier | None) = None,
-        <>type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
+        `type: TypingLiteral['ContinueStatement'] = 'ContinueStatement';
 }
 
 """If statement."""
 obj IfStatement(Node) {
-    has <>test: (Expression | None) = None,
+    has `test: (Expression | None) = None,
         consequent: (Statement | None) = None,
         alternate: (Statement | None) = None,
-        <>type: TypingLiteral['IfStatement'] = 'IfStatement';
+        `type: TypingLiteral['IfStatement'] = 'IfStatement';
 }
 
 """Switch statement."""
 obj SwitchStatement(Node) {
     has discriminant: (Expression | None) = None,
         cases: list[SwitchCase] = [],
-        <>type: TypingLiteral['SwitchStatement'] = 'SwitchStatement';
+        `type: TypingLiteral['SwitchStatement'] = 'SwitchStatement';
 }
 
 """Switch case clause."""
 obj SwitchCase(Node) {
-    has <>test: (Expression | None) = None,
+    has `test: (Expression | None) = None,
         consequent: list[Statement] = [],
-        <>type: TypingLiteral['SwitchCase'] = 'SwitchCase';
+        `type: TypingLiteral['SwitchCase'] = 'SwitchCase';
 }
 
 """Throw statement."""
 obj ThrowStatement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['ThrowStatement'] = 'ThrowStatement';
+        `type: TypingLiteral['ThrowStatement'] = 'ThrowStatement';
 }
 
 """Try statement."""
@@ -158,37 +158,37 @@ obj TryStatement(Node) {
     has block: (BlockStatement | None) = None,
         handler: (CatchClause | None) = None,
         finalizer: (BlockStatement | None) = None,
-        <>type: TypingLiteral['TryStatement'] = 'TryStatement';
+        `type: TypingLiteral['TryStatement'] = 'TryStatement';
 }
 
 """Catch clause."""
 obj CatchClause(Node) {
     has param: (Pattern | None) = None,
         body: (BlockStatement | None) = None,
-        <>type: TypingLiteral['CatchClause'] = 'CatchClause';
+        `type: TypingLiteral['CatchClause'] = 'CatchClause';
 }
 
 """While statement."""
 obj WhileStatement(Node) {
-    has <>test: (Expression | None) = None,
+    has `test: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['WhileStatement'] = 'WhileStatement';
+        `type: TypingLiteral['WhileStatement'] = 'WhileStatement';
 }
 
 """Do-while statement."""
 obj DoWhileStatement(Node) {
     has body: (Statement | None) = None,
-        <>test: (Expression | None) = None,
-        <>type: TypingLiteral['DoWhileStatement'] = 'DoWhileStatement';
+        `test: (Expression | None) = None,
+        `type: TypingLiteral['DoWhileStatement'] = 'DoWhileStatement';
 }
 
 """For statement."""
 obj ForStatement(Node) {
-    has <>init: VariableDeclaration | Expression | None = None,
-        <>test: (Expression | None) = None,
+    has `init: VariableDeclaration | Expression | None = None,
+        `test: (Expression | None) = None,
         update: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['ForStatement'] = 'ForStatement';
+        `type: TypingLiteral['ForStatement'] = 'ForStatement';
 }
 
 """For-in statement."""
@@ -196,7 +196,7 @@ obj ForInStatement(Node) {
     has left: VariableDeclaration | Pattern | None = None,
         right: (Expression | None) = None,
         body: (Statement | None) = None,
-        <>type: TypingLiteral['ForInStatement'] = 'ForInStatement';
+        `type: TypingLiteral['ForInStatement'] = 'ForInStatement';
 }
 
 """For-of statement (ES6)."""
@@ -205,7 +205,7 @@ obj ForOfStatement(Node) {
         right: (Expression | None) = None,
         body: (Statement | None) = None,
         await_: bool = False,
-        <>type: TypingLiteral['ForOfStatement'] = 'ForOfStatement';
+        `type: TypingLiteral['ForOfStatement'] = 'ForOfStatement';
 }
 
 """Function declaration."""
@@ -215,38 +215,38 @@ obj FunctionDeclaration(Node) {
         body: (BlockStatement | None) = None,
         generator: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['FunctionDeclaration'] = 'FunctionDeclaration';
+        `type: TypingLiteral['FunctionDeclaration'] = 'FunctionDeclaration';
 }
 
 """Variable declaration."""
 obj VariableDeclaration(Node) {
     has declarations: list[VariableDeclarator] = [],
         kind: VariableDeclarationKind = 'var',
-        <>type: TypingLiteral['VariableDeclaration'] = 'VariableDeclaration';
+        `type: TypingLiteral['VariableDeclaration'] = 'VariableDeclaration';
 }
 
 """Variable declarator."""
 obj VariableDeclarator(Node) {
     has id: (Pattern | None) = None,
-        <>init: (Expression | None) = None,
-        <>type: TypingLiteral['VariableDeclarator'] = 'VariableDeclarator';
+        `init: (Expression | None) = None,
+        `type: TypingLiteral['VariableDeclarator'] = 'VariableDeclarator';
 }
 
 """This expression."""
 obj ThisExpression(Node) {
-    has <>type: TypingLiteral['ThisExpression'] = 'ThisExpression';
+    has `type: TypingLiteral['ThisExpression'] = 'ThisExpression';
 }
 
 """Array expression."""
 obj ArrayExpression(Node) {
     has elements: list[Expression | SpreadElement | None] = [],
-        <>type: TypingLiteral['ArrayExpression'] = 'ArrayExpression';
+        `type: TypingLiteral['ArrayExpression'] = 'ArrayExpression';
 }
 
 """Object expression."""
 obj ObjectExpression(Node) {
     has properties: list[(Property | SpreadElement)] = [],
-        <>type: TypingLiteral['ObjectExpression'] = 'ObjectExpression';
+        `type: TypingLiteral['ObjectExpression'] = 'ObjectExpression';
 }
 
 """Object property."""
@@ -257,7 +257,7 @@ obj Property(Node) {
         method: bool = False,
         shorthand: bool = False,
         computed: bool = False,
-        <>type: TypingLiteral['Property'] = 'Property';
+        `type: TypingLiteral['Property'] = 'Property';
 }
 
 """Function expression."""
@@ -267,7 +267,7 @@ obj FunctionExpression(Node) {
         body: (BlockStatement | None) = None,
         generator: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['FunctionExpression'] = 'FunctionExpression';
+        `type: TypingLiteral['FunctionExpression'] = 'FunctionExpression';
 }
 
 """Arrow function expression (ES6)."""
@@ -276,7 +276,7 @@ obj ArrowFunctionExpression(Node) {
         body: BlockStatement | Expression | None = None,
         expression: bool = False,
         async_: bool = False,
-        <>type: TypingLiteral['ArrowFunctionExpression'] = 'ArrowFunctionExpression';
+        `type: TypingLiteral['ArrowFunctionExpression'] = 'ArrowFunctionExpression';
 }
 
 """Unary expression."""
@@ -284,7 +284,7 @@ obj UnaryExpression(Node) {
     has operator: str = '',
         prefix: bool = True,
         argument: (Expression | None) = None,
-        <>type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
+        `type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
 }
 
 """Update expression."""
@@ -292,7 +292,7 @@ obj UpdateExpression(Node) {
     has operator: str = '++',
         argument: (Expression | None) = None,
         prefix: bool = True,
-        <>type: TypingLiteral['UpdateExpression'] = 'UpdateExpression';
+        `type: TypingLiteral['UpdateExpression'] = 'UpdateExpression';
 }
 
 """Binary expression."""
@@ -300,7 +300,7 @@ obj BinaryExpression(Node) {
     has operator: str = '',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['BinaryExpression'] = 'BinaryExpression';
+        `type: TypingLiteral['BinaryExpression'] = 'BinaryExpression';
 }
 
 """Assignment expression."""
@@ -308,7 +308,7 @@ obj AssignmentExpression(Node) {
     has operator: str = '=',
         left: Pattern | Expression | None = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['AssignmentExpression'] = 'AssignmentExpression';
+        `type: TypingLiteral['AssignmentExpression'] = 'AssignmentExpression';
 }
 
 """Logical expression."""
@@ -316,7 +316,7 @@ obj LogicalExpression(Node) {
     has operator: str = '&&',
         left: (Expression | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['LogicalExpression'] = 'LogicalExpression';
+        `type: TypingLiteral['LogicalExpression'] = 'LogicalExpression';
 }
 
 """Member expression."""
@@ -325,15 +325,15 @@ obj MemberExpression(Node) {
         property: (Expression | None) = None,
         computed: bool = False,
         optional: bool = False,
-        <>type: TypingLiteral['MemberExpression'] = 'MemberExpression';
+        `type: TypingLiteral['MemberExpression'] = 'MemberExpression';
 }
 
 """Conditional (ternary) expression."""
 obj ConditionalExpression(Node) {
-    has <>test: (Expression | None) = None,
+    has `test: (Expression | None) = None,
         consequent: (Expression | None) = None,
         alternate: (Expression | None) = None,
-        <>type: TypingLiteral['ConditionalExpression'] = 'ConditionalExpression';
+        `type: TypingLiteral['ConditionalExpression'] = 'ConditionalExpression';
 }
 
 """Call expression."""
@@ -341,97 +341,97 @@ obj CallExpression(Node) {
     has callee: Expression | Super | None = None,
         arguments: list[(Expression | SpreadElement)] = [],
         optional: bool = False,
-        <>type: TypingLiteral['CallExpression'] = 'CallExpression';
+        `type: TypingLiteral['CallExpression'] = 'CallExpression';
 }
 
 """Optional chaining expression (ES2020)."""
 obj ChainExpression(Node) {
     has expression: CallExpression | MemberExpression | None = None,
-        <>type: TypingLiteral['ChainExpression'] = 'ChainExpression';
+        `type: TypingLiteral['ChainExpression'] = 'ChainExpression';
 }
 
 """New expression."""
 obj NewExpression(Node) {
     has callee: (Expression | None) = None,
         arguments: list[(Expression | SpreadElement)] = [],
-        <>type: TypingLiteral['NewExpression'] = 'NewExpression';
+        `type: TypingLiteral['NewExpression'] = 'NewExpression';
 }
 
 """Sequence expression."""
 obj SequenceExpression(Node) {
     has expressions: list[Expression] = [],
-        <>type: TypingLiteral['SequenceExpression'] = 'SequenceExpression';
+        `type: TypingLiteral['SequenceExpression'] = 'SequenceExpression';
 }
 
 """Yield expression."""
 obj YieldExpression(Node) {
     has argument: (Expression | None) = None,
         delegate: bool = False,
-        <>type: TypingLiteral['YieldExpression'] = 'YieldExpression';
+        `type: TypingLiteral['YieldExpression'] = 'YieldExpression';
 }
 
 """Await expression (ES2017)."""
 obj AwaitExpression(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
+        `type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
 }
 
 """Template literal (ES6)."""
 obj TemplateLiteral(Node) {
     has quasis: list[TemplateElement] = [],
         expressions: list[Expression] = [],
-        <>type: TypingLiteral['TemplateLiteral'] = 'TemplateLiteral';
+        `type: TypingLiteral['TemplateLiteral'] = 'TemplateLiteral';
 }
 
 """Template element."""
 obj TemplateElement(Node) {
     has tail: bool = False,
         value: dict[(str, str)] = {},
-        <>type: TypingLiteral['TemplateElement'] = 'TemplateElement';
+        `type: TypingLiteral['TemplateElement'] = 'TemplateElement';
 }
 
 """Tagged template expression (ES6)."""
 obj TaggedTemplateExpression(Node) {
     has tag: (Expression | None) = None,
         quasi: (TemplateLiteral | None) = None,
-        <>type: TypingLiteral['TaggedTemplateExpression'] = 'TaggedTemplateExpression';
+        `type: TypingLiteral['TaggedTemplateExpression'] = 'TaggedTemplateExpression';
 }
 
 """Spread element (ES6)."""
 obj SpreadElement(Node) {
     has argument: (Expression | None) = None,
-        <>type: TypingLiteral['SpreadElement'] = 'SpreadElement';
+        `type: TypingLiteral['SpreadElement'] = 'SpreadElement';
 }
 
 """Super keyword."""
 obj Super(Node) {
-    has <>type: TypingLiteral['Super'] = 'Super';
+    has `type: TypingLiteral['Super'] = 'Super';
 }
 
 """Meta property (e.g., new.target)."""
 obj MetaProperty(Node) {
     has meta: (Identifier | None) = None,
         property: (Identifier | None) = None,
-        <>type: TypingLiteral['MetaProperty'] = 'MetaProperty';
+        `type: TypingLiteral['MetaProperty'] = 'MetaProperty';
 }
 
 """Assignment pattern (default parameters)."""
 obj AssignmentPattern(Node) {
     has left: (Pattern | None) = None,
         right: (Expression | None) = None,
-        <>type: TypingLiteral['AssignmentPattern'] = 'AssignmentPattern';
+        `type: TypingLiteral['AssignmentPattern'] = 'AssignmentPattern';
 }
 
 """Array destructuring pattern."""
 obj ArrayPattern(Node) {
     has elements: list[(Pattern | None)] = [],
-        <>type: TypingLiteral['ArrayPattern'] = 'ArrayPattern';
+        `type: TypingLiteral['ArrayPattern'] = 'ArrayPattern';
 }
 
 """Object destructuring pattern."""
 obj ObjectPattern(Node) {
     has properties: list[(AssignmentProperty | RestElement)] = [],
-        <>type: TypingLiteral['ObjectPattern'] = 'ObjectPattern';
+        `type: TypingLiteral['ObjectPattern'] = 'ObjectPattern';
 }
 
 """Assignment property in object pattern."""
@@ -442,13 +442,13 @@ obj AssignmentProperty(Node) {
         method: bool = False,
         shorthand: bool = False,
         computed: bool = False,
-        <>type: TypingLiteral['Property'] = 'Property';
+        `type: TypingLiteral['Property'] = 'Property';
 }
 
 """Rest element."""
 obj RestElement(Node) {
     has argument: (Pattern | None) = None,
-        <>type: TypingLiteral['RestElement'] = 'RestElement';
+        `type: TypingLiteral['RestElement'] = 'RestElement';
 }
 
 """Class declaration."""
@@ -456,7 +456,7 @@ obj ClassDeclaration(Node) {
     has id: (Identifier | None) = None,
         superClass: (Expression | None) = None,
         body: (ClassBody | None) = None,
-        <>type: TypingLiteral['ClassDeclaration'] = 'ClassDeclaration';
+        `type: TypingLiteral['ClassDeclaration'] = 'ClassDeclaration';
 }
 
 """Class expression."""
@@ -464,13 +464,13 @@ obj ClassExpression(Node) {
     has id: (Identifier | None) = None,
         superClass: (Expression | None) = None,
         body: (ClassBody | None) = None,
-        <>type: TypingLiteral['ClassExpression'] = 'ClassExpression';
+        `type: TypingLiteral['ClassExpression'] = 'ClassExpression';
 }
 
 """Class body (ES2022: supports methods, properties, and static blocks)."""
 obj ClassBody(Node) {
     has body: list[MethodDefinition | PropertyDefinition | StaticBlock] = [],
-        <>type: TypingLiteral['ClassBody'] = 'ClassBody';
+        `type: TypingLiteral['ClassBody'] = 'ClassBody';
 }
 
 """Method definition (ES2022: supports private identifiers)."""
@@ -479,8 +479,8 @@ obj MethodDefinition(Node) {
         value: (FunctionExpression | None) = None,
         kind: MethodDefinitionKind = 'method',
         computed: bool = False,
-        <>static: bool = False,
-        <>type: TypingLiteral['MethodDefinition'] = 'MethodDefinition';
+        `static: bool = False,
+        `type: TypingLiteral['MethodDefinition'] = 'MethodDefinition';
 }
 
 """Class field definition (ES2022)."""
@@ -488,14 +488,14 @@ obj PropertyDefinition(Node) {
     has key: (Expression | Identifier | PrivateIdentifier | None) = None,
         value: (Expression | None) = None,
         computed: bool = False,
-        <>static: bool = False,
-        <>type: TypingLiteral['PropertyDefinition'] = 'PropertyDefinition';
+        `static: bool = False,
+        `type: TypingLiteral['PropertyDefinition'] = 'PropertyDefinition';
 }
 
 """Static initialization block (ES2022)."""
 obj StaticBlock(Node) {
     has body: list[Statement] = [],
-        <>type: TypingLiteral['StaticBlock'] = 'StaticBlock';
+        `type: TypingLiteral['StaticBlock'] = 'StaticBlock';
 }
 
 """Import declaration."""
@@ -503,32 +503,32 @@ obj ImportDeclaration(Node) {
     has specifiers:
         list[ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier] = [],
         source: (Literal | None) = None,
-        <>type: TypingLiteral['ImportDeclaration'] = 'ImportDeclaration';
+        `type: TypingLiteral['ImportDeclaration'] = 'ImportDeclaration';
 }
 
 """Dynamic import expression (ES2020)."""
 obj ImportExpression(Node) {
     has source: (Expression | None) = None,
-        <>type: TypingLiteral['ImportExpression'] = 'ImportExpression';
+        `type: TypingLiteral['ImportExpression'] = 'ImportExpression';
 }
 
 """Import specifier."""
 obj ImportSpecifier(Node) {
     has imported: (Identifier | None) = None,
         local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportSpecifier'] = 'ImportSpecifier';
+        `type: TypingLiteral['ImportSpecifier'] = 'ImportSpecifier';
 }
 
 """Import default specifier."""
 obj ImportDefaultSpecifier(Node) {
     has local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportDefaultSpecifier'] = 'ImportDefaultSpecifier';
+        `type: TypingLiteral['ImportDefaultSpecifier'] = 'ImportDefaultSpecifier';
 }
 
 """Import namespace specifier."""
 obj ImportNamespaceSpecifier(Node) {
     has local: (Identifier | None) = None,
-        <>type: TypingLiteral['ImportNamespaceSpecifier'] = 'ImportNamespaceSpecifier';
+        `type: TypingLiteral['ImportNamespaceSpecifier'] = 'ImportNamespaceSpecifier';
 }
 
 """Export named declaration."""
@@ -536,27 +536,27 @@ obj ExportNamedDeclaration(Node) {
     has declaration: Declaration | Expression | None = None,
         specifiers: list[ExportSpecifier] = [],
         source: (Literal | None) = None,
-        <>type: TypingLiteral['ExportNamedDeclaration'] = 'ExportNamedDeclaration';
+        `type: TypingLiteral['ExportNamedDeclaration'] = 'ExportNamedDeclaration';
 }
 
 """Export specifier."""
 obj ExportSpecifier(Node) {
     has exported: (Identifier | None) = None,
         local: (Identifier | None) = None,
-        <>type: TypingLiteral['ExportSpecifier'] = 'ExportSpecifier';
+        `type: TypingLiteral['ExportSpecifier'] = 'ExportSpecifier';
 }
 
 """Export default declaration."""
 obj ExportDefaultDeclaration(Node) {
     has declaration: Declaration | Expression | None = None,
-        <>type: TypingLiteral['ExportDefaultDeclaration'] = 'ExportDefaultDeclaration';
+        `type: TypingLiteral['ExportDefaultDeclaration'] = 'ExportDefaultDeclaration';
 }
 
 """Export all declaration."""
 obj ExportAllDeclaration(Node) {
     has source: (Literal | None) = None,
         exported: (Identifier | None) = None,
-        <>type: TypingLiteral['ExportAllDeclaration'] = 'ExportAllDeclaration';
+        `type: TypingLiteral['ExportAllDeclaration'] = 'ExportAllDeclaration';
 }
 
 """Represents slice operation info (e.g., arr[start:stop])."""
@@ -580,4 +580,4 @@ glob Statement = ExpressionStatement | BlockStatement | EmptyStatement | Debugge
          ImportDeclaration | ExportNamedDeclaration | ExportDefaultDeclaration | ExportAllDeclaration
      );
 
-def es_node_to_dict(<>node: Node) -> dict[str, Any];
+def es_node_to_dict(`node: Node) -> dict[str, Any];
