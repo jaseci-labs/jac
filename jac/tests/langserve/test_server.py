@@ -586,6 +586,7 @@ def test_go_to_definition_impl_body_self_attr(
     finally:
         lsp.shutdown()
 
+
 def test_go_to_definition_directory_import(
     fixture_path: Callable[[str], str],
 ) -> None:
@@ -615,7 +616,9 @@ def test_go_to_definition_directory_import(
         for line, char, expected in positions:
             # We use try-except to detect if get_definition crashes (though it shouldn't usually raise)
             def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
-            assert def_loc is not None, f"Definition at line {line}, col {char} not found"
+            assert def_loc is not None, (
+                f"Definition at line {line}, col {char} not found"
+            )
             assert expected in str(def_loc), (
                 f"Expected '{expected}' in definition for line {line}, char {char}, "
                 f"got: {def_loc}"
