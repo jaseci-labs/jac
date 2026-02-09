@@ -3,16 +3,16 @@
 impl _jac_graph_json(file: (str | None) = None) -> str {
     import from jaclang.runtimelib.utils { collect_node_connections }
     jac = _get_jac();
-    visited_nodes: set = <>set();
-    connections: set = <>set();
-    edge_ids: set = <>set();
+    visited_nodes: set = set();
+    connections: set = set();
+    edge_ids: set = set();
     nodes: list[dict] = [];
     edges: list[dict] = [];
-    <>root = jac.root();
-    collect_node_connections(<>root, visited_nodes, connections, edge_ids);
-    nodes.append({'id': id(<>root), 'label': 'root'});
+    `root = jac.root();
+    collect_node_connections(`root, visited_nodes, connections, edge_ids);
+    nodes.append({'id': id(`root), 'label': 'root'});
     for node_arch in visited_nodes {
-        if (node_arch != <>root) {
+        if (node_arch != `root) {
             nodes.append({'id': id(node_arch), 'label': repr(node_arch)});
         }
     }
@@ -34,7 +34,7 @@ impl _jac_graph_json(file: (str | None) = None) -> str {
 
 """Print the graph in different formats."""
 impl printgraph(
-    <>node: (NodeArchetype | None) = None,
+    `node: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,
@@ -51,7 +51,7 @@ impl printgraph(
     }
     return jac.printgraph(
         edge_type=edge_type,
-        <>node=(<>node or jac.root()),
+        `node=(`node or jac.root()),
         depth=depth,
         traverse=traverse,
         bfs=bfs,

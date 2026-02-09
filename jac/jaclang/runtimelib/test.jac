@@ -11,7 +11,7 @@ obj JacTestResult(unittest.TextTestResult) {
         failures_count: int by postinit;
 
     def postinit -> None;
-    def addFailure(<>test: Any, err: Any) -> None;
+    def addFailure(`test: Any, err: Any) -> None;
     def stop -> None;
 }
 

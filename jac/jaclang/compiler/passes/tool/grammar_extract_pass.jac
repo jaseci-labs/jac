@@ -93,7 +93,7 @@ obj GrammarExtractPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     # UniPass hooks
     def before_pass -> None;
-    def enter_impl_def(<>node: uni.ImplDef) -> None;
+    def enter_impl_def(`node: uni.ImplDef) -> None;
     def after_pass -> None;
     # Formatting (static-like helpers, called with self)
     def format_ebnf(expr: GExpr) -> str;

@@ -2,8 +2,11 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.9.16 (Unreleased)
+## jaclang 0.10.1 (Unreleased)
 
+## jaclang 0.10.0 (Latest Release)
+
+- **KWESC_NAME syntax changed from `<>` to backtick**: Keyword-escaped names now use a backtick prefix (`` `node ``) instead of the angle-bracket prefix (`<>node`). All `.jac` source files, the lexer, parser, unparse/DocIR passes, and auto-lint rules have been updated accordingly.
 - **Remove Backtick Type Operator**: Removed the backtick (`` ` ``) `TYPE_OP` token and `TypeRef` AST node from the language. The `Root` type is now referenced directly by name (e.g., `with Root entry` instead of `` with `root entry ``). Filter comprehension syntax changed from `` (`?Type:field==val) `` to `(?:Type, field==val)`. `Root` is automatically imported from `jaclib` when used in walker event signatures.
 - **`APIProtocol` Builtin Enum**: Added `APIProtocol` enum (`HTTP`, `WEBHOOK`, `WEBSOCKET`) as a builtin, replacing the boolean `webhook` flag in `RestSpecs` with a typed `protocol` field. Use `@restspec(protocol=APIProtocol.WEBSOCKET)` directly without imports.
 - **Native Compiler: Cross-Module Linking**: Native `.na.jac` modules can now import and call functions from other `.na.jac` modules. The compiler performs LLVM IR-level linking enabling modular native code organization with `import from module { func1, func2 }` syntax.
@@ -23,7 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix:** Fixed `config.save()` to correctly persist dependency removals and git dependencies to disk.
 - **RD Parser: Strictness Parity with Lark**: Tightened the RD parser to reject constructs that the Lark grammar also rejects, closing 7 permissiveness gaps.
 
-## jaclang 0.9.15 (Latest Release)
+## jaclang 0.9.15
 
 - **Fix: Type Errors in Impl Files Now Show Correct Location**: Type errors in `.impl.jac` files now point to the actual error location instead of the declaration in the main file.
 - **First-Run Progress Messages**: The first time `jac` is run after installation, it now prints clear progress messages to stderr showing each internal compiler module being compiled and cached, so users understand why the first launch is slower and don't think the process is hanging.
@@ -42,6 +45,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler: Runtime Error Checks**: The native backend now generates runtime safety checks that raise structured exceptions: `ZeroDivisionError` for integer and float division/modulo by zero, `IndexError` for list index out of bounds, `KeyError` for missing dictionary keys, `OverflowError` for integer arithmetic overflow, `AttributeError` for null pointer dereference, `ValueError` for invalid `int()` parsing, and `AssertionError` for failed assertions.
 - **Native Compiler: Python↔Native Interop**: Added cross-boundary function call support between Python (`sv`) and native (`na`) codespaces within the same module. Native functions can now call Python functions via LLVM extern declarations backed by ctypes callbacks, and Python code can call native functions via auto-generated ctypes stubs.
 - **Fix:** `sv import` Lost During Unparse in `.cl.jac` Files
+- **Fix: ESM Script Loading in Legacy Runtime**: Added `type="module"` to the generated `<script>` tag in the legacy runtime HTML renderer, matching the same fix applied in jac-client.
 
 ## jaclang 0.9.14
 
