@@ -34,7 +34,12 @@ class PWATarget(ClientTarget) {
 
     """Start PWA in production mode."""
     override def start(self: PWATarget, ctx: BuildContext) -> BuildResult {
-        # PWA start builds first, then normal jac start serves
-        return self.build(ctx);
+        # PWA start builds first, then lets normal jac start serve
+        build_result = self.build(ctx);
+        if not build_result.success {
+            return build_result;
+        }
+        # Return ok without output_path to allow passthrough to jac start
+        return BuildResult.ok();
     }
 }

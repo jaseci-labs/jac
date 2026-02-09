@@ -68,15 +68,11 @@ impl WebTarget.build(self: WebTarget, ctx: BuildContext) -> BuildResult {
     }
 }
 
-"""Start web dev server."""
+"""Start web dev server - passthrough to normal jac start."""
 impl WebTarget.dev(self: WebTarget, ctx: BuildContext) -> BuildResult {
-    try {
-        bundler = ViteBundler(project_dir=ctx.project_dir);
-        bundler.start_dev_server(port=ctx.port);
-        return BuildResult.ok();
-    } except Exception as e {
-        return BuildResult.fail(str(e));
-    }
+    # Dev mode is handled by normal jac start (watchdog, compilation, etc.)
+    # Return ok() without output_path to allow passthrough
+    return BuildResult.ok();
 }
 
 """Generate static index.html file for the built bundle."""

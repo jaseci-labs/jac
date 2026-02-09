@@ -144,7 +144,7 @@ def test_all_in_one_app_endpoints() -> None:
                 src = os.path.join(all_in_one_path, entry)
                 dst = os.path.join(project_path, entry)
                 # Avoid copying node_modules / build artifacts from the example.
-                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
+                if entry in {"node_modules", "build", "dist", ".pytest_cache", ".jac", "src-tauri"}:
                     continue
                 if os.path.isdir(src):
                     shutil.copytree(src, dst, dirs_exist_ok=True)
@@ -849,7 +849,7 @@ def test_configurable_api_base_url_in_bundle() -> None:
             for entry in os.listdir(all_in_one_path):
                 src = os.path.join(all_in_one_path, entry)
                 dst = os.path.join(project_path, entry)
-                if entry in {"node_modules", "build", "dist", ".pytest_cache"}:
+                if entry in {"node_modules", "build", "dist", ".pytest_cache", ".jac", "src-tauri"}:
                     continue
                 if os.path.isdir(src):
                     shutil.copytree(src, dst, dirs_exist_ok=True)

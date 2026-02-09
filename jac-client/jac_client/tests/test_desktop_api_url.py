@@ -860,8 +860,8 @@ def test_dev_method_runs_tauri_dev() -> None:
         next_impl = len(content)
     dev_body = content[dev_idx:next_impl]
 
-    # dev() should run cargo tauri dev
-    assert '"cargo"' in dev_body or "'cargo'" in dev_body, "dev() should run cargo"
+    # dev() should run cargo tauri dev (via helper function)
+    assert "_run_tauri_dev" in dev_body, "dev() should call _run_tauri_dev helper"
     assert "tauri" in dev_body, "dev() should run tauri dev"
     # Should set API URL for dev mode
     assert "_make_localhost_url" in dev_body, (

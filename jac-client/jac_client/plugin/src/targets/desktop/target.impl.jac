@@ -19,7 +19,14 @@ import from .helpers {
     _add_desktop_config,
     _check_and_install_dependencies,
     _populate_icon_array,
-    _make_localhost_url
+    _make_localhost_url,
+    _update_tauri_config_for_dev,
+    _run_tauri_dev,
+    _start_backend_server,
+    _resolve_server_port,
+    _get_toml_api_base_url,
+    _update_tauri_config_for_build,
+    _bundle_sidecar
 }
 
 """Setup desktop target - scaffold Tauri project structure."""
@@ -180,9 +187,12 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
     try {
         import subprocess;
         import os;
-        import from ...vite_bundler { API_BASE_URL_ENV_VAR }
+        import signal;
+        import sys;
+        import from ...vite_bundler { ViteBundler, API_BASE_URL_ENV_VAR }
+        import from jac_client.plugin.client { JacClient }
 
-        console.print("\n🖥️  Starting desktop dev mode", style="bold");
+        console.print("\n🖥️  Starting desktop dev server (Tauri)", style="bold");
 
         # Validate setup
         validation = self.validate(ctx);
@@ -192,20 +202,117 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
 
         tauri_dir = ctx.project_dir / "src-tauri";
 
-        # Set API URL for dev mode
-        api_url = _make_localhost_url(ctx.port);
-        env = os.environ.copy();
-        env[API_BASE_URL_ENV_VAR] = api_url;
+        # Step 1: Update tauri.conf.json for dev mode
+        console.print("  Configuring Tauri for dev mode...", style="muted");
+        _update_tauri_config_for_dev(tauri_dir);
 
-        console.print(f"  API URL: {api_url}", style="muted");
-        console.print("  Starting Tauri dev server...", style="muted");
-
-        # Start tauri dev (this will start vite dev server automatically)
-        result = subprocess.run(
-            ["cargo", "tauri", "dev"],
-            cwd=str(tauri_dir),
-            env=env
+        # Step 2: Prepare package.json and compile module
+        console.print("  Preparing compilation setup...", style="muted");
+        vite_port = 5173;
+        bundler = ViteBundler(
+            project_dir=ctx.project_dir, output_dir=None, minify=False, config_path=None
         );
+
+        # Ensure package.json exists
+        package_json_path = bundler._get_client_dir() / 'configs' / 'package.json';
+        if not package_json_path.exists() {
+            bundler.create_package_json();
+        }
+
+        # Get the compiler and compile the module
+        builder = JacClient.get_client_bundle_builder();
+        if not builder.vite_package_json or not builder.vite_package_json.exists() {
+            builder.vite_package_json = package_json_path;
+        }
+        compiler = builder._get_compiler();
+        compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
+        compiler.compile_runtime_utils();
+
+        # Compile the module
+        (module_js, mod, module_manifest) = compiler.jac_compiler.compile_module(
+            ctx.entry_file
+        );
+        module_name = ctx.entry_file.stem;
+        compiled_module_path = compiler.compiled_dir / f"{module_name}.js";
+        compiled_module_path.write_text(module_js, encoding='utf-8');
+        compiler.create_entry_file(ctx.entry_file);
+        console.print("  ✔ Module compiled for dev mode", style="success");
+
+        # Step 3: Start Vite dev server
+        console.print("  Starting web dev server...", style="muted");
+        dev_config_path = bundler.create_vite_config(
+            ctx.entry_file,
+            api_base_url_override=_make_localhost_url(ctx.port),
+            is_dev=True,
+            api_port=ctx.port
+        );
+        vite_process = bundler.start_dev_server(port=vite_port);
+        if not vite_process {
+            return BuildResult.fail("Failed to start Vite dev server");
+        }
+        console.print(
+            f"  ✔ Web dev server running on http://localhost:{vite_port}", style="success"
+        );
+
+        # Step 4: Start backend API server
+        toml_base_url = _get_toml_api_base_url(ctx.project_dir);
+        server_port = _resolve_server_port(toml_base_url, ctx.port);
+        _generate_main_rs(
+            tauri_dir, api_base_url=toml_base_url or _make_localhost_url(server_port)
+        );
+        console.print(
+            f"  Starting backend server on port {server_port}...", style="muted"
+        );
+        server_process = _start_backend_server(ctx.entry_file, ctx.project_dir, server_port);
+        console.print(
+            f"  ✔ Backend server starting on port {server_port}", style="success"
+        );
+
+        # Step 5: Launch Tauri dev
+        console.print("  Launching Tauri dev window...", style="muted");
+        console.print("  (Press Ctrl+C to stop)", style="muted");
+
+        # Setup cleanup function
+        def cleanup() -> None {
+            console.print("\n  Stopping dev servers...", style="muted");
+            if vite_process {
+                try {
+                    vite_process.terminate();
+                    vite_process.wait(timeout=5);
+                } except Exception {
+                    vite_process.kill();
+                }
+            }
+            if server_process {
+                try {
+                    server_process.terminate();
+                    server_process.wait(timeout=5);
+                } except Exception {
+                    server_process.kill();
+                }
+            }
+            console.print("  ✔ Dev servers stopped", style="success");
+        }
+
+        def signal_handler(signum: int, frame: any) -> None {
+            cleanup();
+            sys.exit(0);
+        }
+
+        signal.signal(signal.SIGINT, signal_handler);
+        signal.signal(signal.SIGTERM, signal_handler);
+
+        try {
+            # Run tauri dev
+            tauri_process = _run_tauri_dev(tauri_dir);
+            tauri_process.wait();
+        } except KeyboardInterrupt {
+            console.print(
+                "\n  Keyboard interrupt detected. Stopping...", style="muted"
+            );
+        } finally {
+            cleanup();
+        }
 
         return BuildResult.ok();
     } except Exception as e {
