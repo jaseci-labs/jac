@@ -70,7 +70,11 @@ repos:
               ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
               ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
               ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$
+              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$|
+              ^jac-client/jac_client/examples/all-in-one/pwa_icons/pwa-192x192\.png$|
+              ^jac-client/jac_client/examples/all-in-one/pwa_icons/pwa-512x512\.png$|
+              ^jac-client/jac_client/plugin/defaults/pwa_icons/pwa-192x192\.png$|
+              ^jac-client/jac_client/plugin/defaults/pwa_icons/pwa-512x512\.png$
           )
 
       - id: ban-em-dashes

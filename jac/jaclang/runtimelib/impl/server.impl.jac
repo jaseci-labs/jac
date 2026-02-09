@@ -1197,7 +1197,9 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     if is_pwa {
                         # Vite outputs client.{hash}.js
                         for client_js in dist_dir.glob('client.*.js') {
-                            Jac.send_javascript(self, client_js.read_text(encoding='utf-8'));
+                            Jac.send_javascript(
+                                self, client_js.read_text(encoding='utf-8')
+                            );
                             return;
                         }
                     }
@@ -1231,7 +1233,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and (
                     Path(path).suffix in (
                         custom_asset_extensions
-                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json'}
                     )
                 )
             );

@@ -380,12 +380,11 @@ def test_manifest_generation_error_handling() -> None:
 
 def test_service_worker_generation_error_handling() -> None:
     """Test that service worker generation raises RuntimeError on failure."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        plugin_dir = Path(__file__).parent.parent / "plugin"
-        impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
-        impl_content = impl_file.read_text()
+    plugin_dir = Path(__file__).parent.parent / "plugin"
+    impl_file = plugin_dir / "src" / "targets" / "impl" / "pwa_target.impl.jac"
+    impl_content = impl_file.read_text()
 
-        assert 'raise RuntimeError(f"Failed to generate service worker' in impl_content
+    assert 'raise RuntimeError(f"Failed to generate service worker' in impl_content
 
 
 def test_html_update_error_handling() -> None:
