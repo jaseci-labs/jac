@@ -8,7 +8,7 @@ impl es_node_to_dict(`node: Node) -> dict[str, Any] {
         }
         if isinstance(value, Node) {
             result[key] = es_node_to_dict(value);
-        } elif isinstance(value, `list) {
+        } elif isinstance(value, list) {
             result[key] = [
                 es_node_to_dict(item) if isinstance(item, Node) else item
                 for item in value

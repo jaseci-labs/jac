@@ -340,7 +340,7 @@ impl cluster_type -> str {
             labels = `node.metadata.labels or {};
             if (
                 ('topology.kubernetes.io/region' in labels)
-                and `any(
+                and any(
                     (region in labels.get('topology.kubernetes.io/region', ''))
                     for region in ['us-', 'eu-', 'ap-', 'ca-', 'sa-']
                 )

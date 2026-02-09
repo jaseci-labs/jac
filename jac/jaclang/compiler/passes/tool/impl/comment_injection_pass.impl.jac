@@ -67,7 +67,7 @@ impl CommentInjectionPass._remove_redundant_lines(`node: doc.DocType) -> doc.Doc
                     and processed_part.contents.parts
                     and self._is_standalone_comment(processed_part.contents.parts[-1])
                 ) {
-                    indent_parts = `list(processed_part.contents.parts);
+                    indent_parts = list(processed_part.contents.parts);
                     last_comment = indent_parts[-1];
                     assert isinstance(last_comment, doc.Concat);
                     indent_parts[-1] = doc.Concat(
@@ -125,11 +125,11 @@ impl CommentInjectionPass._remove_trailing_line_from_inline_comment(
             and isinstance(third, doc.Line)
             and third.hard
         ) {
-            return doc.Concat(`list(`node.parts[:-1]));
+            return doc.Concat(list(`node.parts[:-1]));
         }
     }
     if (isinstance(`node, doc.Concat) and `node.parts) {
-        new_parts = `list(`node.parts);
+        new_parts = list(`node.parts);
         new_parts[-1] = self._remove_trailing_line_from_inline_comment(new_parts[-1]);
         return doc.Concat(new_parts, ast_node=`node.ast_node);
     }
@@ -225,7 +225,7 @@ impl CommentInjectionPass._strip_trailing_line_from_comment(
         and isinstance(comment.parts[-1], doc.Line)
         and comment.parts[-1].hard
     ) {
-        return doc.Concat(`list(comment.parts[:-1]), ast_node=comment.ast_node);
+        return doc.Concat(list(comment.parts[:-1]), ast_node=comment.ast_node);
     }
     return comment;
 }
@@ -428,7 +428,7 @@ impl CommentInjectionPass._handle_empty_body_comments(
     if not comments {
         return parts;
     }
-    result: list[doc.DocType] = `list(parts[:(lbrace_idx + 1)]);
+    result: list[doc.DocType] = list(parts[:(lbrace_idx + 1)]);
     comment_parts: list[doc.DocType] = [doc.Line(hard=True)];
     for info in comments {
         comment_parts.append(doc.Text(info.token.value));
@@ -478,7 +478,7 @@ impl CommentInjectionPass._handle_paren_comments(
         None
     );
     if not items {
-        result = `list(parts[:(delim.open_idx + 1)]);
+        result = list(parts[:(delim.open_idx + 1)]);
         comment_parts: list[doc.DocType] = [doc.Line(hard=True, tight=True)];
         for info in comments {
             comment_parts.append(doc.Text(info.token.value));
@@ -493,13 +493,13 @@ impl CommentInjectionPass._handle_paren_comments(
         return result;
     }
     if (indent_idx is not None) {
-        result = `list(parts);
+        result = list(parts);
         indent_part = result[indent_idx];
         if (
             isinstance(indent_part, doc.Indent)
             and isinstance(indent_part.contents, doc.Concat)
         ) {
-            new_indent_parts = `list(indent_part.contents.parts);
+            new_indent_parts = list(indent_part.contents.parts);
             for info in comments {
                 new_indent_parts.append(doc.Line(hard=True));
                 new_indent_parts.append(doc.Text(info.token.value));

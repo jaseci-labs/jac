@@ -146,7 +146,7 @@ impl PyJacAstLinkPass.link_jac_py_nodes(
     }
     jac_node.gen.py_ast = py_nodes;
     for i in py_nodes {
-        if isinstance(i.jac_link, `list) {
+        if isinstance(i.jac_link, list) {
             i.jac_link.append(jac_node);
         }
     }

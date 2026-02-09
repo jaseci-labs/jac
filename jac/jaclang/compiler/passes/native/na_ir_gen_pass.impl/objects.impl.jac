@@ -298,7 +298,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         }
     }
     # Generate body
-    if isinstance(method.body, (`list, `tuple)) {
+    if isinstance(method.body, (list, tuple)) {
         self._codegen_body(method.body);
     }
     # Ensure function has a terminator

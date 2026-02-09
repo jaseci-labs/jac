@@ -50,7 +50,7 @@ impl DocIRGenPass.exit_jsx_element_name(`node: uni.JsxElementName) -> None {
 
 """Generate DocIR for JSX elements with prettier-inspired formatting."""
 impl DocIRGenPass.exit_jsx_element(`node: uni.JsxElement) -> None {
-    has_tokens = `any(isinstance(kid, uni.Token) for kid in `node.kid);
+    has_tokens = any(isinstance(kid, uni.Token) for kid in `node.kid);
     if has_tokens {
         first_child = `node.kid[0] if `node.kid else None;
         if (
@@ -1913,7 +1913,7 @@ impl DocIRGenPass.exit_archetype(`node: uni.Archetype) -> None {
                 body_parts.append(self.hard_line());
             }
             if (
-                (prev_item and (`type(prev_item) is not `type(i)))
+                (prev_item and (type(prev_item) is not type(i)))
                 or (prev_item and not self.is_one_line(prev_item))
             ) {
                 body_parts.append(self.hard_line());

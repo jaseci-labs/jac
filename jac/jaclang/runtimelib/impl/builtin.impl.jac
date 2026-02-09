@@ -3,9 +3,9 @@
 impl _jac_graph_json(file: (str | None) = None) -> str {
     import from jaclang.runtimelib.utils { collect_node_connections }
     jac = _get_jac();
-    visited_nodes: set = `set();
-    connections: set = `set();
-    edge_ids: set = `set();
+    visited_nodes: set = set();
+    connections: set = set();
+    edge_ids: set = set();
     nodes: list[dict] = [];
     edges: list[dict] = [];
     `root = jac.root();

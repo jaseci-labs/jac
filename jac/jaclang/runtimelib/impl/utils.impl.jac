@@ -25,10 +25,10 @@ impl is_instance(
 ) -> bool {
     match target {
         case UnionType():
-            return `any(is_instance(`obj, trg) for trg in target.__args__);
+            return any(is_instance(`obj, trg) for trg in target.__args__);
 
         case tuple():
-            return `any(is_instance(`obj, trg) for trg in target);
+            return any(is_instance(`obj, trg) for trg in target);
 
         case type():
             return isinstance(`obj, target);

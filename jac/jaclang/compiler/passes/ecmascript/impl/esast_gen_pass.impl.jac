@@ -34,7 +34,7 @@ impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) 
     if isinstance(expr, uni.TupleVal) {
         values = [self._literal_value(item) for item in expr.values];
         if all((val is not None) for val in values) {
-            return `tuple(values);
+            return tuple(values);
         }
     }
     if isinstance(expr, uni.DictVal) {
@@ -72,7 +72,7 @@ impl EsastGenPass.exit_test(`node: uni.Test) -> None {
     if `node.body {
         for stmt in `node.body {
             if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, `list) {
+                if isinstance(stmt.gen.es_ast, list) {
                     body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
                 } else {
                     body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
@@ -97,7 +97,7 @@ impl EsastGenPass.exit_client_block(`node: uni.ClientBlock) -> None {
     if `node.body {
         for stmt in `node.body {
             if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, `list) {
+                if isinstance(stmt.gen.es_ast, list) {
                     body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
                 } else {
                     body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
@@ -119,7 +119,7 @@ impl EsastGenPass.exit_module_code(`node: uni.ModuleCode) -> None {
     if `node.body {
         for stmt in `node.body {
             if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, `list) {
+                if isinstance(stmt.gen.es_ast, list) {
                     body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
                 } else {
                     body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
@@ -629,11 +629,11 @@ impl EsastGenPass.exit_lambda_expr(`node: uni.LambdaExpr) -> None {
             }
         }
     }
-    if isinstance(`node.body, `list) {
+    if isinstance(`node.body, list) {
         body_stmts: list[es.Statement] = [];
         for stmt in `node.body {
             if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, `list) {
+                if isinstance(stmt.gen.es_ast, list) {
                     body_stmts.extend(stmt.gen.es_ast);
                 } else {
                     body_stmts.append(stmt.gen.es_ast);
@@ -1064,7 +1064,7 @@ impl EsastGenPass.exit_assignment(`node: uni.Assignment) -> None {
         if isinstance(target_node, uni.Name) {
             first_def = self._is_name_first_definition(target_node);
         } elif pattern_names {
-            first_def = `any(
+            first_def = any(
                 self._is_name_first_definition(name_node)
                 for (_, name_node) in pattern_names
             );
@@ -1103,7 +1103,7 @@ impl EsastGenPass.exit_assignment(`node: uni.Assignment) -> None {
                 is_first and not self._is_declared_in_any_scope(decl_name)
             );
         } elif pattern_names {
-            should_declare = `any(
+            should_declare = any(
                 (
                     self._is_name_first_definition(name_node)
                     and not self._is_declared_in_any_scope(name)
@@ -2575,7 +2575,7 @@ impl EsastGenPass.exit_module(`node: uni.Module) -> None {
     }
     scope = self.scope_map.get(`node);
     if (scope and scope.hoisted) {
-        hoisted = `list(scope.hoisted);
+        hoisted = list(scope.hoisted);
         scope.hoisted.clear();
         body.extend(hoisted);
     }
@@ -2663,7 +2663,7 @@ impl EsastGenPass._collect_stmt_body(
             continue;
         }
         generated = getattr(stmt.gen, 'es_ast', None);
-        if isinstance(generated, `list) {
+        if isinstance(generated, list) {
             statements.extend(
                 item
                 for item in generated
@@ -2933,7 +2933,7 @@ impl EsastGenPass._prepend_hoisted(
 ) -> list[es.Statement] {
     scope = self.scope_map.get(`node);
     if (scope and scope.hoisted) {
-        hoisted = `list(scope.hoisted);
+        hoisted = list(scope.hoisted);
         scope.hoisted.clear();
         return (hoisted + statements);
     }
@@ -2973,7 +2973,7 @@ Check if a name is declared in the current scope or any parent scope.
         variables that exist in parent scopes when generating nested functions.
 """
 impl EsastGenPass._is_declared_in_any_scope(name: str) -> bool {
-    return `any((name in scope.declared) for scope in reversed(self.scope_stack));
+    return any((name in scope.declared) for scope in reversed(self.scope_stack));
 }
 
 """Check if a name is already declared in the active scope."""

@@ -95,7 +95,7 @@ impl NaIRGenPass._codegen_ability(`node: uni.Ability) -> None {
         }
     }
     # Generate body via manual tree-walking
-    if isinstance((`node).body, (`list, `tuple)) {
+    if isinstance((`node).body, (list, tuple)) {
         self._codegen_body((`node).body);
     }
     # Ensure function has a terminator

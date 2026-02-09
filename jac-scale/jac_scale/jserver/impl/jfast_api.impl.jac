@@ -282,7 +282,7 @@ impl JFastApiServer._create_endpoint_function(
     dependencies: list[Any]
 ) -> Callable[..., Any] {
     sig = inspect.signature(callback);
-    accepts_kwargs = `any(
+    accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
     );
     if not parameters {
@@ -291,7 +291,7 @@ impl JFastApiServer._create_endpoint_function(
                 async def async_endpoint_wrapper(request: Request) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = `dict(request.query_params);
+                        query_params = dict(request.query_params);
                         result = await callback(**query_params);
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
@@ -307,7 +307,7 @@ impl JFastApiServer._create_endpoint_function(
                 def sync_endpoint_wrapper(request: Request) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = `dict(request.query_params);
+                        query_params = dict(request.query_params);
                         result = callback(**query_params);
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
@@ -584,7 +584,7 @@ impl JFastApiServer._create_fastapi_route(
         return_type = hints.get('return');
         if (
             return_type
-            and isinstance(return_type, `type)
+            and isinstance(return_type, type)
             and issubclass(return_type, Response)
         ) {
             route_kwargs['response_class'] = return_type;

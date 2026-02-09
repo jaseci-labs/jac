@@ -1782,11 +1782,11 @@ impl PyastBuildPass.proc_constant(`node: py_ast.Constant) -> uni.Literal {
         int: uni.Int,
         float: uni.Float,
         str: uni.String,
-        `bytes: uni.String,
+        bytes: uni.String,
         bool: uni.Bool,
-        `type(None): uni.Null
+        type(None): uni.Null
     };
-    value_type = `type(`node.value);
+    value_type = type(`node.value);
     if (value_type in type_mapping) {
         if (value_type is None) {
             token_type = 'NULL';
