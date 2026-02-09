@@ -291,9 +291,7 @@ def test_desktop_target_interface_has_api_port() -> None:
     print("[DEBUG] Starting test_desktop_target_interface_has_api_port")
 
     # Check that BuildContext in types.jac has port parameter
-    assert _types_jac_path.exists(), (
-        f"types.jac not found at {_types_jac_path}"
-    )
+    assert _types_jac_path.exists(), f"types.jac not found at {_types_jac_path}"
 
     content = _types_jac_path.read_text()
 
@@ -420,9 +418,7 @@ def test_env_var_handling_in_build() -> None:
     build_section = build_section[:next_impl]
 
     # Build should use try-except for error handling
-    assert "try {" in build_section, (
-        "build() should use try block for error handling"
-    )
+    assert "try {" in build_section, "build() should use try block for error handling"
     assert "} except" in build_section, (
         "build() should have except block for error handling"
     )
@@ -444,9 +440,7 @@ def test_env_var_handling_in_start() -> None:
     start_section = content[content.index("impl DesktopTarget.start") :]
 
     # Start should use try-except for error handling
-    assert "try {" in start_section, (
-        "start() should use try block for error handling"
-    )
+    assert "try {" in start_section, "start() should use try block for error handling"
     assert "} except" in start_section, (
         "start() should have except block for error handling"
     )
@@ -841,19 +835,13 @@ def test_start_method_runs_tauri_app() -> None:
     start_body = content[start_idx:next_impl]
 
     # start() should build web bundle first
-    assert "get_target" in start_body, (
-        "start() should use factory to get web target"
-    )
-    assert "web_target.build" in start_body, (
-        "start() should build web bundle first"
-    )
+    assert "get_target" in start_body, "start() should use factory to get web target"
+    assert "web_target.build" in start_body, "start() should build web bundle first"
     # start() should run cargo run --release
     assert '"cargo"' in start_body or "'cargo'" in start_body, (
         "start() should run cargo"
     )
-    assert "--release" in start_body, (
-        "start() should run in release mode"
-    )
+    assert "--release" in start_body, "start() should run in release mode"
     # Should set API URL
     assert "_make_localhost_url" in start_body, (
         "start() should use _make_localhost_url for API URL"
@@ -873,16 +861,10 @@ def test_dev_method_runs_tauri_dev() -> None:
     dev_body = content[dev_idx:next_impl]
 
     # dev() should run cargo tauri dev
-    assert '"cargo"' in dev_body or "'cargo'" in dev_body, (
-        "dev() should run cargo"
-    )
-    assert "tauri" in dev_body, (
-        "dev() should run tauri dev"
-    )
+    assert '"cargo"' in dev_body or "'cargo'" in dev_body, "dev() should run cargo"
+    assert "tauri" in dev_body, "dev() should run tauri dev"
     # Should set API URL for dev mode
     assert "_make_localhost_url" in dev_body, (
         "dev() should use _make_localhost_url for API URL"
     )
-    assert "API_BASE_URL_ENV_VAR" in dev_body, (
-        "dev() should set API_BASE_URL_ENV_VAR"
-    )
+    assert "API_BASE_URL_ENV_VAR" in dev_body, "dev() should set API_BASE_URL_ENV_VAR"
