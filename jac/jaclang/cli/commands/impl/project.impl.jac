@@ -346,6 +346,7 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
 impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dep_registry { get_dependency_registry }
     config = get_config();
     if config is None {
         console.error(
@@ -362,17 +363,62 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     installer = DependencyInstaller(config=config, verbose=verbose);
     pip_packages = installer.get_pip_package_specs(include_dev=dev);
     git_packages = installer.get_git_package_specs();
-    if not pip_packages and not git_packages {
+    # Check for plugin dependencies (npm, etc.)
+    dep_registry = get_dependency_registry();
+    plugin_types = dep_registry.get_all();
+    has_plugin_deps = False;
+    for type_name in plugin_types.keys() {
+        if config.get_plugin_deps(type_name) {
+            has_plugin_deps = True;
+            break;
+        }
+    }
+    if not pip_packages and not git_packages and not has_plugin_deps {
         console.info("No dependencies to install.");
         return 0;
     }
+    # Install pip and git dependencies
+    install_success = True;
     all_packages = pip_packages + git_packages;
-    with console.status(
-        f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
-    ) as status {
-        install_success = installer.install_package(all_packages);
+    if all_packages {
+        with console.status(
+            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
+            spinner="dots"
+        ) as status {
+            install_success = installer.install_package(all_packages);
+        }
     }
-    if install_success {
+    # Install plugin dependencies (npm, etc.)
+    plugin_failed = False;
+    for (type_name, dep_type) in plugin_types.items() {
+        plugin_deps = config.get_plugin_deps(type_name);
+        if not plugin_deps {
+            continue;
+        }
+        console.print(f"\n  Installing {type_name} dependencies...", style="muted");
+        if dep_type.install_all_handler is not None {
+            try {
+                dep_type.install_all_handler(config);
+                console.print(
+                    f"  ✔ {type_name} dependencies installed", style="success"
+                );
+            } except Exception as e {
+                console.error(f"  ✗ {type_name} dependencies failed: {e}");
+                plugin_failed = True;
+            }
+        } else {
+            for (dep_name, dep_version) in plugin_deps.items() {
+                try {
+                    dep_type.install_handler(config, dep_name, dep_version, False);
+                    console.print(f"  ✔ {dep_name}", style="success");
+                } except Exception as e {
+                    console.error(f"  ✗ {dep_name}: {e}");
+                    plugin_failed = True;
+                }
+            }
+        }
+    }
+    if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
     } else {
@@ -389,37 +435,17 @@ impl add(
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
     config = get_config();
     if config is None {
-        # Skip silently if jac.toml doesn't exist (for regular Python deps)
-        return 0;
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
     }
-    # If no packages specified and not git, install all dependencies
     if not packages and not git {
-        installer = DependencyInstaller(config=config, verbose=verbose);
-        console.print("\n📦 Installing all dependencies from jac.toml", style="bold");
-        pip_packages = installer.get_pip_package_specs(include_dev=dev);
-        git_packages = installer.get_git_package_specs();
-        if not pip_packages and not git_packages {
-            console.info("No dependencies to install.");
-            return 0;
-        }
-        all_packages = pip_packages + git_packages;
-        for spec in all_packages {
-            console.print(f"  • {spec}", style="cyan");
-        }
-        console.print("");
-        with console.status(
-            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
-            spinner="dots"
-        ) as status {
-            install_success = installer.install_package(all_packages);
-        }
-        if install_success {
-            console.success("All dependencies installed");
-            return 0;
-        } else {
-            console.error("Some dependencies failed to install");
-            return 1;
-        }
+        console.error(
+            "No packages specified",
+            hint="Use 'jac add <package>' to add a package, or 'jac install' to install all dependencies."
+        );
+        return 1;
     }
     installer = DependencyInstaller(config=config, verbose=verbose);
     resolver = DependencyResolver(config=config);
@@ -434,12 +460,12 @@ impl add(
         }
         console.print(f"\n📦 Adding [cyan]{pkg_name}[/cyan] from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
-        config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
         with console.status(f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots") as status {
             specs = installer._make_git_spec(pkg_name, git);
             git_success = installer.install_package([specs]);
         }
         if git_success {
+            config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
             config.save();
             console.print(f"  ✔ {pkg_name}", style="success");
             console.print(f"\n  ✔ Updated jac.toml [dependencies.git]", style="muted");
@@ -452,14 +478,28 @@ impl add(
     console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
     for pkg_spec in packages {
         (name, version) = resolver.parse_spec(pkg_spec);
-        version_str = version or ">=0.0.0";
+        if version {
+            install_spec = installer._make_pip_spec(name, version);
+        } else {
+            install_spec = name;
+        }
         with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
-            specs = installer._make_pip_spec(name, version_str);
-            pkg_success = installer.install_package([specs]);
+            pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
+            if not version {
+                # No version specified: query installed version and use compatible release
+                installed_version = installer.get_installed_version(name);
+                if installed_version {
+                    version_str = f"~={_major_minor(installed_version)}";
+                } else {
+                    version_str = ">=0.0.0";
+                }
+            } else {
+                version_str = version;
+            }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
-            console.print(f"  ✔ {name}", style="success");
+            console.print(f"  ✔ {name} ({version_str})", style="success");
         } else {
             console.error(f"Failed to install {name}");
             return 1;
@@ -471,6 +511,7 @@ impl add(
         console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
     } except Exception as e {
         console.error(f"Could not save jac.toml: {e}");
+        return 1;
     }
     return 0;
 }
@@ -481,7 +522,9 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.dependencies { DependencyInstaller }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     if not packages {
@@ -490,11 +533,17 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     }
     installer = DependencyInstaller(config=config);
     for name in packages {
+        # Auto-detect dependency type: check git, then dev, then regular
         dep_type = "python";
+        is_dev = dev;
         if name in config.git_dependencies {
             dep_type = "git";
+        } elif not dev
+        and name not in config.dependencies
+        and name in config.dev_dependencies {
+            is_dev = True;
         }
-        if config.remove_dependency(name, dev=dev, dep_type=dep_type) {
+        if config.remove_dependency(name, dev=is_dev, dep_type=dep_type) {
             console.success(f"Removed {name} from jac.toml");
             installer.uninstall_package(name);
         } else {
@@ -505,8 +554,145 @@ impl remove(packages: list = [], dev: bool = False) -> int {
         config.save();
         console.success("Updated jac.toml");
     } except Exception as e {
-        console.warning(f"Could not save jac.toml: {e}");
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
     }
+    return 0;
+}
+
+"""Extract major.minor from a full version string for ~= compatible release spec."""
+def _major_minor(version: str) -> str {
+    parts = version.split(".");
+    if len(parts) >= 2 {
+        return f"{parts[0]}.{parts[1]}";
+    }
+    return version;
+}
+
+"""Update project dependencies to latest compatible versions."""
+impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    installer = DependencyInstaller(config=config, verbose=verbose);
+    resolver = DependencyResolver(config=config);
+    # Collect specs to update
+    specs_to_update: list[str] = [];
+    names_to_update: list[str] = [];
+    if packages {
+        # Update specific packages
+        for pkg_spec in packages {
+            (name, version) = resolver.parse_spec(pkg_spec);
+            if name in config.dependencies {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            } elif name in config.dev_dependencies {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            } elif name in config.git_dependencies {
+                git_info = config.git_dependencies[name];
+                if isinstance(git_info, dict) and "git" in git_info {
+                    specs_to_update.append(
+                        installer._make_git_spec(
+                            name, git_info["git"], git_info.get("branch", "")
+                        )
+                    );
+                    names_to_update.append(name);
+                }
+            } else {
+                console.error(f"Package '{name}' not found in dependencies.");
+                return 1;
+            }
+        }
+    } else {
+        # Update all dependencies
+        for (name, version) in config.dependencies.items() {
+            specs_to_update.append(name);
+            names_to_update.append(name);
+        }
+        if dev {
+            for (name, version) in config.dev_dependencies.items() {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            }
+        }
+        git_specs = installer.get_git_package_specs();
+        for spec in git_specs {
+            specs_to_update.append(spec);
+        }
+        for name in config.git_dependencies.keys() {
+            names_to_update.append(name);
+        }
+    }
+    if not specs_to_update {
+        console.info("No dependencies to update.");
+        return 0;
+    }
+    console.print(
+        f"\n📦 Updating {len(specs_to_update)} package(s) for [cyan]{config.project.name}[/cyan]",
+        style="bold"
+    );
+    with console.status(
+        f"[cyan]Updating {len(specs_to_update)} package(s)...[/cyan]", spinner="dots"
+    ) as status {
+        update_success = installer.install_package(specs_to_update);
+    }
+    if not update_success {
+        console.error("Some packages failed to update.");
+        return 1;
+    }
+    # Query installed versions and update jac.toml
+    # Only rewrite ~= specs (auto-generated by jac add). Explicit user specs
+    # like >=2.28.0 are left alone since they're still satisfied.
+    updated_count = 0;
+    for name in names_to_update {
+        if name in config.git_dependencies {
+            continue;
+        }
+        installed_version = installer.get_installed_version(name);
+        if installed_version {
+            new_spec = f"~={_major_minor(installed_version)}";
+            # Find current spec and only update if it uses ~= (auto-generated)
+            current_spec = config.dependencies.get(
+                name, config.dev_dependencies.get(name, "")
+            );
+            if current_spec.startswith("~=") or not current_spec {
+                if name in config.dependencies {
+                    config.dependencies[name] = new_spec;
+                    updated_count += 1;
+                } elif name in config.dev_dependencies {
+                    config.dev_dependencies[name] = new_spec;
+                    updated_count += 1;
+                }
+                console.print(
+                    f"  ✔ {name} -> {installed_version} ({new_spec})", style="success"
+                );
+            } else {
+                console.print(
+                    f"  ✔ {name} -> {installed_version} (spec unchanged: {current_spec})",
+                    style="success"
+                );
+            }
+        }
+    }
+    if updated_count > 0 {
+        try {
+            config.save();
+            console.print(
+                f"\n  ✔ Updated {updated_count} version(s) in jac.toml", style="muted"
+            );
+        } except Exception as e {
+            console.error(f"Could not save jac.toml: {e}");
+            return 1;
+        }
+    }
+    console.success("Dependencies updated");
     return 0;
 }
 

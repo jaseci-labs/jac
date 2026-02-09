@@ -14,6 +14,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all examples, docs, tests, and templates.
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
 - **Watchdog auto-install test**: Added test coverage for automatic watchdog installation in dev mode.
+- **Updated tests for CLI dependency command redesign**: New `jac add` behavior (errors on missing `jac.toml` instead of silently succeeding). Verify `jac add --npm` works in projects with both pypi and npm dependencies.
 
 ## jac-client 0.2.14
 
