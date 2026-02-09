@@ -20,7 +20,7 @@ import from jaclang.runtimelib.utils { read_file_with_encoding }
 obj AstKidInfo {
     has name: str,
         typ: str,
-        <>default: (str | None) = None;
+        `default: (str | None) = None;
 }
 
 """Meta data about AST nodes."""

@@ -11,7 +11,7 @@ walker bar_walk {
     has count: int = 0;
 
     # Start walking from the root node or an Item node
-    can start with `root | Item entry {
+    can start with Root | Item entry {
         here ++> Item();
         if self.count < 5 {
             visit [-->];

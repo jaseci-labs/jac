@@ -1,17 +1,17 @@
 walker a {
-    can foo with `root entry {
+    can foo with Root entry {
         print("foo");
     }
 }
 
 walker b(a) {
-    can bar with `root entry {
+    can bar with Root entry {
         print("bar");
     }
 }
 
 walker c(b) {
-    override can foo with `root entry {
+    override can foo with Root entry {
         print("baz");
     }
 }

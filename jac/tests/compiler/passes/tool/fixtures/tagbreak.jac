@@ -472,7 +472,7 @@ def x(
 }
 
 with entry {
-    visit [-->(`?Year:year==self.target_day.year)];
+    visit [-->(?:Year, year==self.target_day.year)];
 }
 
 # Match statement comment preservation

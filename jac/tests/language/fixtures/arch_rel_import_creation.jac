@@ -7,7 +7,7 @@ walker DynamicWalker {
 can start with entry {
 print("DynamicWalker Started");
 here ++> UtilityNode(data=42);
-visit [-->](`?UtilityNode);
+visit [-->](?:UtilityNode);
 }
 
 def UtilityNode {

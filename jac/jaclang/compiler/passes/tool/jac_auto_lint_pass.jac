@@ -8,7 +8,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Converting `def __init__` to `can init` (Jac style)
 - Converting `def __post_init__` to `can postinit` (Jac style)
 - Removing empty parentheses from function/method declarations (def foo() -> def foo)
-- Removing unnecessary angle bracket escaping from names that are not actual keywords
+- Removing unnecessary backtick escaping from names that are not actual keywords
 - Converting hasattr(obj, "attr") to null-safe access
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
@@ -49,13 +49,13 @@ obj JacAutoLintPass(UniPass) {
     def enter_archetype(node: uni.Archetype) -> None;
     def enter_enum(node: uni.Enum) -> None;
     def enter_impl_def(node: uni.ImplDef) -> None;
-    def exit_impl_def(<>node: uni.ImplDef) -> None;
+    def exit_impl_def(`node: uni.ImplDef) -> None;
     def enter_ability(ability_node: uni.Ability) -> None;
     def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
-    def enter_name(<>node: uni.Name) -> None;
-    def enter_special_var_ref(<>node: uni.SpecialVarRef) -> None;
-    def enter_builtin_type(<>node: uni.BuiltinType) -> None;
+    def enter_name(`node: uni.Name) -> None;
+    def enter_special_var_ref(`node: uni.SpecialVarRef) -> None;
+    def enter_builtin_type(`node: uni.BuiltinType) -> None;
     def exit_func_call(node: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(node: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _is_matching_attr_access(

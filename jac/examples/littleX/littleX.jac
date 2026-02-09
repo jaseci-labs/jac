@@ -53,7 +53,7 @@ edge Like {}
 edge Post {}
 
 walker visit_profile {
-    can visit_profile with `root entry;
+    can visit_profile with Root entry;
 }
 
 walker update_profile(visit_profile) {
@@ -67,7 +67,7 @@ walker load_user_profiles {
         static has auth: bool = False;
     }
 
-    can load_profiles with `root entry;
+    can load_profiles with Root entry;
     can report_profiles with exit;
 }
 

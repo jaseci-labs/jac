@@ -71,7 +71,7 @@ walker:priv AddTodo {
         priority: str = "medium",
         parent_id: str = "";
 
-    can create with `root entry {
+    can create with Root entry {
         # Generate a unique ID
         new_id = str(uuid4());
 
@@ -94,7 +94,7 @@ walker:priv AddTodo {
 
 - `walker:priv` - Private walker (not exposed as REST API, called from code)
 - `has` - Walker parameters passed during instantiation
-- `can create with`root entry` - Ability that runs when walker enters the root node
+- `can create with Root entry` - Ability that runs when walker enters the root node
 - `here ++> Node(...)` - Creates a new node and connects it to the current node (`here`)
 - `new_todo[0]` - The `++>` operator returns a list; access the first element
 - `report` - Returns data to the caller (collected in `.reports` array)
@@ -108,7 +108,7 @@ walker:priv ListTodos {
     has todos: list = [];
 
     # Entry point: start traversing from root
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];  # Visit all outgoing edges
     }
 
@@ -124,7 +124,7 @@ walker:priv ListTodos {
     }
 
     # Exit point: report accumulated data
-    can report_all with `root exit {
+    can report_all with Root exit {
         report self.todos;
     }
 }
@@ -133,9 +133,9 @@ walker:priv ListTodos {
 **Key concepts:**
 
 - Multiple `can` abilities with different triggers
-- `with`root entry` - Runs when entering the root node
+- `with Root entry` - Runs when entering the root node
 - `with Todo entry` - Runs when entering any Todo node
-- `with`root exit` - Runs when exiting the root node (after traversal)
+- `with Root exit` - Runs when exiting the root node (after traversal)
 - `visit [-->]` - Traverse all outgoing edges from current node
 - `self.todos` - Walker state persists across the traversal
 - The pattern: enter root → visit children → gather from each → exit root with results
@@ -146,7 +146,7 @@ walker:priv ListTodos {
 walker:priv ToggleTodo {
     has todo_id: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 
@@ -161,7 +161,7 @@ walker:priv ToggleTodo {
 walker:priv DeleteTodo {
     has todo_id: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 
@@ -194,7 +194,7 @@ When you spawn a walker, every `report` statement adds to a `.reports` array:
 ```jac
 # Walker with multiple reports
 walker:priv MyWalker {
-    can do_stuff with `root entry {
+    can do_stuff with Root entry {
         report "first";   # reports[0]
         report "second";  # reports[1]
         report "third";   # reports[2]
@@ -208,7 +208,7 @@ When a walker visits multiple nodes and reports from each:
 
 ```jac
 walker:priv VisitAll {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -228,9 +228,9 @@ The `ListTodos` walker uses the cleanest pattern - accumulate internally, report
 walker:priv ListTodos {
     has todos: list = [];
 
-    can collect with `root entry { visit [-->]; }
+    can collect with Root entry { visit [-->]; }
     can gather with Todo entry { self.todos.append({...}); }
-    can report_all with `root exit { report self.todos; }  # Single report
+    can report_all with Root exit { report self.todos; }  # Single report
 }
 
 # response.reports[0] = [all todos as a list]
@@ -460,7 +460,7 @@ def generate_ingredients(meal_description: str) -> list[Ingredient] by llm();
 walker:priv MealToIngredients {
     has meal_description: str;
 
-    can process with `root entry {
+    can process with Root entry {
         # Call the LLM-powered function
         ingredients = generate_ingredients(self.meal_description);
 
@@ -609,7 +609,7 @@ Open http://localhost:8000 in your browser.
 ```jac
 # Walker
 walker MyWalker {
-    can do_work with `root entry {
+    can do_work with Root entry {
         report "data";  # Adds to .reports array
     }
 }

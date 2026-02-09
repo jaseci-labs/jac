@@ -2,7 +2,7 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.7 (Unreleased)
+## jac-scale 0.1.8 (Unreleased)
 
 - **SSO Frontend Callback URL**: Added configurable `frontend_callback_url` option for SSO authentication. When configured in `jac.toml`, the SSO callback endpoint redirects to the specified frontend URL with token or error parameters instead of returning JSON. This enables seamless browser-based OAuth flows while maintaining backwards compatibility (JSON response when not configured).
 
@@ -13,6 +13,12 @@ This document provides a summary of new features, improvements, and bug fixes in
   ```
 
 ## jac-scale 0.1.6 (Latest Release)
+## jac-scale 0.1.7 (Latest Release)
+
+- **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.
+
+## jac-scale 0.1.6
 
 - **WebSocket Support**: Added WebSocket transport for walkers via `@restspec(protocol=APIProtocol.WEBSOCKET)` with persistent bidirectional connections at `ws://host/ws/{walker_name}`. The `APIProtocol` enum (`HTTP`, `WEBHOOK`, `WEBSOCKET`) replaces the previous `webhook=True` flag-migrate by changing `@restspec(webhook=True)` to `@restspec(protocol=APIProtocol.WEBHOOK)`.
 

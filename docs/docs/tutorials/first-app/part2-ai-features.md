@@ -127,13 +127,13 @@ Add `"category"` to the return values of `get_todos` and `toggle_todo`:
 def:pub get_todos -> list {
     return [
         {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
-        for t in [root-->](`?Todo)
+        for t in [root-->](?:Todo)
     ];
 }
 
 """Toggle a todo's done status."""
 def:pub toggle_todo(id: str) -> dict {
-    for todo in [root-->](`?Todo) {
+    for todo in [root-->](?:Todo) {
         if todo.id == id {
             todo.done = not todo.done;
             return {
@@ -227,13 +227,13 @@ Add one line to `styles.css`:
     def:pub get_todos -> list {
         return [
             {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->](`?Todo)
+            for t in [root-->](?:Todo)
         ];
     }
 
     """Toggle a todo's done status."""
     def:pub toggle_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 todo.done = not todo.done;
                 return {
@@ -247,7 +247,7 @@ Add one line to `styles.css`:
 
     """Delete a todo."""
     def:pub delete_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 del todo;
                 return {"deleted": id};

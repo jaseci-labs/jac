@@ -55,7 +55,7 @@ walker PaymentReceived {
         amount: float,
         currency: str = 'USD';
 
-    can process with `root entry {
+    can process with Root entry {
         # Process the payment notification
         report {
             "status": "success",
@@ -74,7 +74,7 @@ This walker will be accessible at `POST /webhook/PaymentReceived`.
 ```jac
 @restspec(protocol=APIProtocol.WEBHOOK)
 walker WebhookHandler {
-    can process with `root entry {
+    can process with Root entry {
         report {"status": "received", "message": "Webhook processed"};
     }
 }

@@ -1,6 +1,6 @@
 # fix test type 2
 walker MyWalker {
-    can travel with `root | MyNode entry {
+    can travel with Root | MyNode entry {
         print("MyWalker");
     }
 }

@@ -130,14 +130,14 @@ Returns True if `node` could be printed *flat* on the current line within
 Stops early on overflow or hard/literal lines.
 """
 impl JacFormatPass._probe_fits(
-    <>node: doc.DocType,
+    `node: doc.DocType,
     indent_level: int,
     width_remaining: int,
     *,
     max_steps: int = 2000
 ) -> bool {
     work: deque[tuple[(object, int)]] = deque();
-    work.append((<>node, indent_level));
+    work.append((`node, indent_level));
     steps = 0;
     remaining = width_remaining;
     while work {

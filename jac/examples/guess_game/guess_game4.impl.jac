@@ -9,7 +9,7 @@ impl turn.check{
 }
 
 impl GuessGame.start_game{
-    end: `root | turn = here;
+    end: Root | turn = here;
     for i = 0 to i < 10 by i += 1 {
         end ++> (end := turn());
     }

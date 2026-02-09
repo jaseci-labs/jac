@@ -1,8 +1,8 @@
 impl GuessGame.start{
-    if not [root-->(`?turn)] {
+    if not [root-->(?:turn)] {
         next = root ++> turn(random.randint(1, 10));
     } else {
-        next = [root-->(`?turn)];
+        next = [root-->(?:turn)];
     }
     visit next;
 }

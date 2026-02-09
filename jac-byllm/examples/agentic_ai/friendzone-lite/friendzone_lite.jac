@@ -64,8 +64,8 @@ walker update_session {
     has image_url: str,
         utterance: str = "";
 
-    can visit_session with `root entry {
-        visit [-->](`?session) else {
+    can visit_session with Root entry {
+        visit [-->](?:session) else {
             session_node = here ++> session();
             visit session_node[0];
         }
