@@ -896,7 +896,7 @@ vue = "3.0"
                 self._reset_config()
 
     def test_update_all_deps(self) -> None:
-        """Test jac update updates all dependencies and writes ~= versions."""
+        """Test jac update updates ~= specs and preserves explicit specs."""
         from jaclang.cli.commands import project  # type: ignore[attr-defined]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -924,18 +924,33 @@ vue = "3.0"
 
                 assert result == 0
                 config = JacConfig.load(Path(project_path) / "jac.toml")
-                assert config.dependencies["requests"] == "~=2.31"
+                # requests uses >=2.28.0 (explicit) -> preserved unchanged
+                assert config.dependencies["requests"] == ">=2.28.0"
+                # flask uses ~=3.0 (auto-generated) -> updated to ~=3.1
                 assert config.dependencies["flask"] == "~=3.1"
             finally:
                 os.chdir(original_cwd)
                 self._reset_config()
 
     def test_update_specific_package(self) -> None:
-        """Test jac update with specific package name."""
+        """Test jac update with specific package updates ~= spec."""
         from jaclang.cli.commands import project  # type: ignore[attr-defined]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            project_path = self._create_project(tmpdir)
+            # Use toml with ~= specs so update can rewrite them
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.28"
+flask = "~=3.0"
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
             os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
             original_cwd = os.getcwd()
             os.chdir(project_path)
@@ -1140,7 +1155,20 @@ vue = "3.0"
         from jaclang.cli.commands import project  # type: ignore[attr-defined]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            project_path = self._create_project(tmpdir)
+            # Use ~= specs so update can rewrite them
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.28"
+flask = "~=3.0"
+
+[dev-dependencies]
+pytest = "~=8.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
             os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
             original_cwd = os.getcwd()
             os.chdir(project_path)
@@ -1232,6 +1260,41 @@ version = "0.1.0"
                 assert "flask" in config.dependencies
                 # Verify pip uninstall was called
                 mock_pip.assert_called_with(["uninstall", "-y", "requests"])
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_dev_dep_without_flag(self) -> None:
+        """Test jac remove finds dev deps even without --dev flag."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully uninstalled pytest-8.0.0",
+                        "",
+                    )
+                    # pytest is in dev-dependencies, but we don't pass --dev
+                    result = project.remove(packages=["pytest"])
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                # pytest should be removed from dev-dependencies
+                assert "pytest" not in config.dev_dependencies
             finally:
                 os.chdir(original_cwd)
                 self._reset_config()
