@@ -1,0 +1,72 @@
+{
+  "name": "mobile",
+  "description": "Jac project with mobile (Expo + WebView) setup",
+  "config": {
+    "project": {
+      "name": "{{name}}",
+      "version": "1.0.0",
+      "description": "Jac mobile application: {{name}}",
+      "entry-point": "main.jac"
+    },
+    "dependencies": {},
+    "dependencies.npm": {
+      "jac-client-node": "1.0.4"
+    },
+    "dependencies.npm.dev": {
+      "@jac-client/dev-deps": "1.0.0"
+    },
+    "dev-dependencies": {
+      "watchdog": ">=3.0.0"
+    },
+    "serve": {
+      "base_route_app": "app"
+    },
+    "plugins.client": {},
+    "plugins.client.mobile": {
+      "scheme": "{{name}}",
+      "api_base_url": "http://localhost:8000",
+      "bundle_identifier": "com.example.{{name}}",
+      "package_name": "com.example.{{name}}"
+    }
+  },
+  "files": {
+    "main.jac": "\"\"\"Main entry point for {{name}}.\n\nThis is a mobile-ready Jac app. The web UI runs inside a WebView on mobile.\nWrite standard HTML/CSS/JS — it works on both web and mobile.\"\"\"\n\n# Client-side imports\ncl import from react { useEffect }\n\n# Client-side component\ncl {\n    def:pub app() -> any {\n        has count: int = 0;\n\n        useEffect(lambda -> None {\n            console.log(\"Count updated:\", count);\n        }, [count]);\n\n        return <div style={{\n            padding: \"2rem\",\n            fontFamily: \"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif\",\n            maxWidth: \"480px\",\n            margin: \"0 auto\"\n        }}>\n            <h1 style={{fontSize: \"1.5rem\"}}>Welcome to {{name}}</h1>\n            <p style={{color: \"#666\"}}>Running on web and mobile</p>\n            <p style={{fontSize: \"2rem\", fontWeight: \"bold\", margin: \"1rem 0\"}}>\n                Count: {count}\n            </p>\n            <div style={{display: \"flex\", gap: \"0.5rem\"}}>\n                <button\n                    style={{\n                        padding: \"0.75rem 1.5rem\",\n                        fontSize: \"1rem\",\n                        backgroundColor: \"#3b82f6\",\n                        color: \"white\",\n                        border: \"none\",\n                        borderRadius: \"0.5rem\",\n                        cursor: \"pointer\"\n                    }}\n                    onClick={lambda -> None { count = count + 1; }}\n                >\n                    Increment\n                </button>\n                <button\n                    style={{\n                        padding: \"0.75rem 1.5rem\",\n                        fontSize: \"1rem\",\n                        backgroundColor: \"#6b7280\",\n                        color: \"white\",\n                        border: \"none\",\n                        borderRadius: \"0.5rem\",\n                        cursor: \"pointer\"\n                    }}\n                    onClick={lambda -> None { count = 0; }}\n                >\n                    Reset\n                </button>\n            </div>\n        </div>;\n    }\n}\n",
+    "README.md": "# {{name}}\n\nA Jac mobile application using Expo + WebView.\n\n## Getting Started\n\n### Web development\n\n```bash\njac start main.jac\n```\n\n### Mobile development\n\n1. Setup mobile target (one-time):\n\n```bash\njac setup mobile\n```\n\n2. Start the mobile dev server:\n\n```bash\njac start --client mobile\n```\n\n3. Scan the QR code with [Expo Go](https://expo.dev/go) on your phone.\n\n### Building for production\n\n```bash\n# iOS\njac build --client mobile --target ios --profile production\n\n# Android\njac build --client mobile --target android --profile production\n```\n\n## Adding Expo packages\n\n```bash\njac add --expo expo-camera react-native-maps\n```\n\n## Project Structure\n\n```\n{{name}}/\n\u251c\u2500\u2500 jac.toml              # Project configuration\n\u251c\u2500\u2500 main.jac              # Main application entry\n\u251c\u2500\u2500 assets/               # Static assets\n\u2514\u2500\u2500 .jac/\n    \u251c\u2500\u2500 client/           # Web build output\n    \u2514\u2500\u2500 mobile/           # Expo project (after setup)\n```\n"
+  },
+  "directories": [
+    "assets",
+    ".jac/client"
+  ],
+  "root_gitignore_entries": [
+    "# Jac project",
+    "packages/",
+    "*.jbc",
+    "*.jir",
+    "",
+    "# Python",
+    "__pycache__/",
+    "*.py[cod]",
+    ".venv/",
+    "venv/",
+    "",
+    "# IDE",
+    ".idea/",
+    ".vscode/",
+    "*.swp",
+    "",
+    "# Node.js",
+    "node_modules/",
+    "",
+    "# Build artifacts",
+    ".jac/",
+    "*.session",
+    "*.session.*"
+  ],
+  "jaclang": "0.9.8",
+  "plugins": [
+    {
+      "name": "jac-client",
+      "version": "0.2.8"
+    }
+  ]
+}

@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.15 (Unreleased)
 
+- **Mobile Target (Expo + WebView)**: Added mobile as a build target, enabling Jac web apps to run on iOS and Android with zero code changes. The mobile target wraps the existing web bundle in an Expo app using `react-native-webview`, following the same pattern as the desktop (Tauri) target. Run `jac setup mobile` to scaffold the Expo project under `.jac/mobile/`, then `jac start --client mobile` to launch the Expo dev server with LAN IP detection for physical device testing. Build native binaries with `jac build --client mobile --target ios --profile production` using EAS Build, or export a universal bundle with `jac build --client mobile`. Use `--ios`, `--android`, and `--tunnel` flags on `jac start` to launch simulators or enable remote device access. Manage Expo-compatible packages with `jac add --expo <package>` and `jac remove --expo <package>`, and run arbitrary Expo CLI commands with `jac expo <command>`. A `mobile` jacpack template is available via `jac create --use mobile` for new projects. Mobile-specific configuration lives in `[plugins.client.mobile]` in `jac.toml`, including `scheme`, `bundle_identifier`, `package_name`, and `api_base_url`.
+
 ## jac-client 0.2.14 (Latest Release)
 
 - **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.

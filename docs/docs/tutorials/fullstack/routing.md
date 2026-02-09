@@ -537,6 +537,182 @@ cl {
 
 ---
 
+## File-Based Routing
+
+Instead of manually defining `<Route>` components, you can use a **`pages/` directory convention** to generate routes automatically from your file structure.
+
+### Directory Structure
+
+Create a `pages/` directory in your project root. Each `.jac` file becomes a route:
+
+```
+my-app/
+├── main.jac
+├── jac.toml
+└── pages/
+    ├── layout.jac           # Root layout (Navigation + Outlet)
+    ├── index.jac            # → /
+    ├── about.jac            # → /about
+    ├── landing.jac          # → /landing
+    ├── users/
+    │   └── [id].jac         # → /users/:id  (dynamic segment)
+    ├── [...notFound].jac    # → /*  (catch-all 404)
+    ├── (auth)/
+    │   ├── dashboard.jac    # → /dashboard  (protected)
+    │   └── settings.jac     # → /settings   (protected)
+    └── (public)/
+        ├── login.jac        # → /login
+        └── signup.jac       # → /signup
+```
+
+### Page Files
+
+Each page file must export `def:pub page`:
+
+```jac
+cl {
+    def:pub page -> any {
+        return <div>
+            <h1>About Us</h1>
+            <p>Welcome to our site.</p>
+        </div>;
+    }
+}
+```
+
+### Layout Files
+
+Layout files export `def:pub layout` and use `<Outlet />` to render child routes:
+
+```jac
+cl import from "@jac/runtime" { Outlet, Link }
+
+cl {
+    def:pub layout -> any {
+        return <>
+            <nav>
+                <Link to="/">Home</Link>
+                <Link to="/about">About</Link>
+                <Link to="/dashboard">Dashboard</Link>
+            </nav>
+            <main>
+                <Outlet />
+            </main>
+        </>;
+    }
+}
+```
+
+### Protected Pages with `(auth)/`
+
+Place pages inside a `(auth)/` directory to mark them as **protected**. These routes are automatically wrapped in an `AuthGuard` that checks `jacIsLoggedIn()` and redirects unauthenticated users to `/login`:
+
+```
+pages/
+├── (auth)/
+│   ├── dashboard.jac    # → /dashboard  (requires login)
+│   ├── profile.jac      # → /profile    (requires login)
+│   └── settings.jac     # → /settings   (requires login)
+```
+
+The `(auth)` directory name does **not** appear in the URL -- it only controls authentication. `pages/(auth)/dashboard.jac` maps to `/dashboard`, not `/auth/dashboard`.
+
+No additional code is needed in the page file itself -- the `AuthGuard` handles the redirect automatically:
+
+```jac
+# pages/(auth)/dashboard.jac
+# No need for jacIsLoggedIn() checks -- AuthGuard handles it
+cl {
+    def:pub page -> any {
+        return <div>
+            <h1>Dashboard</h1>
+            <p>This content is only visible to logged-in users.</p>
+        </div>;
+    }
+}
+```
+
+### Public Pages with `(public)/`
+
+Place pages inside a `(public)/` directory to explicitly mark them as **public** (no authentication required). Like `(auth)/`, the directory name does not appear in the URL:
+
+```
+pages/
+├── (public)/
+│   ├── login.jac     # → /login   (no auth required)
+│   └── signup.jac    # → /signup  (no auth required)
+```
+
+Pages at the root of `pages/` (not inside any group directory) are also public by default.
+
+### Dynamic Routes
+
+Use `[param]` syntax in filenames for dynamic URL segments:
+
+```
+pages/users/[id].jac       # → /users/:id
+pages/blog/[slug].jac      # → /blog/:slug
+```
+
+Access parameters with `useParams()`:
+
+```jac
+cl import from "@jac/runtime" { useParams }
+
+cl {
+    def:pub page -> any {
+        params = useParams();
+        return <h1>User: {params.id}</h1>;
+    }
+}
+```
+
+### Catch-All Routes
+
+Use `[...name]` syntax for catch-all routes (404 pages):
+
+```jac
+# pages/[...notFound].jac → matches any unmatched URL
+cl import from "@jac/runtime" { Link }
+
+cl {
+    def:pub page -> any {
+        return <div>
+            <h1>404 - Page Not Found</h1>
+            <Link to="/">Go Home</Link>
+        </div>;
+    }
+}
+```
+
+### Simplifying `main.jac`
+
+With file-based routing, `main.jac` no longer needs explicit `Router`/`Routes`/`Route` setup. If `app()` is exported, it wraps the auto-generated router as a parent container:
+
+```jac
+# Global styles
+cl import ".styles/styles.css";
+
+cl {
+    def:pub app(children: any = None) -> any {
+        return <div style={{"fontFamily": "system-ui, sans-serif"}}>
+            {children}
+        </div>;
+    }
+}
+```
+
+### Auth Redirect Configuration
+
+By default, unauthenticated users are redirected to `/login`. Configure this in `jac.toml`:
+
+```toml
+[plugins.client.routing]
+auth_redirect = "/signin"
+```
+
+---
+
 ## Key Takeaways
 
 | Concept | Usage |
@@ -548,6 +724,13 @@ cl {
 | Query strings | `useSearchParams()` |
 | Nested routes | `<Outlet />` renders child routes |
 | 404 handling | `<Route path="*" element={<NotFound />} />` |
+| File-based routes | `pages/about.jac` → `/about` |
+| Protected pages | `pages/(auth)/dashboard.jac` → requires login |
+| Public pages | `pages/(public)/login.jac` → no auth needed |
+| Dynamic segments | `pages/users/[id].jac` → `/users/:id` |
+| Catch-all | `pages/[...slug].jac` → `*` |
+| Page export | `def:pub page -> any { ... }` |
+| Layout export | `def:pub layout -> any { ... }` with `<Outlet />` |
 
 ---
 

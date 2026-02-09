@@ -12,7 +12,7 @@ Multi-target builds allow you to compile the same Jac codebase for different pla
 
 - **Web**: Browser-based applications (default)
 - **Desktop**: Native desktop applications using Tauri
-- **Mobile**: Coming soon (Android, iOS)
+- **Mobile**: iOS and Android via Expo + WebView
 
 Each target uses the same Jac code, but produces platform-specific outputs optimized for that environment.
 
@@ -50,6 +50,21 @@ jac build main.jac --client desktop
 jac start main.jac --client desktop --dev
 ```
 
+### Mobile Target
+
+Mobile builds wrap your web app in an Expo native shell:
+
+```bash
+# 1. One-time setup
+jac setup mobile
+
+# 2. Start Expo dev server
+jac start main.jac --client mobile
+
+# 3. Build for iOS/Android
+jac build main.jac --client mobile --target ios --profile production
+```
+
 ---
 
 ## Why Multi-Target Builds?
@@ -60,7 +75,7 @@ Write your application once in Jac, then build for:
 
 - Web browsers (Chrome, Firefox, Safari, Edge)
 - Desktop (Windows, macOS, Linux)
-- Mobile (coming soon)
+- Mobile (iOS, Android)
 
 ### Consistent Experience
 
@@ -72,21 +87,21 @@ Write your application once in Jac, then build for:
 
 - Web: Deploy to any web server
 - Desktop: Create installers (`.exe`, `.dmg`, `.AppImage`)
-- Mobile: Create app packages (`.apk`, `.ipa`)
+- Mobile: Build via EAS for App Store / Play Store
 
 ---
 
 ## Target Comparison
 
-| Feature | Web | Desktop |
-|---------|-----|---------|
-| **Setup Required** | No | Yes (`jac setup desktop`) |
-| **Build Command** | `jac build` | `jac build --client desktop` |
-| **Dev Command** | `jac start --dev` | `jac start --client desktop --dev` |
-| **Output** | `.jac/client/dist/` | Installer (`.exe`, `.dmg`, `.AppImage`) |
-| **Distribution** | Web server | Installer file |
-| **Hot Reload** | ✅ Yes | ✅ Yes |
-| **Native Features** | ❌ Limited | ✅ Full access |
+| Feature | Web | Desktop | Mobile |
+|---------|-----|---------|--------|
+| **Setup Required** | No | Yes (`jac setup desktop`) | Yes (`jac setup mobile`) |
+| **Build Command** | `jac build` | `jac build --client desktop` | `jac build --client mobile --target ios` |
+| **Dev Command** | `jac start --dev` | `jac start --client desktop --dev` | `jac start --client mobile` |
+| **Output** | `.jac/client/dist/` | Installer (`.exe`, `.dmg`, `.AppImage`) | App (`.ipa`, `.apk`) via EAS |
+| **Distribution** | Web server | Installer file | App Store / Play Store |
+| **Hot Reload** | Yes | Yes | Yes (via Expo) |
+| **Native Features** | Limited | Full access | Via WebView bridge (v2) |
 
 ---
 
@@ -124,10 +139,28 @@ jac build main.jac --client desktop
 
 ---
 
+### For Mobile Applications
+
+To add mobile support to your project:
+
+```bash
+# Setup mobile target (one-time)
+jac setup mobile
+
+# Develop on phone via Expo Go
+jac start main.jac --client mobile
+
+# Build for production
+jac build main.jac --client mobile --target ios --profile production
+```
+
+---
+
 ## Next Steps
 
 - **[Web Target Guide](web-target.md)**: Learn about web builds in detail
 - **[Desktop Target Guide](desktop-target.md)**: Learn about desktop builds in detail
+- **[Mobile Target Guide](mobile-target.md)**: Learn about mobile builds in detail
 
 ---
 

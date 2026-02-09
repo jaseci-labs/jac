@@ -28,6 +28,7 @@ Learn how to create multi-page applications with client-side routing using Jac's
 - [Protected Routes Pattern](#protected-routes-pattern)
 - [Complete Examples](#complete-examples)
 - [Best Practices](#best-practices)
+- [File-Based Routing (pages/ Convention)](#file-based-routing-pages-convention)
 
 ---
 
@@ -683,6 +684,156 @@ def Navigation() -> any {
 
 ---
 
+## File-Based Routing (pages/ Convention)
+
+Instead of wiring up `<Router>`, `<Routes>`, and `<Route>` manually, you can let the compiler generate all routing from a `pages/` directory.
+
+### Quick Start
+
+Create a `pages/` directory and add `.jac` files. Each file must export `def:pub page`:
+
+```
+my-app/
+├── main.jac
+└── pages/
+    ├── layout.jac         # Shared layout (nav + Outlet)
+    ├── index.jac          # → /
+    ├── about.jac          # → /about
+    ├── (auth)/
+    │   └── dashboard.jac  # → /dashboard  (protected)
+    ├── (public)/
+    │   └── login.jac      # → /login
+    └── [...notFound].jac  # → /*  (catch-all 404)
+```
+
+```jac
+# pages/about.jac
+cl {
+    def:pub page -> any {
+        return <div>
+            <h1>About</h1>
+        </div>;
+    }
+}
+```
+
+### Protected vs Public Pages
+
+Use **route group directories** to control authentication. The directory name appears only in the filesystem -- it never appears in the URL.
+
+**`(auth)/` -- Protected pages:**
+
+Pages inside `(auth)/` are automatically wrapped in an `AuthGuard` component. The guard checks `jacIsLoggedIn()` and redirects unauthenticated users to `/login` (configurable). No auth code is needed in the page file itself:
+
+```
+pages/(auth)/dashboard.jac   → /dashboard   (login required)
+pages/(auth)/settings.jac    → /settings    (login required)
+pages/(auth)/profile.jac     → /profile     (login required)
+```
+
+```jac
+# pages/(auth)/dashboard.jac
+# AuthGuard handles authentication -- just write the UI
+cl {
+    def:pub page -> any {
+        return <div>
+            <h1>Dashboard</h1>
+            <p>Only visible when logged in.</p>
+        </div>;
+    }
+}
+```
+
+**`(public)/` -- Explicitly public pages:**
+
+Pages inside `(public)/` are always accessible without authentication:
+
+```
+pages/(public)/login.jac     → /login    (always accessible)
+pages/(public)/signup.jac    → /signup   (always accessible)
+```
+
+**Root-level pages** (not in any group directory) are also public by default:
+
+```
+pages/about.jac              → /about    (public)
+pages/landing.jac            → /landing  (public)
+```
+
+### Layout Files
+
+A `layout.jac` file defines a shared wrapper for all sibling and child routes. It must export `def:pub layout` and render `<Outlet />` where child routes should appear:
+
+```jac
+# pages/layout.jac
+cl import from "@jac/runtime" { Outlet, Link }
+
+cl {
+    def:pub layout -> any {
+        return <>
+            <nav>
+                <Link to="/">Home</Link>
+                <Link to="/about">About</Link>
+                <Link to="/dashboard">Dashboard</Link>
+            </nav>
+            <main>
+                <Outlet />
+            </main>
+        </>;
+    }
+}
+```
+
+### Dynamic Routes and Catch-All
+
+```
+pages/users/[id].jac         → /users/:id       (useParams().id)
+pages/blog/[slug].jac        → /blog/:slug       (useParams().slug)
+pages/[...notFound].jac      → /*                (catch-all 404)
+```
+
+### Simplifying main.jac
+
+With file-based routing, `main.jac` only needs backend walkers and an optional `app()` wrapper. The compiler detects `pages/` and generates `BrowserRouter`, `Routes`, `AuthGuard`, and layout nesting automatically:
+
+```jac
+# Global CSS
+cl import ".styles/styles.css";
+
+# Optional wrapper -- receives the auto-generated router as children
+cl {
+    def:pub app(children: any = None) -> any {
+        return <div style={{"fontFamily": "system-ui, sans-serif"}}>
+            {children}
+        </div>;
+    }
+}
+```
+
+### Auth Redirect Configuration
+
+The default redirect target for unauthenticated users is `/login`. Override it in `jac.toml`:
+
+```toml
+[plugins.client.routing]
+auth_redirect = "/signin"
+```
+
+### Special Files Reference
+
+| File | Export | Purpose |
+|------|--------|---------|
+| `index.jac` | `def:pub page` | Maps to the parent directory path (`/`) |
+| `layout.jac` | `def:pub layout` | Shared wrapper with `<Outlet />` |
+| `[param].jac` | `def:pub page` | Dynamic route segment (`:param`) |
+| `[...name].jac` | `def:pub page` | Catch-all route (`*`) |
+
+### Skipped Files
+
+Files with compound extensions (`.cl.jac`, `.impl.jac`, `.test.jac`) inside `pages/` are **not** treated as routes. Use these for helper modules, implementations, or tests that live alongside page files.
+
+---
+
 ## Summary
 
 - **Simple & Declarative**: Use `<Router>`, `<Routes>`, `<Route>` components
@@ -691,6 +842,7 @@ def Navigation() -> any {
 - **Protected Routes**: Use `<Navigate>` component for redirects
 - **URL Parameters**: Dynamic routes with `:param` syntax
 - **No Configuration**: Just wrap your app in `<Router>` and start routing!
+- **File-Based Alternative**: Use `pages/` directory with `(auth)`/`(public)` route groups
 - **Production-ready**: Battle-tested routing for real applications
 
 Routing in Jac is simple, powerful, and production-ready!

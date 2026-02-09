@@ -100,7 +100,7 @@ class JacClientPluginConfig {
         templates: list[dict[str, Any]] = [];
 
         # Load templates from bundled JSON files
-        for template_name in ["client", "fullstack"] {
+        for template_name in ["client", "fullstack", "mobile"] {
             template = _load_template(template_name);
             if template {
                 templates.append(template);
