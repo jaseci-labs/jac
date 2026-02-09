@@ -52,11 +52,12 @@ cl {
                         <Route path="/" element={<Home />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/auth/callback" element={<OAuthCallback />} />
-                        <Route path="/sample" element={
-                            <Protected>
+                        <Route
+                            path="/sample"
+                            element={<Protected>
                                 <Sample />
-                            </Protected>
-                        } />
+                            </Protected>}
+                        />
                         <Route
                             path="/dashboard"
                             element={<Protected>
