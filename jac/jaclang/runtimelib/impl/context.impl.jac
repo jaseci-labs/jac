@@ -22,11 +22,45 @@ impl ExecutionContext.postinit -> None {
         system_root = cast(NodeAnchor, Root().__jac__);
         system_root.id = UUID(Con.SUPER_ROOT_UUID);
         self.mem.put(system_root);
+    } else {
+        # Clean up any stale edges from previous runs
+        self._cleanup_stale_edges(system_root);
     }
     self.system_root = system_root;
     # Default user_root and entry_node to system_root
     self.user_root = self.system_root;
     self.entry_node = self.system_root;
+}
+
+"""Remove stale edges that point to invalid anchors."""
+impl ExecutionContext._cleanup_stale_edges(node_anchor: NodeAnchor) -> None {
+    if not node_anchor.edges {
+        return;
+    }
+    valid_edges = [];
+    found_stale = False;
+    for edge in node_anchor.edges {
+        try {
+            # Access target.id from __dict__ to avoid triggering populate() during init
+            # This prevents recursion when context is not fully initialized yet
+            target_obj = edge.__dict__.get('target');
+            if target_obj {
+                target_id = target_obj.__dict__.get('id');
+                if target_id and self.mem.has(target_id) {
+                    valid_edges.append(edge);
+                } else {
+                    found_stale = True;
+                }
+            } else {
+                found_stale = True;
+            }
+        } except (AttributeError, TypeError) {
+            found_stale = True;
+        }
+    }
+    if found_stale {
+        node_anchor.edges = valid_edges;
+    }
 }
 
 """Get anchor by ID or raise error."""

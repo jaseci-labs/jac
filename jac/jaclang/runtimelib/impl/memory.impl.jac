@@ -12,6 +12,7 @@ import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.utils { is_valid_anchor }
 
 glob logger = logging.getLogger(__name__);
 
@@ -211,12 +212,22 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         if (row := cursor.fetchone()) {
             try {
                 anchor = loads(row[0]);
+                # Validate anchor integrity
+                if not is_valid_anchor(anchor) {
+                    logger.debug(f"Removing invalid anchor {id}");
+                    self.__conn__.execute(
+                        "DELETE FROM anchors WHERE id = ?", (str(id), )
+                    );
+                    self.__conn__.commit();
+                    return None;
+                }
                 # Promote to memory cache
                 self.__mem__[id] = anchor;
                 return anchor;
             } except (UnpicklingError, ModuleNotFoundError, AttributeError) {
                 # Can't unpickle - likely stale data from previous session
                 # Delete the stale entry
+                logger.debug(f"Removing unpicklable anchor {id}");
                 self.__conn__.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
                 self.__conn__.commit();
                 return None;

@@ -7,7 +7,7 @@ import from uuid { UUID }
 import from pymongo { MongoClient, UpdateOne }
 import from pymongo.errors { ConnectionFailure }
 import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
-import from jaclang.runtimelib.utils { storage_key, to_uuid }
+import from jaclang.runtimelib.utils { is_valid_anchor, storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
 
@@ -229,9 +229,17 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
     if 'data' not in raw {
         return None;
     }
+    anchor_id = raw.get('_id');
     try {
         data: bytes = raw['data'];
-        return loads(data);
+        anchor = loads(data);
+        # Validate anchor integrity
+        if not is_valid_anchor(anchor) {
+            logger.debug(f"Removing invalid MongoDB anchor {anchor_id}");
+            self.collection.delete_one({'_id': anchor_id});
+            return None;
+        }
+        return anchor;
     } except Exception as e {
         logger.debug(f"MongoDB _load_anchor failed: {e}");
         return None;

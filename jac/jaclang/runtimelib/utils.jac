@@ -70,3 +70,6 @@ def to_uuid(id: (UUID | str)) -> UUID {
     }
     return UUID(str(id));
 }
+
+"""Validate that an anchor has a valid archetype."""
+def is_valid_anchor(anchor: object) -> bool;

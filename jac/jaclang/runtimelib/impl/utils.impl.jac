@@ -242,3 +242,16 @@ impl sys_path_context(path: str) -> Iterator[None] {
         }
     }
 }
+
+"""Validate that an anchor has a valid archetype."""
+impl is_valid_anchor(anchor: object) -> bool {
+    if not anchor?.archetype or anchor.archetype is None {
+        return False;
+    }
+    try {
+        _ = anchor.archetype.__class__;
+        return True;
+    } except (AttributeError, TypeError) {
+        return False;
+    }
+}
