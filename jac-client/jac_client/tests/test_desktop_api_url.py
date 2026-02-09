@@ -823,7 +823,7 @@ def test_resolve_server_port_helper_exists() -> None:
 
 
 def test_start_method_runs_tauri_app() -> None:
-    """Test that start() method runs the Tauri app in production mode."""
+    """Test that start() method runs the Tauri app with backend server."""
     content = _desktop_target_impl_path.read_text()
 
     # Find start() method
@@ -837,11 +837,14 @@ def test_start_method_runs_tauri_app() -> None:
     # start() should build web bundle first
     assert "get_target" in start_body, "start() should use factory to get web target"
     assert "web_target.build" in start_body, "start() should build web bundle first"
-    # start() should run cargo run --release
-    assert '"cargo"' in start_body or "'cargo'" in start_body, (
-        "start() should run cargo"
+    # start() should start the backend server
+    assert "_start_backend_server" in start_body, (
+        "start() should start the backend server"
     )
-    assert "--release" in start_body, "start() should run in release mode"
+    # start() should run tauri dev (uses built bundle via frontendDist)
+    assert "_run_tauri_dev" in start_body, (
+        "start() should use _run_tauri_dev to launch Tauri"
+    )
     # Should set API URL
     assert "_make_localhost_url" in start_body, (
         "start() should use _make_localhost_url for API URL"

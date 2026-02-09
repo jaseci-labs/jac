@@ -325,6 +325,8 @@ impl DesktopTarget.start(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
     try {
         import subprocess;
         import os;
+        import signal;
+        import sys;
         import from ...vite_bundler { API_BASE_URL_ENV_VAR }
         import from ..factory { get_target }
 
@@ -336,29 +338,106 @@ impl DesktopTarget.start(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
             return validation;
         }
 
-        # Build web bundle first (use factory for consistency)
+        tauri_dir = ctx.project_dir / "src-tauri";
+
+        # Step 1: Build web bundle with explicit backend URL for desktop webview
+        toml_base_url = _get_toml_api_base_url(ctx.project_dir);
+        server_port = _resolve_server_port(toml_base_url, ctx.port);
+
+        if not toml_base_url {
+            os.environ[API_BASE_URL_ENV_VAR] = _make_localhost_url(server_port);
+        }
+
+        console.print("  Building web bundle...", style="muted");
         web_target = get_target("web");
-        web_result = web_target.build(ctx);
+        try {
+            web_result = web_target.build(ctx);
+        } finally {
+            os.environ.pop(API_BASE_URL_ENV_VAR, None);
+        }
+
         if not web_result.success {
             return web_result;
         }
+        console.print("  ✔ Web bundle built", style="success");
 
-        tauri_dir = ctx.project_dir / "src-tauri";
+        # Step 2: Update tauri.conf.json to point to web bundle
+        console.print("  Updating Tauri configuration...", style="muted");
+        dist_path = ctx.project_dir / ".jac" / "client" / "dist" / "index.html";
+        _update_tauri_config_for_build(tauri_dir, ctx.project_dir, dist_path);
 
-        # Set API URL
-        api_url = _make_localhost_url(ctx.port);
-        env = os.environ.copy();
-        env[API_BASE_URL_ENV_VAR] = api_url;
-
-        console.print(f"  API URL: {api_url}", style="muted");
-        console.print("  Launching app...", style="muted");
-
-        # Run in production mode (uses built bundle)
-        result = subprocess.run(
-            ["cargo", "run", "--release"],
-            cwd=str(tauri_dir),
-            env=env
+        # Step 3: Regenerate main.rs with the actual backend URL so sidecar is skipped
+        _generate_main_rs(
+            tauri_dir, api_base_url=toml_base_url or _make_localhost_url(server_port)
         );
+
+        # Step 4: Start backend API server
+        console.print(
+            f"  Starting backend server on port {server_port}...", style="muted"
+        );
+        server_process = _start_backend_server(ctx.entry_file, ctx.project_dir, server_port);
+        console.print(
+            f"  ✔ Backend server starting on port {server_port}", style="success"
+        );
+
+        # Step 5: Launch Tauri app
+        console.print("  Launching Tauri app...", style="muted");
+        console.print("  (Press Ctrl+C to stop)", style="muted");
+
+        # Setup cleanup function
+        tauri_process = None;
+
+        def cleanup() -> None {
+            console.print("\n  Stopping app...", style="muted");
+            if tauri_process {
+                try {
+                    tauri_process.terminate();
+                    tauri_process.wait(timeout=5);
+                } except Exception {
+                    tauri_process.kill();
+                }
+            }
+            if server_process {
+                try {
+                    server_process.terminate();
+                    server_process.wait(timeout=5);
+                } except Exception {
+                    server_process.kill();
+                }
+            }
+            console.print("  ✔ App stopped", style="success");
+        }
+
+        def signal_handler(signum: int, frame: any) -> None {
+            cleanup();
+            sys.exit(0);
+        }
+
+        signal.signal(signal.SIGINT, signal_handler);
+        signal.signal(signal.SIGTERM, signal_handler);
+
+        try {
+            # Run tauri dev (it will use the built bundle from distDir)
+            tauri_process = _run_tauri_dev(tauri_dir);
+
+            if not tauri_process {
+                console.error("  Failed to start Tauri process");
+                cleanup();
+                return BuildResult.fail("Failed to start Tauri process");
+            }
+
+            # Wait for tauri process to finish
+            return_code = tauri_process.wait();
+            if return_code != 0 {
+                console.warning(f"  Tauri process exited with code {return_code}");
+            }
+        } except KeyboardInterrupt {
+            console.print(
+                "\n  Keyboard interrupt detected. Stopping app...", style="muted"
+            );
+        } finally {
+            cleanup();
+        }
 
         return BuildResult.ok();
     } except Exception as e {
