@@ -21,7 +21,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **RD Parser: Async, Impl & F-String Gap Fixes**: Fixed 6 more coverage gaps in the recursive descent parser: `async with` statements, async comprehensions (list/set/gen), `async for` token in AST kid lists, `impl` with event clause missing `with` token, `impl` by-expression extra `by` token, and nested `{expr}` inside f-string format specs (e.g., `f"{value:{width}}"`).
 - **RD Parser: Enum & Match Pattern Gap Fixes**: Fixed 3 more coverage gaps: multistring (concatenated string literals) in match literal patterns, `py_code_block` (inline Python) in enum blocks, and `free_code` (`with entry` blocks) in enum blocks.
 - **RD Parser: Strictness Parity with Lark**: Tightened the RD parser to reject constructs that the Lark grammar also rejects, closing 7 permissiveness gaps.
-- **`jac purge` Command**: Added `jac purge` command to clear the bytecode cache.
 
 ## jaclang 0.9.15 (Latest Release)
 
