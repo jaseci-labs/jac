@@ -5,7 +5,7 @@ node A {
 edge a {}
 
 walker W {
-    can create with `root entry;
+    can create with Root entry;
 }
 
 impl W.create{
@@ -17,6 +17,6 @@ impl W.create{
 
 with entry {
     root spawn W();
-    print([root-->-->(`?A)]);
-    print([root-->-->-->(`?A)]);
+    print([root-->-->(?:A)]);
+    print([root-->-->-->(?:A)]);
 }

@@ -20,6 +20,6 @@ with entry {
     print([root->:a:val<=15:->]);
     # print([root->:a:?val<=15:-> ]); # Syntax error
     print([root->:a:val>=20:->]);
-    print([root->:a:val<=15:->(`?A)](?val==10));  # complete example
-    print([root->:a:val<=15:->(`?A)](?val!=10));  # complete example
+    print([root->:a:val<=15:->(?:A)](?val==10));  # complete example
+    print([root->:a:val<=15:->(?:A)](?val!=10));  # complete example
 }

@@ -1,11 +1,11 @@
 """Testing ignore."""
 
 walker GuessGame {
-    can start_game with `root entry;
+    can start_game with Root entry;
 }
 
 walker GuessGame2 {
-    can start_game with `root entry;
+    can start_game with Root entry;
 }
 
 node turn {

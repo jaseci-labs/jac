@@ -330,17 +330,17 @@ impl cluster_type -> str {
         if not nodes.items {
             return 'local';
         }
-        for <>node in nodes.items {
-            provider_id = <>node.spec.provider_id or '';
+        for `node in nodes.items {
+            provider_id = `node.spec.provider_id or '';
             if provider_id.startswith('aws://') {
                 return 'aws';
             }
         }
-        for <>node in nodes.items {
-            labels = <>node.metadata.labels or {};
+        for `node in nodes.items {
+            labels = `node.metadata.labels or {};
             if (
                 ('topology.kubernetes.io/region' in labels)
-                and <>any(
+                and any(
                     (region in labels.get('topology.kubernetes.io/region', ''))
                     for region in ['us-', 'eu-', 'ap-', 'ca-', 'sa-']
                 )

@@ -53,21 +53,21 @@ node Todo {
 walker:pub add_todo {
     has title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         todo = here ++> Todo(title=self.title);
         report {"id": todo[0].id, "title": todo[0].title};
     }
 }
 
 walker:pub list_todos {
-    can fetch with `root entry {
-        todos = [-->](`?Todo);
+    can fetch with Root entry {
+        todos = [-->](?:Todo);
         report [{"id": t.id, "title": t.title, "done": t.done} for t in todos];
     }
 }
 
 walker:pub health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "healthy"};
     }
 }

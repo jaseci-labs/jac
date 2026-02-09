@@ -105,8 +105,8 @@ Public walkers automatically become REST endpoints:
 
 ```jac
 walker:pub GetUsers {
-    can get with `root entry {
-        users = [-->(`?User)];
+    can get with Root entry {
+        users = [-->](?:User);
         report users;
     }
 }
@@ -419,9 +419,9 @@ Each authenticated user gets an isolated root node:
 
 ```jac
 walker:pub GetMyData {
-    can get with `root entry {
+    can get with Root entry {
         # 'root' is user-specific
-        my_data = [-->(`?MyData)];
+        my_data = [-->](?:MyData);
         report my_data;
     }
 }

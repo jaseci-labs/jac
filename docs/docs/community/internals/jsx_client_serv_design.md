@@ -607,7 +607,7 @@ HTML template (from [server.py:491-504](https://github.com/Jaseci-Labs/jaseci/bl
     <script id="__jac_init__" type="application/json">
         {"module":"myapp","function":"homepage","args":{},"globals":{},"argOrder":[]}
     </script>
-    <script src="/static/client.js?hash=abc123..." defer></script>
+    <script type="module" src="/static/client.js?hash=abc123..."></script>
 </body>
 </html>
 ```
@@ -712,7 +712,7 @@ cl def homepage() {
 walker LoadUsers {
     has users: list = [];
 
-    can process with `root entry {
+    can process with Root entry {
         # Fetch users from database
         self.users = [{"name": "Alice"}, {"name": "Bob"}];
         report self.users;

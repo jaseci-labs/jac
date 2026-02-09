@@ -29,7 +29,7 @@ def _proc_file(filename: str) -> tuple {
         mod = mod[:-3];
     } else {
         console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
-        <>exit(1);
+        `exit(1);
     }
     # Only set base path if not already set (allows tests to override)
     if not Jac.base_path_dir {
@@ -83,9 +83,9 @@ impl dot(
         module = Jac.loaded_modules.get('__main__');
         mod_ns = vars(module) if module else {};
         try {
-            <>node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
+            `node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
             graph = printgraph(
-                <>node=<>node,
+                `node=`node,
                 depth=depth,
                 traverse=traverse,
                 edge_type=connection,

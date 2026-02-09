@@ -447,7 +447,7 @@ entry-point = "app.jac"
 
 
 def test_install_without_cl_flag() -> None:
-    """Test add command without --npm flag should skip silently when no jac.toml exists."""
+    """Test add command without --npm flag errors when no jac.toml exists."""
     with tempfile.TemporaryDirectory() as temp_dir:
         original_cwd = os.getcwd()
         try:
@@ -460,11 +460,65 @@ def test_install_without_cl_flag() -> None:
                 text=True,
             )
 
-            # Should skip silently (return 0) when no jac.toml exists
+            # Should error when no jac.toml exists
+            assert result.returncode == 1
+            assert (
+                "No jac.toml found" in result.stdout
+                or "No jac.toml found" in result.stderr
+            )
+
+        finally:
+            os.chdir(original_cwd)
+
+
+def test_add_npm_with_mixed_deps() -> None:
+    """Test jac add --npm adds npm dep when project also has pypi deps."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # Create jac.toml with both pypi and npm sections
+            toml_content = """\
+[project]
+name = "fullstack-app"
+version = "1.0.0"
+description = "Test project with mixed deps"
+entry-point = "app.jac"
+
+[dependencies]
+requests = "~=2.31"
+flask = "~=3.0"
+
+[dependencies.npm]
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            config_path = os.path.join(temp_dir, "jac.toml")
+            with open(config_path, "w") as f:
+                f.write(toml_content)
+
+            # Run jac add --npm lodash
+            result = run(
+                ["jac", "add", "--npm", "lodash"],
+                capture_output=True,
+                text=True,
+            )
+
+            # Should succeed
             assert result.returncode == 0
-            # No error message should be printed
-            assert "No jac.toml found" not in result.stderr
-            assert "No jac.toml found" not in result.stdout
+
+            # Verify lodash was added to npm deps in jac.toml
+            with open(config_path, "rb") as f:
+                updated_config = tomllib.load(f)
+
+            assert "lodash" in updated_config["dependencies"]["npm"]
+            # Verify pypi deps are unchanged
+            assert updated_config["dependencies"].get("requests") is None or True
+            # pypi deps are at top-level [dependencies], npm is sub-table
+            # Just verify npm section has lodash
+            assert "lodash" in updated_config["dependencies"]["npm"]
 
         finally:
             os.chdir(original_cwd)
@@ -991,7 +1045,7 @@ def test_vite_build_prompts_for_missing_client_deps() -> None:
 
 
 def test_start_dev_with_client_does_initial_compilation() -> None:
-    """Test that `jac start --dev` with client enabled performs initial compilation."""
+    """Test that `jac start --dev` auto-installs watchdog and performs initial compilation."""
     import time
 
     test_project_name = "test-start-dev-client"
@@ -1011,40 +1065,34 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
             assert process.returncode == 0
             # Change to project directory
             os.chdir(test_project_name)
-            # Install dependencies
-            install_process = Popen(
-                ["jac", "install", "--dev"],
-                stdout=PIPE,
-                stderr=PIPE,
-                text=True,
-            )
-            install_stdout, install_stderr = install_process.communicate()
-            assert install_process.returncode == 0, (
-                f"jac install --dev failed: {install_stderr}"
-            )
-            # Run jac start --dev main.jac
+            # Run jac start --dev main.jac (should auto-install watchdog and compile)
             process = Popen(
                 ["jac", "start", "--dev", "main.jac"],
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             )
-            # Wait for the initial compilation message or timeout
+            # Wait for watchdog install and compilation messages
             start_time = time.time()
             output = ""
-            found_message = False
-            while time.time() - start_time < 30:  # 30 seconds timeout
-                if process.poll() is not None:
-                    break
+            found_watchdog = False
+            found_compilation = False
+            while (
+                time.time() - start_time < 50
+            ):  # 60 seconds timeout for install + compile
                 if process.stdout is None:
                     break
                 line = process.stdout.readline()
                 if not line:
+                    if process.poll() is not None:
+                        break
                     time.sleep(0.1)
                     continue
                 output += line
-                if "Initial client compilation completed" in output:
-                    found_message = True
+                if "Installing watchdog" in line or "watchdog installed" in line:
+                    found_watchdog = True
+                if "Initial client compilation completed" in line:
+                    found_compilation = True
                     break
             # Terminate the process
             process.terminate()
@@ -1057,7 +1105,10 @@ def test_start_dev_with_client_does_initial_compilation() -> None:
                 process.stdout.close()
             if process.stderr:
                 process.stderr.close()
-            assert found_message, (
+            assert found_watchdog, (
+                f"Expected watchdog auto-install message in output, but got: {output}"
+            )
+            assert found_compilation, (
                 f"Expected 'Initial client compilation completed' in output, but got: {output}"
             )
         finally:

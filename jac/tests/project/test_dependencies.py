@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -240,6 +242,49 @@ class TestDependencyInstaller:
                 "WARNING: Package(s) not found: nonexistent",
             )
             assert installer.is_installed("nonexistent") is False
+
+    def test_get_installed_version(self, temp_project: Path) -> None:
+        """Test getting installed version of a package."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch.object(installer, "_run_pip") as mock_pip:
+            mock_pip.return_value = (
+                0,
+                "Name: requests\nVersion: 2.31.0\nSummary: HTTP library",
+                "",
+            )
+            version = installer.get_installed_version("requests")
+            assert version == "2.31.0"
+            mock_pip.assert_called_with(["show", "requests"])
+
+    def test_get_installed_version_not_found(self, temp_project: Path) -> None:
+        """Test getting version of non-installed package returns None."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch.object(installer, "_run_pip") as mock_pip:
+            mock_pip.return_value = (
+                1,
+                "",
+                "WARNING: Package(s) not found: nonexistent",
+            )
+            version = installer.get_installed_version("nonexistent")
+            assert version is None
+
+    def test_get_installed_version_no_venv(self, temp_project: Path) -> None:
+        """Test getting version without venv returns None."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+        # Don't create venv dir
+        version = installer.get_installed_version("requests")
+        assert version is None
 
     def test_list_installed(self, temp_project: Path) -> None:
         """Test listing installed packages."""
@@ -488,3 +533,816 @@ class TestPathManagement:
 
         # Should not be added since dir doesn't exist
         assert site_str not in sys.path
+
+
+class TestProjectCommands:
+    """Tests for CLI project commands (install, add, update)."""
+
+    @staticmethod
+    def _create_project(tmpdir: str, toml_content: str | None = None) -> str:
+        """Create a minimal jac project for testing."""
+        project_path = os.path.join(tmpdir, "testproj")
+        os.makedirs(project_path, exist_ok=True)
+        if toml_content is None:
+            toml_content = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = ">=2.28.0"
+flask = "~=3.0"
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+        with open(os.path.join(project_path, "jac.toml"), "w") as f:
+            f.write(toml_content)
+        return project_path
+
+    @staticmethod
+    def _reset_config() -> None:
+        """Reset global config singleton."""
+        from jaclang.project import config as config_module
+
+        config_module._config = None
+
+    def test_install_with_pip_and_git_deps(self) -> None:
+        """Test jac install installs both pip and git dependencies."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = ">=2.28.0"
+
+[dependencies.git]
+my-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}
+"""
+            project_path = self._create_project(tmpdir, toml)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully installed requests-2.31.0",
+                        "",
+                    )
+                    result = project.install()
+                assert result == 0
+                # Should have called pip install with both pip and git specs
+                mock_pip.assert_called()
+                call_args = mock_pip.call_args[0][0]
+                assert "install" in call_args
+                assert "--upgrade" in call_args
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_install_pip_and_npm_deps(self) -> None:
+        """Test jac install handles both pypi and npm dependencies together."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "fullstack"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.31"
+flask = "~=3.0"
+
+[dependencies.npm]
+react = "^18.0.0"
+typescript = "^5.0.0"
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                mock_install_all = MagicMock()
+                mock_dep_type = MagicMock()
+                mock_dep_type.install_all_handler = mock_install_all
+                mock_dep_type.install_handler = MagicMock()
+
+                mock_registry = MagicMock()
+                mock_registry.get_all.return_value = {"npm": mock_dep_type}
+
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                    patch(
+                        "jaclang.project.dep_registry.get_dependency_registry",
+                        return_value=mock_registry,
+                    ),
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully installed requests-2.31.0 flask-3.0.0",
+                        "",
+                    )
+                    result = project.install()
+
+                assert result == 0
+                # Verify pip packages were installed
+                mock_pip.assert_called()
+                pip_call_args = mock_pip.call_args[0][0]
+                assert "install" in pip_call_args
+                assert "--upgrade" in pip_call_args
+                # Verify npm install_all_handler was also called
+                mock_install_all.assert_called_once()
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_install_with_plugin_deps(self) -> None:
+        """Test jac install calls plugin install_all_handler for plugin deps."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+
+[dependencies.npm]
+react = "18.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                mock_install_all = MagicMock()
+                mock_dep_type = MagicMock()
+                mock_dep_type.install_all_handler = mock_install_all
+                mock_dep_type.install_handler = MagicMock()
+
+                mock_registry = MagicMock()
+                mock_registry.get_all.return_value = {"npm": mock_dep_type}
+
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                    patch(
+                        "jaclang.project.dep_registry.get_dependency_registry",
+                        return_value=mock_registry,
+                    ),
+                ):
+                    mock_pip.return_value = (0, "", "")
+                    result = project.install()
+
+                assert result == 0
+                mock_install_all.assert_called_once()
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_install_plugin_deps_individual_fallback(self) -> None:
+        """Test jac install calls individual install_handler when no install_all_handler."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+
+[dependencies.npm]
+react = "18.0"
+vue = "3.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                mock_install_handler = MagicMock()
+                mock_dep_type = MagicMock()
+                mock_dep_type.install_all_handler = None
+                mock_dep_type.install_handler = mock_install_handler
+
+                mock_registry = MagicMock()
+                mock_registry.get_all.return_value = {"npm": mock_dep_type}
+
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                    patch(
+                        "jaclang.project.dep_registry.get_dependency_registry",
+                        return_value=mock_registry,
+                    ),
+                ):
+                    mock_pip.return_value = (0, "", "")
+                    result = project.install()
+
+                assert result == 0
+                # Should have called install_handler for each npm dep
+                assert mock_install_handler.call_count == 2
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_install_no_toml(self) -> None:
+        """Test jac install fails when no jac.toml exists."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            self._reset_config()
+            try:
+                result = project.install()
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_no_args_errors(self) -> None:
+        """Test jac add with no arguments returns error."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                result = project.add()
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_no_toml_errors(self) -> None:
+        """Test jac add fails when no jac.toml exists."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            self._reset_config()
+            try:
+                result = project.add(packages=["requests"])
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_resolves_version(self) -> None:
+        """Test jac add without version queries installed version and uses ~= spec."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            # Create fake venv so get_installed_version doesn't short-circuit
+            venv_dir = os.path.join(project_path, ".jac", "venv")
+            os.makedirs(venv_dir, exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    # First call: pip install numpy (install the package)
+                    # Second call: pip show numpy (get installed version)
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed numpy-1.26.4", ""),
+                        (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", ""),
+                    ]
+                    result = project.add(packages=["numpy"])
+
+                assert result == 0
+                # Verify jac.toml was updated with ~= version
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert "numpy" in config.dependencies
+                assert config.dependencies["numpy"] == "~=1.26"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_with_explicit_version(self) -> None:
+        """Test jac add with explicit version uses that version directly."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully installed numpy-1.24.0",
+                        "",
+                    )
+                    result = project.add(packages=["numpy>=1.24"])
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert "numpy" in config.dependencies
+                assert config.dependencies["numpy"] == ">=1.24"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_update_all_deps(self) -> None:
+        """Test jac update updates ~= specs and preserves explicit specs."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    # install_package call, then pip show for each package
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
+                        (0, "Name: requests\nVersion: 2.31.0", ""),
+                        (0, "Name: flask\nVersion: 3.1.0", ""),
+                    ]
+                    result = project.update()
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                # requests uses >=2.28.0 (explicit) -> preserved unchanged
+                assert config.dependencies["requests"] == ">=2.28.0"
+                # flask uses ~=3.0 (auto-generated) -> updated to ~=3.1
+                assert config.dependencies["flask"] == "~=3.1"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_update_specific_package(self) -> None:
+        """Test jac update with specific package updates ~= spec."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Use toml with ~= specs so update can rewrite them
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.28"
+flask = "~=3.0"
+
+[dev-dependencies]
+pytest = ">=8.0.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed requests-2.32.0", ""),
+                        (0, "Name: requests\nVersion: 2.32.0", ""),
+                    ]
+                    result = project.update(packages=["requests"])
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert config.dependencies["requests"] == "~=2.32"
+                # flask should be unchanged
+                assert config.dependencies["flask"] == "~=3.0"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_update_unknown_package_errors(self) -> None:
+        """Test jac update with unknown package returns error."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                result = project.update(packages=["nonexistent"])
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_update_no_toml_errors(self) -> None:
+        """Test jac update fails when no jac.toml exists."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            self._reset_config()
+            try:
+                result = project.update()
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_dev_dependency(self) -> None:
+        """Test jac add --dev puts package in dev-dependencies."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed pytest-cov-7.0.0", ""),
+                        (0, "Name: pytest-cov\nVersion: 7.0.0", ""),
+                    ]
+                    result = project.add(packages=["pytest-cov"], dev=True)
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert "pytest-cov" in config.dev_dependencies
+                assert config.dev_dependencies["pytest-cov"] == "~=7.0"
+                # Should NOT be in regular dependencies
+                assert "pytest-cov" not in config.dependencies
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_multiple_packages(self) -> None:
+        """Test jac add with multiple packages installs all and updates toml."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed numpy-2.4.2", ""),
+                        (0, "Name: numpy\nVersion: 2.4.2", ""),
+                        (0, "Successfully installed pandas-3.0.0", ""),
+                        (0, "Name: pandas\nVersion: 3.0.0", ""),
+                    ]
+                    result = project.add(packages=["numpy", "pandas"])
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert config.dependencies["numpy"] == "~=2.4"
+                assert config.dependencies["pandas"] == "~=3.0"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_pip_failure_no_toml_update(self) -> None:
+        """Test that pip failure does not modify jac.toml."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            # Read original toml content
+            toml_path = os.path.join(project_path, "jac.toml")
+            with open(toml_path) as f:
+                original_toml = f.read()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        1,
+                        "",
+                        "ERROR: No matching distribution found for badpkg",
+                    )
+                    result = project.add(packages=["badpkg"])
+
+                assert result == 1
+                # jac.toml should be unchanged
+                with open(toml_path) as f:
+                    assert f.read() == original_toml
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_add_git_dependency(self) -> None:
+        """Test jac add --git adds a git dependency and persists to toml."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (0, "Successfully installed my-lib", "")
+                    result = project.add(git="https://github.com/user/my-lib.git")
+
+                assert result == 0
+                # Verify saved toml has the git dependency
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert "my-lib" in config.git_dependencies
+                assert (
+                    config.git_dependencies["my-lib"]["git"]
+                    == "https://github.com/user/my-lib.git"
+                )
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_update_with_dev_deps(self) -> None:
+        """Test jac update --dev includes dev dependencies in update."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Use ~= specs so update can rewrite them
+            toml = """\
+[project]
+name = "testproj"
+version = "0.1.0"
+
+[dependencies]
+requests = "~=2.28"
+flask = "~=3.0"
+
+[dev-dependencies]
+pytest = "~=8.0"
+"""
+            project_path = self._create_project(tmpdir, toml)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    # install_package, then pip show for requests, flask, pytest
+                    mock_pip.side_effect = [
+                        (0, "Successfully installed", ""),
+                        (0, "Name: requests\nVersion: 2.32.0", ""),
+                        (0, "Name: flask\nVersion: 3.1.0", ""),
+                        (0, "Name: pytest\nVersion: 8.3.0", ""),
+                    ]
+                    result = project.update(dev=True)
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert config.dependencies["requests"] == "~=2.32"
+                assert config.dependencies["flask"] == "~=3.1"
+                # Dev dep should also be updated
+                assert config.dev_dependencies["pytest"] == "~=8.3"
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_install_empty_deps(self) -> None:
+        """Test jac install with no dependencies returns 0 with info message."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            toml = """\
+[project]
+name = "empty"
+version = "0.1.0"
+
+[dependencies]
+
+[dev-dependencies]
+"""
+            project_path = self._create_project(tmpdir, toml)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                result = project.install()
+                assert result == 0
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_package(self) -> None:
+        """Test jac remove removes package from toml and uninstalls."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully uninstalled requests-2.31.0",
+                        "",
+                    )
+                    result = project.remove(packages=["requests"])
+
+                assert result == 0
+                # Verify saved toml no longer has requests
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                assert "requests" not in config.dependencies
+                # flask should still be there
+                assert "flask" in config.dependencies
+                # Verify pip uninstall was called
+                mock_pip.assert_called_with(["uninstall", "-y", "requests"])
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_dev_dep_without_flag(self) -> None:
+        """Test jac remove finds dev deps even without --dev flag."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                with (
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+                    ),
+                    patch(
+                        "jaclang.project.dependencies.DependencyInstaller._run_pip"
+                    ) as mock_pip,
+                ):
+                    mock_pip.return_value = (
+                        0,
+                        "Successfully uninstalled pytest-8.0.0",
+                        "",
+                    )
+                    # pytest is in dev-dependencies, but we don't pass --dev
+                    result = project.remove(packages=["pytest"])
+
+                assert result == 0
+                config = JacConfig.load(Path(project_path) / "jac.toml")
+                # pytest should be removed from dev-dependencies
+                assert "pytest" not in config.dev_dependencies
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_no_args_errors(self) -> None:
+        """Test jac remove with no arguments returns error."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                result = project.remove()
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_no_toml_errors(self) -> None:
+        """Test jac remove fails when no jac.toml exists."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            self._reset_config()
+            try:
+                result = project.remove(packages=["requests"])
+                assert result == 1
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()
+
+    def test_remove_nonexistent_package(self) -> None:
+        """Test jac remove with package not in toml still returns 0."""
+        from jaclang.cli.commands import project  # type: ignore[attr-defined]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = self._create_project(tmpdir)
+            original_cwd = os.getcwd()
+            os.chdir(project_path)
+            self._reset_config()
+            try:
+                result = project.remove(packages=["nonexistent"])
+                # remove returns 0 even if package wasn't found (just prints error)
+                assert result == 0
+            finally:
+                os.chdir(original_cwd)
+                self._reset_config()

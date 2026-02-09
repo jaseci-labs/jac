@@ -1344,6 +1344,12 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
             else:
                 annotation = py_ast
 
+        # Ensure Root is imported from jaclib when used in event signatures
+        if annotation:
+            for n in ast3.walk(annotation):
+                if isinstance(n, ast3.Name) and n.id == "Root":
+                    self.jaclib_imports.add("Root")
+
         arch_arg = self.sync(
             ast3.arg(
                 arg=f"{arch_kw}",
@@ -1369,24 +1375,6 @@ class PyastGenPass(BaseAstGenPass[ast3.AST]):
                 )
             )
         ]
-
-    def exit_type_ref(self, node: uni.TypeRef) -> None:
-        if (
-            isinstance(node.target, uni.SpecialVarRef)
-            and node.target.orig.name == Tok.KW_ROOT
-        ):
-            node.gen.py_ast = [self.jaclib_obj("Root")]
-        else:
-            self.needs_typing()
-            node.gen.py_ast = [
-                self.sync(
-                    ast3.Attribute(
-                        value=self.sync(ast3.Name(id="typing", ctx=ast3.Load())),
-                        attr=node.target.sym_name,
-                        ctx=ast3.Load(),
-                    )
-                )
-            ]
 
     def exit_param_var(self, node: uni.ParamVar) -> None:
         if isinstance(node.name.gen.py_ast[0], ast3.Name):

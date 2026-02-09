@@ -20,7 +20,7 @@ node ImportedItem {
 walker ImportedWalker {
     has item_name: str;
 
-    can create_item with `root entry {
+    can create_item with Root entry {
         item = here ++> ImportedItem(name=self.item_name);
         created = item[0] if item else None;
         if created {
@@ -33,7 +33,7 @@ walker ImportedWalker {
 walker ImportedCounter {
     has count: int = 0;
 
-    can count_items with `root entry {
+    can count_items with Root entry {
         visit [-->];
     }
 

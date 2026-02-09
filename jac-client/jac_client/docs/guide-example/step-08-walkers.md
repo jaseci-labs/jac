@@ -42,8 +42,8 @@ node Todo {
 
 # Backend - Walkers
 walker read_todos {
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 
     can report_todos with Todo entry {
@@ -66,7 +66,7 @@ Add this walker:
 walker create_todo {
     has text: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
@@ -99,15 +99,15 @@ node Todo {
 walker create_todo {
     has text: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo;
     }
 }
 
 walker read_todos {
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 
     can report_todos with Todo entry {
@@ -268,8 +268,8 @@ def get_todos():
 ```jac
 # Backend - same file!
 walker read_todos {
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
     can report_todos with Todo entry {
         report here;
@@ -336,14 +336,14 @@ new_todo = here ++> Todo(text=self.text);
 ### Visiting Nodes
 
 ```jac
-visit [-->(`?Todo)];
+visit [-->(?:Todo)];
 ```
 
 **Breakdown:**
 
 - `visit` - Traverse to these nodes
 - `-->` - Follow outgoing edges
-- `` `?Todo `` - Find nodes of type Todo
+- `(?:Todo)` - Find nodes of type Todo
 - `[...]` - Array of nodes to visit
 
 ### Reporting Data
@@ -381,7 +381,7 @@ node Todo {
 
 walker create_todo {
     has text: str;
-    can create with `root entry {
+    can create with Root entry {
         # This code runs on the server
     }
 }
@@ -439,7 +439,7 @@ useEffect(lambda -> None {
 - How to define data models with nodes
 - Creating walkers for CRUD operations
 - Calling walkers from frontend with `spawn`
-- Graph traversal (`-->`, `` `?Node ``)
+- Graph traversal (`-->`, `(?:Node)`)
 - Creating node connections (`++>`)
 - Reporting data to frontend
 - Using `_jac_id` for node references
@@ -477,8 +477,8 @@ cl {
 
 ```jac
 #  Wrong - no report
-can read with `root entry {
-    visit [-->(`?Todo)];
+can read with Root entry {
+    visit [-->(?:Todo)];
 }
 
 #  Correct - report in Todo entry
@@ -515,8 +515,8 @@ Try adding a walker to clear all completed todos:
 
 ```jac
 walker clear_completed {
-    can clear with `root entry {
-        visit [-->(`?Todo)];
+    can clear with Root entry {
+        visit [-->(?:Todo)];
     }
 
     can delete_if_done with Todo entry {

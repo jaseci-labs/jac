@@ -188,7 +188,7 @@ class TestHotReloader:
         test_file.write_text(
             """
 walker greet {
-    can enter with `root entry {
+    can enter with Root entry {
         return {"message": "hello"};
     }
 }

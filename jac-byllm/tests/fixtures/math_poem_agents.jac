@@ -19,7 +19,7 @@ glob llm: MockLLM = MockLLM(
 walker supervisor {
     has user_input: str = "";
 
-    can execute with `root entry {
+    can execute with Root entry {
         visit [-->] by llm(incl_info={"User input": self.user_input});
     }
 }

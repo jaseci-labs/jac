@@ -76,7 +76,7 @@ walker FriendFinder {
         visit [edge ->:Family :->];
     }
 
-    can move_to_person with `root entry {
+    can move_to_person with Root entry {
         visit [-->];
     }
 }
@@ -282,7 +282,7 @@ The `connect()` function creates directed edges between nodes. The `edge` parame
 
 ```jac
 walker FriendFinder {
-    can find with `root entry {
+    can find with Root entry {
         visit [-->];
     }
 }
@@ -310,7 +310,7 @@ The `spawn()` function initiates a walker at a specified node and begins travers
 edge Family {}
 
 walker Visitor {
-    can traverse with `root entry {
+    can traverse with Root entry {
         visit [-->];                      # Visit all outgoing edges
         visit [->:Family:->];             # Visit only Family edges
     }

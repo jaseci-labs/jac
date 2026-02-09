@@ -57,9 +57,9 @@ walker:pub signup {
     has password: str;
     has name: str;
 
-    can register with `root entry {
+    can register with Root entry {
         # Check if user exists
-        for user in [-->](`?User) {
+        for user in [-->](?:User) {
             if user.email == self.email {
                 report {"success": False, "error": "Email already registered"};
                 return;
@@ -98,8 +98,8 @@ walker:pub login {
     has email: str;
     has password: str;
 
-    can authenticate with `root entry {
-        for user in [-->](`?User) {
+    can authenticate with Root entry {
+        for user in [-->](?:User) {
             if user.email == self.email {
                 if user.verify_password(self.password) {
                     token = user.generate_token();
@@ -130,8 +130,8 @@ walker:pub login {
 walker:pub validate_token {
     has token: str;
 
-    can validate with `root entry {
-        for user in [-->](`?User) {
+    can validate with Root entry {
+        for user in [-->](?:User) {
             if user.token == self.token and self.token != "" {
                 report {
                     "valid": True,
@@ -155,8 +155,8 @@ walker:pub validate_token {
 walker:pub logout {
     has token: str;
 
-    can invalidate with `root entry {
-        for user in [-->](`?User) {
+    can invalidate with Root entry {
+        for user in [-->](?:User) {
             if user.token == self.token {
                 user.token = "";
                 report {"success": True};
@@ -567,9 +567,9 @@ cl {
 walker get_user_data {
     has token: str;
 
-    can fetch with `root entry {
+    can fetch with Root entry {
         # Validate token first
-        for user in [-->](`?User) {
+        for user in [-->](?:User) {
             if user.token == self.token and self.token != "" {
                 # Token valid - return user's private data
                 report {

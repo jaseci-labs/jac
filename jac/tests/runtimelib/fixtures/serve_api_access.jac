@@ -35,7 +35,7 @@ node Task {
 walker : pub PublicWalker {
     has message: str = "public";
 
-    can enter with `root entry {
+    can enter with Root entry {
         report "Public walker executed: " + self.message ;
     }
 }
@@ -44,7 +44,7 @@ walker : pub PublicWalker {
 walker : protect ProtectedWalker {
     has data: str;
 
-    can enter with `root entry {
+    can enter with Root entry {
         tasks = here ++> Task(title=self.data);
         report "Protected walker created task: " + tasks[0].title
         if tasks
@@ -56,7 +56,7 @@ walker : protect ProtectedWalker {
 walker : priv PrivateWalker {
     has secret: str;
 
-    can enter with `root entry {
+    can enter with Root entry {
         report "Private walker with secret: " + self.secret ;
     }
 }

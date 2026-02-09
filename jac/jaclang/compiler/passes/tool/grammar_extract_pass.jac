@@ -93,7 +93,7 @@ obj GrammarExtractPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     # UniPass hooks
     def before_pass -> None;
-    def enter_impl_def(<>node: uni.ImplDef) -> None;
+    def enter_impl_def(`node: uni.ImplDef) -> None;
     def after_pass -> None;
     # Formatting (static-like helpers, called with self)
     def format_ebnf(expr: GExpr) -> str;
@@ -105,6 +105,7 @@ obj GrammarExtractPass(UniPass) {
     def analyze_func_call(call: uni.FuncCall) -> GExpr | None;
     def analyze_if_stmt(stmt: uni.IfStmt) -> GExpr | None;
     def analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None;
+    def find_break_match_tok(stmts: list) -> tuple | None;
     def analyze_condition(cond: uni.Expr) -> tuple | None;
     def collect_elif_chain(stmt: uni.IfStmt) -> list;
     def has_early_return(stmts: list) -> bool;

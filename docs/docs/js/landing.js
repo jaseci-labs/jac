@@ -726,8 +726,8 @@ node Trainer {
 walker FitnessAgent {
     has gear: dict = {};
 
-    can start with \`root entry {
-        visit [-->(\`?Equipment)];
+    can start with Root entry {
+        visit [-->(?:Equipment)];
     }
 
     """Create a personalized workout plan based on available equipment and space."""
@@ -735,8 +735,8 @@ walker FitnessAgent {
 }
 
 walker CoachWalker(FitnessAgent) {
-    can get_plan with \`root entry {
-        visit [-->(\`?Trainer)];
+    can get_plan with Root entry {
+        visit [-->(?:Trainer)];
     }
 }
 

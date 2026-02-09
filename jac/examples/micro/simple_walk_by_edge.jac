@@ -5,7 +5,7 @@ node A {}
 walker Walk {
     has id: int = 0;
 
-    can skip_root with `root entry {
+    can skip_root with Root entry {
         visit [-->];
     }
 

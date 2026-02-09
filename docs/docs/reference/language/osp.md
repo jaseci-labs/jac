@@ -55,7 +55,7 @@ edge Knows {
 }
 
 walker Greeter {
-    can greet with `root entry {
+    can greet with Root entry {
         visit [-->];
     }
 
@@ -127,8 +127,8 @@ node SecureRoom {
         }
     }
 
-    # Type reference entry - using backtick for root
-    can at_root with `root entry {
+    # Type reference entry - using Root for root
+    can at_root with Root entry {
         print("At root node");
     }
 
@@ -150,7 +150,7 @@ node SecureRoom {
 |------|---------------|
 | `with entry` | Any walker enters (no type filter) |
 | `with TypeName entry` | Walker of TypeName enters |
-| `` with `root entry `` | At root node entry |
+| `with Root entry` | At root node entry |
 | `with Type1 \| Type2 entry` | Walker of either type enters |
 | `with exit` | Any walker exits |
 | `with TypeName exit` | Walker of TypeName exits |
@@ -237,7 +237,7 @@ walker Collector {
     has items: list = [];
     has max_items: int = 10;
 
-    can start with `root entry {
+    can start with Root entry {
         print("Starting collection");
         visit [-->];
     }
@@ -263,7 +263,7 @@ node DataNode {
 walker Counter {
     has count: int = 0;
 
-    can start with `root entry {
+    can start with Root entry {
         self.count += 1;
         visit [-->];
     }
@@ -282,7 +282,7 @@ with entry {
 }
 ```
 
-> **Note:** Walker abilities must specify which node types they handle. Use `` `root `` for the root node and specific node types for others. A generic `with entry` only triggers at the spawn location.
+> **Note:** Walker abilities must specify which node types they handle. Use `Root` for the root node and specific node types for others. A generic `with entry` only triggers at the spawn location.
 
 ### 3 The `visit` Statement
 
@@ -310,7 +310,7 @@ edge Friend { has since: int = 2020; }
 
 walker Visitor {
     can filter with Person entry {
-        visit [-->(`?Person)];          # Visit Person nodes only
+        visit [-->](?:Person);          # Visit Person nodes only
         visit [->:Friend:->];           # Visit via Friend edges only
         visit [->:Friend:since>2020:->]; # Via Friend edges with condition
     }
@@ -411,7 +411,7 @@ node Item { has value: int = 0; }
 walker MyWalker {
     has param: int = 0;
 
-    can visit with `root entry {
+    can visit with Root entry {
         visit [-->];
     }
     can collect with Item entry {
@@ -494,7 +494,7 @@ walker Inspector {
         print(f"Room requires level {here.required_level}");
     }
 
-    can start with `root entry {
+    can start with Root entry {
         # 'root' is always the graph root
         print(f"Starting from root: {root}");
         visit [-->];
@@ -633,7 +633,7 @@ Walker traversal is queue-based (BFS-like by default):
 
 ```jac
 walker BFSWalker {
-    can start with `root entry {
+    can start with Root entry {
         print(f"Starting at: {here}");
         visit [-->];
     }
@@ -652,19 +652,19 @@ node Person { has age: int = 0; }
 edge Friend { has since: int = 2020; }
 
 walker FilteredWalker {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];  # Start traversal from root
     }
 
     can traverse with Person entry {
         # By node type
-        visit [-->(`?Person)];
+        visit [-->](?:Person);
 
         # By edge type
         visit [->:Friend:->];
 
         # Combined: Friend edges to Person nodes since 2020
-        visit [->:Friend:since > 2020:->(`?Person)];
+        visit [->:Friend:since > 2020:->](?:Person);
     }
 }
 ```
@@ -709,7 +709,7 @@ walker Traverser {
         filtered = [->:Edge:attr > 0:->];     # Filter by edge attribute
 
         # Node type filter
-        people = [-->(`?Person)];             # Filter result nodes by type
+        people = [-->](?:Person);             # Filter result nodes by type
 
         # Get edges vs nodes
         edges = [edge -->];                   # Get edge objects
@@ -760,7 +760,7 @@ walker Querier {
         path = [here ->:Friend:-> ->:Colleague:->];
 
         # Combined with filters
-        target = [->:Friend:since < 2020:->(`?Person)](?age > 30);
+        target = [->:Friend:since < 2020:->](?:Person, age > 30);
     }
 }
 ```

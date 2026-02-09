@@ -19,7 +19,7 @@ walker CreateTask {
     has title: str;
     has priority: int = 1;
 
-    can create with `root entry {
+    can create with Root entry {
         task_list = here ++> Task(title=self.title, priority=self.priority);
         task = task_list[0];
         if task {
@@ -34,7 +34,7 @@ walker CreateTask {
 walker ListTasks {
     has tasks: list = [];
 
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
         completed_tasks_walker = root spawn ListCompletedTasks();
         report completed_tasks_walker.completed_tasks;
@@ -49,7 +49,7 @@ walker ListTasks {
 walker ListCompletedTasks {
     has completed_tasks: list = [];
 
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
     }
     can gather with Task entry {
@@ -70,7 +70,7 @@ walker GetTask {
 walker CompleteTask {
     has title: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 

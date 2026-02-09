@@ -8,7 +8,7 @@ node TestNode {
 walker test_walker {
     has message: str = "Hello from walker";
 
-    can execute with `root entry {
+    can execute with Root entry {
         report {"result": self.message};
     }
 }
@@ -16,7 +16,7 @@ walker test_walker {
 walker parameterized_walker {
     has value: int;
 
-    can execute with `root entry {
+    can execute with Root entry {
         report {"computed": self.value * 2};
     }
 }
@@ -26,7 +26,7 @@ walker positional_walker {
     has count: int;
     has metadata: dict = {};
 
-    can execute with `root entry {
+    can execute with Root entry {
         report {"label": self.label, "count": self.count, "meta": self.metadata};
     }
 }

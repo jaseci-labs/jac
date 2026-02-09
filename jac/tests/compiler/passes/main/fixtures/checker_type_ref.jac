@@ -1,7 +1,7 @@
 node N {}
 
 walker W {
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> N();
     }
 }

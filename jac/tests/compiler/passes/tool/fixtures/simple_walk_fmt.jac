@@ -9,7 +9,7 @@ edge Checking {}
 walker Creator {
     has count: int = 0;
 
-    can create with `root | Item entry {
+    can create with Root | Item entry {
         here ++> Item();
         self.count += 1;
         if self.count < 10 {
@@ -22,7 +22,7 @@ walker Walk {
     has count: int = 0;
     has value: int = 0;
 
-    can skip_root with `root entry {
+    can skip_root with Root entry {
         visit [-->];
     }
 
