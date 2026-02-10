@@ -198,7 +198,6 @@ impl DependencyInstaller.is_installed(name: str) -> bool {
 }
 
 impl DependencyInstaller.get_installed_version(name: str) -> str | None {
-    import re;
     if not self.venv_dir or not self.venv_dir.exists() {
         return None;
     }
@@ -206,9 +205,13 @@ impl DependencyInstaller.get_installed_version(name: str) -> str | None {
     if returncode != 0 {
         return None;
     }
-    version_match = re.search(r"^Version:\s*(.+)$", stdout, re.MULTILINE);
-    if version_match {
-        return version_match.group(1).strip();
+    # Parse 'pip show' output to extract version
+    for line in stdout.splitlines() {
+        line = line.strip();
+        if line.startswith("Version:") {
+            version = line.split(":", 1)[1].strip();
+            return version;
+        }
     }
     return None;
 }

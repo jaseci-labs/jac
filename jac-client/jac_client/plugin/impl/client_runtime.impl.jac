@@ -59,20 +59,15 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     if right != "" {
         url = f"{base_url}/walker/{left}/{right}";
     }
+    headers = {"Content-Type": "application/json", "Accept": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
     response = await fetch(
-        url,
-        {
-            "method": "POST",
-            "accept": "application/json",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify(fields)
-        }
+        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
     );
     if not response.ok {
-        error_text = await response.json();
+        error_text = await response.text();
         walker_name = f"{left}/{right}" if right else left;
         raise Exception(f"Walker {walker_name} failed: {error_text}") ;
     }
@@ -87,17 +82,18 @@ impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
 impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
+    headers = {"Content-Type": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
     response = await fetch(
         f"{base_url}/function/{function_name}",
-        {
-            "method": "POST",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify(args)
-        }
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
+    if not response.ok {
+        error_text = await response.text();
+        raise Exception(f"Function {function_name} failed: {error_text}") ;
+    }
     payload = await response.json();
     if not payload["ok"] {
         error_msg = payload["error"] if payload["error"] else "Unknown error";
@@ -108,7 +104,9 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
         if payload["data"] and payload["data"]["result"] {
             result = payload["data"]["result"];
         }
-    } except Exception { }
+    } except Exception as e {
+        console.warn(f"Failed to extract result for {function_name}:", e);
+    }
     return result;
 }
 
@@ -161,14 +159,14 @@ impl jacLogin(username: str, password: str) -> bool {
     );
     if response.ok {
         data = JSON.parse(await response.text());
-        console.log("data", data);
         token = None;
         try {
             if data["data"] and data["data"]["token"] {
                 token = data["data"]["token"];
             }
-        } except Exception { }
-        console.log("token", token);
+        } except Exception as e {
+            console.warn("Failed to extract login token:", e);
+        }
         if token {
             __setLocalStorage("jac_token", token);
             return True;

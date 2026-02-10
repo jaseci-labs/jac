@@ -87,6 +87,7 @@ def test_deploy_all_in_one():
     target_config = scale_config.get_kubernetes_config()
     target_config["app_name"] = app_name
     target_config["namespace"] = namespace
+    target_config["node_port"] = 30001
 
     # Create logger
     logger = UtilityFactory.create_logger("standard")
@@ -107,7 +108,9 @@ def test_deploy_all_in_one():
 
     # Deploy using new architecture
     result = deployment_target.deploy(app_config)
-
+    result = deployment_target.deploy(app_config)
+    details = result.details
+    assert len(details) == 8
     assert result.success is True
     print(f"✓ Deployment successful: {result.message}")
 
@@ -224,6 +227,59 @@ def test_deploy_all_in_one():
         )
 
     print("✓ Cleanup verification complete - all resources properly deleted")
+
+
+def test_early_exit():
+    """
+    Test deployment using the new factory-based architecture.
+    Deploys the all-in-one app found in jac client examples against a live Kubernetes cluster.
+    Validates deployment, services, sends HTTP request, and tests cleanup.
+    """
+
+    # Load kubeconfig and initialize client
+    config.load_kube_config()
+
+    namespace = "early-exit"
+    app_name = namespace
+
+    # Set environment
+    os.environ.update({"APP_NAME": app_name, "K8s_NAMESPACE": namespace})
+
+    # Resolve the absolute path to the todo app folder
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    todo_app_path = os.path.join(test_dir, "../../examples/early-exit")
+
+    # Get configuration
+    scale_config = get_scale_config()
+    target_config = scale_config.get_kubernetes_config()
+    target_config["app_name"] = app_name
+    target_config["namespace"] = namespace
+    target_config["node_port"] = 30002
+
+    # Create logger
+    logger = UtilityFactory.create_logger("standard")
+
+    # Create deployment target using factory
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes", target_config, logger
+    )
+
+    # Create app config
+    # Use experimental=True to install from repo (PyPI packages may not be available)
+    app_config = AppConfig(
+        code_folder=todo_app_path,
+        file_name="app.jac",
+        build=False,
+        experimental=True,
+    )
+
+    # Deploy using new architecture
+    result = deployment_target.deploy(app_config)
+    details = result.details
+    print(f"Deployment result: {details}")
+    assert "health_check_of_deployment" not in details
+    assert len(details) == 7
+    assert result.success is False
 
 
 def test_deployment_target_methods():
