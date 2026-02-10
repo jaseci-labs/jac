@@ -134,6 +134,12 @@ class MockScaleConfig:
             "exp_delta_days": 1,
         }
 
+    def get_kubernetes_config(self) -> dict:
+        return {"namespace": "default"}
+
+    def get_metrics_config(self) -> dict:
+        return {"enabled": False}
+
 
 class TestJacScaleUserManagerSSO:
     """Test SSO functionality in JacScaleUserManager."""

@@ -13,6 +13,8 @@ import from kubernetes.client.rest { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
 
+def check_pods_restarted(namespace: str, app_name: str) -> bool;
+
 def debug_print(statement: str, debug_only: bool = False) -> None;
 
 def parse_cpu_quantity(quantity: str) -> float;
@@ -47,8 +49,10 @@ def check_deployment_status(
     path: str = '/docs',
     interval: int = 15,
     max_retries: int = 30,
-    nlb_url: (str | None) = None
-) -> bool;
+    nlb_url: (str | None) = None,
+    namespace: str = "default",
+    app_name: str = "jaseci",
+) -> tuple[bool, str];
 
 def cluster_type -> str;
 

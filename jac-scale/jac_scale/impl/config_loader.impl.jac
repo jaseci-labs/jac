@@ -60,6 +60,27 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'signature_header': 'X-Webhook-Signature',
             'verify_signature': True,
             'api_key_expiry_days': 365
+        },
+        'metrics': {
+            'enabled': False,
+            'endpoint': '/metrics',
+            'namespace': 'jac_scale',
+            'walker_metrics': False,
+            'histogram_buckets': [
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.075,
+                0.1,
+                0.25,
+                0.5,
+                0.75,
+                1.0,
+                2.5,
+                5.0,
+                10.0
+            ]
         }
     };
 }
@@ -137,6 +158,61 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
         ),
         'verify_signature': webhook_config.get('verify_signature', True),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
+    };
+}
+
+"""Sanitize a string to be a valid Prometheus metric namespace.
+
+Prometheus metric names must match [a-zA-Z_:][a-zA-Z0-9_:]*.
+This converts any invalid characters and ensures a valid prefix.
+"""
+impl sanitize_prometheus_namespace(name: str) -> str {
+    import re;
+    # Replace any non-alphanumeric characters with underscores
+    sanitized = re.sub(r'[^a-zA-Z0-9]', '_', name);
+    # Collapse multiple consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized);
+    # Strip leading/trailing underscores
+    sanitized = sanitized.strip('_');
+    # Prefix with underscore if starts with digit
+    if sanitized and sanitized[0].isdigit() {
+        sanitized = f"_{sanitized}";
+    }
+    return sanitized or 'jac_scale';
+}
+
+"""Get metrics configuration from jac.toml."""
+impl JacScaleConfig.get_metrics_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    metrics_config = config.get('metrics', {});
+    default_buckets = [
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.5,
+        5.0,
+        10.0
+    ];
+    # Derive namespace from kubernetes config if not explicitly set
+    namespace = metrics_config.get('namespace');
+    if not namespace {
+        k8s_config = self.get_kubernetes_config();
+        k8s_namespace = k8s_config.get('namespace', 'default');
+        namespace = sanitize_prometheus_namespace(k8s_namespace);
+    }
+    return {
+        'enabled': metrics_config.get('enabled', False),
+        'endpoint': metrics_config.get('endpoint', '/metrics'),
+        'namespace': namespace,
+        'walker_metrics': metrics_config.get('walker_metrics', False),
+        'histogram_buckets': metrics_config.get('histogram_buckets', default_buckets)
     };
 }
 

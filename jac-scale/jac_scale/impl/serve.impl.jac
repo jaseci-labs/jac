@@ -1189,6 +1189,64 @@ impl JacAPIServer.postinit -> None {
         }
         self.server.app.add_middleware(CustomHeadersMiddleware);
     }
+    # Initialize Prometheus metrics if enabled
+    import from jac_scale.factories.utility_factory { UtilityFactory }
+    import time;
+    metrics_config = get_scale_config().get_metrics_config();
+    self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
+    if self._metrics.is_enabled() {
+        metrics_collector = self._metrics;
+        metrics_endpoint = metrics_config.get('endpoint', '/metrics');
+        # Add metrics middleware to track request timing
+        class MetricsMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: MetricsMiddleware, request: Any, call_next: Any
+            ) -> Any {
+                # Skip metrics endpoint itself
+                if request.url.path == metrics_endpoint {
+                    return await call_next(request);
+                }
+
+                metrics_collector.request_started();
+                start_time = time.perf_counter();
+
+                try {
+                    response = await call_next(request);
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method,
+                        request.url.path,
+                        response.status_code,
+                        duration
+                    );
+                    return response;
+                } except Exception as e {
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method, request.url.path, 500, duration
+                    );
+                    raise ;
+                } finally {
+                    metrics_collector.request_finished();
+                }
+            }
+        }
+        self.server.app.add_middleware(MetricsMiddleware);
+        # Register /metrics endpoint
+        self.server.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path=metrics_endpoint,
+                callback=self._metrics.get_endpoint_handler(),
+                parameters=[],
+                response_model=None,
+                tags=['Monitoring'],
+                summary='Prometheus metrics',
+                description='Exposes application metrics in Prometheus format for scraping'
+            )
+        );
+        logger.info(f"Prometheus metrics enabled at {metrics_endpoint}");
+    }
 }
 
 impl JacAPIServer.register_sso_endpoints -> None {
