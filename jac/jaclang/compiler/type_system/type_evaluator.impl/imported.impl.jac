@@ -106,6 +106,10 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 return npath.type;
             }
 
+            if Path(mod_path).is_dir() {
+                continue;
+            }
+
             mod: uni.Module = self._import_module_from_path(mod_path);
             mod_type = types.ModuleType(
                 mod_name=npath.value,
