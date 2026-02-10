@@ -1252,7 +1252,7 @@ def test_vite_env_and_define_config() -> None:
 
             # 1. Verify jac.toml has the expected define values from all-in-one
             jac_toml_path = os.path.join(project_path, "jac.toml")
-            with open(jac_toml_path, "r") as f:
+            with open(jac_toml_path) as f:
                 toml_content = f.read()
             assert "globalThis.APP_BUILD_TIME" in toml_content, (
                 "jac.toml should contain APP_BUILD_TIME define"
