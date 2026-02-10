@@ -195,6 +195,52 @@ class JacScalePluginConfig {
                             "description": "Server host"
                         }
                     }
+                },
+                "metrics": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Prometheus metrics configuration",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable Prometheus metrics collection and /metrics endpoint"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "default": "/metrics",
+                            "description": "Path for the Prometheus metrics endpoint"
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "default": "jac_scale",
+                            "description": "Metrics namespace prefix (e.g., myapp_http_requests_total)"
+                        },
+                        "walker_metrics": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable walker execution timing metrics"
+                        },
+                        "histogram_buckets": {
+                            "type": "list",
+                            "default": [
+                                0.005,
+                                0.01,
+                                0.025,
+                                0.05,
+                                0.075,
+                                0.1,
+                                0.25,
+                                0.5,
+                                0.75,
+                                1.0,
+                                2.5,
+                                5.0,
+                                10.0
+                            ],
+                            "description": "Histogram bucket boundaries in seconds for latency metrics"
+                        }
+                    }
                 }
             }
         };
