@@ -44,10 +44,27 @@ def _discover_minimal_compile_modules() -> frozenset[str]:
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
+    # Directory containing the jaclang package (for bootstrap detection)
+    _jaclang_dir: str = str(Path(__file__).parent)
+
     @property
     def MINIMAL_COMPILE_MODULES(self) -> frozenset[str]:  # noqa: N802
         """Compiler passes written in Jac that need minimal compilation."""
         return _discover_minimal_compile_modules()
+
+    # Directory containing bootstrap .jac files (pycore infrastructure)
+    _bootstrap_dir: str = str(Path(__file__).parent / "pycore")
+
+    def _is_bootstrap_jac(self, file_path: str) -> bool:
+        """Check if a .jac file should be compiled with jac0 (bootstrap).
+
+        Only .jac files inside jaclang/pycore/ are bootstrap files — they
+        are part of the compiler infrastructure and must be compiled with the
+        lightweight jac0 transpiler rather than the full Jac compiler (which
+        depends on them). Files in jaclang/compiler/ use full Jac syntax
+        and must go through the full compiler.
+        """
+        return file_path.startswith(self._bootstrap_dir)
 
     def find_spec(
         self,
@@ -124,6 +141,22 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         """Create the module."""
         return None  # use default machinery
 
+    def _exec_bootstrap(self, module: ModuleType, file_path: str) -> None:
+        """Execute a bootstrap .jac module using jac0 (in-memory, no disk I/O).
+
+        Bootstrap modules are part of the jaclang compiler infrastructure.
+        They are compiled with the lightweight jac0 transpiler rather than
+        the full Jac compiler, which depends on them.
+        """
+        from jaclang.jac0 import compile_jac
+
+        with open(file_path, encoding="utf-8") as f:
+            jac_source = f.read()
+
+        py_source = compile_jac(jac_source, file_path)
+        code = compile(py_source, file_path, "exec")
+        exec(code, module.__dict__)
+
     def exec_module(self, module: ModuleType) -> None:
         """Execute the module by loading and executing its bytecode.
 
@@ -131,14 +164,20 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         module creation from execution. It handles both package (__init__.jac) and
         regular module (.jac/.py) execution.
         """
-        from jaclang.pycore.runtime import JacRuntime as Jac
-
         if not module.__spec__ or not module.__spec__.origin:
             raise ImportError(
                 f"Cannot find spec or origin for module {module.__name__}"
             )
 
         file_path = module.__spec__.origin
+
+        # Bootstrap path: .jac files inside jaclang/ are compiled with jac0
+        if self._is_bootstrap_jac(file_path):
+            self._exec_bootstrap(module, file_path)
+            return
+
+        from jaclang.pycore.runtime import JacRuntime as Jac
+
         is_pkg = module.__spec__.submodule_search_locations is not None
 
         # Register module in JacRuntime's tracking (skip internal jaclang modules)

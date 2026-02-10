@@ -9,16 +9,9 @@ class instead of individual parameters provides:
 - Thread-safe compilation (each call has its own options instance)
 - Clear API for passes to check compilation mode
 """
-
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any
-
-
-@dataclass
-class CompileOptions:
-    """Options controlling Jac compilation behavior.
+import from dataclasses { dataclass }
+import from typing { Any }
+"""Options controlling Jac compilation behavior.
 
     Attributes:
         minimal: Use minimal compilation mode (bytecode only, no JS/native).
@@ -31,28 +24,33 @@ class CompileOptions:
                            that will be linked into a parent module's IR.
         cancel_token: Optional threading.Event to cancel compilation.
     """
+@dataclass
+class CompileOptions {
+    with entry {
+        minimal: bool = False;
+        type_check: bool = False;
+        symtab_ir_only: bool = False;
+        no_cgen: bool = False;
+        skip_native_engine: bool = False;
+        cancel_token: Any = None;
+    }
 
-    minimal: bool = False
-    type_check: bool = False
-    symtab_ir_only: bool = False
-    no_cgen: bool = False
-    skip_native_engine: bool = False
-    cancel_token: Any = None  # threading.Event, but Any to avoid import
-
-    def with_skip_native_engine(self, skip: bool = True) -> CompileOptions:
-        """Return a copy with skip_native_engine set.
+    """Return a copy with skip_native_engine set.
 
         Useful for creating derived options for nested compilations.
         """
+    def with_skip_native_engine(
+        self: CompileOptions, `skip: bool = True
+    ) -> CompileOptions {
         return CompileOptions(
             minimal=self.minimal,
             type_check=self.type_check,
             symtab_ir_only=self.symtab_ir_only,
             no_cgen=self.no_cgen,
-            skip_native_engine=skip,
-            cancel_token=self.cancel_token,
-        )
+            skip_native_engine=`skip,
+            cancel_token=self.cancel_token
+        );
+    }
+}
 
-
-# Default options instance for convenience
-DEFAULT_OPTIONS = CompileOptions()
+glob DEFAULT_OPTIONS = CompileOptions();
