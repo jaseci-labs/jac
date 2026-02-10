@@ -54,6 +54,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_period': 20,
             'liveness_failure_threshold': 80
         },
+        'secrets': {},
         'server': {'port': 8000, 'host': '0.0.0.0'},
         'webhook': {
             'secret': 'webhook-secret-key',
@@ -159,6 +160,15 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
         'verify_signature': webhook_config.get('verify_signature', True),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
+}
+
+"""Get secrets from [plugins.scale.secrets] section.
+
+Values using ${ENV_VAR} syntax are auto-resolved by core's interpolate_env_vars.
+"""
+impl JacScaleConfig.get_secrets_config(self: JacScaleConfig) -> dict[str, str] {
+    config = self.load();
+    return config.get('secrets', {});
 }
 
 """Sanitize a string to be a valid Prometheus metric namespace.
