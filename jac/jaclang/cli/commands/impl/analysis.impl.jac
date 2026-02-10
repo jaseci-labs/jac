@@ -43,38 +43,10 @@ impl check(
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-            # Track internal_program errors for jaclang internal files
-            compiler = prog._get_compiler();
-            internal_prog = compiler._internal_program;
-            (internal_err_start, internal_warn_start) = (
-                len(internal_prog.errors_had) if internal_prog else 0,
-                len(internal_prog.warnings_had) if internal_prog else 0
-            );
+        
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
-            # Get errors from internal_program for jaclang internal files
-            internal_prog = compiler._internal_program;
-            if internal_prog {
-                resolved_path = str(Path(file_path).resolve());
-                # Get the base name without extension to match impl files too
-                base_name = Path(file_path).stem;
-                def matches_file_or_impl(loc_path: str) -> bool {
-                    resolved_loc = str(Path(loc_path).resolve());
-                    # Match exact file OR its impl files (e.g., foo.jac matches foo.impl.jac)
-                    return resolved_loc == resolved_path or (base_name + ".impl.jac" in resolved_loc);
-                }
-                internal_errors = [
-                    e for e in internal_prog.errors_had[internal_err_start:]
-                    if e.loc and e.loc.mod_path and matches_file_or_impl(e.loc.mod_path)
-                ];
-                internal_warnings = [
-                    w for w in internal_prog.warnings_had[internal_warn_start:]
-                    if w.loc and w.loc.mod_path and matches_file_or_impl(w.loc.mod_path)
-                ];
-                new_errors = new_errors + internal_errors;
-                new_warnings = new_warnings + internal_warnings;
-            }
             # Filter out errors/warnings from ignored files
             def filter_issues(issues: list) -> list {
                 return [
@@ -127,10 +99,11 @@ impl check(
                 }
             }
         } elif path_obj.is_dir() {
+            print( 'oiugikuhoholkj',path_obj.glob('**/*.jac'));
             for i in path_obj.glob('**/*.jac'){
-                print(i);
+                print('>>>:::  ',i);
             }
-            
+
             exit();
             for jac_file in path_obj.glob('**/*.jac') {
                 if not jac_file.is_file() {
