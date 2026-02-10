@@ -3,6 +3,7 @@
 PWA icons are generated dynamically using Pillow (PIL) during build.
 
 Required icon sizes:
+
 - `pwa-192x192.png` - 192x192 pixel PNG icon
 - `pwa-512x512.png` - 512x512 pixel PNG icon
 

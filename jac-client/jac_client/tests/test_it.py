@@ -1621,4 +1621,3 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
             print(f"[DEBUG] Restoring working directory to {original_cwd}")
             os.chdir(original_cwd)
             gc.collect()
-
