@@ -98,8 +98,7 @@ for _pkg_key, _pkg_info in PACKAGES.items():
 
 def read_version(pyproject_path: Path) -> str:
     """Read the version string from a pyproject.toml file."""
-    with open(pyproject_path) as f:
-        data = tomlkit.load(f)
+    data = tomlkit.loads(pyproject_path.read_text())
     return str(data["project"]["version"])  # type: ignore[index]
 
 
@@ -132,11 +131,9 @@ def bump_version(current: str, bump_type: str) -> str:
 
 def update_pyproject_version(pyproject_path: Path, new_version: str) -> None:
     """Update the version field in a pyproject.toml file."""
-    with open(pyproject_path) as f:
-        data = tomlkit.load(f)
+    data = tomlkit.loads(pyproject_path.read_text())
     data["project"]["version"] = new_version  # type: ignore[index]
-    with open(pyproject_path, "w") as f:
-        tomlkit.dump(data, f)
+    pyproject_path.write_text(tomlkit.dumps(data))
 
 
 def update_dependency_version(
@@ -146,9 +143,7 @@ def update_dependency_version(
 
     Returns True if a change was made, False otherwise.
     """
-    with open(pyproject_path) as f:
-        data = tomlkit.load(f)
-
+    data = tomlkit.loads(pyproject_path.read_text())
     dependencies = data["project"]["dependencies"]  # type: ignore[index]
     modified = False
 
@@ -160,8 +155,7 @@ def update_dependency_version(
             break
 
     if modified:
-        with open(pyproject_path, "w") as f:
-            tomlkit.dump(data, f)
+        pyproject_path.write_text(tomlkit.dumps(data))
 
     return modified
 
@@ -249,8 +243,11 @@ def set_output(name: str, value: str) -> None:
     """Write a key=value pair to $GITHUB_OUTPUT (or print if not in CI)."""
     github_output = os.environ.get("GITHUB_OUTPUT")
     if github_output:
-        with open(github_output, "a") as f:
-            # Handle multiline values
+        with Path(github_output).open("a") as f:
+            # Handle multiline values using GitHub Actions heredoc syntax.
+            # Format: name<<DELIMITER\nvalue\nDELIMITER\n
+            # A random UUID is used as delimiter to avoid conflicts with value content.
+            # See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
             if "\n" in value:
                 import uuid
 
