@@ -43,7 +43,7 @@ impl check(
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-        
+
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
