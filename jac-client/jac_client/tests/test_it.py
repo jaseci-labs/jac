@@ -1225,24 +1225,21 @@ def test_no_profile_omits_profile_settings() -> None:
             gc.collect()
 
 
-def test_vite_define_config_in_bundle() -> None:
-    """Test that [plugins.client.vite.define] values are baked into the JS bundle.
+def test_vite_env_and_define_config() -> None:
+    """Test Vite environment and define configuration features.
 
-    Verifies the custom define feature:
-    1. Sets up an app with [plugins.client.vite.define] in jac.toml
-    2. Builds the client bundle
-    3. Asserts defined values appear in the bundled JavaScript
-
-    The all-in-one example already has:
-        [plugins.client.vite.define]
-        "globalThis.APP_BUILD_TIME" = "2024-01-01T00:00:00Z"
-        "globalThis.FEATURE_ENABLED" = true
+    Consolidated test covering:
+    1. [plugins.client.vite.define] values are baked into the JS bundle
+    2. Define values with special characters are properly escaped
+    3. .env files are loaded from project root via envDir config
     """
     import re
 
-    print("[DEBUG] Starting test_vite_define_config_in_bundle")
+    print("[DEBUG] Starting test_vite_env_and_define_config")
 
-    app_name = "e2e-define-config"
+    app_name = "e2e-vite-config"
+    test_app_name = "E2E Test App"
+    special_char_value = 'Test "quoted" value with \\backslash'
 
     with tempfile.TemporaryDirectory() as temp_dir:
         print(f"[DEBUG] Created temporary directory at {temp_dir}")
@@ -1253,7 +1250,7 @@ def test_vite_define_config_in_bundle() -> None:
             project_path = _setup_all_in_one_project(temp_dir, app_name)
             print(f"[DEBUG] Project set up at {project_path}")
 
-            # Verify jac.toml has the expected define values
+            # 1. Verify jac.toml has the expected define values from all-in-one
             jac_toml_path = os.path.join(project_path, "jac.toml")
             with open(jac_toml_path, "r") as f:
                 toml_content = f.read()
@@ -1264,6 +1261,34 @@ def test_vite_define_config_in_bundle() -> None:
                 "jac.toml should contain FEATURE_ENABLED define"
             )
             print("[DEBUG] Verified jac.toml contains expected define values")
+
+            # 2. Add a define with special characters to test escaping
+            escaped_value = special_char_value.replace("\\", "\\\\").replace('"', '\\"')
+            new_define_line = f'"globalThis.TEST_SPECIAL_VALUE" = "{escaped_value}"\n'
+
+            define_section = "[plugins.client.vite.define]"
+            if define_section in toml_content:
+                insert_pos = toml_content.find(define_section) + len(define_section)
+                newline_pos = toml_content.find("\n", insert_pos)
+                if newline_pos != -1:
+                    toml_content = (
+                        toml_content[: newline_pos + 1]
+                        + new_define_line
+                        + toml_content[newline_pos + 1 :]
+                    )
+            else:
+                toml_content += f"\n{define_section}\n{new_define_line}"
+
+            with open(jac_toml_path, "w") as f:
+                f.write(toml_content)
+            print("[DEBUG] Added special character define to jac.toml")
+
+            # 3. Create .env file in project root
+            env_file_path = os.path.join(project_path, ".env")
+            with open(env_file_path, "w") as f:
+                f.write(f"VITE_APP_NAME={test_app_name}\n")
+                f.write("VITE_APP_VERSION=2.0.0-test\n")
+            print(f"[DEBUG] Created .env file at {env_file_path}")
 
             server: Popen[bytes] | None = None
             server_port = get_free_port()
@@ -1312,276 +1337,34 @@ def test_vite_define_config_in_bundle() -> None:
                     assert len(js_body) > 0, "JS bundle should not be empty"
                     print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
 
-                # Verify custom define values are baked into the bundle
-                # String value: "2024-01-01T00:00:00Z"
+                # Assert 1: Define values from jac.toml are baked in
                 assert "2024-01-01T00:00:00Z" in js_body, (
                     "Expected APP_BUILD_TIME value '2024-01-01T00:00:00Z' "
-                    "to appear in the bundled JavaScript.\n"
-                    f"Bundle size: {len(js_body)} bytes"
+                    "to appear in the bundled JavaScript."
                 )
                 print("[DEBUG] Confirmed APP_BUILD_TIME value found in JS bundle")
 
-                # Boolean value: true (FEATURE_ENABLED)
-                # Since true is a common keyword, we can't directly check for it,
-                # but we can verify the build succeeded with defines
-                print(
-                    "[DEBUG] Define config test passed - "
-                    "custom values are baked into bundle"
-                )
-
-            finally:
-                if server is not None:
-                    print("[DEBUG] Terminating server process")
-                    server.terminate()
-                    try:
-                        server.wait(timeout=15)
-                    except Exception:
-                        server.kill()
-                        server.wait(timeout=5)
-                    time.sleep(1)
-                    gc.collect()
-
-        finally:
-            os.chdir(original_cwd)
-            gc.collect()
-
-
-def test_vite_define_with_special_characters() -> None:
-    """Test that define values with special characters are properly escaped.
-
-    Verifies proper JSON escaping:
-    1. Sets up an app with special characters in define values
-    2. Builds the client bundle
-    3. Asserts values are properly escaped and appear in the bundle
-    """
-    import re
-
-    print("[DEBUG] Starting test_vite_define_with_special_characters")
-
-    app_name = "e2e-define-special-chars"
-    # Value with quotes and special chars that need escaping
-    test_value = 'Test "quoted" value with \\backslash'
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"[DEBUG] Created temporary directory at {temp_dir}")
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(temp_dir)
-
-            project_path = _setup_all_in_one_project(temp_dir, app_name)
-            print(f"[DEBUG] Project set up at {project_path}")
-
-            # Add a define with special characters to jac.toml
-            # Must insert into [plugins.client.vite.define] section, not append to end
-            jac_toml_path = os.path.join(project_path, "jac.toml")
-            with open(jac_toml_path, "r") as f:
-                toml_content = f.read()
-
-            # TOML requires escaping backslashes and quotes
-            escaped_value = test_value.replace("\\", "\\\\").replace('"', '\\"')
-            new_define_line = f'"globalThis.TEST_SPECIAL_VALUE" = "{escaped_value}"\n'
-
-            # Insert after [plugins.client.vite.define] section marker
-            # Find the define section and add our new entry
-            define_section = "[plugins.client.vite.define]"
-            if define_section in toml_content:
-                # Insert after the section header
-                insert_pos = toml_content.find(define_section) + len(define_section)
-                # Find the end of that line
-                newline_pos = toml_content.find("\n", insert_pos)
-                if newline_pos != -1:
-                    toml_content = (
-                        toml_content[: newline_pos + 1]
-                        + new_define_line
-                        + toml_content[newline_pos + 1 :]
-                    )
-            else:
-                # Section doesn't exist, create it
-                toml_content += f"\n{define_section}\n{new_define_line}"
-
-            with open(jac_toml_path, "w") as f:
-                f.write(toml_content)
-
-            print("[DEBUG] Added special character define to jac.toml")
-
-            server: Popen[bytes] | None = None
-            server_port = get_free_port()
-            jac_cmd = get_jac_command()
-            env = get_env_with_npm()
-            try:
-                print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
-                )
-                server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
-                    cwd=project_path,
-                    env=env,
-                )
-
-                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
-                wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(
-                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
-                )
-
-                # Fetch root HTML to get the JS bundle path
-                root_bytes = _wait_for_endpoint(
-                    f"http://127.0.0.1:{server_port}",
-                    timeout=120.0,
-                    poll_interval=2.0,
-                    request_timeout=30.0,
-                )
-                root_body = root_bytes.decode("utf-8", errors="ignore")
-                assert "<html" in root_body.lower(), "Root should return HTML"
-
-                # Extract JS bundle path and fetch it
-                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
-                assert script_match, "Could not find client JS bundle path in HTML"
-
-                js_path = script_match.group(1)
-                js_url = f"http://127.0.0.1:{server_port}{js_path}"
-                print(f"[DEBUG] Fetching JS bundle from {js_url}")
-
-                with urlopen(js_url, timeout=30) as resp:
-                    js_body = resp.read().decode("utf-8", errors="ignore")
-                    assert resp.status == 200, "JS bundle should return 200"
-                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
-
-                # The bundle should build successfully without syntax errors
-                # (which would happen if escaping failed)
-                # Check that "quoted" appears (the word within the test value)
+                # Assert 2: Special character escaping works
                 assert "quoted" in js_body, (
                     "Expected 'quoted' substring from TEST_SPECIAL_VALUE "
                     "to appear in the bundled JavaScript."
                 )
-                print(
-                    "[DEBUG] Special character escaping test passed - "
-                    "bundle built successfully with escaped values"
-                )
+                print("[DEBUG] Confirmed special character value found in JS bundle")
 
-            finally:
-                if server is not None:
-                    print("[DEBUG] Terminating server process")
-                    server.terminate()
-                    try:
-                        server.wait(timeout=15)
-                    except Exception:
-                        server.kill()
-                        server.wait(timeout=5)
-                    time.sleep(1)
-                    gc.collect()
-
-        finally:
-            os.chdir(original_cwd)
-            gc.collect()
-
-
-def test_env_file_loaded_from_project_root() -> None:
-    """Test that .env files are loaded from project root via envDir config.
-
-    Verifies envDir configuration:
-    1. Sets up an app and creates a .env file in project root
-    2. The .env file contains VITE_ prefixed variables
-    3. Builds the client bundle
-    4. Verifies the bundle includes the env var values
-
-    Note: This test verifies the envDir: projectRoot configuration that was
-    added to vite.config.js to fix .env file loading.
-    """
-    import re
-
-    print("[DEBUG] Starting test_env_file_loaded_from_project_root")
-
-    app_name = "e2e-env-file-test"
-    test_app_name = "E2E Test App"
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"[DEBUG] Created temporary directory at {temp_dir}")
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(temp_dir)
-
-            project_path = _setup_all_in_one_project(temp_dir, app_name)
-            print(f"[DEBUG] Project set up at {project_path}")
-
-            # Create .env file in project root with test values
-            env_file_path = os.path.join(project_path, ".env")
-            with open(env_file_path, "w") as f:
-                f.write(f"VITE_APP_NAME={test_app_name}\n")
-                f.write("VITE_APP_VERSION=2.0.0-test\n")
-                f.write("VITE_TEST_FLAG=enabled\n")
-            print(f"[DEBUG] Created .env file at {env_file_path}")
-
-            # Verify .env file exists
-            assert os.path.isfile(env_file_path), ".env file should exist"
-            with open(env_file_path, "r") as f:
-                env_content = f.read()
-            print(f"[DEBUG] .env content:\n{env_content}")
-
-            server: Popen[bytes] | None = None
-            server_port = get_free_port()
-            jac_cmd = get_jac_command()
-            env = get_env_with_npm()
-            try:
-                print(
-                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
-                )
-                server = Popen(
-                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
-                    cwd=project_path,
-                    env=env,
-                )
-
-                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
-                wait_for_port("127.0.0.1", server_port, timeout=90.0)
-                print(
-                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
-                )
-
-                # Fetch root HTML to get the JS bundle path
-                root_bytes = _wait_for_endpoint(
-                    f"http://127.0.0.1:{server_port}",
-                    timeout=120.0,
-                    poll_interval=2.0,
-                    request_timeout=30.0,
-                )
-                root_body = root_bytes.decode("utf-8", errors="ignore")
-                assert "<html" in root_body.lower(), "Root should return HTML"
-
-                # Extract JS bundle path and fetch it
-                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
-                assert script_match, "Could not find client JS bundle path in HTML"
-
-                js_path = script_match.group(1)
-                js_url = f"http://127.0.0.1:{server_port}{js_path}"
-                print(f"[DEBUG] Fetching JS bundle from {js_url}")
-
-                with urlopen(js_url, timeout=30) as resp:
-                    js_body = resp.read().decode("utf-8", errors="ignore")
-                    assert resp.status == 200, "JS bundle should return 200"
-                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
-
-                # Verify env vars from .env are baked into the bundle
-                # The all-in-one example uses import.meta.env.VITE_APP_NAME
+                # Assert 3: .env file values are loaded via envDir
                 assert test_app_name in js_body, (
                     f"Expected VITE_APP_NAME value '{test_app_name}' "
-                    "to appear in the bundled JavaScript.\n"
-                    "This indicates .env files are being loaded from project root.\n"
-                    f"Bundle size: {len(js_body)} bytes"
+                    "to appear in the bundled JavaScript."
                 )
                 print(f"[DEBUG] Confirmed '{test_app_name}' found in JS bundle")
 
-                # Also check for the version string
                 assert "2.0.0-test" in js_body, (
                     "Expected VITE_APP_VERSION value '2.0.0-test' "
                     "to appear in the bundled JavaScript."
                 )
                 print("[DEBUG] Confirmed '2.0.0-test' found in JS bundle")
 
-                print(
-                    "[DEBUG] envDir test passed - "
-                    ".env files are loaded from project root"
-                )
+                print("[DEBUG] All Vite config assertions passed")
 
             finally:
                 if server is not None:
