@@ -16,10 +16,8 @@ import from jaclang.pycore.runtime { hookimpl }
 # Import target CLI handler from the unified architecture
 import from jac_client.plugin.src.targets.cli_handlers { TargetCLIHandler }
 
-glob registry = get_registry();
-
-# Module-level CLI handler instance
-glob _target_handler = TargetCLIHandler();
+glob registry = get_registry(),
+     _target_handler = TargetCLIHandler();
 
 """Register 'build' command at module level."""
 @registry.command(

@@ -8,10 +8,8 @@ import from .types { ClientTargetType }
 import from .base { ClientTarget }
 
 # Target cache for singleton pattern
-glob _target_cache: dict[ClientTargetType, ClientTarget] = {};
-
-# Error messages
-glob ERR_UNKNOWN_TARGET = "Unknown target: '{}'. Valid targets: {}";
+glob _target_cache: dict[ClientTargetType, ClientTarget] = {},
+     ERR_UNKNOWN_TARGET = "Unknown target: '{}'. Valid targets: {}";
 
 """Create a target instance for the given target type.
 
@@ -81,7 +79,7 @@ def get_target(name: str) -> ClientTarget {
 }
 
 """Get all available target types."""
-def get_available_targets() -> list[ClientTargetType] {
+def get_available_targets -> list[ClientTargetType] {
     return [
         ClientTargetType.WEB,
         ClientTargetType.PWA,
@@ -90,12 +88,12 @@ def get_available_targets() -> list[ClientTargetType] {
 }
 
 """Get all available target names as strings."""
-def get_available_target_names() -> list[str] {
+def get_available_target_names -> list[str] {
     return [t.value for t in get_available_targets()];
 }
 
 """Clear the target cache (for testing)."""
-def clear_target_cache() -> None {
+def clear_target_cache -> None {
     global _target_cache;
     _target_cache = {};
 }

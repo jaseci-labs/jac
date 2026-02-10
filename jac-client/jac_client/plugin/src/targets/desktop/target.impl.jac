@@ -273,7 +273,7 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
         console.print("  (Press Ctrl+C to stop)", style="muted");
 
         # Setup cleanup function
-        def cleanup() -> None {
+        def cleanup -> None {
             console.print("\n  Stopping dev servers...", style="muted");
             if vite_process {
                 try {
@@ -387,7 +387,7 @@ impl DesktopTarget.start(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
         # Setup cleanup function
         tauri_process = None;
 
-        def cleanup() -> None {
+        def cleanup -> None {
             console.print("\n  Stopping app...", style="muted");
             if tauri_process {
                 try {

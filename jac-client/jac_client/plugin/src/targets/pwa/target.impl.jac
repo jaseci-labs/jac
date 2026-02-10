@@ -99,7 +99,7 @@ impl PWATarget.dev(self: PWATarget, ctx: BuildContext) -> BuildResult {
 # -----------------------------------------------------------------------------
 
 """Load PWA config with project metadata."""
-def _load_pwa_context() -> tuple[dict, str] {
+def _load_pwa_context -> tuple[dict, str] {
     config = get_config();
     project_name = "Jac App";
     pwa_config: dict = {};
@@ -143,7 +143,7 @@ def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
 }
 
 """Get the path to the default PWA icons directory."""
-def _get_default_icons_dir() -> Path | None {
+def _get_default_icons_dir -> Path | None {
     import from jac_client.plugin { defaults }
 
     defaults_file = getattr(defaults, '__file__', None);
@@ -326,7 +326,7 @@ def _build_pwa_head_tags(theme_color: str) -> str {
 }
 
 """Build service worker registration script."""
-def _build_sw_registration_script() -> str {
+def _build_sw_registration_script -> str {
     return '''
     <script>
       if ('serviceWorker' in navigator) {
