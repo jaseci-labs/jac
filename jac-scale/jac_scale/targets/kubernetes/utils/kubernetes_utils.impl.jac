@@ -361,6 +361,35 @@ impl cluster_type -> str {
     }
 }
 
+impl check_pods_restarted(namespace: str, app_name: str) -> bool {
+    try {
+        config.load_kube_config();
+    } except Exception {
+        config.load_incluster_config();
+    }
+    v1 = client.CoreV1Api();
+    pods = v1.list_namespaced_pod(
+        namespace=namespace, label_selector="app={}".format(app_name)
+    );
+    for pod in pods.items {
+        statuses = pod.status.container_statuses;
+        if not statuses {
+            continue;
+        }
+
+        for container in statuses {
+            if (container.restart_count > 0) {
+                console.print(
+                    f"Pod {pod.metadata.name} container "
+                    f"{container.name} restarted "
+                );
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 """
     Wait for a service to become available.
 
@@ -372,8 +401,10 @@ impl check_deployment_status(
     path: str = '/docs',
     interval: int = 15,
     max_retries: int = 30,
-    nlb_url: (str | None) = None
-) -> bool {
+    nlb_url: (str | None) = None,
+    namespace: str = "default",
+    app_name: str = "jaseci"
+) -> tuple[bool, str] {
     if nlb_url {
         url = f"{nlb_url.rstrip('/')}{path}";
     } else {
@@ -383,10 +414,13 @@ impl check_deployment_status(
         try {
             response = requests.get(url, timeout=10);
             if (response.status_code == 200) {
-                console.print(f"Service is available at: {url}");
-                return True;
+                return (True, "Successful");
             }
         } except RequestException as e {
+            if check_pods_restarted(namespace, app_name) {
+                return (False, "Containers restarted");
+            }
+
             if (attempt == max_retries) {
                 console.print(f"Failed to connect to {url}: {e}");
             }
@@ -395,7 +429,7 @@ impl check_deployment_status(
             time.sleep(interval);
         }
     }
-    return False;
+    return (False, "Timeout reached");
 }
 
 """Create or update ConfigMap with binary tar.gz using Kubernetes API."""
@@ -518,6 +552,50 @@ impl load_env_variables(code_folder: str) -> list {
         }
     }
     return env_list;
+}
+
+"""Create a Kubernetes Secret from resolved secret data. Returns True if created."""
+impl create_k8s_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str]
+) -> bool {
+    if not secret_data {
+        return False;
+    }
+    secret_body = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {'name': secret_name, 'namespace': namespace},
+        'type': 'Opaque',
+        'stringData': secret_data
+    };
+    try {
+        core_v1.create_namespaced_secret(namespace=namespace, body=secret_body);
+    } except ApiException as e {
+        if e.status == 409 {
+            core_v1.replace_namespaced_secret(
+                name=secret_name, namespace=namespace, body=secret_body
+            );
+        } else {
+            raise ;
+        }
+    }
+    return True;
+}
+
+"""Delete a Kubernetes Secret if it exists."""
+impl delete_k8s_secret(
+    core_v1: client.CoreV1Api, namespace: str, secret_name: str
+) -> None {
+    try {
+        core_v1.delete_namespaced_secret(name=secret_name, namespace=namespace);
+    } except ApiException as e {
+        if e.status != 404 {
+            raise ;
+        }
+    }
 }
 
 """

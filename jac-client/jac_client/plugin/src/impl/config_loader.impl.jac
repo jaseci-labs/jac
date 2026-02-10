@@ -23,6 +23,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
         'vite': {
             'plugins': [],
             'lib_imports': [],
+            'define': {},  # Custom define values (env vars, constants)
             'build': {},
             'server': {},
             'resolve': {}
