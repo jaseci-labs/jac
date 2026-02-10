@@ -3,23 +3,10 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
 ## jac-client 0.2.17 (Unreleased)
-
-<<<<<<< HEAD
 - **Code refactors**: Backtick escape, etc.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
 
-=======
-<<<<<<< bug-fix-xlient-secrets
-
-- **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
-- **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
-
-## jac-client 0.2.15 (Latest Release)
-
-=======
-
->>>>>>> 3072122660f2c736e712bc9f8612fbc38673b60b
 ## jac-client 0.2.16 (Latest Release)
 
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
@@ -33,11 +20,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.14
 
 ## jac-client 0.2.15
-<<<<<<< HEAD
-=======
->>>>>>>
->>>>>>> main
->>>>>>> 3072122660f2c736e712bc9f8612fbc38673b60b
 
 ## jac-client 0.2.14
 
