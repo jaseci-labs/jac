@@ -42,3 +42,6 @@ tailwindcss = "latest"
 [environments.response.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"
 "Cross-Origin-Embedder-Policy" = "require-corp"
+
+[plugins.scale.secrets]
+TEST_SECRET_KEY = "${TEST_SECRET_KEY}"

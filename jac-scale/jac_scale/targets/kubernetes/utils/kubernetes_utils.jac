@@ -30,6 +30,17 @@ def validate_resource_limits(
 
 def load_env_variables(code_folder: str) -> list;
 
+def create_k8s_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str]
+) -> bool;
+
+def delete_k8s_secret(
+    core_v1: client.CoreV1Api, namespace: str, secret_name: str
+) -> None;
+
 def check_K8s_status -> None;
 
 def delete_if_exists(

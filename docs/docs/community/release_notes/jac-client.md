@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.17 (Unreleased)
 
 - **Code refactors**: Backtick escape, etc.
+- Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
 
