@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
-- **Code refactors**: Backtick escape, etc.
+- **Code refactors**: Backtick escape, TS cleanup, etc.
 - **RD Parser: Broad Grammar Parity Fixes**: Fixed 16 grammar gaps in the recursive descent parser, raising walk-check match rate from 95.3% to 98.7%.
 
 ## jaclang 0.10.0 (Latest Release)
