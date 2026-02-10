@@ -730,7 +730,7 @@ def test_default_client_app_renders() -> None:
                     print(f"[DEBUG] Error at /cl/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # 6. Test that static JS bundle is being served
+                # 6. Test that static JS bundle is being served via get_client_js hook
                 try:
                     print("[DEBUG] Testing that client.js bundle is served")
                     # Extract the client.js path from the HTML
@@ -747,9 +747,14 @@ def test_default_client_app_renders() -> None:
                             js_body = resp.read().decode("utf-8", errors="ignore")
                             assert resp.status == 200, "JS bundle should return 200"
                             assert len(js_body) > 0, "JS bundle should not be empty"
+                            # Verify bundle contains expected React/JSX runtime markers
+                            # These markers confirm the get_client_js hook returned valid bundle
+                            assert (
+                                "createElement" in js_body or "jsx" in js_body.lower()
+                            ), "JS bundle should contain React createElement or jsx"
                             print(
                                 f"[DEBUG] JS bundle fetched successfully "
-                                f"({len(js_body)} bytes)"
+                                f"({len(js_body)} bytes), contains expected runtime code"
                             )
                     else:
                         print("[DEBUG] Warning: Could not find client.js in HTML")
@@ -948,6 +953,11 @@ def test_configurable_api_base_url_in_bundle() -> None:
                     js_body = resp.read().decode("utf-8", errors="ignore")
                     assert resp.status == 200, "JS bundle should return 200"
                     assert len(js_body) > 0, "JS bundle should not be empty"
+                    # Verify bundle contains expected React/JSX runtime markers
+                    # This confirms the get_client_js hook returned valid bundle code
+                    assert (
+                        "createElement" in js_body or "jsx" in js_body.lower()
+                    ), "JS bundle should contain React createElement or jsx"
                     print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
 
                 # 7. Assert the configured base URL is baked into the bundle
