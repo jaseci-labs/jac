@@ -26,6 +26,12 @@ author = "Jaseci"
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
+# Build-time constants (alternative to .env for when import.meta.env doesn't work)
+# These are injected at build time and available as global variables
+[plugins.client.vite.define]
+"globalThis.APP_BUILD_TIME" = "2024-01-01T00:00:00Z"
+"globalThis.FEATURE_ENABLED" = true
+
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 

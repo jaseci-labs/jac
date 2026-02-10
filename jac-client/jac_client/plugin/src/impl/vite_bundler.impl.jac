@@ -243,6 +243,45 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
+"""Format define entries for Vite config.
+
+Converts API base URL and custom define values from jac.toml into
+JavaScript define entries for Vite's build-time constant replacement.
+
+Args:
+    api_base_url: The API base URL to inject
+    custom_defines: Dict of custom define values from [plugins.client.vite.define]
+
+Returns:
+    Formatted string of define entries for Vite config
+"""
+impl ViteBundler._format_define_entries(
+    self: ViteBundler, api_base_url: str, custom_defines: dict
+) -> str {
+    # Start with the required API base URL entry
+    # Use json.dumps for proper escaping of special characters
+    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + json.dumps(api_base_url)];
+
+    # Add custom defines from jac.toml
+    for (key, value) in custom_defines.items() {
+        if isinstance(value, str) {
+            # String values - use json.dumps for proper escaping
+            entries.append("    '" + key + "': " + json.dumps(value));
+        } elif isinstance(value, bool) {
+            # Boolean values as lowercase literals
+            entries.append("    '" + key + "': " + str(value).lower());
+        } elif isinstance(value, (int, float)) {
+            # Numeric values as-is
+            entries.append("    '" + key + "': " + str(value));
+        } else {
+            # Fallback for other types - use json.dumps for safety
+            entries.append("    '" + key + "': " + json.dumps(str(value)));
+        }
+    }
+
+    return ',\n'.join(entries);
+}
+
 """Generate Vite config content for both build and dev modes."""
 impl ViteBundler._generate_vite_config_content(
     self: ViteBundler,
@@ -297,6 +336,9 @@ impl ViteBundler._generate_vite_config_content(
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
     if (isinstance(resolve_config, dict) and resolve_config)
     else '';
+    # Format define entries (API base URL + custom defines from jac.toml)
+    define_config = vite_config_data.get('define', {});
+    define_str = self._format_define_entries(api_base_url, define_config);
     imports_section = f"{imports_str}\n" if imports_str else '';
     newline = '\n';
     if is_dev {
@@ -321,10 +363,11 @@ const projectRoot = path.resolve(__dirname, "../../..");
  */
 export default defineConfig({{
   define: {{
-    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+{define_str}
   }},
   plugins: [{(newline + plugins_str + newline + '  ') if plugins_str else ''}],
   root: buildDir,
+  envDir: projectRoot, // Load .env files from project root
   publicDir: false,
   appType: 'spa',
   build: {{
@@ -446,13 +489,14 @@ function jacSourceMapper() {{
 
 export default defineConfig({{
   define: {{
-    'globalThis.__JAC_API_BASE_URL__': '"{api_base_url}"',
+{define_str}
   }},
   plugins: [
     jacSourceMapper(),{(newline + plugins_str + newline + '  ')
         if plugins_str
         else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
+  envDir: projectRoot, // Load .env files from project root
     build: {{
     sourcemap: true, // Enable source maps for better error messages
 {build_overrides_str}
