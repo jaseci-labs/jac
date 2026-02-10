@@ -58,7 +58,7 @@ obj TargetRegistry {
     def get_all -> list[ClientTarget];
 
     """Check if a target is registered."""
-    def has(name: str) -> bool;
+    def `has(name: str) -> bool;
 
     """Set the default target."""
     def set_default(name: str) -> None;

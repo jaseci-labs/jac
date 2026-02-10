@@ -110,7 +110,7 @@ impl MongoBackend.close -> None {
 }
 
 """Check if an anchor exists in MongoDB."""
-impl MongoBackend.has(id: UUID) -> bool {
+impl MongoBackend.`has(id: UUID) -> bool {
     if self.client is None {
         return False;
     }
