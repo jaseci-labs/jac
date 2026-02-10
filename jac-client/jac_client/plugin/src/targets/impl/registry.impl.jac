@@ -33,7 +33,7 @@ impl TargetRegistry.get_all -> list[ClientTarget] {
 }
 
 """Check if a target is registered."""
-impl TargetRegistry.has(name: str) -> bool {
+impl TargetRegistry.`has(name: str) -> bool {
     return name in self._targets;
 }
 
