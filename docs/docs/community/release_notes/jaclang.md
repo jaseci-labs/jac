@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **Stale Persistence Cache Handling**:  Resolved an issue where running different Jac applications sequentially caused NodeAnchor [UUID] is not a valid reference! errors due to stale anchors persisting in SQLite/MongoDB/Redis backends. The runtime now validates that an anchor’s archetype still exists before loading it and automatically removes invalid entries. This removes the need for manual cache deletion in normal workflows.
+- **Code refactors**: Backtick escape, etc.
 
 ## jaclang 0.10.0 (Latest Release)
 
