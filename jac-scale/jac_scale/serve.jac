@@ -27,6 +27,7 @@ import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
+import from jac_scale.abstractions.metrics { MetricsCollector }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -53,6 +54,7 @@ obj JacAPIServer(JServer) {
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
+        _metrics: MetricsCollector | None = None,
         _ws_manager: WebSocketConnectionManager | None = None;
 
     def postinit -> None;

@@ -2,7 +2,7 @@
 # BACKEND: Data Models and Walkers
 # ============================================================================
 node Todo {
-    has text: str,
+    has text: str
         done: bool = False;
 }
 
