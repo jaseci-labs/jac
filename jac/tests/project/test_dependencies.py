@@ -243,24 +243,6 @@ class TestDependencyInstaller:
             )
             assert installer.is_installed("nonexistent") is False
 
-    def test_get_installed_version(self, temp_project: Path) -> None:
-        """Test getting installed version of a package."""
-        config = JacConfig.load(temp_project / "jac.toml")
-        installer = DependencyInstaller(config=config)
-
-        venv_dir = temp_project / ".jac" / "venv"
-        venv_dir.mkdir(parents=True, exist_ok=True)
-
-        with patch.object(installer, "_run_pip") as mock_pip:
-            mock_pip.return_value = (
-                0,
-                "Name: requests\nVersion: 2.31.0\nSummary: HTTP library",
-                "",
-            )
-            version = installer.get_installed_version("requests")
-            assert version == "2.31.0"
-            mock_pip.assert_called_with(["show", "requests"])
-
     def test_get_installed_version_not_found(self, temp_project: Path) -> None:
         """Test getting version of non-installed package returns None."""
         config = JacConfig.load(temp_project / "jac.toml")
@@ -313,6 +295,44 @@ class TestDependencyInstaller:
             assert "pip" not in installed
             assert "setuptools" not in installed
             mock_pip.assert_called_with(["list", "--format=json"])
+
+    def test_get_installed_version(self, temp_project: Path) -> None:
+        """Test getting installed package version."""
+        config = JacConfig.load(temp_project / "jac.toml")
+        installer = DependencyInstaller(config=config)
+
+        # Create a fake venv dir
+        venv_dir = temp_project / ".jac" / "venv"
+        venv_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch.object(installer, "_run_pip") as mock_pip:
+            # Test successful version retrieval
+            mock_pip.return_value = (
+                0,
+                "Name: numpy\nVersion: 2.4.1\nSummary: Fundamental package\n",
+                "",
+            )
+            version = installer.get_installed_version("numpy")
+            assert version == "2.4.1"
+            mock_pip.assert_called_with(["show", "numpy"])
+
+            # Test package not installed
+            mock_pip.return_value = (
+                1,
+                "",
+                "WARNING: Package(s) not found: nonexistent",
+            )
+            version = installer.get_installed_version("nonexistent")
+            assert version is None
+
+            # Test pip show succeeds but no Version line present
+            mock_pip.return_value = (
+                0,
+                "Name: strange-pkg\nSummary: Missing version field\n",
+                "",
+            )
+            version = installer.get_installed_version("strange-pkg")
+            assert version is None
 
     def test_uninstall_package(self, temp_project: Path) -> None:
         """Test uninstalling a package via pip uninstall."""
