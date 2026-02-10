@@ -247,20 +247,23 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict
 ) -> str {
-    # Vite define values are JS code to inject, not JS values.
-    # Strings need extra quotes: '"value"' so Vite injects "value" (a string literal)
-    entries = ["    '" + JAC_API_BASE_URL_KEY + "': '" + json.dumps(api_base_url) + "'"];
+    # Vite define values must be valid JS expressions.
+    # json.dumps() produces valid JS string literals with proper escaping:
+    # e.g., 'Test "quoted"' -> "Test \"quoted\"" (valid JS string literal)
+    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + json.dumps(api_base_url)];
 
     for (key, value) in custom_defines.items() {
         if isinstance(value, str) {
-            entries.append("    '" + key + "': '" + json.dumps(value) + "'");
+            # json.dumps produces a valid JS string literal with proper escaping
+            entries.append("    '" + key + "': " + json.dumps(value));
         } elif isinstance(value, bool) {
             # JS uses lowercase true/false
             entries.append("    '" + key + "': " + str(value).lower());
         } elif isinstance(value, (int, float)) {
             entries.append("    '" + key + "': " + str(value));
         } else {
-            entries.append("    '" + key + "': '" + json.dumps(str(value)) + "'");
+            # For other types, convert to string and JSON-encode
+            entries.append("    '" + key + "': " + json.dumps(str(value)));
         }
     }
 
