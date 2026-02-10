@@ -75,7 +75,7 @@ def _proc_file(filename: str) -> tuple {
         mod = mod[:-3];
     } else {
         console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
-        <>exit(1);
+        `exit(1);
     }
     # Only set base path if not already set (allows tests to override)
     if not Jac.base_path_dir {
@@ -140,8 +140,8 @@ impl enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    <>root: str = '',
-    <>node: str = ''
+    `root: str = '',
+    `node: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.pycore.runtime { JacRuntime as Jac }
@@ -150,8 +150,8 @@ impl enter(
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
     # Set user root if provided (for permission boundary)
-    if <>root {
-        mach.set_user_root(<>root);
+    if `root {
+        mach.set_user_root(`root);
     }
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(
@@ -170,7 +170,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(<>node);
+            mach.set_entry_node(`node);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)
@@ -266,16 +266,8 @@ impl start(
     hot_reloader = None;
     vite_process = None;
     if dev {
-        # Check if watchdog is available in the project environment
-        if not _check_watchdog_available() {
-            console.error(
-                "\n  Error: --dev requires 'watchdog' package to be installed.\n"
-            );
-            console.error(
-                "  The 'watchdog' package is listed in [dev-dependencies] of jac.toml."
-            );
-            console.error("  Install it by running:\n");
-            console.error("    jac install --dev\n");
+        # Auto-install watchdog if not available
+        if not _ensure_watchdog_installed() {
             mach.close();
             return 1;
         }
@@ -346,11 +338,14 @@ impl start(
     }
 }
 
-"""Check if watchdog is available in the project's .jac environment."""
-def _check_watchdog_available -> bool {
+"""Ensure watchdog is installed, auto-install if missing."""
+def _ensure_watchdog_installed -> bool {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { get_venv_site_packages }
+    import from jaclang.project.dependencies {
+        get_venv_site_packages,
+        DependencyInstaller
+    }
 
     config = get_config();
     if config is None {
@@ -359,6 +354,8 @@ def _check_watchdog_available -> bool {
             import watchdog;
             return True;
         } except ImportError {
+            console.error("\n  Error: --dev requires 'watchdog' package.\n");
+            console.error("  Install it with: pip install watchdog\n");
             return False;
         }
     }
@@ -381,7 +378,19 @@ def _check_watchdog_available -> bool {
         import watchdog;
         return True;
     } except ImportError {
-        return False;
+        # Auto-install watchdog from dev dependencies
+        console.print(
+            "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
+        );
+        installer = DependencyInstaller(config=config, verbose=False);
+        specs = installer.get_pip_package_specs(include_dev=True);
+        if installer.install_package(specs) {
+            console.success("  ✔ watchdog installed\n");
+            return True;
+        } else {
+            console.error("\n  Error: Failed to install watchdog\n");
+            return False;
+        }
     }
 }
 
@@ -496,7 +505,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
         entry_file = client_dir / 'build' / 'main.js';
 
         # Create the config even if entry doesn't exist yet
-        bundler.create_dev_vite_config(entry_file, api_port);
+        bundler.create_vite_config(entry_file, is_dev=True, api_port=api_port);
 
         # Ensure package.json exists
         if not (client_dir / 'configs' / 'package.json').exists() {

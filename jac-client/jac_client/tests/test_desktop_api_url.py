@@ -339,15 +339,15 @@ def test_vite_bundler_has_api_base_url_constant() -> None:
 
 
 def test_vite_bundler_config_methods_accept_override() -> None:
-    """Test that create_vite_config and create_dev_vite_config accept api_base_url_override."""
+    """Test that create_vite_config accept api_base_url_override."""
     print("[DEBUG] Starting test_vite_bundler_config_methods_accept_override")
 
     content = _vite_bundler_jac_path.read_text()
 
     # Both config methods should declare api_base_url_override
-    assert content.count('api_base_url_override: str = ""') >= 3, (
+    assert content.count('api_base_url_override: str = ""') >= 2, (
         "api_base_url_override should appear in _resolve_api_base_url, "
-        "create_vite_config, and create_dev_vite_config"
+        "create_vite_config"
     )
 
     print("[DEBUG] ViteBundler method signatures verification passed!")
@@ -390,7 +390,7 @@ def test_resolve_api_base_url_priority_chain_in_impl() -> None:
 
     # Count usages - should be called in both config methods
     resolve_calls = content.count("self._resolve_api_base_url(")
-    assert resolve_calls >= 2, (
+    assert resolve_calls >= 1, (
         f"_resolve_api_base_url should be called in both config methods, "
         f"found {resolve_calls} call(s)"
     )

@@ -11,7 +11,7 @@ walker www(ww) {
 node a {
     can go_to_b with ww | www entry {
         print("I am trying to go to b");
-        visit [-->](`?b);
+        visit [-->](?:b);
     }
 }
 

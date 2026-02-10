@@ -335,7 +335,7 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
     self.builder.cbranch(is_exception, dispatch_bb, body_bb);
     # ── try.body: execute try block statements ──
     self.builder.position_at_end(body_bb);
-    if isinstance(node.body, (<>list, <>tuple)) {
+    if isinstance(node.body, (list, tuple)) {
         self._codegen_body(node.body);
     }
     if not self.builder.block.is_terminated {
@@ -350,7 +350,7 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
         self.builder.branch(else_bb);
         self.builder.position_at_end(else_bb);
         if isinstance(node.else_body, uni.ElseStmt) {
-            if isinstance(node.else_body.body, (<>list, <>tuple)) {
+            if isinstance(node.else_body.body, (list, tuple)) {
                 self._codegen_body(node.else_body.body);
             }
         }
@@ -446,7 +446,7 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
             }
 
             # Execute handler body
-            if isinstance(except_node.body, (<>list, <>tuple)) {
+            if isinstance(except_node.body, (list, tuple)) {
                 self._codegen_body(except_node.body);
             }
             if not self.builder.block.is_terminated {
@@ -467,7 +467,7 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
     # ── finally.bb: execute finally body (always runs) ──
     self.builder.position_at_end(finally_bb);
     if node.finally_body is not None {
-        if isinstance(node.finally_body.body, (<>list, <>tuple)) {
+        if isinstance(node.finally_body.body, (list, tuple)) {
             self._codegen_body(node.finally_body.body);
         }
     }

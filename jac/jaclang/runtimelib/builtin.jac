@@ -2,7 +2,14 @@
 import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
+import from enum { StrEnum }
 import from typing { TYPE_CHECKING, Any, ClassVar, override }
+
+enum APIProtocol ( StrEnum ) {
+    HTTP = 'http',
+    WEBHOOK = 'webhook',
+    WEBSOCKET = 'websocket'
+}
 
 with entry {
     if TYPE_CHECKING {
@@ -47,7 +54,7 @@ def _get_store -> Callable[..., Any];
 def __getattr__(name: str) -> object;
 
 def printgraph(
-    <>node: (NodeArchetype | None) = None,
+    `node: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,
@@ -76,5 +83,6 @@ glob __all__ = [
          'ReadPerm',
          'ConnectPerm',
          'WritePerm',
-         'restspec'
+         'restspec',
+         'APIProtocol'
      ];

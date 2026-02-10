@@ -70,7 +70,7 @@ walker FriendFinder {
         visit [edge ->:Family :->];
     }
 
-    can move_to_person with `root entry {
+    can move_to_person with Root entry {
         visit [-->];
     }
 }

@@ -6,8 +6,8 @@ import os;
 import sys;
 import time;
 import threading;
+import from collections { deque }
 import from concurrent.futures { Future }
-import from queue { Queue, Empty }
 import from typing { Callable, Optional }
 
 import jaclang.pycore.unitree as uni;
@@ -45,11 +45,16 @@ obj Task {
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
         module_manager: ModuleManager | None by postinit,
-        queue: Queue = Queue(),
-        worker_future: Future | None by postinit,
+        # Task management
+        pipe: deque = deque(maxlen=1),
+        dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
+        worker_future: Future | None by postinit,
+        _state_lock: threading.RLock by postinit,
+        _work_event: threading.Event = threading.Event(),
+        _idle_event: threading.Event by postinit,
         _shutdown_called: bool = False,
-        _state_lock: threading.RLock by postinit;
+        _debounce_timer: threading.Timer | None = None;
 
     def postinit -> None;
     def dispatcher -> None;
@@ -69,13 +74,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
+    def _do_type_check(file_uri: str) -> None;
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.AstNode];
 
     def debug(msg: str) -> None;
-    async def wait_till_idle -> None;
-    def wait_till_idle_sync -> None;
+    def wait_till_idle_sync(file_uri: str) -> None;
     async def get_completion(
         file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
     ) -> lspt.CompletionList;

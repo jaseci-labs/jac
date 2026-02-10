@@ -5,8 +5,8 @@ node node_a {
 }
 
 walker Creator {
-    can create with `root entry;
-    can travel with `root | node_a entry;
+    can create with Root entry;
+    can travel with Root | node_a entry;
 }
 
 edge MyEdge {

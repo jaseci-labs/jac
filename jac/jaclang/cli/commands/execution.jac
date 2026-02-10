@@ -73,8 +73,8 @@ def enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    <>root: str = "",
-    <>node: str = ""
+    `root: str = "",
+    `node: str = ""
 ) -> int;
 
 """Start REST API server."""

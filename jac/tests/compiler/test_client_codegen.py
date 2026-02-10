@@ -129,7 +129,7 @@ def test_spawn_operator_supports_positional_and_spread() -> None:
     has label: str;
     has count: int;
     has meta: dict = {};
-    can execute with `root entry;
+    can execute with Root entry;
 }
 
 cl def spawn_client() {

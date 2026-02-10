@@ -214,14 +214,14 @@ impl SemTokManager.handle_insert_inside_token(
     change: lspt.TextDocumentContentChangeEvent_Type1,
     sem_tokens: list[int],
     prev_token_index: int,
-    changing_line_text: <>tuple[(str, int)],
+    changing_line_text: tuple[(str, int)],
     line_delta: int,
-    prev_tok_pos: <>tuple[(int, int, int)],
+    prev_tok_pos: tuple[(int, int, int)],
     change_start_char: int,
     change_end_char: int,
     is_token_boundary_edit: bool,
-    nxt_tok_pos: <>tuple[(int, int, int)]
-) -> <>tuple[list[int], bool, <>tuple[(int, int, int)], Optional[int]] {
+    nxt_tok_pos: tuple[(int, int, int)]
+) -> tuple[list[int], bool, tuple[(int, int, int)], Optional[int]] {
     next_token_index = None;
     tok_count = len(sem_tokens);
     for i in ['\n', ' ', '\t'] {
@@ -282,13 +282,13 @@ impl SemTokManager.handle_multi_line_insertion(
     self: SemTokManager,
     sem_tokens: list[int],
     next_token_index: int,
-    nxt_tok_pos: <>tuple[(int, int, int)],
+    nxt_tok_pos: tuple[(int, int, int)],
     change_start_line: int,
     change_end_line: int,
     change_end_char: int,
-    prev_tok_pos: <>tuple[(int, int, int)],
+    prev_tok_pos: tuple[(int, int, int)],
     tokens_on_same_line: bool,
-    changing_line_text: <>tuple[(str, int)],
+    changing_line_text: tuple[(str, int)],
     line_delta: int
 ) -> list[int] {
     tok_count = len(sem_tokens);
@@ -327,7 +327,7 @@ impl SemTokManager.handle_single_line_insertion(
     is_next_token_same_line: bool,
     change: lspt.TextDocumentContentChangeEvent_Type1,
     tokens_on_same_line: bool,
-    nxt_tok_pos: <>tuple[(int, int, int)],
+    nxt_tok_pos: tuple[(int, int, int)],
     change_start_line: int,
     line_delta: int
 ) -> list[int] {
@@ -408,12 +408,12 @@ impl SemTokManager.handle_multi_line_delete(
     self: SemTokManager,
     sem_tokens: list[int],
     next_token_index: int,
-    nxt_tok_pos: <>tuple[(int, int, int)],
+    nxt_tok_pos: tuple[(int, int, int)],
     change_start_line: int,
     change_end_line: int,
     change_start_char: int,
     change_end_char: int,
-    prev_tok_pos: <>tuple[(int, int, int)],
+    prev_tok_pos: tuple[(int, int, int)],
     is_next_token_same_line: bool
 ) -> list[int] {
     tok_count = len(sem_tokens);

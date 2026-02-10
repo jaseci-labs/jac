@@ -27,9 +27,13 @@ import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
+import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
 import from fastapi.responses { StreamingResponse }
+import from jaclang.cli.console { console }
+import from jaclang.cli.banners { JAC_DISCORD_URL }
+import from fastapi { WebSocket, WebSocketDisconnect }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -44,13 +48,12 @@ enum Platforms ( StrEnum ) { GOOGLE = 'google' }
 
 enum Operations ( StrEnum ) { LOGIN = 'login', REGISTER = 'register' }
 
-enum TransportType ( StrEnum ) { HTTP = 'http', WEBHOOK = 'webhook' }
-
 obj JacAPIServer(JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None,
-        _api_key_manager: ApiKeyManager | None = None;
+        _api_key_manager: ApiKeyManager | None = None,
+        _ws_manager: WebSocketConnectionManager | None = None;
 
     def postinit -> None;
     def login(username: str, password: str) -> TransportResponse;
@@ -120,7 +123,12 @@ obj JacAPIServer(JServer) {
     def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
     def register_dynamic_webhook_endpoint -> None;
-    def get_transport_type_for_walker(walker_name: str) -> str;
+    def get_walker_protocol(walker_name: str) -> str;
+    # WebSocket support methods
+    def get_ws_manager -> WebSocketConnectionManager;
+    def create_websocket_handler(walker_name: str) -> Callable;
+    def register_websocket_endpoints -> None;
+    def register_dynamic_websocket_endpoint -> None;
 }
 
 class UpdateUsernameRequest(BaseModel) {

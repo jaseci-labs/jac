@@ -244,7 +244,7 @@ node Counter {
 walker Incrementer {
     has amount: int = 1;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -275,8 +275,8 @@ node Person {
 }
 
 walker FindAdults {
-    can check with `root entry {
-        for person in [-->](`?Person) {
+    can check with Root entry {
+        for person in [-->](?:Person) {
             if person.age >= 18 {
                 report person;
             }

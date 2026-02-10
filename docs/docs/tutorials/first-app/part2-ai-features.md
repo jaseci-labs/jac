@@ -36,6 +36,25 @@ glob llm = Model(model_name="claude-sonnet-4-20250514");
 
 `import from byllm.lib { Model }` loads Jac's AI plugin. `glob llm = Model(...)` initializes the model at module level -- `glob` is Jac's way of declaring a global variable.
 
+!!! info "API Costs and Model Alternatives"
+    **Anthropic API keys are not free** -- if you use Claude models, you'll need to top up your API usage balance at [console.anthropic.com](https://console.anthropic.com).
+
+    **Free alternative:** Use Google's Gemini models with the [Gemini API](https://ai.google.dev/). To switch models, just change the `model_name` parameter:
+
+    ```jac
+    glob llm = Model(model_name="gemini/gemini-2.5-flash");
+    ```
+
+    **You can use any LLM provider** -- byLLM's `Model` wraps [LiteLLM](https://docs.litellm.ai/docs/providers), which supports OpenAI, Anthropic, Google, Azure, AWS Bedrock, and many others. Just ensure you have the appropriate API key set up and use the model name as specified in the [LiteLLM provider documentation](https://docs.litellm.ai/docs/providers).
+
+    **Self-hosted models:** You can also host your own models locally using [Ollama](https://ollama.ai/) or serve Hugging Face models directly. For example, with Ollama:
+
+    ```jac
+    glob llm = Model(model_name="ollama/llama3.2:1b");
+    ```
+
+    This keeps everything running on your machine at no cost -- no API keys needed.
+
 ---
 
 ## Define a Category Enum
@@ -108,13 +127,13 @@ Add `"category"` to the return values of `get_todos` and `toggle_todo`:
 def:pub get_todos -> list {
     return [
         {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
-        for t in [root-->](`?Todo)
+        for t in [root-->](?:Todo)
     ];
 }
 
 """Toggle a todo's done status."""
 def:pub toggle_todo(id: str) -> dict {
-    for todo in [root-->](`?Todo) {
+    for todo in [root-->](?:Todo) {
         if todo.id == id {
             todo.done = not todo.done;
             return {
@@ -208,13 +227,13 @@ Add one line to `styles.css`:
     def:pub get_todos -> list {
         return [
             {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
-            for t in [root-->](`?Todo)
+            for t in [root-->](?:Todo)
         ];
     }
 
     """Toggle a todo's done status."""
     def:pub toggle_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 todo.done = not todo.done;
                 return {
@@ -228,7 +247,7 @@ Add one line to `styles.css`:
 
     """Delete a todo."""
     def:pub delete_todo(id: str) -> dict {
-        for todo in [root-->](`?Todo) {
+        for todo in [root-->](?:Todo) {
             if todo.id == id {
                 del todo;
                 return {"deleted": id};

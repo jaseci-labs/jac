@@ -56,7 +56,7 @@ walker ClaimProcessing {
 
     can update_person with Person entry {
         visit [here->:has_role:->];
-        visit [here-->(`?Person)->:has_role:->];
+        visit [here-->(?:Person)->:has_role:->];
     }
 
     can traverse with Claim entry {

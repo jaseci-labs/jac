@@ -9,7 +9,7 @@ node SomeNode {
 walker SomeWalker {
     can with SomeNode entry {
         print(here);  # <-- go to definition of here
-        visit [-->(`?SomeNode:some_attr==10)];
+        visit [-->(?:SomeNode, some_attr==10)];
     }
 }
 
