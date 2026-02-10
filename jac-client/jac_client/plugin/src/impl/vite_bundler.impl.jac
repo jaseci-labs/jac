@@ -740,9 +740,6 @@ const publicDir = fs.existsSync(path.resolve(projectRoot, "public"))
   ? path.resolve(projectRoot, "public")
   : false;
 
-// Asset file extensions that should be proxied to the backend server
-const assetExtensions = /\\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|pdf|txt|xml)$/i;
-
 /**
  * Vite DEV configuration for HMR mode
  * Proxies API routes to Python server at localhost:{api_port}
@@ -753,31 +750,6 @@ export default defineConfig({{
   }},
   plugins: [
     react(),
-    // Custom plugin to proxy root-level asset requests to backend
-    {{
-      name: 'proxy-root-assets',
-      configureServer(server) {{
-        server.middlewares.use((req, res, next) => {{
-          // Check if this is a root-level asset request (not already handled by Vite)
-          const url = req.url || '';
-          if (assetExtensions.test(url) && !url.startsWith('/static/') && !url.startsWith('/@')) {{
-            // Proxy to backend server
-            const targetUrl = `http://localhost:{api_port}${{url}}`;
-            import('http').then((http) => {{
-              const proxyReq = http.get(targetUrl, (proxyRes) => {{
-                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-                proxyRes.pipe(res);
-              }});
-              proxyReq.on('error', () => {{
-                next(); // Fall through to Vite's 404
-              }});
-            }});
-          }} else {{
-            next();
-          }}
-        }});
-      }},
-    }},
   ],
   root: buildDir,
   publicDir: publicDir,
