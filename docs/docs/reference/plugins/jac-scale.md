@@ -655,6 +655,79 @@ walker async_processor {
 
 ---
 
+## Direct Database Access (kvstore)
+
+Direct database operations without graph layer abstraction. Supports MongoDB (document queries) and Redis (key-value with TTL/atomic ops).
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    mongo_db = kvstore(db_name='my_app', db_type='mongodb');
+    redis_db = kvstore(db_name='cache', db_type='redis');
+}
+```
+
+**Parameters:** `db_name` (str), `db_type` ('mongodb'|'redis'), `uri` (str|None - priority: explicit → `MONGODB_URI`/`REDIS_URL` env vars → jac.toml)
+
+---
+
+## MongoDB Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+
+**Example:**
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    db = kvstore(db_name='my_app', db_type='mongodb');
+
+    db.insert_one('users', {'name': 'Alice', 'role': 'admin', 'age': 30});
+    alice = db.find_one('users', {'name': 'Alice'});
+    admins = list(db.find('users', {'role': 'admin'}));
+    older = list(db.find('users', {'age': {'$gt': 28}}));
+
+    db.update_one('users', {'name': 'Alice'}, {'$set': {'age': 31}});
+    db.delete_one('users', {'name': 'Bob'});
+
+    db.set('user:123', {'status': 'active'}, 'sessions');
+}
+```
+
+**Query Operators:** `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$ne`, `$and`, `$or`
+
+---
+
+## Redis Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`
+
+**Example:**
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    cache = kvstore(db_name='cache', db_type='redis');
+
+    cache.set('session:user123', {'user_id': '123', 'username': 'alice'});
+    cache.set_with_ttl('temp:token', {'token': 'xyz'}, ttl=60);
+    cache.set_with_ttl('cache:profile', {'name': 'Alice'}, ttl=3600);
+
+    cache.incr('stats:views');
+    sessions = cache.scan_keys('session:*');
+    cache.expire('session:user123', 1800);
+}
+```
+
+**Note:** Database-specific methods raise `NotImplementedError` on wrong database type.
+
+---
+
 ## Database Configuration
 
 ### Environment Variables

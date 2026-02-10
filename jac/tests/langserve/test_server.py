@@ -585,3 +585,43 @@ def test_go_to_definition_impl_body_self_attr(
             )
     finally:
         lsp.shutdown()
+
+
+def test_go_to_definition_directory_import(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test go-to-definition for directory imports (namespace and regular packages)."""
+    lsp = create_server(None, fixture_path)
+    try:
+        import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"))
+        lsp.type_check_file(import_file)
+
+        # fmt: off
+        # Line 1: import from mypkg_ns.my_mod { add }
+        # Line 2: import from mypkg_reg.my_mod { sub }
+        positions = [
+            # Regular package: clicking 'mypkg_reg' -> points to __init__.jac
+            (2, 18, "local_imports/mypkg_reg/__init__.jac:0:0-0:0"),
+             # Regular package: clicking 'my_mod' -> points to my_mod.jac
+            (2, 28, "local_imports/mypkg_reg/my_mod.jac:0:0-0:0"),
+
+            # Namespace package: clicking 'mypkg_ns'
+            # This should not resolve to anything as it is a directory
+
+            # resolution inside the namespace package 'my_mod' -> should point to the my_mod.jac
+            (1, 28, "local_imports/mypkg_ns/my_mod.jac:0:0-0:0"),
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            # We use try-except to detect if get_definition crashes (though it shouldn't usually raise)
+            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
+            assert def_loc is not None, (
+                f"Definition at line {line}, col {char} not found"
+            )
+            assert expected in str(def_loc), (
+                f"Expected '{expected}' in definition for line {line}, char {char}, "
+                f"got: {def_loc}"
+            )
+    finally:
+        lsp.shutdown()

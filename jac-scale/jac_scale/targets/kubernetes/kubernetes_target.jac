@@ -245,11 +245,8 @@ class KubernetesTarget(DeploymentTarget) {
         # Change to app directory (project is already copied there via volume mount)
         commands.append(f"cd {config.app_mount_path}");
 
-        # Install Python requirements
-        commands.append('jac add');
-
-        # Install Node requirements
-        commands.append('jac add --npm');
+        # Install requirements
+        commands.append('jac install');
 
         # Start the application
         commands.append(f"jac start {app_config.file_name}");

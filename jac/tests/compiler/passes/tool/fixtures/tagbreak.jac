@@ -256,7 +256,7 @@ def x3() {
 }
 
 class HH {
-    def test() -> Optional[str] {
+    def `test() -> Optional[str] {
         a = """!
 hello
 hru
