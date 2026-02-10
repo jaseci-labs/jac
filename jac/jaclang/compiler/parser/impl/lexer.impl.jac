@@ -283,14 +283,13 @@ impl Lexer.scan_identifier -> Token {
 }
 
 impl Lexer.scan_kwesc_name -> Token {
-    # Scan keyword-escaped name: KWESC_NAME token (angle bracket prefix)
+    # Scan keyword-escaped name: KWESC_NAME token (backtick prefix)
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    # Skip the <> prefix
-    self.advance();  # <
-    self.advance();  # >
-    value = "<>";
+    # Skip the backtick prefix
+    self.advance();  # `
+    value = "`";
     while not self.at_end() and self.is_alnum(self.current()) {
         value += self.advance();
     }
@@ -811,6 +810,19 @@ impl Lexer.scan_jsx_content -> Token {
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
+    # Check for JSX fragment close: </> (must come before </identifier check)
+    if ch == "<" and self.peek() == "/" and self.peek(2) == ">" {
+        self.advance();
+        self.advance();
+        self.advance();
+        self.jsx_depth -= 1;
+        if self.jsx_depth == 0 {
+            self.pop_mode();
+        }
+        return self.make_token(
+            TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
+        );
+    }
     # Check for closing tag: </
     if ch == "<" and self.peek() == "/" {
         self.advance();
@@ -839,19 +851,6 @@ impl Lexer.scan_jsx_content -> Token {
         self.jsx_depth += 1;
         return self.make_token(
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
-        );
-    }
-    # Check for JSX fragment close: </>
-    if ch == "<" and self.peek() == "/" and self.peek(2) == ">" {
-        self.advance();
-        self.advance();
-        self.advance();
-        self.jsx_depth -= 1;
-        if self.jsx_depth == 0 {
-            self.pop_mode();
-        }
-        return self.make_token(
-            TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
     }
     # Opening brace for expression: {expr}
@@ -966,9 +965,8 @@ impl Lexer.scan_regular_token -> Token {
     and self.peek(5) == ":" {
         return self.scan_pynline();
     }
-    # Check for keyword-escaped name: <>identifier (before operator scanning
-    # which would incorrectly match <> as JSX_FRAG_OPEN)
-    if ch == "<" and self.peek() == ">" and self.is_alpha(self.peek(2)) {
+    # Check for keyword-escaped name: `identifier (backtick prefix)
+    if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
     # Operators and delimiters
@@ -1213,6 +1211,14 @@ impl Lexer.scan_operator -> Token {
             TokenKind.MOD_EQ, "%=", start_line, start_col, start_pos
         );
     }
+    if self.match_string("&&") {
+        return self.make_token(
+            TokenKind.KW_AND, "&&", start_line, start_col, start_pos
+        );
+    }
+    if self.match_string("||") {
+        return self.make_token(TokenKind.KW_OR, "||", start_line, start_col, start_pos);
+    }
     if self.match_string("&=") {
         return self.make_token(
             TokenKind.BW_AND_EQ, "&=", start_line, start_col, start_pos
@@ -1411,11 +1417,6 @@ impl Lexer.scan_operator -> Token {
                 TokenKind.DECOR_OP, "@", start_line, start_col, start_pos
             );
 
-        case "`":
-            return self.make_token(
-                TokenKind.TYPE_OP, "`", start_line, start_col, start_pos
-            );
-
     }
     # Unknown character
     self.error(f"Unexpected character: '{ch}'", start_line, start_col, start_pos);
@@ -1462,11 +1463,11 @@ impl Lexer.next_token -> Token {
         );
     }
     ch = self.current();
-    # Check for keyword-escaped name: <>identifier
-    if ch == "<" and self.peek() == ">" and self.is_alpha(self.peek(2)) {
+    # Check for keyword-escaped name: `identifier (backtick prefix)
+    if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
-    # Check for JSX opening tag: <identifier (but not <> which is kwesc or fragment)
+    # Check for JSX opening tag: <identifier
     if ch == "<" and self.is_alpha(self.peek()) {
         return self.scan_jsx_open_start();
     }

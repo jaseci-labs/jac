@@ -414,7 +414,7 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int 
 }
 
 """Run the test suite in the specified .jac file or directory."""
-impl test(
+impl `test(
     filepath: str = "",
     test_name: str = "",
     filter: str = "",
@@ -446,5 +446,43 @@ impl gen_parser -> int {
     import from jaclang.compiler { gen_all_parsers }
     gen_all_parsers();
     console.success('Parser generated.');
+    return 0;
+}
+
+"""Extract grammar from the Jac parser."""
+impl grammar(lark: bool = False, output: str = "") -> int {
+    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
+    import jaclang;
+    parser_path = str(
+        Path(jaclang.__file__).parent / "compiler" / "parser" / "parser.jac"
+    );
+    prog = JacProgram();
+    mod = prog.compile(parser_path, no_cgen=True);
+    if prog.errors_had {
+        console.error("Failed to compile parser module.");
+        for e in prog.errors_had {
+            console.error(f"  {e}");
+        }
+        return 1;
+    }
+    pass_ = GrammarExtractPass(ir_in=mod, prog=prog);
+    if len(pass_.rules) == 0 {
+        console.error("No grammar rules extracted.");
+        return 1;
+    }
+    text = pass_.emit_lark() if lark else pass_.emit_ebnf();
+    if output {
+        with open(output, "w") as f {
+            f.write(text);
+            f.write("\n");
+        }
+        fmt_name = "Lark" if lark else "EBNF";
+        console.success(
+            f"{fmt_name} grammar ({len(pass_.rules)} rules) written to {output}"
+        );
+    } else {
+        console.print(text);
+    }
     return 0;
 }

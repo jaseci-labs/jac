@@ -105,7 +105,7 @@ import from jaclang.pycore.unitree {
     InnerCompr
 }
 import from jaclang.pycore.unitree { FString, FormattedValue, MultiString, LambdaExpr }
-import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr, TypeRef }
+import from jaclang.pycore.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.pycore.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.pycore.unitree { ConnectOp, DisconnectOp }
 import from jaclang.pycore.unitree {
@@ -333,7 +333,6 @@ glob TOKEN_KIND_TO_TOK:
          TokenKind.RETURN_HINT: Tok.RETURN_HINT.value,
          TokenKind.NULL_OK: Tok.NULL_OK.value,
          TokenKind.DECOR_OP: Tok.DECOR_OP.value,
-         TokenKind.TYPE_OP: Tok.TYPE_OP.value,
          # F-String Tokens
          TokenKind.F_DQ_START: Tok.F_DQ_START.value,
          TokenKind.F_SQ_START: Tok.F_SQ_START.value,
@@ -461,6 +460,7 @@ obj Parser {
     def parse_element_stmt;
     def parse_client_block -> ClientBlock;
     def parse_server_block -> ServerBlock;
+    def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
     def parse_statement;

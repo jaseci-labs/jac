@@ -131,6 +131,7 @@ jobs:
         pip install testcontainers
         pip install watchdog
         pip install python-multipart  # Explicit install to ensure FastAPI form support
+        pip install websockets  # Required for WebSocket test cases
 
     - name: Run Backend tests
       run: |

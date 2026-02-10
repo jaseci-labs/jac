@@ -55,7 +55,7 @@ def test_cfg_abilities_and_objects(fixture_path: Callable[[str], str]) -> None:
         '  2 [label="BB2\\nreturn 0 ;", shape=box];\n'
         '  3 [label="BB3\\nreturn x // y ;", shape=box];\n'
         '  4 [label="BB4\\ncan multiply( x : int , y : int ) -> int\\nreturn x * y ;", shape=box];\n'
-        '  5 [label="BB5\\nx = 5 ;\\ny = 0 ;\\nmath = math_mod ( ) ;\\nz = math.divide ( x , y ) '
+        '  5 [label="BB5\\nx = 5 ;\\ny = 0 ;\\nmath = math_mod ( ) ;\\nz = math . divide ( x , y ) '
         ';\\nprint ( z ) ;", shape=box];\n'
         "  0 -> 1;\n"
         "  0 -> 4;\n"
@@ -79,8 +79,8 @@ def test_cfg_ability_with_has(fixture_path: Callable[[str], str]) -> None:
         "digraph G {\n"
         '  0 [label="BB0\\nobj Rock", shape=box];\n'
         '  1 [label="BB1\\nhas pellets : list ;", shape=box];\n'
-        '  2 [label="BB2\\ncan count_pellets( ) -> int\\nreturn self.pellets.length ( ) ;", shape=box];\n'
-        '  3 [label="BB3\\nrock = Rock ( pellets = [ 1 , 2 , 3 ] ) ;\\nprint ( \\"Number of pellets: \\" + rock.count_pellets ( ).to_string ( ) ) ;", shape=box];\n'
+        '  2 [label="BB2\\ncan count_pellets( ) -> int\\nreturn self . pellets . length ( ) ;", shape=box];\n'
+        '  3 [label="BB3\\nrock = Rock ( pellets = [ 1 , 2 , 3 ] ) ;\\nprint ( \\"Number of pellets: \\" + rock . count_pellets ( ) . to_string ( ) ) ;", shape=box];\n'
         "  0 -> 1;\n"
         "  0 -> 2;\n"
         "}\n"

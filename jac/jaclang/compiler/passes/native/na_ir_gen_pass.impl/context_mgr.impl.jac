@@ -18,7 +18,7 @@ recursive nesting — outer __enter__ first, inner __exit__ first (LIFO).
 impl NaIRGenPass._codegen_with(node: uni.WithStmt) -> None {
     if not node.exprs {
         # Empty with statement — just generate body
-        if isinstance(node.body, (<>list, <>tuple)) {
+        if isinstance(node.body, (list, tuple)) {
             self._codegen_body(node.body);
         }
         return;
@@ -32,7 +32,7 @@ impl NaIRGenPass._codegen_with(node: uni.WithStmt) -> None {
 impl NaIRGenPass._codegen_with_recursive(exprs: object, idx: int, body: object) -> None {
     if idx >= len(exprs) {
         # Base case: generate the actual body
-        if isinstance(body, (<>list, <>tuple)) {
+        if isinstance(body, (list, tuple)) {
             self._codegen_body(body);
         }
         return;

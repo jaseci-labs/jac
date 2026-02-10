@@ -10,18 +10,18 @@ impl Profile.update{
 }
 
 impl Profile.get{
-    follwers = [{"id": jid(i), "username": i.username} for i in [self-->(`?Profile)]];
+    follwers = [{"id": jid(i), "username": i.username} for i in [self-->(?:Profile)]];
     report {"user": self, "followers": follwers};
 }
 
 impl Profile.follow{
-    current_profile = [root-->(`?Profile)];
+    current_profile = [root-->(?:Profile)];
     current_profile[0] +>: Follow() :+> self;
     report self;
 }
 
 impl Profile.un_follow{
-    current_profile = [root-->(`?Profile)];
+    current_profile = [root-->(?:Profile)];
     follow_edge = [edge current_profile[0]->:Follow:->self];
     del follow_edge[0];
     report self;
@@ -38,20 +38,20 @@ impl Tweet.delete{
 }
 
 impl Tweet.like_tweet{
-    current_profile = [root-->(`?Profile)];
+    current_profile = [root-->(?:Profile)];
     self +>: Like() :+> current_profile[0];
     report self;
 }
 
 impl Tweet.remove_like{
-    current_profile = [root-->(`?Profile)];
+    current_profile = [root-->(?:Profile)];
     like_edge = [edge self->:Like:->current_profile[0]];
     del like_edge[0];
     report self;
 }
 
 impl Tweet.comment{
-    current_profile = [root-->(`?Profile)];
+    current_profile = [root-->(?:Profile)];
     comment_node = current_profile[0] +>: Post() :+> Comment(content=visitor.content);
     grant(comment_node[0], level=ConnectPerm);
     self ++> comment_node[0];
@@ -67,10 +67,10 @@ impl Tweet.get_info{
         likes=[i.username for i in [self->:Like:->]],
         comments=[
             {
-                "username": [i<--(`?Profile)][0].username,
+                "username": [i<--(?:Profile)][0].username,
                 "id": jid(i),
                 "content": i.content
-            } for i in [self-->(`?Comment)]
+            } for i in [self-->(?:Comment)]
         ]
     );
 }
@@ -92,7 +92,7 @@ impl Comment.delete{
 }
 
 impl visit_profile.visit_profile{
-    visit [-->(`?Profile)] else {
+    visit [-->(?:Profile)] else {
         new_profile = here ++> Profile();
         grant(new_profile[0], level=ConnectPerm);
         visit new_profile;
@@ -102,7 +102,7 @@ impl visit_profile.visit_profile{
 impl load_user_profiles.load_profiles{
     self.profiles: list = [];
     for each_root in allroots() {
-        profile = [each_root-->(`?Profile)][0];
+        profile = [each_root-->(?:Profile)][0];
         self.profiles.append({"name": profile.username, "id": jid(profile)});
     }
 }
@@ -119,9 +119,9 @@ impl create_tweet.tweet{
 }
 
 impl load_feed.load{
-    visit [-->(`?Tweet)];
-    for user_node in [->:Follow:->(`?Profile)] {
-        visit [user_node-->(`?Tweet)];
+    visit [-->(?:Tweet)];
+    for user_node in [->:Follow:->(?:Profile)] {
+        visit [user_node-->(?:Tweet)];
     }
 }
 

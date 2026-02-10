@@ -1,5 +1,5 @@
 walker Creator {
-    can create with `root entry;
+    can create with Root entry;
 }
 
 node node_a {

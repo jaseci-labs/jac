@@ -32,7 +32,7 @@ node A {
 edge a {}
 
 walker W {
-    can create with `root entry;
+    can create with Root entry;
 }
 
 impl W.create{
@@ -44,8 +44,8 @@ impl W.create{
 
 with entry {
     root spawn W();
-    print([root-->-->(`?A)]);
-    print([root-->-->-->(`?A)]);
+    print([root-->-->(?:A)]);
+    print([root-->-->-->(?:A)]);
 }
 
 """Bubble sort using DS Features of Jac (somparision and swapping happens in inner nodes)."""
@@ -61,7 +61,7 @@ node inner_node {
 }
 
 walker walker1 {
-    can create_main_node with `root entry;
+    can create_main_node with Root entry;
 }
 
 impl walker1.create_main_node{
@@ -73,7 +73,7 @@ impl walker1.create_main_node{
 }
 
 walker walker2 {
-    can skip_root with `root entry {
+    can skip_root with Root entry {
         visit [-->];
     }
 
@@ -89,7 +89,7 @@ impl walker2.process{
 }
 
 walker walker3 {
-    can skiproot with `root entry {
+    can skiproot with Root entry {
         visit [-->];
     }
 

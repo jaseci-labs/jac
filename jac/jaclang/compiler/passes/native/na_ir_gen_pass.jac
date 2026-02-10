@@ -28,7 +28,7 @@ obj NaIRGenPass(Transform) {
     def _forward_declare_functions(module: uni.Module) -> None;
     def _maybe_declare_ability(node: uni.ElementStmt) -> None;
     # Ability (function definition) - manual codegen
-    def _codegen_ability(<>node: uni.Ability) -> None;
+    def _codegen_ability(`node: uni.Ability) -> None;
     # Body / statement codegen
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(node: uni.UniNode) -> None;
@@ -68,7 +68,7 @@ obj NaIRGenPass(Transform) {
 
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
     # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
-    def _codegen_enum(<>node: uni.Enum) -> None;
+    def _codegen_enum(`node: uni.Enum) -> None;
     def _codegen_atom_trailer(node: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(node: uni.BoolExpr) -> (ir.Value | None);
     def _codegen_ctrl(node: uni.CtrlStmt) -> None;
@@ -81,7 +81,7 @@ obj NaIRGenPass(Transform) {
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     # Phase 3: Objects, Fields, Methods, None
     def _register_archetypes(module: uni.Module) -> None;
-    def _codegen_archetype(<>node: uni.Archetype) -> None;
+    def _codegen_archetype(`node: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None);
@@ -127,7 +127,7 @@ obj NaIRGenPass(Transform) {
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
     # Phase 8: Entry Block
-    def _codegen_entry(<>node: uni.ModuleCode) -> None;
+    def _codegen_entry(`node: uni.ModuleCode) -> None;
     # Phase 9: Tuples
     def _codegen_tuple_val(node: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(

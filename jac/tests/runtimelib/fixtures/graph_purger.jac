@@ -21,7 +21,7 @@ node E {
 }
 
 walker populate {
-    can setup1 with `root entry {
+    can setup1 with Root entry {
         for i in range(2) {
             here ++> A(id=i);
         }
@@ -58,7 +58,7 @@ walker populate {
 }
 
 walker traverse {
-    can enter1 with `root entry {
+    can enter1 with Root entry {
         print(here);
         visit [-->];
     }
@@ -90,13 +90,13 @@ walker traverse {
 }
 
 walker purge {
-    can purge with `root entry {
+    can purge with Root entry {
         print(Jac.reset_graph());
     }
 }
 
 walker check {
-    can enter with `root entry {
+    can enter with Root entry {
         # Count rows in SQLite database
         l3 = Jac.get_context().mem.l3;
         cursor = l3.__conn__.execute("SELECT COUNT(*) FROM anchors");

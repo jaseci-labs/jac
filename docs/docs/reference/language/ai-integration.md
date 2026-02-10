@@ -317,7 +317,7 @@ walker ResearchAgent {
         return fetch_content(url);
     }
 
-    can research with `root entry by llm(
+    can research with Root entry by llm(
         tools=[self.search, self.read_page],
         method="ReAct"
     );
@@ -328,7 +328,7 @@ walker ResearchAgent {
 
 ```jac
 walker Coordinator {
-    can coordinate with `root entry {
+    can coordinate with Root entry {
         # Spawn specialized agents
         research = root spawn Researcher(topic="AI");
         writer = root spawn Writer(style="technical");

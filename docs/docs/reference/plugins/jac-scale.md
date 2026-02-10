@@ -60,7 +60,7 @@ Each walker becomes an API endpoint:
 
 ```jac
 walker get_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -112,7 +112,7 @@ import from http { HTTPMethod }
 
 @restspec(method=HTTPMethod.GET)
 walker :pub get_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -127,7 +127,7 @@ Override the auto-generated path:
 ```jac
 @restspec(method=HTTPMethod.GET, path="/custom/users")
 walker :pub list_users {
-    can fetch with `root entry {
+    can fetch with Root entry {
         report [];
     }
 }
@@ -355,7 +355,7 @@ walker PaymentReceived {
         amount: float,
         currency: str = 'USD';
 
-    can process with `root entry {
+    can process with Root entry {
         report {
             "status": "success",
             "message": f"Payment {self.payment_id} received",
@@ -509,7 +509,7 @@ walker :pub upload_file {
     has file: UploadFile;
     has folder: str = "documents";
 
-    can process with `root entry {
+    can process with Root entry {
         unique_name = f"{uuid4()}.dat";
         path = f"{self.folder}/{unique_name}";
 
@@ -531,7 +531,7 @@ walker :pub list_files {
     has folder: str = "documents";
     has recursive: bool = False;
 
-    can process with `root entry {
+    can process with Root entry {
         files = [];
         for path in storage.list_files(self.folder, self.recursive) {
             metadata = storage.get_metadata(path);
@@ -548,7 +548,7 @@ walker :pub list_files {
 walker :pub download_file {
     has path: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.path) {
             report {"error": "File not found"};
             return;
@@ -642,7 +642,7 @@ curl -X POST http://localhost:8000/traverse \
 walker async_processor {
     has items: list;
 
-    async can process with `root entry {
+    async can process with Root entry {
         results = [];
         for item in self.items {
             result = await process_item(item);
@@ -652,6 +652,79 @@ walker async_processor {
     }
 }
 ```
+
+---
+
+## Direct Database Access (kvstore)
+
+Direct database operations without graph layer abstraction. Supports MongoDB (document queries) and Redis (key-value with TTL/atomic ops).
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    mongo_db = kvstore(db_name='my_app', db_type='mongodb');
+    redis_db = kvstore(db_name='cache', db_type='redis');
+}
+```
+
+**Parameters:** `db_name` (str), `db_type` ('mongodb'|'redis'), `uri` (str|None - priority: explicit → `MONGODB_URI`/`REDIS_URL` env vars → jac.toml)
+
+---
+
+## MongoDB Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+
+**Example:**
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    db = kvstore(db_name='my_app', db_type='mongodb');
+
+    db.insert_one('users', {'name': 'Alice', 'role': 'admin', 'age': 30});
+    alice = db.find_one('users', {'name': 'Alice'});
+    admins = list(db.find('users', {'role': 'admin'}));
+    older = list(db.find('users', {'age': {'$gt': 28}}));
+
+    db.update_one('users', {'name': 'Alice'}, {'$set': {'age': 31}});
+    db.delete_one('users', {'name': 'Bob'});
+
+    db.set('user:123', {'status': 'active'}, 'sessions');
+}
+```
+
+**Query Operators:** `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$ne`, `$and`, `$or`
+
+---
+
+## Redis Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`
+
+**Example:**
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    cache = kvstore(db_name='cache', db_type='redis');
+
+    cache.set('session:user123', {'user_id': '123', 'username': 'alice'});
+    cache.set_with_ttl('temp:token', {'token': 'xyz'}, ttl=60);
+    cache.set_with_ttl('cache:profile', {'name': 'Alice'}, ttl=3600);
+
+    cache.incr('stats:views');
+    sessions = cache.scan_keys('session:*');
+    cache.expire('session:user123', 1800);
+}
+```
+
+**Note:** Database-specific methods raise `NotImplementedError` on wrong database type.
 
 ---
 
@@ -744,7 +817,7 @@ Create a health walker:
 
 ```jac
 walker health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "healthy"};
     }
 }
@@ -756,7 +829,7 @@ Access at: `POST /walker/health`
 
 ```jac
 walker ready {
-    can check with `root entry {
+    can check with Root entry {
         db_ok = check_database();
         cache_ok = check_cache();
 

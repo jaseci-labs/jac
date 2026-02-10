@@ -316,17 +316,14 @@ def process(data: list[int] | dict[str, int]) -> None {
 }
 ```
 
-### 5 Type References (Backtick)
+### 5 Type References
 
-The backtick operator creates a reference to a type itself, rather than an instance of that type. This is essential for OSP operations like filtering graph traversals by node type, or for metaprogramming. Think of it as "the type called X" rather than "a value of type X".
+Type references are used in OSP operations like filtering graph traversals by node type. The `Root` keyword refers to the root node type in entry/exit clauses, and the `(?:TypeName)` syntax filters collections or traversals by type.
 
 ```jac
 def example() {
-    `TypeName;       # Reference to TypeName type
-    `root;           # Reference to root node
-
     # In edge references
-    [-->(`?Person)];  # Filter nodes by Person type
+    [-->](?:Person);  # Filter nodes by Person type
 }
 ```
 

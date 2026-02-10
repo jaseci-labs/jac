@@ -1,6 +1,6 @@
 node N {}
 walker W {
-    can enter with `root entry;
+    can enter with Root entry;
 }
 
 with entry {

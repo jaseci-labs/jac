@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import jaclang.pycore.unitree as uni
 from jaclang.pycore.bccache import BytecodeCache, get_bytecode_cache
+from jaclang.pycore.compile_options import CompileOptions
 from jaclang.pycore.mtp import Info
 from jaclang.pycore.passes import Alert
 
@@ -54,6 +55,9 @@ class JacProgram:
         self.type_evaluator: TypeEvaluator | None = None
         self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache()
         self._compiler: JacCompiler | None = None
+        self._compile_options: CompileOptions = (
+            CompileOptions()
+        )  # Current compile options
 
     def _get_compiler(self) -> JacCompiler:
         """Get a JacCompiler instance configured with this program's cache."""
@@ -123,6 +127,7 @@ class JacProgram:
         symtab_ir_only: bool = False,
         minimal: bool = False,
         cancel_token: Event | None = None,
+        options: CompileOptions | None = None,
     ) -> uni.Module:
         """Compile a Jac file into a module AST.
 
@@ -135,16 +140,22 @@ class JacProgram:
             minimal: If True, use minimal compilation mode (bytecode only, no JS).
                      This avoids circular imports for bootstrap-critical modules.
             cancel_token: Optional event to cancel compilation.
+            options: CompileOptions instance. If provided, overrides individual params.
         """
+        # Build options from params if not provided
+        if options is None:
+            options = CompileOptions(
+                minimal=minimal,
+                type_check=type_check,
+                symtab_ir_only=symtab_ir_only,
+                no_cgen=no_cgen,
+                cancel_token=cancel_token,
+            )
         return self._get_compiler().compile(
             file_path=file_path,
             target_program=self,
             use_str=use_str,
-            no_cgen=no_cgen,
-            type_check=type_check,
-            symtab_ir_only=symtab_ir_only,
-            minimal=minimal,
-            cancel_token=cancel_token,
+            options=options,
         )
 
     def build(
