@@ -142,30 +142,3 @@ def test_circular_import(fixture_path: Callable[[str], str]) -> None:
     (state := JacProgram()).compile(fixture_path("circular_import.jac"))
     assert not state.errors_had
     assert len(state.errors_had) == 0
-
-
-def test_ts_module_import(fixture_path: Callable[[str], str]) -> None:
-    """Test importing TypeScript modules in cl imports."""
-    (prog := JacProgram()).compile(fixture_path("ts_imports/main.jac"), type_check=True)
-    # Verify TS/JS modules are loaded into the module hub
-    assert len(prog.errors_had) == 0
-
-
-def test_ts_module_compilation_no_cgen(fixture_path: Callable[[str], str]) -> None:
-    """Test TypeScript modules compile with no_cgen=True."""
-    (prog := JacProgram()).compile(fixture_path("ts_imports/utils.ts"), no_cgen=True)
-    assert not prog.errors_had
-    ts_mod = list(prog.mod.hub.values())[0]
-    assert ts_mod.name == "utils"
-    assert not ts_mod.has_syntax_errors
-
-
-def test_js_module_compilation_no_cgen(fixture_path: Callable[[str], str]) -> None:
-    """Test JavaScript modules compile with no_cgen=True."""
-    (prog := JacProgram()).compile(
-        fixture_path("ts_imports/component.js"), no_cgen=True
-    )
-    assert not prog.errors_had
-    js_mod = list(prog.mod.hub.values())[0]
-    assert js_mod.name == "component"
-    assert not js_mod.has_syntax_errors

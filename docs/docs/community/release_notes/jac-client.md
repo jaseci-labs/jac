@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PWA Target Support**: Added a new `pwa` target for creating Progressive Web Apps. Run `jac setup pwa` to configure your project with PWA support-this copies default icons to `pwa_icons/` and adds the `[plugins.client.pwa]` config section to `jac.toml`. Then use `jac build --client pwa` to build or `jac start --client pwa` to build and serve. The build generates a web bundle with `manifest.json`, a service worker (`sw.js`) for offline caching, and automatic HTML injection. The service worker implements cache-first for static assets and network-first for API calls (`/api/*`). Configure `theme_color`, `background_color`, `cache_name`, and custom `manifest` overrides in `[plugins.client.pwa]`.
 - **Code refactors**: Backtick escape, etc.
+- Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
 

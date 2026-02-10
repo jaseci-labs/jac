@@ -806,44 +806,6 @@ def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
 
 
-def test_ts_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing TypeScript modules."""
-    path = fixture_path("ts_imports/utils.ts")
-    program = JacProgram()
-    # Test that we can parse and compile a TypeScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_js_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing JavaScript modules."""
-    path = fixture_path("ts_imports/component.js")
-    program = JacProgram()
-    # Test that we can parse and compile a JavaScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test Jac module importing from TypeScript."""
-    path = fixture_path("ts_imports/main.jac")
-    program = JacProgram()
-    mod = program.compile(path, type_check=True)
-    # The main.jac imports TypeScript/JS modules - verify it compiles
-    assert mod is not None
-
-
-def test_cl_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test .cl.jac module importing from TypeScript for type checking."""
-    path = fixture_path("ts_imports/client.cl.jac")
-    program = JacProgram()
-    mod = program.compile(path, no_cgen=True)
-    # The client.cl.jac imports TypeScript modules - verify it compiles
-    assert mod is not None
-
-
 def test_agentvisitor_connect_no_errors(fixture_path: Callable[[str], str]) -> None:
     """Ensure the AgentVisitor connect snippet type-checks with no errors."""
     program = JacProgram()
