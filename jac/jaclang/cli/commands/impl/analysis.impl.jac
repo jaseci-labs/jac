@@ -89,7 +89,8 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
-            print(f"Checked '{file_path}': {len(filtered_errors)} errors, {len(filtered_warnings)} warnings.");
+            import sys;
+            print(f"Checked '{file_path}': {len(filtered_errors)} errors, {len(filtered_warnings)} warnings.",file = sys.stderr);
             if print_errs {
                 for e in filtered_errors {
                     console.error(f"{e}");
