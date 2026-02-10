@@ -243,28 +243,61 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
+"""Convert a Python value to a valid Vite define replacement string.
+
+Vite's define does text replacement. The value in the config is JavaScript code that gets
+parsed, and the RESULT becomes the replacement text. So for string values, we need
+DOUBLE quoting: '"value"' in JS config -> "value" as replacement (a valid JS string literal).
+
+Example: To replace `APP_NAME` with the string "MyApp" in source code:
+  - Config needs: 'APP_NAME': '"MyApp"' (or JSON.stringify("MyApp"))
+  - JS parses '"MyApp"' as the string: "MyApp"
+  - Replacement in source: APP_NAME -> "MyApp" (valid JS!)
+"""
+def _to_js_expr(value: Any) -> str {
+    # Handle None -> JS null literal
+    if value is None {
+        return "null";
+    }
+    # Handle booleans -> JS true/false literals
+    if isinstance(value, bool) {
+        return "true" if value else "false";
+    }
+    # Handle numbers -> JS number literals
+    if isinstance(value, (int, float)) {
+        return json.dumps(value);
+    }
+    # Handle datetime/date/time objects -> double-quoted ISO string
+    if hasattr(value, 'isoformat') {
+        # Double encode: json.dumps twice gives us '"2024-01-01T00:00:00Z"' in the config
+        # which JS parses to "2024-01-01T00:00:00Z" as the replacement value
+        return json.dumps(json.dumps(value.isoformat()));
+    }
+    # Handle strings -> double-quoted (the key insight!)
+    if isinstance(value, str) {
+        # Double encode: json.dumps twice gives us '"hello"' in the config
+        # which JS parses to "hello" as the replacement value
+        return json.dumps(json.dumps(value));
+    }
+    # Handle lists/dicts -> JSON encode (replacement will be JS object/array literal)
+    try {
+        return json.dumps(value);
+    } except (TypeError, ValueError) {
+        # Fallback: convert to string and double-quote
+        return json.dumps(json.dumps(str(value)));
+    }
+}
+
 """Format define entries for Vite config (API base URL + custom defines)."""
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict
 ) -> str {
     # Vite define values must be valid JS expressions.
-    # json.dumps() produces valid JS string literals with proper escaping:
-    # e.g., 'Test "quoted"' -> "Test \"quoted\"" (valid JS string literal)
-    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + json.dumps(api_base_url)];
+    # _to_js_expr() converts any Python/TOML value to a valid JS expression.
+    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + _to_js_expr(api_base_url)];
 
     for (key, value) in custom_defines.items() {
-        if isinstance(value, str) {
-            # json.dumps produces a valid JS string literal with proper escaping
-            entries.append("    '" + key + "': " + json.dumps(value));
-        } elif isinstance(value, bool) {
-            # JS uses lowercase true/false
-            entries.append("    '" + key + "': " + str(value).lower());
-        } elif isinstance(value, (int, float)) {
-            entries.append("    '" + key + "': " + str(value));
-        } else {
-            # For other types, convert to string and JSON-encode
-            entries.append("    '" + key + "': " + json.dumps(str(value)));
-        }
+        entries.append("    '" + key + "': " + _to_js_expr(value));
     }
 
     return ',\n'.join(entries);
