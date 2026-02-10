@@ -152,22 +152,32 @@ impl TypeCheckPass.enter_ability(self: TypeCheckPass, `node: uni.Ability) -> Non
 """Exit an ability node - ensure parameter type annotations are evaluated."""
 impl TypeCheckPass.exit_ability(self: TypeCheckPass, `node: uni.Ability) -> None {
     # For abilities with ImplDef body (stubs linked to impl files), the original declaration's
-    # type annotation Name nodes are orphaned (not in the traversal tree). We need to explicitly
-    # process them to enable hover/go-to-definition on the declaration file.
+    # ParamVar nodes are orphaned by DeclImplMatchPass.validate_params_match(), which replaces
+    # them in FuncSignature.kid with the impl's ParamVar nodes. The decl's ParamVar subtrees
+    # (including type annotations like `uni.Module`) are detached from the traversal tree and
+    # never visited, so their Name nodes remain unresolved (no hover, no go-to-def, wrong color).
+    #
+    # Fix: scan _in_mod_nodes for unresolved type annotation nodes within this ability's line
+    # range. DeclImplMatchPass.validate_params_match() orphans the declaration's ParamVar nodes
+    # by replacing them in FuncSignature.kid with the impl's ParamVar nodes, so their type
+    # annotation subtrees are never visited during normal traversal.
+    #
+    # Strategy: find SubTag nodes whose direct child is an unresolved expression (either a
+    # simple Name like `str` or an AtomTrailer chain like `uni.Module`) and evaluate them.
+    # We call get_type_of_expression on the tag expression inside the SubTag, which handles
+    # both simple names and dotted attribute chains uniformly.
     if isinstance(`node.body, uni.ImplDef) {
         ability_start_line = `node.loc.first_line;
         ability_end_line = `node.loc.last_line;
-        # Find orphaned Name nodes in type annotations at this ability's location
         if module := `node.find_parent_of_type(uni.Module) {
             for nd in module._in_mod_nodes {
                 if (
-                    isinstance(nd, uni.Name)
-                    and nd.sym is None
+                    isinstance(nd, uni.SubTag)
+                    and nd.tag is not None
                     and ability_start_line <= nd.loc.first_line <= ability_end_line
-                    and isinstance(nd.parent, uni.SubTag)
-                ) {  # SubTag is the type annotation wrapper
-
-                    self.evaluator.get_type_of_expression(nd);
+                    and nd.find_parent_of_type(uni.ParamVar) is not None
+                ) {
+                    self.evaluator.get_type_of_expression(nd.tag);
                 }
             }
         }
