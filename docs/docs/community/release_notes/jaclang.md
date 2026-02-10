@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
+- **Optional `inner_semstr` in `sem` Decorator**: The `inner_semstr` parameter of `JacRuntime.sem()` now defaults to `None` instead of being required. Callers can use `@sem("description")` without providing a field mapping dict; `_jac_semstr_inner` defaults to `{}`.
 - **Code refactors**: Backtick escape, etc.
 - **RD Parser: Broad Grammar Parity Fixes**: Fixed 16 grammar gaps in the recursive descent parser, raising walk-check match rate from 95.3% to 98.7%.
 

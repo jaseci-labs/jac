@@ -118,13 +118,14 @@ impl _type_to_schema(
         # Build a map of field info by name for quick lookup
         info_fields_map = {field.name: field for field in info_fields};
         # Build properties for ALL fields (including inherited), using MTIR info when available
+        # Fall back to _jac_semstr_inner from the @sem decorator in Python library mode
         properties = {
             field_name: _type_to_schema(
                 field_type,
                 field_name,
                 info_fields_map[field_name].semstr
                 if field_name in info_fields_map
-                else "",
+                else semstr_inner.get(field_name, ""),
                 info=info_fields_map.get(field_name)
             ) for (field_name, field_type) in fields.items()
         };

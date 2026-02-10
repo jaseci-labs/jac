@@ -59,21 +59,33 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             }
         }
     } else {
-        # Python library mode: use runtime introspection (old behavior)
+        # Python library mode: use runtime introspection with optional semstring fallback
         param_names = list(inspect.signature(caller).parameters.keys());
+        inner_semstr: dict[str, str] = getattr(caller, "_jac_semstr_inner", {}) or {};
         for (key, value) in args.items() {
             if isinstance(value, Media) {
-                # Use tuple format for consistency, but without semantic strings
-                media_inputs.append((value, ""));
+                sem_desc = inner_semstr.get(key, "") if isinstance(key, str) else "";
+                media_inputs.append((value, sem_desc));
                 continue;
             }
 
             if isinstance(key, str) {
-                inputs_detail.append(f"{key} = {value}");
+                sem_desc = inner_semstr.get(key, "");
+                if sem_desc {
+                    inputs_detail.append(f"{key} = {(value, sem_desc)}");
+                } else {
+                    inputs_detail.append(f"{key} = {value}");
+                }
             } else {
                 # TODO: Handle *args, **kwargs properly.
                 if key < len(param_names) {
-                    inputs_detail.append(f"{param_names[key]} = {value}");
+                    param_name = param_names[key];
+                    sem_desc = inner_semstr.get(param_name, "");
+                    if sem_desc {
+                        inputs_detail.append(f"{param_name} = {(value, sem_desc)}");
+                    } else {
+                        inputs_detail.append(f"{param_name} = {value}");
+                    }
                 } else {
                     inputs_detail.append(f"arg = {value}");
                 }
@@ -108,7 +120,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             inputs_detail.insert(0, f"self = {caller.__self__}");
         }
     }
-    # System prompt: Config from jac.toml or default SYSTEM_PERSONA
+    # System prompt priority: call_params > jac.toml config > default SYSTEM_PERSONA
     system_content = SYSTEM_PERSONA;
     try {
         import from jaclang.project.config { find_project_root }
@@ -119,11 +131,15 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         project_root_result = find_project_root(Path(caller_file).parent);
         project_dir = project_root_result[0] if project_root_result else None;
 
-        config_system_prompt = get_byllm_config(project_dir).get_system_prompt();
-        if config_system_prompt {
-            system_content = config_system_prompt;
+        config_pre_text = get_byllm_config(project_dir).get_pre_text();
+        if config_pre_text {
+            system_content = config_pre_text;
         }
     } except Exception { }
+    # Per-call/per-model pre_text takes highest priority
+    if call_params.get("pre_text") {
+        system_content = str(call_params["pre_text"]);
+    }
     # Prepare the messages for the LLM call.
     messages: list[MessageType] = [
         Message(

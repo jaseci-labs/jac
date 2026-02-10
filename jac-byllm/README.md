@@ -86,6 +86,28 @@ def check_eligibility(person: Person, service_type: str) -> bool by llm();
 
 Docstrings naturally enhance the semantics of their associated code constructs, while the `sem` keyword provides an elegant way to enrich the meaning of class attributes and function arguments. Our research shows these concise semantic strings are more effective than traditional multi-line prompts.
 
+The `sem` decorator can also be imported directly from `byllm.lib` for use in Python:
+
+```python
+from byllm.lib import Model, by, sem
+from dataclasses import dataclass
+
+llm = Model(model_name="gpt-4o")
+
+@sem("A person's record", {"name": "Full name", "ssn": "Last four digits of SSN"})
+@dataclass
+class Person:
+    name: str
+    ssn: str
+
+@by(llm)
+@sem("Check eligibility for a service based on person's data")
+def check_eligibility(person: Person, service_type: str) -> bool:
+    ...
+```
+
+> **Note:** When combining `@by` and `@sem`, `@by` must be the outermost (top) decorator. If `@sem` is placed before `@by`, the semantic metadata will be dropped because `@by` replaces the function, discarding the attributes set by `@sem`.
+
 ## Configuration
 
 ### Project-wide Configuration (jac.toml)
@@ -94,7 +116,7 @@ Configure byLLM behavior globally using `jac.toml`:
 
 ```toml
 [plugins.byllm]
-system_prompt = "You are a helpful assistant..."
+pre_text = "You are a helpful assistant..."
 
 [plugins.byllm.model]
 default_model = "gpt-4o-mini"

@@ -4,6 +4,10 @@ Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
 """
 impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
     self.call_params = kwargs;
+    # If model has a pre_text and it's not overridden per-call, include it
+    if self.pre_text and "pre_text" not in self.call_params {
+        self.call_params["pre_text"] = self.pre_text;
+    }
     return self;
 }
 

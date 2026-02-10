@@ -26,7 +26,7 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         },
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
         'litellm': {'local_cost_map': True, 'drop_params': True},
-        'system_prompt': ''
+        'pre_text': ''
     };
 }
 
@@ -84,10 +84,10 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     return _byllm_config_instance;
 }
 
-"""Get system prompt from jac.toml configuration."""
-impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
+"""Get pre-text from jac.toml configuration."""
+impl JacByllmConfig.get_pre_text(self: JacByllmConfig) -> str {
     config = self.load();
-    return config.get('system_prompt', '');
+    return config.get('pre_text', '');
 }
 
 """Reset the global config instance (useful for testing)."""

@@ -4,6 +4,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.19 (Unreleased)
 
+- **`sem` Decorator Re-exported from `byllm.lib`**: The `sem` semantic string decorator (from `jaclang`) is now directly available via `byllm.lib`. Python users can now `from byllm.lib import sem` (or `import from byllm.lib { sem }` in Jac) to attach semantic metadata to classes, functions, and attributes without a separate `jaclang` import.
+- **Per-Model and Per-Call Pre-text**: Pre-text can now be set at the model level via `Model(pre_text="...")` or overridden per-call via `llm(pre_text="...")`. The priority order is: per-call > per-model > `jac.toml` config > default. This enables fine-grained control over LLM behavior without modifying project-wide configuration.
+- **Optional `inner_semstr` in `sem` Decorator**: The `inner_semstr` parameter (used for annotating individual fields/parameters) is now optional and defaults to `None`. This allows simpler usage like `@sem("description")` when field-level annotations are not needed.
+- **`inner_semstr` Support in Python Library Mode**: When using byLLM from Python (without Jac compilation), `inner_semstr` from the `@sem` decorator now flows into LLM prompts and schemas. Function parameter descriptions appear in the user message, and dataclass field descriptions appear in the JSON response schema, matching the behavior of Jac's compile-time MTIR mode.
+
 ## byllm 0.4.18 (Latest Release)
 
 ## byllm 0.4.17

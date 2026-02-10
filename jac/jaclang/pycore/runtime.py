@@ -1832,12 +1832,12 @@ class JacByLLM:
         return MTIR(caller=caller, args=args, call_params=call_params).runtime
 
     @staticmethod
-    def sem(semstr: str, inner_semstr: dict[str, str]) -> Callable:
+    def sem(semstr: str, inner_semstr: dict[str, str] | None = None) -> Callable:
         """Attach the semstring to the given object."""
 
         def decorator(obj: object) -> object:
             setattr(obj, "_jac_semstr", semstr)  # noqa:B010
-            setattr(obj, "_jac_semstr_inner", inner_semstr)  # noqa:B010
+            setattr(obj, "_jac_semstr_inner", inner_semstr or {})  # noqa:B010
             return obj
 
         return decorator

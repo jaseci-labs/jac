@@ -1,10 +1,10 @@
-# Example jac.toml for system prompt configuration testing
+# Example jac.toml for pre_text configuration testing
 [project]
 name = "byllm-test"
 version = "0.1.0"
 
 [plugins.byllm]
-system_prompt = "You are a friendly assistant. Greet the person warmly and briefly."
+pre_text = "You are a friendly assistant. Greet the person warmly and briefly."
 
 [plugins.byllm.model]
 default_model = "gpt-4o-mini"
