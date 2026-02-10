@@ -58,7 +58,7 @@ impl check(
                         and any(p in i.loc.mod_path for p in ignore_list)
                     )
                 ];
-            }
+            } 
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
             import sys;
