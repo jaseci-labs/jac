@@ -11,7 +11,7 @@ import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .context { JScaleExecutionContext }
 import from .serve { JacAPIServer }
 import from .jserver.jfast_api { JFastApiServer }
-import from .config_loader { get_scale_config }
+import from .config_loader { get_scale_config, reset_scale_config }
 import from .factories.deployment_factory { DeploymentTargetFactory }
 import from .factories.registry_factory { ImageRegistryFactory }
 import from .factories.utility_factory { UtilityFactory }
@@ -33,14 +33,17 @@ def _scale_pre_hook(context: HookContext) -> None {
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'") ;
         }
-        code_folder = os.path.dirname(filename) or '.';
+        code_folder = os.path.dirname(os.path.abspath(filename)) or '.';
         dotenv_path = os.path.join(code_folder, '.env');
         load_dotenv(dotenv_path);
+        base_file_path = os.path.basename(filename);
+        # Reset cache to load jac.toml from the target directory, not CWD.
+        reset_scale_config();
+        # Get configuration using the file's directory as project root
+        scale_config = get_scale_config(pathlib.Path(code_folder));
+        # Now compute relative code_folder for deployment
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
-        base_file_path = os.path.basename(filename);
-        # Get configuration
-        scale_config = get_scale_config();
         # Create logger
         logger = UtilityFactory.create_logger('standard');
         # Get target-specific config
