@@ -127,7 +127,10 @@ impl check(
                 }
             }
         } elif path_obj.is_dir() {
-            print(path_obj.glob('**/*.jac'));
+            for i in path_obj.glob('**/*.jac'){
+                print(i);
+            }
+            
             exit();
             for jac_file in path_obj.glob('**/*.jac') {
                 if not jac_file.is_file() {
