@@ -332,8 +332,6 @@ MICRO_JAC_FILES: list[str] = [
     "tests/compiler/passes/main/fixtures/symtab_build_tests/main.jac",
     "tests/compiler/passes/main/fixtures/symtab_build_tests/no_dupls.jac",
     "tests/compiler/passes/main/fixtures/symtab_build_tests/one.jac",
-    "tests/compiler/passes/main/fixtures/ts_imports/client.cl.jac",
-    "tests/compiler/passes/main/fixtures/ts_imports/main.jac",
     "tests/compiler/passes/main/fixtures/type_annotation_assignment.jac",
     "tests/compiler/passes/tool/fixtures/archetype_frmt.jac",
     "tests/compiler/passes/tool/fixtures/auto_lint/class_entry.jac",
@@ -487,7 +485,6 @@ JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/pycore/program.py",
     "jaclang/pycore/runtime.py",
     "jaclang/pycore/treeprinter.py",
-    "jaclang/pycore/tsparser.py",
     "jaclang/pycore/unitree.py",
     "jaclang/utils/__init__.py",
 ]
