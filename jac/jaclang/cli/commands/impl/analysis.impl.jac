@@ -104,7 +104,7 @@ impl check(
                 print('>>>:::  ',i);
             }
 
-            exit();
+            `exit();
             for jac_file in path_obj.glob('**/*.jac') {
                 if not jac_file.is_file() {
                     continue;
