@@ -6,6 +6,7 @@ import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
 import json;
 import shutil;
+import sys;
 
 # PWA Constants
 glob PWA_DEFAULT_THEME_COLOR = "#000000",
@@ -60,20 +61,63 @@ def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
     };
 }
 
-"""Get the path to the default PWA icons directory."""
-def _get_default_icons_dir -> Optional[Path] {
-    import from jac_client.plugin { defaults }
-
-    defaults_file = getattr(defaults, '__file__', None);
-    if not defaults_file {
-        return None;
+"""Generate a PWA icon using Pillow."""
+def _generate_pwa_icon(dest_path: Path, size: int) -> bool {
+    import subprocess;
+    python_code = f'''
+import sys
+try:
+    from PIL import Image, ImageDraw
+    size = {size}
+    img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255))
+    draw = ImageDraw.Draw(img)
+    margin = size // 8
+    stroke = size // 16
+    draw.rectangle([size//2, margin, size//2 + stroke, size - margin*2], fill=(255, 255, 255, 255))
+    draw.rectangle([margin*2, size - margin*2 - stroke, size//2 + stroke, size - margin*2], fill=(255, 255, 255, 255))
+    draw.rectangle([size//2 - stroke, margin, size//2 + stroke*2, margin + stroke], fill=(255, 255, 255, 255))
+    img.save(sys.argv[1], "PNG")
+    sys.exit(0)
+except ImportError:
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+''';
+    try {
+        result = subprocess.run(
+            [sys.executable, '-c', python_code, str(dest_path)],
+            check=False,
+            capture_output=True,
+            timeout=30
+        );
+        return result.returncode == 0;
+    } except (subprocess.SubprocessError, FileNotFoundError) {
+        return False;
     }
-    icons_dir = Path(defaults_file).parent / "pwa_icons";
-    return icons_dir if icons_dir.exists() else None;
+}
+
+"""Generate default PWA icons to directory."""
+def _generate_default_pwa_icons(dest_dir: Path) -> int {
+    dest_dir.mkdir(parents=True, exist_ok=True);
+    generated = 0;
+    icon_192 = dest_dir / PWA_ICON_SMALL;
+    if not icon_192.exists() and _generate_pwa_icon(icon_192, 192) {
+        generated += 1;
+    }
+    icon_512 = dest_dir / PWA_ICON_LARGE;
+    if not icon_512.exists() and _generate_pwa_icon(icon_512, 512) {
+        generated += 1;
+    }
+    if generated > 0 {
+        console.print(
+            f"  ✔ Generated {generated} default PWA icon(s)", style="success"
+        );
+    }
+    return generated;
 }
 
 """Copy PWA icons from source to destination directory."""
-def _copy_icons(src_dir: Path, dest_dir: Path, success_suffix: str = "") -> int {
+def _copy_icons(src_dir: Path, dest_dir: Path) -> int {
     icon_files = list(src_dir.glob("*.png"));
     if not icon_files {
         return 0;
@@ -81,15 +125,11 @@ def _copy_icons(src_dir: Path, dest_dir: Path, success_suffix: str = "") -> int 
     for icon_file in icon_files {
         shutil.copy2(icon_file, dest_dir / icon_file.name);
     }
-    msg = f"  ✔ Copied {len(icon_files)} default PWA icon(s)";
-    if success_suffix {
-        msg += f" {success_suffix}";
-    }
-    console.print(msg, style="success");
+    console.print(f"  ✔ Copied {len(icon_files)} PWA icon(s)", style="success");
     return len(icon_files);
 }
 
-"""Copy PWA icons to dist directory, preferring user's project icons over defaults."""
+"""Copy or generate PWA icons to dist directory."""
 def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     try {
         user_icons_dir = project_dir / "pwa_icons";
@@ -100,14 +140,14 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
                 return;
             }
         }
-        icons_dir = _get_default_icons_dir();
-        if not icons_dir {
-            console.warning("  Could not locate default icons");
-            return;
+        generated = _generate_default_pwa_icons(dist_dir);
+        if generated == 0 {
+            console.warning(
+                "  Could not generate default icons (Pillow not available)"
+            );
         }
-        _copy_icons(icons_dir, dist_dir);
     } except Exception as e {
-        console.warning(f"  Failed to copy PWA icons: {e}");
+        console.warning(f"  Failed to set up PWA icons: {e}");
     }
 }
 
@@ -294,25 +334,22 @@ impl PWATarget.setup(self: PWATarget, project_dir: Path) -> None {
     );
 }
 
-"""Copy PWA icons to project directory."""
+"""Generate PWA icons to project directory."""
 def _copy_pwa_icons_to_project(dest_dir: Path) -> None {
     try {
-        icons_dir = _get_default_icons_dir();
-        if not icons_dir {
-            console.print(
-                "  Creating pwa_icons/ directory (add your icons here)", style="muted"
-            );
-            return;
-        }
-        copied = _copy_icons(icons_dir, dest_dir, "to pwa_icons/");
-        if copied == 0 {
+        generated = _generate_default_pwa_icons(dest_dir);
+        if generated == 0 {
             console.print(
                 "  Created pwa_icons/ directory (add pwa-192x192.png and pwa-512x512.png)",
                 style="muted"
             );
+            console.print(
+                "  Note: Install Pillow to auto-generate placeholder icons",
+                style="muted"
+            );
         }
     } except Exception as e {
-        console.warning(f"  Failed to copy default icons: {e}");
+        console.warning(f"  Failed to generate default icons: {e}");
     }
 }
 
