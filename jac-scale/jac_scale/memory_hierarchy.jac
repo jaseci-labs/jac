@@ -46,7 +46,7 @@ obj RedisBackend(CacheMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -88,7 +88,7 @@ obj MongoBackend(PersistentMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
