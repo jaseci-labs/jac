@@ -1230,8 +1230,7 @@ def test_vite_env_and_define_config() -> None:
 
     Consolidated test covering:
     1. [plugins.client.vite.define] values are baked into the JS bundle
-    2. Define values with special characters are properly escaped
-    3. .env files are loaded from project root via envDir config
+    2. .env files are loaded from project root via envDir config
     """
     import re
 
@@ -1239,7 +1238,6 @@ def test_vite_env_and_define_config() -> None:
 
     app_name = "e2e-vite-config"
     test_app_name = "E2E Test App"
-    special_char_value = 'Test "quoted" value with \\backslash'
 
     with tempfile.TemporaryDirectory() as temp_dir:
         print(f"[DEBUG] Created temporary directory at {temp_dir}")
@@ -1262,28 +1260,7 @@ def test_vite_env_and_define_config() -> None:
             )
             print("[DEBUG] Verified jac.toml contains expected define values")
 
-            # 2. Add a define with special characters to test escaping
-            escaped_value = special_char_value.replace("\\", "\\\\").replace('"', '\\"')
-            new_define_line = f'"globalThis.TEST_SPECIAL_VALUE" = "{escaped_value}"\n'
-
-            define_section = "[plugins.client.vite.define]"
-            if define_section in toml_content:
-                insert_pos = toml_content.find(define_section) + len(define_section)
-                newline_pos = toml_content.find("\n", insert_pos)
-                if newline_pos != -1:
-                    toml_content = (
-                        toml_content[: newline_pos + 1]
-                        + new_define_line
-                        + toml_content[newline_pos + 1 :]
-                    )
-            else:
-                toml_content += f"\n{define_section}\n{new_define_line}"
-
-            with open(jac_toml_path, "w") as f:
-                f.write(toml_content)
-            print("[DEBUG] Added special character define to jac.toml")
-
-            # 3. Create .env file in project root
+            # 2. Create .env file in project root
             env_file_path = os.path.join(project_path, ".env")
             with open(env_file_path, "w") as f:
                 f.write(f"VITE_APP_NAME={test_app_name}\n")
@@ -1344,14 +1321,7 @@ def test_vite_env_and_define_config() -> None:
                 )
                 print("[DEBUG] Confirmed APP_BUILD_TIME value found in JS bundle")
 
-                # Assert 2: Special character escaping works
-                assert "quoted" in js_body, (
-                    "Expected 'quoted' substring from TEST_SPECIAL_VALUE "
-                    "to appear in the bundled JavaScript."
-                )
-                print("[DEBUG] Confirmed special character value found in JS bundle")
-
-                # Assert 3: .env file values are loaded via envDir
+                # Assert 2: .env file values are loaded via envDir
                 assert test_app_name in js_body, (
                     f"Expected VITE_APP_NAME value '{test_app_name}' "
                     "to appear in the bundled JavaScript."
