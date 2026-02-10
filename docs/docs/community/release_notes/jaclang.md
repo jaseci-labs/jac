@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **Code refactors**: Backtick escape, etc.
+- **RD Parser: Broad Grammar Parity Fixes**: Fixed 16 grammar gaps in the recursive descent parser, raising walk-check match rate from 95.3% to 98.7%.
 
 ## jaclang 0.10.0 (Latest Release)
 
@@ -17,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`jac grammar` Command**: Added a `jac grammar` CLI command that extracts the Jac grammar directly from the recursive descent parser's AST and prints it in EBNF or Lark format. Use `jac grammar` for EBNF output, `jac grammar --lark` for Lark format, and `-o <file>` to write to a file. Powered by a new `GrammarExtractPass` compiler pass that analyzes `parse_*` method implementations to reconstruct grammar rules from token-consumption patterns and control-flow structures.
 - **Type Checker Improvements**: Fixed several systemic issues in the type checker: `UnionType` operands are now handled correctly in connection operations (`++>`, `-->`) and instance conversion; the `_get_enclosing_class` helper no longer silently crashes due to a variable name bug; unannotated functions no longer produce false return-type errors; and a new rule requires return type annotations on top-level functions that return a value (bare `return` and `return None` remain annotation-free).
 - **Support custom Vite Configurations to `dev` mode**: Added support for custom Vite configuration from `jac.toml`.
+- **Fix: HMR server-side `sys.modules` refresh**: Imported modules now correctly reload in `--dev` mode by clearing stale `sys.modules` entries across the project.
 - **Auto-install watchdog for `--dev` mode**: `jac start --dev` automatically installs `watchdog` if missing, eliminating the manual `jac install --dev` step.
 - **Trim Redundant Parser Test Fixtures**: Removed 46 redundant entries from the micro parser test suite by eliminating exact duplicates across directories, near-identical examples, and files that add no unique syntax coverage, reducing the fixture list from 481 to 435 files.
 - **RD Parser Grammar Gap Fixes**: Fixed 9 coverage gaps in the recursive descent parser to match the Lark grammar spec: `skip` statement, `@=` operator, `na` context blocks, typed context blocks (`-> Type { ... }`), `is` separator in `sem` definitions, `impl` inside archetype bodies, raw f-strings (`rf"..."`), parenthesized yield expressions, and `*args`/`**kwargs` in lambda parameters.
@@ -24,6 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **RD Parser: Yield in Assignments & Grammar Extraction Improvements**: The RD parser now correctly handles `x = yield expr` in assignments. The `jac grammar` extraction pass was improved to accurately display binary operator rules (e.g., `logical_or` now shows `logical_and (KW_OR logical_and)*` instead of the incorrect `logical_and KW_OR*`).
 - **RD Parser: Async, Impl & F-String Gap Fixes**: Fixed 6 more coverage gaps in the recursive descent parser: `async with` statements, async comprehensions (list/set/gen), `async for` token in AST kid lists, `impl` with event clause missing `with` token, `impl` by-expression extra `by` token, and nested `{expr}` inside f-string format specs (e.g., `f"{value:{width}}"`).
 - **RD Parser: Enum & Match Pattern Gap Fixes**: Fixed 3 more coverage gaps: multistring (concatenated string literals) in match literal patterns, `py_code_block` (inline Python) in enum blocks, and `free_code` (`with entry` blocks) in enum blocks.
+- **Fix: `IsADirectoryError` on dotted imports**: Fixed a crash where the compiler attempted to read directory paths as files when resolving dotted module imports (e.g., `include impl.imps`).
 - **CLI Dependency Command Refactor**: Redesigned the `jac install`, `jac add`, `jac remove`, and new `jac update` commands for cleaner, more consistent behavior. `jac install` now syncs all dependency types including plugin-provided ones (npm, etc.). `jac add` requires package arguments (no longer silently falls through to install) and errors on missing `jac.toml`. When no version is specified, `jac add` queries the installed version and records a `~=X.Y` compatible-release spec instead of `>=0.0.0`. The new `jac update [pkg]` command updates all or specific dependencies to their latest compatible versions and writes `~=X.Y` specs back to `jac.toml`.
 - **Fix:** Fixed `config.save()` to correctly persist dependency removals and git dependencies to disk.
 - **RD Parser: Strictness Parity with Lark**: Tightened the RD parser to reject constructs that the Lark grammar also rejects, closing 7 permissiveness gaps.
