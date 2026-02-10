@@ -1190,22 +1190,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             path = parsed_path.path;
             if (path == '/static/client.js') {
                 try {
-                    import from jaclang.project.config { get_config }
-                    cfg = get_config();
-                    dist_dir = cfg.get_client_dir() / 'dist' if cfg else None;
-                    is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
-                    if is_pwa {
-                        # Vite outputs client.{hash}.js
-                        for client_js in dist_dir.glob('client.*.js') {
-                            Jac.send_javascript(
-                                self, client_js.read_text(encoding='utf-8')
-                            );
-                            return;
-                        }
-                    }
-                    server.introspector.load();
-                    server.introspector.ensure_bundle();
-                    Jac.send_javascript(self, server.introspector._bundle.code);
+                    Jac.send_javascript(self, Jac.get_client_js(server.introspector));
                 } except RuntimeError as exc {
                     Jac.send_json(self, 500, {'error': str(exc)});
                 }

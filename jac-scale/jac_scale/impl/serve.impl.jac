@@ -417,23 +417,8 @@ impl JacAPIServer.register_client_js_endpoint -> None {
 impl JacAPIServer.serve_client_js_callback -> Callable[..., Response] {
     def callback -> Response {
         try {
-            import from jaclang.project.config { get_config }
-            config = get_config();
-            dist_dir = config.get_client_dir() / 'dist' if config else None;
-            is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
-            if is_pwa {
-                # Vite outputs client.{hash}.js
-                for client_js in dist_dir.glob('client.*.js') {
-                    return Response(
-                        content=client_js.read_text(encoding='utf-8'),
-                        media_type='application/javascript'
-                    );
-                }
-            }
-            self.introspector.load();
-            self.introspector.ensure_bundle();
             return Response(
-                content=self.introspector._bundle.code,
+                content=Jac.get_client_js(self.introspector),
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {

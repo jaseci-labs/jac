@@ -1774,6 +1774,17 @@ class JacAPIServer:
             "bundle_code": introspector._bundle.code,
         }
 
+    @staticmethod
+    def get_client_js(introspector: ModuleIntrospector) -> str:
+        """Get the client JavaScript bundle code.
+
+        Plugins can override this hook to provide custom bundle serving logic
+        (e.g., serving Vite-built PWA bundles).
+        """
+        introspector.load()
+        introspector.ensure_bundle()
+        return introspector._bundle.code
+
 
 class JacResponseBuilder:
     """Jac Response Builder."""

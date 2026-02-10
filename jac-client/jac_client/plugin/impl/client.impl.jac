@@ -160,6 +160,42 @@ impl JacClient.render_page(
     };
 }
 
+"""Get client JavaScript bundle code.
+
+For PWA builds (when manifest.json exists), returns the Vite-bundled JS.
+Otherwise returns the introspector bundle.
+"""
+impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
+    import from jaclang.project.config { find_project_root, get_config }
+    # Find project root
+    base_path_dir = Path(Jac.base_path_dir);
+    project_root_result = find_project_root(base_path_dir);
+    if project_root_result {
+        (base_path, _) = project_root_result;
+    } else {
+        base_path = base_path_dir;
+    }
+    # Get client directory from config
+    config = get_config();
+    if config is not None {
+        dist_dir = config.get_client_dir() / 'dist';
+    } else {
+        dist_dir = base_path / '.jac' / 'client' / 'dist';
+    }
+    # Check if this is a PWA build (has manifest.json)
+    is_pwa = dist_dir.exists() and (dist_dir / 'manifest.json').exists();
+    if is_pwa {
+        # Vite outputs client.{hash}.js - find and return it
+        for client_js in dist_dir.glob('client.*.js') {
+            return client_js.read_text(encoding='utf-8');
+        }
+    }
+    # Fall back to introspector bundle
+    introspector.load();
+    introspector.ensure_bundle();
+    return introspector._bundle.code;
+}
+
 """Build complete HTML head."""
 impl HeaderBuilder.build_head -> str {
     lines: list = [];
