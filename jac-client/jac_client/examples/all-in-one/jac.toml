@@ -50,3 +50,5 @@ background_color = "#ffffff"
 # [plugins.client.pwa.manifest]
 # name = "My App"
 # short_name = "App"
+[plugins.scale.secrets]
+TEST_SECRET_KEY = "${TEST_SECRET_KEY}"

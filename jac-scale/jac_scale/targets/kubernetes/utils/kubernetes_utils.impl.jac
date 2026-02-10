@@ -554,6 +554,50 @@ impl load_env_variables(code_folder: str) -> list {
     return env_list;
 }
 
+"""Create a Kubernetes Secret from resolved secret data. Returns True if created."""
+impl create_k8s_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str]
+) -> bool {
+    if not secret_data {
+        return False;
+    }
+    secret_body = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {'name': secret_name, 'namespace': namespace},
+        'type': 'Opaque',
+        'stringData': secret_data
+    };
+    try {
+        core_v1.create_namespaced_secret(namespace=namespace, body=secret_body);
+    } except ApiException as e {
+        if e.status == 409 {
+            core_v1.replace_namespaced_secret(
+                name=secret_name, namespace=namespace, body=secret_body
+            );
+        } else {
+            raise ;
+        }
+    }
+    return True;
+}
+
+"""Delete a Kubernetes Secret if it exists."""
+impl delete_k8s_secret(
+    core_v1: client.CoreV1Api, namespace: str, secret_name: str
+) -> None {
+    try {
+        core_v1.delete_namespaced_secret(name=secret_name, namespace=namespace);
+    } except ApiException as e {
+        if e.status != 404 {
+            raise ;
+        }
+    }
+}
+
 """
     Print a statement only if debug_only is True.
 
