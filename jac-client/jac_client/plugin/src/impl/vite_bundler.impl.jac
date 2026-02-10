@@ -268,7 +268,7 @@ def _to_js_expr(value: Any) -> str {
         return json.dumps(value);
     }
     # Handle datetime/date/time objects -> double-quoted ISO string
-    if hasattr(value, 'isoformat') {
+    if value?.isoformat {
         # Double encode: json.dumps twice gives us '"2024-01-01T00:00:00Z"' in the config
         # which JS parses to "2024-01-01T00:00:00Z" as the replacement value
         return json.dumps(json.dumps(value.isoformat()));
@@ -295,11 +295,9 @@ impl ViteBundler._format_define_entries(
     # Vite define values must be valid JS expressions.
     # _to_js_expr() converts any Python/TOML value to a valid JS expression.
     entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + _to_js_expr(api_base_url)];
-
     for (key, value) in custom_defines.items() {
         entries.append("    '" + key + "': " + _to_js_expr(value));
     }
-
     return ',\n'.join(entries);
 }
 

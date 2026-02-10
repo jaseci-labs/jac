@@ -644,7 +644,6 @@ def:pub FeaturesTest -> JsxElement {
                     <p style={{"color": "#4b5563", "marginBottom": "15px"}}>
                         Demonstrates two ways to access configuration values in Jac client code.
                     </p>
-
                     # Method 1: import.meta.env (from .env file)
                     <div style={{"marginBottom": "20px"}}>
                         <strong style={{"color": "#374151"}}>
@@ -661,26 +660,46 @@ def:pub FeaturesTest -> JsxElement {
                             }}
                         >
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>VITE_APP_NAME:</span> {import.meta.env.VITE_APP_NAME or "(not set)"}
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_APP_NAME:
+                                </span>
+                                {import.meta.env.VITE_APP_NAME or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>VITE_APP_VERSION:</span> {import.meta.env.VITE_APP_VERSION or "(not set)"}
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_APP_VERSION:
+                                </span>
+                                {import.meta.env.VITE_APP_VERSION or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>VITE_API_ENDPOINT:</span> {import.meta.env.VITE_API_ENDPOINT or "(not set)"}
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_API_ENDPOINT:
+                                </span>
+                                {import.meta.env.VITE_API_ENDPOINT or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>MODE:</span> {import.meta.env.MODE or "(not set)"}
+                                <span style={{"color": "#92400e"}}>
+                                    MODE:
+                                </span>
+                                {import.meta.env.MODE or "(not set)"}
                             </div>
                             <div>
-                                <span style={{"color": "#92400e"}}>DEV:</span> {"true" if import.meta.env.DEV else "false"}
+                                <span style={{"color": "#92400e"}}>
+                                    DEV:
+                                </span>
+                                {"true" if import.meta.env.DEV else "false"}
                             </div>
                         </div>
-                        <p style={{"fontSize": "12px", "color": "#6b7280", "marginTop": "8px"}}>
+                        <p
+                            style={{
+                                "fontSize": "12px",
+                                "color": "#6b7280",
+                                "marginTop": "8px"
+                            }}
+                        >
                             Source: .env file in project root (requires VITE_ prefix)
                         </p>
                     </div>
-
                     # Method 2: globalThis (from jac.toml define)
                     <div>
                         <strong style={{"color": "#374151"}}>
@@ -697,22 +716,36 @@ def:pub FeaturesTest -> JsxElement {
                             }}
                         >
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#065f46"}}>APP_BUILD_TIME:</span> {globalThis.APP_BUILD_TIME or "(not set)"}
+                                <span style={{"color": "#065f46"}}>
+                                    APP_BUILD_TIME:
+                                </span>
+                                {globalThis.APP_BUILD_TIME or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#065f46"}}>FEATURE_ENABLED:</span> {"true" if globalThis.FEATURE_ENABLED else "false"}
+                                <span style={{"color": "#065f46"}}>
+                                    FEATURE_ENABLED:
+                                </span>
+                                {"true" if globalThis.FEATURE_ENABLED else "false"}
                             </div>
                             <div>
-                                <span style={{"color": "#065f46"}}>__JAC_API_BASE_URL__:</span> {globalThis.__JAC_API_BASE_URL__ or "(same-origin)"}
+                                <span style={{"color": "#065f46"}}>
+                                    __JAC_API_BASE_URL__:
+                                </span>
+                                {globalThis.__JAC_API_BASE_URL__ or "(same-origin)"}
                             </div>
                         </div>
-                        <p style={{"fontSize": "12px", "color": "#6b7280", "marginTop": "8px"}}>
+                        <p
+                            style={{
+                                "fontSize": "12px",
+                                "color": "#6b7280",
+                                "marginTop": "8px"
+                            }}
+                        >
                             Source: [plugins.client.vite.define] in jac.toml
                         </p>
                     </div>
                 </div>
             </TestCard>
-
             # Section 7: Complex Data Processing
             <TestCard title="7. Complex Data Processing" color="#e0e7ff">
                 <div>

@@ -49,6 +49,7 @@ class ViteBundler {
     def _format_define_entries(
         self: ViteBundler, api_base_url: str, custom_defines: dict
     ) -> str;
+
     def _ensure_root_package_json(self: ViteBundler) -> None;
     def _cleanup_root_package_files(self: ViteBundler) -> None;
     def _generate_vite_config_content(
