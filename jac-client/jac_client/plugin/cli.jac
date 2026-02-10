@@ -14,7 +14,9 @@ import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.pycore.runtime { hookimpl }
 
 # Import target CLI handler from the unified architecture
-import from jac_client.plugin.src.targets.cli_handlers { TargetCLIHandler }
+import from jac_client.plugin.src.targets.cli_handlers {
+    TargetCLIHandler
+}
 
 glob registry = get_registry(),
      _target_handler = TargetCLIHandler();
@@ -72,13 +74,16 @@ def build(
     help="Setup a build target (one-time initialization)",
     args=[
         Arg.create(
-            "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop, pwa)"
+            "target",
+            kind=ArgKind.POSITIONAL,
+            help="Target to setup (e.g., desktop, pwa)"
         ),
 
     ],
     examples=[
         ("jac setup desktop", "Setup desktop target (Tauri)"),
         ("jac setup pwa", "Setup PWA target with icons"),
+
     ],
     group="project",
     source="jac-client"
@@ -183,7 +188,6 @@ class JacCmd {
 # -----------------------------------------------------------------------------
 # NPM/Create Handlers (not part of target system)
 # -----------------------------------------------------------------------------
-
 """Pre-hook to handle --skip flag for create command."""
 def _handle_create_skip(ctx: HookContext) -> None {
     # Check if --skip flag is set

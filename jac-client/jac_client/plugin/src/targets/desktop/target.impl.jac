@@ -32,7 +32,6 @@ import from .helpers {
 """Setup desktop target - scaffold Tauri project structure."""
 impl DesktopTarget.setup(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
     tauri_dir = ctx.project_dir / "src-tauri";
-
     try {
         console.print("\n🖥️  Setting up desktop target (Tauri)", style="bold");
         console.print(f"  Project directory: {ctx.project_dir}", style="muted");
@@ -65,23 +64,45 @@ impl DesktopTarget.setup(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
         }
 
         # Generate config files (continue on failures)
-        try { _generate_tauri_config(tauri_dir, project_name, identifier, project_version); }
-        except Exception as e { console.warning(f"  Failed to generate tauri.conf.json: {e}"); }
+        try {
+            _generate_tauri_config(
+                tauri_dir, project_name, identifier, project_version
+            );
+        } except Exception as e {
+            console.warning(f"  Failed to generate tauri.conf.json: {e}");
+        }
 
-        try { _generate_cargo_toml(tauri_dir, project_name, identifier); }
-        except Exception as e { console.warning(f"  Failed to generate Cargo.toml: {e}"); }
+        try {
+            _generate_cargo_toml(tauri_dir, project_name, identifier);
+        } except Exception as e {
+            console.warning(f"  Failed to generate Cargo.toml: {e}");
+        }
 
-        try { _generate_build_rs(tauri_dir); }
-        except Exception as e { console.warning(f"  Failed to generate build.rs: {e}"); }
+        try {
+            _generate_build_rs(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate build.rs: {e}");
+        }
 
-        try { _generate_default_icons(tauri_dir); }
-        except Exception as e { console.warning(f"  Failed to generate icons: {e}"); }
+        try {
+            _generate_default_icons(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate icons: {e}");
+        }
 
-        try { _generate_main_rs(tauri_dir); }
-        except Exception as e { console.warning(f"  Failed to generate main.rs: {e}"); }
+        try {
+            _generate_main_rs(tauri_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate main.rs: {e}");
+        }
 
-        try { _add_desktop_config(ctx.project_dir, project_name, identifier, project_version); }
-        except Exception as e { console.warning(f"  Failed to add [desktop] section: {e}"); }
+        try {
+            _add_desktop_config(
+                ctx.project_dir, project_name, identifier, project_version
+            );
+        } except Exception as e {
+            console.warning(f"  Failed to add [desktop] section: {e}");
+        }
 
         # Update icons in config
         try {
@@ -101,8 +122,11 @@ impl DesktopTarget.setup(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
 
         # Check dependencies
         console.print("\n📦 Checking required dependencies...", style="bold");
-        try { _check_and_install_dependencies(); }
-        except Exception as e { console.warning(f"  Dependency check issue: {e}"); }
+        try {
+            _check_and_install_dependencies();
+        } except Exception as e {
+            console.warning(f"  Dependency check issue: {e}");
+        }
 
         console.success("Desktop target setup complete!");
         console.print("\nNext steps:", style="bold");
@@ -163,10 +187,7 @@ impl DesktopTarget.build(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
         }
 
         result = subprocess.run(
-            build_cmd,
-            cwd=str(tauri_dir),
-            capture_output=True,
-            text=True
+            build_cmd, cwd=str(tauri_dir), capture_output=True, text=True
         );
 
         if result.returncode != 0 {
@@ -210,7 +231,10 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
         console.print("  Preparing compilation setup...", style="muted");
         vite_port = 5173;
         bundler = ViteBundler(
-            project_dir=ctx.project_dir, output_dir=None, minify=False, config_path=None
+            project_dir=ctx.project_dir,
+            output_dir=None,
+            minify=False,
+            config_path=None
         );
 
         # Ensure package.json exists
@@ -251,7 +275,8 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
             return BuildResult.fail("Failed to start Vite dev server");
         }
         console.print(
-            f"  ✔ Web dev server running on http://localhost:{vite_port}", style="success"
+            f"  ✔ Web dev server running on http://localhost:{vite_port}",
+            style="success"
         );
 
         # Step 4: Start backend API server
@@ -263,7 +288,9 @@ impl DesktopTarget.dev(self: DesktopTarget, ctx: BuildContext) -> BuildResult {
         console.print(
             f"  Starting backend server on port {server_port}...", style="muted"
         );
-        server_process = _start_backend_server(ctx.entry_file, ctx.project_dir, server_port);
+        server_process = _start_backend_server(
+            ctx.entry_file, ctx.project_dir, server_port
+        );
         console.print(
             f"  ✔ Backend server starting on port {server_port}", style="success"
         );
@@ -375,7 +402,9 @@ impl DesktopTarget.start(self: DesktopTarget, ctx: BuildContext) -> BuildResult 
         console.print(
             f"  Starting backend server on port {server_port}...", style="muted"
         );
-        server_process = _start_backend_server(ctx.entry_file, ctx.project_dir, server_port);
+        server_process = _start_backend_server(
+            ctx.entry_file, ctx.project_dir, server_port
+        );
         console.print(
             f"  ✔ Backend server starting on port {server_port}", style="success"
         );

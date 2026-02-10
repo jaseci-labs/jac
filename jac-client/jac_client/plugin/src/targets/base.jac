@@ -19,7 +19,6 @@ class ClientTarget {
     # -------------------------------------------------------------------------
     # Core Lifecycle Methods (must be implemented by subclasses)
     # -------------------------------------------------------------------------
-
     """Setup the target (one-time initialization).
 
     Called by `jac setup <target>`. Should create necessary directories,
@@ -51,7 +50,6 @@ class ClientTarget {
     # -------------------------------------------------------------------------
     # Validation Hooks (optional, have default implementations)
     # -------------------------------------------------------------------------
-
     """Check if setup has been completed for this target.
 
     Returns True if the target is ready to build/run, False otherwise.
@@ -73,7 +71,6 @@ class ClientTarget {
     # -------------------------------------------------------------------------
     # Lifecycle Hooks (optional, have default implementations)
     # -------------------------------------------------------------------------
-
     """Called before build() executes.
 
     Use this for pre-build tasks like cleaning, validation, or setup checks.
@@ -93,7 +90,6 @@ class ClientTarget {
     # -------------------------------------------------------------------------
     # Utility Methods
     # -------------------------------------------------------------------------
-
     """Get the name of this target as a string."""
     def get_name(self: ClientTarget) -> str {
         return str(self.target_type.value);

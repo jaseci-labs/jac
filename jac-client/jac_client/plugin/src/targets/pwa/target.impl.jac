@@ -84,7 +84,8 @@ impl PWATarget.dev(self: PWATarget, ctx: BuildContext) -> BuildResult {
 
         console.print("\n📱 Starting PWA dev server", style="bold");
         console.print(
-            "  Note: Service worker is disabled in dev mode for better DX", style="muted"
+            "  Note: Service worker is disabled in dev mode for better DX",
+            style="muted"
         );
 
         web_target = get_target("web");
@@ -97,7 +98,6 @@ impl PWATarget.dev(self: PWATarget, ctx: BuildContext) -> BuildResult {
 # -----------------------------------------------------------------------------
 # Helper Functions (moved from original impl)
 # -----------------------------------------------------------------------------
-
 """Load PWA config with project metadata."""
 def _load_pwa_context -> tuple[dict, str] {
     config = get_config();
@@ -226,7 +226,7 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> N
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8');
         console.print("  ✔ Generated manifest.json", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate manifest.json: {e}");
+        raise RuntimeError(f"Failed to generate manifest.json: {e}") ;
     }
 }
 
@@ -313,7 +313,7 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict) -> None {
         sw_path.write_text(sw_content, encoding='utf-8');
         console.print("  ✔ Generated sw.js (service worker)", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to generate service worker: {e}");
+        raise RuntimeError(f"Failed to generate service worker: {e}") ;
     }
 }
 
@@ -366,7 +366,9 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             html_content = html_content.replace('</body>', f'{sw_script}\n  </body>');
             modified = True;
         } else {
-            console.warning("  No </body> tag found, skipping SW registration injection");
+            console.warning(
+                "  No </body> tag found, skipping SW registration injection"
+            );
         }
 
         if modified {
@@ -374,7 +376,7 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             console.print("  ✔ Updated index.html with PWA support", style="success");
         }
     } except Exception as e {
-        raise RuntimeError(f"Failed to update index.html for PWA: {e}");
+        raise RuntimeError(f"Failed to update index.html for PWA: {e}") ;
     }
 }
 

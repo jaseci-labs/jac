@@ -90,7 +90,9 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                         style="muted",
                         file=sys.stderr
                     );
-                    console.info('Try again after running: jac clean --all', emoji=True);
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
                     console.info(
                         f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                         emoji=True

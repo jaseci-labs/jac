@@ -8,7 +8,8 @@ import from .types { ClientTargetType }
 import from .base { ClientTarget }
 
 # Target cache for singleton pattern
-glob _target_cache: dict[ClientTargetType, ClientTarget] = {},
+glob _target_cache:
+         dict[ClientTargetType, ClientTarget] = {},
      ERR_UNKNOWN_TARGET = "Unknown target: '{}'. Valid targets: {}";
 
 """Create a target instance for the given target type.
@@ -46,7 +47,7 @@ def create_target(target_type: ClientTargetType) -> ClientTarget {
         import from .desktop.target { DesktopTarget }
         target = DesktopTarget();
     } else {
-        raise ValueError(f"Unknown target type: {target_type}");
+        raise ValueError(f"Unknown target type: {target_type}") ;
     }
 
     # Cache and return
@@ -74,17 +75,13 @@ def get_target(name: str) -> ClientTarget {
         return create_target(target_type);
     } except ValueError {
         valid_targets = ', '.join(t.value for t in ClientTargetType);
-        raise ValueError(ERR_UNKNOWN_TARGET.format(name, valid_targets));
+        raise ValueError(ERR_UNKNOWN_TARGET.format(name, valid_targets)) ;
     }
 }
 
 """Get all available target types."""
 def get_available_targets -> list[ClientTargetType] {
-    return [
-        ClientTargetType.WEB,
-        ClientTargetType.PWA,
-        ClientTargetType.DESKTOP
-    ];
+    return [ClientTargetType.WEB, ClientTargetType.PWA, ClientTargetType.DESKTOP];
 }
 
 """Get all available target names as strings."""

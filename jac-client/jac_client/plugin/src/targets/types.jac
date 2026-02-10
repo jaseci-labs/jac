@@ -92,10 +92,7 @@ obj BuildResult {
         error: str | None = None
     ) -> BuildResult {
         return BuildResult(
-            success=success,
-            output_path=output_path,
-            error=error,
-            warnings=warnings
+            success=success, output_path=output_path, error=error, warnings=warnings
         );
     }
 

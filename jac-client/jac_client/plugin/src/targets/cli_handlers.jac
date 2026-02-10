@@ -46,7 +46,9 @@ class TargetCLIHandler {
 
         result = self._execute_lifecycle(ctx, build_ctx, TargetCLIHandler.OP_BUILD);
         if result {
-            self._handle_result(ctx, result, f"Build complete for '{target_name}' target");
+            self._handle_result(
+                ctx, result, f"Build complete for '{target_name}' target"
+            );
         }
     }
 
@@ -69,7 +71,11 @@ class TargetCLIHandler {
         try {
             target_type = ClientTargetType(target_name);
         } except ValueError {
-            self._fail(ctx, f"Unknown target: '{target_name}'", self._get_available_targets_hint());
+            self._fail(
+                ctx,
+                f"Unknown target: '{target_name}'",
+                self._get_available_targets_hint()
+            );
             return;
         }
 
@@ -83,7 +89,9 @@ class TargetCLIHandler {
 
         result = self._execute_lifecycle(ctx, build_ctx, TargetCLIHandler.OP_SETUP);
         if result {
-            self._handle_result(ctx, result, f"Setup complete for '{target_name}' target");
+            self._handle_result(
+                ctx, result, f"Setup complete for '{target_name}' target"
+            );
         }
     }
 
@@ -95,7 +103,9 @@ class TargetCLIHandler {
             return;
         }
 
-        operation = TargetCLIHandler.OP_DEV if build_ctx.dev_mode else TargetCLIHandler.OP_START;
+        operation = TargetCLIHandler.OP_DEV
+        if build_ctx.dev_mode
+        else TargetCLIHandler.OP_START;
         result = self._execute_lifecycle(ctx, build_ctx, operation);
 
         if result {
@@ -103,6 +113,7 @@ class TargetCLIHandler {
             # Check if result indicates passthrough (no output_path means passthrough)
             if result.success and not result.output_path and not result.error {
                 return;  # Passthrough to main jac start
+
             }
             self._handle_result(ctx, result);
         }
@@ -111,15 +122,18 @@ class TargetCLIHandler {
     # -------------------------------------------------------------------------
     # Private helper methods
     # -------------------------------------------------------------------------
-
     """Cancel CLI execution with specified error code."""
-    def _cancel_with_code(self: TargetCLIHandler, ctx: HookContext, code: int = 1) -> None {
+    def _cancel_with_code(
+        self: TargetCLIHandler, ctx: HookContext, code: int = 1
+    ) -> None {
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", code);
     }
 
     """Show error message and cancel execution."""
-    def _fail(self: TargetCLIHandler, ctx: HookContext, message: str, hint: str | None = None) -> None {
+    def _fail(
+        self: TargetCLIHandler, ctx: HookContext, message: str, hint: str | None = None
+    ) -> None {
         console.error(message);
         if hint {
             console.print(hint, style="muted");
@@ -137,9 +151,7 @@ class TargetCLIHandler {
     Returns BuildContext on success, None on error (with error already printed).
     """
     def _extract_context(
-        self: TargetCLIHandler,
-        ctx: HookContext,
-        target_name: str = "web"
+        self: TargetCLIHandler, ctx: HookContext, target_name: str = "web"
     ) -> BuildContext | None {
         config = get_config();
         if not config {
@@ -162,7 +174,11 @@ class TargetCLIHandler {
         try {
             target_type = ClientTargetType(target_name);
         } except ValueError {
-            self._fail(ctx, f"Unknown target: '{target_name}'", self._get_available_targets_hint());
+            self._fail(
+                ctx,
+                f"Unknown target: '{target_name}'",
+                self._get_available_targets_hint()
+            );
             return None;
         }
 
