@@ -8,14 +8,14 @@ walker CreateTask {
     has id: int,
         title: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_task = here ++> Task(id=self.id, title=self.title);
         report new_task ;
     }
 }
 
 walker GetAllTasks {
-    can read with `root entry{
+    can read with Root entry{
         tasks = [-->];
         report tasks;
     }
@@ -24,7 +24,7 @@ walker GetAllTasks {
 walker GetTask {
     has id: int;
 
-    can get with `root entry{
+    can get with Root entry{
         for task in [-->]{
             if (self.id == task.id){
                 report task;
@@ -36,7 +36,7 @@ walker GetTask {
 walker CompleteTask {
     has id: int;
 
-    can complete with `root entry {
+    can complete with Root entry {
         for task in [-->Task] {
             if (self.id == task.id){
                 visit task;
@@ -53,7 +53,7 @@ walker CompleteTask {
 walker DeleteTask {
     has id: int;
 
-    can visit_node with `root entry {
+    can visit_node with Root entry {
         for task in [-->] {
             if (self.id == task.id){
                 visit task;
@@ -61,7 +61,7 @@ walker DeleteTask {
         }
     }
 
-    can delete with `root entry {
+    can delete with Root entry {
         del here;
         report {"deleted": True, "id": self.id};
     }

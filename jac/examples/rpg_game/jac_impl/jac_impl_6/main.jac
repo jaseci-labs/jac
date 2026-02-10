@@ -20,7 +20,7 @@ walker game {
         fwd_dir: bool = True,
         manager: LevelManager = LevelManager();
 
-    can start_game with `root entry;
+    can start_game with Root entry;
 }
 
 edge play {

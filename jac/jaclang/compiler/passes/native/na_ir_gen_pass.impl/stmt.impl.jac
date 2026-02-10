@@ -97,7 +97,7 @@ impl NaIRGenPass._codegen_if(node: uni.IfStmt) -> None {
     self.builder.cbranch(cond, then_bb, else_bb);
     # Then block
     self.builder.position_at_end(then_bb);
-    if isinstance(node.body, (<>list, <>tuple)) {
+    if isinstance(node.body, (list, tuple)) {
         self._codegen_body(node.body);
     }
     if not self.builder.block.is_terminated {
@@ -109,7 +109,7 @@ impl NaIRGenPass._codegen_if(node: uni.IfStmt) -> None {
         if isinstance(node.else_body, uni.ElseIf) {
             self._codegen_if(node.else_body);
         } elif isinstance(node.else_body, uni.ElseStmt) {
-            if isinstance(node.else_body.body, (<>list, <>tuple)) {
+            if isinstance(node.else_body.body, (list, tuple)) {
                 self._codegen_body(node.else_body.body);
             }
         }
@@ -140,7 +140,7 @@ impl NaIRGenPass._codegen_while(node: uni.WhileStmt) -> None {
     # Body block — push loop context for break/continue
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    if isinstance(node.body, (<>list, <>tuple)) {
+    if isinstance(node.body, (list, tuple)) {
         self._codegen_body(node.body);
     }
     if not self.builder.block.is_terminated {
@@ -166,7 +166,7 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
     # 2. From field target: self.field = [] where field has known list type
     if self._list_type_hint is None {
         check_targets = node.target
-        if isinstance(node.target, (<>list, <>tuple))
+        if isinstance(node.target, (list, tuple))
         else [(node.target)];
         for ct in check_targets {
             if isinstance(ct, uni.AtomTrailer) and ct.is_attr {
@@ -257,7 +257,7 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         return;
     }
     targets = node.target
-    if isinstance(node.target, (<>list, <>tuple))
+    if isinstance(node.target, (list, tuple))
     else [(node.target)];
     for target_expr in targets {
         # Handle tuple unpacking: (a, b) = expr
@@ -599,7 +599,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         self.builder.cbranch(cmp, body_bb, end_bb);
         self.loop_stack.append((incr_bb, end_bb));
         self.builder.position_at_end(body_bb);
-        if isinstance(node.body, (<>list, <>tuple)) {
+        if isinstance(node.body, (list, tuple)) {
             self._codegen_body(node.body);
         }
         if not self.builder.block.is_terminated {
@@ -661,7 +661,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
                     helpers["get_key"], [collection_val, body_idx], name="ford.key"
                 );
                 self.builder.store(key_val, loop_alloca);
-                if isinstance(node.body, (<>list, <>tuple)) {
+                if isinstance(node.body, (list, tuple)) {
                     self._codegen_body(node.body);
                 }
                 if not self.builder.block.is_terminated {
@@ -790,7 +790,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         elem_val = self.builder.bitcast(elem_val, inner_type, name="forl.cast");
     }
     self.builder.store(elem_val, loop_alloca);
-    if isinstance(node.body, (<>list, <>tuple)) {
+    if isinstance(node.body, (list, tuple)) {
         self._codegen_body(node.body);
     }
     if not self.builder.block.is_terminated {

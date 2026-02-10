@@ -16,4 +16,8 @@ obj NativeCompilePass(Transform) {
     ) -> None;
 
     def transform(ir_in: uni.Module) -> uni.Module;
+    # Link imported .na.jac modules at IR level (na↔na linking)
+    def _compile_and_link_native_imports(
+        module: uni.Module, main_mod: object, imports: list, target_machine: object
+    ) -> None;
 }

@@ -33,7 +33,7 @@ class TestHMRWalkerReload:
         app_file.write_text(
             """
 walker get_value {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"value": 1};
     }
 }
@@ -57,7 +57,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"value": 2};
     }
 }
@@ -90,7 +90,7 @@ walker get_value {
 glob VERSION = 1;
 
 walker get_version {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"version": VERSION};
     }
 }
@@ -114,7 +114,7 @@ walker get_version {
 glob VERSION = 2;
 
 walker get_version {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"version": VERSION};
     }
 }
@@ -140,7 +140,7 @@ walker get_version {
         app_file.write_text(
             """
 walker walker_one {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "one"};
     }
 }
@@ -164,13 +164,13 @@ walker walker_one {
             app_file.write_text(
                 """
 walker walker_one {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "one"};
     }
 }
 
 walker walker_two {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "two"};
     }
 }
@@ -203,7 +203,7 @@ class TestHMRMultipleReloads:
 glob COUNTER = 0;
 
 walker get_counter {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"counter": COUNTER};
     }
 }
@@ -222,7 +222,7 @@ walker get_counter {
 glob COUNTER = {i};
 
 walker get_counter {{
-    can enter with `root entry {{
+    can enter with Root entry {{
         report {{"counter": COUNTER}};
     }}
 }}
@@ -297,7 +297,7 @@ class TestHMRStatePreservation:
         app_file.write_text(
             """
 walker get_status {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "v1"};
     }
 }
@@ -318,7 +318,7 @@ walker get_status {
             app_file.write_text(
                 """
 walker get_status {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "v2"};
     }
 }
@@ -348,14 +348,14 @@ node Secret {
 
 walker store_secret {
     has data: str;
-    can store with `root entry {
+    can store with Root entry {
         here ++> Secret(data=self.data);
         report {"stored": self.data};
     }
 }
 
 walker get_secrets {
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
     }
     can gather with Secret entry {
@@ -412,7 +412,7 @@ class TestHMRErrorHandling:
         app_file.write_text(
             """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         report {"value": 1};
     }
 }
@@ -433,7 +433,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         # SYNTAX ERROR - missing closing brace
         report {"value": 2};
 }
@@ -448,7 +448,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         report {"value": 3};
     }
 }

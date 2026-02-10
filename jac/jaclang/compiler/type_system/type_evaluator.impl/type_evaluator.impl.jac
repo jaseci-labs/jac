@@ -400,12 +400,6 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 }
             }
 
-        case uni.TypeRef():
-            ty = self.get_type_of_expression(expr.target);
-            if isinstance(ty, types.ClassType) {
-                return ty.clone_as_class();
-            }
-
     }
     # TODO: More expressions.
     return types.UnknownType();

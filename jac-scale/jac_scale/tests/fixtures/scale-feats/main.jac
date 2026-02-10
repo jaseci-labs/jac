@@ -20,7 +20,7 @@ walker:pub upload_file {
     has file: UploadFile;
     has folder: str = "documents";
 
-    can process with `root entry {
+    can process with Root entry {
         # Generate unique filename
         ext = self.file.filename.rsplit(".", 1)[-1] if "." in self.file.filename else "";
         unique_name = f"{uuid4()}.{ext}" if ext else str(uuid4());
@@ -47,7 +47,7 @@ walker:pub list_files {
     has folder: str = "";
     has recursive: bool = False;
 
-    can process with `root entry {
+    can process with Root entry {
         files = [];
         for path in storage.list_files(self.folder, self.recursive) {
             metadata = storage.get_metadata(path);
@@ -65,7 +65,7 @@ walker:pub list_files {
 walker:pub delete_file {
     has path: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.path) {
             report {"success": False, "error": "File not found"};
             return;
@@ -79,7 +79,7 @@ walker:pub delete_file {
 walker:pub download_file {
     has path: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.path) {
             report {"success": False, "error": "File not found"};
             return;
@@ -99,7 +99,7 @@ walker:pub download_file {
 walker:pub file_exists {
     has path: str;
 
-    can process with `root entry {
+    can process with Root entry {
         exists = storage.exists(self.path);
         report {"path": self.path, "exists": exists};
     }
@@ -110,7 +110,7 @@ walker:pub copy_file {
     has source: str;
     has destination: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.source) {
             report {"success": False, "error": "Source file not found"};
             return;
@@ -125,7 +125,7 @@ walker:pub move_file {
     has source: str;
     has destination: str;
 
-    can process with `root entry {
+    can process with Root entry {
         if not storage.exists(self.source) {
             report {"success": False, "error": "Source file not found"};
             return;
@@ -141,7 +141,7 @@ walker:pub move_file {
 
 """Simple health check walker."""
 walker:pub health {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "ok", "features": ["storage", "file_upload"]};
     }
 }

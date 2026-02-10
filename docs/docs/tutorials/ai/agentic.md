@@ -279,8 +279,8 @@ def search_documents(query: str, docs: list) -> list {
 walker DocumentAgent {
     has query: str;
 
-    can process with `root entry {
-        all_docs = [-->](`?Document);
+    can process with Root entry {
+        all_docs = [-->](?:Document);
 
         # Find relevant documents
         relevant = search_documents(self.query, all_docs);

@@ -142,6 +142,35 @@ def add(
 )
 def remove(packages: list = [], dev: bool = False) -> int;
 
+"""Update project dependencies to latest compatible versions."""
+@registry.command(
+    name="update",
+    help="Update project dependencies to latest compatible versions",
+    args=[
+        Arg.create(
+            "packages",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Packages to update (all if empty)"
+        ),
+        Arg.create(
+            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+        ),
+        Arg.create(
+            "verbose", typ=bool, default=False, help="Verbose output", short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac update", "Update all dependencies to latest compatible versions"),
+        ("jac update requests", "Update a specific package"),
+        ("jac update --dev", "Also update dev dependencies"),
+
+    ],
+    group="project"
+)
+def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
+
 """Run custom scripts defined in jac.toml."""
 @registry.command(
     name="script",

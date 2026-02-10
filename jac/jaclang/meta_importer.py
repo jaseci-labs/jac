@@ -149,9 +149,11 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
 
         # Get and execute bytecode using the compiler singleton
-        codeobj = Jac.get_compiler().get_bytecode(
+        compiler = Jac.get_compiler()
+        program = Jac.get_program()
+        codeobj = compiler.get_bytecode(
             full_target=file_path,
-            target_program=Jac.get_program(),
+            target_program=program,
             minimal=use_minimal,
         )
         if not codeobj:
@@ -159,6 +161,19 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 # Empty package is OK - just register it
                 return
             raise ImportError(f"No bytecode found for {file_path}")
+
+        # Inject native interop infrastructure if needed (sv↔na interop)
+        native_engine, interop_py_funcs = compiler.get_native_interop_setup(
+            file_path, program
+        )
+        if native_engine is not None:
+            module.__dict__["__jac_native_engine__"] = native_engine
+        # Always inject interop_py_funcs if it's the actual dict from compilation
+        # (not None). The dict may be empty initially but will be populated when
+        # bytecode executes. Late-binding callbacks reference this same dict.
+        if interop_py_funcs is not None:
+            module.__dict__["__jac_interop_py_funcs__"] = interop_py_funcs
+
         # Execute the bytecode directly in the module's namespace
         exec(codeobj, module.__dict__)
 

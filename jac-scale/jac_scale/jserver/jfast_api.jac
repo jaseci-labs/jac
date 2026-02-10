@@ -39,9 +39,9 @@ import from pydantic { BaseModel, Field, create_model }
 import from .jserver { APIParameter, HTTPMethod, JEndPoint, JServer, ParameterType }
 import from jaclang.runtimelib.transport { TransportResponse }
 
-glob EndpointResponse: TypeAlias = Response | BaseModel | <>dict[(str, object)] | <>list[
+glob EndpointResponse: TypeAlias = Response | BaseModel | dict[(str, object)] | list[
          object
-     ] | str | <>bytes | None;
+     ] | str | `bytes | None;
 
 """Base protocol for parameter handlers."""
 obj ParameterHandler {

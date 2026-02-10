@@ -60,7 +60,7 @@ obj Memory {
     def close -> None abs;
 
     """Check if an anchor is currently in memory."""
-    def has(id: UUID) -> bool abs;
+    def `has(id: UUID) -> bool abs;
 
     """Query all anchors with optional filter."""
     def query(
@@ -134,7 +134,7 @@ obj VolatileMemory(Memory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -189,7 +189,7 @@ obj SqliteMemory(PersistentMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -238,6 +238,6 @@ obj TieredMemory(VolatileMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
 }
