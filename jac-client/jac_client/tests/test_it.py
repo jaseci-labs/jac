@@ -955,9 +955,9 @@ def test_configurable_api_base_url_in_bundle() -> None:
                     assert len(js_body) > 0, "JS bundle should not be empty"
                     # Verify bundle contains expected React/JSX runtime markers
                     # This confirms the get_client_js hook returned valid bundle code
-                    assert (
-                        "createElement" in js_body or "jsx" in js_body.lower()
-                    ), "JS bundle should contain React createElement or jsx"
+                    assert "createElement" in js_body or "jsx" in js_body.lower(), (
+                        "JS bundle should contain React createElement or jsx"
+                    )
                     print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
 
                 # 7. Assert the configured base URL is baked into the bundle
