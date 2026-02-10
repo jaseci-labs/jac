@@ -243,39 +243,24 @@ impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> st
     return name;
 }
 
-"""Format define entries for Vite config.
-
-Converts API base URL and custom define values from jac.toml into
-JavaScript define entries for Vite's build-time constant replacement.
-
-Args:
-    api_base_url: The API base URL to inject
-    custom_defines: Dict of custom define values from [plugins.client.vite.define]
-
-Returns:
-    Formatted string of define entries for Vite config
-"""
+"""Format define entries for Vite config (API base URL + custom defines)."""
 impl ViteBundler._format_define_entries(
     self: ViteBundler, api_base_url: str, custom_defines: dict
 ) -> str {
-    # Start with the required API base URL entry
-    # Use json.dumps for proper escaping of special characters
-    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + json.dumps(api_base_url)];
+    # Vite define values are JS code to inject, not JS values.
+    # Strings need extra quotes: '"value"' so Vite injects "value" (a string literal)
+    entries = ["    '" + JAC_API_BASE_URL_KEY + "': '" + json.dumps(api_base_url) + "'"];
 
-    # Add custom defines from jac.toml
     for (key, value) in custom_defines.items() {
         if isinstance(value, str) {
-            # String values - use json.dumps for proper escaping
-            entries.append("    '" + key + "': " + json.dumps(value));
+            entries.append("    '" + key + "': '" + json.dumps(value) + "'");
         } elif isinstance(value, bool) {
-            # Boolean values as lowercase literals
+            # JS uses lowercase true/false
             entries.append("    '" + key + "': " + str(value).lower());
         } elif isinstance(value, (int, float)) {
-            # Numeric values as-is
             entries.append("    '" + key + "': " + str(value));
         } else {
-            # Fallback for other types - use json.dumps for safety
-            entries.append("    '" + key + "': " + json.dumps(str(value)));
+            entries.append("    '" + key + "': '" + json.dumps(str(value)) + "'");
         }
     }
 
@@ -336,7 +321,6 @@ impl ViteBundler._generate_vite_config_content(
     resolve_overrides_str = self._format_config_object(resolve_config, indent=6)
     if (isinstance(resolve_config, dict) and resolve_config)
     else '';
-    # Format define entries (API base URL + custom defines from jac.toml)
     define_config = vite_config_data.get('define', {});
     define_str = self._format_define_entries(api_base_url, define_config);
     imports_section = f"{imports_str}\n" if imports_str else '';
