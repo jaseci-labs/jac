@@ -337,6 +337,12 @@ class Lexer:
                 self._advance(2)
                 self._emit(TT.ARROW, "->", line, col)
                 continue
+            if two == "?.":
+                # Null-safe access: emit as regular DOT (semantics handled
+                # in transform_tokens or dropped for bootstrap code)
+                self._advance(2)
+                self._emit(TT.DOT, ".", line, col)
+                continue
             if two in two_char_ops:
                 self._advance(2)
                 self._emit(TT.OP, two, line, col)
