@@ -53,7 +53,7 @@ impl VolatileMemory.close -> None {
 }
 
 """Check if an anchor is in memory."""
-impl VolatileMemory.has(id: UUID) -> bool {
+impl VolatileMemory.`has(id: UUID) -> bool {
     return id in self.__mem__;
 }
 
@@ -257,7 +257,7 @@ impl SqliteMemory.close -> None {
 }
 
 """Check if an anchor is in memory or database."""
-impl SqliteMemory.has(id: UUID) -> bool {
+impl SqliteMemory.`has(id: UUID) -> bool {
     if id in self.__mem__ {
         return True;
     }
@@ -531,7 +531,7 @@ impl TieredMemory.close -> None {
 }
 
 """Check if anchor exists in any tier."""
-impl TieredMemory.has(id: UUID) -> bool {
+impl TieredMemory.`has(id: UUID) -> bool {
     # Check L1 first
     if id in self.__mem__ {
         return True;
@@ -541,7 +541,7 @@ impl TieredMemory.has(id: UUID) -> bool {
         return True;
     }
     # Check L3 persistence
-    if self.l3 and self.l3.has(id) {
+    if self.l3 and self.l3.`has(id) {
         return True;
     }
     return False;

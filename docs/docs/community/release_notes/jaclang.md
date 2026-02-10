@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **PWA Build Detection**: The stdlib server now detects existing PWA builds and serves Vite-hashed client files (`client.*.js`) correctly.
 - **Fix: Serve JSON and JS files as static assets**: Added `.json` and `.js` to the list of recognized asset extensions, fixing PWA `manifest.json` and `sw.js` serving.
+- **Code refactors**: Backtick escape, etc.
 
 ## jaclang 0.10.0 (Latest Release)
 

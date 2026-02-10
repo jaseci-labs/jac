@@ -101,7 +101,7 @@ impl RedisBackend.close -> None {
 }
 
 """Check if an anchor is in the cache."""
-impl RedisBackend.has(id: UUID) -> bool {
+impl RedisBackend.`has(id: UUID) -> bool {
     return self.exists(id);
 }
 
