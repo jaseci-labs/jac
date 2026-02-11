@@ -16,7 +16,24 @@ from typing import Any
 
 import pytest
 
-import jaclang
+from tests.fixtures_list import MICRO_JAC_FILES
+
+# =============================================================================
+# Micro Suite File Discovery
+# =============================================================================
+
+_jac_root = str(Path(__file__).parent.parent)
+
+
+def get_micro_jac_files() -> list[str]:
+    """Return absolute paths for all .jac files in the micro suite."""
+    return [os.path.normpath(os.path.join(_jac_root, f)) for f in MICRO_JAC_FILES]
+
+
+def check_pass_ast_complete(pass_cls: type) -> None:
+    """Verify a pass handles all UniNode subclasses (placeholder)."""
+    pass
+
 
 # =============================================================================
 # Console Output Normalization - Disable Rich styling during tests
@@ -51,7 +68,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
     """
-    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+    from jaclang.jac0core.runtime import JacRuntimeImpl, plugin_manager
 
     global _external_plugins
     for name, plugin in list(plugin_manager.list_name_plugin()):
@@ -66,7 +83,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Re-register external plugins at the end of the jac test session."""
-    from jaclang.pycore.runtime import plugin_manager
+    from jaclang.jac0core.runtime import plugin_manager
 
     global _external_plugins
     for name, plugin in _external_plugins:
@@ -86,7 +103,7 @@ def ensure_jac_runtime() -> None:
     """Initialize Jac runtime once on first use."""
     global _runtime_initialized
     if not _runtime_initialized:
-        from jaclang.pycore.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import JacRuntime as Jac
 
         Jac.setup()
         _runtime_initialized = True
@@ -102,7 +119,7 @@ def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, An
         filename: Path to .jac or .py file
         user_root: User root ID for permission boundary (None for system context)
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -136,7 +153,7 @@ def proc_file_sess(
         base_path: Base directory for database storage
         user_root: User root ID for permission boundary (None for system context)
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -171,7 +188,7 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
         Dictionary containing the object's state
     """
     ensure_jac_runtime()
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod, mach = proc_file(filename)
     if filename.endswith(".jac"):
@@ -249,7 +266,7 @@ def examples_path() -> Callable[[str], str]:
     """Get path to examples directory."""
 
     def _examples_path(path: str) -> str:
-        examples_dir = Path(jaclang.__file__).parent.parent / "examples"
+        examples_dir = Path(__file__).parent.parent / "examples"
         return str((examples_dir / path).resolve())
 
     return _examples_path
@@ -281,10 +298,10 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    from jaclang.pycore.program import JacProgram
-    from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+    from jaclang.jac0core.program import JacProgram
+    from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
 
-    # Close existing context if any
+    # Close any existing context if any
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
@@ -310,3 +327,36 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
         if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
             sys.modules.pop(mod.__name__, None)
     JacRuntime.loaded_modules.clear()
+
+
+# Flag to track if template registry has been initialized
+_template_registry_initialized = False
+
+
+@pytest.fixture
+def cli_test_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide a temporary directory for CLI tests with cwd switching.
+
+    This fixture:
+    - Initializes the template registry (once per session)
+    - Changes cwd to the temp directory
+    - Restores cwd after the test
+
+    Use this for tests that call CLI commands directly (e.g., project.create())
+    instead of spawning subprocesses for better performance.
+    """
+    global _template_registry_initialized
+
+    # Initialize template registry once
+    if not _template_registry_initialized:
+        from jaclang.project.template_registry import initialize_template_registry
+
+        initialize_template_registry()
+        _template_registry_initialized = True
+
+    original_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        yield tmp_path
+    finally:
+        os.chdir(original_cwd)

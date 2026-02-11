@@ -1,5 +1,6 @@
 import os;
 import pathlib;
+import from jaclang.cli.console { console }
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -170,6 +171,20 @@ impl sync_code_to_pvc(
                 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
+        # Remove jac.local.toml which is meant for local dev overrides only
+        # and could override deployment settings like the serve port.
+        run_kubectl_command(
+            [
+                'exec',
+                '-n',
+                namespace,
+                sync_pod_name,
+                '--',
+                'sh',
+                '-c',
+                'rm -f /data/workspace/jac.local.toml'
+            ]
+        );
 
         if os.path.isfile(same_directory_toml_path) {
             run_kubectl_command(
@@ -183,7 +198,7 @@ impl sync_code_to_pvc(
                 cwd=code_folder
             );
         } else {
-            print("jac.toml file not found");
+            console.print("jac.toml file not found");
         }
     } finally {
         temp_tar_path.unlink(missing_ok=True);
@@ -315,17 +330,17 @@ impl cluster_type -> str {
         if not nodes.items {
             return 'local';
         }
-        for <>node in nodes.items {
-            provider_id = <>node.spec.provider_id or '';
+        for `node in nodes.items {
+            provider_id = `node.spec.provider_id or '';
             if provider_id.startswith('aws://') {
                 return 'aws';
             }
         }
-        for <>node in nodes.items {
-            labels = <>node.metadata.labels or {};
+        for `node in nodes.items {
+            labels = `node.metadata.labels or {};
             if (
                 ('topology.kubernetes.io/region' in labels)
-                and <>any(
+                and any(
                     (region in labels.get('topology.kubernetes.io/region', ''))
                     for region in ['us-', 'eu-', 'ap-', 'ca-', 'sa-']
                 )
@@ -346,6 +361,35 @@ impl cluster_type -> str {
     }
 }
 
+impl check_pods_restarted(namespace: str, app_name: str) -> bool {
+    try {
+        config.load_kube_config();
+    } except Exception {
+        config.load_incluster_config();
+    }
+    v1 = client.CoreV1Api();
+    pods = v1.list_namespaced_pod(
+        namespace=namespace, label_selector="app={}".format(app_name)
+    );
+    for pod in pods.items {
+        statuses = pod.status.container_statuses;
+        if not statuses {
+            continue;
+        }
+
+        for container in statuses {
+            if (container.restart_count > 0) {
+                console.print(
+                    f"Pod {pod.metadata.name} container "
+                    f"{container.name} restarted "
+                );
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 """
     Wait for a service to become available.
 
@@ -357,8 +401,10 @@ impl check_deployment_status(
     path: str = '/docs',
     interval: int = 15,
     max_retries: int = 30,
-    nlb_url: (str | None) = None
-) -> bool {
+    nlb_url: (str | None) = None,
+    namespace: str = "default",
+    app_name: str = "jaseci"
+) -> tuple[bool, str] {
     if nlb_url {
         url = f"{nlb_url.rstrip('/')}{path}";
     } else {
@@ -368,19 +414,22 @@ impl check_deployment_status(
         try {
             response = requests.get(url, timeout=10);
             if (response.status_code == 200) {
-                print(f"Service is available at: {url}");
-                return True;
+                return (True, "Successful");
             }
         } except RequestException as e {
+            if check_pods_restarted(namespace, app_name) {
+                return (False, "Containers restarted");
+            }
+
             if (attempt == max_retries) {
-                print(f"Failed to connect to {url}: {e}");
+                console.print(f"Failed to connect to {url}: {e}");
             }
         }
         if (attempt < max_retries) {
             time.sleep(interval);
         }
     }
-    return False;
+    return (False, "Timeout reached");
 }
 
 """Create or update ConfigMap with binary tar.gz using Kubernetes API."""
@@ -436,10 +485,10 @@ impl ensure_namespace_exists(namespace: str) -> None {
         config.load_kube_config();
         core_v1 = client.CoreV1Api();
         core_v1.read_namespace(name=namespace);
-        print(f"Namespace '{namespace}' already exists.");
+        console.print(f"Namespace '{namespace}' already exists.");
     } except ApiException as e {
         if (e.status == 404) {
-            print(f"Namespace '{namespace}' not found. Creating it...");
+            console.print(f"Namespace '{namespace}' not found. Creating it...");
             core_v1.create_namespace(
                 body={
                     'apiVersion': 'v1',
@@ -447,7 +496,7 @@ impl ensure_namespace_exists(namespace: str) -> None {
                     'metadata': {'name': namespace}
                 }
             );
-            print(f"Namespace '{namespace}' created successfully.");
+            console.print(f"Namespace '{namespace}' created successfully.");
         } else {
             raise ;
         }
@@ -505,6 +554,50 @@ impl load_env_variables(code_folder: str) -> list {
     return env_list;
 }
 
+"""Create a Kubernetes Secret from resolved secret data. Returns True if created."""
+impl create_k8s_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str]
+) -> bool {
+    if not secret_data {
+        return False;
+    }
+    secret_body = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {'name': secret_name, 'namespace': namespace},
+        'type': 'Opaque',
+        'stringData': secret_data
+    };
+    try {
+        core_v1.create_namespaced_secret(namespace=namespace, body=secret_body);
+    } except ApiException as e {
+        if e.status == 409 {
+            core_v1.replace_namespaced_secret(
+                name=secret_name, namespace=namespace, body=secret_body
+            );
+        } else {
+            raise ;
+        }
+    }
+    return True;
+}
+
+"""Delete a Kubernetes Secret if it exists."""
+impl delete_k8s_secret(
+    core_v1: client.CoreV1Api, namespace: str, secret_name: str
+) -> None {
+    try {
+        core_v1.delete_namespaced_secret(name=secret_name, namespace=namespace);
+    } except ApiException as e {
+        if e.status != 404 {
+            raise ;
+        }
+    }
+}
+
 """
     Print a statement only if debug_only is True.
 
@@ -514,6 +607,6 @@ impl load_env_variables(code_folder: str) -> list {
 """
 impl debug_print(statement: str, debug_only: bool = False) -> None {
     if debug_only {
-        print(statement);
+        console.print(statement);
     }
 }

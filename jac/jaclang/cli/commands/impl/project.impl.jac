@@ -5,8 +5,9 @@ Direct implementations - no delegation.
 
 import subprocess;
 import shlex;
-import sys;
+import base64;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 """Initialize a new Jac project."""
 impl create(
@@ -17,7 +18,6 @@ impl create(
 ) -> int {
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry { get_template_registry }
-    import from jaclang.cli.console { console }
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory
@@ -36,29 +36,14 @@ impl create(
         }
         return 0;
     }
-    # If no name specified and not listing templates, show usage error
+    # If no name specified, use "jactastic" as default with incrementing number if exists
     if not name {
-        print("Error: Project name is required.", file=sys.stderr);
-        print("\nUsage: jac create <name> [--use <template>]", file=sys.stderr);
-        print("\nExamples:", file=sys.stderr);
-        print(
-            "  jac create myproject              # Create with default template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create myapp --use client     # Create with 'client' template",
-            file=sys.stderr
-        );
-        print(
-            "  jac create --list-jacpacks         # List available templates",
-            file=sys.stderr
-        );
-        return 1;
+        name = _generate_default_project_name(Path.cwd());
     }
     # Resolve template from --use (supports: registered names, file paths, URLs)
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
-        console.error(f"Unknown template: {template}");
+        console.error(f"Unknown template: {use}");
         console.print(
             "Use --list-templates to see available templates.", style="muted"
         );
@@ -108,20 +93,27 @@ impl create(
     console.print(f"  ✔ jac.toml", style="success");
     # Generate files from template
     for (file_path, content) in tmpl.files.items() {
-        rendered = content.replace("{{name}}", project_name);
         full_path = project_path / file_path;
         full_path.parent.mkdir(parents=True, exist_ok=True);
         if not full_path.exists() or force {
-            with open(full_path, "w") as f {
-                f.write(rendered);
+            # Check if content is base64-encoded binary (prefixed with "base64:")
+            if content.startswith("base64:") {
+                # Decode binary content and write as bytes
+                binary_data = base64.b64decode(content[7:]);
+                with open(full_path, "wb") as f {
+                    f.write(binary_data);
+                }
+            } else {
+                # Text file - apply template substitution and write as text
+                rendered = content.replace("{{name}}", project_name);
+                with open(full_path, "w") as f {
+                    f.write(rendered);
+                }
             }
             console.print(f"  ✔ {file_path}", style="success");
         }
     }
-    # Create .gitignore files from template
-    if tmpl.gitignore_entries {
-        _create_jac_gitignore(project_path, tmpl.gitignore_entries);
-    }
+    # Create .gitignore file from template
     if tmpl.root_gitignore_entries {
         _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
     }
@@ -150,10 +142,25 @@ impl create(
         steps.append(f"cd {name}");
     }
     steps.append("jac install         Install dependencies");
-    steps.append("jac run main.jac    Start development");
+    steps.append("jac start main.jac    Start development");
     console.print_next_steps(steps);
     console.print("\n🚀 Happy coding!\n", style="bold green");
     return 0;
+}
+
+"""Generate a default project name using 'jactastic' with incrementing number if needed."""
+def _generate_default_project_name(cwd: Path) -> str {
+    base_name = "jactastic";
+    # If jactastic doesn't exist, use it
+    if not (cwd / base_name).exists() {
+        return base_name;
+    }
+    # Otherwise, find the next available number
+    n = 1;
+    while (cwd / f"{base_name}{n}").exists() {
+        n += 1;
+    }
+    return f"{base_name}{n}";
 }
 
 """Resolve a template from a name, file path, or URL.
@@ -177,7 +184,7 @@ def _resolve_template(use: str, registry: any) -> any {
 
     # Check if it's a URL
     if use.startswith("http://") or use.startswith("https://") {
-        print(f"Downloading template from {use}...");
+        console.print(f"Downloading template from {use}...");
         try {
             # Download to a temporary file
             with tempfile.NamedTemporaryFile(suffix=".jacpack", delete=False) as tmp {
@@ -187,13 +194,13 @@ def _resolve_template(use: str, registry: any) -> any {
             tmpl = load_template_from_json(tmp_path);
             # Clean up temp file
             tmp_path.unlink();
-            print(f"Using template '{tmpl.name}' from URL");
+            console.print(f"Using template '{tmpl.name}' from URL");
             return tmpl;
         } except urllib.error.URLError as e {
-            print(f"Error downloading template from URL: {e}", file=sys.stderr);
+            console.error(f"Error downloading template from URL: {e}");
             return None;
         } except Exception as e {
-            print(f"Error loading template from URL: {e}", file=sys.stderr);
+            console.error(f"Error loading template from URL: {e}");
             return None;
         }
     }
@@ -206,40 +213,36 @@ def _resolve_template(use: str, registry: any) -> any {
                 # Load from .jacpack file
                 if use_path.suffix == ".jacpack" or use.endswith(".jacpack") {
                     tmpl = load_template_from_json(use_path);
-                    print(f"Using template '{tmpl.name}' from {use_path}");
+                    console.print(f"Using template '{tmpl.name}' from {use_path}");
                     return tmpl;
                 } else {
-                    print(
-                        f"Error: File must be a .jacpack file: {use}", file=sys.stderr
-                    );
+                    console.error(f"Error: File must be a .jacpack file: {use}");
                     return None;
                 }
             } elif use_path.is_dir() {
                 # Load from directory with jac.toml [jacpack] section
                 tmpl = load_template_from_directory(use_path);
-                print(f"Using template '{tmpl.name}' from {use_path}");
+                console.print(f"Using template '{tmpl.name}' from {use_path}");
                 return tmpl;
             }
         } except Exception as e {
-            print(f"Error loading template from {use}: {e}", file=sys.stderr);
+            console.error(f"Error loading template from {use}: {e}");
             return None;
         }
     }
 
     # Check if path looks like a file path but doesn't exist
     if "/" in use or use.endswith(".jacpack") {
-        print(f"Error: Template file or directory not found: {use}", file=sys.stderr);
+        console.error(f"Error: Template file or directory not found: {use}");
         return None;
     }
 
     # Fall back to registry lookup
     tmpl = registry.get(use);
     if tmpl is None {
-        print(f"Unknown jacpack template: {use}", file=sys.stderr);
-        print("Use --list-jacpacks to see available templates.", file=sys.stderr);
-        print(
-            "You can also specify a path to a .jacpack file or a URL.", file=sys.stderr
-        );
+        console.error(f"Unknown jacpack template: {use}");
+        console.error("Use --list-jacpacks to see available templates.");
+        console.error("You can also specify a path to a .jacpack file or a URL.");
         return None;
     }
     return tmpl;
@@ -330,22 +333,8 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
     return "\n".join(lines);
 }
 
-"""Create .jac/.gitignore with entries."""
-def _create_jac_gitignore(project_path: Path, entries: list[str]) -> None {
-    import from jaclang.cli.console { console }
-    jac_dir = project_path / ".jac";
-    if jac_dir.exists() {
-        jac_gitignore = jac_dir / ".gitignore";
-        with open(jac_gitignore, "w") as f {
-            f.write("\n".join(entries) + "\n");
-        }
-        console.print(f"  ✔ .jac/.gitignore", style="success");
-    }
-}
-
 """Create project-root .gitignore with entries."""
 def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
-    import from jaclang.cli.console { console }
     gitignore_path = project_path / ".gitignore";
     with open(gitignore_path, "w") as f {
         f.write("\n".join(entries) + "\n");
@@ -357,7 +346,7 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
 impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
+    import from jaclang.project.dep_registry { get_dependency_registry }
     config = get_config();
     if config is None {
         console.error(
@@ -369,13 +358,67 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
         f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
         style="bold"
     );
-    console.print(f"  Packages directory: {config.get_packages_dir()}", style="muted");
+    console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
     installer = DependencyInstaller(config=config, verbose=verbose);
-    with console.status("[cyan]Installing packages...[/cyan]", spinner="dots") as status {
-        install_success = installer.install_all(include_dev=dev);
+    pip_packages = installer.get_pip_package_specs(include_dev=dev);
+    git_packages = installer.get_git_package_specs();
+    # Check for plugin dependencies (npm, etc.)
+    dep_registry = get_dependency_registry();
+    plugin_types = dep_registry.get_all();
+    has_plugin_deps = False;
+    for type_name in plugin_types.keys() {
+        if config.get_plugin_deps(type_name) {
+            has_plugin_deps = True;
+            break;
+        }
     }
-    if install_success {
+    if not pip_packages and not git_packages and not has_plugin_deps {
+        console.info("No dependencies to install.");
+        return 0;
+    }
+    # Install pip and git dependencies
+    install_success = True;
+    all_packages = pip_packages + git_packages;
+    if all_packages {
+        with console.status(
+            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
+            spinner="dots"
+        ) as status {
+            install_success = installer.install_package(all_packages);
+        }
+    }
+    # Install plugin dependencies (npm, etc.)
+    plugin_failed = False;
+    for (type_name, dep_type) in plugin_types.items() {
+        plugin_deps = config.get_plugin_deps(type_name);
+        if not plugin_deps {
+            continue;
+        }
+        console.print(f"\n  Installing {type_name} dependencies...", style="muted");
+        if dep_type.install_all_handler is not None {
+            try {
+                dep_type.install_all_handler(config);
+                console.print(
+                    f"  ✔ {type_name} dependencies installed", style="success"
+                );
+            } except Exception as e {
+                console.error(f"  ✗ {type_name} dependencies failed: {e}");
+                plugin_failed = True;
+            }
+        } else {
+            for (dep_name, dep_version) in plugin_deps.items() {
+                try {
+                    dep_type.install_handler(config, dep_name, dep_version, False);
+                    console.print(f"  ✔ {dep_name}", style="success");
+                } except Exception as e {
+                    console.error(f"  ✗ {dep_name}: {e}");
+                    plugin_failed = True;
+                }
+            }
+        }
+    }
+    if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
     } else {
@@ -386,101 +429,23 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
 
 """Add dependencies to the project."""
 impl add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = '',
-    cl: bool = False,
-    verbose: bool = False
+    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
-        # If --cl flag is used, we need jac.toml to exist
-        if cl {
-            console.error(
-                "No jac.toml found", hint="Run 'jac create' to create a project."
-            );
-            return 1;
-        }
-        # Skip silently if jac.toml doesn't exist (for regular Python deps)
-        return 0;
-    }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error(
-                "--cl flag requires jac-client plugin",
-                hint="Install with: pip install jac-client"
-            );
-            return 1;
-        }
-        if not packages {
-            if dep_type.install_all_handler is None {
-                console.error(f"No install_all handler registered for {dep_type.name}");
-                return 1;
-            }
-            try {
-                console.print(
-                    f"\n📦 Installing all {dep_type.name} packages from jac.toml",
-                    style="bold"
-                );
-                with console.status(
-                    f"[cyan]Installing {dep_type.name} packages...[/cyan]",
-                    spinner="dots"
-                ) as status {
-                    dep_type.install_all_handler(config);
-                }
-                console.success(f"Installed all {dep_type.name} packages");
-            } except Exception as e {
-                console.error(f"Failed to install packages: {e}");
-                return 1;
-            }
-            return 0;
-        }
-        try {
-            resolver = DependencyResolver(config=config);
-            console.print(
-                f"\n📦 Adding {len(packages)} {dep_type.name} package(s)", style="bold"
-            );
-            for pkg_spec in packages {
-                (name, version) = resolver.parse_spec(pkg_spec);
-                with console.status(
-                    f"[cyan]Installing {name}...[/cyan]", spinner="dots"
-                ) as status {
-                    dep_type.install_handler(config, name, version, dev);
-                }
-                console.print(f"  ✔ {name}", style="success");
-            }
-            section = f"dependencies.{dep_type.dev_name if dev else dep_type.name}";
-            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
-        } except Exception as e {
-            console.error(f"Failed to install packages: {e}");
-            return 1;
-        }
-        return 0;
-    }
-    # If no packages specified and not git, install all Python dependencies
-    if not packages and not git {
-        installer = DependencyInstaller(config=config, verbose=verbose);
-        console.print(
-            "\n📦 Installing all Python dependencies from jac.toml", style="bold"
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
         );
-        with console.status(
-            "[cyan]Installing Python packages...[/cyan]", spinner="dots"
-        ) as status {
-            install_success = installer.install_all(include_dev=dev);
-        }
-        if install_success {
-            console.success("All dependencies installed");
-            return 0;
-        } else {
-            console.error("Some dependencies failed to install");
-            return 1;
-        }
+        return 1;
+    }
+    if not packages and not git {
+        console.error(
+            "No packages specified",
+            hint="Use 'jac add <package>' to add a package, or 'jac install' to install all dependencies."
+        );
+        return 1;
     }
     installer = DependencyInstaller(config=config, verbose=verbose);
     resolver = DependencyResolver(config=config);
@@ -495,11 +460,12 @@ impl add(
         }
         console.print(f"\n📦 Adding [cyan]{pkg_name}[/cyan] from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
-        config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
         with console.status(f"[cyan]Installing {pkg_name}...[/cyan]", spinner="dots") as status {
-            git_success = installer.install_git_package(pkg_name, git);
+            specs = installer._make_git_spec(pkg_name, git);
+            git_success = installer.install_package([specs]);
         }
         if git_success {
+            config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
             config.save();
             console.print(f"  ✔ {pkg_name}", style="success");
             console.print(f"\n  ✔ Updated jac.toml [dependencies.git]", style="muted");
@@ -512,13 +478,40 @@ impl add(
     console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
     for pkg_spec in packages {
         (name, version) = resolver.parse_spec(pkg_spec);
-        version_str = version or ">=0.0.0";
+        if version {
+            install_spec = installer._make_pip_spec(name, version);
+        } else {
+            install_spec = name;
+        }
         with console.status(f"[cyan]Installing {name}...[/cyan]", spinner="dots") as status {
-            pkg_success = installer.install_package(name, version);
+            pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
+            # If no version was specified, detect the installed version from venv
+            if not version {
+                installed_version = installer.get_installed_version(name);
+                if installed_version {
+                    version_str = f"~={_major_minor(installed_version)}";
+                    if verbose {
+                        console.print(
+                            f"Detected version: {installed_version}", style="muted"
+                        );
+                    }
+                } else {
+                    # Fall back to >=0.0.0 if version detection fails
+                    version_str = ">=0.0.0";
+                    if verbose {
+                        console.warning(
+                            f"Could not detect version for {name}, using >=0.0.0"
+                        );
+                    }
+                }
+            } else {
+                # Use the explicitly specified version
+                version_str = version;
+            }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
-            console.print(f"  ✔ {name}", style="success");
+            console.print(f"  ✔ {name} ({version_str})", style="success");
         } else {
             console.error(f"Failed to install {name}");
             return 1;
@@ -530,52 +523,39 @@ impl add(
         console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
     } except Exception as e {
         console.error(f"Could not save jac.toml: {e}");
+        return 1;
     }
     return 0;
 }
 
 """Remove dependencies from the project."""
-impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
+impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     if not packages {
         console.error("No packages specified.");
         return 1;
     }
-    if cl {
-        import from jaclang.project.dep_registry { get_dependency_registry }
-        registry = get_dependency_registry();
-        dep_type = registry.get_by_flag("--cl");
-        if dep_type is None {
-            console.error("--cl flag requires jac-client plugin to be installed.");
-            console.print("Install with: pip install jac-client", style="muted");
-            return 1;
-        }
-        try {
-            for name in packages {
-                console.info(f"Removing {name} ({dep_type.name})...");
-                dep_type.remove_handler(config, name, dev);
-            }
-            console.success(f"Removed {len(packages)} package(s)");
-        } except Exception as e {
-            console.error(f"Error removing packages: {e}");
-            return 1;
-        }
-        return 0;
-    }
     installer = DependencyInstaller(config=config);
     for name in packages {
+        # Auto-detect dependency type: check git, then dev, then regular
         dep_type = "python";
+        is_dev = dev;
         if name in config.git_dependencies {
             dep_type = "git";
+        } elif not dev
+        and name not in config.dependencies
+        and name in config.dev_dependencies {
+            is_dev = True;
         }
-        if config.remove_dependency(name, dev=dev, dep_type=dep_type) {
+        if config.remove_dependency(name, dev=is_dev, dep_type=dep_type) {
             console.success(f"Removed {name} from jac.toml");
             installer.uninstall_package(name);
         } else {
@@ -586,15 +566,151 @@ impl remove(packages: list = [], dev: bool = False, cl: bool = False) -> int {
         config.save();
         console.success("Updated jac.toml");
     } except Exception as e {
-        console.warning(f"Could not save jac.toml: {e}");
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
     }
+    return 0;
+}
+
+"""Extract major.minor from a full version string for ~= compatible release spec."""
+def _major_minor(version: str) -> str {
+    parts = version.split(".");
+    if len(parts) >= 2 {
+        return f"{parts[0]}.{parts[1]}";
+    }
+    return version;
+}
+
+"""Update project dependencies to latest compatible versions."""
+impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    installer = DependencyInstaller(config=config, verbose=verbose);
+    resolver = DependencyResolver(config=config);
+    # Collect specs to update
+    specs_to_update: list[str] = [];
+    names_to_update: list[str] = [];
+    if packages {
+        # Update specific packages
+        for pkg_spec in packages {
+            (name, version) = resolver.parse_spec(pkg_spec);
+            if name in config.dependencies {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            } elif name in config.dev_dependencies {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            } elif name in config.git_dependencies {
+                git_info = config.git_dependencies[name];
+                if isinstance(git_info, dict) and "git" in git_info {
+                    specs_to_update.append(
+                        installer._make_git_spec(
+                            name, git_info["git"], git_info.get("branch", "")
+                        )
+                    );
+                    names_to_update.append(name);
+                }
+            } else {
+                console.error(f"Package '{name}' not found in dependencies.");
+                return 1;
+            }
+        }
+    } else {
+        # Update all dependencies
+        for (name, version) in config.dependencies.items() {
+            specs_to_update.append(name);
+            names_to_update.append(name);
+        }
+        if dev {
+            for (name, version) in config.dev_dependencies.items() {
+                specs_to_update.append(name);
+                names_to_update.append(name);
+            }
+        }
+        git_specs = installer.get_git_package_specs();
+        for spec in git_specs {
+            specs_to_update.append(spec);
+        }
+        for name in config.git_dependencies.keys() {
+            names_to_update.append(name);
+        }
+    }
+    if not specs_to_update {
+        console.info("No dependencies to update.");
+        return 0;
+    }
+    console.print(
+        f"\n📦 Updating {len(specs_to_update)} package(s) for [cyan]{config.project.name}[/cyan]",
+        style="bold"
+    );
+    with console.status(
+        f"[cyan]Updating {len(specs_to_update)} package(s)...[/cyan]", spinner="dots"
+    ) as status {
+        update_success = installer.install_package(specs_to_update);
+    }
+    if not update_success {
+        console.error("Some packages failed to update.");
+        return 1;
+    }
+    # Query installed versions and update jac.toml
+    # Only rewrite ~= specs (auto-generated by jac add). Explicit user specs
+    # like >=2.28.0 are left alone since they're still satisfied.
+    updated_count = 0;
+    for name in names_to_update {
+        if name in config.git_dependencies {
+            continue;
+        }
+        installed_version = installer.get_installed_version(name);
+        if installed_version {
+            new_spec = f"~={_major_minor(installed_version)}";
+            # Find current spec and only update if it uses ~= (auto-generated)
+            current_spec = config.dependencies.get(
+                name, config.dev_dependencies.get(name, "")
+            );
+            if current_spec.startswith("~=") or not current_spec {
+                if name in config.dependencies {
+                    config.dependencies[name] = new_spec;
+                    updated_count += 1;
+                } elif name in config.dev_dependencies {
+                    config.dev_dependencies[name] = new_spec;
+                    updated_count += 1;
+                }
+                console.print(
+                    f"  ✔ {name} -> {installed_version} ({new_spec})", style="success"
+                );
+            } else {
+                console.print(
+                    f"  ✔ {name} -> {installed_version} (spec unchanged: {current_spec})",
+                    style="success"
+                );
+            }
+        }
+    }
+    if updated_count > 0 {
+        try {
+            config.save();
+            console.print(
+                f"\n  ✔ Updated {updated_count} version(s) in jac.toml", style="muted"
+            );
+        } except Exception as e {
+            console.error(f"Could not save jac.toml: {e}");
+            return 1;
+        }
+    }
+    console.success("Dependencies updated");
     return 0;
 }
 
 """Run custom scripts defined in jac.toml."""
 impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -608,7 +724,7 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
                 style="muted"
             );
             console.print('  [scripts]', style="muted");
-            console.print('  dev = "jac run main.jac"', style="muted");
+            console.print('  dev = "jac start main.jac"', style="muted");
             console.print('  test = "jac test"', style="muted");
             return 0;
         }
@@ -652,7 +768,6 @@ impl clean(
 ) -> int {
     import shutil;
     import from jaclang.project.config { get_config }
-    import from jaclang.cli.console { console }
     config = get_config();
     if config is None {
         console.error("No jac.toml found. Run 'jac init' to create a project.");
@@ -664,7 +779,7 @@ impl clean(
     if all {
         dirs_to_clean.append(("data", config.get_data_dir()));
         dirs_to_clean.append(("cache", config.get_cache_dir()));
-        dirs_to_clean.append(("packages", config.get_packages_dir()));
+        dirs_to_clean.append(("venv", config.get_venv_dir()));
         dirs_to_clean.append(("client", config.get_client_dir()));
     } else {
         # If specific flags are set, use them
@@ -675,7 +790,7 @@ impl clean(
             dirs_to_clean.append(("cache", config.get_cache_dir()));
         }
         if packages {
-            dirs_to_clean.append(("packages", config.get_packages_dir()));
+            dirs_to_clean.append(("venv", config.get_venv_dir()));
         }
         # If no specific flags, default to cleaning data directory
         if not dirs_to_clean {
@@ -743,24 +858,24 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
         registry = get_template_registry();
         templates = registry.list_templates();
         if not templates {
-            print("No templates available.");
+            console.print("No templates available.");
             return 0;
         }
-        print("Available templates:");
+        console.print("Available templates:");
         for (tname, desc) in templates {
-            print(f"  {tname}: {desc}");
+            console.print(f"  {tname}: {desc}");
         }
         return 0;
     }
     if action == "pack" {
         if not path {
-            print("Error: Template directory path required.", file=sys.stderr);
-            print("Usage: jac jacpack pack <directory> [-o output.jacpack]");
+            console.error("Error: Template directory path required.");
+            console.print("Usage: jac jacpack pack <directory> [-o output.jacpack]");
             return 1;
         }
         template_dir = Path(path);
         if not template_dir.is_dir() {
-            print(f"Error: Not a directory: {template_dir}", file=sys.stderr);
+            console.error(f"Error: Not a directory: {template_dir}");
             return 1;
         }
         # Determine output path
@@ -784,14 +899,14 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
             bundle_template(template_dir, output_path);
             return 0;
         } except Exception as e {
-            print(f"Error bundling template: {e}", file=sys.stderr);
+            console.error(f"Error bundling template: {e}");
             return 1;
         }
     }
     if action == "info" {
         if not path {
-            print("Error: Template path required.", file=sys.stderr);
-            print("Usage: jac jacpack info <path>");
+            console.error("Error: Template path required.");
+            console.print("Usage: jac jacpack info <path>");
             return 1;
         }
         template_path = Path(path);
@@ -801,29 +916,29 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
             } elif template_path.suffix == ".json" {
                 tmpl = load_template_from_json(template_path);
             } else {
-                print(f"Error: Unknown template format: {path}", file=sys.stderr);
+                console.error(f"Error: Unknown template format: {path}");
                 return 1;
             }
 
             # Access strongly-typed ProjectTemplate fields
-            print(f"Template: {tmpl.name}");
-            print(f"Description: {tmpl.description}");
-            print(f"Files: {len(tmpl.files)}");
+            console.print(f"Template: {tmpl.name}");
+            console.print(f"Description: {tmpl.description}");
+            console.print(f"Files: {len(tmpl.files)}");
             for file_path in sorted(tmpl.files.keys()) {
-                print(f"  - {file_path}");
+                console.print(f"  - {file_path}");
             }
-            print(f"Directories: {tmpl.directories}");
+            console.print(f"Directories: {tmpl.directories}");
             if tmpl.post_create is not None {
-                print("Post-create hook: Yes");
+                console.print("Post-create hook: Yes");
             }
             return 0;
         } except Exception as e {
-            print(f"Error loading template: {e}", file=sys.stderr);
+            console.error(f"Error loading template: {e}");
             return 1;
         }
     }
-    print(f"Unknown action: {action}", file=sys.stderr);
-    print("Available actions: list, pack, info");
+    console.error(f"Unknown action: {action}");
+    console.print("Available actions: list, pack, info");
     return 1;
 }
 

@@ -7,10 +7,11 @@ obj JacTestResult(unittest.TextTestResult) {
     has stream: Any,
         descriptions: Any,
         verbosity: int,
-        max_failures: (int | None) = None;
+        max_failures: (int | None) = None,
+        failures_count: int by postinit;
 
     def postinit -> None;
-    def addFailure(<>test: Any, err: Any) -> None;
+    def addFailure(`test: Any, err: Any) -> None;
     def stop -> None;
 }
 

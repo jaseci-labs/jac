@@ -1,28 +1,28 @@
 """Test declarative routing system."""
 
-cl import from jac:client_runtime { createRouter, Route, Link, navigate, createSignal, }
+cl import from "@jac/runtime" { createRouter, Route, Link, navigate, createSignal, }
 
 cl {
     # Mock components for testing
-    def HomePage()  -> any {
+    def HomePage()  -> JsxElement {
         return <div id="home-page">
             Home Page
         </div>;
     }
 
-    def AboutPage()  -> any {
+    def AboutPage()  -> JsxElement {
         return <div id="about-page">
             About Page
         </div>;
     }
 
-    def ProfilePage()  -> any {
+    def ProfilePage()  -> JsxElement {
         return <div id="profile-page">
             Profile Page
         </div>;
     }
 
-    def LoginPage()  -> any {
+    def LoginPage()  -> JsxElement {
         return <div id="login-page">
             Login Page
         </div>;
@@ -104,7 +104,7 @@ cl {
     }
 
     # Test 4: Link component generation
-    def test_link_component()  -> any {
+    def test_link_component()  -> JsxElement {
         link = Link("/about", "Go to About");
 
         return {"hasLink": link != None, "isJSX": link.tag == "a"};

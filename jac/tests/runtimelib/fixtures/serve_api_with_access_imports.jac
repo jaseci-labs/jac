@@ -15,7 +15,7 @@ import from serve_api_importable_access {
 walker :pub LocalPublicWalker {
     has msg: str = "local public";
 
-    can run with `root entry {
+    can run with Root entry {
         report {"message": self.msg, "type": "local_public"};
     }
 }
@@ -24,7 +24,7 @@ walker :pub LocalPublicWalker {
 walker LocalDefaultWalker {
     has msg: str = "local default";
 
-    can run with `root entry {
+    can run with Root entry {
         report {"message": self.msg, "type": "local_default"};
     }
 }

@@ -7,7 +7,7 @@ configuration system, registering:
 """
 
 import from typing { Any }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-byllm."""
 class JacByllmPluginConfig {
@@ -92,6 +92,11 @@ class JacByllmPluginConfig {
                             "description": "Drop unsupported parameters for different providers"
                         }
                     }
+                },
+                "system_prompt": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
                 }
             }
         };

@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 
 import jaclang
-import jaclang.pycore.unitree as ast
+import jaclang.jac0core.unitree as ast
 from jaclang.compiler.passes.main import PyastBuildPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 from tests.fixtures_list import JACLANG_PYTHON_FILES
 
 

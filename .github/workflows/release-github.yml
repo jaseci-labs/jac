@@ -16,7 +16,7 @@ jobs:
     - name: Create Releases for Specific Subdirectories
       run: |
         # List of subdirectories for which releases need to be created
-        subdirs=("jac" "jac-byllm" "jac-cloud")
+        subdirs=("jac" "jac-byllm")
 
         for dir in "${subdirs[@]}"; do
           # Extract the directory name as the release name

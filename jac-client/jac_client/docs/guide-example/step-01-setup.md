@@ -13,7 +13,7 @@ In this first step, you'll create your Jac project and understand the basic file
 Open your terminal and run:
 
 ```bash
-jac create --cl todo-app
+jac create --use client todo-app
 ```
 
 This creates a new directory called `todo-app` with an organized project structure.
@@ -184,10 +184,10 @@ It's like running a Flask/FastAPI server, but it ALSO compiles and serves your R
 
 ### Hot Module Replacement (HMR)
 
-For faster development, use `--watch` mode:
+For faster development, use `--dev` mode:
 
 ```bash
-jac start main.jac --watch
+jac start main.jac --dev
 ```
 
 With HMR enabled:
@@ -262,7 +262,7 @@ Then visit `http://localhost:8080/cl/app`
 **Best solution**: Use HMR mode for automatic reloading:
 
 ```bash
-jac start main.jac --watch
+jac start main.jac --dev
 ```
 
 **Alternative** (if not using HMR):

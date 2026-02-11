@@ -3,6 +3,9 @@
 import contextlib
 import gc
 import glob
+import hashlib
+import hmac
+import json
 import socket
 import subprocess
 import time
@@ -33,6 +36,7 @@ class TestJacScaleServe:
     test_file: Path
     port: int
     base_url: str
+    ws_url: str
     server_process: subprocess.Popen[str] | None = None
 
     @classmethod
@@ -48,6 +52,7 @@ class TestJacScaleServe:
         # Use dynamically allocated free port
         cls.port = get_free_port()
         cls.base_url = f"http://localhost:{cls.port}"
+        cls.ws_url = f"ws://localhost:{cls.port}"
 
         # Clean up any existing database files before starting
         cls._cleanup_db_files()
@@ -85,20 +90,23 @@ class TestJacScaleServe:
         jac_executable = Path(sys.executable).parent / "jac"
 
         # Build the command to start the server
+        # Use just the filename and set cwd to fixtures directory
+        # This is required for proper bytecode caching and module resolution
         cmd = [
             str(jac_executable),
             "start",
-            str(cls.test_file),
+            cls.test_file.name,
             "--port",
             str(cls.port),
         ]
 
-        # Start the server process
+        # Start the server process with cwd set to fixtures directory
         cls.server_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            cwd=str(cls.fixtures_dir),
         )
 
         # Wait for server to be ready
@@ -257,7 +265,7 @@ class TestJacScaleServe:
     def _create_expired_token(self, username: str, days_ago: int = 1) -> str:
         """Create an expired JWT token for testing."""
         # Use the same secret as the server (default)
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         past_time = datetime.now(UTC) - timedelta(days=days_ago)
@@ -270,7 +278,7 @@ class TestJacScaleServe:
 
     def _create_very_old_token(self, username: str, days_ago: int = 15) -> str:
         """Create a token that's too old to refresh."""
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         past_time = datetime.now(UTC) - timedelta(days=days_ago)
@@ -502,7 +510,7 @@ class TestJacScaleServe:
         new_token = refresh_result["token"]
 
         # Decode both tokens and verify username is preserved
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])
@@ -532,7 +540,7 @@ class TestJacScaleServe:
         new_token = refresh_result["token"]
 
         # Decode tokens and compare expiration times
-        secret = "supersecretkey"
+        secret = "supersecretkey_for_testing_only!"
         algorithm = "HS256"
 
         original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm])
@@ -1193,6 +1201,29 @@ class TestJacScaleServe:
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
 
+    def test_private_walker_401_with_deleted_user_token(self) -> None:
+        """Test that a valid JWT token for a non-existent (deleted) user returns 401."""
+        # Create a valid (non-expired) token for a user that doesn't exist in the DB
+        secret = "supersecretkey_for_testing_only!"
+        now = datetime.now(UTC)
+        payload = {
+            "username": "deleted_user",
+            "exp": now + timedelta(days=1),
+            "iat": now,
+        }
+        token = pyjwt.encode(payload, secret, algorithm="HS256")
+
+        # Call private walker with this token - should get 401, not 500
+        response = requests.post(
+            f"{self.base_url}/walker/PrivateCreateTask",
+            json={"title": "Ghost Task", "priority": 1},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 401, (
+            f"Expected 401 for deleted/non-existent user, got {response.status_code}"
+        )
+
     def test_custom_response_headers_from_config(self) -> None:
         """Test that custom response headers from jac.toml are applied."""
         # Make a request and check for custom headers defined in fixtures/jac.toml
@@ -1208,9 +1239,1084 @@ class TestJacScaleServe:
         assert "cross-origin-embedder-policy" in response.headers
         assert response.headers["cross-origin-embedder-policy"] == "require-corp"
 
+    def test_update_username_success(self) -> None:
+        """Test successfully updating username and logging in with new username."""
+        # Create user
+        username = f"olduser_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+        original_token = create_result["token"]
+        original_root_id = create_result["root_id"]
 
-class TestJacScaleServeWatchMode:
-    """Test jac-scale serve with --watch mode (dynamic routing).
+        # Update username
+        new_username = f"newuser_{uuid.uuid4().hex[:8]}"
+        update_result = self._request(
+            "PUT",
+            "/user/username",
+            {"current_username": username, "new_username": new_username},
+            token=original_token,
+        )
+
+        assert "username" in update_result
+        assert update_result["username"] == new_username
+        assert "token" in update_result  # New token with updated username
+        assert "root_id" in update_result
+        assert (
+            update_result["root_id"] == original_root_id
+        )  # Root ID should remain same
+
+        # Login with new username should work
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": new_username, "password": "password123"},
+        )
+        assert login_result["username"] == new_username
+        assert "token" in login_result
+
+        # Old username should fail to login
+        login_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "password123"},
+            timeout=5,
+        )
+        assert login_response.status_code == 401
+
+    def test_update_username_requires_auth(self) -> None:
+        """Test that username update requires authentication."""
+        # Create user
+        username = f"authtest_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+
+        # Try to update without token
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": username, "new_username": "newname"},
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_update_username_cannot_update_other_users(self) -> None:
+        """Test that users cannot update other users' usernames."""
+        # Create user1
+        user1_name = f"user1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"user2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # User1 tries to update user2's username
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": user2_name, "new_username": "hacked"},
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 403
+
+    def test_update_username_duplicate_fails(self) -> None:
+        """Test that updating to an existing username fails."""
+        # Create user1
+        user1_name = f"user1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"user2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # Try to update user1 to user2 (already exists)
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": user1_name, "new_username": user2_name},
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    def test_update_username_empty_validation(self) -> None:
+        """Test that empty username is rejected."""
+        # Create user
+        username = f"testuser_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+        token = user_result["token"]
+
+        # Try to update to empty username
+        response = requests.put(
+            f"{self.base_url}/user/username",
+            json={"current_username": username, "new_username": ""},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    # ==================== PASSWORD UPDATE TESTS ====================
+
+    def test_update_password_success(self) -> None:
+        """Test successfully updating password and logging in with new password."""
+        # Create user
+        username = f"passuser_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass123"},
+        )
+        token = create_result["token"]
+
+        # Update password
+        update_result = self._request(
+            "PUT",
+            "/user/password",
+            {
+                "username": username,
+                "current_password": "oldpass123",
+                "new_password": "newpass456",
+            },
+            token=token,
+        )
+
+        assert "username" in update_result
+        assert update_result["username"] == username
+        assert "message" in update_result or "success" in str(update_result).lower()
+
+        # Login with new password should work
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": username, "password": "newpass456"},
+        )
+        assert login_result["username"] == username
+
+        # Old password should fail
+        login_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "oldpass123"},
+            timeout=5,
+        )
+        assert login_response.status_code == 401
+
+    def test_update_password_requires_auth(self) -> None:
+        """Test that password update requires authentication."""
+        # Create user
+        username = f"noauthuser_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "password123"},
+        )
+
+        # Try to update without token
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "password123",
+                "new_password": "newpass",
+            },
+            timeout=5,
+        )
+        assert response.status_code == 401
+
+    def test_update_password_wrong_current_password(self) -> None:
+        """Test that wrong current password is rejected."""
+        # Create user
+        username = f"wrongpass_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "correctpass"},
+        )
+        token = user_result["token"]
+
+        # Try to update with wrong current password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "wrongpass",
+                "new_password": "newpass",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    def test_update_password_cannot_update_other_users(self) -> None:
+        """Test that users cannot update other users' passwords."""
+        # Create user1
+        user1_name = f"passuser1_{uuid.uuid4().hex[:8]}"
+        user1_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": user1_name, "password": "pass1"},
+        )
+        user1_token = user1_result["token"]
+
+        # Create user2
+        user2_name = f"passuser2_{uuid.uuid4().hex[:8]}"
+        self._request(
+            "POST",
+            "/user/register",
+            {"username": user2_name, "password": "pass2"},
+        )
+
+        # User1 tries to update user2's password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": user2_name,
+                "current_password": "pass2",
+                "new_password": "hacked",
+            },
+            headers={"Authorization": f"Bearer {user1_token}"},
+            timeout=5,
+        )
+        assert response.status_code == 403
+
+    def test_update_password_empty_validation(self) -> None:
+        """Test that empty passwords are rejected."""
+        # Create user
+        username = f"emptypass_{uuid.uuid4().hex[:8]}"
+        user_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass"},
+        )
+        token = user_result["token"]
+
+        # Try to update to empty new password
+        response = requests.put(
+            f"{self.base_url}/user/password",
+            json={
+                "username": username,
+                "current_password": "oldpass",
+                "new_password": "",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 400
+
+    # ==================== INTEGRATION TESTS ====================
+
+    def test_username_and_password_update_flow(self) -> None:
+        """Integration test:  Update username, then password, verify both work."""
+        # Create user
+        username = f"original_{uuid.uuid4().hex[:8]}"
+        create_result = self._request(
+            "POST",
+            "/user/register",
+            {"username": username, "password": "oldpass"},
+        )
+        token = create_result["token"]
+        root_id = create_result["root_id"]
+
+        # Update username
+        new_username = f"updated_{uuid.uuid4().hex[:8]}"
+        username_update = self._request(
+            "PUT",
+            "/user/username",
+            {"current_username": username, "new_username": new_username},
+            token=token,
+        )
+        new_token = username_update["token"]
+        assert username_update["root_id"] == root_id
+
+        # Update password with new username and new token
+        password_update = self._request(
+            "PUT",
+            "/user/password",
+            {
+                "username": new_username,
+                "current_password": "oldpass",
+                "new_password": "newpass",
+            },
+            token=new_token,
+        )
+        assert password_update["username"] == new_username
+
+        # Login with new username and new password
+        login_result = self._request(
+            "POST",
+            "/user/login",
+            {"username": new_username, "password": "newpass"},
+        )
+        assert login_result["username"] == new_username
+        assert login_result["root_id"] == root_id
+
+        # Old username should fail
+        old_username_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": "newpass"},
+            timeout=5,
+        )
+        assert old_username_response.status_code == 401
+
+        # Old password should fail
+        old_password_response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": new_username, "password": "oldpass"},
+            timeout=5,
+        )
+        assert old_password_response.status_code == 401
+
+    # ========================================================================
+    # Webhook Walker Tests
+    # ========================================================================
+
+    def _generate_webhook_signature(self, payload: bytes, secret: str) -> str:
+        """Generate HMAC-SHA256 signature for webhook payload."""
+        return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    def test_webhook_endpoint_exists_for_webhook_walkers(self) -> None:
+        """Test 1: Verify webhook endpoints are registered for walkers with @restspec(protocol=APIProtocol.WEBHOOK)."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # PaymentReceived has @restspec(protocol=APIProtocol.WEBHOOK) -> should have /webhook/ endpoint
+        assert "/webhook/PaymentReceived" in paths, (
+            f"Expected /webhook/PaymentReceived in paths: {list(paths.keys())}"
+        )
+        # MinimalWebhook has @restspec(protocol=APIProtocol.WEBHOOK) -> should have /webhook/ endpoint
+        assert "/webhook/MinimalWebhook" in paths, (
+            f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
+        )
+
+    def test_normal_walker_not_in_webhook_endpoint(self) -> None:
+        """Test 2: Verify normal walkers (without @restspec(protocol=APIProtocol.WEBHOOK)) are NOT in /webhook/."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # NormalPayment does NOT have @restspec(protocol=APIProtocol.WEBHOOK) -> should NOT have /webhook/ endpoint
+        assert "/webhook/NormalPayment" not in paths, (
+            "NormalPayment should NOT have webhook endpoint but found in paths"
+        )
+        # NormalPayment should be accessible via /walker/ endpoint
+        assert "/walker/NormalPayment" in paths or "/walker/{walker_name}" in paths, (
+            "NormalPayment should be accessible via /walker/ endpoint"
+        )
+
+    def test_normal_walker_accessible_via_walker_endpoint(self) -> None:
+        """Test 2b: Verify NormalPayment (no webhook restspec) works via /walker/ endpoint."""
+        # Create user and get token
+        username = f"normal_walker_user_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        register_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token = register_data["token"]
+
+        # Call NormalPayment via /walker/ endpoint
+        response = requests.post(
+            f"{self.base_url}/walker/NormalPayment",
+            json={
+                "payment_id": "PAY-NORMAL-001",
+                "order_id": "ORD-NORMAL-001",
+                "amount": 50.00,
+                "currency": "EUR",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        assert "reports" in data
+        report = data["reports"][0]
+        assert report["status"] == "success"
+        assert report["payment_id"] == "PAY-NORMAL-001"
+        assert report["transport"] == "http"
+
+    def test_webhook_requires_api_key(self) -> None:
+        """Test that webhook endpoints require API key authentication."""
+        payload = json.dumps({})
+
+        # Try to call MinimalWebhook without API key
+        response = requests.post(
+            f"{self.base_url}/webhook/MinimalWebhook",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=5,
+        )
+
+        # Should fail - 401 (our custom error) or 422 (FastAPI validation for missing header)
+        assert response.status_code in (401, 422), (
+            f"Expected 401 or 422, got {response.status_code}: {response.text}"
+        )
+
+    def test_webhook_invalid_api_key(self) -> None:
+        """Test that webhook endpoints reject invalid API keys."""
+        payload = json.dumps({})
+
+        # Try with invalid API key
+        response = requests.post(
+            f"{self.base_url}/webhook/MinimalWebhook",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": "invalid_key_12345",
+            },
+            timeout=5,
+        )
+
+        # Should fail with 401 Unauthorized
+        assert response.status_code == 401, (
+            f"Expected 401, got {response.status_code}: {response.text}"
+        )
+
+    def test_minimal_webhook_with_valid_api_key(self) -> None:
+        """Test 3: MinimalWebhook (with @restspec(protocol=APIProtocol.WEBHOOK)) works with valid API key."""
+        # Create user and get auth token
+        username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        register_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token = register_data["token"]
+
+        # Create API key
+        api_key_response = requests.post(
+            f"{self.base_url}/api-key/create",
+            json={"name": "minimal_webhook_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        assert api_key_response.status_code == 201, (
+            f"Failed to create API key: {api_key_response.text}"
+        )
+        api_key_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(api_key_response.json()),
+        )
+        api_key = api_key_data["api_key"]
+
+        # Call MinimalWebhook with valid API key (empty payload - no fields required)
+        payload = json.dumps({})
+        payload_bytes = payload.encode("utf-8")
+        signature = self._generate_webhook_signature(payload_bytes, api_key)
+        response = requests.post(
+            f"{self.base_url}/webhook/MinimalWebhook",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+            },
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        assert "reports" in data
+        assert data["reports"][0]["status"] == "received"
+        assert data["reports"][0]["transport"] == "webhook"
+
+    def test_webhook_payment_received_with_fields(self) -> None:
+        """Test 1: PaymentReceived webhook walker with multiple fields + @restspec(protocol=APIProtocol.WEBHOOK)."""
+        # Create user and get API key
+        username = f"payment_user_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        register_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token = register_data["token"]
+
+        api_key_response = requests.post(
+            f"{self.base_url}/api-key/create",
+            json={"name": "payment_webhook_key", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        assert api_key_response.status_code == 201
+        api_key_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(api_key_response.json()),
+        )
+        api_key = api_key_data["api_key"]
+
+        # Send payment webhook
+        payload = json.dumps(
+            {
+                "payment_id": "PAY-12345",
+                "order_id": "ORD-67890",
+                "amount": 99.99,
+                "currency": "USD",
+            }
+        )
+        payload_bytes = payload.encode("utf-8")
+        signature = self._generate_webhook_signature(payload_bytes, api_key)
+
+        response = requests.post(
+            f"{self.base_url}/webhook/PaymentReceived",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+            },
+            timeout=10,
+        )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        data = cast(
+            dict[str, Any], self._extract_transport_response_data(response.json())
+        )
+        assert "reports" in data
+        report = data["reports"][0]
+        assert report["status"] == "success"
+        assert report["payment_id"] == "PAY-12345"
+        assert report["order_id"] == "ORD-67890"
+        assert report["amount"] == 99.99
+        assert report["currency"] == "USD"
+
+    def test_webhook_not_accessible_via_regular_walker_endpoint(self) -> None:
+        """Test that webhook walkers (with @restspec(protocol=APIProtocol.WEBHOOK)) are NOT accessible via /walker/."""
+        # Create user and get token
+        username = f"webhook_path_user_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        register_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token = register_data["token"]
+
+        # Try to access PaymentReceived (webhook walker) via /walker/ endpoint
+        response = requests.post(
+            f"{self.base_url}/walker/PaymentReceived",
+            json={
+                "payment_id": "PAY-TEST",
+                "order_id": "ORD-TEST",
+                "amount": 10.00,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+        # Webhook walkers should not be accessible via /walker/ endpoint
+        # In static mode: 404 (Not Found) or 405 (Method Not Allowed - no POST registered)
+        # In dynamic mode: 400 (Bad Request - explicitly rejected)
+        assert response.status_code in (400, 404, 405), (
+            f"Expected 400/404/405, got {response.status_code}: {response.text}"
+        )
+
+    def test_webhook_revoked_api_key(self) -> None:
+        """Test that revoked API keys are rejected."""
+        # Create user and get auth token
+        username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}"
+        register_response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": "password123"},
+            timeout=10,
+        )
+        assert register_response.status_code == 201
+        register_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(register_response.json()),
+        )
+        token = register_data["token"]
+
+        # Create API key
+        api_key_response = requests.post(
+            f"{self.base_url}/api-key/create",
+            json={"name": "key_to_revoke", "expiry_days": 30},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        assert api_key_response.status_code == 201
+        api_key_data = cast(
+            dict[str, Any],
+            self._extract_transport_response_data(api_key_response.json()),
+        )
+        api_key = api_key_data["api_key"]
+        api_key_id = api_key_data["api_key_id"]
+
+        # Verify API key works with MinimalWebhook
+        payload = json.dumps({})
+        payload_bytes = payload.encode("utf-8")
+        signature = self._generate_webhook_signature(payload_bytes, api_key)
+        response = requests.post(
+            f"{self.base_url}/webhook/MinimalWebhook",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+            },
+            timeout=10,
+        )
+        assert response.status_code == 200
+
+        # Revoke the API key
+        revoke_response = requests.delete(
+            f"{self.base_url}/api-key/{api_key_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        assert revoke_response.status_code == 200, (
+            f"Failed to revoke key: {revoke_response.text}"
+        )
+
+        # Try to use revoked key (same payload and signature)
+        response = requests.post(
+            f"{self.base_url}/webhook/MinimalWebhook",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": api_key,
+                "X-Webhook-Signature": signature,
+            },
+            timeout=10,
+        )
+
+        # Should fail with 401
+        assert response.status_code == 401, (
+            f"Expected 401 for revoked key, got {response.status_code}: {response.text}"
+        )
+
+    def test_websocket_endpoint_not_in_openapi(self) -> None:
+        """WebSocket endpoints should NOT appear in the OpenAPI schema (they are not HTTP routes)."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # WebSocket walkers should not have /walker/ endpoints
+        assert "/walker/EchoMessage" not in paths, (
+            "WebSocket walker EchoMessage should not be in /walker/ paths"
+        )
+        assert "/walker/MinimalWebSocket" not in paths, (
+            "WebSocket walker MinimalWebSocket should not be in /walker/ paths"
+        )
+
+    def test_websocket_connect_and_echo(self) -> None:
+        """Test WebSocket connection and message exchange with EchoMessage walker."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/EchoMessage") as ws:
+                await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                # Walker reports are returned as a list
+                report = data["reports"][0] if "reports" in data else data
+                assert report["echo"] == "hello"
+                assert report["client_id"] == "test-1"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_websocket_minimal_walker(self) -> None:
+        """Test MinimalWebSocket walker with no fields."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/MinimalWebSocket") as ws:
+                await ws.send(json.dumps({}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["status"] == "connected"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_websocket_multiple_messages(self) -> None:
+        """Test sending multiple messages over a single WebSocket connection."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/EchoMessage") as ws:
+                for i in range(3):
+                    await ws.send(
+                        json.dumps({"message": f"msg-{i}", "client_id": f"client-{i}"})
+                    )
+                    response = json.loads(await ws.recv())
+                    assert response["ok"] is True
+                    data = response["data"]
+                    report = data["reports"][0] if "reports" in data else data
+                    assert report["echo"] == f"msg-{i}"
+                    assert report["client_id"] == f"client-{i}"
+
+        asyncio.run(_test())
+
+    def test_websocket_not_accessible_via_walker_endpoint(self) -> None:
+        """WebSocket walkers should NOT be accessible via /walker/ HTTP endpoint."""
+        response = requests.post(
+            f"{self.base_url}/walker/EchoMessage",
+            json={"message": "test", "client_id": "test"},
+            timeout=10,
+        )
+        # Should return 400/404/405 (not registered as HTTP endpoint)
+        assert response.status_code in (400, 404, 405), (
+            f"Expected 400/404/405, got {response.status_code}: {response.text}"
+        )
+
+    def test_websocket_nonexistent_walker(self) -> None:
+        """Connecting to a non-existent WebSocket walker should fail."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            try:
+                async with websockets.connect(
+                    f"{self.ws_url}/ws/NonExistentWalker"
+                ) as ws:
+                    # If connection is accepted, we should get an error or close
+                    await ws.recv()
+                    pytest.fail("Expected connection to be rejected")
+            except (websockets.exceptions.ConnectionClosed, Exception):
+                # Connection should be rejected/closed
+                pass
+
+        asyncio.run(_test())
+
+    def test_http_walker_not_accessible_via_ws(self) -> None:
+        """HTTP walkers should NOT be accessible via /ws/ WebSocket endpoint."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            try:
+                async with websockets.connect(f"{self.ws_url}/ws/CreateTask") as ws:
+                    await ws.recv()
+                    pytest.fail("Expected connection to be rejected for HTTP walker")
+            except (websockets.exceptions.ConnectionClosed, Exception):
+                pass
+
+        asyncio.run(_test())
+
+    def test_private_websocket_requires_auth(self) -> None:
+        """Test that PrivateWebSocket walker requires JWT authentication."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/PrivateWebSocket") as ws:
+                # Send message without token - should get auth error
+                await ws.send(json.dumps({"message": "hello"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is False, f"Expected ok=False, got {response}"
+                assert response["error"]["code"] == "UNAUTHORIZED"
+                assert "token" in response["error"]["message"].lower()
+
+        asyncio.run(_test())
+
+    def test_private_websocket_with_valid_token(self) -> None:
+        """Test that PrivateWebSocket walker works with valid JWT token."""
+        import asyncio
+
+        import websockets
+
+        # First create a user and get a token
+        username = f"ws_test_user_{uuid.uuid4().hex[:8]}"
+        password = "testpass123"
+
+        # Create user
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code in (200, 201), (
+            f"Failed to create user: {response.text}"
+        )
+
+        # Login to get token
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code == 200, f"Failed to login: {response.text}"
+        token = response.json()["data"]["token"]
+
+        async def _test() -> None:
+            async with websockets.connect(f"{self.ws_url}/ws/PrivateWebSocket") as ws:
+                # Send message with token in payload
+                await ws.send(
+                    json.dumps({"message": "authenticated hello", "token": token})
+                )
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["authenticated"] is True
+                assert report["message"] == "authenticated hello"
+                assert report["protocol"] == "websocket"
+
+        asyncio.run(_test())
+
+    def test_private_websocket_with_query_token(self) -> None:
+        """Test that PrivateWebSocket walker accepts token via query parameter."""
+        import asyncio
+
+        import websockets
+
+        # First create a user and get a token
+        username = f"ws_query_user_{uuid.uuid4().hex[:8]}"
+        password = "testpass123"
+
+        # Create user
+        response = requests.post(
+            f"{self.base_url}/user/register",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code in (200, 201)
+
+        # Login to get token
+        response = requests.post(
+            f"{self.base_url}/user/login",
+            json={"username": username, "password": password},
+            timeout=10,
+        )
+        assert response.status_code == 200
+        token = response.json()["data"]["token"]
+
+        async def _test() -> None:
+            # Connect with token in query string
+            async with websockets.connect(
+                f"{self.ws_url}/ws/PrivateWebSocket?token={token}"
+            ) as ws:
+                # Send message without token in payload (using query token)
+                await ws.send(json.dumps({"message": "query auth hello"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is True, f"Expected ok=True, got {response}"
+                data = response["data"]
+                report = data["reports"][0] if "reports" in data else data
+                assert report["authenticated"] is True
+
+        asyncio.run(_test())
+
+    def test_broadcast_websocket_all_clients_receive(self) -> None:
+        """Test that BroadcastChat walker broadcasts to all connected clients."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            # Connect two clients
+            async with (
+                websockets.connect(f"{self.ws_url}/ws/BroadcastChat") as ws1,
+                websockets.connect(f"{self.ws_url}/ws/BroadcastChat") as ws2,
+            ):
+                # Give connections time to establish
+                await asyncio.sleep(0.1)
+
+                # Client 1 sends a message
+                await ws1.send(
+                    json.dumps({"message": "hello everyone", "sender": "client1"})
+                )
+
+                # Both clients should receive the broadcast
+                response1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=5))
+                response2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=5))
+
+                # Both should be successful
+                assert response1["ok"] is True, f"Client1 expected ok=True: {response1}"
+                assert response2["ok"] is True, f"Client2 expected ok=True: {response2}"
+
+                # Both should have the same content
+                data1 = response1["data"]
+                data2 = response2["data"]
+                report1 = data1["reports"][0] if "reports" in data1 else data1
+                report2 = data2["reports"][0] if "reports" in data2 else data2
+
+                assert report1["content"] == "hello everyone"
+                assert report1["sender"] == "client1"
+                assert report1["broadcast"] is True
+
+                assert report2["content"] == "hello everyone"
+                assert report2["sender"] == "client1"
+                assert report2["broadcast"] is True
+
+        asyncio.run(_test())
+
+    def test_private_broadcast_requires_auth(self) -> None:
+        """Test that PrivateBroadcastChat requires authentication."""
+        import asyncio
+
+        import websockets
+
+        async def _test() -> None:
+            async with websockets.connect(
+                f"{self.ws_url}/ws/PrivateBroadcastChat"
+            ) as ws:
+                # Send without token
+                await ws.send(json.dumps({"message": "hello", "room": "general"}))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is False
+                assert response["error"]["code"] == "UNAUTHORIZED"
+
+        asyncio.run(_test())
+
+    def test_private_broadcast_with_auth(self) -> None:
+        """Test that PrivateBroadcastChat broadcasts to authenticated clients."""
+        import asyncio
+
+        import websockets
+
+        # Create two users
+        users = []
+        for i in range(2):
+            username = f"broadcast_user_{i}_{uuid.uuid4().hex[:8]}"
+            password = "testpass123"
+
+            response = requests.post(
+                f"{self.base_url}/user/register",
+                json={"username": username, "password": password},
+                timeout=10,
+            )
+            assert response.status_code in (200, 201)
+
+            response = requests.post(
+                f"{self.base_url}/user/login",
+                json={"username": username, "password": password},
+                timeout=10,
+            )
+            assert response.status_code == 200
+            users.append(
+                {"username": username, "token": response.json()["data"]["token"]}
+            )
+
+        async def _test() -> None:
+            # Connect two authenticated clients
+            async with (
+                websockets.connect(
+                    f"{self.ws_url}/ws/PrivateBroadcastChat?token={users[0]['token']}"
+                ) as ws1,
+                websockets.connect(
+                    f"{self.ws_url}/ws/PrivateBroadcastChat?token={users[1]['token']}"
+                ) as ws2,
+            ):
+                await asyncio.sleep(0.1)
+
+                # Client 1 sends a message
+                await ws1.send(
+                    json.dumps({"message": "secret broadcast", "room": "team"})
+                )
+
+                # Both clients should receive
+                response1 = json.loads(await asyncio.wait_for(ws1.recv(), timeout=5))
+                response2 = json.loads(await asyncio.wait_for(ws2.recv(), timeout=5))
+
+                assert response1["ok"] is True
+                assert response2["ok"] is True
+
+                data1 = response1["data"]
+                data2 = response2["data"]
+                report1 = data1["reports"][0] if "reports" in data1 else data1
+                report2 = data2["reports"][0] if "reports" in data2 else data2
+
+                assert report1["content"] == "secret broadcast"
+                assert report1["authenticated"] is True
+                assert report1["broadcast"] is True
+
+                assert report2["content"] == "secret broadcast"
+                assert report2["authenticated"] is True
+
+        asyncio.run(_test())
+
+    def test_websocket_walkers_not_in_openapi(self) -> None:
+        """Verify new WebSocket walkers are not in OpenAPI schema."""
+        response = requests.get(f"{self.base_url}/openapi.json", timeout=5)
+        assert response.status_code == 200
+        schema = response.json()
+        paths = schema.get("paths", {})
+
+        # None of the WebSocket walkers should be in /walker/ paths
+        ws_walkers = [
+            "EchoMessage",
+            "MinimalWebSocket",
+            "PrivateWebSocket",
+            "BroadcastChat",
+            "PrivateBroadcastChat",
+        ]
+        for walker in ws_walkers:
+            assert f"/walker/{walker}" not in paths, (
+                f"WebSocket walker {walker} should not be in /walker/ paths"
+            )
+
+
+class TestJacScaleServeDevMode:
+    """Test jac-scale serve with --dev mode (dynamic routing).
 
     This tests that the dynamic routing endpoints correctly parse request body
     parameters, which is essential for HMR support.
@@ -1236,7 +2342,7 @@ class TestJacScaleServeWatchMode:
 
         cls._cleanup_db_files()
         cls.server_process = None
-        cls._start_server_watch_mode()
+        cls._start_server_dev_mode()
 
     @classmethod
     def teardown_class(cls) -> None:
@@ -1254,17 +2360,17 @@ class TestJacScaleServeWatchMode:
         cls._cleanup_db_files()
 
     @classmethod
-    def _start_server_watch_mode(cls) -> None:
-        """Start the jac-scale server in watch mode (dynamic routing).
+    def _start_server_dev_mode(cls) -> None:
+        """Start the jac-scale server in dev mode (dynamic routing).
 
-        In watch mode, the REST API runs on port+1 while Vite runs on port.
+        In dev mode, the REST API runs on port+1 while Vite runs on port.
         We connect directly to the REST API port to avoid Vite dependency issues.
         """
         import sys
 
         jac_executable = Path(sys.executable).parent / "jac"
         # Use --api-only to skip Vite dev server (if supported), otherwise use base port
-        # The REST API in watch mode runs on base_port + 1
+        # The REST API in dev mode runs on base_port + 1
         vite_port = cls.port
         api_port = cls.port + 1
         cls.base_url = f"http://localhost:{api_port}"
@@ -1275,7 +2381,7 @@ class TestJacScaleServeWatchMode:
             str(cls.test_file),
             "--port",
             str(vite_port),
-            "--watch",  # Enable watch mode for dynamic routing
+            "--dev",  # Enable dev mode for dynamic routing
         ]
 
         cls.server_process = subprocess.Popen(
@@ -1301,7 +2407,7 @@ class TestJacScaleServeWatchMode:
                 response = requests.get(f"{cls.base_url}/docs", timeout=2)
                 if response.status_code in (200, 404):
                     print(
-                        f"Watch mode server started successfully on API port {api_port}"
+                        f"Dev mode server started successfully on API port {api_port}"
                     )
                     server_ready = True
                     break
@@ -1317,7 +2423,7 @@ class TestJacScaleServeWatchMode:
                 stdout, stderr = cls.server_process.communicate()
 
             raise RuntimeError(
-                f"Server failed to start in watch mode after {max_attempts} attempts.\n"
+                f"Server failed to start in dev mode after {max_attempts} attempts.\n"
                 f"STDOUT: {stdout}\nSTDERR: {stderr}"
             )
 
@@ -1359,8 +2465,8 @@ class TestJacScaleServeWatchMode:
                 return {"error": error_info.get("message", "Unknown error")}
         return json_response
 
-    def test_watch_mode_walker_body_parsing(self) -> None:
-        """Test that walkers in watch mode correctly parse request body parameters.
+    def test_dev_mode_walker_body_parsing(self) -> None:
+        """Test that walkers in dev mode correctly parse request body parameters.
 
         This is a regression test for the fix where dynamic routing endpoints
         weren't parsing JSON body content into walker fields.
@@ -1368,7 +2474,7 @@ class TestJacScaleServeWatchMode:
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1390,12 +2496,12 @@ class TestJacScaleServeWatchMode:
         # Verify the walker received and processed the body parameters
         assert "result" in data or "reports" in data, f"Unexpected response: {data}"
 
-    def test_watch_mode_function_body_parsing(self) -> None:
-        """Test that functions in watch mode correctly parse request body parameters."""
+    def test_dev_mode_function_body_parsing(self) -> None:
+        """Test that functions in dev mode correctly parse request body parameters."""
         # Register user
         register_response = requests.post(
             f"{self.base_url}/user/register",
-            json={"username": f"watchfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={"username": f"devfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
             timeout=10,
         )
         assert register_response.status_code == 201
@@ -1418,8 +2524,8 @@ class TestJacScaleServeWatchMode:
         assert "result" in data, f"Expected 'result' in response: {data}"
         assert data["result"] == 100, f"Expected 100, got {data['result']}"
 
-    def test_watch_mode_public_walker_no_auth(self) -> None:
-        """Test that public walkers work without auth in watch mode."""
+    def test_dev_mode_public_walker_no_auth(self) -> None:
+        """Test that public walkers work without auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PublicInfo",
             json={},
@@ -1431,8 +2537,8 @@ class TestJacScaleServeWatchMode:
         assert "reports" in data
         assert data["reports"][0]["message"] == "This is a public endpoint"
 
-    def test_watch_mode_private_walker_requires_auth(self) -> None:
-        """Test that private walkers require auth in watch mode."""
+    def test_dev_mode_private_walker_requires_auth(self) -> None:
+        """Test that private walkers require auth in dev mode."""
         response = requests.post(
             f"{self.base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},
@@ -1480,3 +2586,57 @@ class TestJacScaleServeWatchMode:
         assert reports[1]["status"] == "after_async_wait"
         assert reports[2]["status"] == "completed"
         assert "task" in reports[2]
+
+    def test_walker_stream_response(self) -> None:
+        """Test that walker streaming responses work correctly."""
+        response = requests.post(
+            f"{self.base_url}/walker/WalkerStream",
+            json={"count": 3},
+            timeout=30,
+            stream=True,
+        )
+
+        assert response.status_code == 200, (
+            f"Failed with status {response.status_code}: {response.text}"
+        )
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        assert response.headers.get("cache-control") == "no-cache"
+        assert response.headers.get("connection") == "close"
+
+        # Collect streaming content
+        content = ""
+        for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
+            if chunk:
+                content += chunk
+
+        # The generator yields "Report 0", "Report 1", "Report 2" without delimiters
+        # They get concatenated together in the stream
+        expected = "Report 0Report 1Report 2"
+        assert content == expected, f"Expected '{expected}', got '{content}'"
+
+    def test_function_stream_response(self) -> None:
+        """Test that function streaming responses work correctly."""
+        response = requests.post(
+            f"{self.base_url}/function/FunctionStream",
+            json={"count": 2},
+            timeout=30,
+            stream=True,
+        )
+
+        assert response.status_code == 200, (
+            f"Failed with status {response.status_code}: {response.text}"
+        )
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        assert response.headers.get("cache-control") == "no-cache"
+        assert response.headers.get("connection") == "close"
+
+        # Collect streaming content
+        content = ""
+        for chunk in response.iter_content(chunk_size=1024, decode_unicode=True):
+            if chunk:
+                content += chunk
+
+        # The generator yields "Func 0", "Func 1" without delimiters
+        # They get concatenated together in the stream
+        expected = "Func 0Func 1"
+        assert content == expected, f"Expected '{expected}', got '{content}'"

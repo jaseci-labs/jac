@@ -6,14 +6,14 @@ import os;
 import sys;
 import time;
 import threading;
+import from collections { deque }
 import from concurrent.futures { Future }
-import from queue { Queue, Empty }
 import from typing { Callable, Optional }
 
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.pycore.constant { SymbolType }
-import from jaclang.pycore.program { JacProgram }
+import from jaclang.jac0core.constant { SymbolType }
+import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
@@ -22,7 +22,7 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
-import from jaclang.pycore.unitree { UniScopeNode }
+import from jaclang.jac0core.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
@@ -33,8 +33,8 @@ import from .module_manager { ModuleManager }
 
 obj Task {
     has file_uri: str,
-        task_id: int = 0,
-        cancel_token: threading.Event | None = None;
+        task_id: int by postinit,
+        cancel_token: threading.Event | None by postinit;
 
     static has _task_id: int = 0;
 
@@ -44,11 +44,17 @@ obj Task {
 """Jac Language Server, manages JacProgram and LSP."""
 obj JacLangServer(JacProgram, LanguageServer) {
     has sem_managers: dict = {},
-        module_manager: ModuleManager | None = None,
-        queue: Queue = Queue(),
-        worker_future: Future | None = None,
+        module_manager: ModuleManager | None by postinit,
+        # Task management
+        pipe: deque = deque(maxlen=1),
+        dirty_files: dict[str, bool] = {},
         last_task: Task | None = None,
-        _shutdown_called: bool = False;
+        worker_future: Future | None by postinit,
+        _state_lock: threading.RLock by postinit,
+        _work_event: threading.Event = threading.Event(),
+        _idle_event: threading.Event by postinit,
+        _shutdown_called: bool = False,
+        _debounce_timer: threading.Timer | None = None;
 
     def postinit -> None;
     def dispatcher -> None;
@@ -68,13 +74,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
     ) -> bool;
 
     def type_check(file_uri: str) -> None;
+    def _do_type_check(file_uri: str) -> None;
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.AstNode];
 
     def debug(msg: str) -> None;
-    async def wait_till_idle -> None;
-    def wait_till_idle_sync -> None;
+    def wait_till_idle_sync(file_uri: str) -> None;
     async def get_completion(
         file_uri: str, position: lspt.Position, completion_trigger: Optional[str]
     ) -> lspt.CompletionList;
@@ -88,6 +94,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
     def get_node_type(n: uni.AstNode) -> Optional[TypeBase];
     def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
     def rename_module(old_path: str, new_path: str) -> None;
+    def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;
     def formatted_jac(file_path: str) -> list[lspt.TextEdit];
     def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];

@@ -19,9 +19,11 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 """Get default configuration structure for client."""
 impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any] {
     return {
+        'api': {'base_url': ''},
         'vite': {
             'plugins': [],
             'lib_imports': [],
+            'define': {},  # Custom define values (env vars, constants)
             'build': {},
             'server': {},
             'resolve': {}
@@ -60,6 +62,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     else {};
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
+        'api': client_config.get('api', {}),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
@@ -79,6 +82,12 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
 impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('package', {});
+}
+
+"""Get API configuration (base_url for backend)."""
+impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('api', {});
 }
 
 """Get Vite-specific configuration."""

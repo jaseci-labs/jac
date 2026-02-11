@@ -29,9 +29,10 @@ import from jaclang.project.dependencies {
     DependencyInstaller,
     DependencyResolver,
     ResolvedDependency,
-    add_packages_to_path,
-    is_packages_in_path,
-    remove_packages_from_path
+    get_venv_site_packages,
+    add_venv_to_path,
+    remove_venv_from_path,
+    is_venv_in_path
 }
 import from jaclang.project.template_registry { ProjectTemplate }
 import from jaclang.project.template_loader {
@@ -62,9 +63,10 @@ glob __all__ = [
          'DependencyInstaller',
          'DependencyResolver',
          'ResolvedDependency',
-         'add_packages_to_path',
-         'remove_packages_from_path',
-         'is_packages_in_path',
+         'get_venv_site_packages',
+         'add_venv_to_path',
+         'remove_venv_from_path',
+         'is_venv_in_path',
          'ProjectTemplate',
          'load_template_from_directory',
          'load_template_from_json',

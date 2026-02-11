@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-import jaclang.pycore.unitree as uni
-from jaclang.pycore.program import JacProgram
+import jaclang.jac0core.unitree as uni
+from jaclang.jac0core.program import JacProgram
 
 
 # Fixture path helper
@@ -445,10 +445,9 @@ class TestFormatCommandIntegration:
                 original_impl = f.read()
             assert "impl Calculator.add(a: int, b: int)" in original_impl
 
-            # Run CLI format command with --fix
-            # format exits 1 when files change (for pre-commit usage)
+            # Run CLI lint command with --fix
             with contextlib.suppress(SystemExit):
-                analysis.format([main_dst], fix=True)
+                analysis.lint([main_dst], fix=True)
 
             # Read the updated impl file
             with open(impl_dst) as f:
@@ -460,42 +459,68 @@ class TestFormatCommandIntegration:
                 f"Got: {updated_impl}"
             )
 
+    def test_format_lintfix_reports_no_print(
+        self, auto_lint_fixture_path: Callable[[str], str], tmp_path: Path
+    ) -> None:
+        """Test that format --lintfix respects no-print rule from jac.toml config."""
+        from jaclang.cli.commands import analysis  # type: ignore[attr-defined]
+        from jaclang.project.config import JacConfig, set_config
+
+        # Copy no_print fixture to temp location
+        src = auto_lint_fixture_path("no_print.jac")
+        dst = tmp_path / "no_print.jac"
+        shutil.copy(src, dst)
+
+        # Simulate jac.toml with no-print enabled via select = ["all"]
+        config = JacConfig.from_toml_str('[check.lint]\nselect = ["all"]\n')
+        set_config(config)
+        try:
+            # Run format with --lintfix (should report no-print errors and exit 1)
+            result = analysis.format([str(dst)], lintfix=True)
+        finally:
+            set_config(None)
+
+        # no-print errors are unfixable, so format --lintfix should fail
+        assert result == 1, (
+            "format --lintfix should return 1 when unfixable lint errors exist"
+        )
+
 
 class TestRemoveUnnecessaryEscape:
-    """Tests for removing unnecessary <> escaping from names."""
+    """Tests for removing unnecessary backtick escaping from names."""
 
     def test_unnecessary_escape_removed(
         self, auto_lint_fixture_path: Callable[[str], str]
     ) -> None:
-        """Test that unnecessary <> escaping is removed from non-keyword names."""
+        """Test that unnecessary backtick escaping is removed from non-keyword names."""
         input_path = auto_lint_fixture_path("unnecessary_escape.jac")
 
         prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
         formatted = prog.mod.main.gen.jac
 
-        # Regular variable names should NOT have <> escaping
-        assert "<>foo" not in formatted
-        assert "<>bar" not in formatted
-        assert "<>myvar" not in formatted
-        assert "<>count" not in formatted
-        assert "<>data" not in formatted
-        assert "<>name" not in formatted
-        assert "<>value" not in formatted
-        assert "<>item" not in formatted
-        assert "<>result" not in formatted
-        assert "<>input_val" not in formatted
-        assert "<>output_val" not in formatted
-        assert "<>total" not in formatted
+        # Regular variable names should NOT have backtick escaping
+        assert "`foo" not in formatted
+        assert "`bar" not in formatted
+        assert "`myvar" not in formatted
+        assert "`count" not in formatted
+        assert "`data" not in formatted
+        assert "`name" not in formatted
+        assert "`value" not in formatted
+        assert "`item" not in formatted
+        assert "`result" not in formatted
+        assert "`input_val" not in formatted
+        assert "`output_val" not in formatted
+        assert "`total" not in formatted
 
-        # But the actual names should still be present (without <>)
+        # But the actual names should still be present (without backtick)
         assert "foo = 1" in formatted
         assert "bar = 2" in formatted
         assert "myvar = 3" in formatted
 
-        # Jac keywords SHOULD still have <> escaping
-        assert "<>node = 10" in formatted
-        assert "<>edge = 20" in formatted
-        assert "<>walker = 30" in formatted
+        # Jac keywords SHOULD still have backtick escaping
+        assert "`node = 10" in formatted
+        assert "`edge = 20" in formatted
+        assert "`walker = 30" in formatted
 
 
 class TestRemoveEmptyParens:
@@ -613,10 +638,12 @@ class TestHasattrConversion:
         # Step 2: becomes obj?.attr or default (ternary-to-or optimization)
         assert "instance?.value or 0" in formatted
         assert 'instance?.name or "default"' in formatted
+        assert "instance?.name" in formatted
 
         # Check that we don't have "instance.value if" (non-null-safe value with null-safe condition)
         assert "instance.value if instance?.value" not in formatted
         assert "instance.name if instance?.name" not in formatted
+        assert "instance?.name or None" not in formatted
 
         # Binary expressions with hasattr should be converted
         assert (
@@ -662,6 +689,10 @@ class TestTernaryToOrConversion:
         # Null-safe ternary should be converted
         assert 'instance?.name or "default"' in formatted
         assert 'instance?.name if instance?.name else "default"' not in formatted
+
+        # Null-safe ternary with None default should be converted
+        assert "instance?.value" in formatted
+        assert "instance?.value or None" not in formatted
 
         # Different value and condition should NOT be converted
         assert "if instance.name else" in formatted
@@ -1053,7 +1084,7 @@ class TestCommentPreservation:
         formatted = prog.mod.main.gen.jac
 
         # Comments around escaped names
-        assert "# Test angle bracket escaped names with comments" in formatted
+        assert "# Test backtick escaped names with comments" in formatted
         assert "# Comment before escaped name" in formatted
         assert "# Method with escaped param" in formatted
 
@@ -1113,4 +1144,85 @@ class TestCommentPreservation:
         # It should be in the last third of the file (normal position)
         assert final_comment_pos > len(formatted) * 0.5, (
             "Final comment should be near the end of file, not moved earlier"
+        )
+
+    def test_no_print_error(self, auto_lint_fixture_path: Callable[[str], str]) -> None:
+        """Test that bare print() calls produce errors with no-print rule."""
+        from jaclang.project.config import (
+            CheckConfig,
+            JacConfig,
+            LintConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        # Enable all rules including no-print
+        config = JacConfig()
+        config.check = CheckConfig(lint=LintConfig(select=["all"]))
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        # Should have errors for bare print() calls
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
+        # There are 2 bare print() calls in the fixture
+        assert len(no_print_errors) == 2, (
+            f"Expected 2 no-print errors, got {len(no_print_errors)}: {no_print_errors}"
+        )
+
+    def test_no_print_ignores_qualified_calls(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that qualified calls like console.print() are not flagged."""
+        from jaclang.project.config import (
+            CheckConfig,
+            JacConfig,
+            LintConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        # Enable all rules including no-print
+        config = JacConfig()
+        config.check = CheckConfig(lint=LintConfig(select=["all"]))
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        # Should NOT flag console.print()
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
+        # Only the 2 bare print() calls, not the console.print() call
+        assert len(no_print_errors) == 2
+
+    def test_no_print_disabled_by_default(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that no-print rule is not active with default select."""
+        from jaclang.project.config import (
+            JacConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("no_print.jac")
+
+        # Explicitly use default config (select=["default"]) to isolate from project jac.toml
+        config = JacConfig()
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        error_msgs = [e.msg for e in prog.errors_had]
+        no_print_errors = [m for m in error_msgs if "[no-print]" in m]
+        assert len(no_print_errors) == 0, (
+            f"Expected no no-print errors by default, got: {no_print_errors}"
         )

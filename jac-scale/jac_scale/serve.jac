@@ -3,9 +3,12 @@ import mimetypes;
 import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
+import from pydantic { BaseModel, Field }
 import from typing { Any }
 import jwt;
+import json;
 import from os { getenv }
+import from fastapi { Request }
 import from fastapi.middleware.cors { CORSMiddleware }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response, RedirectResponse }
 import from jac_scale.jserver.jfast_api { JFastApiServer }
@@ -15,7 +18,7 @@ import from jac_scale.jserver.jserver {
     JEndPoint,
     ParameterType
 }
-import from jaclang.pycore.runtime { JacRuntime as Jac }
+import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
@@ -23,6 +26,15 @@ import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
+import from jac_scale.abstractions.metrics { MetricsCollector }
+import from jac_scale.websocket { WebSocketConnectionManager }
+import from typing { AsyncGenerator }
+import from inspect { isgenerator }
+import from fastapi.responses { StreamingResponse }
+import from jaclang.cli.console { console }
+import from jaclang.cli.banners { JAC_DISCORD_URL }
+import from fastapi { WebSocket, WebSocketDisconnect }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -33,87 +45,101 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__);
 
-class Platforms(StrEnum) {
-    has GOOGLE: str = 'google';
-}
+enum Platforms ( StrEnum ) { GOOGLE = 'google' }
 
-class Operations(StrEnum) {
-    has LOGIN: str = 'login',
-        REGISTER: str = 'register';
-}
+enum Operations ( StrEnum ) { LOGIN = 'login', REGISTER = 'register' }
 
-class JacAPIServer(JServer) {
+obj JacAPIServer(JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _hot_reloader: Any | None = None;
+        _hot_reloader: Any | None = None,
+        _api_key_manager: ApiKeyManager | None = None,
+        _metrics: MetricsCollector | None = None,
+        _ws_manager: WebSocketConnectionManager | None = None;
 
-    static def create_jwt_token(username: str) -> str;
-    static def validate_jwt_token(token: str) -> (str | None);
-    static def refresh_jwt_token(token: str) -> (str | None);
-    def init(
-        self: JacAPIServer, module_name: str, port: int = 8000, base_path: str = ""
-    ) -> None;
-
-    def login(self: JacAPIServer, username: str, password: str) -> TransportResponse;
-    def register_login_endpoint(self: JacAPIServer) -> None;
-    def create_user(
-        self: JacAPIServer, username: str, password: str
+    def postinit -> None;
+    def login(username: str, password: str) -> TransportResponse;
+    def register_login_endpoint -> None;
+    def update_username(
+        current_username: str, new_username: str, Authorization: (str | None) = None
     ) -> TransportResponse;
 
-    def refresh_token(
-        self: JacAPIServer, token: (str | None) = None
+    def update_password(
+        username: str,
+        current_password: str,
+        new_password: str,
+        Authorization: (str | None) = None
     ) -> TransportResponse;
 
-    def register_create_user_endpoint(self: JacAPIServer) -> None;
-    def register_refresh_token_endpoint(self: JacAPIServer) -> None;
-    def get_sso(
-        self: JacAPIServer, platform: str, operation: str
-    ) -> (GoogleSSO | None);
-
-    async def sso_initiate(
-        self: JacAPIServer, platform: str, operation: str
-    ) -> (Response | TransportResponse);
-
-    async def sso_callback(
-        self: JacAPIServer, request: Request, platform: str, operation: str
-    ) -> TransportResponse;
-
-    def register_sso_endpoints(self: JacAPIServer) -> None;
+    def register_update_username_endpoint -> None;
+    def register_update_password_endpoint -> None;
+    def create_user(username: str, password: str) -> TransportResponse;
+    def refresh_token(token: (str | None) = None) -> TransportResponse;
+    def register_create_user_endpoint -> None;
+    def register_refresh_token_endpoint -> None;
+    def register_sso_endpoints -> None;
     def create_walker_callback(
-        self: JacAPIServer, walker_name: str, has_node_param: bool = False
+        walker_name: str, has_node_param: bool = False
     ) -> Callable[..., TransportResponse];
 
     def create_walker_parameters(
-        self: JacAPIServer, walker_name: str, invoke_on_root: bool
+        walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
     ) -> list[APIParameter];
 
-    def register_walkers_endpoints(self: JacAPIServer) -> None;
-    def create_function_callback(
-        self: JacAPIServer, func_name: str
-    ) -> Callable[..., TransportResponse];
-
+    def register_walkers_endpoints -> None;
+    def create_function_callback(func_name: str) -> Callable[..., TransportResponse];
     def create_function_parameters(
-        self: JacAPIServer, func_name: str
+        func_name: str, method: HTTPMethod = HTTPMethod.POST
     ) -> list[APIParameter];
 
-    def register_functions_endpoints(self: JacAPIServer) -> None;
-    def render_page_callback(self: JacAPIServer) -> Callable[..., HTMLResponse];
-    def render_base_route_callback(
-        self: JacAPIServer, app_name: str
-    ) -> Callable[..., HTMLResponse];
-
-    def register_page_endpoint(self: JacAPIServer) -> None;
-    def serve_client_js_callback(self: JacAPIServer) -> Callable[..., Response];
-    def register_client_js_endpoint(self: JacAPIServer) -> None;
-    def register_static_file_endpoint(self: JacAPIServer) -> None;
-    def serve_static_file(self: JacAPIServer, file_path: str) -> Response;
-    def register_root_asset_endpoint(self: JacAPIServer) -> None;
-    def serve_root_asset(self: JacAPIServer, file_path: str) -> Response;
-    def _configure_openapi_security(self: JacAPIServer) -> None;
-    def start(self: JacAPIServer, watch: bool = False) -> None;
+    def register_functions_endpoints -> None;
+    def render_page_callback -> Callable[..., HTMLResponse];
+    def render_base_route_callback(app_name: str) -> Callable[..., HTMLResponse];
+    def register_page_endpoint -> None;
+    def serve_client_js_callback -> Callable[..., Response];
+    def register_client_js_endpoint -> None;
+    def register_static_file_endpoint -> None;
+    def serve_static_file(file_path: str) -> Response;
+    def register_root_asset_endpoint -> None;
+    def serve_root_asset(file_path: str) -> Response;
+    def _configure_openapi_security -> None;
+    def start(dev: bool = False, no_client: bool = False) -> None;
     # HMR (Hot Module Replacement) dynamic routing methods
-    def enable_hmr(self: JacAPIServer, hot_reloader: Any) -> None;
-    def register_dynamic_walker_endpoint(self: JacAPIServer) -> None;
-    def register_dynamic_function_endpoint(self: JacAPIServer) -> None;
-    def register_dynamic_introspection_endpoints(self: JacAPIServer) -> None;
+    def enable_hmr(hot_reloader: Any) -> None;
+    def register_dynamic_walker_endpoint -> None;
+    def register_dynamic_function_endpoint -> None;
+    def register_dynamic_introspection_endpoints -> None;
+    # Webhook support methods
+    def get_api_key_manager -> ApiKeyManager;
+    def create_api_key(
+        name: str, expiry_days: int | None = None, Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def list_api_keys(Authorization: str | None = None) -> TransportResponse;
+    def revoke_api_key(
+        api_key_id: str, Authorization: str | None = None
+    ) -> TransportResponse;
+
+    def register_api_key_endpoints -> None;
+    def register_webhook_endpoints -> None;
+    def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
+    def create_webhook_parameters(walker_name: str) -> list[APIParameter];
+    def register_dynamic_webhook_endpoint -> None;
+    def get_walker_protocol(walker_name: str) -> str;
+    # WebSocket support methods
+    def get_ws_manager -> WebSocketConnectionManager;
+    def create_websocket_handler(walker_name: str) -> Callable;
+    def register_websocket_endpoints -> None;
+    def register_dynamic_websocket_endpoint -> None;
+}
+
+class UpdateUsernameRequest(BaseModel) {
+    has current_username: str = Field(..., description='Current username'),
+        new_username: str = Field(..., description='New username');
+}
+
+class UpdatePasswordRequest(BaseModel) {
+    has username: str = Field(..., description='Username'),
+        current_password: str = Field(..., description='Current password'),
+        new_password: str = Field(..., description='New password');
 }

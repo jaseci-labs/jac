@@ -11,7 +11,6 @@ When you install `jaseci`, you automatically get:
 - **jaclang** - The Jac programming language
 - **byllm** - LLM integration for AI-native programming
 - **jac-client** - Full-stack web applications with React-like components in Jac
-- **jac-streamlit** - Streamlit integration for visualization
 
 ## Installation
 

@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> any {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -42,29 +42,32 @@ impl useRouter -> dict {
 }
 
 impl navigate(path: str) -> None {
-    window.location.hash = "#" + path;
+    window.history.pushState({}, "", path);
+    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
+}
+
+impl __getApiBaseUrl -> str {
+    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
+    # Falls back to empty string (same-origin) when not configured.
+    return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
-    url = f"/walker/{left}";
+    base_url = __getApiBaseUrl();
+    url = f"{base_url}/walker/{left}";
     if right != "" {
-        url = f"/walker/{left}/{right}";
+        url = f"{base_url}/walker/{left}/{right}";
+    }
+    headers = {"Content-Type": "application/json", "Accept": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
     }
     response = await fetch(
-        url,
-        {
-            "method": "POST",
-            "accept": "application/json",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify(fields)
-        }
+        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
     );
     if not response.ok {
-        error_text = await response.json();
+        error_text = await response.text();
         walker_name = f"{left}/{right}" if right else left;
         raise Exception(f"Walker {walker_name} failed: {error_text}") ;
     }
@@ -78,17 +81,19 @@ impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
 
 impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     token = __getLocalStorage("jac_token");
+    base_url = __getApiBaseUrl();
+    headers = {"Content-Type": "application/json"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
     response = await fetch(
-        f"/function/{function_name}",
-        {
-            "method": "POST",
-            "headers": {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {token}" if token else ""
-            },
-            "body": JSON.stringify({"args": args})
-        }
+        f"{base_url}/function/{function_name}",
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
+    if not response.ok {
+        error_text = await response.text();
+        raise Exception(f"Function {function_name} failed: {error_text}") ;
+    }
     payload = await response.json();
     if not payload["ok"] {
         error_msg = payload["error"] if payload["error"] else "Unknown error";
@@ -99,13 +104,16 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
         if payload["data"] and payload["data"]["result"] {
             result = payload["data"]["result"];
         }
-    } except Exception { }
+    } except Exception as e {
+        console.warn(f"Failed to extract result for {function_name}:", e);
+    }
     return result;
 }
 
 impl jacSignup(username: str, password: str) -> dict {
+    base_url = __getApiBaseUrl();
     response = await fetch(
-        "/user/register",
+        f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -140,8 +148,9 @@ impl jacSignup(username: str, password: str) -> dict {
 }
 
 impl jacLogin(username: str, password: str) -> bool {
+    base_url = __getApiBaseUrl();
     response = await fetch(
-        "/user/login",
+        f"{base_url}/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
@@ -150,14 +159,14 @@ impl jacLogin(username: str, password: str) -> bool {
     );
     if response.ok {
         data = JSON.parse(await response.text());
-        console.log("data", data);
         token = None;
         try {
             if data["data"] and data["data"]["token"] {
                 token = data["data"]["token"];
             }
-        } except Exception { }
-        console.log("token", token);
+        } except Exception as e {
+            console.warn("Failed to extract login token:", e);
+        }
         if token {
             __setLocalStorage("jac_token", token);
             return True;
@@ -192,6 +201,17 @@ impl __removeLocalStorage(key: str) -> None {
     if storage {
         storage.removeItem(key);
     }
+}
+
+"""Auth guard component for file-based routing. Renders child routes if
+authenticated, otherwise redirects to the login path."""
+impl AuthGuard(redirect: str = "/login") -> any {
+    if jacIsLoggedIn() {
+        return
+            <ReactRouterOutlet />;
+    }
+    return
+        <ReactRouterNavigate to={redirect} replace={True} />;
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
@@ -258,4 +278,92 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
                 </button>
             </div>
         </div>;
+}
+
+impl errorOverlay(filePath: str, errors: str) -> any {
+    return (
+        <div
+            style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                background: "rgba(0, 0, 0, 0.85)",
+                color: "#fff",
+                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
+                fontSize: 14,
+                zIndex: 999999,
+                overflow: "auto",
+                padding: 20,
+                boxSizing: "border-box",
+
+            }}
+        >
+            <div style={{maxWidth: 1200, margin: "0 auto"}}>
+                <div
+                    style={{
+                        background: "#d32f2f",
+                        color: "white",
+                        padding: "16px 24px",
+                        borderRadius: "8px 8px 0 0",
+                        fontSize: 18,
+                        fontWeight: "bold",
+
+                    }}
+                >
+                    ⚠️ Compilation Error
+                </div>
+                <div
+                    style={{
+                        background: "#1e1e1e",
+                        padding: 24,
+                        borderRadius: "0 0 8px 8px",
+
+                    }}
+                >
+                    <div style={{marginBottom: 16}}>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            File:
+                        </div>
+                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
+                            {filePath}
+                        </div>
+                    </div>
+                    <div>
+                        <div style={{color: "#888", marginBottom: 8}}>
+                            Error:
+                        </div>
+                        <pre
+                            style={{
+                                background: "#2d2d2d",
+                                padding: 16,
+                                borderRadius: 4,
+                                overflowX: "auto",
+                                margin: 0,
+                                borderLeft: "4px solid #d32f2f",
+                                lineHeight: 1.6,
+                                color: "#ff6b6b",
+
+                            }}
+                        >
+                            {errors}
+                        </pre>
+                    </div>
+                    <div
+                        style={{
+                            marginTop: 24,
+                            paddingTop: 16,
+                            borderTop: "1px solid #444",
+                            color: "#888",
+                            fontSize: 13,
+
+                        }}
+                    >
+                        💡 Fix the error and save the file to continue development.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }

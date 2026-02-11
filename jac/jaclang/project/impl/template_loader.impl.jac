@@ -12,7 +12,6 @@ The [jacpackk] section contains:
 The [jacpackk.options] section contains:
 - directories: Extra directories to create
 - files: Glob patterns for files to include (auto-discovers if not specified)
-- gitignore_entries: Entries for .jac/.gitignore
 - root_gitignore_entries: Entries for project root .gitignore
 - post_create_hook: Module path to post-create hook function
 """
@@ -23,6 +22,23 @@ import from jaclang.project.template_registry { ProjectTemplate }
 import json;
 import tomllib;
 import importlib;
+import base64;
+import from jaclang.cli.console { console }
+
+# ===============================================================================
+# Helper: Read file content (text or binary)
+# ===============================================================================
+"""Read a file's content, returning text or base64-encoded binary."""
+def _read_file_content(file_path: Path) -> str {
+    try {
+        return file_path.read_text();
+    } except UnicodeDecodeError {
+        # Binary file - read as bytes and base64 encode
+        binary_content = file_path.read_bytes();
+        encoded = base64.b64encode(binary_content).decode("ascii");
+        return "base64:" + encoded;
+    }
+}
 
 # ===============================================================================
 # Load Template from Directory
@@ -68,10 +84,26 @@ impl load_template_from_directory(
     # Get options from [template.options]
     options = jacpackk_section.get("options", {});
     directories = options.get("directories", []);
-    gitignore_entries = options.get(
-        "gitignore_entries", ["# Ignore all build artifacts in .jac directory", "*"]
-    );
     root_gitignore_entries = options.get("root_gitignore_entries", []);
+    gitignore_path = template_dir / ".gitignore";
+    if gitignore_path.exists() {
+        try {
+            gitignore_content = gitignore_path.read_text().strip();
+            if gitignore_content {
+                for line in gitignore_content.split("\n") {
+                    line = line.strip();
+                    if line and not line.startswith("#") {
+                        if line not in root_gitignore_entries {
+                            root_gitignore_entries = root_gitignore_entries + [line];
+                        }
+                    }
+                }
+            }
+        } except Exception { }
+    }
+    if ".jac/" not in root_gitignore_entries {
+        root_gitignore_entries = root_gitignore_entries + [".jac/"];
+    }
     # Resolve post_create hook if specified
     hook = post_create_hook;
     if hook is None and "post_create_hook" in options {
@@ -86,7 +118,7 @@ impl load_template_from_directory(
             for file_path in template_dir.glob(pattern) {
                 if file_path.is_file() and file_path.name != "jac.toml" {
                     relative_path = str(file_path.relative_to(template_dir));
-                    files[relative_path] = file_path.read_text();
+                    files[relative_path] = _read_file_content(file_path);
                 }
             }
         }
@@ -99,7 +131,7 @@ impl load_template_from_directory(
                 if relative_path != "jac.toml"
                 and not relative_path.startswith(".")
                 and "/." not in relative_path {
-                    files[relative_path] = file_path.read_text();
+                    files[relative_path] = _read_file_content(file_path);
                 }
             }
         }
@@ -110,7 +142,6 @@ impl load_template_from_directory(
         config=config,
         files=files,
         directories=directories,
-        gitignore_entries=gitignore_entries,
         root_gitignore_entries=root_gitignore_entries,
         post_create=hook
     );
@@ -158,7 +189,7 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     with open(output_path, "w") as f {
         json.dump(template_data, f, indent=2);
     }
-    print(f"Bundled template '{template.name}' to {output_path}");
+    console.print(f"Bundled template '{template.name}' to {output_path}");
 }
 
 # ===============================================================================
@@ -186,7 +217,6 @@ impl load_template_from_json(
         config=data.get("config", {}),
         files=data.get("files", {}),
         directories=data.get("directories", []),
-        gitignore_entries=data.get("gitignore_entries", []),
         root_gitignore_entries=data.get("root_gitignore_entries", []),
         post_create=hook
     );
@@ -225,10 +255,10 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
 
         return hook;
     } except ImportError as e {
-        print(f"Warning: Could not import hook module '{hook_path}': {e}");
+        console.print(f"Warning: Could not import hook module '{hook_path}': {e}");
         return None;
     } except AttributeError as e {
-        print(f"Warning: Hook function not found '{hook_path}': {e}");
+        console.print(f"Warning: Hook function not found '{hook_path}': {e}");
         return None;
     }
 }

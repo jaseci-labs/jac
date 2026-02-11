@@ -1,8 +1,8 @@
-impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> dict {
-    return {"tag": tag, "props": props, "children": children};
+impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
+    return JsxElement(tag=tag, props=props, children=children);
 }
 
-impl renderJsxTree(node: any, container: any) -> None {
+impl renderJsxTree(node: JsxElement, container: any) -> None {
     container.replaceChildren(__buildDom(node));
 }
 
@@ -10,14 +10,25 @@ impl __buildDom(node: any) -> any {
     if node == None {
         return document.createTextNode("");
     }
+    # Handle arrays (from .map() calls) - return a document fragment
+    if Array.isArray(node) {
+        fragment = document.createDocumentFragment();
+        for item in node {
+            childDom = __buildDom(item);
+            if childDom {
+                fragment.appendChild(childDom);
+            }
+        }
+        return fragment;
+    }
     if not __isObject(node) {
         return document.createTextNode(String(node));
     }
     # Handle component functions
-    tag = node.get("tag");
+    tag = node.tag;
     if __isFunction(tag) {
-        props = node.get("props", {});
-        children = node.get("children", []);
+        props = node.props;
+        children = node.children;
         # Merge children into props for component
         if children and children.length > 0 {
             props["children"] = children;
@@ -27,13 +38,13 @@ impl __buildDom(node: any) -> any {
     # Create element
     element = document.createElement(tag or "div");
     # Apply properties
-    props = node.get("props", {});
+    props = node.props;
     for key in __objectKeys(props) {
         value = props.get(key);
         __applyProp(element, key, value);
     }
     # Render children
-    children = node.get("children", []);
+    children = node.children;
     for child in children {
         childDom = __buildDom(child);
         if childDom {
@@ -55,6 +66,15 @@ impl __applyProp(element: any, key: str, value: any) -> None {
         for styleKey in __objectKeys(value) {
             element.style[styleKey] = value[styleKey];
         }
+    } elif key == "checked"
+    or key == "disabled"
+    or key == "readonly"
+    or key == "selected" {
+        # Boolean attributes - use property instead of attribute
+        element[key] = Boolean(value);
+    } elif key == "value" {
+        # Value property for form elements
+        element.value = value;
     } elif key != "children" {
         element.setAttribute(key, String(value));
     }
@@ -229,6 +249,8 @@ impl __jacRerenderComponent(componentId: any) -> None {
     try {
         previousComponent = __jacReactiveContext.currentComponent;
         __jacReactiveContext.currentComponent = componentId;
+        # Reset hook index for useState tracking
+        __jacReactiveContext.hookIndex = 0;
 
         component = rootComponent();
         renderJsxTree(component, rootEl);
@@ -240,24 +262,17 @@ impl __jacRerenderComponent(componentId: any) -> None {
 }
 
 impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
-    # Get initial path from hash or use default
-    initialPath = __jacGetHashPath();
-    if not initialPath {
+    # Get initial path from URL pathname or use default
+    initialPath = __jacGetPath();
+    if not initialPath or initialPath == "/" {
         initialPath = defaultRoute;
     }
     # Create reactive signal for current path
     [currentPath, setCurrentPath] = createSignal(initialPath);
-    # Listen to hash changes
-    window.addEventListener(
-        "hashchange",
-        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
-            newPath = defaultRoute;
-        }setCurrentPath(newPath);}
-    );
-    # Listen to popstate (back/forward buttons)
+    # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: any  -> None { newPath = __jacGetHashPath();if not newPath {
+        lambda event: any  -> None { newPath = __jacGetPath();if not newPath {
             newPath = defaultRoute;
         }setCurrentPath(newPath);}
     );
@@ -287,7 +302,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     }
     # Navigate method
     def navigateTo(path: str) -> None {
-        window.location.hash = "#" + path;
+        window.history.pushState({}, "", path);
         setCurrentPath(path);
     }
     # Store router in global context
@@ -304,23 +319,20 @@ impl Link(props: dict) -> any {
     href = props["href"] if "href" in props else "/";
     children = props["children"] if "children" in props else [];
     def handleClick(event: any) -> None {
-        console.log("Link clicked, navigating to:", href);
         event.preventDefault();
         navigate(href);
     }
     # Return JSX node manually to properly spread children
-    return __jacJsx("a", {"href": "#" + href, "onclick": handleClick}, children);
+    return __jacJsx("a", {"href": href, "onclick": handleClick}, children);
 }
 
 impl navigate(path: str) -> None {
-    console.log("navigate() called with path:", path);
     router = __jacReactiveContext.router;
     if router {
-        console.log("Router found, calling router.navigate()");
         router.navigate(path);
     } else {
-        console.log("No router, setting hash directly");
-        window.location.hash = "#" + path;
+        window.history.pushState({}, "", path);
+        window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
     }
 }
 
@@ -328,13 +340,12 @@ impl useRouter -> dict {
     return __jacReactiveContext.router;
 }
 
-impl __jacGetHashPath -> str {
-    hash = window.location.hash;
-    if hash {
-        return hash[1:];  # Remove '#'
-
+impl __jacGetPath -> str {
+    pathname = window.location.pathname;
+    if pathname {
+        return pathname;
     }
-    return "";
+    return "/";
 }
 
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
@@ -375,7 +386,7 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {token}" if token else ""
             },
-            "body": JSON.stringify({"args": args})
+            "body": JSON.stringify(args)
         }
     );
     if not response.ok {
@@ -737,7 +748,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     if not renderer {
         console.warn("[Jac] renderJsxTree is not available in client bundle");
     }
-    # Initial render - call the root component
+    # Initial render - reset hook index and call the root component
+    __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
         value.then(
@@ -838,4 +850,51 @@ impl __jacRegisterClientModule(
         stateGlobals[moduleName] = {};
     }
     __jacEnsureHydration(moduleName);
+}
+
+# ============================================================================
+# React-style API aliases
+# ============================================================================
+"""useState - React-compatible state hook.
+Returns [value, setter] where value is the current state (not a getter function).
+When setter is called, schedules a re-render of the component.
+Uses hook index tracking to maintain state across re-renders.
+"""
+impl useState(initialValue: any) -> list {
+    # Get current hook index
+    hookIndex = __jacReactiveContext.hookIndex;
+    hooks = __jacReactiveContext.hooks;
+    # Check if this hook already exists (re-render) or needs to be created (first render)
+    if hookIndex < hooks.length {
+        # Re-render: return existing state
+        hookData = hooks[hookIndex];
+        __jacReactiveContext.hookIndex = hookIndex + 1;
+        return [hookData.value, hookData.setter];
+    }
+    # First render: create new state
+    signalData = {"value": initialValue};
+    # Setter that updates value and triggers re-render
+    def setter(newValue: any) -> None {
+        if newValue != signalData.value {
+            signalData.value = newValue;
+            # Schedule re-render of root component
+            __jacScheduleRerender("__root__");
+        }
+    }
+    # Store in hooks array for subsequent renders
+    signalData["setter"] = setter;
+    hooks.push(signalData);
+    __jacReactiveContext.hookIndex = hookIndex + 1;
+    # Return current value and setter
+    return [signalData.value, setter];
+}
+
+"""useEffect - React-compatible effect hook.
+When deps is empty [], runs once on mount (like onMount).
+Otherwise tracks dependencies and re-runs when they change.
+"""
+impl useEffect(effectFn: any, deps: list = []) -> None {
+    # For now, always run on mount since we don't have React's dep tracking
+    # This matches useEffect(() => { ... }, []) behavior
+    onMount(effectFn);
 }

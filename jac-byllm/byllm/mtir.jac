@@ -1,9 +1,11 @@
 """MTRuntime (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
 import inspect;
 import json;
+import from jaclang.jac0core.mtp { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { Callable, get_type_hints }
 import from byllm.schema { json_to_instance, type_to_schema }
+import from byllm.config_loader { get_byllm_config }
 import from byllm.types {
     LiteLLMMessage,
     Media,
@@ -22,11 +24,12 @@ an MTRuntime instance on demand via the runtime property.
 obj MTIR {
     has caller: Callable,
         args: dict[(int | str, object)],
-        call_params: dict[(str, object)];
+        call_params: dict[(str, object)],
+        ir_info: Info;
 
     @property
     def runtime -> MTRuntime {
-        return MTRuntime.factory(self.caller, self.args, self.call_params);
+        return MTRuntime.factory(self);
     }
 }
 
@@ -40,14 +43,10 @@ obj MTRuntime {
         resp_type: type | None,
         stream: bool,
         tools: list[Tool],
-        call_params: dict[(str, object)];
+        call_params: dict[(str, object)],
+        mtir: MTIR;
 
-    static def factory(
-        caller: Callable,
-        args: dict[(int | str, object)],
-        call_params: dict[(str, object)]
-    ) -> MTRuntime;
-
+    static def factory(mtir: MTIR) -> MTRuntime;
     def dispatch_params -> dict[str, object];
     def add_message(message: MessageType) -> None;
     def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];

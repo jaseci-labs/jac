@@ -15,7 +15,7 @@ Add these imports at the top of your `cl` block:
 ```jac
 # Note: useState is auto-injected, only useEffect needs explicit import
 cl import from react {useEffect}
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -486,8 +486,8 @@ When you add authentication to walkers:
 ```jac
 walker read_todos {
     # No special code needed - Jac handles it!
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 }
 ```

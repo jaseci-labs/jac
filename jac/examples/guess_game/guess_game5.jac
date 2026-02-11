@@ -5,7 +5,7 @@ import random;
 walker GuessGame {
     has guess: int;
 
-    can start with `root entry;
+    can start with Root entry;
     can process_guess with turn entry;
 }
 

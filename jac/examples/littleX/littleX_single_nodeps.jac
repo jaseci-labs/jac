@@ -6,27 +6,27 @@ node Profile {
 
     can update with update_profile entry {
         self.username = visitor.new_username;
-        report self ;
+        report self;
     }
 
     can get with get_profile entry {
         follwers = [
-            {"id": jid(i), "username": i.username} for i in [self-->(`?Profile)]
+            {"id": jid(i), "username": i.username} for i in [self-->(?:Profile)]
         ];
-        report {"user": self, "followers": follwers} ;
+        report {"user": self, "followers": follwers};
     }
 
     can follow with follow_request entry {
-        current_profile = [root-->(`?Profile)];
+        current_profile = [root-->(?:Profile)];
         current_profile[0] +>: Follow() :+> self;
-        report self ;
+        report self;
     }
 
     can un_follow with un_follow_request entry {
-        current_profile = [root-->(`?Profile)];
+        current_profile = [root-->(?:Profile)];
         follow_edge = [edge current_profile[0]->:Follow:->self];
-        del follow_edge[0] ;
-        report self ;
+        del follow_edge[0];
+        report self;
     }
 }
 
@@ -46,35 +46,35 @@ node Tweet {
 
     can update with update_tweet exit {
         self.content = visitor.updated_content;
-        report self ;
+        report self;
     }
 
     can delete with remove_tweet exit {
-        del self ;
+        del self;
         disengage;
     }
 
     can like_tweet with like_tweet entry {
-        current_profile = [root-->(`?Profile)];
+        current_profile = [root-->(?:Profile)];
         self +>: Like() :+> current_profile[0];
-        report self ;
+        report self;
     }
 
     can remove_like with remove_like entry {
-        current_profile = [root-->(`?Profile)];
+        current_profile = [root-->(?:Profile)];
         like_edge = [edge self->:Like:->current_profile[0]];
-        del like_edge[0] ;
-        report self ;
+        del like_edge[0];
+        report self;
     }
 
     can comment with comment_tweet entry {
-        current_profile = [root-->(`?Profile)];
+        current_profile = [root-->(?:Profile)];
         comment_node = current_profile[0] +>: Post() :+> Comment(
             content=visitor.content
         );
         grant(comment_node[0], level=ConnectPerm);
         self ++> comment_node[0];
-        report comment_node[0] ;
+        report comment_node[0];
     }
 
     def get_info -> TweetInfo {
@@ -86,10 +86,10 @@ node Tweet {
             likes=[i.username for i in [self->:Like:->]],
             comments=[
                 {
-                    "username": [i<--(`?Profile)][0].username,
+                    "username": [i<--(?:Profile)][0].username,
                     "id": jid(i),
                     "content": i.content
-                } for i in [self-->(`?Comment)]
+                } for i in [self-->(?:Comment)]
             ]
         );
     }
@@ -105,11 +105,11 @@ node Comment {
 
     can update with update_comment entry {
         self.content = visitor.updated_content;
-        report self ;
+        report self;
     }
 
     can delete with remove_comment entry {
-        del self ;
+        del self;
         disengage;
     }
 }
@@ -119,8 +119,8 @@ edge Like {}
 edge Post {}
 
 walker visit_profile {
-    can visit_profile with `root entry {
-        visit [-->(`?Profile)] else {
+    can visit_profile with Root entry {
+        visit [-->(?:Profile)] else {
             new_profile = here ++> Profile();
             grant(new_profile[0], level=ConnectPerm);
             visit new_profile;
@@ -135,16 +135,16 @@ walker update_profile(visit_profile) {
 walker get_profile(visit_profile) {}
 
 walker load_user_profiles {
-    can load_profiles with `root entry {
+    can load_profiles with Root entry {
         self.profiles: list = [];
         for each_root in allroots() {
-            profile = [each_root-->(`?Profile)][0];
+            profile = [each_root-->(?:Profile)][0];
             self.profiles.append({"name": profile.username, "id": jid(profile)});
         }
     }
 
     can report_profiles with exit {
-        report self.profiles ;
+        report self.profiles;
     }
 }
 
@@ -157,7 +157,7 @@ walker create_tweet(visit_profile) {
     can tweet with Profile entry {
         tweet_node = here +>: Post() :+> Tweet(content=self.content, embedding=[]);
         grant(tweet_node[0], level=ConnectPerm);
-        report tweet_node ;
+        report tweet_node;
     }
 }
 
@@ -184,14 +184,14 @@ walker load_feed(visit_profile) {
         results: list = [];
 
     can load with Profile entry {
-        visit [-->(`?Tweet)];
-        for user_node in [->:Follow:->(`?Profile)] {
-            visit [user_node-->(`?Tweet)];
+        visit [-->(?:Tweet)];
+        for user_node in [->:Follow:->(?:Profile)] {
+            visit [user_node-->(?:Tweet)];
         }
     }
 
     can report_feed with exit {
-        report self.results ;
+        report self.results;
     }
 }
 

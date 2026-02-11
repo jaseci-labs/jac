@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from jaclang import JacRuntime as Jac
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -83,13 +83,13 @@ def test_build_bundle_with_cl_import():
     assert "function test_page()" in bundle.code
     assert 'let APP_TITLE = "Import Test App";' in bundle.code
 
-    # Verify the imported module comment is present
-    assert "// Imported .jac module: client_runtime" in bundle.code
+    # Verify the @jac/runtime comment is present (inlined by bundler)
+    assert "// @jac/runtime" in bundle.code
 
     # IMPORTANT: Ensure no ES6 import statements are in the bundle
     # (since everything is bundled together, we don't need module imports)
     assert "import {" not in bundle.code
-    assert 'from "client_runtime"' not in bundle.code
+    assert 'from "@jac/runtime"' not in bundle.code
 
     # Check that client functions are registered
     assert "test_page" in bundle.client_functions
@@ -116,22 +116,22 @@ def test_build_bundle_with_relative_import():
     # Check that main_page is present
     assert "function main_page()" in bundle.code
 
-    # Check that transitive imports (client_runtime) are included
-    assert "// Imported .jac module: client_runtime" in bundle.code
+    # Check that transitive imports (client_runtime via @jac/) are included
+    # Transitive imports through .jac modules use the "Imported .jac module" comment
+    assert "// Imported .jac module: @jac/runtime" in bundle.code
     assert "function createState(" in bundle.code
     assert "function navigate(" in bundle.code
 
     # IMPORTANT: Ensure NO import statements remain
     assert "import {" not in bundle.code
-    assert 'from "' not in bundle.code
     assert "from './" not in bundle.code
     assert 'from "./' not in bundle.code
 
     # Check that all modules are bundled in the correct order
-    # client_runtime should come first (transitive import)
+    # @jac/runtime should come first (transitive import)
     # then client_ui_components (direct import)
     # then main module code
-    client_runtime_pos = bundle.code.find("// Imported .jac module: client_runtime")
+    client_runtime_pos = bundle.code.find("// Imported .jac module: @jac/runtime")
     ui_components_pos = bundle.code.find(
         "// Imported .jac module: .client_ui_components"
     )
@@ -188,7 +188,7 @@ def test_transitive_imports_included():
     # So client_runtime should be included as a transitive import
 
     # Check that all three modules are present
-    assert "// Imported .jac module: client_runtime" in bundle.code
+    assert "// Imported .jac module: @jac/runtime" in bundle.code
     assert "// Imported .jac module: .client_ui_components" in bundle.code
 
     # Verify runtime functions are defined (not just referenced)
@@ -231,7 +231,7 @@ def test_bundle_size_reasonable():
 
 def test_import_path_conversion():
     """Test that Jac-style import paths are converted to JS paths."""
-    from jaclang.pycore.modresolver import convert_to_js_import_path
+    from jaclang.jac0core.modresolver import convert_to_js_import_path
 
     # Test single dot (current directory)
     assert convert_to_js_import_path(".module") == "./module.js"

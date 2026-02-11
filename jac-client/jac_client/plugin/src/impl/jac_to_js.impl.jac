@@ -1,7 +1,11 @@
 """Add runtime imports to compiled JS code."""
 
 impl JacToJSCompiler.add_runtime_imports(self: JacToJSCompiler, js_code: str) -> str {
-    jac_jsx_import = 'import {__jacJsx, __jacSpawn} from "@jac-client/utils";';
+    # Skip adding import if this file IS the runtime (defines __jacJsx itself)
+    if "function __jacJsx(" in js_code {
+        return js_code;
+    }
+    jac_jsx_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
     return f"{jac_jsx_import}\n{js_code}";
 }
 

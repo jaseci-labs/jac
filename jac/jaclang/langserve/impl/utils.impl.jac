@@ -113,11 +113,7 @@ impl get_token_start(
         current_char += token_start_char;
         current_tok_index += 5;
     }
-    return (
-        current_line,
-        current_char,
-        (current_char + sem_tokens[(current_tok_index + 2)])
-    );
+    return (current_line, current_char, 0);
 }
 
 """Parse text and return a list of symbols."""
@@ -171,7 +167,7 @@ impl collect_all_symbols_in_scope(
     while current_tab is not None and current_tab not in visited {
         visited.add(current_tab);
         for (name, symbol) in current_tab.names_in_scope.items() {
-            if name not in dir(builtins) and symbol.sym_type != SymbolType.IMPL {
+            if name not in _BUILTIN_NAMES and symbol.sym_type != SymbolType.IMPL {
                 symbols.append(
                     lspt.CompletionItem(label=name, kind=label_map(symbol.sym_type))
                 );
@@ -218,13 +214,13 @@ impl label_map(sub_tab: SymbolType) -> lspt.CompletionItemKind {
 """Map the symbol node to an lspt.SymbolKind."""
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
     return lspt.SymbolKind.Function
-    if isinstance(sub_tab, (uni.Ability, uni.ImplDef))
+    if isinstance(sub_tab, uni.Ability)
+    else lspt.SymbolKind.Enum
+    if isinstance(sub_tab, uni.Enum)
     else lspt.SymbolKind.Class
     if isinstance(sub_tab, (uni.Archetype, uni.ImplDef))
     else lspt.SymbolKind.Module
     if isinstance(sub_tab, uni.Module)
-    else lspt.SymbolKind.Enum
-    if isinstance(sub_tab, (uni.Enum, uni.ImplDef))
     else lspt.SymbolKind.Variable;
 }
 
@@ -251,12 +247,13 @@ impl owner_sym(table: UniScopeNode) -> Optional[Symbol] {
 }
 
 """Recursively collect symbols from the AST."""
-impl get_symbols_for_outline(<>node: UniScopeNode) -> list[lspt.DocumentSymbol] {
+impl get_symbols_for_outline(`node: UniScopeNode) -> list[lspt.DocumentSymbol] {
     symbols = [];
-    for (key, item) in <>node.names_in_scope.items() {
-        if key in dir(builtins)
-        or item in [owner_sym(tab) for tab in <>node.kid_scope]
-        or item.decl.loc.mod_path != <>node.loc.mod_path {
+    owner_syms = {owner_sym(tab) for tab in `node.kid_scope};
+    for (key, item) in `node.names_in_scope.items() {
+        if key in _BUILTIN_NAMES
+        or item in owner_syms
+        or item.decl.loc.mod_path != `node.loc.mod_path {
             continue;
         }
         pos = create_range(item.decl.loc);
@@ -271,8 +268,8 @@ impl get_symbols_for_outline(<>node: UniScopeNode) -> list[lspt.DocumentSymbol] 
     }
     for sub_tab in [
         i
-        for i in <>node.kid_scope
-        if i.loc.mod_path == <>node.loc.mod_path
+        for i in `node.kid_scope
+        if i.loc.mod_path == `node.loc.mod_path
     ] {
         sub_symbols = get_symbols_for_outline(sub_tab);
         if isinstance(
@@ -295,18 +292,30 @@ impl get_symbols_for_outline(<>node: UniScopeNode) -> list[lspt.DocumentSymbol] 
     return symbols;
 }
 
-"""Find index."""
+"""Find index using single-pass delta decoding."""
 impl find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int] {
-    index = None;
-    token_start_list = [
-        get_token_start(i, sem_tokens) for i in range(0, len(sem_tokens), 5)
-    ];
-    for (i, j) in enumerate(token_start_list) {
-        if j[0] == line and j[1] <= char <= j[2] {
-            return i;
+    current_line = 0;
+    current_char = 0;
+    token_idx = 0;
+    i = 0;
+    while (i + 4) < len(sem_tokens) {
+        token_line_delta = sem_tokens[i];
+        token_start_char = sem_tokens[(i + 1)];
+        token_length = sem_tokens[(i + 2)];
+        if token_line_delta > 0 {
+            current_line += token_line_delta;
+            current_char = token_start_char;
+        } else {
+            current_char += token_start_char;
         }
+        col_end = current_char + token_length;
+        if current_line == line and current_char <= char <= col_end {
+            return token_idx;
+        }
+        token_idx += 1;
+        i += 5;
     }
-    return index;
+    return None;
 }
 
 """Check if the position falls within the node's location."""
@@ -330,17 +339,17 @@ impl position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
 
 """Return the deepest symbol node that contains the given position."""
 impl find_deepest_symbol_node_at_pos(
-    <>node: uni.UniNode, line: int, character: int
+    `node: uni.UniNode, line: int, character: int
 ) -> Optional[uni.AstSymbolNode] {
     last_symbol_node = None;
-    if position_within_node(<>node, line, character) {
-        if isinstance(<>node, uni.AstSymbolNode) {
-            last_symbol_node = <>node;
+    if position_within_node(`node, line, character) {
+        if isinstance(`node, uni.AstSymbolNode) {
+            last_symbol_node = `node;
         }
         for child in [
             i
-            for i in <>node.kid
-            if i.loc.mod_path == <>node.loc.mod_path
+            for i in `node.kid
+            if i.loc.mod_path == `node.loc.mod_path
         ] {
             if position_within_node(child, line, character) {
                 deeper_node = find_deepest_symbol_node_at_pos(child, line, character);
@@ -365,7 +374,7 @@ impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
 }
 
 """Debounce decorator for async functions."""
-impl debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
+impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
     def decorator(fn: T) -> Callable[P, Awaitable[None]] {
         @wraps(fn)
         async def debounced(*args: P.args, **kwargs: P.kwargs) -> None {
@@ -377,7 +386,7 @@ impl debounce(<>wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] 
             }
             async def debounced_coro -> None {
                 try {
-                    await asyncio.sleep(<>wait);
+                    await asyncio.sleep(`wait);
                     await call_it();
                 } except asyncio.CancelledError {
                     ;

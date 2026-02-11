@@ -17,7 +17,7 @@ import from uuid { UUID }
 import redis;
 import from pymongo { MongoClient }
 import from pymongo.errors { ConnectionFailure }
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,
     PersistentMemory,
@@ -46,7 +46,7 @@ obj RedisBackend(CacheMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -74,7 +74,9 @@ MongoDB persistence backend - implements PersistentMemory for durable L3 storage
 Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
-    has client: (MongoClient | None) = None,
+    has client: MongoClient | None = None,
+        db: Any by postinit,
+        collection: Any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = 'anchors',
         mongo_url: str = _db_config['mongodb_uri'];
@@ -86,7 +88,7 @@ obj MongoBackend(PersistentMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];

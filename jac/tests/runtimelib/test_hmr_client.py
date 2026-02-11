@@ -33,7 +33,7 @@ class TestHMRWalkerReload:
         app_file.write_text(
             """
 walker get_value {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"value": 1};
     }
 }
@@ -57,7 +57,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"value": 2};
     }
 }
@@ -90,7 +90,7 @@ walker get_value {
 glob VERSION = 1;
 
 walker get_version {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"version": VERSION};
     }
 }
@@ -114,7 +114,7 @@ walker get_version {
 glob VERSION = 2;
 
 walker get_version {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"version": VERSION};
     }
 }
@@ -140,7 +140,7 @@ walker get_version {
         app_file.write_text(
             """
 walker walker_one {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "one"};
     }
 }
@@ -164,13 +164,13 @@ walker walker_one {
             app_file.write_text(
                 """
 walker walker_one {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "one"};
     }
 }
 
 walker walker_two {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"name": "two"};
     }
 }
@@ -203,7 +203,7 @@ class TestHMRMultipleReloads:
 glob COUNTER = 0;
 
 walker get_counter {
-    can enter with `root entry {
+    can enter with Root entry {
         report {"counter": COUNTER};
     }
 }
@@ -222,7 +222,7 @@ walker get_counter {
 glob COUNTER = {i};
 
 walker get_counter {{
-    can enter with `root entry {{
+    can enter with Root entry {{
         report {{"counter": COUNTER}};
     }}
 }}
@@ -297,7 +297,7 @@ class TestHMRStatePreservation:
         app_file.write_text(
             """
 walker get_status {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "v1"};
     }
 }
@@ -318,7 +318,7 @@ walker get_status {
             app_file.write_text(
                 """
 walker get_status {
-    can check with `root entry {
+    can check with Root entry {
         report {"status": "v2"};
     }
 }
@@ -348,14 +348,14 @@ node Secret {
 
 walker store_secret {
     has data: str;
-    can store with `root entry {
+    can store with Root entry {
         here ++> Secret(data=self.data);
         report {"stored": self.data};
     }
 }
 
 walker get_secrets {
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
     }
     can gather with Secret entry {
@@ -412,7 +412,7 @@ class TestHMRErrorHandling:
         app_file.write_text(
             """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         report {"value": 1};
     }
 }
@@ -433,7 +433,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         # SYNTAX ERROR - missing closing brace
         report {"value": 2};
 }
@@ -448,7 +448,7 @@ walker get_value {
             app_file.write_text(
                 """
 walker get_value {
-    can check with `root entry {
+    can check with Root entry {
         report {"value": 3};
     }
 }
@@ -489,7 +489,7 @@ def compute(x: int) -> int {
             client.register_user("testuser", "password123")
 
             # Test v1 logic
-            resp1 = client.post("/function/compute", json={"args": {"x": 5}})
+            resp1 = client.post("/function/compute", json={"x": 5})
             assert resp1.ok
             assert resp1.data.get("result") == 10  # 5 * 2
 
@@ -505,7 +505,7 @@ def compute(x: int) -> int {
             client.reload()
 
             # Test v2 logic - should now multiply by 3
-            resp2 = client.post("/function/compute", json={"args": {"x": 5}})
+            resp2 = client.post("/function/compute", json={"x": 5})
             assert resp2.ok
             assert resp2.data.get("result") == 15, (  # 5 * 3
                 f"Expected 15 (5*3), got {resp2.data.get('result')} - code change not applied"
@@ -650,4 +650,133 @@ cl {
         )
         assert not wrong_output.exists(), (
             f"File incorrectly written to {wrong_output} instead of {correct_output}"
+        )
+
+
+class TestHMRAssetServing:
+    """Tests for HMR handling of static assets like images."""
+
+    @pytest.fixture
+    def temp_project(self, tmp_path: Path) -> Generator[Path, None, None]:
+        """Create a temporary project with asset structure."""
+        import uuid
+
+        unique_dir = tmp_path / f"project_{uuid.uuid4().hex[:8]}"
+        unique_dir.mkdir(parents=True, exist_ok=True)
+        assets_dir = unique_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        compiled_dir = unique_dir / ".jac" / "client" / "compiled"
+        compiled_dir.mkdir(parents=True, exist_ok=True)
+        yield unique_dir
+
+    def test_image_asset_copied_on_add(self, temp_project: Path) -> None:
+        """Test that image assets are correctly copied to compiled directory when added."""
+        # Create a sample image file (mock as a small binary file)
+        image_file = temp_project / "assets" / "logo.png"
+        image_content = b"fake_png_data"
+        image_file.write_bytes(image_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._copy_frontend_files(str(image_file))
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        )
+        assert output_file.exists(), "Asset file was not copied to compiled directory"
+        assert output_file.read_bytes() == image_content, "Asset content does not match"
+
+    def test_image_asset_deleted_when_source_deleted(self, temp_project: Path) -> None:
+        """Test that compiled asset is deleted when source asset is deleted."""
+        image_file = temp_project / "assets" / "logo.png"
+        image_content = b"fake_png_data"
+        image_file.write_bytes(image_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._copy_frontend_files(str(image_file))
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "assets" / "logo.png"
+        )
+        assert output_file.exists(), "Asset file was not copied to compiled directory"
+        image_file.unlink()
+        reloader._copy_frontend_files(str(image_file))
+        assert not output_file.exists(), (
+            "Compiled asset was not deleted when source was deleted"
+        )
+
+    def test_tsx_component_copied_and_updated_on_change(
+        self, temp_project: Path
+    ) -> None:
+        """Test that .tsx component files are copied and updated in compiled directory during HMR."""
+        components_dir = temp_project / "components"
+        components_dir.mkdir(parents=True, exist_ok=True)
+
+        tsx_file = components_dir / "Button.tsx"
+        initial_content = """import React from 'react';
+
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+}
+
+const Button: React.FC<ButtonProps> = ({ children, onClick }) => {
+  return (
+    <button onClick={onClick} className="btn">
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+"""
+        tsx_file.write_text(initial_content)
+
+        watcher = JacFileWatcher(watch_paths=[str(temp_project)], _debounce_ms=50)
+        reloader = HotReloader(
+            base_path=str(temp_project), module_name="app", watcher=watcher
+        )
+
+        reloader._copy_frontend_files(str(tsx_file))
+        output_file = (
+            temp_project / ".jac" / "client" / "compiled" / "components" / "Button.tsx"
+        )
+        assert output_file.exists(), (
+            "TSX component file was not copied to compiled directory"
+        )
+        assert output_file.read_text() == initial_content, (
+            "TSX component content does not match"
+        )
+
+        # Modify the .tsx file content
+        updated_content = """import React from 'react';
+
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  variant?: 'primary' | 'secondary';
+}
+
+const Button: React.FC<ButtonProps> = ({ children, onClick, variant = 'primary' }) => {
+  return (
+    <button onClick={onClick} className={`btn btn-${variant}`}>
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+"""
+        tsx_file.write_text(updated_content)
+        reloader._copy_frontend_files(str(tsx_file))
+        assert output_file.exists(), (
+            "TSX component file should still exist after update"
+        )
+        assert output_file.read_text() == updated_content, (
+            "TSX component content was not updated in compiled directory"
         )

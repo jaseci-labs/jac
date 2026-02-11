@@ -13,7 +13,7 @@ impl level.run_game{
                 self.level_config.map = next_level;
             }
         } else {
-            self.level_config.map = [[<--][0]-->](`?level)(?level_id==visitor.last_level_id)[
+            self.level_config.map = [[<--][0]-->](?:level)(?level_id==visitor.last_level_id)[
                 0
             ].level_config.map;
         }

@@ -14,7 +14,8 @@ import pytest
 
 from jaclang import JacRuntime as Jac
 from jaclang.cli.commands import execution, transform  # type: ignore[attr-defined]
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.bccache import get_global_cache_dir
+from jaclang.jac0core.program import JacProgram
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 
@@ -334,10 +335,10 @@ def test_deep_imports_interp_mode(
     for mod_name in list(sys.modules.keys()):
         if "deep_import_interp" in mod_name:
             del sys.modules[mod_name]
-    # Delete bytecode cache files to force recompilation
-    cache_dir = Path.cwd() / ".jac" / "cache"
+    # Delete bytecode cache files to force recompilation (from global cache dir)
+    cache_dir = get_global_cache_dir()
     if cache_dir.exists():
-        for cache_file in cache_dir.glob("deep_import_interp*.jbc"):
+        for cache_file in cache_dir.glob("*deep_import*"):
             cache_file.unlink()
 
     with capture_stdout() as captured_output:
@@ -583,7 +584,7 @@ def test_pyfunc_1(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as uni
+    import jaclang.jac0core.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "pyfunc_1.py")
@@ -608,7 +609,7 @@ def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as uni
+    import jaclang.jac0core.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "pyfunc_2.py")
@@ -624,14 +625,14 @@ def test_pyfunc_2(fixture_path: Callable[[str], str]) -> None:
     assert "class X {\n    with entry {\n        a_b = 67;" in output
     assert "br = b'Hello\\\\\\\\nWorld'" in output
     assert "class Circle {\n    def init(self: Circle, radius: float" in output
-    assert "<>node = 90;\n    print(<>node);\n" in output
+    assert "`node = 90;\n    print(`node);\n" in output
 
 
 def test_pyfunc_3(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as uni
+    import jaclang.jac0core.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "pyfunc_3.py")
@@ -654,7 +655,7 @@ def test_py2jac(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as ast
+    import jaclang.jac0core.unitree as ast
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py2jac.py")
@@ -677,7 +678,7 @@ def test_py2jac_params(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as ast
+    import jaclang.jac0core.unitree as ast
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py2jac_params.py")
@@ -691,11 +692,11 @@ def test_py2jac_params(fixture_path: Callable[[str], str]) -> None:
             prog=JacProgram(),
         ).ir_out.unparse()
     assert (
-        "def isinstance(<>obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
+        "def isinstance(`obj: object, class_or_tuple: _ClassInfo, /) -> bool {"
         in output
     )
     assert (
-        "def len(<>obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
+        "def len(`obj: Sized, astt: object, /, z: int, j: str, a: int = 90) -> int {"
         in output
     )
 
@@ -704,7 +705,7 @@ def test_py2jac_empty_file(fixture_path: Callable[[str], str]) -> None:
     """Test py ast to Jac ast conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as ast
+    import jaclang.jac0core.unitree as ast
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py2jac_empty.py")
@@ -724,7 +725,7 @@ def test_py2jac_augassign_and_doc(fixture_path: Callable[[str], str]) -> None:
     """Ensure augmented assigns avoid redecl and nested docstrings terminate."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as ast
+    import jaclang.jac0core.unitree as ast
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py2jac_augassign_doc.py")
@@ -753,7 +754,7 @@ def test_py2jac_reassign_semantics(
     """
     import ast as py_ast
 
-    import jaclang.pycore.unitree as ast
+    import jaclang.jac0core.unitree as ast
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py2jac_reassign.py")
@@ -1085,7 +1086,7 @@ def test_walker_dynamic_update(
     # and won't run when disengage is called during child traversal)
     new_behavior = """
     # New behavior added during runtime
-    can announce with `root entry {
+    can announce with Root entry {
         "bar_walk has been updated with new behavior!" |> print;
         }
     }
@@ -1500,7 +1501,7 @@ def test_py_namedexpr(fixture_path: Callable[[str], str]) -> None:
     """Ensure NamedExpr nodes are converted to AtomUnit."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as uni
+    import jaclang.jac0core.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py_namedexpr.py")
@@ -1520,7 +1521,7 @@ def test_py_bool_parentheses(fixture_path: Callable[[str], str]) -> None:
     """Ensure boolean expressions preserve parentheses during conversion."""
     import ast as py_ast
 
-    import jaclang.pycore.unitree as uni
+    import jaclang.jac0core.unitree as uni
     from jaclang.compiler.passes.main import PyastBuildPass
 
     py_out_path = os.path.join(fixture_path("./"), "py_bool_expr.py")

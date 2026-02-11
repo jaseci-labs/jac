@@ -1,10 +1,10 @@
-"""Sample Jac module with cl import from jac:client_runtime."""
+"""Sample Jac module with cl import from @jac/runtime."""
 
-cl import from jac:client_runtime { renderJsxTree, jacLogin, }
+cl import from "@jac/runtime" { renderJsxTree, jacLogin, }
 
-cl glob APP_TITLE: str = "Import Test App";
+cl glob: pub APP_TITLE: str = "Import Test App";
 
-cl def test_page() {
+cl def: pub test_page() -> JsxElement {
     return <div class="container">
         <h1>
             {APP_TITLE}

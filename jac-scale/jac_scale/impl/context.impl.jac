@@ -6,7 +6,7 @@ not per-context parameters.
 
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
-    import from jaclang.pycore.constructs { Anchor, NodeAnchor, Root }
+    import from jaclang.jac0core.constructs { Anchor, NodeAnchor, Root }
     # ScaleTieredMemory gets storage config from environment variables
     self.mem = ScaleTieredMemory();
     self.reports: list[Any] = [];
@@ -21,4 +21,5 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     # Default user_root and entry_node to system_root
     self.user_root = self.system_root;
     self.entry_node = self.system_root;
+    self.call_state: ContextVar[CallState] = ContextVar('call_state');
 }

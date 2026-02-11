@@ -1,6 +1,6 @@
 """Example Jac program for REST API server."""
 
-cl import from jac:client_runtime { renderJsxTree, }
+cl import from "@jac/runtime" { renderJsxTree, }
 
 # Define some nodes
 node Task {
@@ -19,13 +19,14 @@ walker CreateTask {
     has title: str;
     has priority: int = 1;
 
-    can create with `root entry {
+    can create with Root entry {
         task_list = here ++> Task(title=self.title, priority=self.priority);
-        task = task_list[0] if task_list else None;
+        task = task_list[0];
         if task {
             print("Created task: " + task.title);
             report task ;
         }
+        root spawn CompleteTask(title=self.title);
     }
 }
 
@@ -33,12 +34,29 @@ walker CreateTask {
 walker ListTasks {
     has tasks: list = [];
 
-    can collect with `root entry {
+    can collect with Root entry {
         visit [-->];
+        completed_tasks_walker = root spawn ListCompletedTasks();
+        report completed_tasks_walker.completed_tasks;
     }
 
     can gather with Task entry {
         print("Found task: " + here.title);
+    }
+}
+
+# Define a walker to List completed Tasks
+walker ListCompletedTasks {
+    has completed_tasks: list = [];
+
+    can collect with Root entry {
+        visit [-->];
+    }
+    can gather with Task entry {
+        if here.completed {
+            self.completed_tasks += [here];
+            print("Found Completed task: " + here.title);
+        }
     }
 }
 
@@ -52,7 +70,7 @@ walker GetTask {
 walker CompleteTask {
     has title: str;
 
-    can search with `root entry {
+    can search with Root entry {
         visit [-->];
     }
 
@@ -76,7 +94,7 @@ def greet(name: str = "World") -> str {
 
 cl glob WELCOME_TITLE: str = "Runtime Test";
 
-cl def client_page() {
+cl def:pub client_page() {
     return <section class="welcome">
         <h1>
             {WELCOME_TITLE}

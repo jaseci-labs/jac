@@ -25,6 +25,13 @@
 
 Whether you're developing locally with `jac start` or deploying to production with `jac start --scale`, you get the same powerful features with the flexibility to choose your deployment strategy.
 
+### 4. Single Sign-On (SSO) Support
+
+- **Google SSO**: Built-in support for Google Sign-In out of the box
+- **Extensible Architecture**: Easily add other providers (GitHub, Microsoft, etc.)
+- **Secure Authentication**: Integrated with JWT for secure session management
+- **User Management**: Automatic account creation and linking
+
 ## Prerequisites
 
 - kubenetes(K8s) installed
@@ -433,7 +440,7 @@ import asyncio;
 async walker FetchData {
     has url: str;
 
-    async can fetch with `root entry {
+    async can fetch with Root entry {
         report {"status": "fetching"};
         await asyncio.sleep(0.1);  # Simulate API call
         report {"status": "completed", "data": "result"};
@@ -466,7 +473,7 @@ async walker FetchData {
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
-| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey'` |
+| `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey_for_testing_only!'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
 | `SSO_HOST` | SSO host URL | `'http://localhost:8000/sso'` |
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |

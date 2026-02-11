@@ -4,7 +4,7 @@ import logging;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from uuid { UUID }
-import from jaclang.pycore.archetype { Anchor, Root }
+import from jaclang.jac0core.archetype { Anchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
@@ -101,7 +101,7 @@ impl RedisBackend.close -> None {
 }
 
 """Check if an anchor is in the cache."""
-impl RedisBackend.has(id: UUID) -> bool {
+impl RedisBackend.`has(id: UUID) -> bool {
     return self.exists(id);
 }
 

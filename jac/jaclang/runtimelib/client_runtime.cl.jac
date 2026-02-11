@@ -1,11 +1,17 @@
 """Client-side runtime for Jac JSX and walker interactions."""
 
+# JSX element representation
+obj JsxElement {
+    has tag: any,
+        props: dict = {},
+        children: list = [];
+}
 # JSX factory function
 def __jacJsx(
     tag: any, props: dict = {}, children: list = []
-) -> dict;
+) -> JsxElement;
 # DOM rendering function
-def renderJsxTree(node: any, container: any) -> None;
+def renderJsxTree(node: JsxElement, container: any) -> None;
 # Internal: Build DOM from JSX tree
 def __buildDom(node: any) -> any;
 # Internal: Apply property to DOM element
@@ -25,7 +31,9 @@ glob __jacReactiveContext = {
          "currentComponent": None,  # Current component ID being rendered
          "currentEffect": None,  # Current effect for dependency tracking
          "router": None,  # Global router instance
-         "mountedComponents": {}  # Track which components have mounted (for onMount)
+         "mountedComponents": {},  # Track which components have mounted (for onMount)
+         "hookIndex": 0,  # Current hook index during render
+         "hooks": []
      };
 # Create a reactive signal (primitive value)
 # Returns [getter, setter] tuple for reactive primitive value
@@ -89,8 +97,8 @@ def Link(props: dict) -> any;
 def navigate(path: str) -> None;
 # Hook to access router in components
 def useRouter -> dict;
-# Internal: Get current hash path
-def __jacGetHashPath -> str;
+# Internal: Get current path from browser URL
+def __jacGetPath -> str;
 # ============================================================================
 # Walker spawn function
 # ============================================================================
@@ -143,3 +151,13 @@ def __jacEnsureHydration(moduleName: str) -> None;
 def __jacRegisterClientModule(
     moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
 ) -> None;
+
+# ============================================================================
+# React-style API aliases for compatibility
+# ============================================================================
+# These provide React-like API using the core reactive primitives
+def useState(
+    initialValue: any
+) -> list;
+
+def useEffect(effectFn: any, deps: list = []) -> None;

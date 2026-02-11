@@ -1,5 +1,6 @@
-"""Make convenient check.Equal(...) etc."""
+import from jaclang.cli.console { console }
 
+"""Make convenient check.Equal(...) etc."""
 impl JacTestCheck.__getattr__(name: str) -> object {
     return getattr(JacTestCheck.test_case, name);
 }
@@ -63,7 +64,7 @@ impl JacTestCheck.run_test(
     runner = JacTextTestRunner(max_failures=maxfail, failfast=xit, verbosity=verb);
     result = runner.run(test_suite);
     if result.wasSuccessful() {
-        print('Passed successfully.');
+        console.print('Passed successfully.');
     } else {
         fails = len(result.failures);
         JacTestCheck.failcount += fails;
@@ -97,8 +98,8 @@ impl JacTestResult.stop -> None {
 }
 
 """Count failures and stop."""
-impl JacTestResult.addFailure(<>test: Any, err: Any) -> None {
-    super.addFailure(<>test, err);
+impl JacTestResult.addFailure(`test: Any, err: Any) -> None {
+    super.addFailure(`test, err);
     self.failures_count += 1;
     if ((self.max_failures is not None) and (self.failures_count >= self.max_failures)) {
         self.stop();

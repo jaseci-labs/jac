@@ -6,7 +6,7 @@ import from typing { Any, cast }
 import from uuid { UUID }
 import from pymongo { MongoClient, UpdateOne }
 import from pymongo.errors { ConnectionFailure }
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);
@@ -110,7 +110,7 @@ impl MongoBackend.close -> None {
 }
 
 """Check if an anchor exists in MongoDB."""
-impl MongoBackend.has(id: UUID) -> bool {
+impl MongoBackend.`has(id: UUID) -> bool {
     if self.client is None {
         return False;
     }

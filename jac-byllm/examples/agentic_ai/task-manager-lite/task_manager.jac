@@ -21,7 +21,7 @@ node TaskHandling {
     }
 
     def summarize_tasks -> str {
-        scheduled_tasks = [self-->(`?Task)];
+        scheduled_tasks = [self-->(?:Task)];
         return str(scheduled_tasks);
     }
 
@@ -38,7 +38,7 @@ node TaskHandling {
             "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
-        } ;
+        };
     }
 }
 
@@ -56,7 +56,7 @@ node EmailHandling {
             "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
-        } ;
+        };
     }
 }
 
@@ -70,24 +70,24 @@ node GeneralChat {
             "utterance": visitor.cur_task.task,
             "response": response,
             "node_type": self.__class__.__name__
-        } ;
+        };
     }
 }
 
 enum RoutingNodes { TASK_HANDLING, EMAIL_HANDLING, GENERAL_CHAT }
 
-sem RoutingNodes. TASK_HANDLING= "Creating/deleting/updating/summarizing tasks to TODO";
-sem RoutingNodes. EMAIL_HANDLING= "EmailHandling node for composing and managing emails";
-sem RoutingNodes. GENERAL_CHAT= "Get intelligent answers, productivity advice, and general AI assistance across various topics.";
+sem RoutingNodes.TASK_HANDLING = "Creating/deleting/updating/summarizing tasks to TODO";
+sem RoutingNodes.EMAIL_HANDLING = "EmailHandling node for composing and managing emails";
+sem RoutingNodes.GENERAL_CHAT = "Get intelligent answers, productivity advice, and general AI assistance across various topics.";
 
 obj TaskPartition {
     has task: str,
         agent_type: RoutingNodes;
 }
 
-sem TaskPartition= "Distinct Tasks within Main Task (Can be the main task itself)";
-sem TaskPartition. task= "Description of the Task to be performed";
-sem TaskPartition. agent_type= "Type of the agent that should handle this Task";
+sem TaskPartition = "Distinct Tasks within Main Task (Can be the main task itself)";
+sem TaskPartition.task = "Description of the Task to be performed";
+sem TaskPartition.agent_type = "Type of the agent that should handle this Task";
 
 walker task_manager {
     has utterance: str = "",
@@ -95,7 +95,7 @@ walker task_manager {
 
     def route_to_node(utterance: str) -> RoutingNodes by llm();
     def plan_tasks(main_task: str) -> list[TaskPartition] by llm();
-    can execute with `root entry {
+    can execute with Root entry {
         # routed_node_name = self.route_to_node(self.utterance);
         subtasks = self.plan_tasks(self.utterance);
 
@@ -108,7 +108,7 @@ walker task_manager {
         };
         for subtask in subtasks {
             node_type = node_map[subtask.agent_type];
-            routed_node = [-->(`?node_type)];
+            routed_node = [-->(?:node_type)];
             if not routed_node {
                 routed_node = here ++> node_type();
             }

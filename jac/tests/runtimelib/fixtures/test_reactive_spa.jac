@@ -1,6 +1,6 @@
 """Complete SPA example using reactive state and routing."""
 
-cl import from jac:client_runtime {
+cl import from "@jac/runtime" {
     createSignal,
     createState,
     createRouter,
@@ -14,7 +14,7 @@ cl glob setAppState = _appState[1];
 
 cl {
     # Counter component using reactive signal
-    def CounterApp()  -> any {
+    def CounterApp()  -> JsxElement {
         [count, setCount] = createSignal(0);
 
         def increment()  -> None {
@@ -43,7 +43,7 @@ cl {
     }
 
     # Todo list component using reactive state
-    def TodoApp()  -> any {
+    def TodoApp()  -> JsxElement {
         [todos, setTodos] = createState({"items": [], "nextId": 1});
 
         def addTodo(text: str) -> None {
@@ -64,7 +64,7 @@ cl {
     }
 
     # Home component
-    def Home()  -> any {
+    def Home()  -> JsxElement {
         return <div>
             <h1>
                 Home
@@ -81,7 +81,7 @@ cl {
     }
 
     # Main app with router
-    def App()  -> any {
+    def App()  -> JsxElement {
         router = createRouter(
             [
                 Route(path="/", component=Home),

@@ -6,7 +6,7 @@ walker update_graph {
     has buddy_schedule: dict = {};
     has user_level_buddy_schedule: dict = {};
 
-    async can go_to_user with `root entry;
+    async can go_to_user with Root entry;
     async can go_to_day with user_root entry;
     async can update_day_graph with day entry;
 }

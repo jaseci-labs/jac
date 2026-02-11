@@ -1,4 +1,4 @@
-import from jaclang.pycore.archetype { AccessLevel }
+import from jaclang.jac0core.archetype { AccessLevel }
 
 node A {
     has val1: str = "NO_ACCESS";
@@ -22,15 +22,15 @@ node A {
 }
 
 walker create_other_root {
-    can enter with `root entry {
-        other_root = `root().__jac__;
+    can enter with Root entry {
+        other_root = Root().__jac__;
         save(other_root);
         print(other_root.id);
     }
 }
 
 walker create {
-    can enter with `root entry {
+    can enter with Root entry {
         a = root ++> A();
         print(a[0].__jac__.id);
     }

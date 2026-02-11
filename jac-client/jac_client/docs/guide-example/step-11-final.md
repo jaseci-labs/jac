@@ -18,7 +18,7 @@ cl import from react {
     useState,
     useEffect
 }
-cl import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     Router,
     Routes,
     Route,
@@ -41,15 +41,15 @@ node Todo {
 walker create_todo {
     has text: str;
 
-    can create with `root entry {
+    can create with Root entry {
         new_todo = here ++> Todo(text=self.text);
         report new_todo ;
     }
 }
 
 walker read_todos {
-    can read with `root entry {
-        visit [-->(`?Todo)];
+    can read with Root entry {
+        visit [-->(?:Todo)];
     }
 
     can report_todos with Todo entry {
@@ -861,23 +861,10 @@ You've completed the tutorial! Here are some ideas to continue learning:
 
 **Deployment options:**
 
-- Jac Cloud (easiest)
 - Vercel
 - Netlify
 - Digital Ocean
 - AWS
-
-**Steps:**
-
-```bash
-# Install Jac Cloud
-pip install jac-cloud
-
-# Deploy
-jac cloud deploy app.jac
-
-# Your app is now live!
-```
 
 ### 4. Learn Advanced Jac Features
 

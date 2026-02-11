@@ -2,12 +2,19 @@
 import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
+import from enum { StrEnum }
 import from typing { TYPE_CHECKING, Any, ClassVar, override }
+
+enum APIProtocol ( StrEnum ) {
+    HTTP = 'http',
+    WEBHOOK = 'webhook',
+    WEBSOCKET = 'websocket'
+}
 
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
-        import from jaclang.pycore.constructs { AccessLevel, NodeArchetype }
+        import from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
         import from jaclang { JacRuntimeInterface }
         jid: Callable[(..., Any)];
         jobj: Callable[(..., Any)];
@@ -16,6 +23,7 @@ with entry {
         allroots: Callable[(..., Any)];
         save: Callable[(..., Any)];
         commit: Callable[(..., Any)];
+        store: Callable[(..., Any)];
         NoPerm: IntEnum;
         ReadPerm: IntEnum;
         ConnectPerm: IntEnum;
@@ -41,10 +49,12 @@ def _get_save -> Callable[..., Any];
 
 def _get_commit -> Callable[..., Any];
 
+def _get_store -> Callable[..., Any];
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
-    <>node: (NodeArchetype | None) = None,
+    `node: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,
@@ -57,6 +67,8 @@ def printgraph(
 
 def _jac_graph_json(file: (str | None) = None) -> str;
 
+def restspec(**specs: Any) -> Callable;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -66,8 +78,11 @@ glob __all__ = [
          'allroots',
          'save',
          'commit',
+         'store',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',
-         'WritePerm'
+         'WritePerm',
+         'restspec',
+         'APIProtocol'
      ];

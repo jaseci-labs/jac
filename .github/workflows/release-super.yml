@@ -1,0 +1,28 @@
+name: Release jac-super to PYPI
+
+on: workflow_dispatch
+
+jobs:
+  release-super:
+    name: Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jac-super
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: |
+          pip install build twine
+      - name: Build and publish package
+        run: |
+          python -m build
+          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

@@ -25,7 +25,8 @@ _PROJECT_ROOT = Path(__file__).parent
 
 def _make_path_fn(*parts: str) -> Callable[[str], str]:
     """Create a path resolver function for the given subdirectory parts."""
-    base = _JACLANG_DIR.joinpath(*parts) if parts else _JACLANG_DIR.parent / "examples"
+    _jac_dir = _PROJECT_ROOT / "jac"
+    base = (_jac_dir / "jaclang").joinpath(*parts) if parts else _jac_dir / "examples"
     return lambda f: str((base / f).resolve())
 
 
@@ -104,7 +105,7 @@ def get_micro_jac_files() -> list[str]:
     Uses a fixed list of files from fixtures_list.py for deterministic testing.
     To add new test files, update MICRO_JAC_FILES in jac/tests/fixtures_list.py.
     """
-    base_dir = _JACLANG_DIR.parent
+    base_dir = _PROJECT_ROOT / "jac"
     return [os.path.normpath(os.path.join(base_dir, f)) for f in MICRO_JAC_FILES]
 
 
@@ -146,7 +147,7 @@ _AST_EXCLUDED = {
 
 def get_ast_snake_case_names() -> list[str]:
     """Get AST node names in snake_case format."""
-    from jaclang.pycore.helpers import get_uni_nodes_as_snake_case as ast_snakes
+    from jaclang.jac0core.helpers import get_uni_nodes_as_snake_case as ast_snakes
 
     return [x for x in ast_snakes() if x not in _AST_EXCLUDED]
 
@@ -214,7 +215,7 @@ def isolate_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     skip setting base_path if one is already set, so this provides
     default isolation.
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     original_base_path = Jac.base_path_dir
     original_exec_ctx = Jac.exec_ctx

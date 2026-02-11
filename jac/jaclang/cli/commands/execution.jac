@@ -22,11 +22,18 @@ glob registry = get_registry();
         Arg.create(
             "cache", typ=bool, default=True, help="Enable compilation cache", short="c"
         ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
         ("jac run hello.jac", "Run a simple program"),
         ("jac run app.jac --no-cache", "Run without caching"),
+        ("jac run app.jac --profile prod", "Run with production profile"),
 
     ],
     group="execution"
@@ -46,6 +53,12 @@ def run(filename: str, main: bool = True, cache: bool = True) -> int;
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create("root", default="", help="Root executor ID", short="r"),
         Arg.create("node", default="", help="Starting node ID", short="n"),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
@@ -60,8 +73,8 @@ def enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    <>root: str = "",
-    <>node: str = ""
+    `root: str = "",
+    `node: str = ""
 ) -> int;
 
 """Start REST API server."""
@@ -85,11 +98,11 @@ def enter(
             short="f"
         ),
         Arg.create(
-            "watch",
+            "dev",
             typ=bool,
             default=False,
             help="Enable HMR (Hot Module Replacement) mode",
-            short="w"
+            short="d"
         ),
         Arg.create(
             "api_port",
@@ -103,6 +116,12 @@ def enter(
             default=False,
             help="Skip client bundling/serving (API only)"
         ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
+        ),
 
     ],
     examples=[
@@ -110,8 +129,9 @@ def enter(
         ("jac start app.jac", "Start server with specific file"),
         ("jac start --port 3000", "Start main.jac on port 3000"),
         ("jac start app.jac --faux", "Generate API docs without starting"),
-        ("jac start --watch", "Start with hot module replacement"),
-        ("jac start app.jac --watch --no-client", "HMR mode without client bundling"),
+        ("jac start --dev", "Start with hot module replacement"),
+        ("jac start app.jac --dev --no-client", "HMR mode without client bundling"),
+        ("jac start --profile prod", "Start with production profile"),
 
     ],
     group="execution"
@@ -121,7 +141,7 @@ def start(
     port: int = 8000,
     main: bool = True,
     faux: bool = False,
-    watch: bool = False,
+    dev: bool = False,
     api_port: int = 0,
     no_client: bool = False
 ) -> int;
@@ -135,6 +155,12 @@ def start(
         Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
         Arg.create(
             "cache", typ=bool, default=False, help="Use cached compilation", short="c"
+        ),
+        Arg.create(
+            "profile",
+            default="",
+            short="",
+            help="Configuration profile to load (e.g. prod, staging)"
         ),
 
     ],

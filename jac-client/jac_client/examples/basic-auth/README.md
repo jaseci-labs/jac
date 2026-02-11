@@ -2,10 +2,10 @@
 
 ## Running Jac Code
 
-make sure node modules are installed:
+Make sure packages are installed:
 
 ```bash
-npm install
+bun install
 ```
 
 To run your Jac code, use the Jac CLI:

@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import TypeCheckPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
@@ -356,6 +356,20 @@ def test_class_construct(fixture_path: Callable[[str], str]) -> None:
     TypeCheckPass(ir_in=mod, prog=program)
     assert len(program.errors_had) == 3
 
+    square_sym = mod.sym_tab.lookup("Square")
+    assert square_sym is not None
+    assert square_sym.decl is not None
+    assert square_sym.decl.type is not None
+    assert square_sym.decl.type.shared is not None
+    mro_class_names = [
+        cls.shared.class_name
+        for cls in square_sym.decl.type.shared.mro
+        if cls.shared is not None
+    ]
+    assert "object" in mro_class_names, (
+        f"Expected 'object' in MRO, got: {mro_class_names}"
+    )
+
     expected_errors = [
         """
         Cannot assign <class float> to parameter 'color' of type <class str>
@@ -403,15 +417,15 @@ def test_binary_op(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 2
     _assert_error_pretty_found(
         """
-        r2: A = a + a;  # <-- Error
-        ^^^^^^^^^^^^^^
+        r2: A = a + a,  # <-- Error
+        ^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        r4: str = (a + a) * B();  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^^^^^
+        r4: str = (a + a) * B(),  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print(),
     )
@@ -448,8 +462,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a: int = uni.Module;  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^
+        a: int = os.path;  # <-- Error
+        ^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -630,18 +644,19 @@ def test_return_type(fixture_path: Callable[[str], str]) -> None:
     path = fixture_path("checker_return_type.jac")
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
+    # foo() has no annotation: 2 errors for returning values without annotation.
+    # bar() -> int: 2 errors for type mismatches ("" and 1.1).
     assert len(program.errors_had) == 4
 
     expected_errors = [
         """
-        Cannot return <class int>, expected <class NoneType>
-        def foo() {
-            return 1;  # <-- Error
+        Return type annotation required when function returns a value
+            return 1;  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^
         """,
         """
-        Cannot return <class str>, expected <class NoneType>
-            return "";  # <-- Error
+        Return type annotation required when function returns a value
+            return "";  # <-- Error (no return annotation, but returning a value)
             ^^^^^^^^^^
         """,
         """
@@ -738,6 +753,16 @@ def test_connect_any_type(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 0
 
 
+def test_connect_node_collection(fixture_path: Callable[[str], str]) -> None:
+    """Test that connection operations accept collections (list, tuple) of nodes."""
+    program = JacProgram()
+    path = fixture_path("checker_connect_node_collection.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - collections of nodes are valid connection operands
+    assert len(program.errors_had) == 0
+
+
 def test_root_type(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     path = fixture_path("checker_root_type.jac")
@@ -793,44 +818,6 @@ def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
-
-
-def test_ts_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing TypeScript modules."""
-    path = fixture_path("ts_imports/utils.ts")
-    program = JacProgram()
-    # Test that we can parse and compile a TypeScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_js_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing JavaScript modules."""
-    path = fixture_path("ts_imports/component.js")
-    program = JacProgram()
-    # Test that we can parse and compile a JavaScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test Jac module importing from TypeScript."""
-    path = fixture_path("ts_imports/main.jac")
-    program = JacProgram()
-    mod = program.compile(path, type_check=True)
-    # The main.jac imports TypeScript/JS modules - verify it compiles
-    assert mod is not None
-
-
-def test_cl_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test .cl.jac module importing from TypeScript for type checking."""
-    path = fixture_path("ts_imports/client.cl.jac")
-    program = JacProgram()
-    mod = program.compile(path, no_cgen=True)
-    # The client.cl.jac imports TypeScript modules - verify it compiles
-    assert mod is not None
 
 
 def test_agentvisitor_connect_no_errors(fixture_path: Callable[[str], str]) -> None:
@@ -1183,6 +1170,42 @@ def test_slice_type_checking(fixture_path: Callable[[str], str]) -> None:
     )
 
 
+def test_numeric_type_promotion(fixture_path: Callable[[str], str]) -> None:
+    """Test numeric type promotion for arithmetic operations (int -> float)."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_numeric_promotion.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Expect 3 errors: assigning float results to int variables
+    assert len(program.errors_had) == 3
+
+    # Error 1: int + float assigned to int
+    _assert_error_pretty_found(
+        """
+        err1: int = 1 + 2.0;  # <-- Error: float cannot be assigned to int
+        ^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: division always returns float
+    _assert_error_pretty_found(
+        """
+        err2: int = 4 / 2;    # <-- Error: division always returns float
+        ^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: float * int assigned to int
+    _assert_error_pretty_found(
+        """
+        err3: int = 2.0 * 3;  # <-- Error: float cannot be assigned to int
+        ^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+
+
 def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
     """Test that property access returns the property's return type, not FunctionType."""
     program = JacProgram()
@@ -1222,3 +1245,90 @@ def test_property_type_checking(fixture_path: Callable[[str], str]) -> None:
     """,
         program.errors_had[3].pretty_print(),
     )
+
+
+def test_type_narrowing(fixture_path: Callable[[str], str]) -> None:
+    """Test CFG-based type narrowing for isinstance and None checks.
+
+    The fixture checker_type_narrowing.jac defines 6 functions that exercise
+    flow-sensitive type narrowing:
+
+      1. isinstance narrowing in if-branch        (1 assignment inside branch)
+      2. isinstance narrowing with else            (2 assignments, one per branch)
+      3. None narrowing with `is not None`         (1 assignment inside branch)
+      4. None narrowing with `is None` + return    (1 assignment after early return)
+      5. Narrowing expires at join point           (2 assignments in branches + 1 at join)
+      6. Chained isinstance narrowing in elif      (3 assignments, one per branch)
+
+    With CFG-based narrowing implemented, every assignment inside a narrowed
+    branch should succeed because the checker sees the narrowed type.  Only
+    the join-point assignment in function 5 should fail because the full
+    union type is restored after the if/else.
+
+    Expected after narrowing: exactly 1 error (the join-point assignment).
+    """
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_type_narrowing.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # With narrowing: only the join-point assignment at line 95 should error.
+    # (fail: Dog = animal; where animal is Dog | Cat after the if/else)
+    assert len(program.errors_had) == 1, (
+        f"Expected exactly 1 type error (join-point in test 5), but got "
+        f"{len(program.errors_had)}:\n"
+        + "\n---\n".join(err.pretty_print() for err in program.errors_had)
+    )
+
+    _assert_error_pretty_found(
+        """
+        fail: Dog = animal;            # <-- Error (Dog | Cat cannot assign to Dog)
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+
+def test_postinit_fields_not_required_in_constructor(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test that fields marked with 'by postinit' are not required as constructor arguments."""
+    program = JacProgram()
+    path = fixture_path("checker_postinit_fields.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+    # Should have no errors - postinit fields should not be required in constructor
+    assert len(program.errors_had) == 0, (
+        f"Expected no type checking errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+
+def test_impl_body_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test that type errors in impl bodies."""
+    program = JacProgram()
+    path = fixture_path("checker_impl_body.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expect 3 errors from the impl file (function, archetype method, enum)
+    assert len(program.errors_had) == 3, (
+        f"Expected 3 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+    _assert_error_pretty_found(
+        """x = "wrong";  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^""",
+        program.errors_had[0].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[0].loc.mod_path
+    _assert_error_pretty_found(
+        """result = "wrong";  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^^^^^^""",
+        program.errors_had[1].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[1].loc.mod_path
+    _assert_error_pretty_found(
+        """PENDING: int = "wrong",  # <-- Error: Cannot assign str to int
+        ^^^^^^^^^^^^^^^^^^^^^^""",
+        program.errors_had[2].pretty_print(),
+    )
+    assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path

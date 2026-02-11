@@ -22,7 +22,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 
 glob logger = logging.getLogger(__name__),
      __all__ = [
@@ -60,7 +60,7 @@ obj Memory {
     def close -> None abs;
 
     """Check if an anchor is currently in memory."""
-    def has(id: UUID) -> bool abs;
+    def `has(id: UUID) -> bool abs;
 
     """Query all anchors with optional filter."""
     def query(
@@ -125,8 +125,8 @@ This is the L1 tier in a tiered memory hierarchy. All data is lost when
 the process exits. Used as the fast cache layer in TieredMemory.
 """
 obj VolatileMemory(Memory) {
-    has __mem__: dict[UUID, Anchor] = {},
-        __gc__: set[Anchor] = {};
+    has __mem__: dict[UUID, Anchor] by postinit,
+        __gc__: set[Anchor] by postinit;
 
     def postinit -> None;
     def is_available -> bool;
@@ -134,7 +134,7 @@ obj VolatileMemory(Memory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -176,9 +176,9 @@ Maintains an in-memory cache for fast reads with write-through to database.
 """
 obj SqliteMemory(PersistentMemory) {
     has path: str,
-        __mem__: dict[UUID, Anchor] = {},
-        __gc__: set[Anchor] = {},
-        __conn__: (sqlite3.Connection | None) = None;
+        __mem__: dict[UUID, Anchor] by postinit,
+        __gc__: set[Anchor] by postinit,
+        __conn__: (sqlite3.Connection | None) by postinit;
 
     def postinit -> None;
     # Lazy connection initialization - DB only created when data is written
@@ -189,7 +189,7 @@ obj SqliteMemory(PersistentMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def query(
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -228,8 +228,8 @@ jac-scale extends this by providing Redis-based L2 and database L3.
 """
 obj TieredMemory(VolatileMemory) {
     has base_path: (str | None) = None,
-        l2: (CacheMemory | None) = None,
-        l3: (PersistentMemory | None) = None,
+        l2: (CacheMemory | None) by postinit,
+        l3: (PersistentMemory | None) by postinit,
         use_cache: bool = False;
 
     def postinit -> None;
@@ -238,6 +238,6 @@ obj TieredMemory(VolatileMemory) {
     def put(anchor: Anchor) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
-    def has(id: UUID) -> bool;
+    def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
 }

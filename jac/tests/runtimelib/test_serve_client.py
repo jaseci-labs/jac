@@ -257,7 +257,7 @@ class TestServerClientMigrated:
         # Call add_numbers
         response = client.post(
             "/function/add_numbers",
-            json={"args": {"a": 10, "b": 25}},
+            json={"a": 10, "b": 25},
         )
 
         assert response.ok
@@ -268,7 +268,7 @@ class TestServerClientMigrated:
         # Call greet
         response2 = client.post(
             "/function/greet",
-            json={"args": {"name": "World"}},
+            json={"name": "World"},
         )
 
         assert response2.ok
@@ -284,7 +284,7 @@ class TestServerClientMigrated:
         # Call greet without name (should use default)
         response = client.post(
             "/function/greet",
-            json={"args": {}},
+            json={},
         )
 
         assert response.ok
@@ -352,6 +352,9 @@ class TestServerClientMigrated:
         assert response2.ok
         data2 = response2.data
         assert "result" in data2 or "reports" in data2
+        report = data2.get("reports", "")[0]
+        assert "Test Task" in report[0].get("title", "")
+        assert report[0].get("completed", False) is True
 
         # Get Task node using GetTask walker
         if jid:
@@ -402,7 +405,7 @@ class TestServerClientMigrated:
         # Try to call nonexistent function
         response = client.post(
             "/function/nonexistent",
-            json={"args": {}},
+            json={},
         )
 
         # Should get error response
@@ -708,7 +711,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling local function
         local_add_response = imports_client.post(
             "/function/local_add",
-            json={"args": {"x": 5, "y": 3}},
+            json={"x": 5, "y": 3},
         )
         assert local_add_response.ok
         local_add_data = local_add_response.data
@@ -718,7 +721,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling imported function
         multiply_response = imports_client.post(
             "/function/multiply_numbers",
-            json={"args": {"a": 4, "b": 7}},
+            json={"a": 4, "b": 7},
         )
         assert multiply_response.ok
         multiply_data = multiply_response.data
@@ -728,7 +731,7 @@ class TestImportedFunctionsAndWalkers:
         # Test calling another imported function
         format_response = imports_client.post(
             "/function/format_message",
-            json={"args": {"prefix": "INFO", "message": "test"}},
+            json={"prefix": "INFO", "message": "test"},
         )
         assert format_response.ok
         format_data = format_response.data
@@ -775,7 +778,7 @@ class TestAccessLevels:
         # Call public function without authentication
         response = access_client.post(
             "/function/public_function",
-            json={"args": {"name": "Test"}},
+            json={"name": "Test"},
         )
 
         assert response.ok
@@ -802,7 +805,7 @@ class TestAccessLevels:
         # Try to call protected function without authentication - should fail
         response = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
 
         assert not response.ok
@@ -818,7 +821,7 @@ class TestAccessLevels:
         # Call protected function with authentication
         response = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "secret"}},
+            json={"message": "secret"},
         )
 
         assert response.ok
@@ -831,7 +834,7 @@ class TestAccessLevels:
         # Try to call private function without authentication - should fail
         response = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "test"}},
+            json={"secret": "test"},
         )
 
         assert not response.ok
@@ -847,7 +850,7 @@ class TestAccessLevels:
         # Call private function with authentication
         response = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "topsecret"}},
+            json={"secret": "topsecret"},
         )
 
         assert response.ok
@@ -945,7 +948,7 @@ class TestAccessLevels:
         access_client.clear_auth()
         result1 = access_client.post(
             "/function/public_add",
-            json={"args": {"a": 5, "b": 10}},
+            json={"a": 5, "b": 10},
         )
         data1 = result1.data
         assert "result" in data1
@@ -954,7 +957,7 @@ class TestAccessLevels:
         # Protected function without auth - should fail
         result2 = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
         data2 = result2.data
         assert "error" in data2
@@ -963,7 +966,7 @@ class TestAccessLevels:
         access_client.set_auth_token(token)
         result3 = access_client.post(
             "/function/protected_function",
-            json={"args": {"message": "test"}},
+            json={"message": "test"},
         )
         data3 = result3.data
         assert "result" in data3
@@ -971,7 +974,7 @@ class TestAccessLevels:
         # Private function with auth - should work
         result4 = access_client.post(
             "/function/private_function",
-            json={"args": {"secret": "test"}},
+            json={"secret": "test"},
         )
         data4 = result4.data
         assert "result" in data4
@@ -1054,6 +1057,77 @@ class TestClientRendering:
 
         # Should get error response (404 or error message)
         assert not response.ok or "error" in response.text.lower()
+
+
+# =============================================================================
+# Fullstack Client App Test (has + async can with entry)
+# =============================================================================
+
+
+@pytest.fixture
+def fullstack_app_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client for client_fullstack_app.jac."""
+    client = JacTestClient.from_file(
+        fixture_abs_path("client_fullstack_app.jac"),
+        base_path=str(tmp_path),
+    )
+    yield client
+    client.close()
+
+
+class TestFullstackClientApp:
+    """Test a fullstack Jac app that uses has (useState) and async can with entry (useEffect)."""
+
+    def test_client_page_html_and_bundle(
+        self, fullstack_app_client: JacTestClient
+    ) -> None:
+        """Test that /cl/app serves correct HTML with hydration payload and a valid bundle."""
+        import json
+        import re
+
+        response = fullstack_app_client.get("/cl/app")
+        html = response.text
+
+        # HTML skeleton
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+        assert "/static/client.js?hash=" in html
+
+        # Hydration payload targets the right function
+        init_match = re.search(
+            r'<script id="__jac_init__" type="application/json">([^<]*)</script>',
+            html,
+        )
+        assert init_match is not None
+        payload = json.loads(init_match.group(1))
+        assert payload.get("function") == "app"
+
+        # Fetch JS bundle
+        hash_match = re.search(r"/static/client\.js\?hash=([a-f0-9]+)", html)
+        assert hash_match is not None
+        bundle_js = fullstack_app_client.get(
+            f"/static/client.js?hash={hash_match.group(1)}"
+        ).text
+
+        # @jac/runtime inlined (not left as ES import)
+        assert "// @jac/runtime" in bundle_js
+        assert "import {" not in bundle_js
+
+        # has → useState hook present
+        assert "function useState(" in bundle_js
+        assert "useState([])" in bundle_js
+
+        # async can with entry → useEffect present
+        assert "function useEffect(" in bundle_js
+        assert "useEffect(" in bundle_js
+
+        # Server function call wired up
+        assert "__jacCallFunction" in bundle_js
+        assert '"get_items"' in bundle_js
+
+        # Module registered
+        assert "__jacRegisterClientModule" in bundle_js
+        assert "function app()" in bundle_js
 
 
 # =============================================================================
@@ -1248,3 +1322,116 @@ class TestImportedWalkerAccessLevels:
             json={"msg": "auth test"},
         )
         assert result7.ok, f"Local default walker should work with auth: {result7.data}"
+
+
+# =============================================================================
+# SPA Catch-All Tests (BrowserRouter support)
+# =============================================================================
+
+
+@pytest.fixture
+def spa_client(tmp_path: Path) -> Generator[JacTestClient, None, None]:
+    """Create test client with base_route_app configured for SPA catch-all."""
+    from jaclang.project.config import JacConfig, ServeConfig, set_config
+
+    fixtures_src = Path(fixture_abs_path("")).resolve()
+    unique_id = uuid.uuid4().hex[:8]
+    module_name = f"spa_app_{unique_id}"
+    fixtures_dest = tmp_path / module_name
+    fixtures_dest.mkdir(parents=True, exist_ok=True)
+
+    # Copy .jac source files, renaming client_app.jac to unique module name
+    for f in fixtures_src.glob("*.jac"):
+        if f.is_file():
+            dest_name = f.name
+            if f.name == "client_app.jac":
+                dest_name = f"{module_name}.jac"
+            shutil.copy(f, fixtures_dest / dest_name)
+
+    set_config(JacConfig(serve=ServeConfig(base_route_app="client_page")))
+
+    client = JacTestClient.from_file(
+        str(fixtures_dest / f"{module_name}.jac"),
+        base_path=str(fixtures_dest),
+        module_name=module_name,
+    )
+    yield client
+    client.close()
+    # Reset config to defaults to avoid leaking into other tests
+    set_config(JacConfig())
+
+
+class TestSPACatchAll:
+    """Tests for SPA catch-all routing (BrowserRouter support)."""
+
+    def test_spa_catchall_serves_html_for_clean_urls(
+        self, spa_client: JacTestClient
+    ) -> None:
+        """GET to unknown extensionless path should serve SPA HTML."""
+        response = spa_client.get("/about")
+
+        assert response.ok
+        assert response.status_code == 200
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+        assert "/static/client.js?hash=" in html
+
+    def test_spa_catchall_root_serves_html(self, spa_client: JacTestClient) -> None:
+        """GET / should serve SPA HTML when base_route_app is configured."""
+        response = spa_client.get("/")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+
+    def test_spa_catchall_nested_path(self, spa_client: JacTestClient) -> None:
+        """GET to nested path like /dashboard/settings should serve SPA HTML."""
+        response = spa_client.get("/dashboard/settings")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+
+    def test_spa_catchall_api_paths_unaffected(self, spa_client: JacTestClient) -> None:
+        """API paths should still return JSON, not SPA HTML."""
+        functions_response = spa_client.get("/functions")
+        assert functions_response.ok
+        data = functions_response.data
+        assert "functions" in data
+
+        walkers_response = spa_client.get("/walkers")
+        assert walkers_response.ok
+        data = walkers_response.data
+        assert "walkers" in data
+
+    def test_spa_catchall_cl_route_still_works(self, spa_client: JacTestClient) -> None:
+        """Explicit /cl/ route should still render the page directly."""
+        response = spa_client.get("/cl/client_page")
+
+        assert response.ok
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        assert '<div id="__jac_root">' in html
+
+    def test_spa_catchall_static_files_unaffected(
+        self, spa_client: JacTestClient
+    ) -> None:
+        """Static file paths should not be caught by SPA catch-all."""
+        response = spa_client.get("/static/nonexistent.js")
+
+        assert not response.ok
+
+    def test_unknown_path_returns_404_without_base_route_app(
+        self, client: JacTestClient
+    ) -> None:
+        """Without base_route_app configured, unknown paths should return 404."""
+        from jaclang.project.config import JacConfig, set_config
+
+        set_config(JacConfig())
+        response = client.get("/some-unknown-path")
+
+        assert not response.ok
+        data = response.data
+        assert "error" in data

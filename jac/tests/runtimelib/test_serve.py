@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from jaclang import JacRuntime as Jac
-from jaclang.runtimelib.server import UserManager
 from tests.runtimelib.conftest import fixture_abs_path
 
 
@@ -29,7 +28,7 @@ def setup_fresh_jac(fresh_jac_context: Path) -> Generator[None, None, None]:
 def test_user_manager_creation(tmp_path: Path) -> None:
     """Test UserManager creates users with unique roots."""
     session_file = str(tmp_path / "test.session")
-    user_mgr = UserManager(session_file)
+    user_mgr = Jac.get_user_manager(session_file)
 
     # Create first user
     result1 = user_mgr.create_user("user1", "pass1")
@@ -55,7 +54,7 @@ def test_user_manager_creation(tmp_path: Path) -> None:
 def test_user_manager_authentication(tmp_path: Path) -> None:
     """Test UserManager authentication."""
     session_file = str(tmp_path / "test.session")
-    user_mgr = UserManager(session_file)
+    user_mgr = Jac.get_user_manager(session_file)
 
     # Create user
     create_result = user_mgr.create_user("testuser", "testpass")
@@ -83,7 +82,7 @@ def test_user_manager_authentication(tmp_path: Path) -> None:
 def test_user_manager_token_validation(tmp_path: Path) -> None:
     """Test UserManager token validation."""
     session_file = str(tmp_path / "test.session")
-    user_mgr = UserManager(session_file)
+    user_mgr = Jac.get_user_manager(session_file)
 
     # Create user
     result = user_mgr.create_user("validuser", "validpass")
@@ -159,9 +158,9 @@ def test_faux_flag_prints_endpoint_docs(tmp_path: Path) -> None:
     # Verify summary is present
     assert "TOTAL:" in output
     # Note: With imported functions now exposed as endpoints, we have more than the 2 defined functions
-    assert "10 functions" in output
-    assert "4 walkers" in output
-    assert "34 endpoints" in output
+    assert "11 functions" in output
+    assert "5 walkers" in output
+    assert "38 endpoints" in output
 
     # Verify parameter details are included
     assert "required" in output

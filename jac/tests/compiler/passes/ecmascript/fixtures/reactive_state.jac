@@ -1,10 +1,10 @@
 """Test fixture for reactive state (has variables in client context).
 
-Note: useState import is auto-injected from @jac-client/utils when `has` variables are used.
+Note: useState import is auto-injected from @jac/runtime when `has` variables are used.
 """
 
 cl {
-    def:pub counter_app() -> any {
+    def:pub counter_app() -> JsxElement {
         has count: int = 0;
         has name: str = "test";
 

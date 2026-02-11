@@ -18,7 +18,11 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 """Get default configuration structure for scale."""
 impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
     return {
-        'jwt': {'secret': 'supersecretkey', 'algorithm': 'HS256', 'exp_delta_days': 7},
+        'jwt': {
+            'secret': 'supersecretkey_for_testing_only!',
+            'algorithm': 'HS256',
+            'exp_delta_days': 7
+        },
         'sso': {
             'host': 'http://localhost:8000/sso',
             'google': {'client_id': '', 'client_secret': ''}
@@ -50,7 +54,35 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_period': 20,
             'liveness_failure_threshold': 80
         },
-        'server': {'port': 8000, 'host': '0.0.0.0'}
+        'secrets': {},
+        'server': {'port': 8000, 'host': '0.0.0.0'},
+        'webhook': {
+            'secret': 'webhook-secret-key',
+            'signature_header': 'X-Webhook-Signature',
+            'verify_signature': True,
+            'api_key_expiry_days': 365
+        },
+        'metrics': {
+            'enabled': False,
+            'endpoint': '/metrics',
+            'namespace': 'jac_scale',
+            'walker_metrics': False,
+            'histogram_buckets': [
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.075,
+                0.1,
+                0.25,
+                0.5,
+                0.75,
+                1.0,
+                2.5,
+                5.0,
+                10.0
+            ]
+        }
     };
 }
 
@@ -59,7 +91,7 @@ impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     jwt_config = config.get('jwt', {});
     return {
-        'secret': jwt_config.get('secret', 'supersecretkey'),
+        'secret': jwt_config.get('secret', 'supersecretkey_for_testing_only!'),
         'algorithm': jwt_config.get('algorithm', 'HS256'),
         'exp_delta_days': int(jwt_config.get('exp_delta_days', 7))
     };
@@ -112,6 +144,85 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
     return {
         'port': int(server_config.get('port', 8000)),
         'host': server_config.get('host', '0.0.0.0')
+    };
+}
+
+"""Get webhook configuration from jac.toml."""
+impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    webhook_config = config.get('webhook', {});
+    return {
+        'secret': os.environ.get('WEBHOOK_SECRET')
+        or webhook_config.get('secret', 'webhook-secret-key'),
+        'signature_header': webhook_config.get(
+            'signature_header', 'X-Webhook-Signature'
+        ),
+        'verify_signature': webhook_config.get('verify_signature', True),
+        'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
+    };
+}
+
+"""Get secrets from [plugins.scale.secrets] section.
+
+Values using ${ENV_VAR} syntax are auto-resolved by core's interpolate_env_vars.
+"""
+impl JacScaleConfig.get_secrets_config(self: JacScaleConfig) -> dict[str, str] {
+    config = self.load();
+    return config.get('secrets', {});
+}
+
+"""Sanitize a string to be a valid Prometheus metric namespace.
+
+Prometheus metric names must match [a-zA-Z_:][a-zA-Z0-9_:]*.
+This converts any invalid characters and ensures a valid prefix.
+"""
+impl sanitize_prometheus_namespace(name: str) -> str {
+    import re;
+    # Replace any non-alphanumeric characters with underscores
+    sanitized = re.sub(r'[^a-zA-Z0-9]', '_', name);
+    # Collapse multiple consecutive underscores
+    sanitized = re.sub(r'_+', '_', sanitized);
+    # Strip leading/trailing underscores
+    sanitized = sanitized.strip('_');
+    # Prefix with underscore if starts with digit
+    if sanitized and sanitized[0].isdigit() {
+        sanitized = f"_{sanitized}";
+    }
+    return sanitized or 'jac_scale';
+}
+
+"""Get metrics configuration from jac.toml."""
+impl JacScaleConfig.get_metrics_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    metrics_config = config.get('metrics', {});
+    default_buckets = [
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.5,
+        5.0,
+        10.0
+    ];
+    # Derive namespace from kubernetes config if not explicitly set
+    namespace = metrics_config.get('namespace');
+    if not namespace {
+        k8s_config = self.get_kubernetes_config();
+        k8s_namespace = k8s_config.get('namespace', 'default');
+        namespace = sanitize_prometheus_namespace(k8s_namespace);
+    }
+    return {
+        'enabled': metrics_config.get('enabled', False),
+        'endpoint': metrics_config.get('endpoint', '/metrics'),
+        'namespace': namespace,
+        'walker_metrics': metrics_config.get('walker_metrics', False),
+        'histogram_buckets': metrics_config.get('histogram_buckets', default_buckets)
     };
 }
 
