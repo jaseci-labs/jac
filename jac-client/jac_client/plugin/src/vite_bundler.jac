@@ -13,11 +13,8 @@ import from .config_loader { JacClientConfig }
 glob logger = logging.getLogger(__name__),
      API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
      JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__",
-     # Vite dev server configuration
      VITE_READY_TIMEOUT_SECONDS = 60,  # Max time to wait for Vite to be ready
-     # Patterns to detect Vite server ready state
      VITE_READY_PATTERNS = ['ready in', 'local:'],
-     # Patterns to filter from Vite output (we print our own URLs)
      VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'];
 
 """Handles Vite bundling operations."""
@@ -93,3 +90,9 @@ class ViteBundler {
 }
 # Env var used to pass API base URL through deep call chains
 # (e.g., DesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
+
+# Vite dev server configuration
+
+# Patterns to detect Vite server ready state
+
+# Patterns to filter from Vite output (we print our own URLs)

@@ -848,18 +848,15 @@ impl ViteBundler.start_dev_server(
     import time;
     import threading;
     import from jac_client.plugin.utils { ensure_bun_available }
-
     # Ensure bun is available before starting dev server
     if not ensure_bun_available() {
         raise ClientBundleError(
             'Bun is required for dev server. Install manually: https://bun.sh'
         ) from None ;
     }
-
     build_dir = self._get_client_dir();
     self._ensure_dev_index_html(build_dir);
     self._ensure_dev_dependencies(build_dir);
-
     # Find the dev config
     dev_config = build_dir / 'configs' / 'vite.dev.config.js';
     if not dev_config.exists() {
@@ -867,7 +864,6 @@ impl ViteBundler.start_dev_server(
             "Dev config not found. Call create_vite_config(is_dev=True) first."
         ) ;
     }
-
     try {
         config_rel = dev_config.relative_to(build_dir);
     } except ValueError {
@@ -876,7 +872,6 @@ impl ViteBundler.start_dev_server(
     }
     command = _build_vite_dev_command(config_rel, port);
     logger.debug(f"Starting Vite dev server on port {port}");
-
     if suppress_initial_output {
         process = self._start_vite_with_output_capture(command, build_dir, sys);
     } else {
@@ -908,22 +903,18 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
     import time;
     node_modules = build_dir / 'node_modules';
-
     if node_modules.exists() {
         return;
     }
-
     generated_package_json = build_dir / 'configs' / 'package.json';
     if not generated_package_json.exists() {
         self.create_package_json();
     }
-
     # Temporarily copy package.json for bun install
     build_package_json = build_dir / 'package.json';
     if not build_package_json.exists() {
         shutil.copy2(generated_package_json, build_package_json);
     }
-
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
@@ -950,7 +941,6 @@ impl ViteBundler._start_vite_with_output_capture(
     self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
 ) -> Any {
     import threading;
-
     process = subprocess.Popen(
         command,
         cwd=build_dir,
@@ -958,7 +948,6 @@ impl ViteBundler._start_vite_with_output_capture(
         stderr=subprocess.STDOUT,
         text=True
     );
-
     ready_event = threading.Event();
     output_thread = threading.Thread(
         target=_forward_vite_output,
@@ -966,10 +955,8 @@ impl ViteBundler._start_vite_with_output_capture(
         daemon=True
     );
     output_thread.start();
-
     # Wait for Vite to be ready
     is_ready = ready_event.wait(timeout=VITE_READY_TIMEOUT_SECONDS);
-
     if is_ready {
         console.print("  ✔ Vite dev server ready", style="success");
     } else {
@@ -977,6 +964,5 @@ impl ViteBundler._start_vite_with_output_capture(
             f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
         );
     }
-
     return process;
 }
