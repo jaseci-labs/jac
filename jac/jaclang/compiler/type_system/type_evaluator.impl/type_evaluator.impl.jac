@@ -441,11 +441,19 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # ---- Handle SepcialForm in typing.pyi ----
             # NOTE: This is different from pyright, that does get the same logic in
             # getTypeOfAnnotation() which we don't have.
-            if node_.loc.mod_path == self._TYPING_STUB_FILE_PATH {
-                match node_.sym_name {
-                    case "Final":
-                        return self.prefetch.final_class;
+            if node_.loc.mod_path {
+                node_mod_path = Path(node_.loc.mod_path).resolve();
+                typing_stub_path = Path(self._TYPING_STUB_FILE_PATH).resolve();
+                builtins_stub_path = Path(self._BUILTINS_STUB_FILE_PATH).resolve();
+                if node_mod_path in (typing_stub_path, builtins_stub_path) {
+                    match node_.sym_name {
+                        case "Final":
+                            return self.prefetch.final_class;
 
+                        case "LiteralString":
+                            return self.prefetch.literal_string_class;
+
+                    }
                 }
             }
 
@@ -691,6 +699,17 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if src_type == dest_type {
         return True;
     }
+    # LiteralString can be assigned to str.
+    if self.prefetch and self.prefetch.literal_string_class {
+        if isinstance(dest_type, types.ClassType)
+        and isinstance(src_type, types.ClassType) {
+            if dest_type.shared == self.prefetch.str_class.shared {
+                if src_type.shared == self.prefetch.literal_string_class.shared {
+                    return True;
+                }
+            }
+        }
+    }
     # Strict checking for JsxElement type - prevent non-JSX assignment to JsxElement
     if self.prefetch and self.prefetch.jsx_element_class {
         if isinstance(dest_type, types.ClassType)
@@ -837,6 +856,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;
     self.prefetch.final_class = get_jac_builtin_type("Final");
+    self.prefetch.literal_string_class = get_jac_builtin_type("LiteralString");
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");
