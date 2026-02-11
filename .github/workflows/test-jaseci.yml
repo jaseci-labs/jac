@@ -194,9 +194,6 @@ jobs:
         run: |
           pytest  -s -x -n auto jac-scale/jac_scale/tests/test_k8s_utils.py
           pytest  -s -x -n auto jac-scale/jac_scale/tests/test_deploy_k8s.py
-      - name: Reset microk8s cluster
-        run: |
-          sudo microk8s reset
 
   test-pypi-build:
     runs-on: ubuntu-latest

@@ -10,6 +10,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Direct Database Access (`kvstore`)**: Added `kvstore()` function for direct MongoDB and Redis operations without graph layer. Supports database-specific methods (MongoDB: `find_one`, `insert_one`, `update_one`; Redis: `set_with_ttl`, `incr`, `scan_keys`) with common methods (`get`, `set`, `delete`, `exists`) working across both. Import from `jac_scale.lib` with URI-based connection pooling and configuration fallback (explicit URI → env vars → jac.toml).
 - **Code refactors**: Backtick escape, etc.
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
+- **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 
 ## jac-scale 0.1.7 (Latest Release)
 
