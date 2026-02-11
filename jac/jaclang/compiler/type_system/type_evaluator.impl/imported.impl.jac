@@ -3,8 +3,14 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
     # Module item can be both a module or a member of a module.
     # import from .. { mod }   # <-- Here mod is not a member but a module itself.
     # import from mod { item } # <-- Here item is not a module but a member of mod.
-    if node_.name.type is not None {
+    # Note: node_.name can be a Token (for default/star imports) or a Name node.
+    # Only Name nodes have a .type attribute.
+    if isinstance(node_.name, uni.Name) and node_.name.type is not None {
         return node_.name.type;
+    }
+    # TODO: Implement proper type resolution for default/star imports.
+    if isinstance(node_.name, uni.Name) { } else {
+        return types.UnknownType();
     }
     import_node = node_.parent_of_type(uni.Import);
     assert import_node.from_loc is not None;
