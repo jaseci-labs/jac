@@ -1,6 +1,7 @@
-"""Factory for creating utility instances (loggers, monitoring, etc.)."""
+"""Factory for creating utility instances (loggers, metrics, etc.)."""
 import from typing { Any }
 import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.abstractions.metrics { MetricsCollector, NoOpMetricsCollector }
 
 """Factory for creating utility instances."""
 class UtilityFactory {
@@ -29,6 +30,35 @@ class UtilityFactory {
             raise NotImplementedError("Elasticsearch logger not yet implemented") ;
         } else {
             raise ValueError(f"Unsupported logger type: {logger_type}") ;
+        }
+    }
+
+    """Create a metrics collector based on type.
+
+    Args:
+        metrics_type: Type of collector ('prometheus' or 'none')
+        config: Metrics configuration from jac.toml
+
+    Returns:
+        MetricsCollector instance (NoOpMetricsCollector if disabled)
+    """
+    static def create_metrics(
+        metrics_type: str = 'prometheus', config: (dict[str, Any] | None) = None
+    ) -> MetricsCollector {
+        # Return NoOp collector if metrics are disabled or no config
+        if not config or not config.get('enabled', False) {
+            return NoOpMetricsCollector();
+        }
+
+        if metrics_type == 'prometheus' {
+            import from jac_scale.utilities.metrics.prometheus_metrics {
+                PrometheusMetricsCollector
+            }
+            return PrometheusMetricsCollector(config=config);
+        } elif metrics_type == 'none' {
+            return NoOpMetricsCollector();
+        } else {
+            raise ValueError(f"Unsupported metrics type: {metrics_type}") ;
         }
     }
 }

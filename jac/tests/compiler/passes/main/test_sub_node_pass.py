@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes import UniPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def test_sub_node_pass(examples_path: Callable[[str], str]) -> None:

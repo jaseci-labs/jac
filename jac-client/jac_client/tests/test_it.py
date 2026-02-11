@@ -730,7 +730,7 @@ def test_default_client_app_renders() -> None:
                     print(f"[DEBUG] Error at /cl/app endpoint: {exc}")
                     pytest.fail(f"Failed to GET /cl/app endpoint: {exc}")
 
-                # 6. Test that static JS bundle is being served
+                # 6. Test that static JS bundle is being served via get_client_js hook
                 try:
                     print("[DEBUG] Testing that client.js bundle is served")
                     # Extract the client.js path from the HTML
@@ -747,9 +747,14 @@ def test_default_client_app_renders() -> None:
                             js_body = resp.read().decode("utf-8", errors="ignore")
                             assert resp.status == 200, "JS bundle should return 200"
                             assert len(js_body) > 0, "JS bundle should not be empty"
+                            # Verify bundle contains expected React/JSX runtime markers
+                            # These markers confirm the get_client_js hook returned valid bundle
+                            assert (
+                                "createElement" in js_body or "jsx" in js_body.lower()
+                            ), "JS bundle should contain React createElement or jsx"
                             print(
                                 f"[DEBUG] JS bundle fetched successfully "
-                                f"({len(js_body)} bytes)"
+                                f"({len(js_body)} bytes), contains expected runtime code"
                             )
                     else:
                         print("[DEBUG] Warning: Could not find client.js in HTML")
@@ -948,6 +953,11 @@ def test_configurable_api_base_url_in_bundle() -> None:
                     js_body = resp.read().decode("utf-8", errors="ignore")
                     assert resp.status == 200, "JS bundle should return 200"
                     assert len(js_body) > 0, "JS bundle should not be empty"
+                    # Verify bundle contains expected React/JSX runtime markers
+                    # This confirms the get_client_js hook returned valid bundle code
+                    assert "createElement" in js_body or "jsx" in js_body.lower(), (
+                        "JS bundle should contain React createElement or jsx"
+                    )
                     print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
 
                 # 7. Assert the configured base URL is baked into the bundle
@@ -1221,5 +1231,393 @@ def test_no_profile_omits_profile_settings() -> None:
                     gc.collect()
 
         finally:
+            os.chdir(original_cwd)
+            gc.collect()
+
+
+def test_vite_env_and_define_config() -> None:
+    """Test Vite environment and define configuration features.
+
+    Consolidated test covering:
+    1. [plugins.client.vite.define] values are baked into the JS bundle
+    2. .env files are loaded from project root via envDir config
+    """
+    import re
+
+    print("[DEBUG] Starting test_vite_env_and_define_config")
+
+    app_name = "e2e-vite-config"
+    test_app_name = "E2E Test App"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            project_path = _setup_all_in_one_project(temp_dir, app_name)
+            print(f"[DEBUG] Project set up at {project_path}")
+
+            # 1. Verify jac.toml has the expected define values from all-in-one
+            jac_toml_path = os.path.join(project_path, "jac.toml")
+            with open(jac_toml_path) as f:
+                toml_content = f.read()
+            assert "globalThis.APP_BUILD_TIME" in toml_content, (
+                "jac.toml should contain APP_BUILD_TIME define"
+            )
+            assert "globalThis.FEATURE_ENABLED" in toml_content, (
+                "jac.toml should contain FEATURE_ENABLED define"
+            )
+            print("[DEBUG] Verified jac.toml contains expected define values")
+
+            # 2. Create .env file in project root
+            env_file_path = os.path.join(project_path, ".env")
+            with open(env_file_path, "w") as f:
+                f.write(f"VITE_APP_NAME={test_app_name}\n")
+                f.write("VITE_APP_VERSION=2.0.0-test\n")
+            print(f"[DEBUG] Created .env file at {env_file_path}")
+
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            try:
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # Fetch root HTML to get the JS bundle path
+                root_bytes = _wait_for_endpoint(
+                    f"http://127.0.0.1:{server_port}",
+                    timeout=120.0,
+                    poll_interval=2.0,
+                    request_timeout=30.0,
+                )
+                root_body = root_bytes.decode("utf-8", errors="ignore")
+                print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
+                assert "<html" in root_body.lower(), "Root should return HTML"
+
+                # Extract JS bundle path and fetch it
+                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
+                assert script_match, (
+                    f"Could not find client JS bundle path in HTML:\n{root_body[:1000]}"
+                )
+
+                js_path = script_match.group(1)
+                js_url = f"http://127.0.0.1:{server_port}{js_path}"
+                print(f"[DEBUG] Fetching JS bundle from {js_url}")
+
+                with urlopen(js_url, timeout=30) as resp:
+                    js_body = resp.read().decode("utf-8", errors="ignore")
+                    assert resp.status == 200, "JS bundle should return 200"
+                    assert len(js_body) > 0, "JS bundle should not be empty"
+                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
+
+                # Assert 1: Define values from jac.toml are baked in
+                assert "2024-01-01T00:00:00Z" in js_body, (
+                    "Expected APP_BUILD_TIME value '2024-01-01T00:00:00Z' "
+                    "to appear in the bundled JavaScript."
+                )
+                print("[DEBUG] Confirmed APP_BUILD_TIME value found in JS bundle")
+
+                # Assert 2: .env file values are loaded via envDir
+                assert test_app_name in js_body, (
+                    f"Expected VITE_APP_NAME value '{test_app_name}' "
+                    "to appear in the bundled JavaScript."
+                )
+                print(f"[DEBUG] Confirmed '{test_app_name}' found in JS bundle")
+
+                assert "2.0.0-test" in js_body, (
+                    "Expected VITE_APP_VERSION value '2.0.0-test' "
+                    "to appear in the bundled JavaScript."
+                )
+                print("[DEBUG] Confirmed '2.0.0-test' found in JS bundle")
+
+                print("[DEBUG] All Vite config assertions passed")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                    except Exception:
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            os.chdir(original_cwd)
+            gc.collect()
+
+
+def test_pwa_build_generates_manifest_and_service_worker() -> None:
+    """Test that `jac build --client pwa` generates manifest.json and sw.js.
+
+    This test validates the PWA target build process:
+    1. Creates a new client app using `jac create --use client`
+    2. Runs `jac build --client pwa`
+    3. Verifies manifest.json and sw.js are generated in dist
+    4. Starts the server and verifies PWA files are served
+    """
+    print("[DEBUG] Starting test_pwa_build_generates_manifest_and_service_worker")
+
+    app_name = "e2e-pwa-build"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            print(f"[DEBUG] Changed working directory to {temp_dir}")
+
+            # 1. Create a new Jac client app
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            print(
+                f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'"
+            )
+            process = Popen(
+                [*jac_cmd, "create", "--use", "client", app_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                env=env,
+            )
+            stdout, stderr = process.communicate()
+            returncode = process.returncode
+
+            print(
+                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}\n"
+            )
+
+            if returncode != 0 and "unrecognized arguments: --use" in stderr:
+                pytest.fail(
+                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                )
+
+            assert returncode == 0, (
+                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+            )
+
+            project_path = os.path.join(temp_dir, app_name)
+            print(f"[DEBUG] Created Jac client app at {project_path}")
+            assert os.path.isdir(project_path)
+
+            # 2. Ensure packages are installed
+            node_modules_path = os.path.join(
+                project_path, ".jac", "client", "node_modules"
+            )
+            if not os.path.isdir(node_modules_path):
+                print("[DEBUG] node_modules not found, running 'jac add --npm'")
+                jac_add_result = run(
+                    [*jac_cmd, "add", "--npm"],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                print(
+                    f"[DEBUG] 'jac add --npm' completed returncode={jac_add_result.returncode}\n"
+                    f"STDOUT (truncated):\n{jac_add_result.stdout[:1000]}\n"
+                    f"STDERR (truncated):\n{jac_add_result.stderr[:1000]}\n"
+                )
+                if jac_add_result.returncode != 0:
+                    pytest.fail(
+                        f"jac add --npm failed\n"
+                        f"STDOUT:\n{jac_add_result.stdout}\n"
+                        f"STDERR:\n{jac_add_result.stderr}\n"
+                    )
+
+            # 3. Run `jac build --client pwa`
+            print("[DEBUG] Running 'jac build --client pwa main.jac'")
+            build_result = run(
+                [*jac_cmd, "build", "--client", "pwa", "main.jac"],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            print(
+                f"[DEBUG] 'jac build --client pwa' completed returncode={build_result.returncode}\n"
+                f"STDOUT:\n{build_result.stdout}\n"
+                f"STDERR:\n{build_result.stderr}\n"
+            )
+
+            assert build_result.returncode == 0, (
+                f"jac build --client pwa failed\n"
+                f"STDOUT:\n{build_result.stdout}\n"
+                f"STDERR:\n{build_result.stderr}\n"
+            )
+
+            # 4. Verify PWA files are generated in dist
+            dist_dir = os.path.join(project_path, ".jac", "client", "dist")
+            assert os.path.isdir(dist_dir), f"dist directory not found at {dist_dir}"
+
+            manifest_path = os.path.join(dist_dir, "manifest.json")
+            sw_path = os.path.join(dist_dir, "sw.js")
+
+            assert os.path.isfile(manifest_path), (
+                f"manifest.json not found at {manifest_path}"
+            )
+            assert os.path.isfile(sw_path), f"sw.js not found at {sw_path}"
+
+            # 5. Validate manifest.json content
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+
+            print(f"[DEBUG] manifest.json content: {json.dumps(manifest, indent=2)}")
+            assert "name" in manifest, "manifest.json should have 'name' field"
+            assert "icons" in manifest, "manifest.json should have 'icons' field"
+            assert "start_url" in manifest, (
+                "manifest.json should have 'start_url' field"
+            )
+            assert manifest.get("display") == "standalone", (
+                "manifest.json should have display=standalone"
+            )
+
+            # 6. Validate sw.js content
+            with open(sw_path) as f:
+                sw_content = f.read()
+
+            print(f"[DEBUG] sw.js content (truncated): {sw_content[:500]}")
+            assert "CACHE_NAME" in sw_content, "sw.js should define CACHE_NAME"
+            assert "addEventListener" in sw_content, "sw.js should have event listeners"
+            assert "install" in sw_content, "sw.js should handle install event"
+            assert "fetch" in sw_content, "sw.js should handle fetch event"
+
+            # 7. Verify index.html has PWA injections
+            index_path = os.path.join(dist_dir, "index.html")
+            assert os.path.isfile(index_path), f"index.html not found at {index_path}"
+
+            with open(index_path) as f:
+                index_content = f.read()
+
+            print(f"[DEBUG] index.html content (truncated): {index_content[:500]}")
+            assert 'rel="manifest"' in index_content, (
+                "index.html should have manifest link"
+            )
+            assert "serviceWorker" in index_content, (
+                "index.html should have SW registration script"
+            )
+
+            # 8. Start server and verify PWA files are served
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            try:
+                print(
+                    f"[DEBUG] Starting server with "
+                    f"'jac start --client pwa main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [
+                        *jac_cmd,
+                        "start",
+                        "--client",
+                        "pwa",
+                        "main.jac",
+                        "-p",
+                        str(server_port),
+                    ],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # Test manifest.json is served
+                try:
+                    print("[DEBUG] Fetching /manifest.json")
+                    manifest_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}/manifest.json",
+                        timeout=60.0,
+                        poll_interval=2.0,
+                        request_timeout=20.0,
+                    )
+                    served_manifest = json.loads(manifest_bytes.decode("utf-8"))
+                    print(f"[DEBUG] Served manifest.json: {served_manifest}")
+                    assert "name" in served_manifest, (
+                        "Served manifest.json should have 'name'"
+                    )
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    print(f"[DEBUG] Error fetching /manifest.json: {exc}")
+                    pytest.fail(f"Failed to GET /manifest.json: {exc}")
+
+                # Test sw.js is served
+                try:
+                    print("[DEBUG] Fetching /sw.js")
+                    sw_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}/sw.js",
+                        timeout=60.0,
+                        poll_interval=2.0,
+                        request_timeout=20.0,
+                    )
+                    served_sw = sw_bytes.decode("utf-8")
+                    print(f"[DEBUG] Served sw.js (truncated): {served_sw[:300]}")
+                    assert "CACHE_NAME" in served_sw, (
+                        "Served sw.js should define CACHE_NAME"
+                    )
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    print(f"[DEBUG] Error fetching /sw.js: {exc}")
+                    pytest.fail(f"Failed to GET /sw.js: {exc}")
+
+                # Test root page has PWA meta tags
+                try:
+                    print("[DEBUG] Fetching root page")
+                    root_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}",
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8")
+                    print(f"[DEBUG] Root page (truncated): {root_body[:500]}")
+                    assert 'rel="manifest"' in root_body, (
+                        "Root page should have manifest link"
+                    )
+                    assert "serviceWorker" in root_body, (
+                        "Root page should have SW registration"
+                    )
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    print(f"[DEBUG] Error fetching root page: {exc}")
+                    pytest.fail(f"Failed to GET root page: {exc}")
+
+                print("[DEBUG] All PWA tests passed!")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                        print("[DEBUG] Server terminated cleanly")
+                    except Exception:
+                        print("[DEBUG] Server did not terminate cleanly, killing")
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            print(f"[DEBUG] Restoring working directory to {original_cwd}")
             os.chdir(original_cwd)
             gc.collect()

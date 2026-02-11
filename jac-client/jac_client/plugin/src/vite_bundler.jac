@@ -11,7 +11,8 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__),
-     API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL";
+     API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
+     JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__";
 
 """Handles Vite bundling operations."""
 class ViteBundler {
@@ -44,6 +45,11 @@ class ViteBundler {
     def _get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str;
     def _format_plugin_options(self: ViteBundler, options: dict) -> str;
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
+    """Format define entries for Vite config (build-time constants)."""
+    def _format_define_entries(
+        self: ViteBundler, api_base_url: str, custom_defines: dict
+    ) -> str;
+
     def _ensure_root_package_json(self: ViteBundler) -> None;
     def _cleanup_root_package_files(self: ViteBundler) -> None;
     def _generate_vite_config_content(

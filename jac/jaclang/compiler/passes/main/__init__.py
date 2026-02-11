@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 def __getattr__(name: str) -> type:
     """Lazily load passes on first access.
 
-    All lazy passes are .jac files - Python passes are imported directly from pycore.
+    All lazy passes are .jac files - Python passes are imported directly from jac0core.
     """
     if name in _lazy_cache:
         return _lazy_cache[name]
@@ -54,8 +54,8 @@ def __getattr__(name: str) -> type:
 
         if os.path.exists(jac_file):
             # Use Jac import mechanism via the meta importer
+            from jaclang.jac0core.runtime import JacRuntime as Jac
             from jaclang.meta_importer import JacMetaImporter
-            from jaclang.pycore.runtime import JacRuntime as Jac
 
             # Create module spec and load
             importer = JacMetaImporter()

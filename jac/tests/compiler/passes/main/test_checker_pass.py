@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import TypeCheckPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
@@ -448,8 +448,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a: int = uni.Module;  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^
+        a: int = os.path;  # <-- Error
+        ^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -804,44 +804,6 @@ def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
-
-
-def test_ts_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing TypeScript modules."""
-    path = fixture_path("ts_imports/utils.ts")
-    program = JacProgram()
-    # Test that we can parse and compile a TypeScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_js_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing JavaScript modules."""
-    path = fixture_path("ts_imports/component.js")
-    program = JacProgram()
-    # Test that we can parse and compile a JavaScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test Jac module importing from TypeScript."""
-    path = fixture_path("ts_imports/main.jac")
-    program = JacProgram()
-    mod = program.compile(path, type_check=True)
-    # The main.jac imports TypeScript/JS modules - verify it compiles
-    assert mod is not None
-
-
-def test_cl_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test .cl.jac module importing from TypeScript for type checking."""
-    path = fixture_path("ts_imports/client.cl.jac")
-    program = JacProgram()
-    mod = program.compile(path, no_cgen=True)
-    # The client.cl.jac imports TypeScript modules - verify it compiles
-    assert mod is not None
 
 
 def test_agentvisitor_connect_no_errors(fixture_path: Callable[[str], str]) -> None:

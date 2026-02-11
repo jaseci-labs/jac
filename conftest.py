@@ -147,7 +147,7 @@ _AST_EXCLUDED = {
 
 def get_ast_snake_case_names() -> list[str]:
     """Get AST node names in snake_case format."""
-    from jaclang.pycore.helpers import get_uni_nodes_as_snake_case as ast_snakes
+    from jaclang.jac0core.helpers import get_uni_nodes_as_snake_case as ast_snakes
 
     return [x for x in ast_snakes() if x not in _AST_EXCLUDED]
 
@@ -215,7 +215,7 @@ def isolate_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     skip setting base_path if one is already set, so this provides
     default isolation.
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     original_base_path = Jac.base_path_dir
     original_exec_ctx = Jac.exec_ctx

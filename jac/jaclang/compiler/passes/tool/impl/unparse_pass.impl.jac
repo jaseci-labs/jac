@@ -496,13 +496,21 @@ impl UnparsePass.exit_typed_ctx_block(`node: uni.TypedCtxBlock) -> None {
 """IfStmt: if cond { body }."""
 impl UnparsePass.exit_if_stmt(`node: uni.IfStmt) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
-    `node.gen.jac = "if " + `node.condition.gen.jac + " { " + body + " }";
+    result = "if " + `node.condition.gen.jac + " { " + body + " }";
+    if `node.else_body {
+        result = result + " " + `node.else_body.gen.jac;
+    }
+    `node.gen.jac = result;
 }
 
-"""ElseIf: elif cond { body }."""
+"""ElseIf: elif cond { body } [else_body]."""
 impl UnparsePass.exit_else_if(`node: uni.ElseIf) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
-    `node.gen.jac = "elif " + `node.condition.gen.jac + " { " + body + " }";
+    result = "elif " + `node.condition.gen.jac + " { " + body + " }";
+    if `node.else_body {
+        result = result + " " + `node.else_body.gen.jac;
+    }
+    `node.gen.jac = result;
 }
 
 """ElseStmt: else { body }."""
@@ -523,14 +531,28 @@ impl UnparsePass.exit_expr_stmt(`node: uni.ExprStmt) -> None {
 """TryStmt: try { body }."""
 impl UnparsePass.exit_try_stmt(`node: uni.TryStmt) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
-    `node.gen.jac = "try { " + body + " }";
+    result = "try { " + body + " }";
+    for exc in `node.excepts {
+        result = result + " " + exc.gen.jac;
+    }
+    if `node.else_body {
+        result = result + " " + `node.else_body.gen.jac;
+    }
+    if `node.finally_body {
+        result = result + " " + `node.finally_body.gen.jac;
+    }
+    `node.gen.jac = result;
 }
 
-"""Except: except [exception] { body }."""
+"""Except: except [exception [as name]] { body }."""
 impl UnparsePass.exit_except(`node: uni.Except) -> None {
     parts: list = ["except"];
     if `node.ex_type {
         parts.append(`node.ex_type.gen.jac);
+        if `node.name {
+            parts.append("as");
+            parts.append(`node.name.gen.jac);
+        }
     }
     body = " ".join([s.gen.jac for s in `node.body]);
     parts.append("{ " + body + " }");
@@ -558,6 +580,9 @@ impl UnparsePass.exit_iter_for_stmt(`node: uni.IterForStmt) -> None {
     }
     body = " ".join([s.gen.jac for s in `node.body]);
     parts.append("{ " + body + " }");
+    if `node.else_body {
+        parts.append(`node.else_body.gen.jac);
+    }
     `node.gen.jac = " ".join(parts);
 }
 
@@ -572,13 +597,20 @@ impl UnparsePass.exit_in_for_stmt(`node: uni.InForStmt) -> None {
     parts.append(`node.collection.gen.jac);
     body = " ".join([s.gen.jac for s in `node.body]);
     parts.append("{ " + body + " }");
+    if `node.else_body {
+        parts.append(`node.else_body.gen.jac);
+    }
     `node.gen.jac = " ".join(parts);
 }
 
 """WhileStmt: while cond { body }."""
 impl UnparsePass.exit_while_stmt(`node: uni.WhileStmt) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
-    `node.gen.jac = "while " + `node.condition.gen.jac + " { " + body + " }";
+    result = "while " + `node.condition.gen.jac + " { " + body + " }";
+    if `node.else_body {
+        result = result + " " + `node.else_body.gen.jac;
+    }
+    `node.gen.jac = result;
 }
 
 """WithStmt: with [async] [context] { body }."""

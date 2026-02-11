@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def test_impl_match_confusion_issue(fixture_path: Callable[[str], str]) -> None:

@@ -21,9 +21,9 @@ from unittest.mock import patch
 
 import pytest
 
-from jaclang.pycore.program import JacProgram
-from jaclang.pycore.runtime import JacRuntime as Jac
-from jaclang.pycore.runtime import JacRuntimeImpl, JacRuntimeInterface, plugin_manager
+from jaclang.jac0core.program import JacProgram
+from jaclang.jac0core.runtime import JacRuntime as Jac
+from jaclang.jac0core.runtime import JacRuntimeImpl, JacRuntimeInterface, plugin_manager
 
 # =============================================================================
 # Console Output Normalization - Disable Rich styling during tests

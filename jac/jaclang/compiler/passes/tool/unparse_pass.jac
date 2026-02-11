@@ -5,9 +5,9 @@ Serializes AST nodes to source code strings stored in node.gen.jac.
 Replaces the per-node normalize/unparse methods with a centralized pass.
 """
 import from collections.abc { Sequence }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { UniPass }
-import from jaclang.pycore.helpers { pascal_to_snake }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.helpers { pascal_to_snake }
 
 """Serialize Jac AST nodes to source code strings."""
 obj UnparsePass(UniPass) {

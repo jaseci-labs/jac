@@ -5,12 +5,12 @@ import from collections.abc { Iterable, Sequence }
 import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any, NamedTuple }
-import from jaclang.pycore.modresolver { convert_to_js_import_path }
+import from jaclang.jac0core.modresolver { convert_to_js_import_path }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.codeinfo { ClientManifest }
-        import from jaclang.pycore.unitree { Module }
+        import from jaclang.jac0core.codeinfo { ClientManifest }
+        import from jaclang.jac0core.unitree { Module }
     }
 }
 

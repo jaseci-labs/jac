@@ -9,7 +9,7 @@ from jac_scale.config_loader import get_scale_config, reset_scale_config
 from jac_scale.plugin import JacScalePlugin, _scale_pre_hook
 from jac_scale.user_manager import JacScaleUserManager
 from jaclang.cli.command import HookContext
-from jaclang.pycore.runtime import plugin_manager as pm
+from jaclang.jac0core.runtime import plugin_manager as pm
 
 
 def test_get_user_manager_implementation():
