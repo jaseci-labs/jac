@@ -19,13 +19,13 @@ import re;
 import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TYPE_CHECKING, TypeAlias, TypeVar, cast }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes.uni_pass { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes.uni_pass { Transform }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 

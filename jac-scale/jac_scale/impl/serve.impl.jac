@@ -59,35 +59,45 @@ def _transport_response_to_json_response(
 
 impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev or no_client mode)
+    # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
             import sys;
-            start_time = time.time();
-            try {
-                with console.status(
-                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
-                ) as status {
-                    self.introspector.ensure_bundle();
+            import from jaclang.project.config { get_config }
+            config = get_config();
+            dist_dir = config.get_client_dir() / 'dist' if config else None;
+            is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+            if is_pwa {
+                console.print("  ✔ PWA bundle already built", style="success");
+            } else {
+                start_time = time.time();
+                try {
+                    with console.status(
+                        "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                    ) as status {
+                        self.introspector.ensure_bundle();
+                    }
+                    elapsed = time.time() - start_time;
+                    console.print(
+                        f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                    );
+                } except Exception as e {
+                    console.warning(f"Failed to build client bundle: {e}");
+                    console.print(
+                        "\n  Client pages will not be available until this is fixed.\n",
+                        style="muted",
+                        file=sys.stderr
+                    );
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
+                    console.info(
+                        f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                        emoji=True
+                    );
                 }
-                elapsed = time.time() - start_time;
-                console.print(
-                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
-                );
-            } except Exception as e {
-                console.warning(f"Failed to build client bundle: {e}");
-                console.print(
-                    "\n  Client pages will not be available until this is fixed.\n",
-                    style="muted",
-                    file=sys.stderr
-                );
-                console.info('Try again after running: jac clean --all', emoji=True);
-                console.info(
-                    f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
-                    emoji=True
-                );
             }
         }
     }
@@ -407,10 +417,8 @@ impl JacAPIServer.register_client_js_endpoint -> None {
 impl JacAPIServer.serve_client_js_callback -> Callable[..., Response] {
     def callback -> Response {
         try {
-            self.introspector.load();
-            self.introspector.ensure_bundle();
             return Response(
-                content=self.introspector._bundle.code,
+                content=Jac.get_client_js(self.introspector),
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {
@@ -1188,6 +1196,64 @@ impl JacAPIServer.postinit -> None {
             }
         }
         self.server.app.add_middleware(CustomHeadersMiddleware);
+    }
+    # Initialize Prometheus metrics if enabled
+    import from jac_scale.factories.utility_factory { UtilityFactory }
+    import time;
+    metrics_config = get_scale_config().get_metrics_config();
+    self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
+    if self._metrics.is_enabled() {
+        metrics_collector = self._metrics;
+        metrics_endpoint = metrics_config.get('endpoint', '/metrics');
+        # Add metrics middleware to track request timing
+        class MetricsMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: MetricsMiddleware, request: Any, call_next: Any
+            ) -> Any {
+                # Skip metrics endpoint itself
+                if request.url.path == metrics_endpoint {
+                    return await call_next(request);
+                }
+
+                metrics_collector.request_started();
+                start_time = time.perf_counter();
+
+                try {
+                    response = await call_next(request);
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method,
+                        request.url.path,
+                        response.status_code,
+                        duration
+                    );
+                    return response;
+                } except Exception as e {
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method, request.url.path, 500, duration
+                    );
+                    raise ;
+                } finally {
+                    metrics_collector.request_finished();
+                }
+            }
+        }
+        self.server.app.add_middleware(MetricsMiddleware);
+        # Register /metrics endpoint
+        self.server.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path=metrics_endpoint,
+                callback=self._metrics.get_endpoint_handler(),
+                parameters=[],
+                response_model=None,
+                tags=['Monitoring'],
+                summary='Prometheus metrics',
+                description='Exposes application metrics in Prometheus format for scraping'
+            )
+        );
+        logger.info(f"Prometheus metrics enabled at {metrics_endpoint}");
     }
 }
 

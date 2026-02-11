@@ -34,7 +34,7 @@ import from jaclang.project.config { get_config }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.constructs { Archetype, WalkerArchetype }
+        import from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
     }
 }
 

@@ -11,9 +11,9 @@ import from bisect { bisect_left }
 import from collections.abc { Sequence }
 import from typing { NamedTuple }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes { Transform }
 
 """Information about a pair of delimiters and their positions."""
 class DelimiterInfo(NamedTuple) {

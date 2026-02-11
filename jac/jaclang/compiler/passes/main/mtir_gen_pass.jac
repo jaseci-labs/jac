@@ -5,8 +5,8 @@ Information Registry) from JacLang code. The pass extracts type information
 from GenAI abilities for use by the LLM runtime.
 """
 
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.mtp {
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.mtp {
     ClassInfo,
     EnumInfo,
     FieldInfo,
@@ -19,7 +19,7 @@ import from jaclang.pycore.mtp {
     type_to_str
 }
 
-import from jaclang.pycore.passes { UniPass }
+import from jaclang.jac0core.passes { UniPass }
 
 glob PRIMITIVE_TYPES: list[str] = [
          'int',

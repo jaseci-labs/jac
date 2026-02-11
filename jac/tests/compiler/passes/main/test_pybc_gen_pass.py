@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 import pytest
 
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def test_simple_bcgen(fixture_path: Callable[[str], str]) -> None:

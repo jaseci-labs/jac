@@ -10,8 +10,8 @@ The CFG provides a foundation for data flow analysis, optimization, and understa
 The pass also includes functionality to coalesce basic blocks and generate visual representations of the CFG.
 """
 import from collections.abc { Sequence }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
 """Jac Symbol table build pass."""
 obj CFGBuildPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;

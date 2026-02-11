@@ -14,7 +14,7 @@ enum APIProtocol ( StrEnum ) {
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
-        import from jaclang.pycore.constructs { AccessLevel, NodeArchetype }
+        import from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
         import from jaclang { JacRuntimeInterface }
         jid: Callable[(..., Any)];
         jobj: Callable[(..., Any)];

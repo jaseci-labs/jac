@@ -20,7 +20,7 @@ from jaclang.compiler.passes.tool.grammar_extract_pass import (
     GStar,
     GTok,
 )
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 PARSER_PATH = (
     Path(__file__).parent.parent.parent.parent.parent

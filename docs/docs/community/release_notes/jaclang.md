@@ -4,8 +4,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
+- **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
+- **PWA Build Detection**: The stdlib server now detects existing PWA builds and serves Vite-hashed client files (`client.*.js`) correctly.
+- **Fix: Serve JSON and JS files as static assets**: Added `.json` and `.js` to the list of recognized asset extensions, fixing PWA `manifest.json` and `sw.js` serving.
 - **Code refactors**: Backtick escape, etc.
+- **Code refactors**: Backtick escape, TS cleanup, etc.
+- **Bootstrap Compiler (`jac0`)**: Added a single-file Python transpiler (`jac0.py`, ~1900 lines) that compiles the Jac subset produced by `py2jac` into equivalent Python source code. This closes the bootstrap loop.
 - **RD Parser: Broad Grammar Parity Fixes**: Fixed 16 grammar gaps in the recursive descent parser, raising walk-check match rate from 95.3% to 98.7%.
+- **`jac --version` Shows Installed Plugins**: The version banner now lists all installed Jac plugins with their versions, making it easy to see the full environment at a glance.
+- **Fix: Type Checker Crashes**: Fixed crashes when type-checking default/star imports (`import from mod { default as X }`) and walker entry/exit handlers.
 
 ## jaclang 0.10.0 (Latest Release)
 
@@ -62,6 +69,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Compiler Buildout**: Major expansion of the native binary compilation pipeline for `.na.jac` files. The native backend now supports enums, boolean short-circuit evaluation, break/continue, for loops, ternary expressions, string literals and f-strings, objects with fields/methods/postinit, GC-managed lists, single inheritance with vtable-based virtual dispatch, complex access chains, indexed field assignment, string methods (strip, split, indexing), builtins (ord, int, input), augmented assignment operators (`+=`, `-=`, `*=`, `//=`, `%=`), and `with entry { ... }` blocks. All heap allocations use Boehm GC. Validated end-to-end with a fully native chess game.
 - **`jac run` for `.na.jac` Files**: Running `jac run file.na.jac` now compiles the file to native machine code and executes the `jac_entry` function directly, bypassing the Python import machinery entirely. Native execution runs as pure machine code with zero Python interpreter overhead at runtime.
 - **LSP Semantic Token Manager Refactor**: Refactored the language server's `SemTokManager` for production robustness. Deduplicated ~170 lines of shared symbol resolution logic.
+- - **Automatic Version Pinning in `jac.toml`**: When running `jac add <package_name>` without specifying a version, the detected installed version is automatically added to `jac.toml`, falling back to `>=0.0.0` if detection fails.
 - **Configuration Profiles**: Added multi-file configuration support with profile-based overrides. Projects can now use `jac.<profile>.toml` files (e.g., `jac.prod.toml`, `jac.staging.toml`) for environment-specific settings and `jac.local.toml` for developer-specific overrides that are automatically gitignored. Files are merged in priority order: `jac.toml` (base) < `jac.<profile>.toml` < `[environments.<profile>]` in-file overrides < `jac.local.toml`. Activate a profile via `--profile` flag on execution commands (e.g., `jac run app.jac --profile prod`, `jac start --profile staging`), the `JAC_PROFILE` environment variable, or `[environment].default_profile` in `jac.toml`. The `jac config path` command now displays all loaded config files with their priority labels. The `JAC_ENV` environment variable is deprecated in favor of `JAC_PROFILE`.
 - **Configuration Profile Bug Fixes**: Fixed several issues in the multi-profile config implementation: `storage.type` key now correctly maps to the `storage_type` field during profile merges, nested plugin configs use deep merge instead of shallow overwrite (preserving nested keys), `apply_profile` now handles all config sections (build, format, dot, cache, storage, check, project, dependencies, scripts -- previously only run, serve, test, and plugins), circular profile inheritance is detected and short-circuited instead of causing `RecursionError`, mutable default `config_files` field replaced with `None` sentinel to prevent cross-instance sharing, and config-to-CLI-args bridging added so profile values (e.g., `serve.port`) correctly override argparse defaults at runtime.
 - **JsxElement Builtin Type**: Added `JsxElement` builtin type for strict type checking of JSX expressions for client-side UI components.

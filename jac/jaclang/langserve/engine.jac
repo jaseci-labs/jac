@@ -10,10 +10,10 @@ import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Callable, Optional }
 
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.pycore.constant { SymbolType }
-import from jaclang.pycore.program { JacProgram }
+import from jaclang.jac0core.constant { SymbolType }
+import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
@@ -22,7 +22,7 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
-import from jaclang.pycore.unitree { UniScopeNode }
+import from jaclang.jac0core.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }

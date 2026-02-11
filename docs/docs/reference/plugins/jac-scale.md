@@ -316,18 +316,16 @@ Walkers have three access levels when served as API endpoints:
 
 ## Webhooks
 
-Webhooks allow external services (payment processors, CI/CD systems, messaging platforms, etc.) to send real-time notifications to your Jac application.
+Webhooks allow external services (payment processors, CI/CD systems, messaging platforms, etc.) to send real-time notifications to your Jac application. Jac-Scale provides:
 
-### Features
-
-- Dedicated `/webhook/` endpoints for webhook walkers
-- API key authentication for secure access
-- HMAC-SHA256 signature verification to validate request integrity
-- Automatic endpoint generation based on walker configuration
+- **Dedicated `/webhook/` endpoints** for webhook walkers
+- **API key authentication** for secure access
+- **HMAC-SHA256 signature verification** to validate request integrity
+- **Automatic endpoint generation** based on walker configuration
 
 ### Configuration
 
-Configure webhooks in `jac.toml`:
+Webhook configuration is managed via the `jac.toml` file in your project root.
 
 ```toml
 [plugins.scale.webhook]
@@ -339,23 +337,34 @@ api_key_expiry_days = 365
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `secret` | string | `"webhook-secret-key"` | Secret key for HMAC signature verification. Also settable via `WEBHOOK_SECRET` env var. |
-| `signature_header` | string | `"X-Webhook-Signature"` | HTTP header name for the HMAC signature |
-| `verify_signature` | boolean | `true` | Whether to verify HMAC signatures on incoming requests |
-| `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. `0` for permanent keys. |
+| `secret` | string | `"webhook-secret-key"` | Secret key for HMAC signature verification. Can also be set via `WEBHOOK_SECRET` environment variable. |
+| `signature_header` | string | `"X-Webhook-Signature"` | HTTP header name containing the HMAC signature. |
+| `verify_signature` | boolean | `true` | Whether to verify HMAC signatures on incoming requests. |
+| `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. Set to `0` for permanent keys. |
+
+**Environment Variables:**
+
+For production deployments, use environment variables for sensitive values:
+
+```bash
+export WEBHOOK_SECRET="your-secure-random-secret"
+```
 
 ### Creating Webhook Walkers
 
-Use `@restspec(webhook=True)` to create a webhook endpoint:
+To create a webhook endpoint, use the `@restspec(protocol=APIProtocol.WEBHOOK)` decorator on your walker definition.
+
+#### Basic Webhook Walker
 
 ```jac
-@restspec(webhook=True)
+@restspec(protocol=APIProtocol.WEBHOOK)
 walker PaymentReceived {
     has payment_id: str,
         amount: float,
         currency: str = 'USD';
 
     can process with Root entry {
+        # Process the payment notification
         report {
             "status": "success",
             "message": f"Payment {self.payment_id} received",
@@ -366,24 +375,35 @@ walker PaymentReceived {
 }
 ```
 
-This walker is accessible at `POST /webhook/PaymentReceived`.
+This walker will be accessible at `POST /webhook/PaymentReceived`.
 
-Webhook walkers are **only** accessible via `/webhook/{walker_name}` endpoints -- they are **not** accessible via the standard `/walker/{walker_name}` endpoint.
+#### Important Notes
+
+- Webhook walkers are **only** accessible via `/webhook/{walker_name}` endpoints
+- They are **not** accessible via the standard `/walker/{walker_name}` endpoint
 
 ### API Key Management
 
-Webhook endpoints require API key authentication. Users must create an API key before calling webhook endpoints.
+Webhook endpoints require API key authentication. Users must first create an API key before calling webhook endpoints.
 
-**Create API Key:**
+#### Creating an API Key
 
-```bash
-curl -X POST http://localhost:8000/api-key/create \
-  -H "Authorization: Bearer <jwt_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "My Webhook Key", "expiry_days": 30}'
+**Endpoint:** `POST /api-key/create`
+
+**Headers:**
+
+- `Authorization: Bearer <jwt_token>` (required)
+
+**Request Body:**
+
+```json
+{
+    "name": "My Webhook Key",
+    "expiry_days": 30
+}
 ```
 
-Response:
+**Response:**
 
 ```json
 {
@@ -395,33 +415,26 @@ Response:
 }
 ```
 
-**List API Keys:**
+#### Listing API Keys
 
-```bash
-curl -X GET http://localhost:8000/api-key/list \
-  -H "Authorization: Bearer <jwt_token>"
-```
+**Endpoint:** `GET /api-key/list`
 
-**Revoke API Key:**
+**Headers:**
 
-```bash
-curl -X DELETE http://localhost:8000/api-key/<api_key_id> \
-  -H "Authorization: Bearer <jwt_token>"
-```
+- `Authorization: Bearer <jwt_token>` (required)
 
 ### Calling Webhook Endpoints
 
-Webhook endpoints require two headers:
+Webhook endpoints require two headers for authentication:
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Content-Type` | Yes | Must be `application/json` |
-| `X-API-Key` | Yes | API key from `/api-key/create` |
-| `X-Webhook-Signature` | If `verify_signature` enabled | HMAC-SHA256 signature of request body |
+1. **`X-API-Key`**: The API key obtained from `/api-key/create`
+2. **`X-Webhook-Signature`**: HMAC-SHA256 signature of the request body
+
+#### Generating the Signature
 
 The signature is computed as: `HMAC-SHA256(request_body, api_key)`
 
-**Example (cURL):**
+**cURL Example:**
 
 ```bash
 API_KEY="eyJhbGciOiJIUzI1NiIs..."
@@ -447,14 +460,110 @@ curl -X POST "http://localhost:8000/webhook/PaymentReceived" \
 
 ### Webhook API Reference
 
+#### Webhook Endpoints
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/webhook/{walker_name}` | Execute webhook walker |
-| POST | `/api-key/create` | Create a new API key (requires JWT) |
-| GET | `/api-key/list` | List all API keys for user (requires JWT) |
-| DELETE | `/api-key/{api_key_id}` | Revoke an API key (requires JWT) |
+
+#### API Key Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api-key/create` | Create a new API key |
+| GET | `/api-key/list` | List all API keys for user |
+| DELETE | `/api-key/{api_key_id}` | Revoke an API key |
+
+#### Required Headers for Webhook Requests
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Content-Type` | Yes | Must be `application/json` |
+| `X-API-Key` | Yes | API key from `/api-key/create` |
+| `X-Webhook-Signature` | Yes* | HMAC-SHA256 signature (*if `verify_signature` is enabled) |
 
 ---
+
+## WebSockets
+
+Jac Scale provides built-in support for WebSocket endpoints, enabling real-time bidirectional communication between clients and walkers.
+
+### Overview
+
+WebSockets allow persistent, full-duplex connections between a client and your Jac application. Unlike REST endpoints (single request-response), a WebSocket connection stays open, allowing multiple messages to be exchanged in both directions. Jac Scale provides:
+
+- **Dedicated `/ws/` endpoints** for WebSocket walkers
+- **Persistent connections** with a message loop
+- **JSON message protocol** for sending walker fields and receiving results
+- **JWT authentication** via query parameter or message payload
+- **Connection management** with automatic cleanup on disconnect
+- **HMR support** in dev mode for live reloading
+
+### Creating WebSocket Walkers
+
+To create a WebSocket endpoint, use the `@restspec(protocol=APIProtocol.WEBSOCKET)` decorator on an `async walker` definition.
+
+#### Basic WebSocket Walker (Public)
+
+```jac
+@restspec(protocol=APIProtocol.WEBSOCKET)
+async walker : pub EchoMessage {
+    has message: str;
+    has client_id: str = "anonymous";
+
+    async can echo with Root entry {
+        report {
+            "echo": self.message,
+            "client_id": self.client_id
+        };
+    }
+}
+```
+
+This walker will be accessible at `ws://localhost:8000/ws/EchoMessage`.
+
+#### Authenticated WebSocket Walker
+
+To create a private walker that requires JWT authentication, simply remove `: pub` from the walker definition.
+
+#### Broadcasting WebSocket Walker
+
+Use `broadcast=True` to send messages to ALL connected clients of this walker:
+
+```jac
+@restspec(protocol=APIProtocol.WEBSOCKET, broadcast=True)
+async walker : pub ChatRoom {
+    has message: str;
+    has sender: str = "anonymous";
+
+    async can handle with Root entry {
+        report {
+            "type": "message",
+            "sender": self.sender,
+            "content": self.message
+        };
+    }
+}
+```
+
+When a client sends a message, **all connected clients** receive the response, making it ideal for:
+
+- Chat rooms
+- Live notifications
+- Real-time collaboration
+- Game state synchronization
+
+#### Private Broadcasting Walker
+
+To create a private broadcasting walker, remove `: pub` from the walker definition. Only authenticated users can connect and send messages, and all authenticated users receive broadcasts.
+
+### Important Notes
+
+- WebSocket walkers **must** be declared as `async walker`
+- Use `: pub` for public access (no authentication required) or omit it to require JWT auth
+- Use `broadcast=True` to send responses to ALL connected clients (only valid with WEBSOCKET protocol)
+- WebSocket walkers are **only** accessible via `ws://host/ws/{walker_name}`
+- The connection stays open until the client disconnects
 
 ## Storage
 

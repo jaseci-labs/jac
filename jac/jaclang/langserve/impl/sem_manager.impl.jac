@@ -13,7 +13,7 @@ unresolved NameAtom. Sets nd.sym and nd.name_of so that the sem_token
 property computes correctly.
 """
 impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
-    import from jaclang.pycore.constant { JacSemTokenType }
+    import from jaclang.jac0core.constant { JacSemTokenType }
     if nd.sym is not None or not nd?.value {
         return;
     }

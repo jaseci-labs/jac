@@ -23,7 +23,7 @@ glob CONFIG_GROUPS = [
 
 """Manage Jac plugins - list, disable, or enable plugins."""
 impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> int {
-    import from jaclang.pycore.runtime { plugin_manager }
+    import from jaclang.jac0core.runtime { plugin_manager }
     import from jaclang.cli.registry { get_registry }
     import from jaclang.project.config { get_config, JacConfig, find_project_root }
     import from pathlib { Path }

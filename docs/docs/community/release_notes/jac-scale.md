@@ -4,8 +4,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.8 (Unreleased)
 
+- Various refactors
+- **PWA Build Detection**: Server startup now detects existing PWA builds (via `manifest.json`) and skips redundant client bundling. The `/static/client.js` endpoint serves Vite-hashed files (`client.*.js`) in PWA mode.
+- **Prometheus Metrics Integration**: Added `/metrics` endpoint with HTTP request metrics, configurable via `[plugins.scale.metrics]` in `jac.toml`.
+- Update jaseci scale k8s pipeline to support parellel test cases.
+- **early exit from k8s deployment if container restarted**
 - **Direct Database Access (`kvstore`)**: Added `kvstore()` function for direct MongoDB and Redis operations without graph layer. Supports database-specific methods (MongoDB: `find_one`, `insert_one`, `update_one`; Redis: `set_with_ttl`, `incr`, `scan_keys`) with common methods (`get`, `set`, `delete`, `exists`) working across both. Import from `jac_scale.lib` with URI-based connection pooling and configuration fallback (explicit URI → env vars → jac.toml).
 - **Code refactors**: Backtick escape, etc.
+- **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
+- **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 
 ## jac-scale 0.1.7 (Latest Release)
 
@@ -100,12 +107,13 @@ First release of **Jac-Scale** - a scalable runtime framework for distributed Ja
 
 ### Key Features
 
-- Distributed runtime with load balancing and service discovery
-- Intelligent walker scheduling across multiple nodes
-- Auto-partitioned graph storage
-- Performance monitoring and auto-scaling
-- YAML-based configuration
-- Username-based user management for authentication
+- Conversion of walker to fastapi endpoints
+- Multi memory hierachy implementation
+- Support for Mongodb (persistance storage) and Redis (cache storage) in k8s
+- Deployment of app code directly to k8s cluster
+- k8s support for local deployment and aws k8s deployment
+- SSO support for google
+
 - **Custom Response Headers**: Configure custom HTTP response headers via `[environments.response.headers]` in `jac.toml`. Useful for security headers like COOP/COEP (required for `SharedArrayBuffer` support in libraries like monaco-editor).
 
 ### Installation

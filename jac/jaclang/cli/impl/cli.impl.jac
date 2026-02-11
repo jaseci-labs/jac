@@ -10,7 +10,7 @@ import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 
 impl start_cli -> None {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.cli.registry { get_registry }
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }

@@ -4,7 +4,7 @@ import logging;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from uuid { UUID }
-import from jaclang.pycore.archetype { Anchor, Root }
+import from jaclang.jac0core.archetype { Anchor, Root }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 
 glob logger = logging.getLogger(__name__);

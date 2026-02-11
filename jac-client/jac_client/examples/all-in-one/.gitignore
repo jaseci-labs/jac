@@ -23,3 +23,8 @@ node_modules/
 .jac/
 *.session
 *.session.*
+
+# Environment variables (keep .env.example for reference)
+.env
+.env.local
+.env.*.local

@@ -2,7 +2,7 @@
 
 from jac_scale.plugin import JacScalePlugin
 from jac_scale.user_manager import JacScaleUserManager
-from jaclang.pycore.runtime import plugin_manager as pm
+from jaclang.jac0core.runtime import plugin_manager as pm
 
 
 def test_get_user_manager_implementation():
