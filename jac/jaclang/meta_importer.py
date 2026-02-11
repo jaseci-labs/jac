@@ -10,18 +10,33 @@ from __future__ import annotations
 import importlib.abc
 import importlib.machinery
 import importlib.util
+import logging
 import os
+import sys
+import types
 from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
 from types import ModuleType
 
-from jaclang.pycore.log import logging
-from jaclang.pycore.modresolver import (
-    get_jac_search_paths,
-)
+from jaclang.jac0 import compile_jac as _jac0_compile
 
-logger = logging.getLogger(__name__)
+# Inline logging config (previously in jaclang.pycore.log)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+
+# Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
+# This module must be available for find_spec()/get_code(), but normal
+# .jac imports are not yet operational at this point.
+_pycore_dir = os.path.join(os.path.dirname(__file__), "pycore")
+_modresolver_jac = os.path.join(_pycore_dir, "modresolver.jac")
+with open(_modresolver_jac, encoding="utf-8") as _f:
+    _py_src = _jac0_compile(_f.read(), _modresolver_jac)
+_modresolver = types.ModuleType("jaclang.pycore.modresolver")
+_modresolver.__file__ = _modresolver_jac
+_modresolver.__package__ = "jaclang.pycore"
+exec(compile(_py_src, _modresolver_jac, "exec"), _modresolver.__dict__)  # noqa: S102
+sys.modules["jaclang.pycore.modresolver"] = _modresolver
+get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
 @cache
