@@ -94,7 +94,7 @@ Process python node.
 impl PyastBuildPass.proc_keyword(`node: py_ast.keyword) -> uni.KWPair {
     arg = None;
     if `node.arg {
-        import from jaclang.pycore.jac_parser { TOKEN_MAP }
+        import from jaclang.jac0core.jac_parser { TOKEN_MAP }
         reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
         arg = uni.Name(
             orig_src=self.orig_src,
@@ -440,7 +440,7 @@ Process python node.
             annotation: expr | None
 """
 impl PyastBuildPass.proc_arg(`node: py_ast.arg) -> uni.ParamVar {
-    import from jaclang.pycore.jac_parser { TOKEN_MAP }
+    import from jaclang.jac0core.jac_parser { TOKEN_MAP }
     reserved_keywords = [
         v
         for (_, v) in TOKEN_MAP.items()
@@ -840,7 +840,7 @@ Process python node.
             names: list[_Identifier]
 """
 impl PyastBuildPass.proc_nonlocal(`node: py_ast.Nonlocal) -> uni.NonLocalStmt {
-    import from jaclang.pycore.jac_parser { TOKEN_MAP }
+    import from jaclang.jac0core.jac_parser { TOKEN_MAP }
     reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     names: list[uni.NameAtom] = [];
     for name in `node.names {
@@ -904,7 +904,7 @@ Process python node.
         ctx: expr_context
 """
 impl PyastBuildPass.proc_name(`node: py_ast.Name) -> uni.Name {
-    import from jaclang.pycore.jac_parser { TOKEN_MAP }
+    import from jaclang.jac0core.jac_parser { TOKEN_MAP }
     reserved_keywords = [
         v
         for (_, v) in TOKEN_MAP.items()
@@ -2451,7 +2451,7 @@ Process python node.
             value: expr
 """
 impl PyastBuildPass.proc_aug_assign(`node: py_ast.AugAssign) -> uni.Assignment {
-    import from jaclang.pycore.jac_parser { TOKEN_MAP }
+    import from jaclang.jac0core.jac_parser { TOKEN_MAP }
     target = self.convert(`node.target);
     op = self.convert(`node.op);
     if isinstance(op, uni.Token) {
@@ -2707,7 +2707,7 @@ Process python node.
 impl PyastBuildPass.proc_function_def(
     `node: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
 ) -> uni.Ability {
-    import from jaclang.pycore.jac_parser { TOKEN_MAP }
+    import from jaclang.jac0core.jac_parser { TOKEN_MAP }
     reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     name = uni.Name(
         orig_src=self.orig_src,
@@ -2902,7 +2902,7 @@ impl PyastBuildPass.transform(ir_in: uni.PythonModuleAst) -> uni.Module {
 
 """Get python node type."""
 impl PyastBuildPass.convert(`node: py_ast.AST) -> uni.UniNode {
-    import from jaclang.pycore.helpers { pascal_to_snake }
+    import from jaclang.jac0core.helpers { pascal_to_snake }
     if self.is_canceled() {
         raise StopIteration ;
     }

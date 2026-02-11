@@ -5,8 +5,8 @@ in EBNF/Lark format. Walks compiled ImplDef nodes, recognizes token
 consumption and control-flow patterns, and produces grammar rules.
 """
 
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
 
 # ---------------------------------------------------------------------------
 # Grammar Expression Types

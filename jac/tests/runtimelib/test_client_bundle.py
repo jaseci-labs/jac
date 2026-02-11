@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from jaclang import JacRuntime as Jac
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 @pytest.fixture(scope="class", autouse=True)
@@ -231,7 +231,7 @@ def test_bundle_size_reasonable():
 
 def test_import_path_conversion():
     """Test that Jac-style import paths are converted to JS paths."""
-    from jaclang.pycore.modresolver import convert_to_js_import_path
+    from jaclang.jac0core.modresolver import convert_to_js_import_path
 
     # Test single dot (current directory)
     assert convert_to_js_import_path(".module") == "./module.js"

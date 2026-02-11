@@ -3,8 +3,8 @@
 from collections.abc import Callable
 
 from jaclang import JacRuntime as Jac
-from jaclang.pycore.mtp import ClassInfo, FunctionInfo, MethodInfo
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.mtp import ClassInfo, FunctionInfo, MethodInfo
+from jaclang.jac0core.program import JacProgram
 
 
 def test_mtir_gen_basic(fixture_path: Callable[[str], str]) -> None:

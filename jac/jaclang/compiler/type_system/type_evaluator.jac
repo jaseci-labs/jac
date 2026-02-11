@@ -10,17 +10,17 @@ import ast as py_ast;
 import os;
 import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.jac_parser { TOKEN_MAP }
-import from jaclang.pycore.constant { SymbolType, Tokens as Tok }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.jac_parser { TOKEN_MAP }
+import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.pycore.passes.sym_tab_build_pass { SymTabBuildPass }
+import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 
@@ -67,6 +67,7 @@ obj PrefetchedTypes {
         any_class: TypeBase | None = None,
         # Prefetched from jac_builtins.pyi file
         final_class: TypeBase | None = None,
+        literal_string_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,

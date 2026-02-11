@@ -15,9 +15,9 @@ relationships between the two AST representations throughout the compilation pro
 """
 import ast as ast3;
 import from collections.abc { Sequence }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { CodeContext }
-import from jaclang.pycore.passes { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { CodeContext }
+import from jaclang.jac0core.passes { UniPass }
 """Link jac ast to python ast nodes."""
 obj PyJacAstLinkPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;

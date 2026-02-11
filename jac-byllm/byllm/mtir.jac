@@ -1,7 +1,7 @@
 """MTRuntime (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
 import inspect;
 import json;
-import from jaclang.pycore.mtp { Info, MethodInfo, FunctionInfo }
+import from jaclang.jac0core.mtp { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { Callable, get_type_hints }
 import from byllm.schema { json_to_instance, type_to_schema }

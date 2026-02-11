@@ -2,7 +2,7 @@
 import from typing { List, Optional, Tuple }
 import logging;
 
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.langserve.utils {
     find_surrounding_tokens,

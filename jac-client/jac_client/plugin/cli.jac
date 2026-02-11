@@ -10,7 +10,7 @@ For creating client projects, use: `jac create --use client`
 
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.jac0core.runtime { hookimpl }
 import os;
 
 glob registry = get_registry();
@@ -42,8 +42,8 @@ with entry {
             "client",
             typ=str,
             default="web",
-            help="Build client (web, desktop)",
-            choices=["web", "desktop"],
+            help="Build client (web, desktop, pwa)",
+            choices=["web", "desktop", "pwa"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
         ),
         Arg.create(
@@ -59,6 +59,7 @@ with entry {
     examples=[
         ("jac build", "Build web target (default)"),
         ("jac build main.jac", "Build specific file"),
+        ("jac build --client pwa", "Build PWA (Progressive Web App)"),
         ("jac build --client desktop", "Build desktop app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
 
@@ -168,8 +169,8 @@ class JacCmd {
                         "client",  # Use client to avoid conflict with jac-scale's --client
                         typ=str,
                         default="web",
-                        help="Client build target for dev server (web, desktop)",
-                        choices=["web", "desktop"],
+                        help="Client build target for dev server (web, desktop, pwa)",
+                        choices=["web", "desktop", "pwa"],
                         short=""  # Disable auto-generated short flag
                     ),
 
@@ -365,6 +366,40 @@ def _handle_build_target(ctx: HookContext) -> None {
     }
 }
 
+"""Extract config, entry path, and project dir from context. Returns None on error."""
+def _get_start_context(ctx: HookContext) -> tuple | None {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.cli.console { console }
+
+    config = get_config();
+    if not config {
+        console.error("No jac.toml found. Run 'jac create' to create a project.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return None;
+    }
+
+    entry_file = ctx.get_arg("filename", None);
+    if not entry_file {
+        entry_file = config.entry_point;
+    }
+    if not entry_file {
+        console.error("No entry file specified. Use: jac start <file>");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return None;
+    }
+
+    entry_path = Path(entry_file);
+    project_dir = config.project_root or Path.cwd();
+    if not entry_path.is_absolute() {
+        entry_path = project_dir / entry_path;
+    }
+
+    return (config, entry_path, project_dir);
+}
+
 """Pre-hook to handle --client flag for start command."""
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
@@ -394,30 +429,11 @@ def _handle_start_target(ctx: HookContext) -> None {
     # Handle desktop target
     if target_name == "desktop" {
         import from pathlib { Path }
-        import from jaclang.project.config { get_config }
-        config = get_config();
-        if not config {
-            console.error("No jac.toml found. Run 'jac create' to create a project.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
+        start_ctx = _get_start_context(ctx);
+        if not start_ctx {
             return;
         }
-        # Get entry file
-        entry_file = ctx.get_arg("filename", None);
-        if not entry_file {
-            entry_file = config.entry_point;
-        }
-        if not entry_file {
-            console.error("No entry file specified. Use: jac start <file>");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-        entry_path = Path(entry_file);
-        project_dir = config.project_root or Path.cwd();
-        if not entry_path.is_absolute() {
-            entry_path = project_dir / entry_path;
-        }
+        (config, entry_path, project_dir) = start_ctx;
         # Check if setup has been run
         tauri_dir = project_dir / "src-tauri";
         if not tauri_dir.exists() {
@@ -441,6 +457,35 @@ def _handle_start_target(ctx: HookContext) -> None {
         } except Exception as e {
             import traceback;
             console.error(f"Desktop start failed: {e}");
+            console.print(traceback.format_exc(), style="muted");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+        }
+        return;
+    }
+
+    # Handle PWA target - build PWA files, then let normal jac start serve them
+    if target_name == "pwa" {
+        start_ctx = _get_start_context(ctx);
+        if not start_ctx {
+            return;
+        }
+        (config, entry_path, project_dir) = start_ctx;
+        dev_mode = ctx.get_arg("dev", False);
+        try {
+            if dev_mode {
+                target.dev(entry_path, project_dir);
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 0);
+            } else {
+                # Build PWA bundle, then let server serve with no_client (skip rebuild)
+                target.build(entry_path, project_dir, None);
+                # Tell server to skip client building - we already built it
+                ctx.args['no_client'] = True;
+            }
+        } except Exception as e {
+            import traceback;
+            console.error(f"PWA target failed: {e}");
             console.print(traceback.format_exc(), style="muted");
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 1);
@@ -498,17 +543,35 @@ def _handle_setup_target(ctx: HookContext) -> None {
         target.setup(project_dir);
 
         # Verify setup completed successfully
-        tauri_dir = project_dir / "src-tauri";
-        if not tauri_dir.exists() {
-            console.error(
-                f"Setup completed but src-tauri directory not found at: {tauri_dir}"
-            );
-            console.print(
-                "This may indicate the setup function failed silently.", style="muted"
-            );
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
+        if target_name == "desktop" {
+            tauri_dir = project_dir / "src-tauri";
+            if not tauri_dir.exists() {
+                console.error(
+                    f"Setup completed but src-tauri directory not found at: {tauri_dir}"
+                );
+                console.print(
+                    "This may indicate the setup function failed silently.",
+                    style="muted"
+                );
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
+        }
+        if target_name == "pwa" {
+            pwa_icons_dir = project_dir / "pwa_icons";
+            if not pwa_icons_dir.exists() {
+                console.error(
+                    f"Setup completed but pwa_icons directory not found at: {pwa_icons_dir}"
+                );
+                console.print(
+                    "This may indicate the setup function failed silently.",
+                    style="muted"
+                );
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
         }
 
         console.success(f"Target '{target_name}' setup complete!");

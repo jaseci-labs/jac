@@ -1,8 +1,8 @@
 """Plugin for Jac's with_llm feature."""
 import from collections.abc { Callable }
 import from typing { TYPE_CHECKING }
-import from jaclang.pycore.runtime { hookimpl, JacRuntime as Jac }
-import from jaclang.pycore.mtp { Info }
+import from jaclang.jac0core.runtime { hookimpl, JacRuntime as Jac }
+import from jaclang.jac0core.mtp { Info }
 import inspect;
 import sys;
 import from pathlib { Path }
@@ -106,8 +106,8 @@ class JacRuntime {
     @hookimpl
     static def by_operator(lhs: object, rhs: object) -> object {
         import from byllm.llm { BaseLLM }
-        import from jaclang.pycore.archetype { NodeArchetype, EdgeArchetype }
-        import from jaclang.pycore.runtime { JacByLLM }
+        import from jaclang.jac0core.archetype { NodeArchetype, EdgeArchetype }
+        import from jaclang.jac0core.runtime { JacByLLM }
 
         lhs_list = lhs if isinstance(lhs, list) else [lhs];
         if all(

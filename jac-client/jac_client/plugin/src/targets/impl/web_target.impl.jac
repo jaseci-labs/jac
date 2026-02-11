@@ -13,7 +13,7 @@ impl WebTarget.build(
 ) -> Path {
     import os;
     import shutil;
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jac_client.plugin.client { JacClient }
     bundler = ViteBundler(project_dir=project_dir);
     # Clean dist directory for fresh build
@@ -31,7 +31,7 @@ impl WebTarget.build(
     # Import the module (Jac.jac_import handles context creation internally)
     Jac.jac_import(target=mod, base_path=base, lng='jac');
     if Jac.program.errors_had {
-        errors = '\n'.join(Jac.program.errors_had);
+        errors = '\n'.join(str(e) for e in Jac.program.errors_had);
         raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}") ;
     }
     # Get the loaded module
@@ -72,7 +72,7 @@ def _generate_index_html(
     import hashlib;
     import from jaclang.project.config { get_config }
     import from jac_client.plugin.client { HeaderBuilder }
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     # Get the first client export function (or default to 'app')
     mod_path = getattr(loaded_mod, '__file__', None);
