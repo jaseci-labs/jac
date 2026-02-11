@@ -293,6 +293,6 @@ class CodeLocInfo {
     }
 
     def __str__(self: CodeLocInfo) -> str {
-        return f"{self.first_line}:{self.col_start} -{self.last_line}:{self.col_end}";
+        return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
     }
 }

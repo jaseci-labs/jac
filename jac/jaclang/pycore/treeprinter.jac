@@ -303,7 +303,7 @@ def print_ast_tree(
     markers = ''.join(map(mapper, level_markers[:-1]));
     markers += marker if (level > 0) else '';
     if isinstance(`root, uni.UniNode) {
-        tree_str = f"{root.loc}	{markers}{__node_repr_in_tree(root)}";
+        tree_str = f"{root.loc}	{markers}{__node_repr_in_tree(root)}\n";
         if (
             isinstance(`root, uni.Module)
             and `root.is_raised_from_py
@@ -325,7 +325,7 @@ def print_ast_tree(
             );
         }
     } elif isinstance(`root, ast3.AST) {
-        tree_str = f"{get_location_info(root)}	{markers}{__node_repr_in_py_tree(root)}";
+        tree_str = f"{get_location_info(root)}	{markers}{__node_repr_in_py_tree(root)}\n";
         for (i_a, child_a) in enumerate(ast3.iter_child_nodes(`root)) {
             is_last = i_a == (len(`list(ast3.iter_child_nodes(`root))) - 1);
             tree_str += print_ast_tree(
@@ -449,7 +449,7 @@ def get_symtab_tree_str(
         if level_markers
         else ''
     );
-    line = f"{markers}{root.name}";
+    line = f"{markers}{root.name}\n";
     if output_file {
         with open(output_file, 'a+') as f {
             f.write(line);
