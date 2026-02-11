@@ -1772,6 +1772,17 @@ src="/static/client.js?hash={bundle_hash}"></script></body></html>';
             'bundle_code': introspector._bundle.code
         };
     }
+
+    """Get the client JavaScript bundle code.
+
+        Plugins can override this hook to provide custom bundle serving logic
+        (e.g., serving Vite-built PWA bundles).
+    """
+    static def get_client_js(introspector: ModuleIntrospector) -> str {
+        introspector.load();
+        introspector.ensure_bundle();
+        return introspector._bundle.code;
+    }
 }
 
 """Jac Response Builder."""
