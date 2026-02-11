@@ -589,6 +589,9 @@ def test_all_in_one_app_endpoints() -> None:
             finally:
                 if server is not None:
                     print("[DEBUG] Terminating server process")
+                    # Close stdout pipe to prevent ResourceWarning for unclosed file
+                    if server.stdout:
+                        server.stdout.close()
                     server.terminate()
                     try:
                         server.wait(timeout=15)
