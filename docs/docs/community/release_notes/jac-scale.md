@@ -13,6 +13,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Code refactors**: Backtick escape, etc.
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
+- **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
 
 ## jac-scale 0.1.7 (Latest Release)
 
