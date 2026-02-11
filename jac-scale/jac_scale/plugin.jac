@@ -39,7 +39,6 @@ def _scale_pre_hook(context: HookContext) -> None {
         base_file_path = os.path.basename(filename);
         # Reset cache to load jac.toml from the target directory, not CWD.
         reset_scale_config();
-        # Get configuration using the file's directory as project root
         scale_config = get_scale_config(pathlib.Path(code_folder));
         # Now compute relative code_folder for deployment
         code_folder = os.path.relpath(code_folder);
