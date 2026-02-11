@@ -40,6 +40,7 @@ class TT(enum.Enum):
     COLON = "COLON"
     COMMA = "COMMA"
     DOT = "DOT"
+    QDOT = "QDOT"
     AT = "AT"
     ARROW = "ARROW"
     ELLIPSIS = "ELLIPSIS"
@@ -338,10 +339,9 @@ class Lexer:
                 self._emit(TT.ARROW, "->", line, col)
                 continue
             if two == "?.":
-                # Null-safe access: emit as regular DOT (semantics handled
-                # in transform_tokens or dropped for bootstrap code)
+                # Null-safe access: emit QDOT, handled in transform_tokens
                 self._advance(2)
-                self._emit(TT.DOT, ".", line, col)
+                self._emit(TT.QDOT, "?.", line, col)
                 continue
             if two in two_char_ops:
                 self._advance(2)
@@ -609,6 +609,54 @@ def _join_tokens(tokens: list[Token]) -> str:
     return "".join(parts)
 
 
+def _pop_primary_expr(out: list[Token]) -> list[Token]:
+    """Pop tokens forming the trailing primary expression from out.
+
+    Handles: NAME, dotted names (a.b.c), function calls f(...), subscripts x[...].
+    Used by the ?. (QDOT) transform to extract the object expression.
+    """
+    if not out:
+        return []
+    result: list[Token] = []
+    while out:
+        last = out[-1]
+        if last.type == TT.NAME or last.type == TT.NUMBER or last.type == TT.STRING:
+            result.append(out.pop())
+            # If preceded by DOT, continue collecting the chain
+            if out and out[-1].type == TT.DOT:
+                result.append(out.pop())
+                continue
+            break
+        elif last.type in (TT.RPAREN, TT.RBRACKET):
+            # Match back to the corresponding opening delimiter
+            close_t = last.type
+            open_t = TT.LPAREN if close_t == TT.RPAREN else TT.LBRACKET
+            depth = 0
+            while out:
+                t = out.pop()
+                result.append(t)
+                if t.type == close_t:
+                    depth += 1
+                elif t.type == open_t:
+                    depth -= 1
+                    if depth == 0:
+                        break
+            # After matched delimiters, check for preceding name or dot chain
+            if out and out[-1].type == TT.NAME:
+                result.append(out.pop())
+                if out and out[-1].type == TT.DOT:
+                    result.append(out.pop())
+                    continue
+            elif out and out[-1].type == TT.DOT:
+                result.append(out.pop())
+                continue
+            break
+        else:
+            break
+    result.reverse()
+    return result
+
+
 def transform_tokens(tokens: list[Token]) -> list[Token]:
     """Apply Jac→Python transformations on a token list.
 
@@ -782,6 +830,27 @@ def transform_tokens(tokens: list[Token]) -> list[Token]:
                 out.append(Token(TT.NAME, dunder_map[tok.value], tok.line, tok.col))
                 i += 1
                 continue
+
+        # === x?.attr → getattr(x, "attr", None) (null-safe access) ===
+        if (
+            tok.type == TT.QDOT
+            and i + 1 < len(tokens)
+            and tokens[i + 1].type == TT.NAME
+        ):
+            attr_name = tokens[i + 1].value
+            # Pop preceding primary expression from out
+            obj_toks = _pop_primary_expr(out)
+            # Emit: getattr(obj_expr, "attr_name", None)
+            out.append(Token(TT.NAME, "getattr", tok.line, tok.col))
+            out.append(Token(TT.LPAREN, "(", tok.line, tok.col))
+            out.extend(obj_toks)
+            out.append(Token(TT.COMMA, ",", tok.line, tok.col))
+            out.append(Token(TT.STRING, f'"{attr_name}"', tok.line, tok.col))
+            out.append(Token(TT.COMMA, ",", tok.line, tok.col))
+            out.append(Token(TT.NAME, "None", tok.line, tok.col))
+            out.append(Token(TT.RPAREN, ")", tok.line, tok.col))
+            i += 2  # skip QDOT and NAME
+            continue
 
         out.append(tok)
         i += 1
