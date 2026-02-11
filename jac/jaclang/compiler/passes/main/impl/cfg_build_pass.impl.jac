@@ -1,6 +1,6 @@
 """Print the control flow graph."""
 impl cfg_dot_from_file(file_name: str) -> str {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     with open(file_name) as f {
         file_source = f.read();
     }

@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import TypeCheckPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
@@ -356,6 +356,20 @@ def test_class_construct(fixture_path: Callable[[str], str]) -> None:
     TypeCheckPass(ir_in=mod, prog=program)
     assert len(program.errors_had) == 3
 
+    square_sym = mod.sym_tab.lookup("Square")
+    assert square_sym is not None
+    assert square_sym.decl is not None
+    assert square_sym.decl.type is not None
+    assert square_sym.decl.type.shared is not None
+    mro_class_names = [
+        cls.shared.class_name
+        for cls in square_sym.decl.type.shared.mro
+        if cls.shared is not None
+    ]
+    assert "object" in mro_class_names, (
+        f"Expected 'object' in MRO, got: {mro_class_names}"
+    )
+
     expected_errors = [
         """
         Cannot assign <class float> to parameter 'color' of type <class str>
@@ -448,8 +462,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a: int = uni.Module;  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^
+        a: int = os.path;  # <-- Error
+        ^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )

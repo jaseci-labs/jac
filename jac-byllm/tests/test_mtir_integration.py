@@ -19,7 +19,7 @@ import pytest
 
 from jaclang import JacRuntime
 from jaclang import JacRuntimeInterface as Jac
-from jaclang.pycore.mtp import (
+from jaclang.jac0core.mtp import (
     ClassInfo,
     EnumInfo,
     FieldInfo,
@@ -29,7 +29,7 @@ from jaclang.pycore.mtp import (
     mk_dict,
     mk_list,
 )
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 # Import the jac_import function
 jac_import = Jac.jac_import
@@ -243,7 +243,7 @@ class TestPythonLibraryFallback:
 
     def test_mtruntime_without_mtir_info(self) -> None:
         """Test that MTRuntime works when ir_info is None."""
-        from jaclang.pycore.mtp import MTIR
+        from jaclang.jac0core.mtp import MTIR
 
         # Create an MTIR with no ir_info (Python library mode)
         def sample_func(x: int, y: str) -> str:
@@ -287,7 +287,7 @@ class TestMTIRCaching:
 
     def test_cache_key_for_mtir(self) -> None:
         """Test that cache keys work for MTIR storage."""
-        from jaclang.pycore.bccache import CacheKey
+        from jaclang.jac0core.bccache import CacheKey
 
         key = CacheKey.for_source("/path/to/test.jac", minimal=False)
         assert key is not None
@@ -295,7 +295,7 @@ class TestMTIRCaching:
 
     def test_disk_cache_mtir_methods_exist(self) -> None:
         """Test that DiskBytecodeCache has MTIR methods."""
-        from jaclang.pycore.bccache import DiskBytecodeCache
+        from jaclang.jac0core.bccache import DiskBytecodeCache
 
         cache = DiskBytecodeCache()
         assert hasattr(cache, "get_mtir")
@@ -303,7 +303,7 @@ class TestMTIRCaching:
 
     def test_mtir_cache_roundtrip(self, tmp_path: Path) -> None:
         """Test that MTIR can be cached and retrieved."""
-        from jaclang.pycore.bccache import CacheKey, DiskBytecodeCache
+        from jaclang.jac0core.bccache import CacheKey, DiskBytecodeCache
 
         # Create a test source file
         test_file = tmp_path / "test.jac"

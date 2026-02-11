@@ -106,7 +106,7 @@ impl get_template_registry -> TemplateRegistry {
 
 """Initialize the registry by registering default template and calling plugin hooks."""
 impl initialize_template_registry -> None {
-    import from jaclang.pycore.runtime { JacRuntime }
+    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_template_registry();
     # Register the default template first
     _register_default_template(registry);

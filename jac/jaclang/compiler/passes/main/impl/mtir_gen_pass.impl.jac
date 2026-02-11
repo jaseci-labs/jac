@@ -5,9 +5,9 @@ This module contains the implementations for MTIRGenPass methods.
 
 import from collections.abc { Sequence }
 import from pathlib { Path }
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
-import from jaclang.pycore.mtp {
+import from jaclang.jac0core.mtp {
     ClassInfo,
     FieldInfo,
     FunctionInfo,

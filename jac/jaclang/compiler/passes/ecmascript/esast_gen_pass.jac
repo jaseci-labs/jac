@@ -24,13 +24,13 @@ import json;
 import from collections.abc { Callable, Sequence }
 import from typing { Any, TypeVar, cast }
 import jaclang.compiler.passes.ecmascript.estree as es;
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
-import from jaclang.pycore.constant { CodeContext, SymbolType }
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes.ast_gen { BaseAstGenPass }
-import from jaclang.pycore.passes.ast_gen.jsx_processor { EsJsxProcessor }
-import from jaclang.pycore.modresolver {
+import from jaclang.jac0core.constant { CodeContext, SymbolType }
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
+import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
+import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
 }

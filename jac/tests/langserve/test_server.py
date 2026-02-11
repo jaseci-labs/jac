@@ -227,15 +227,15 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (6, 17, "concurrent/__init__.py:0:0-0:0"),
             (6, 28, "concurrent/futures/__init__.py:0:0-0:0"),
             (7, 17, "typing.py:0:0-0:0"),
-            (9, 18, "jaclang/pycore/__init__.py:0:0-0:0"),
-            (9, 25, "jaclang/pycore/unitree.py:0:0-0:0"),
+            (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
+            (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (10, 34, "jac/jaclang/__init__.py:19:3-19:22"),
-            (11, 35, "jaclang/pycore/constant.py:0:0-0:0"),
-            (11, 47, "jaclang/pycore/constant.py:5:0-34:9"),
+            (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
+            (11, 47, "jaclang/jac0core/constant.jac:3:6-3:16"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.jac:67:4-67:12"),  # TypeBase now on line 18
-            (20, 34, "jaclang/pycore/unitree.py:0:0-0:0"),              # UniScopeNode now on line 20
+            (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
             (23, 38, "jaclang/vendor/pygls/uris.py:0:0-0:0"),             # uris now on line 23

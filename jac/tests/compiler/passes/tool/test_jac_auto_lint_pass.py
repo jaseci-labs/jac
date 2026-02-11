@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-import jaclang.pycore.unitree as uni
-from jaclang.pycore.program import JacProgram
+import jaclang.jac0core.unitree as uni
+from jaclang.jac0core.program import JacProgram
 
 
 # Fixture path helper

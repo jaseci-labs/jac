@@ -7,19 +7,21 @@ _vendor_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "ve
 if _vendor_dir not in sys.path:
     sys.path.insert(0, _vendor_dir)
 
-_pycore_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "pycore"))
+_jac0core_dir = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "jac0core")
+)
 
 
 def generate_static_parser(force: bool = False) -> None:
     """Generate static parser for Jac."""
     from lark.tools import standalone
 
-    lark_jac_parser_path = os.path.join(_pycore_dir, "lark_jac_parser.py")
+    lark_jac_parser_path = os.path.join(_jac0core_dir, "lark_jac_parser.py")
     if force or not os.path.exists(lark_jac_parser_path):
         sys.argv, save = (
             [
                 "lark",
-                os.path.join(_pycore_dir, "jac.lark"),
+                os.path.join(_jac0core_dir, "jac.lark"),
                 "-o",
                 lark_jac_parser_path,
                 "-c",
@@ -37,7 +39,7 @@ def gen_all_parsers() -> None:
 
 
 # Auto-generate parsers if missing (for developer setup)
-_lark_jac_parser_path = os.path.join(_pycore_dir, "lark_jac_parser.py")
+_lark_jac_parser_path = os.path.join(_jac0core_dir, "lark_jac_parser.py")
 if not os.path.exists(_lark_jac_parser_path):
     print("Parser not present, generating for developer setup...", file=sys.stderr)
     try:

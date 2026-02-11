@@ -42,7 +42,7 @@ def print_version_banner(version: str) -> None {
     console.print(f'🐛 Issues:        [url]{JAC_ISSUES_URL}[/url]');
     # Show installed plugins
     try {
-        import from jaclang.pycore.runtime { plugin_manager }
+        import from jaclang.jac0core.runtime { plugin_manager }
         seen: dict[str, str] = {};
         for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
             name = dist_facade.project_name;

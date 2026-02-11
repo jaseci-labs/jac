@@ -1,5 +1,5 @@
-import jaclang.pycore.unitree as uni;
+import os;
 
 with entry {
-    a: int = uni.Module;  # <-- Error
+    a: int = os.path;  # <-- Error
 }

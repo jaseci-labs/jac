@@ -12,7 +12,7 @@ glob _runtime_initialized = False;
 def _ensure_jac_runtime -> None {
     global _runtime_initialized;
     if not _runtime_initialized {
-        import from jaclang.pycore.runtime { JacRuntime as Jac }
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
         Jac.setup();
         _runtime_initialized = True;
     }
@@ -20,7 +20,7 @@ def _ensure_jac_runtime -> None {
 
 """Create JacRuntime and return the base path, module name, and runtime state."""
 def _proc_file(filename: str) -> tuple {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
     if filename.endswith('.jac') {
@@ -75,7 +75,7 @@ impl dot(
     format: str = "dot"
 ) -> int {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.builtin { printgraph }
     (base, mod, jac_machine) = _proc_file(filename);
     if filename.endswith('.jac') {

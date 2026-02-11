@@ -49,5 +49,12 @@ tailwindcss = "latest"
 "Cross-Origin-Opener-Policy" = "same-origin"
 "Cross-Origin-Embedder-Policy" = "require-corp"
 
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+# cache_name = "jac-pwa-cache-v1"
+# [plugins.client.pwa.manifest]
+# name = "My App"
+# short_name = "App"
 [plugins.scale.secrets]
 TEST_SECRET_KEY = "${TEST_SECRET_KEY}"

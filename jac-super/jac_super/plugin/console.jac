@@ -4,7 +4,7 @@ This plugin provides Rich-enhanced console output for Jac CLI.
 It overrides the base console implementation to provide elegant,
 colorful terminal output with themes, panels, tables, and spinners.
 """
-import from jaclang.pycore.runtime { hookimpl, plugin_manager }
+import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.cli.console { JacConsole as BaseJacConsole }
 
 """Jac Super Plugin for console enhancement."""
