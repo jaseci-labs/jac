@@ -173,7 +173,7 @@ True
     }
     def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token
 {
-        import from jaclang.jac0core.jac_parser { TOKEN_MAP }
+        import from jaclang.jac0core.constant { TOKEN_MAP }
         value = value if value else (
             DELIM_MAP[name] if (name in DELIM_MAP)
             else TOKEN_MAP.get(name.value, name.value)

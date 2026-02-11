@@ -17,7 +17,7 @@ import from jaclang.jac0core.bccache {
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.jac0core.jac_parser { JacParser }
+import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     InteropAnalysisPass,
@@ -177,6 +177,130 @@ class _SetupProgress {
 }
 
 glob setup_progress = _SetupProgress();
+
+"""Recalculate parent pointers after mutating node children."""
+def _recalculate_parents(node: uni.UniNode) -> None {
+    for child in node.kid {
+        child.parent = node;
+        _recalculate_parents(child);
+    }
+}
+
+"""Coerce a .cl.jac module to client context."""
+def _coerce_client_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.ClientBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, uni.ServerBlock) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, uni.ServerBlock) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            context_token = elem._source_context_token();
+            if (context_token is not None and context_token.name == Tok.KW_SERVER) {
+                continue;
+            }
+            elem.code_context = CodeContext.CLIENT;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.CLIENT;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
+"""Coerce a .sv.jac module to server context."""
+def _coerce_server_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.ServerBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, uni.ClientBlock) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, uni.ClientBlock) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            elem.code_context = CodeContext.SERVER;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.SERVER;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
+"""Coerce a .na.jac module to native context."""
+def _coerce_native_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.NativeBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, (uni.ServerBlock, uni.ClientBlock)) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, (uni.ServerBlock, uni.ClientBlock)) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            elem.code_context = CodeContext.NATIVE;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.NATIVE;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
 """Jac Compiler singleton.
 
     Maintains separate module hub for jaclang.* modules (internal_program)
@@ -508,12 +632,20 @@ class JacCompiler {
             had_error = len(py_ast_ret.errors_had) > 0;
             mod = py_ast_ret.ir_out;
         } else {
-            source = uni.Source(source_str, mod_path=file_path);
-            jac_ast_ret: Transform[(uni.Source, uni.Module)] = JacParser(
-                root_ir=source, prog=target_program, cancel_token=cancel_token
-            );
-            had_error = len(jac_ast_ret.errors_had) > 0;
-            mod = jac_ast_ret.ir_out;
+            import from jaclang.jac0core.parser { parse as rd_parse }
+            (mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+            _recalculate_parents(mod);
+            had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
+            if had_error {
+                mod.has_syntax_errors = True;
+            }
+            if file_path.endswith('.cl.jac') {
+                _coerce_client_module(mod);
+            } elif file_path.endswith('.sv.jac') {
+                _coerce_server_module(mod);
+            } elif file_path.endswith('.na.jac') {
+                _coerce_native_module(mod);
+            }
         }
         if had_error {
             return mod;
@@ -630,11 +762,11 @@ class JacCompiler {
         file_path: str, auto_lint: bool = False
     ) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
@@ -647,10 +779,10 @@ class JacCompiler {
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
         prog = JacProgram();
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
@@ -661,11 +793,11 @@ class JacCompiler {
     """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
         for pass_cls in get_lint_sched() {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }

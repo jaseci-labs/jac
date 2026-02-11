@@ -527,4 +527,10 @@ obj Parser {
 # =============================================================================
 def parse(
     source: str, file_path: str = "<input>"
-) -> tuple[Module, list[ParseError], list[LexerError]];
+) -> tuple[Module, list[ParseError], list[LexerError]] {
+    lexer = Lexer(source=source, file_path=file_path);
+    tokens = lexer.tokenize();
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    module = parser.parse();
+    return (module, parser.errors, lexer.errors);
+}

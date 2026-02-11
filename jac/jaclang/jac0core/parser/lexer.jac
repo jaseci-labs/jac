@@ -111,4 +111,8 @@ obj Lexer {
 # =============================================================================
 def tokenize(
     source: str, file_path: str = "<input>"
-) -> tuple[list[Token], list[LexerError]];
+) -> tuple[list[Token], list[LexerError]] {
+    lexer = Lexer(source=source, file_path=file_path);
+    tokens = lexer.tokenize();
+    return (tokens, lexer.errors);
+}

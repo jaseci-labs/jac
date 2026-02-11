@@ -559,7 +559,7 @@ variables
             ]
         )
         if (`node is not None)
-        else [];
+        else [self.sync(ast3.Pass())];
         if doc {
             ret = [
                 self.sync(
@@ -845,13 +845,20 @@ variables
                 )
             );
         } elif not `node.from_loc {
+            # For plain imports (import X as Y), ModuleItem may not be in the
+            # traversed kid list, so collect from ModulePath nodes directly.
+            mod_paths = [k for k in `node.kid if isinstance(k, uni.ModulePath)];
+            names_list = [
+                cast(ast3.alias, x) for p in mod_paths
+                for x in p.gen.py_ast
+            ] if mod_paths else [
+                cast(ast3.alias, x) for item in `node.items
+                for x in item.gen.py_ast
+            ];
             py_nodes.append(
                 self.sync(
                     ast3.Import(
-                        names=[
-                            cast(ast3.alias, x) for item in `node.items
-                            for x in item.gen.py_ast
-                        ]
+                        names=names_list
                     )
                 )
             );

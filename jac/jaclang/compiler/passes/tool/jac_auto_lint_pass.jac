@@ -22,8 +22,9 @@ import keyword;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.jac_parser { TOKEN_MAP }
+import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.project.config { LintRule }
+
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
@@ -49,13 +50,13 @@ obj JacAutoLintPass(UniPass) {
     def enter_archetype(node: uni.Archetype) -> None;
     def enter_enum(node: uni.Enum) -> None;
     def enter_impl_def(node: uni.ImplDef) -> None;
-    def exit_impl_def(`node: uni.ImplDef) -> None;
+    def exit_impl_def(node: uni.ImplDef) -> None;
     def enter_ability(ability_node: uni.Ability) -> None;
     def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
-    def enter_name(`node: uni.Name) -> None;
-    def enter_special_var_ref(`node: uni.SpecialVarRef) -> None;
-    def enter_builtin_type(`node: uni.BuiltinType) -> None;
+    def enter_name(node: uni.Name) -> None;
+    def enter_special_var_ref(node: uni.SpecialVarRef) -> None;
+    def enter_builtin_type(node: uni.BuiltinType) -> None;
     def exit_func_call(node: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(node: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _is_matching_attr_access(
