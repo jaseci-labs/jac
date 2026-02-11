@@ -1223,3 +1223,143 @@ def test_no_profile_omits_profile_settings() -> None:
         finally:
             os.chdir(original_cwd)
             gc.collect()
+
+
+def test_dev_mode_server_starts() -> None:
+    """Test that `jac start --dev` works correctly with output suppression.
+
+    This verifies that the dev mode output capture (suppress_initial_output)
+    doesn't break server startup.
+    """
+    print("[DEBUG] Starting test_dev_mode_server_starts")
+
+    app_name = "e2e-dev-mode-app"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            print(f"[DEBUG] Changed working directory to {temp_dir}")
+
+            # 1. Create a new default Jac client app
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            print(
+                f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'"
+            )
+            process = Popen(
+                [*jac_cmd, "create", "--use", "client", app_name],
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,
+                env=env,
+            )
+            stdout, stderr = process.communicate()
+            returncode = process.returncode
+
+            print(
+                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}\n"
+            )
+
+            if returncode != 0 and "unrecognized arguments: --use" in stderr:
+                pytest.fail(
+                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                )
+
+            assert returncode == 0, (
+                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+            )
+
+            project_path = os.path.join(temp_dir, app_name)
+            print(f"[DEBUG] Created default Jac client app at {project_path}")
+            assert os.path.isdir(project_path)
+
+            # 2. Ensure packages are installed
+            node_modules_path = os.path.join(
+                project_path, ".jac", "client", "node_modules"
+            )
+            if not os.path.isdir(node_modules_path):
+                print("[DEBUG] node_modules not found, running 'jac add --npm'")
+                jac_add_result = run(
+                    [*jac_cmd, "add", "--npm"],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                print(
+                    f"[DEBUG] 'jac add --npm' completed returncode={jac_add_result.returncode}\n"
+                    f"STDOUT (truncated):\n{jac_add_result.stdout[:1000]}\n"
+                    f"STDERR (truncated):\n{jac_add_result.stderr[:1000]}\n"
+                )
+                if jac_add_result.returncode != 0:
+                    pytest.fail(
+                        f"jac add --npm failed\n"
+                        f"STDOUT:\n{jac_add_result.stdout}\n"
+                        f"STDERR:\n{jac_add_result.stderr}\n"
+                    )
+
+            # 3. Start the server in DEV mode (exercises suppress_initial_output code path)
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            try:
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac --dev -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "--dev", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                # Wait for server to be ready
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=120.0)
+                print(
+                    f"[DEBUG] Server is accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # 4. Test root endpoint - verify server responds
+                try:
+                    print("[DEBUG] Testing root endpoint / in dev mode")
+                    root_bytes = _wait_for_endpoint(
+                        f"http://127.0.0.1:{server_port}",
+                        timeout=120.0,
+                        poll_interval=2.0,
+                        request_timeout=30.0,
+                    )
+                    root_body = root_bytes.decode("utf-8", errors="ignore")
+                    print(
+                        f"[DEBUG] Root response:\nBody (truncated):\n{root_body[:500]}"
+                    )
+                    # Dev mode should return HTML with the app
+                    assert "<html" in root_body.lower(), (
+                        "Root should return HTML in dev mode"
+                    )
+                except (URLError, HTTPError, TimeoutError) as exc:
+                    print(f"[DEBUG] Error at root endpoint: {exc}")
+                    pytest.fail(f"Failed to GET root endpoint in dev mode: {exc}")
+
+                print("[DEBUG] Dev mode server test passed!")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                        print("[DEBUG] Server terminated cleanly")
+                    except Exception:
+                        print("[DEBUG] Server did not terminate cleanly, killing")
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            print(f"[DEBUG] Restoring working directory to {original_cwd}")
+            os.chdir(original_cwd)
