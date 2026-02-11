@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **Code refactors**: Backtick escape, etc.
+- **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
 
 ## jaclang 0.10.0 (Latest Release)
 

@@ -2054,6 +2054,10 @@ impl EsastGenPass.exit_func_signature(`node: uni.FuncSignature) -> None {
 
 """Process ability (function/method) declaration."""
 impl EsastGenPass.exit_ability(`node: uni.Ability) -> None {
+    # Restore reactive_vars to parent scope
+    if self.reactive_vars_stack {
+        self.reactive_vars = self.reactive_vars_stack.pop();
+    }
     # CHECK: Is this an event-based ability (can with entry/exit) in client context?
     if (isinstance(`node.signature, uni.EventSignature) and `node.in_client_context()) {
         # Auto-inject useEffect import if needed
@@ -2187,6 +2191,8 @@ impl EsastGenPass.enter_ability(`node: uni.Ability) -> None {
         `node.body.parent = `node;
         `node.kid.append(`node.body);
     }
+    self.reactive_vars_stack.append(self.reactive_vars);
+    self.reactive_vars = dict(self.reactive_vars);
 }
 
 """Process enum declaration as an object."""
@@ -3068,6 +3074,8 @@ impl EsastGenPass.before_pass -> None {
     self.jsx_processor = EsJsxProcessor(self);
     # Track reactive state variables: maps var_name -> setter_name (e.g., "count" -> "setCount")
     self.reactive_vars: dict[str, str] = {};
+    # Stack to save/restore reactive_vars per function boundary
+    self.reactive_vars_stack: list[dict[str, str]] = [];
     # Track if useState import has been auto-injected to avoid duplicates
     self.has_injected_usestate: bool = False;
     # Track if __jacCallFunction import has been auto-injected to avoid duplicates
