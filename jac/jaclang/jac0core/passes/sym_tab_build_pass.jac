@@ -17,10 +17,10 @@ This pass builds the hierarchical symbol table structure for the entire program 
 The symbol table is a fundamental data structure that enables name resolution,
 type checking, and semantic analysis throughout the compilation process.
 """
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { SymbolAccess, Tokens }
-import from jaclang.pycore.passes.uni_pass { UniPass }
-import from jaclang.pycore.unitree { UniScopeNode }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { SymbolAccess, Tokens }
+import from jaclang.jac0core.passes.uni_pass { UniPass }
+import from jaclang.jac0core.unitree { UniScopeNode }
 """Jac Symbol table build pass."""
 class SymTabBuildPass(UniPass) {
     """Before pass."""
@@ -141,7 +141,7 @@ class SymTabBuildPass(UniPass) {
 
     """Handle walrus operator (:=) assignments."""
     def exit_binary_expr(self: SymTabBuildPass, `node: uni.BinaryExpr) -> None {
-        import from jaclang.pycore.constant { Tokens as Tok }
+        import from jaclang.jac0core.constant { Tokens as Tok }
         if not (isinstance(`node.op, uni.Token) and (`node.op.name == Tok.WALRUS_EQ)) {
             return;
         }

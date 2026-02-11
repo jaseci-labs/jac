@@ -37,7 +37,7 @@ import from .lexer { Lexer, LexerError }
 import from .parser { Parser, ParseError, parse }
 
 # Re-export unitree types for convenience
-import from jaclang.pycore.unitree {
+import from jaclang.jac0core.unitree {
     Module,
     UniNode
 }

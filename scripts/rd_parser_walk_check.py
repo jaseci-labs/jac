@@ -18,9 +18,9 @@ import os
 import sys
 from difflib import unified_diff
 
-from jaclang.pycore.jac_parser import JacParser
-from jaclang.pycore.program import JacProgram
-from jaclang.pycore.unitree import (
+from jaclang.jac0core.jac_parser import JacParser
+from jaclang.jac0core.program import JacProgram
+from jaclang.jac0core.unitree import (
     FString,
     JsxText,
     Module,
@@ -29,7 +29,7 @@ from jaclang.pycore.unitree import (
     Token,
     UniNode,
 )
-from jaclang.pycore.unitree import Test as JacTest
+from jaclang.jac0core.unitree import Test as JacTest
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 # -- AST canonicalization (mirrors test_rd_parser_validation.py) ---------------

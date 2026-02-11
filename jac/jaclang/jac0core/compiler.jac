@@ -8,17 +8,17 @@ import sys;
 import types;
 import from threading { Event }
 import from typing { TYPE_CHECKING }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.bccache {
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.bccache {
     BytecodeCache,
     CacheKey,
     DiskBytecodeCache,
     get_bytecode_cache
 }
-import from jaclang.pycore.compile_options { CompileOptions }
-import from jaclang.pycore.helpers { read_file_with_encoding }
-import from jaclang.pycore.jac_parser { JacParser }
-import from jaclang.pycore.passes {
+import from jaclang.jac0core.compile_options { CompileOptions }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
+import from jaclang.jac0core.jac_parser { JacParser }
+import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     InteropAnalysisPass,
     JacAnnexPass,
@@ -31,7 +31,7 @@ import from jaclang.pycore.passes {
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 
@@ -97,7 +97,7 @@ def get_format_sched(
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
-    import from jaclang.pycore.passes.annex_pass { JacAnnexPass }
+    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
     if auto_lint {
         return [
             JacAnnexPass,
@@ -114,7 +114,7 @@ def get_format_sched(
 """Lint-only schedule. Runs lint rules for error reporting without formatting."""
 def get_lint_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
-    import from jaclang.pycore.passes.annex_pass { JacAnnexPass }
+    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
     return [JacAnnexPass, JacAutoLintPass];
 }
 
@@ -197,7 +197,7 @@ class JacCompiler {
     @property
     def internal_program(self: JacCompiler) -> JacProgram {
         if (self._internal_program is None) {
-            import from jaclang.pycore.program { JacProgram }
+            import from jaclang.jac0core.program { JacProgram }
             self._internal_program = JacProgram();
         }
         return self._internal_program;
@@ -229,7 +229,7 @@ class JacCompiler {
         self: JacCompiler, cache_key: CacheKey, program: JacProgram
     ) -> None {
         try {
-            import from jaclang.pycore.bccache { DiskBytecodeCache }
+            import from jaclang.jac0core.bccache { DiskBytecodeCache }
             if isinstance(self._bytecode_cache, DiskBytecodeCache) {
                 cached_mtir = self._bytecode_cache.get_mtir(cache_key);
                 if (cached_mtir is not None) {
@@ -246,7 +246,7 @@ class JacCompiler {
         self: JacCompiler, cache_key: CacheKey, program: JacProgram
     ) -> None {
         try {
-            import from jaclang.pycore.bccache { DiskBytecodeCache }
+            import from jaclang.jac0core.bccache { DiskBytecodeCache }
             if (
                 isinstance(self._bytecode_cache, DiskBytecodeCache)
                 and program.mtir_map
@@ -387,7 +387,7 @@ class JacCompiler {
             target = llvm.Target.from_default_triple();
             target_machine = target.create_target_machine();
             engine = llvm.create_mcjit_compiler(llvm_mod, target_machine);
-            import from jaclang.pycore.codeinfo { CodeGenTarget, InteropManifest }
+            import from jaclang.jac0core.codeinfo { CodeGenTarget, InteropManifest }
             """Minimal stub to hold native compilation artifacts.""";
             class _NativeModuleStub {
                 def init(self: _NativeModuleStub) -> None {
@@ -401,8 +401,8 @@ class JacCompiler {
             stub_mod.gen.interop_py_funcs = py_func_table;
             stub_mod.gen._interop_callbacks = callbacks_list;
             if cached_interop {
-                import from jaclang.pycore.codeinfo { InteropBinding, InteropContext }
-                import from jaclang.pycore.interop_bridge { register_py_callbacks }
+                import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+                import from jaclang.jac0core.interop_bridge { register_py_callbacks }
                 manifest = InteropManifest();
                 for (name, data) in cached_interop.get('bindings', {}).items() {
                     binding = InteropBinding(
@@ -629,7 +629,7 @@ class JacCompiler {
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
     ) -> JacProgram {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
         source = uni.Source(source_str, mod_path=file_path);
@@ -646,7 +646,7 @@ class JacCompiler {
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
         prog = JacProgram();
         source = uni.Source(source_str, mod_path=file_path);
         parser_pass = JacParser(root_ir=source, prog=prog);
@@ -660,7 +660,7 @@ class JacCompiler {
 
     """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
         source = uni.Source(source_str, mod_path=file_path);

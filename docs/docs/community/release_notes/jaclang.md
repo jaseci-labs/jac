@@ -5,8 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **Code refactors**: Backtick escape, TS cleanup, etc.
-- **Bootstrap Compiler (`jac0`)**: Added a single-file Python transpiler (`jac0.py`, ~1900 lines) that compiles the Jac subset produced by `py2jac` into equivalent Python source code. This closes the bootstrap loop -- the compiler infrastructure is now written in Jac and compiled by `jac0` during first-run setup.
-- **Self-Hosted Compiler Infrastructure**: Converted all Python infrastructure files in `pycore/` to Jac: `runtime.py`, `unitree.py`, `pyast_gen_pass.py`, `modresolver.py`, and `log.py`. The meta-importer now bootstraps `modresolver.jac` directly with `jac0` at load time, eliminating the last pre-bootstrap Python dependency.
+- **Bootstrap Compiler (`jac0`)**: Added a single-file Python transpiler (`jac0.py`, ~1900 lines) that compiles the Jac subset produced by `py2jac` into equivalent Python source code. This closes the bootstrap loop.
 - **RD Parser: Broad Grammar Parity Fixes**: Fixed 16 grammar gaps in the recursive descent parser, raising walk-check match rate from 95.3% to 98.7%.
 - **`jac --version` Shows Installed Plugins**: The version banner now lists all installed Jac plugins with their versions, making it easy to see the full environment at a glance.
 

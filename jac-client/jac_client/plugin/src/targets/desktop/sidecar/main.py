@@ -97,7 +97,7 @@ def main():
     # Import Jac runtime and server
     try:
         # Import jaclang (must be installed via pip)
-        from jaclang.pycore.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import JacRuntime as Jac
     except ImportError as e:
         # Console not available (jaclang import failed)
         sys.stderr.write(f"Error: Failed to import Jac runtime: {e}\n")

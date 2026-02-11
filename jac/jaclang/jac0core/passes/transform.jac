@@ -3,13 +3,13 @@ import time;
 import from abc { ABC, abstractmethod }
 import from threading { Event }
 import from typing { TYPE_CHECKING, Generic, TypeVar }
-import from jaclang.pycore.codeinfo { CodeLocInfo }
-import from jaclang.pycore.log { logging }
-import from jaclang.pycore.unitree { UniNode }
+import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.log { logging }
+import from jaclang.jac0core.unitree { UniNode }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 
@@ -31,7 +31,7 @@ class Alert {
 
     """Return string representation of alert."""
     def __str__(self: Alert) -> str {
-        return f"{self.loc.mod_path}, line {self.loc.first_line}, col{self.loc.col_start}: {self.msg}";
+        return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}";
     }
 
     """Return string representation of alert."""
@@ -41,7 +41,7 @@ class Alert {
 
     """Return the alert as a single line log as opposed to the pretty print."""
     def as_log(self: Alert, *, colors: bool = False) -> str {
-        import from jaclang.pycore.helpers { ANSIColors }
+        import from jaclang.jac0core.helpers { ANSIColors }
         file_path: str = self.loc.mod_path;
         if (file_path == '') {
             return self.msg;
@@ -54,7 +54,7 @@ class Alert {
 
     """Pretty prints the Alert to show the alert with source location."""
     def pretty_print(self: Alert, *, colors: bool = False) -> str {
-        import from jaclang.pycore.helpers { pretty_print_source_location }
+        import from jaclang.jac0core.helpers { pretty_print_source_location }
         pretty_dump = pretty_print_source_location(
             self.loc.mod_path,
             self.loc.orig_src.code,

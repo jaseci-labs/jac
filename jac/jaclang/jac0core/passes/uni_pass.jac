@@ -1,12 +1,12 @@
 """Abstract class for IR Passes for Jac."""
 import from threading { Event }
 import from typing { TYPE_CHECKING, TypeVar }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes.transform { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes.transform { Transform }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 
@@ -33,7 +33,7 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
 
     """Run on entering node."""
     def enter_node(self: UniPass, `node: uni.UniNode) -> None {
-        import from jaclang.pycore.helpers { pascal_to_snake }
+        import from jaclang.jac0core.helpers { pascal_to_snake }
         if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}") {
             getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(`node);
         }
@@ -41,7 +41,7 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
 
     """Run on exiting node."""
     def exit_node(self: UniPass, `node: uni.UniNode) -> None {
-        import from jaclang.pycore.helpers { pascal_to_snake }
+        import from jaclang.jac0core.helpers { pascal_to_snake }
         if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}") {
             getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(`node);
         }

@@ -3,9 +3,9 @@
 Walks the module AST to detect calls between different codespace contexts
 (server/Python, native/LLVM, client/JavaScript) and builds an InteropManifest.
 """
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.codeinfo { InteropBinding, InteropContext }
-import from jaclang.pycore.passes.uni_pass { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+import from jaclang.jac0core.passes.uni_pass { UniPass }
 """Identify cross-boundary function calls between sv, na, and cl contexts.
 
     Walks the module AST to:

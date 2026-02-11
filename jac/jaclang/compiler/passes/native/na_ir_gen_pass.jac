@@ -9,9 +9,9 @@ be emitted into specific basic blocks in order for control flow.
 """
 
 import from llvmlite { ir }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { Transform }
-import from jaclang.pycore.constant { CodeContext, Tokens as Tok }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 
 """Compile na-context Jac AST to LLVM IR using llvmlite.
 

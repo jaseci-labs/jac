@@ -15,13 +15,13 @@ This enables the separation of interface and implementation, as well as test
 code organization.
 """
 import from typing { TYPE_CHECKING }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.bccache { discover_annex_files }
-import from jaclang.pycore.passes.transform { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.bccache { discover_annex_files }
+import from jaclang.jac0core.passes.transform { Transform }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
     }
 }
 

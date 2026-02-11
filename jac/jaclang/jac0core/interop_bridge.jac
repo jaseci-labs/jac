@@ -10,7 +10,7 @@ import from typing { TYPE_CHECKING }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.codeinfo { InteropManifest }
+        import from jaclang.jac0core.codeinfo { InteropManifest }
     }
 }
 

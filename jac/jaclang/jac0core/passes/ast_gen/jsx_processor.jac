@@ -1,7 +1,7 @@
 """Helpers for generating target-specific JSX AST nodes."""
 import ast as ast3;
 import from typing { TYPE_CHECKING, cast }
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 
 with entry {
     if TYPE_CHECKING {
@@ -11,7 +11,7 @@ with entry {
             Property,
             SpreadElement
         }
-        import from jaclang.pycore.passes.pyast_gen_pass { PyastGenPass }
+        import from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
     }
 }
 

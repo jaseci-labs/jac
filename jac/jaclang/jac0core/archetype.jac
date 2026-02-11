@@ -9,7 +9,7 @@ import from pickle { dumps }
 import from types { UnionType }
 import from typing { Any, ClassVar, TypeAlias, TypeVar }
 import from uuid { UUID, uuid4 }
-import from jaclang.pycore.constant { EdgeDir }
+import from jaclang.jac0core.constant { EdgeDir }
 glob logger = getLogger(__name__),
      TARCH = TypeVar('TARCH', bound='Archetype'),
      TANCH = TypeVar('TANCH', bound='Anchor'),

@@ -142,8 +142,8 @@ impl OverloadedType.__str__ -> str {
 
 """Return true if this class is the built-in Node type."""
 impl ClassType.is_node_type -> bool {
-    import jaclang.pycore.unitree as uni;
-    import from jaclang.pycore.constant { SymbolType }
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { SymbolType }
     if self.shared.is_root_class {
         return True;
     }
@@ -154,8 +154,8 @@ impl ClassType.is_node_type -> bool {
 
 """Return true if this class is the built-in Edge type."""
 impl ClassType.is_edge_type -> bool {
-    import jaclang.pycore.unitree as uni;
-    import from jaclang.pycore.constant { SymbolType }
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { SymbolType }
     arch = self.shared.symbol_table;
     assert isinstance(arch, uni.Archetype);
     return (arch.sym_category == SymbolType.EDGE_ARCH);

@@ -1,9 +1,9 @@
 """Jac Semantic Analysis Pass."""
 import ast as ast3;
 import from collections.abc { Sequence }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes.uni_pass { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes.uni_pass { UniPass }
 """Jac Semantic Analysis Pass."""
 class SemanticAnalysisPass(UniPass) {
     def enter_archetype(self: SemanticAnalysisPass, `node: uni.Archetype) -> None {

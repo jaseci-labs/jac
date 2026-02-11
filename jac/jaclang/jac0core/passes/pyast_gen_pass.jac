@@ -24,12 +24,12 @@ import textwrap;
 import from collections.abc { Sequence }
 import from dataclasses { dataclass }
 import from typing { ClassVar, TypeVar, cast }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { CodeContext, EdgeDir }
-import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes.ast_gen { BaseAstGenPass }
-import from jaclang.pycore.passes.ast_gen.jsx_processor { PyJsxProcessor }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { CodeContext, EdgeDir }
+import from jaclang.jac0core.constant { Constants as Con }
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
+import from jaclang.jac0core.passes.ast_gen.jsx_processor { PyJsxProcessor }
 glob T = TypeVar('T', bound=ast3.AST),
      TOKEN_AST_MAP: dict[(Tok, type[ast3.AST])] = {
          Tok.KW_AND: ast3.And,
@@ -176,7 +176,7 @@ ctypes.
         if (not manifest or not manifest.bindings) {
             return;
         }
-        import from jaclang.pycore.interop_bridge { JAC_TO_CTYPES_STR }
+        import from jaclang.jac0core.interop_bridge { JAC_TO_CTYPES_STR }
         parts: list[str] = [];
         for binding in manifest.native_exports {
             params = ', '.join(binding.param_names);
@@ -636,7 +636,7 @@ variables
             self.preamble.append(
                 self.sync(
                     ast3.ImportFrom(
-                        module='jaclang.pycore.jaclib',
+                        module='jaclang.jac0core.jaclib',
                         names=[
                             self.sync(ast3.alias(name=name, asname=None))
                             for name in sorted(self.jaclib_imports)

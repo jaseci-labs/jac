@@ -17,8 +17,8 @@ directly executed by the Python virtual machine.
 """
 import ast as ast3;
 import marshal;
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes.transform { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes.transform { Transform }
 """Python and bytecode file printing pass."""
 class PyBytecodeGenPass(Transform[(uni.Module, uni.Module)]) {
     """Transform AST into Python bytecode."""

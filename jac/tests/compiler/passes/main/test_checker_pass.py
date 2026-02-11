@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import TypeCheckPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
@@ -448,8 +448,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a: int = uni.Module;  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^
+        a: int = os.path;  # <-- Error
+        ^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )

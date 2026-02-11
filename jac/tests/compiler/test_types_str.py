@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from jaclang.compiler.type_system import types  # type: ignore[attr-defined]
-from jaclang.pycore.unitree import Module  # type: ignore[import-not-found]
+from jaclang.jac0core.unitree import Module  # type: ignore[import-not-found]
 
 
 def test_all_type_str_methods() -> None:

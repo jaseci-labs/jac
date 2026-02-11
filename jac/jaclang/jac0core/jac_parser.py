@@ -9,14 +9,14 @@ from dataclasses import dataclass
 from threading import Event
 from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
-import jaclang.pycore.lark_jac_parser as jl
-import jaclang.pycore.unitree as uni
-from jaclang.pycore.constant import CodeContext, EdgeDir
-from jaclang.pycore.constant import Tokens as Tok
-from jaclang.pycore.passes import BaseTransform, Transform
+import jaclang.jac0core.lark_jac_parser as jl
+import jaclang.jac0core.unitree as uni
+from jaclang.jac0core.constant import CodeContext, EdgeDir
+from jaclang.jac0core.constant import Tokens as Tok
+from jaclang.jac0core.passes import BaseTransform, Transform
 
 if TYPE_CHECKING:
-    from jaclang.pycore.program import JacProgram
+    from jaclang.jac0core.program import JacProgram
 
 T = TypeVar("T", bound=uni.UniNode)
 TL = TypeVar("TL", bound=(uni.UniNode | list))

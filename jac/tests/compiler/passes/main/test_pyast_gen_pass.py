@@ -8,10 +8,10 @@ from collections.abc import Callable
 
 import pytest
 
-import jaclang.pycore.unitree as uni
+import jaclang.jac0core.unitree as uni
 from conftest import check_pass_ast_complete, get_micro_jac_files
-from jaclang.pycore.passes import PyastGenPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.passes import PyastGenPass
+from jaclang.jac0core.program import JacProgram
 
 
 def ast_to_list(node: ast3.AST) -> list[ast3.AST]:

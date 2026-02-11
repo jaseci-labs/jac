@@ -9,10 +9,10 @@ import from jaclang.cli.console { console }
 
 """Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
-    import jaclang.pycore.unitree as uni;
+    import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main { PyastBuildPass }
-    import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.helpers { read_file_with_encoding }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
         code = PyastBuildPass(
@@ -42,7 +42,7 @@ impl py2jac(filename: str) -> int {
 
 """Convert Jac to Python."""
 impl jac2py(filename: str) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
         code = JacProgram().compile(file_path=filename).gen.py;
         if code {
@@ -59,7 +59,7 @@ impl jac2py(filename: str) -> int {
 
 """Convert Jac to JavaScript."""
 impl js(filename: str) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
         try {
             prog = JacProgram();

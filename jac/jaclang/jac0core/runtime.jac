@@ -27,15 +27,15 @@ import from typing {
     get_type_hints
 }
 import from uuid { UUID }
-import from jaclang.pycore.archetype {
+import from jaclang.jac0core.archetype {
     GenericEdge,
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
     Root
 }
-import from jaclang.pycore.constant { EdgeDir, colors }
-import from jaclang.pycore.constructs {
+import from jaclang.jac0core.constant { EdgeDir, colors }
+import from jaclang.jac0core.constructs {
     AccessLevel,
     Anchor,
     Archetype,
@@ -47,15 +47,15 @@ import from jaclang.pycore.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.pycore.modresolver { infer_language }
-import from jaclang.pycore.mtp { MTIR, Info, MTRuntime }
+import from jaclang.jac0core.modresolver { infer_language }
+import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.vendor { pluggy }
 with entry {
     if TYPE_CHECKING {
         import from http.server { BaseHTTPRequestHandler }
         import from jaclang.cli.console { JacConsole as ConsoleImpl }
-        import from jaclang.pycore.compiler { JacCompiler }
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.compiler { JacCompiler }
+        import from jaclang.jac0core.program { JacProgram }
         import from jaclang.runtimelib.client_bundle {
             ClientBundle,
             ClientBundleBuilder
@@ -960,7 +960,7 @@ fillcolor="invis", fontcolor="black"];\n';
         for (source, target, `edge) in connections {
             edge_label = html.escape(str(`edge.__jac__.archetype));
             dot_content += (
-                f"{visited_nodes.index(source)} -> {visited_nodes.index(target)}"
+                f"{visited_nodes.index(source)} -> {visited_nodes.index(target)} "
                 + f' [label="{edge_label if "GenericEdge" not in edge_label else ""}"];\n'
             );
             if (('GenericEdge' in edge_label) or not edge_label.strip()) {
@@ -1884,7 +1884,7 @@ class JacByLLM {
         connected_nodes: list[NodeArchetype], model: object, descriptions: str =
 ''
     ) -> list[NodeArchetype] {
-        import from jaclang.pycore.helpers { _describe_nodes_list }
+        import from jaclang.jac0core.helpers { _describe_nodes_list }
         visitable_list: list = [];
         """
             Determine which connected nodes are visitable using an LLM.
@@ -2450,7 +2450,7 @@ class JacRuntime(JacRuntimeInterface) {
     @classmethod
     def get_compiler(cls: Any) -> JacCompiler {
         if (cls.compiler is None) {
-            import from jaclang.pycore.compiler { JacCompiler }
+            import from jaclang.jac0core.compiler { JacCompiler }
             cls.compiler = JacCompiler();
         }
         return cls.compiler;
@@ -2460,7 +2460,7 @@ class JacRuntime(JacRuntimeInterface) {
     @classmethod
     def get_program(cls: Any) -> JacProgram {
         if (cls.program is None) {
-            import from jaclang.pycore.program { JacProgram }
+            import from jaclang.jac0core.program { JacProgram }
             cls.program = JacProgram();
         }
         return cls.program;
@@ -2491,7 +2491,7 @@ class JacRuntime(JacRuntimeInterface) {
     Core JacRuntimeImpl is preserved, only external plugins are disabled.
 
     Usage:
-        from jaclang.pycore.runtime import without_plugins
+        from jaclang.jac0core.runtime import without_plugins
 
         def test_something():
             with without_plugins():

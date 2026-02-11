@@ -21,21 +21,21 @@ from types import ModuleType
 
 from jaclang.jac0 import compile_jac as _jac0_compile
 
-# Inline logging config (previously in jaclang.pycore.log)
+# Inline logging config (previously in jaclang.jac0core.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 
 # Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
 # This module must be available for find_spec()/get_code(), but normal
 # .jac imports are not yet operational at this point.
-_pycore_dir = os.path.join(os.path.dirname(__file__), "pycore")
-_modresolver_jac = os.path.join(_pycore_dir, "modresolver.jac")
+_jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
+_modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
 with open(_modresolver_jac, encoding="utf-8") as _f:
     _py_src = _jac0_compile(_f.read(), _modresolver_jac)
-_modresolver = types.ModuleType("jaclang.pycore.modresolver")
+_modresolver = types.ModuleType("jaclang.jac0core.modresolver")
 _modresolver.__file__ = _modresolver_jac
-_modresolver.__package__ = "jaclang.pycore"
+_modresolver.__package__ = "jaclang.jac0core"
 exec(compile(_py_src, _modresolver_jac, "exec"), _modresolver.__dict__)  # noqa: S102
-sys.modules["jaclang.pycore.modresolver"] = _modresolver
+sys.modules["jaclang.jac0core.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
@@ -67,13 +67,13 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         """Compiler passes written in Jac that need minimal compilation."""
         return _discover_minimal_compile_modules()
 
-    # Directory containing bootstrap .jac files (pycore infrastructure)
-    _bootstrap_dir: str = str(Path(__file__).parent / "pycore")
+    # Directory containing bootstrap .jac files (jac0core infrastructure)
+    _bootstrap_dir: str = str(Path(__file__).parent / "jac0core")
 
     def _is_bootstrap_jac(self, file_path: str) -> bool:
         """Check if a .jac file should be compiled with jac0 (bootstrap).
 
-        Only .jac files inside jaclang/pycore/ are bootstrap files — they
+        Only .jac files inside jaclang/jac0core/ are bootstrap files — they
         are part of the compiler infrastructure and must be compiled with the
         lightweight jac0 transpiler rather than the full Jac compiler (which
         depends on them). Files in jaclang/compiler/ use full Jac syntax
@@ -191,7 +191,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             self._exec_bootstrap(module, file_path)
             return
 
-        from jaclang.pycore.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import JacRuntime as Jac
 
         is_pkg = module.__spec__.submodule_search_locations is not None
 
@@ -236,7 +236,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         This method is required by runpy when using `python -m module`.
         """
-        from jaclang.pycore.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import JacRuntime as Jac
 
         # Find the .jac file for this module
         paths_to_search = get_jac_search_paths()

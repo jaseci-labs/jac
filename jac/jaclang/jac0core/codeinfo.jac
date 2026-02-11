@@ -10,7 +10,7 @@ with entry {
         import from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
         import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
         import from jaclang.compiler.passes.tool.doc_ir { Doc }
-        import from jaclang.pycore.unitree { Source, Token }
+        import from jaclang.jac0core.unitree { Source, Token }
     }
 }
 

@@ -3058,7 +3058,7 @@ impl EsastGenPass.enter_node(`node: uni.UniNode) -> None {
 
 """Initialize the pass."""
 impl EsastGenPass.before_pass -> None {
-    import from jaclang.pycore.codeinfo { ClientManifest }
+    import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes: list[EsastGenPass] = self._init_child_passes(EsastGenPass);
     self.imports: list[es.ImportDeclaration] = [];
     self.exports: list[es.ExportNamedDeclaration] = [];

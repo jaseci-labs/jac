@@ -1,7 +1,8 @@
-"""PyCore - Bootstrap-critical Python core for Jac.
+"""Jac0Core - Bootstrap core modules for the Jac compiler.
 
-This package contains the minimal Python code required to bootstrap the Jac
-compiler. Everything else in the jaclang codebase can be written in Jac.
+This package contains the core Jac modules compiled by jac0 (the bootstrap
+transpiler) during first-run setup. These modules form the compiler
+infrastructure: AST definitions, passes, runtime, and utilities.
 
 Modules:
 - unitree: Core AST definitions

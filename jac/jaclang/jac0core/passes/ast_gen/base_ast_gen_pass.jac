@@ -1,8 +1,8 @@
 """Shared helpers for AST generation passes."""
 import from collections.abc { Sequence }
 import from typing { Any, Generic, TypeVar }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes.uni_pass { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes.uni_pass { UniPass }
 glob T = TypeVar('T'),
      ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 

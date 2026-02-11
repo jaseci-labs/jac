@@ -39,7 +39,7 @@ def add_line_numbers(s: str) -> str {
 def get_uni_nodes_as_snake_case -> list {
     import inspect;
     import sys;
-    import jaclang.pycore.unitree as uni;
+    import jaclang.jac0core.unitree as uni;
     module_name = uni.__name__;
     module = sys.modules[module_name];
     source_code = inspect.getsource(module);
@@ -72,7 +72,7 @@ def dump_traceback(e: Exception) -> str {
         return (None, None);
     }
     tb = TracebackException(`type(e), e, e.__traceback__, limit=None, compact=True);
-    trace_dump += f"Error: {str(e)}";
+    trace_dump += f"Error: {str(e)}\n";
     tb.stack.pop(0);
     tb.stack.reverse();
     dump_tab_width = 2;
@@ -81,7 +81,7 @@ def dump_traceback(e: Exception) -> str {
         normalized: str = filename.replace('\\', '/');
         return (
             ('/jaclang/runtimelib/' in normalized)
-            or ('/jaclang/pycore/' in normalized)
+            or ('/jaclang/jac0core/' in normalized)
             or ('/jaclang/vendor/' in normalized)
             or ('/site-packages/pluggy/' in normalized)
             or normalized.endswith('/jaclang/meta_importer.py')
@@ -93,13 +93,13 @@ def dump_traceback(e: Exception) -> str {
         is_internal: bool = is_internal_runtime_frame(frame.filename);
         if (is_internal and collapse_internal) {
             if not seen_runtime_marker {
-                trace_dump += f"{(' ' * dump_tab_width)}... ";
+                trace_dump += f"\n{(' ' * dump_tab_width)}... [internal runtime calls]";
                 seen_runtime_marker = True;
             }
             continue;
         }
         seen_runtime_marker = False;
-        func_signature: str = frame.name + '()' if frame.name.isidentifier() else '';
+        func_signature: str = frame.name + ('()' if frame.name.isidentifier() else '');
         (jac_filename, jac_source) = get_jac_source_info(frame.filename);
         display_filename: str = jac_filename or frame.filename;
         display_source: (str | None) = jac_source;
@@ -142,7 +142,7 @@ def dump_traceback(e: Exception) -> str {
                 }
             }
         }
-        trace_dump += f"{(' ' * dump_tab_width)}at {func_signature}{display_filename}:{frame.lineno}";
+        trace_dump += f"\n{(' ' * dump_tab_width)}at {func_signature} {display_filename}:{frame.lineno}";
     }
     return trace_dump;
 }

@@ -6,14 +6,14 @@ import from contextlib { contextmanager }
 import from types { UnionType }
 import from typing { TYPE_CHECKING }
 import from uuid { UUID }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.helpers {
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.helpers {
     read_file_with_encoding as read_file_with_encoding
 }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.constructs { NodeArchetype }
+        import from jaclang.jac0core.constructs { NodeArchetype }
     }
 }
 

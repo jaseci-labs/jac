@@ -9,26 +9,26 @@ import from enum { IntEnum }
 import from hashlib { md5 }
 import from types { EllipsisType }
 import from typing { TYPE_CHECKING, Any, Generic, TypeVar, cast }
-import from jaclang.pycore.bccache { discover_base_file }
-import from jaclang.pycore.codeinfo { CodeGenTarget, CodeLocInfo }
-import from jaclang.pycore.constant {
+import from jaclang.jac0core.bccache { discover_base_file }
+import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
+import from jaclang.jac0core.constant {
     DELIM_MAP,
     CodeContext,
     EdgeDir,
     SymbolAccess,
     SymbolType
 }
-import from jaclang.pycore.constant { Constants as Con }
-import from jaclang.pycore.constant { JacSemTokenModifier as SemTokMod }
-import from jaclang.pycore.constant { JacSemTokenType as SemTokType }
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.modresolver { resolve_relative_path }
+import from jaclang.jac0core.constant { Constants as Con }
+import from jaclang.jac0core.constant { JacSemTokenModifier as SemTokMod }
+import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.modresolver { resolve_relative_path }
 with entry {
     if TYPE_CHECKING {
         import from jaclang.compiler.type_system.types { TypeBase }
     }
 }
-import from jaclang.pycore.treeprinter {
+import from jaclang.jac0core.treeprinter {
     print_ast_tree,
     print_symtab_tree,
     printgraph_ast_tree,
@@ -173,7 +173,7 @@ True
     }
     def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token
 {
-        import from jaclang.pycore.jac_parser { TOKEN_MAP }
+        import from jaclang.jac0core.jac_parser { TOKEN_MAP }
         value = value if value else (
             DELIM_MAP[name] if (name in DELIM_MAP)
             else TOKEN_MAP.get(name.value, name.value)
@@ -194,13 +194,13 @@ True
     def get_all_sub_nodes(
         self: UniNode, typ: type[T], brute_force: bool = True
     ) -> list[T] {
-        import from jaclang.pycore.passes { UniPass }
+        import from jaclang.jac0core.passes { UniPass }
         return UniPass.get_all_sub_nodes(`node=self, typ=typ,
 brute_force=brute_force);
     }
     """Get parent of type."""
     def find_parent_of_type(self: UniNode, typ: type[T]) -> (T | None) {
-        import from jaclang.pycore.passes { UniPass }
+        import from jaclang.jac0core.passes { UniPass }
         return UniPass.find_parent_of_type(`node=self, typ=typ);
     }
     def parent_of_type(self: UniNode, typ: type[T]) -> T {
@@ -1057,7 +1057,7 @@ class Module(AstDocNode, UniScopeNode) {
 }
         import from jaclang.compiler.passes.tool.jac_formatter_pass {
 JacFormatPass }
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
         return JacFormatPass(
             ir_in=DocIRGenPass(ir_in=self, prog=JacProgram()).ir_out,
 prog=JacProgram()
@@ -1066,7 +1066,7 @@ prog=JacProgram()
     def unparse(self: Module, requires_format: bool = True) -> str {
         import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass
 }
-        import from jaclang.pycore.program { JacProgram }
+        import from jaclang.jac0core.program { JacProgram }
         NormalizePass(ir_in=self, prog=JacProgram());
         if requires_format {
             return self.format();

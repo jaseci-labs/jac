@@ -10,7 +10,7 @@ For creating client projects, use: `jac create --use client`
 
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.jac0core.runtime { hookimpl }
 import os;
 
 glob registry = get_registry();

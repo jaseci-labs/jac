@@ -1,5 +1,5 @@
 """Core constructs for Jac Language - re-exports."""
-import from jaclang.pycore.archetype {
+import from jaclang.jac0core.archetype {
     AccessLevel,
     Anchor,
     Archetype,
@@ -14,7 +14,7 @@ import from jaclang.pycore.archetype {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.pycore.mtp { MTIR, MTRuntime }
+import from jaclang.jac0core.mtp { MTIR, MTRuntime }
 glob __all__ = [
          'AccessLevel',
          'Anchor',

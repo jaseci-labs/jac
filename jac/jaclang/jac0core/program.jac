@@ -6,17 +6,17 @@ Jac program. The actual compilation is performed by JacCompiler.
 import types;
 import from threading { Event }
 import from typing { TYPE_CHECKING }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.bccache { BytecodeCache, get_bytecode_cache }
-import from jaclang.pycore.compile_options { CompileOptions }
-import from jaclang.pycore.mtp { Info }
-import from jaclang.pycore.passes { Alert }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.bccache { BytecodeCache, get_bytecode_cache }
+import from jaclang.jac0core.compile_options { CompileOptions }
+import from jaclang.jac0core.mtp { Info }
+import from jaclang.jac0core.passes { Alert }
 
 with entry {
     if TYPE_CHECKING {
         import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
-        import from jaclang.pycore.compiler { JacCompiler }
-        import from jaclang.pycore.passes { Transform }
+        import from jaclang.jac0core.compiler { JacCompiler }
+        import from jaclang.jac0core.passes { Transform }
     }
 }
 
@@ -61,7 +61,7 @@ default.
         if self._compiler {
             return self._compiler;
         }
-        import from jaclang.pycore.compiler { JacCompiler }
+        import from jaclang.jac0core.compiler { JacCompiler }
         self._compiler = JacCompiler(bytecode_cache=self._bytecode_cache);
         return self._compiler;
     }
@@ -200,7 +200,7 @@ formatting.
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
     ) -> JacProgram {
-        import from jaclang.pycore.compiler { JacCompiler }
+        import from jaclang.jac0core.compiler { JacCompiler }
         return JacCompiler.jac_file_formatter(file_path, auto_lint);
     }
 
@@ -215,7 +215,7 @@ formatting.
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
-        import from jaclang.pycore.compiler { JacCompiler }
+        import from jaclang.jac0core.compiler { JacCompiler }
         return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint);
     }
 
@@ -225,7 +225,7 @@ formatting.
             file_path: Path to the Jac file to lint.
         """
     static def jac_file_linter(file_path: str) -> JacProgram {
-        import from jaclang.pycore.compiler { JacCompiler }
+        import from jaclang.jac0core.compiler { JacCompiler }
         return JacCompiler.jac_file_linter(file_path);
     }
 }

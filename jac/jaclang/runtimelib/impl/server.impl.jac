@@ -3,7 +3,7 @@ import from jaclang.cli.banners { JAC_DISCORD_URL }
 
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(`obj: object) -> JsonValue {
-    import from jaclang.pycore.constructs { Archetype }
+    import from jaclang.jac0core.constructs { Archetype }
     if ((`obj is None) or isinstance(`obj, (str, int, float, bool))) {
         return `obj;
     }
@@ -32,7 +32,7 @@ impl JacSerializer.serialize(`obj: object) -> JsonValue {
 
 """Serialize Archetype instances."""
 impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
-    import from jaclang.pycore.constructs { NodeArchetype, WalkerArchetype }
+    import from jaclang.jac0core.constructs { NodeArchetype, WalkerArchetype }
     result: dict[(str, JsonValue)] = {
         '_jac_type': type(arch).__name__,
         '_jac_id': arch.__jac__.id.hex,
@@ -86,7 +86,7 @@ impl UserManager._ensure_connection -> None {
 
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
-    import from jaclang.pycore.constructs { Root }
+    import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
     # Check if user already exists
     cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
@@ -288,7 +288,7 @@ impl ExecutionManager.execute_function(
 impl ExecutionManager.spawn_walker(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.pycore.constructs { NodeArchetype }
+    import from jaclang.jac0core.constructs { NodeArchetype }
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
@@ -405,9 +405,9 @@ impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
-    import jaclang.pycore.unitree as uni;
-    import from jaclang.pycore.constructs { WalkerArchetype }
-    import from jaclang.pycore.constant { Tokens as Tok }
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constructs { WalkerArchetype }
+    import from jaclang.jac0core.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
     # Helper to check if an archetype AST node is explicitly public
@@ -521,7 +521,7 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
 
 """Collect walker classes from module."""
 impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
-    import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.jac0core.constructs { WalkerArchetype }
     if not self._module {
         return {};
     }
@@ -540,7 +540,7 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 
 """Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
 impl ModuleIntrospector._check_module_freshness -> None {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     if not self._module {
         return;
     }

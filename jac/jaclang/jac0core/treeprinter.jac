@@ -3,11 +3,11 @@ import ast as ast3;
 import builtins;
 import html;
 import from typing { TYPE_CHECKING }
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.unitree { UniNode, UniScopeNode }
+        import from jaclang.jac0core.unitree { UniNode, UniScopeNode }
     }
 }
 
@@ -196,7 +196,7 @@ def print_ast_tree(
     output_file: (str | None) = None,
     max_depth: (int | None) = None
 ) -> str {
-    import from jaclang.pycore.unitree { AstSymbolNode, Token }
+    import from jaclang.jac0core.unitree { AstSymbolNode, Token }
     print_py_raise: bool = False;
     def __node_repr_in_tree(`node: UniNode) -> str {
         access = f"Access: {node.access.tag.value} ,"

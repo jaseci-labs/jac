@@ -7,16 +7,16 @@ Jac code via the meta-importer).
 It mirrors the behavior of `jaclang/lib.jac` and intentionally keeps the API
 names stable because the Jac -> Python code generator emits imports for these.
 """
-import from jaclang.pycore.archetype { GenericEdge, Root }
-import from jaclang.pycore.archetype { ObjectSpatialFunction as DSFunc }
-import from jaclang.pycore.archetype { ObjectSpatialPath as OPath }
-import from jaclang.pycore.constant { EdgeDir }
-import from jaclang.pycore.constructs { Archetype as Obj }
-import from jaclang.pycore.constructs { EdgeArchetype as Edge }
-import from jaclang.pycore.constructs { JsxElement }
-import from jaclang.pycore.constructs { NodeArchetype as Node }
-import from jaclang.pycore.constructs { WalkerArchetype as Walker }
-import from jaclang.pycore.runtime { JacRuntimeInterface }
+import from jaclang.jac0core.archetype { GenericEdge, Root }
+import from jaclang.jac0core.archetype { ObjectSpatialFunction as DSFunc }
+import from jaclang.jac0core.archetype { ObjectSpatialPath as OPath }
+import from jaclang.jac0core.constant { EdgeDir }
+import from jaclang.jac0core.constructs { Archetype as Obj }
+import from jaclang.jac0core.constructs { EdgeArchetype as Edge }
+import from jaclang.jac0core.constructs { JsxElement }
+import from jaclang.jac0core.constructs { NodeArchetype as Node }
+import from jaclang.jac0core.constructs { WalkerArchetype as Walker }
+import from jaclang.jac0core.runtime { JacRuntimeInterface }
 glob __all__ = [
          'Node',
          'Edge',
