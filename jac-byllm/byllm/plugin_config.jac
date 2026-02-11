@@ -7,7 +7,7 @@ configuration system, registering:
 """
 
 import from typing { Any }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-byllm."""
 class JacByllmPluginConfig {

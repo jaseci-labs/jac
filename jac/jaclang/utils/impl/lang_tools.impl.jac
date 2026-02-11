@@ -17,7 +17,9 @@ impl AstTool.autodoc_uninode -> str {
             }
             typ_str = str(kid.typ);
             arrow = '-.->' if ('Optional' in typ_str) else '-->';
-            typ = typ_str.replace('typing.', '').replace('jaclang.pycore.unitree.', '').replace(
+            typ = typ_str.replace('typing.', '').replace(
+                'jaclang.jac0core.unitree.', ''
+            ).replace(
                 'Optional[', ''
             ).replace(
                 'Union[', ''
@@ -191,7 +193,7 @@ impl AstTool.py_uni_nodes -> str {
 
 """Generate pass template."""
 impl AstTool.pass_template -> str {
-    output = 'import jaclang.pycore.unitree as ast\nfrom jaclang.pycore.passes import Pass\n\nclass SomePass(Pass):\n';
+    output = 'import jaclang.jac0core.unitree as ast\nfrom jaclang.jac0core.passes import Pass\n\nclass SomePass(Pass):\n';
     """Emit to output.""";
     def emit(to_append: str) -> None {
         nonlocal output ;
@@ -209,7 +211,7 @@ impl AstTool.pass_template -> str {
         }
         emit('    """\n');
     }
-    output = output.replace('jaclang.pycore.unitree.', '').replace('typing.', '').replace(
+    output = output.replace('jaclang.jac0core.unitree.', '').replace('typing.', '').replace(
         "<enum '", ''
     ).replace(
         "'>", ''

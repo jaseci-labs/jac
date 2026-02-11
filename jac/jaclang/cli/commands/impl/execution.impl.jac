@@ -16,7 +16,7 @@ glob _runtime_initialized = False;
 def _ensure_jac_runtime -> None {
     global _runtime_initialized;
     if not _runtime_initialized {
-        import from jaclang.pycore.runtime { JacRuntime as Jac }
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
         Jac.setup();
         _runtime_initialized = True;
     }
@@ -64,7 +64,7 @@ This is the canonical function for setting up CLI execution context.
 It handles base_path setup, closing any existing context, and creating a new one.
 """
 def _proc_file(filename: str) -> tuple {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
     if filename.endswith('.na.jac') {
@@ -90,7 +90,7 @@ def _proc_file(filename: str) -> tuple {
 """Run the specified .jac file."""
 impl run(filename: str, main: bool = True, cache: bool = True) -> int {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
@@ -125,7 +125,7 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             );
         }
     } except Exception as e {
-        import from jaclang.pycore.helpers { dump_traceback }
+        import from jaclang.jac0core.helpers { dump_traceback }
         console.error(dump_traceback(e));
         mach.close();
         return 1;
@@ -144,8 +144,8 @@ impl enter(
     `node: str = ''
 ) -> int {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
-    import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.constructs { WalkerArchetype }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
@@ -194,7 +194,7 @@ impl start(
     no_client: bool = False
 ) -> int {
     _ensure_jac_runtime();
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
     if not Path(filename).exists() {
         if filename == "main.jac" {
@@ -226,7 +226,7 @@ impl start(
             return 1;
         }
     } except Exception as e {
-        import from jaclang.pycore.helpers { dump_traceback }
+        import from jaclang.jac0core.helpers { dump_traceback }
         console.error(f"Error loading {filename}: {e}");
         console.error(dump_traceback(e));
         mach.close();
@@ -248,7 +248,7 @@ impl start(
         try {
             server.print_endpoint_docs();
         } except Exception as e {
-            import from jaclang.pycore.helpers { dump_traceback }
+            import from jaclang.jac0core.helpers { dump_traceback }
             console.error(f"Error generating endpoint documentation: {e}");
             console.error(dump_traceback(e));
             mach.close();
@@ -324,7 +324,7 @@ impl start(
         mach.close();
         return 0;
     } except Exception as e {
-        import from jaclang.pycore.helpers { dump_traceback }
+        import from jaclang.jac0core.helpers { dump_traceback }
         console.error(f"Server error: {e}");
         console.error(dump_traceback(e));
         if hot_reloader {
@@ -527,8 +527,8 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
 
 """Debug the specified .jac file."""
 impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
-    import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.helpers { debugger as db }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.helpers { debugger as db }
     (base, mod) = os.path.split(filename);
     base = base or './';
     mod = mod[:-4];

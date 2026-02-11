@@ -3,7 +3,7 @@ import from typing { TYPE_CHECKING, Union }
 
 with entry {
     if TYPE_CHECKING {
-        import jaclang.pycore.unitree as uni;
+        import jaclang.jac0core.unitree as uni;
     }
 }
 

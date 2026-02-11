@@ -26,6 +26,12 @@ author = "Jaseci"
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
+# Build-time constants (alternative to .env for when import.meta.env doesn't work)
+# These are injected at build time and available as global variables
+[plugins.client.vite.define]
+"globalThis.APP_BUILD_TIME" = "2024-01-01T00:00:00Z"
+"globalThis.FEATURE_ENABLED" = true
+
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
@@ -42,3 +48,13 @@ tailwindcss = "latest"
 [environments.response.headers]
 "Cross-Origin-Opener-Policy" = "same-origin"
 "Cross-Origin-Embedder-Policy" = "require-corp"
+
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+# cache_name = "jac-pwa-cache-v1"
+# [plugins.client.pwa.manifest]
+# name = "My App"
+# short_name = "App"
+[plugins.scale.secrets]
+TEST_SECRET_KEY = "${TEST_SECRET_KEY}"

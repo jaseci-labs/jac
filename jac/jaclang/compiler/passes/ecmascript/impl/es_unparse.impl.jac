@@ -653,7 +653,7 @@ impl JSCodeGenerator.gen_program(`node: es.Program) -> str {
 
 """Generate JavaScript code for a node."""
 impl JSCodeGenerator.generate(`node: (es.Node | None)) -> str {
-    import from jaclang.pycore.helpers { pascal_to_snake }
+    import from jaclang.jac0core.helpers { pascal_to_snake }
     if (`node is None) {
         return '';
     }

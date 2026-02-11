@@ -6,8 +6,8 @@ be called via ctypes.
 """
 
 import llvmlite.binding as llvm;
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { Transform }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { Transform }
 
 """JIT compile LLVM IR module to native machine code."""
 obj NativeCompilePass(Transform) {

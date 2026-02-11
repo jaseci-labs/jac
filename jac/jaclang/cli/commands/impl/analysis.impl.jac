@@ -15,7 +15,7 @@ impl check(
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -134,7 +134,7 @@ impl check(
 
 """Lint .jac files and report violations."""
 impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -297,7 +297,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
 
 """Format .jac files with improved code style."""
 impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -423,7 +423,7 @@ impl `test(
     directory: str = "",
     verbose: bool = False
 ) -> int {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     Jac.setup();
     failcount = Jac.run_test(
         filepath=filepath,
@@ -451,7 +451,7 @@ impl gen_parser -> int {
 
 """Extract grammar from the Jac parser."""
 impl grammar(lark: bool = False, output: str = "") -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
