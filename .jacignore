@@ -194,6 +194,7 @@ sig_mismatch.impl.jac
 sig_mismatch.jac
 start_screen.impl.jac
 stmt.impl.jac
+storage_factory.jac
 stub_hover.impl.jac
 submit-button.jac
 symtab_build.jac
