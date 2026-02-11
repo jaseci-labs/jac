@@ -138,6 +138,20 @@ impl TypeEvaluator._is_expr_self(expr: uni.Expr) -> bool {
     return False;
 }
 
+"""Check if the expression is Name that is 'super' and in the method context."""
+impl TypeEvaluator._is_expr_super(expr: uni.Expr) -> bool {
+    if (
+        isinstance(expr, uni.Name)
+        and (expr.value == TOKEN_MAP[Tok.KW_SUPER])
+        and (fn := self._get_enclosing_method(expr))
+        and (not fn.is_static)
+        and (not fn.is_cls_method)
+    ) {
+        return True;
+    }
+    return False;
+}
+
 impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase {
     sym.add_use(expr);
     expr.type = self.get_type_of_symbol(sym);

@@ -172,10 +172,12 @@ obj TypeEvaluator {
     def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
     def _is_expr_self(expr: uni.Expr) -> bool;
+    def _is_expr_super(expr: uni.Expr) -> bool;
     def _get_enclosing_function(node: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_method(node: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _lookup_class_member(
