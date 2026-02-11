@@ -219,7 +219,7 @@ def test_all_in_one_app_endpoints() -> None:
                                 if isinstance(raw, bytes)
                                 else raw
                             )
-                    except (BlockingIOError, IOError):
+                    except (OSError, BlockingIOError):
                         pass
 
                 if captured_output:
@@ -233,7 +233,9 @@ def test_all_in_one_app_endpoints() -> None:
                     # Find first compilation-related marker
                     for marker in ["compilation", "compiling", "building", "bundle"]:
                         idx = output_lower.find(marker)
-                        if idx != -1 and (compilation_idx == -1 or idx < compilation_idx):
+                        if idx != -1 and (
+                            compilation_idx == -1 or idx < compilation_idx
+                        ):
                             compilation_idx = idx
 
                     # Find first server-ready marker
