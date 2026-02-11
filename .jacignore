@@ -82,6 +82,7 @@ core.impl.jac
 core_language_features.jac
 corelib_fmt.jac
 custom_access_validation.jac
+database_factory.jac
 data_spatial_types.jac
 decorator_stack.jac
 defn_decl_mismatch.jac
