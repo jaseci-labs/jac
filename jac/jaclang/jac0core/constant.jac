@@ -62,7 +62,11 @@ class JacSemTokenType(IntEnum) {
     }
 
     static def as_str_list -> list {
-        return;
+        return [
+            i.name.lower()
+            for i in JacSemTokenType
+            if i.name
+        ];
     }
 }
 
