@@ -26,7 +26,7 @@ impl py2jac(filename: str) -> int {
         prog = JacProgram.jac_str_formatter(
             source_str=code, file_path=filename, auto_lint=True
         );
-        console.print(prog.mod.main.gen.jac);
+        console.print(prog.mod.main.gen.jac, markup=False, highlight=False);
         for error in prog.errors_had {
             console.error(f"{error}");
         }
@@ -46,7 +46,7 @@ impl jac2py(filename: str) -> int {
     if filename.endswith('.jac') {
         code = JacProgram().compile(file_path=filename).gen.py;
         if code {
-            console.print(code);
+            console.print(code, markup=False, highlight=False);
             return 0;
         } else {
             return 1;
@@ -75,7 +75,7 @@ impl js(filename: str) -> int {
                 console.error('ECMAScript code generation produced no output.');
                 return 1;
             }
-            console.print(js_output);
+            console.print(js_output, markup=False, highlight=False);
             return 0;
         } except Exception as e {
             console.error(f"Generating JavaScript failed: {e}");

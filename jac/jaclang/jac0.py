@@ -528,6 +528,12 @@ class AssertStmt:
 
 
 @dataclass
+class MatchStmt:
+    subject: str = ""
+    cases: list = field(default_factory=list)  # list of (pattern, body)
+
+
+@dataclass
 class DeleteStmt:
     expr: str = ""
 
@@ -957,7 +963,7 @@ class Parser:
                 return self._parse_funcdef([])
             if v == "async":
                 nxt = self._peek(1)
-                if nxt.value in ("def", "can"):
+                if nxt.value in ("def", "can", "static"):
                     return self._parse_funcdef([])
                 if nxt.value == "for":
                     return self._parse_for(is_async=True)
@@ -973,6 +979,8 @@ class Parser:
                 if self._peek(1).value == "entry":
                     return self._parse_with_entry()
                 return self._parse_with_stmt()
+            if v == "match":
+                return self._parse_match()
             if v == "if":
                 return self._parse_if()
             if v == "for":
@@ -1121,10 +1129,13 @@ class Parser:
     def _parse_funcdef(self, decorators: list[str]) -> FuncDef:
         is_static = False
         is_async = False
+        # Handle both orders: static async def / async static def
         if self._match(TT.NAME, "static"):
             is_static = True
         if self._match(TT.NAME, "async"):
             is_async = True
+        if not is_static and self._match(TT.NAME, "static"):
+            is_static = True
         # consume 'def' or 'can'
         self._advance()
         name = self._expect(TT.NAME).value
@@ -1345,6 +1356,29 @@ class Parser:
             is_async=is_async,
         )
 
+    def _parse_match(self) -> MatchStmt:
+        self._expect(TT.NAME, "match")
+        subject = self._collect_until(TT.LBRACE)
+        self._expect(TT.LBRACE)
+        cases: list[tuple[str, list]] = []
+        while self._match(TT.NAME, "case"):
+            # Collect pattern until : (colon after pattern)
+            pattern = self._collect_until(TT.COLON)
+            self._expect(TT.COLON)
+            # Collect body until next 'case' or closing '}'
+            body: list = []
+            while (
+                not self._at(TT.RBRACE)
+                and not self._at(TT.EOF)
+                and not (self._peek().type == TT.NAME and self._peek().value == "case")
+            ):
+                node = self._parse_item()
+                if node is not None:
+                    body.append(node)
+            cases.append((pattern, body))
+        self._expect(TT.RBRACE)
+        return MatchStmt(subject=subject, cases=cases)
+
     def _parse_while(self) -> WhileStmt:
         self._expect(TT.NAME, "while")
         cond = self._collect_until(TT.LBRACE)
@@ -1557,6 +1591,8 @@ class CodeGen:
             self._emit_while(node)
         elif isinstance(node, TryStmt):
             self._emit_try(node)
+        elif isinstance(node, MatchStmt):
+            self._emit_match(node)
         elif isinstance(node, WithStmt):
             self._emit_with(node)
         elif isinstance(node, ReturnStmt):
@@ -1776,6 +1812,16 @@ class CodeGen:
         self._line(f"{ap}with {node.items}:")
         self.indent += 1
         self._emit_body(node.body)
+        self.indent -= 1
+
+    def _emit_match(self, node: MatchStmt) -> None:
+        self._line(f"match {self._strip_parens(node.subject)}:")
+        self.indent += 1
+        for pattern, body in node.cases:
+            self._line(f"case {pattern}:")
+            self.indent += 1
+            self._emit_body(body)
+            self.indent -= 1
         self.indent -= 1
 
 
