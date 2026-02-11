@@ -49,6 +49,8 @@ checker_return_type.jac
 checker_root_type.jac
 checker_self_type.jac
 checker_slice.jac
+checker_super_init_explicit.jac
+checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
 checker_union_reassignment.jac
