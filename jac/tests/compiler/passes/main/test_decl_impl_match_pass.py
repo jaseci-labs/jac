@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-import jaclang.pycore.unitree as uni
+import jaclang.jac0core.unitree as uni
 from jaclang import JacRuntime as Jac
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 @pytest.fixture(autouse=True)

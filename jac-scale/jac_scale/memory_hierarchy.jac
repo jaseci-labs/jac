@@ -17,7 +17,7 @@ import from uuid { UUID }
 import redis;
 import from pymongo { MongoClient }
 import from pymongo.errors { ConnectionFailure }
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,
     PersistentMemory,

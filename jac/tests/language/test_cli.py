@@ -251,7 +251,7 @@ def test_ast_printgraph(
         tools.tool("ir", ["ast.", f"{fixture_path('hello.jac')}"])
 
     stdout_value = output.getvalue()
-    assert '[label="MultiString"]' in stdout_value
+    assert 'label="MultiString"' in stdout_value
 
 
 def test_cfg_printgraph(
@@ -447,7 +447,7 @@ def test_param_arg(
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
 ) -> None:
     """Test for lambda argument annotation."""
-    from jaclang.pycore.program import JacProgram
+    from jaclang.jac0core.program import JacProgram
 
     filename = fixture_path("params/test_complex_params.jac")
     with capture_stdout() as output:

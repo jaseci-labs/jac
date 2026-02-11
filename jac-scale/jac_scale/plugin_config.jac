@@ -7,7 +7,7 @@ configuration system, registering:
 """
 
 import from typing { Any }
-import from jaclang.pycore.runtime { hookimpl }
+import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-scale."""
 class JacScalePluginConfig {
@@ -176,8 +176,14 @@ class JacScalePluginConfig {
                                     "description": "jac-byllm package version (use 'none' to skip)"
                                 }
                             }
-                        }
+                        },
+
                     }
+                },
+                "secrets": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Environment variable secrets for K8s deployment. Values use ${ENV_VAR} syntax, resolved at deploy time and created as a K8s Secret with envFrom.secretRef."
                 },
                 "server": {
                     "type": "dict",

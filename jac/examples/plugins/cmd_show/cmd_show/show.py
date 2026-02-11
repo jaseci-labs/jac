@@ -2,7 +2,7 @@ import os
 
 from jaclang.cli.registry import get_registry
 from jaclang.cli.command import Arg, ArgKind, CommandPriority
-from jaclang.pycore.runtime import hookimpl
+from jaclang.jac0core.runtime import hookimpl
 
 import pygments
 from pygments.formatters import TerminalFormatter

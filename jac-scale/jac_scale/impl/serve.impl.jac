@@ -59,35 +59,45 @@ def _transport_response_to_json_response(
 
 impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev or no_client mode)
+    # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
             import sys;
-            start_time = time.time();
-            try {
-                with console.status(
-                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
-                ) as status {
-                    self.introspector.ensure_bundle();
+            import from jaclang.project.config { get_config }
+            config = get_config();
+            dist_dir = config.get_client_dir() / 'dist' if config else None;
+            is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+            if is_pwa {
+                console.print("  ✔ PWA bundle already built", style="success");
+            } else {
+                start_time = time.time();
+                try {
+                    with console.status(
+                        "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                    ) as status {
+                        self.introspector.ensure_bundle();
+                    }
+                    elapsed = time.time() - start_time;
+                    console.print(
+                        f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                    );
+                } except Exception as e {
+                    console.warning(f"Failed to build client bundle: {e}");
+                    console.print(
+                        "\n  Client pages will not be available until this is fixed.\n",
+                        style="muted",
+                        file=sys.stderr
+                    );
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
+                    console.info(
+                        f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                        emoji=True
+                    );
                 }
-                elapsed = time.time() - start_time;
-                console.print(
-                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
-                );
-            } except Exception as e {
-                console.warning(f"Failed to build client bundle: {e}");
-                console.print(
-                    "\n  Client pages will not be available until this is fixed.\n",
-                    style="muted",
-                    file=sys.stderr
-                );
-                console.info('Try again after running: jac clean --all', emoji=True);
-                console.info(
-                    f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
-                    emoji=True
-                );
             }
         }
     }
@@ -407,10 +417,8 @@ impl JacAPIServer.register_client_js_endpoint -> None {
 impl JacAPIServer.serve_client_js_callback -> Callable[..., Response] {
     def callback -> Response {
         try {
-            self.introspector.load();
-            self.introspector.ensure_bundle();
             return Response(
-                content=self.introspector._bundle.code,
+                content=Jac.get_client_js(self.introspector),
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {

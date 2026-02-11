@@ -19,7 +19,7 @@ import from litellm.types.utils { Message as LiteLLMMessage }
 import from pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
 
-import from jaclang.pycore.mtp { Info }
+import from jaclang.jac0core.mtp { Info }
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).

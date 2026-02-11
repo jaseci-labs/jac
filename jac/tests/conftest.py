@@ -68,7 +68,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
     """
-    from jaclang.pycore.runtime import JacRuntimeImpl, plugin_manager
+    from jaclang.jac0core.runtime import JacRuntimeImpl, plugin_manager
 
     global _external_plugins
     for name, plugin in list(plugin_manager.list_name_plugin()):
@@ -83,7 +83,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_unconfigure(config: pytest.Config) -> None:
     """Re-register external plugins at the end of the jac test session."""
-    from jaclang.pycore.runtime import plugin_manager
+    from jaclang.jac0core.runtime import plugin_manager
 
     global _external_plugins
     for name, plugin in _external_plugins:
@@ -103,7 +103,7 @@ def ensure_jac_runtime() -> None:
     """Initialize Jac runtime once on first use."""
     global _runtime_initialized
     if not _runtime_initialized:
-        from jaclang.pycore.runtime import JacRuntime as Jac
+        from jaclang.jac0core.runtime import JacRuntime as Jac
 
         Jac.setup()
         _runtime_initialized = True
@@ -119,7 +119,7 @@ def proc_file(filename: str, user_root: str | None = None) -> tuple[str, str, An
         filename: Path to .jac or .py file
         user_root: User root ID for permission boundary (None for system context)
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -153,7 +153,7 @@ def proc_file_sess(
         base_path: Base directory for database storage
         user_root: User root ID for permission boundary (None for system context)
     """
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod = os.path.split(filename)
     base = base or "./"
@@ -188,7 +188,7 @@ def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
         Dictionary containing the object's state
     """
     ensure_jac_runtime()
-    from jaclang.pycore.runtime import JacRuntime as Jac
+    from jaclang.jac0core.runtime import JacRuntime as Jac
 
     base, mod, mach = proc_file(filename)
     if filename.endswith(".jac"):
@@ -298,8 +298,8 @@ def fresh_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    from jaclang.pycore.program import JacProgram
-    from jaclang.pycore.runtime import JacRuntime, JacRuntimeInterface
+    from jaclang.jac0core.program import JacProgram
+    from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
 
     # Close any existing context if any
     if JacRuntime.exec_ctx is not None:
