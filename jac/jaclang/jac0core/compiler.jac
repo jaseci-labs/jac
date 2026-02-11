@@ -343,7 +343,9 @@ class JacCompiler {
                 }
                 if might_have_native {
                     if (result.gen.llvm_ir is not None) {
-                        self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir));
+                        self._bytecode_cache.put_llvmir(
+                            cache_key, str(result.gen.llvm_ir)
+                        );
                         self._cache_interop_manifest(cache_key, result);
                     } else {
                         self._bytecode_cache.put_llvmir(cache_key, "");
