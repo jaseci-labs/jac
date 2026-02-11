@@ -32,7 +32,7 @@ import from jaclang.jac0core.unitree {
     ModuleCode,
     PyInlineCode
 }
-import from jaclang.jac0core.unitree { ClientBlock, ServerBlock }
+import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
 import from jaclang.jac0core.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
 import from jaclang.jac0core.unitree {

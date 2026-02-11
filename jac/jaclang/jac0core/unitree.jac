@@ -3184,7 +3184,7 @@ class Int(Literal) {
 
     @property
     def lit_value(self: Int) -> int {
-        return int(self.value);
+        return int(self.value, 0);
     }
 }
 """String node type for Jac Ast."""

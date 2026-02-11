@@ -666,15 +666,9 @@ impl JacAutoLintPass. enter_name(node: uni.Name) -> None {
             f"Unnecessary keyword escape on '{node.value}' [remove-kwesc]",
             node_override=node
         );
-        node .;
-        .;
-        .
-        is_kwesc = False;
+        `node.is_kwesc = False;
         if node.name == Tok.KWESC_NAME {
-            node .;
-            .;
-            .
-            name = Tok.NAME;
+            `node.name = Tok.NAME;
         }
     }
 }
@@ -694,22 +688,13 @@ impl JacAutoLintPass. enter_special_var_ref(node: uni.SpecialVarRef) -> None {
             f"Unnecessary keyword escape on '{node.orig.value}' [remove-kwesc]",
             node_override=node
         );
-        node .;
-        .;
-        .
-        orig.is_kwesc = False;
+        `node.orig.is_kwesc = False;
         if node.orig.name == Tok.KWESC_NAME {
-            node .;
-            .;
-            .
-            orig.name = Tok.NAME;
+            `node.orig.name = Tok.NAME;
         }
     }
     if node.is_kwesc {
-        node .;
-        .;
-        .
-        is_kwesc = False;
+        `node.is_kwesc = False;
     }
 }
 
@@ -728,15 +713,9 @@ impl JacAutoLintPass. enter_builtin_type(node: uni.BuiltinType) -> None {
             f"Unnecessary keyword escape on '{node.value}' [remove-kwesc]",
             node_override=node
         );
-        node .;
-        .;
-        .
-        is_kwesc = False;
+        `node.is_kwesc = False;
         if node.name == Tok.KWESC_NAME {
-            node .;
-            .;
-            .
-            name = Tok.NAME;
+            `node.name = Tok.NAME;
         }
     }
 }

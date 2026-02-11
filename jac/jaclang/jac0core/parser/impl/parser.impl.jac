@@ -618,8 +618,15 @@ impl Parser.parse_module -> Module {
     if len(kid) == 0 {
         kid.append(EmptyToken());
     }
+    mod_name = self.file_path;
+    if mod_name {
+        from pathlib import Path as _Path;
+        _p = _Path(mod_name);
+        # Use stem without .jac extension, e.g. "getme.impl" from "getme.impl.jac"
+        mod_name = _p.name[:-4] if _p.name.endswith('.jac') else _p.stem;
+    }
     return Module(
-        name=self.file_path,
+        name=mod_name,
         source=self.get_source(),
         doc=doc,
         body=body,
@@ -3076,6 +3083,9 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([cl_tok]);
+                if hasattr(stmt, 'code_context') {
+                    stmt.code_context = CodeContext.CLIENT;
+                }
             }
             return stmt;
         }
@@ -3089,6 +3099,9 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([sv_tok]);
+                if hasattr(stmt, 'code_context') {
+                    stmt.code_context = CodeContext.SERVER;
+                }
             }
             return stmt;
         }
@@ -3102,6 +3115,9 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([na_tok]);
+                if hasattr(stmt, 'code_context') {
+                    stmt.code_context = CodeContext.NATIVE;
+                }
             }
             return stmt;
         }
@@ -5316,7 +5332,7 @@ impl Parser.parse_ability -> Ability {
         self.expect(TokenKind.SEMI);
         by_expr.add_kids_left([self.gen_token(Tok.KW_BY.value)]);
         by_expr.add_kids_right([self.make_semi()]);
-        body = [by_expr];
+        body = by_expr;
     } else {
         if self.match_tok(TokenKind.KW_ABSTRACT) {
             is_abstract = True;
@@ -5358,7 +5374,7 @@ impl Parser.parse_ability -> Ability {
         kid.extend(body);
         kid.append(self.gen_token(Tok.RBRACE.value));
     } elif body_type == "by" {
-        kid.extend(body);
+        kid.append(body);
     } else {
         # Declaration-only: add abs token if abstract, then Semi
         if is_abstract {

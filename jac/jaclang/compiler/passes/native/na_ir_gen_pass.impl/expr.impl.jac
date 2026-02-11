@@ -14,7 +14,7 @@ impl NaIRGenPass._codegen_expr(node: (uni.UniNode | None)) -> (ir.Value | None) 
         } elif tok_name == Tok.BIN {
             return ir.Constant(ir.IntType(64), int(node.value, 2));
         } else {
-            return ir.Constant(ir.IntType(64), int(node.value));
+            return ir.Constant(ir.IntType(64), int(node.value, 0));
         }
     }
     if isinstance(node, uni.Float) {

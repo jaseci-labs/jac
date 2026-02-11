@@ -1318,12 +1318,10 @@ impl PyastBuildPass. proc_joined_str(node: py_ast.JoinedStr) -> uni.MultiString 
     if (ast_seg is None) {
         ast_seg = 'f""';
     }
-    match = {
-    }
-    re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
-    if match {
-        (prefix, quote) = match.groups();
-        start = match.group(0);
+    fstr_match = re.match('(?i)(fr|rf|f)(\'{3}|\\"{3}|\'|\\")', ast_seg);
+    if fstr_match {
+        (prefix, quote) = fstr_match.groups();
+        start = fstr_match.group(0);
         end = quote;
     } else {
         start = "f'";
