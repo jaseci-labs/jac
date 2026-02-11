@@ -57,6 +57,7 @@ obj PrefetchedTypes {
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
         final_class: TypeBase | None = None,
+        literal_string_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,
