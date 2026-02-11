@@ -1,3 +1,4 @@
+__init__.jac
 abc_check.jac
 ability_has.jac
 access_mod_check.jac
