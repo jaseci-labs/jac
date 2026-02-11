@@ -305,7 +305,7 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                                     expr
                                 );
                                 if cls_ {
-                                    if cls_.sym_category == uni.SymbolType.WALKER {
+                                    if cls_.sym_category == uni.SymbolType.WALKER_ARCH {
                                         self._set_symbol_to_expr(
                                             expr,
                                             self.prefetch.node_class.get_class_symbol(),
