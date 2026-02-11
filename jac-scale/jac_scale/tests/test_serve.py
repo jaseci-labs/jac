@@ -1201,6 +1201,29 @@ class TestJacScaleServe:
         assert "message" in data
         assert data["message"] == "This is a public endpoint"
 
+    def test_private_walker_401_with_deleted_user_token(self) -> None:
+        """Test that a valid JWT token for a non-existent (deleted) user returns 401."""
+        # Create a valid (non-expired) token for a user that doesn't exist in the DB
+        secret = "supersecretkey_for_testing_only!"
+        now = datetime.now(UTC)
+        payload = {
+            "username": "deleted_user",
+            "exp": now + timedelta(days=1),
+            "iat": now,
+        }
+        token = pyjwt.encode(payload, secret, algorithm="HS256")
+
+        # Call private walker with this token - should get 401, not 500
+        response = requests.post(
+            f"{self.base_url}/walker/PrivateCreateTask",
+            json={"title": "Ghost Task", "priority": 1},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        assert response.status_code == 401, (
+            f"Expected 401 for deleted/non-existent user, got {response.status_code}"
+        )
+
     def test_custom_response_headers_from_config(self) -> None:
         """Test that custom response headers from jac.toml are applied."""
         # Make a request and check for custom headers defined in fixtures/jac.toml
