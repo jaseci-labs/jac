@@ -1223,3 +1223,131 @@ def test_no_profile_omits_profile_settings() -> None:
         finally:
             os.chdir(original_cwd)
             gc.collect()
+
+
+def test_vite_env_and_define_config() -> None:
+    """Test Vite environment and define configuration features.
+
+    Consolidated test covering:
+    1. [plugins.client.vite.define] values are baked into the JS bundle
+    2. .env files are loaded from project root via envDir config
+    """
+    import re
+
+    print("[DEBUG] Starting test_vite_env_and_define_config")
+
+    app_name = "e2e-vite-config"
+    test_app_name = "E2E Test App"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            project_path = _setup_all_in_one_project(temp_dir, app_name)
+            print(f"[DEBUG] Project set up at {project_path}")
+
+            # 1. Verify jac.toml has the expected define values from all-in-one
+            jac_toml_path = os.path.join(project_path, "jac.toml")
+            with open(jac_toml_path) as f:
+                toml_content = f.read()
+            assert "globalThis.APP_BUILD_TIME" in toml_content, (
+                "jac.toml should contain APP_BUILD_TIME define"
+            )
+            assert "globalThis.FEATURE_ENABLED" in toml_content, (
+                "jac.toml should contain FEATURE_ENABLED define"
+            )
+            print("[DEBUG] Verified jac.toml contains expected define values")
+
+            # 2. Create .env file in project root
+            env_file_path = os.path.join(project_path, ".env")
+            with open(env_file_path, "w") as f:
+                f.write(f"VITE_APP_NAME={test_app_name}\n")
+                f.write("VITE_APP_VERSION=2.0.0-test\n")
+            print(f"[DEBUG] Created .env file at {env_file_path}")
+
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+            try:
+                print(
+                    f"[DEBUG] Starting server with 'jac start main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    env=env,
+                )
+
+                print(f"[DEBUG] Waiting for server on 127.0.0.1:{server_port}")
+                wait_for_port("127.0.0.1", server_port, timeout=90.0)
+                print(
+                    f"[DEBUG] Server accepting connections on 127.0.0.1:{server_port}"
+                )
+
+                # Fetch root HTML to get the JS bundle path
+                root_bytes = _wait_for_endpoint(
+                    f"http://127.0.0.1:{server_port}",
+                    timeout=120.0,
+                    poll_interval=2.0,
+                    request_timeout=30.0,
+                )
+                root_body = root_bytes.decode("utf-8", errors="ignore")
+                print(f"[DEBUG] Root response (truncated):\n{root_body[:500]}")
+                assert "<html" in root_body.lower(), "Root should return HTML"
+
+                # Extract JS bundle path and fetch it
+                script_match = re.search(r'src="(/static/client[^"]+)"', root_body)
+                assert script_match, (
+                    f"Could not find client JS bundle path in HTML:\n{root_body[:1000]}"
+                )
+
+                js_path = script_match.group(1)
+                js_url = f"http://127.0.0.1:{server_port}{js_path}"
+                print(f"[DEBUG] Fetching JS bundle from {js_url}")
+
+                with urlopen(js_url, timeout=30) as resp:
+                    js_body = resp.read().decode("utf-8", errors="ignore")
+                    assert resp.status == 200, "JS bundle should return 200"
+                    assert len(js_body) > 0, "JS bundle should not be empty"
+                    print(f"[DEBUG] JS bundle fetched ({len(js_body)} bytes)")
+
+                # Assert 1: Define values from jac.toml are baked in
+                assert "2024-01-01T00:00:00Z" in js_body, (
+                    "Expected APP_BUILD_TIME value '2024-01-01T00:00:00Z' "
+                    "to appear in the bundled JavaScript."
+                )
+                print("[DEBUG] Confirmed APP_BUILD_TIME value found in JS bundle")
+
+                # Assert 2: .env file values are loaded via envDir
+                assert test_app_name in js_body, (
+                    f"Expected VITE_APP_NAME value '{test_app_name}' "
+                    "to appear in the bundled JavaScript."
+                )
+                print(f"[DEBUG] Confirmed '{test_app_name}' found in JS bundle")
+
+                assert "2.0.0-test" in js_body, (
+                    "Expected VITE_APP_VERSION value '2.0.0-test' "
+                    "to appear in the bundled JavaScript."
+                )
+                print("[DEBUG] Confirmed '2.0.0-test' found in JS bundle")
+
+                print("[DEBUG] All Vite config assertions passed")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                    except Exception:
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            os.chdir(original_cwd)
+            gc.collect()

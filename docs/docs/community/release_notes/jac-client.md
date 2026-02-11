@@ -5,6 +5,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.17 (Unreleased)
 
 - **Code refactors**: Backtick escape, etc.
+- **Environment Variable Support**: Fixed `.env` file loading by configuring Vite's `envDir` to point to the project root instead of the build directory. Variables prefixed with `VITE_` in `.env` files are now properly loaded and available via `import.meta.env` in client code. Added `.env.example` template to the all-in-one example demonstrating standard environment variable patterns.
+- **Build-time Constants via jac.toml**: Added support for custom build-time constants through the `[plugins.client.vite.define]` configuration section. Define global variables that are replaced at build time, useful for feature flags, build timestamps, or configuration values. Example: `"globalThis.FEATURE_ENABLED" = true` in `jac.toml` makes `globalThis.FEATURE_ENABLED` available in client code. String values are automatically JSON-escaped to handle special characters safely.
 - Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
