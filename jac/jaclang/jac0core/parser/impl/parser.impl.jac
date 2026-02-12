@@ -229,7 +229,7 @@ impl Parser.error(message: str) {
     sloc = self.current().loc;
     self.errors.append(ParseError(message=message, loc=sloc));
     # Propagate to prog.errors_had as Alert if prog is available
-    if self.prog is not None and hasattr(self.prog, "errors_had") {
+    if self.prog is not None and self.prog?.errors_had {
         source = self.get_source();
         tok = UniToken(
             orig_src=source,
@@ -446,8 +446,7 @@ impl Parser.parse_access_tag -> SubTag | None {
         if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
             access_tok = self.advance();
             return SubTag(
-                tag=(at := self.make_uni_token(access_tok)),
-                kid=[colon_uni, at]
+                tag=(at := self.make_uni_token(access_tok)), kid=[colon_uni, at]
             );
         }
     }
@@ -684,7 +683,9 @@ impl Parser.parse_module -> Module {
     }
     mod_name = self.file_path;
     if mod_name {
-        from pathlib import Path as _Path;
+        from
+        pathlib
+        import Path as _Path;
         _p = _Path(mod_name);
         # Use stem without .jac extension, e.g. "getme.impl" from "getme.impl.jac"
         mod_name = _p.name[:-4] if _p.name.endswith('.jac') else _p.stem;
@@ -708,7 +709,7 @@ impl Parser.parse_module -> Module {
         if nid not in seen {
             seen[nid] = True;
             node_list.append(`node);
-            if hasattr(`node, "kid") {
+            if `node?.kid {
                 for child in `node.kid {
                     stack.append(child);
                 }
@@ -736,13 +737,7 @@ impl Parser.parse_expression -> Expr {
             condition=condition,
             value=expr,
             else_value=else_value,
-            kid=[
-                expr,
-                if_uni,
-                condition,
-                else_uni,
-                else_value
-            ]
+            kid=[expr, if_uni, condition, else_uni, else_value]
         );
     }
     return expr;
@@ -1007,9 +1002,9 @@ impl Parser.parse_edge_op_ref_inline -> EdgeOpRef | None {
         # Simple edge operator: -->, <--, <-->
         tok = self.advance();
         edge_op = self.make_uni_token(tok);
-        dir = EdgeDir.OUT if tok.kind == TokenKind.ARROW_R
-        else EdgeDir.IN if tok.kind == TokenKind.ARROW_L
-        else EdgeDir.ANY;
+        dir = EdgeDir.OUT
+        if tok.kind == TokenKind.ARROW_R
+        else EdgeDir.IN if tok.kind == TokenKind.ARROW_L else EdgeDir.ANY;
         return EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_op]);
     }
     if self.match_tok(TokenKind.ARROW_R_P1) {
@@ -1086,9 +1081,7 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                     eq_uni = self.make_uni_token(self.previous());
                     val_expr = self.parse_expression();
                     item = KWPair(
-                        key=key_expr,
-                        value=val_expr,
-                        kid=[key_expr, eq_uni, val_expr]
+                        key=key_expr, value=val_expr, kid=[key_expr, eq_uni, val_expr]
                     );
                 } else {
                     item = key_expr;
@@ -1134,9 +1127,7 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                     eq_uni = self.make_uni_token(self.previous());
                     val_expr = self.parse_expression();
                     item = KWPair(
-                        key=key_expr,
-                        value=val_expr,
-                        kid=[key_expr, eq_uni, val_expr]
+                        key=key_expr, value=val_expr, kid=[key_expr, eq_uni, val_expr]
                     );
                 } else {
                     item = key_expr;
@@ -1326,10 +1317,15 @@ impl Parser.parse_atomic_chain -> Expr {
                 # No attribute after dot (e.g. foo.) - create placeholder for LSP completion
                 dot_tok = first_consumed_tok;
                 attr = Name(
-                    orig_src=self.get_source(), name=Tok.NAME.value, value="",
-                    line=dot_tok.loc.end_line, end_line=dot_tok.loc.end_line,
-                    col_start=dot_tok.loc.col_end, col_end=dot_tok.loc.col_end,
-                    pos_start=dot_tok.loc.pos_end, pos_end=dot_tok.loc.pos_end
+                    orig_src=self.get_source(),
+                    name=Tok.NAME.value,
+                    value="",
+                    line=dot_tok.loc.end_line,
+                    end_line=dot_tok.loc.end_line,
+                    col_start=dot_tok.loc.col_end,
+                    col_end=dot_tok.loc.col_end,
+                    pos_start=dot_tok.loc.pos_end,
+                    pos_end=dot_tok.loc.pos_end
                 );
             }
             kid: list = [expr];
@@ -1595,9 +1591,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
         }
         eq_uni = self.make_uni_token(self.advance());  # consume '='
         value = self.parse_expression();
-        return KWPair(
-            key=name, value=value, kid=[name, eq_uni, value]
-        );
+        return KWPair(key=name, value=value, kid=[name, eq_uni, value]);
     }
     # Check for **kwargs spread
     if self.check(TokenKind.STAR_POW) {
@@ -1681,9 +1675,7 @@ impl Parser.parse_assign_compr_inner -> AssignCompr {
         name = self.make_name(name_tok);
         eq_uni = self.consume_uni(TokenKind.EQ);
         value = self.parse_expression();
-        kw = KWPair(
-            key=name, value=value, kid=[name, eq_uni, value]
-        );
+        kw = KWPair(key=name, value=value, kid=[name, eq_uni, value]);
         assigns.append(kw);
         kid.append(kw);
         while self.match_tok(TokenKind.COMMA) {
@@ -1695,9 +1687,7 @@ impl Parser.parse_assign_compr_inner -> AssignCompr {
             name = self.make_name(name_tok);
             eq_uni2 = self.consume_uni(TokenKind.EQ);
             value = self.parse_expression();
-            kw = KWPair(
-                key=name, value=value, kid=[name, eq_uni2, value]
-            );
+            kw = KWPair(key=name, value=value, kid=[name, eq_uni2, value]);
             assigns.append(kw);
             kid.append(kw);
         }
@@ -1906,10 +1896,13 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME) {
         # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
         # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
-        if self.check(TokenKind.NAME) and self.current().value == "new"
+        if self.check(TokenKind.NAME)
+        and self.current().value == "new"
         and self.peek().kind in [TokenKind.NAME, TokenKind.KWESC_NAME] {
             self.error("The 'new' keyword is not supported in Jac");
-            self.error("Use `Reflect.construct(target, argumentsList)` method to create new instances");
+            self.error(
+                "Use `Reflect.construct(target, argumentsList)` method to create new instances"
+            );
         }
         tok = self.advance();
         return self.make_name(tok);
@@ -1938,39 +1931,19 @@ impl Parser.parse_atom -> Expr {
         lp_uni = self.make_uni_token(self.previous());
         if self.check(TokenKind.RPAREN) {
             rp_uni = self.make_uni_token(self.advance());
-            return TupleVal(
-                values=[],
-                kid=[
-                    lp_uni,
-                    rp_uni
-                ]
-            );
+            return TupleVal(values=[], kid=[lp_uni, rp_uni]);
         }
         # Parenthesized yield expression: (yield expr) or (yield from expr)
         if self.check(TokenKind.KW_YIELD) {
             yield_expr = self.parse_yield_stmt();
             rp_uni = self.consume_uni(TokenKind.RPAREN);
-            return AtomUnit(
-                value=yield_expr,
-                kid=[
-                    lp_uni,
-                    yield_expr,
-                    rp_uni
-                ]
-            );
+            return AtomUnit(value=yield_expr, kid=[lp_uni, yield_expr, rp_uni]);
         }
         # IIFE: (def func_name(params) { body })(args)
         if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
             func_def = self.parse_ability();
             rp_uni = self.consume_uni(TokenKind.RPAREN);
-            return AtomUnit(
-                value=func_def,
-                kid=[
-                    lp_uni,
-                    func_def,
-                    rp_uni
-                ]
-            );
+            return AtomUnit(value=func_def, kid=[lp_uni, func_def, rp_uni]);
         }
         expr = self.parse_expression();
         # Standalone generator expression: (expr for x in items) or (expr async for x in items)
@@ -2015,14 +1988,7 @@ impl Parser.parse_atom -> Expr {
             return TupleVal(values=values, kid=kid);
         }
         rp_uni = self.consume_uni(TokenKind.RPAREN);
-        return AtomUnit(
-            value=expr,
-            kid=[
-                lp_uni,
-                expr,
-                rp_uni
-            ]
-        );
+        return AtomUnit(value=expr, kid=[lp_uni, expr, rp_uni]);
     }
     if self.match_tok(TokenKind.LSQUARE) {
         # Check if this is an edge reference chain [-->], [<--], [<-->], [->:a:->], etc.
@@ -2041,10 +2007,18 @@ impl Parser.parse_atom -> Expr {
         } elif self.check_any(TokenKind.KW_NODE, TokenKind.KW_EDGE) {
             # [node ...] or [edge ...] is only an edge ref if followed by an arrow
             if self.peek().kind in [
-                TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI,
-                TokenKind.ARROW_R_P1, TokenKind.ARROW_L_P1, TokenKind.RETURN_HINT,
-                TokenKind.NAME, TokenKind.KW_ROOT, TokenKind.KW_SELF,
-                TokenKind.KW_HERE, TokenKind.KW_SUPER, TokenKind.KW_VISITOR
+                TokenKind.ARROW_R,
+                TokenKind.ARROW_L,
+                TokenKind.ARROW_BI,
+                TokenKind.ARROW_R_P1,
+                TokenKind.ARROW_L_P1,
+                TokenKind.RETURN_HINT,
+                TokenKind.NAME,
+                TokenKind.KW_ROOT,
+                TokenKind.KW_SELF,
+                TokenKind.KW_HERE,
+                TokenKind.KW_SUPER,
+                TokenKind.KW_VISITOR
             ] {
                 is_edge_ref = True;
             }
@@ -2228,10 +2202,7 @@ impl Parser.parse_fstring -> FString {
                         # Parse nested {expression} as a FormattedValue
                         nested_expr = self.parse_expression();
                         nested_conv = -1;
-                        nested_fv_kid: list = [
-                            nested_lbrace_uni,
-                            nested_expr
-                        ];
+                        nested_fv_kid: list = [nested_lbrace_uni, nested_expr];
                         if self.check(TokenKind.CONV) {
                             nc_tok = self.advance();
                             nested_conv = ord(nc_tok.value[1])
@@ -2287,8 +2258,7 @@ impl Parser.parse_list_or_compr -> Expr {
     if self.check(TokenKind.RSQUARE) {
         self.advance();
         return ListVal(
-            values=[],
-            kid=[lsquare_uni, self.make_uni_token(self.previous())]
+            values=[], kid=[lsquare_uni, self.make_uni_token(self.previous())]
         );
     }
     first = self.parse_expression();
@@ -2608,8 +2578,7 @@ impl Parser.parse_dict_or_set -> Expr {
     if self.check(TokenKind.RBRACE) {
         self.advance();
         return DictVal(
-            kv_pairs=[],
-            kid=[lbrace_uni, self.make_uni_token(self.previous())]
+            kv_pairs=[], kid=[lbrace_uni, self.make_uni_token(self.previous())]
         );
     }
     # Check for dict spread: {**expr, ...}
@@ -2623,19 +2592,13 @@ impl Parser.parse_dict_or_set -> Expr {
         if self.check(TokenKind.KW_FOR)
         or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
             comprs = self.parse_comprehension_clauses();
-            kv = KVPair(
-                key=first,
-                value=value,
-                kid=[first, colon_uni, value]
-            );
+            kv = KVPair(key=first, value=value, kid=[first, colon_uni, value]);
             kid: list = [lbrace_uni, kv];
             kid.extend(comprs);
             kid.append(self.consume_uni(TokenKind.RBRACE));
             return DictCompr(kv_pair=kv, compr=comprs, kid=kid);
         }
-        first_pair = KVPair(
-            key=first, value=value, kid=[first, colon_uni, value]
-        );
+        first_pair = KVPair(key=first, value=value, kid=[first, colon_uni, value]);
         pairs = [first_pair];
         kid: list = [lbrace_uni, first_pair];
         while self.match_tok(TokenKind.COMMA) {
@@ -2648,17 +2611,13 @@ impl Parser.parse_dict_or_set -> Expr {
                 star_pow_uni = self.make_uni_token(self.previous());
                 spread_val = self.parse_expression();
                 pair = KVPair(
-                    key=None,
-                    value=spread_val,
-                    kid=[star_pow_uni, spread_val]
+                    key=None, value=spread_val, kid=[star_pow_uni, spread_val]
                 );
             } else {
                 key = self.parse_expression();
                 kv_colon_uni = self.consume_uni(TokenKind.COLON);
                 val = self.parse_expression();
-                pair = KVPair(
-                    key=key, value=val, kid=[key, kv_colon_uni, val]
-                );
+                pair = KVPair(key=key, value=val, kid=[key, kv_colon_uni, val]);
             }
             pairs.append(pair);
             kid.append(pair);
@@ -2698,18 +2657,12 @@ impl Parser.parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal {
             self.advance();
             star_pow_uni = self.make_uni_token(self.previous());
             spread_val = self.parse_expression();
-            pair = KVPair(
-                key=None,
-                value=spread_val,
-                kid=[star_pow_uni, spread_val]
-            );
+            pair = KVPair(key=None, value=spread_val, kid=[star_pow_uni, spread_val]);
         } else {
             key = self.parse_expression();
             kv_colon_uni = self.consume_uni(TokenKind.COLON);
             val = self.parse_expression();
-            pair = KVPair(
-                key=key, value=val, kid=[key, kv_colon_uni, val]
-            );
+            pair = KVPair(key=key, value=val, kid=[key, kv_colon_uni, val]);
         }
         pairs.append(pair);
         kid.append(pair);
@@ -2746,14 +2699,7 @@ impl Parser.parse_comprehension_clauses -> list {
         if async_uni {
             kid.append(async_uni);
         }
-        kid.extend(
-            [
-                for_uni,
-                target,
-                in_uni,
-                iter_expr
-            ]
-        );
+        kid.extend([for_uni, target, in_uni, iter_expr]);
         for i in range(len(ifs)) {
             kid.append(if_unis[i]);
             kid.append(ifs[i]);
@@ -2833,12 +2779,18 @@ impl Parser.parse_lambda_expr -> Expr {
     }
     # Add colon separator between signature and body
     if not isinstance(body, list) {
-        if colon_uni { kid.append(colon_uni); }
+        if colon_uni {
+            kid.append(colon_uni);
+        }
         kid.append(body);
     } else {
-        if lbrace_uni { kid.append(lbrace_uni); }
+        if lbrace_uni {
+            kid.append(lbrace_uni);
+        }
         kid.extend(body);
-        if rbrace_uni { kid.append(rbrace_uni); }
+        if rbrace_uni {
+            kid.append(rbrace_uni);
+        }
     }
     return LambdaExpr(body=body, kid=kid, signature=signature);
 }
@@ -3184,11 +3136,7 @@ impl Parser.parse_jsx_child -> Expr {
         lbrace_uni = self.make_uni_token(lbrace);
         expr = self.parse_expression();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
-        kid: list = [
-            lbrace_uni,
-            expr,
-            rbrace_uni
-        ];
+        kid: list = [lbrace_uni, expr, rbrace_uni];
         return JsxExpression(expr=expr, kid=kid);
     }
     # Nested JSX element
@@ -3220,7 +3168,7 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([cl_tok]);
-                if hasattr(stmt, 'code_context') {
+                if stmt?.code_context {
                     stmt.code_context = CodeContext.CLIENT;
                 }
             }
@@ -3236,7 +3184,7 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([sv_tok]);
-                if hasattr(stmt, 'code_context') {
+                if stmt?.code_context {
                     stmt.code_context = CodeContext.SERVER;
                 }
             }
@@ -3252,7 +3200,7 @@ impl Parser.parse_element_stmt{
             stmt = self.parse_element_stmt();
             if stmt is not None {
                 stmt.add_kids_left([na_tok]);
-                if hasattr(stmt, 'code_context') {
+                if stmt?.code_context {
                     stmt.code_context = CodeContext.NATIVE;
                 }
             }
@@ -4117,9 +4065,7 @@ impl Parser.parse_with_stmt -> WithStmt {
     }
     exprs.append(
         ExprAsItem(
-            expr=expr,
-            alias=alias,
-            kid=[expr] if not alias else [expr, as_uni, alias]
+            expr=expr, alias=alias, kid=[expr] if not alias else [expr, as_uni, alias]
         )
     );
     comma_unis: list = [];
@@ -4136,9 +4082,7 @@ impl Parser.parse_with_stmt -> WithStmt {
             ExprAsItem(
                 expr=expr,
                 alias=alias,
-                kid=[expr]
-                if not alias
-                else [expr, as_uni, alias]
+                kid=[expr] if not alias else [expr, as_uni, alias]
             )
         );
     }
@@ -4495,9 +4439,7 @@ impl Parser.parse_mapping_pattern{
             key = self.parse_literal_for_mapping();
             colon_uni = self.consume_uni(TokenKind.COLON);
             val = self.parse_pattern();
-            kv = MatchKVPair(
-                key=key, value=val, kid=[key, colon_uni, val]
-            );
+            kv = MatchKVPair(key=key, value=val, kid=[key, colon_uni, val]);
             values.append(kv);
             kid.append(kv);
         }
@@ -4626,9 +4568,7 @@ impl Parser.parse_class_pattern_args(names: list, dot_unis: list | None = None) 
             eq_uni = self.consume_uni(TokenKind.EQ);
             val = self.parse_pattern();
             name = self.make_name(name_tok);
-            kv = MatchKVPair(
-                key=name, value=val, kid=[name, eq_uni, val]
-            );
+            kv = MatchKVPair(key=name, value=val, kid=[name, eq_uni, val]);
             kw_patterns.append(kv);
             kid.append(kv);
         } else {
@@ -5430,6 +5370,15 @@ impl Parser.parse_ability -> Ability {
     if self.match_tok(TokenKind.KW_ASYNC) {
         is_async = True;
         async_tok = self.previous();
+        # Handle `async static/override def` ordering (async before modifiers)
+        if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
+            is_override = True;
+            override_tok = self.previous();
+        }
+        if not is_static and self.match_tok(TokenKind.KW_STATIC) {
+            is_static = True;
+            static_tok = self.previous();
+        }
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
@@ -5597,9 +5546,9 @@ impl Parser.parse_func_signature -> FuncSignature {
     saw_slash = False;
     for k in kid {
         if isinstance(k, ParamVar) {
-            if k.unpack and hasattr(k.unpack, 'name') and k.unpack.name == Tok.STAR_POW {
+            if k.unpack and k.unpack?.name and k.unpack.name == Tok.STAR_POW {
                 kwargs_param = k;
-            } elif k.unpack and hasattr(k.unpack, 'name') and k.unpack.name == Tok.STAR_MUL {
+            } elif k.unpack and k.unpack?.name and k.unpack.name == Tok.STAR_MUL {
                 varargs_param = k;
                 saw_bare_star = True;
             } elif saw_bare_star {
@@ -5641,12 +5590,14 @@ impl Parser.parse_func_signature -> FuncSignature {
             }
             has_star = True;
         } elif isinstance(k, ParamVar) {
-            if k.unpack and hasattr(k.unpack, "name") {
+            if k.unpack and k.unpack?.name {
                 if k.unpack.name == Tok.STAR_MUL {
                     if has_star {
                         self.error("Duplicate '*' in parameter list");
                     } elif has_kwargs {
-                        self.error("'*' must appear before '**kwargs' in parameter list");
+                        self.error(
+                            "'*' must appear before '**kwargs' in parameter list"
+                        );
                     }
                     has_star = True;
                 } elif k.unpack.name == Tok.STAR_POW {
@@ -5928,10 +5879,15 @@ impl Parser.parse_test -> Test {
     # When no explicit name, create a placeholder empty name token at current position
     cur = self.current();
     name: Name | UniToken = UniToken(
-        orig_src=self.get_source(), name=Tok.NAME.value, value="",
-        line=cur.loc.line, end_line=cur.loc.end_line,
-        col_start=cur.loc.col_start, col_end=cur.loc.col_end,
-        pos_start=cur.loc.pos_start, pos_end=cur.loc.pos_end
+        orig_src=self.get_source(),
+        name=Tok.NAME.value,
+        value="",
+        line=cur.loc.line,
+        end_line=cur.loc.end_line,
+        col_start=cur.loc.col_start,
+        col_end=cur.loc.col_end,
+        pos_start=cur.loc.pos_start,
+        pos_end=cur.loc.pos_end
     );
     has_explicit_name = False;
     if self.check(TokenKind.NAME) {
@@ -6086,7 +6042,9 @@ impl Parser.parse_global_var_assignment -> Assignment {
         kid.append(targets[i]);
     }
     if value {
-        kid.append(gv_eq_unis[gv_eq_idx] if gv_eq_idx < len(gv_eq_unis) else gv_eq_unis[-1]);
+        kid.append(
+            gv_eq_unis[gv_eq_idx] if gv_eq_idx < len(gv_eq_unis) else gv_eq_unis[-1]
+        );
         kid.append(value);
     }
     return Assignment(

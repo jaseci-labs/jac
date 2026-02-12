@@ -171,7 +171,16 @@ impl Lexer.skip_line_comment{
     }
     comment_text = self.source[start_pos:self.pos];
     self.comments.append(
-        (comment_text, start_line, start_line, start_col, self.col, start_pos, self.pos, False)
+        (
+            comment_text,
+            start_line,
+            start_line,
+            start_col,
+            self.col,
+            start_pos,
+            self.pos,
+            False
+        )
     );
 }
 
@@ -188,7 +197,16 @@ impl Lexer.skip_block_comment -> bool {
             self.advance();  # #
             comment_text = self.source[start_pos:self.pos];
             self.comments.append(
-                (comment_text, start_line, self.line, start_col, self.col, start_pos, self.pos, True)
+                (
+                    comment_text,
+                    start_line,
+                    self.line,
+                    start_col,
+                    self.col,
+                    start_pos,
+                    self.pos,
+                    True
+                )
             );
             return True;
         }

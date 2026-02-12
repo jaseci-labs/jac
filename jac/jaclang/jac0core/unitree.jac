@@ -184,11 +184,13 @@ class UniNode {
             raise ValueError(f"Empty kid for Token {type(self).__name__}") ;
         }
     }
-    def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token
-{
+
+    def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token {
         import from jaclang.jac0core.constant { TOKEN_MAP }
-        value = value if value else (
-            DELIM_MAP[name] if (name in DELIM_MAP)
+        value = value
+        or (
+            DELIM_MAP[name]
+            if (name in DELIM_MAP)
             else TOKEN_MAP.get(name.value, name.value)
         );
         return Token(

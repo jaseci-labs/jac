@@ -223,7 +223,7 @@ def _coerce_client_module(module: uni.Module) -> None {
         new_kid.append(module.doc);
     }
     new_kid.extend(module.body);
-    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
     _recalculate_parents(module);
 }
 
@@ -260,7 +260,7 @@ def _coerce_server_module(module: uni.Module) -> None {
         new_kid.append(module.doc);
     }
     new_kid.extend(module.body);
-    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
     _recalculate_parents(module);
 }
 
@@ -297,7 +297,7 @@ def _coerce_native_module(module: uni.Module) -> None {
         new_kid.append(module.doc);
     }
     new_kid.extend(module.body);
-    module.set_kids(nodes=new_kid if new_kid else [uni.EmptyToken()]);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
     _recalculate_parents(module);
 }
 
@@ -639,7 +639,9 @@ class JacCompiler {
             mod = py_ast_ret.ir_out;
         } else {
             import from jaclang.jac0core.parser { parse as rd_parse }
-            (mod, parse_errors, lex_errors) = rd_parse(source_str, file_path, prog=target_program);
+            (mod, parse_errors, lex_errors) = rd_parse(
+                source_str, file_path, prog=target_program
+            );
             _recalculate_parents(mod);
             had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
             if had_error {
