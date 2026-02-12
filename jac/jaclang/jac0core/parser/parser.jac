@@ -43,6 +43,7 @@ import from jaclang.jac0core.unitree {
     HasVar,
     SubTag,
     ParamVar,
+    ParamKind,
     FuncSignature,
     EventSignature
 }
@@ -383,6 +384,7 @@ obj Parser {
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
+    def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def error(message: str);
     # -------------------------------------------------------------------------

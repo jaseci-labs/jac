@@ -17,9 +17,10 @@ impl UnparsePass._comma_sep(nodes: list) -> str {
 }
 
 """Default exit handler with dispatch and fallbacks."""
-impl UnparsePass.exit_node(`node: uni.UniNode) -> None {
-    # Ensure all Token-type semantic fields have gen.jac set.
-    # This handles tokens not in the kid list (e.g. py2jac-produced nodes).
+impl UnparsePass.exit_node(`node: uni.UniNode) -> None
+# Ensure all Token-type semantic fields have gen.jac set.
+# This handles tokens not in the kid list (e.g. py2jac-produced nodes).
+{
     for attr in vars(`node).values() {
         if isinstance(attr, uni.Token) and not attr.gen.jac {
             attr.gen.jac = attr.value;
@@ -39,9 +40,9 @@ impl UnparsePass.exit_node(`node: uni.UniNode) -> None {
             ]
         );
     }
+    # ── Token Types ──────────────────────────────────────────────────────
 }
 
-# ── Token Types ──────────────────────────────────────────────────────
 """Token: return raw value."""
 impl UnparsePass.exit_token(`node: uni.Token) -> None {
     `node.gen.jac = `node.value;
@@ -102,9 +103,9 @@ impl UnparsePass.exit_builtin_type(`node: uni.BuiltinType) -> None {
 """SpecialVarRef token."""
 impl UnparsePass.exit_special_var_ref(`node: uni.SpecialVarRef) -> None {
     `node.gen.jac = `node.value;
+    # ── Module Level ─────────────────────────────────────────────────────
 }
 
-# ── Module Level ─────────────────────────────────────────────────────
 """Module: join doc and body."""
 impl UnparsePass.exit_module(`node: uni.Module) -> None {
     parts: list = [];
@@ -147,9 +148,9 @@ impl UnparsePass.exit_test(`node: uni.Test) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
     parts.append("{ " + body + " }");
     `node.gen.jac = " ".join(parts);
+    # ── Blocks ───────────────────────────────────────────────────────────
 }
 
-# ── Blocks ───────────────────────────────────────────────────────────
 """ModuleCode block."""
 impl UnparsePass.exit_module_code(`node: uni.ModuleCode) -> None {
     parts: list = ["with entry"];
@@ -184,9 +185,9 @@ impl UnparsePass.exit_native_block(`node: uni.NativeBlock) -> None {
 impl UnparsePass.exit_py_inline_code(`node: uni.PyInlineCode) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
     `node.gen.jac = "code { " + body + " }";
+    # ── Imports ──────────────────────────────────────────────────────────
 }
 
-# ── Imports ──────────────────────────────────────────────────────────
 """Import statement."""
 impl UnparsePass.exit_import(`node: uni.Import) -> None {
     parts: list = [];
@@ -226,9 +227,9 @@ impl UnparsePass.exit_module_item(`node: uni.ModuleItem) -> None {
         result = result + " as " + `node.alias.gen.jac;
     }
     `node.gen.jac = result;
+    # ── Definitions ──────────────────────────────────────────────────────
 }
 
-# ── Definitions ──────────────────────────────────────────────────────
 """Archetype definition."""
 impl UnparsePass.exit_archetype(`node: uni.Archetype) -> None {
     parts: list = [];
@@ -490,9 +491,9 @@ impl UnparsePass.exit_typed_ctx_block(`node: uni.TypedCtxBlock) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
     parts.append("{ " + body + " }");
     `node.gen.jac = " ".join(parts);
+    # ── Control Flow ─────────────────────────────────────────────────────
 }
 
-# ── Control Flow ─────────────────────────────────────────────────────
 """IfStmt: if cond { body }."""
 impl UnparsePass.exit_if_stmt(`node: uni.IfStmt) -> None {
     body = " ".join([s.gen.jac for s in `node.body]);
@@ -719,9 +720,9 @@ impl UnparsePass.exit_global_stmt(`node: uni.GlobalStmt) -> None {
 """NonLocalStmt: nonlocal names ;"""
 impl UnparsePass.exit_non_local_stmt(`node: uni.NonLocalStmt) -> None {
     `node.gen.jac = "nonlocal " + self._comma_sep(`node.target) + " ;";
+    # ── Assignments ──────────────────────────────────────────────────────
 }
 
-# ── Assignments ──────────────────────────────────────────────────────
 """Assignment: target [op] value ;"""
 impl UnparsePass.exit_assignment(`node: uni.Assignment) -> None {
     parts: list = [];
@@ -749,9 +750,9 @@ impl UnparsePass.exit_assignment(`node: uni.Assignment) -> None {
         result = result + " ;";
     }
     `node.gen.jac = result;
+    # ── Expressions ──────────────────────────────────────────────────────
 }
 
-# ── Expressions ──────────────────────────────────────────────────────
 """ConcurrentExpr: [flow|wait] target."""
 impl UnparsePass.exit_concurrent_expr(`node: uni.ConcurrentExpr) -> None {
     parts: list = [];
@@ -1075,12 +1076,12 @@ impl UnparsePass.exit_assign_compr(`node: uni.AssignCompr) -> None {
             if k and k.gen.jac
         ]
     );
+    # ── JSX ──────────────────────────────────────────────────────────────
 }
 
-# ── JSX ──────────────────────────────────────────────────────────────
 """JsxElement: join kid list (complex JSX syntax)."""
 impl UnparsePass.exit_jsx_element(`node: uni.JsxElement) -> None {
-    `node.gen.jac = " ".join(
+    `node.gen.jac = "".join(
         [
             k.gen.jac
             for k in `node.kid
@@ -1120,7 +1121,7 @@ impl UnparsePass.exit_jsx_normal_attribute(`node: uni.JsxNormalAttribute) -> Non
 
 """JsxText: join kid list."""
 impl UnparsePass.exit_jsx_text(`node: uni.JsxText) -> None {
-    `node.gen.jac = " ".join(
+    `node.gen.jac = "".join(
         [
             k.gen.jac
             for k in `node.kid
@@ -1132,9 +1133,9 @@ impl UnparsePass.exit_jsx_text(`node: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(`node: uni.JsxExpression) -> None {
     `node.gen.jac = `node.expr.gen.jac;
+    # ── Match / Switch ───────────────────────────────────────────────────
 }
 
-# ── Match / Switch ───────────────────────────────────────────────────
 """MatchStmt: match value { cases }."""
 impl UnparsePass.exit_match_stmt(`node: uni.MatchStmt) -> None {
     cases = " ".join([c.gen.jac for c in `node.cases]);

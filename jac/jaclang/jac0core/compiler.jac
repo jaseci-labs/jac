@@ -773,6 +773,11 @@ class JacCompiler {
         source_str = read_file_with_encoding(file_path);
         (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
         _recalculate_parents(current_mod);
+        if len(parse_errors) > 0 or len(lex_errors) > 0 {
+            current_mod.has_syntax_errors = True;
+            prog.mod = uni.ProgramModule(current_mod);
+            return prog;
+        }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
@@ -789,6 +794,11 @@ class JacCompiler {
         prog = JacProgram();
         (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
         _recalculate_parents(current_mod);
+        if len(parse_errors) > 0 or len(lex_errors) > 0 {
+            current_mod.has_syntax_errors = True;
+            prog.mod = uni.ProgramModule(current_mod);
+            return prog;
+        }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }

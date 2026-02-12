@@ -90,6 +90,13 @@ declarations in the main module.
                 }
             }
             if not decl_node {
+                # Only log error if the archetype was found but the ability wasn't
+                if len(name_of_links) > 0 {
+                    self.log_error(
+                        f"Implementation could not be matched to a declaration.",
+                        sym.decl.name_of
+                    );
+                }
                 continue;
             } elif (isinstance(decl_node, uni.Ability) and decl_node.is_abstract) {
                 self.log_warning(
