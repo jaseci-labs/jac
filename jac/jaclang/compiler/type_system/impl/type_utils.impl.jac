@@ -26,7 +26,16 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    return symtable.lookup(name, deep=True, incl_inner_scope=True);
+    result = symtable.lookup(name, deep=True, incl_inner_scope=True);
+    # If not found and we're in an ImplDef try on ability's declaration
+    if (result is None and isinstance(symtable, uni.ImplDef) and symtable.decl_link) {
+        result = symtable.decl_link.sym_tab.lookup(
+            name, deep=True, incl_inner_scope=True
+        )
+        if symtable.decl_link.sym_tab
+        else None;
+    }
+    return result;
 }
 
 """Return a list of completion items for the type."""
