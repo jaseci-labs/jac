@@ -57,7 +57,11 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[], None] | None = None
+) -> None {
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
@@ -127,6 +131,10 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
+    # Call the ready callback (e.g., to print startup banner)
+    if on_ready {
+        on_ready();
+    }
     self.server.run_server(port=self.port);
 }
 

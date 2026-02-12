@@ -460,6 +460,16 @@ impl create_or_update_configmap(
     }
 }
 
+impl exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo] {
+    if tarinfo.isdir() and tarinfo.name.endswith("/.jac") {
+        return None;
+    }
+    if "/.jac/" in tarinfo.name {
+        return None;
+    }
+    return tarinfo;
+}
+
 """
     Create a tar.gz file from the source directory using only os module.
 """
@@ -469,7 +479,7 @@ impl create_tarball(source_dir: str, tar_path: str) -> None {
     }
     os.makedirs((os.path.dirname(tar_path) or '.'), exist_ok=True);
     with tarfile.open(tar_path, 'w:gz') as tar {
-        tar.add(source_dir, arcname='.');
+        tar.add(source_dir, arcname='.', filter=exclude_folders);
     }
 }
 
