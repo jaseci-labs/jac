@@ -406,31 +406,37 @@ impl format(
             failed_files += 1;
         }
     }
-    # In check mode, report unformatted files with clear actionable feedback
-    if check and len(unformatted_files) > 0 {
-        console.error("The following files are not properly formatted:");
-        for file in unformatted_files {
-            console.error(f"  jac format {file} --lintfix");
+    # In check mode, report all issues together
+    if check {
+        has_errors = False;
+        if len(unformatted_files) > 0 {
+            console.error("The following files are not properly formatted:");
+            for file in unformatted_files {
+                console.error(f"  jac format {file} --lintfix");
+            }
+            has_errors = True;
         }
-        return 1;
+        if failed_files > 0 {
+            console.error(f"\n{failed_files} file(s) have syntax errors (see errors above).");
+            console.error("Fix the syntax errors or rename files with '*_err.jac' suffix to exclude them.");
+            has_errors = True;
+        }
+        if has_errors {
+            return 1;
+        }
+        if (len(paths) == 1) and Path(paths[0]).is_dir() {
+            console.success(f"Checked {total_files}/{total_files} '.jac' files - all formatted correctly.");
+        }
+        return 0;
     }
+
+    # Non-check mode summary
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
-        if check {
-            if failed_files > 0 {
-                summary_msg = f"Checked {(total_files - failed_files)}/{total_files} '.jac' files ({failed_files} failed with syntax errors).";
-                console.error(summary_msg);
-                console.error("Fix the syntax errors above or rename files with '*_err.jac' suffix to exclude them.");
-            } else {
-                summary_msg = f"Checked {total_files}/{total_files} '.jac' files - all formatted correctly.";
-                console.success(summary_msg);
-            }
+        summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
+        if failed_files > 0 {
+            console.error(summary_msg);
         } else {
-            summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
-            if failed_files > 0 {
-                console.error(summary_msg);
-            } else {
-                console.success(summary_msg);
-            }
+            console.success(summary_msg);
         }
     }
     if failed_files > 0 {
