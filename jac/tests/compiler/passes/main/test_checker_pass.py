@@ -1467,6 +1467,8 @@ def test_enum_type_checking(fixture_path: Callable[[str], str]) -> None:
         """wrong_type: str = process_color("not a color");  # <-- Error: str not Color""",
         program.errors_had[5].pretty_print(),
     )
+
+
 def test_nested_functions_in_impl_blocks(fixture_path: Callable[[str], str]) -> None:
     """Test that nested functions in impl blocks have correct return type checking."""
     program = JacProgram()
