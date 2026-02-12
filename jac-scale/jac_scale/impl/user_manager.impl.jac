@@ -53,7 +53,11 @@ impl JacScaleUserManager.create_jwt_token(username: str) -> str {
 impl JacScaleUserManager.validate_jwt_token(token: str) -> (str | None) {
     try {
         decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
-        return decoded['username'];
+        username = decoded['username'];
+        if not self.user_exists(username) {
+            return None;
+        }
+        return username;
     } except Exception {
         return None;
     }
