@@ -1333,43 +1333,53 @@ def test_impl_body_type_checking(fixture_path: Callable[[str], str]) -> None:
     )
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path
 
+
 def test_nested_types_resolution(fixture_path: Callable[[str], str]) -> None:
     """Test that nested types in stubs (like uni.Module) are resolved."""
     import jaclang.jac0core.unitree as uni
-    
+
     program = JacProgram()
     path = fixture_path("checker_nested_types.jac")
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
-    
-    # We expect an error about missing impl, but we only care about symbol resolution
-    # assert len(program.errors_had) == 0 
 
-    
+    # We expect an error about missing impl, but we only care about symbol resolution
+    # assert len(program.errors_had) == 0
+
     # Find the 'uni.Module' node in 'get_ir' return type
     # AST Structure roughly:
     # Module -> [get_ir Ability]
     #   -> FuncSignature -> return_type (AtomTrailer)
     #      -> target (Name: uni)
     #      -> right (Name: Module)
-    
+
     found_uni = False
     found_module = False
-    
+
     for ability in mod.get_all_sub_nodes(uni.Ability):
         if ability.sym_name == "get_ir":
-             if ability.signature and ability.signature.return_type:
-                 ret_type = ability.signature.return_type
-                 if isinstance(ret_type, uni.AtomTrailer):
-                     # Check 'uni'
-                     if isinstance(ret_type.target, uni.Name) and ret_type.target.value == "uni":
-                         assert ret_type.target.sym is not None, "Symbol for 'uni' not, resolved"
-                         found_uni = True
-                     
-                     # Check 'Module'
-                     if isinstance(ret_type.right, uni.Name) and ret_type.right.value == "Module":
-                         assert ret_type.right.sym is not None, "Symbol for 'Module' not resolved"
-                         found_module = True
+            if ability.signature and ability.signature.return_type:
+                ret_type = ability.signature.return_type
+                if isinstance(ret_type, uni.AtomTrailer):
+                    # Check 'uni'
+                    if (
+                        isinstance(ret_type.target, uni.Name)
+                        and ret_type.target.value == "uni"
+                    ):
+                        assert ret_type.target.sym is not None, (
+                            "Symbol for 'uni' not, resolved"
+                        )
+                        found_uni = True
+
+                    # Check 'Module'
+                    if (
+                        isinstance(ret_type.right, uni.Name)
+                        and ret_type.right.value == "Module"
+                    ):
+                        assert ret_type.right.sym is not None, (
+                            "Symbol for 'Module' not resolved"
+                        )
+                        found_module = True
 
     assert found_uni, "Could not find 'uni' name node in AST"
     assert found_module, "Could not find 'Module' name node in AST"
