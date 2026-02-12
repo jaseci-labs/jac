@@ -757,8 +757,8 @@ def test_traversing_save(
     assert output_capturer["get"]().strip() == (
         "digraph {\n"
         'node [style="filled", shape="ellipse", fillcolor="invis", fontcolor="black"];\n'
-        '0 -> 1  [label=""];\n'
-        '1 -> 2  [label=""];\n'
+        '0 -> 1 [label=""];\n'
+        '1 -> 2 [label=""];\n'
         '0 [label="Root()"fillcolor="#FFE9E9"];\n'
         '1 [label="A()"fillcolor="#F0FFF0"];\n'
         '2 [label="B()"fillcolor="#F5E5FF"];\n}'
