@@ -164,7 +164,13 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, `node: uni.Ability) -> None
                     isinstance(nd, uni.Name)
                     and nd.sym is None
                     and ability_start_line <= nd.loc.first_line <= ability_end_line
-                    and isinstance(nd.parent, uni.SubTag)
+                    and (
+                        nd.find_parent_of_type(uni.SubTag)
+                        or (
+                            nd.find_parent_of_type(uni.FuncSignature)
+                            and not nd.find_parent_of_type(uni.ParamVar)
+                        )
+                    )
                 ) {  # SubTag is the type annotation wrapper
 
                     self.evaluator.get_type_of_expression(nd);
