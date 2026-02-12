@@ -10,6 +10,7 @@ actions.jac
 advanced_language_features.jac
 app.cl.jac
 app.jac
+app_err.jac
 archetype.jac
 bccache.jac
 builtin.jac
@@ -80,6 +81,7 @@ config_loader.jac
 console.impl.jac
 console.jac
 context.jac
+context.impl.jac
 core.impl.jac
 core_language_features.jac
 corelib_fmt.jac
@@ -87,6 +89,7 @@ custom_access_validation.jac
 data_spatial_types.jac
 decorator_stack.jac
 defn_decl_mismatch.jac
+def_impl_match_pass.jac
 dep_registry.jac
 dependencies.jac
 desktop_config.jac
@@ -94,11 +97,13 @@ desktop_target.impl.jac
 doc_ir.jac
 doc_ir_gen_pass.impl.jac
 doc_ir_gen_pass.jac
+engine.impl.jac
 err2.jac
 es_unparse.impl.jac
 es_unparse.jac
 esast_gen_pass.impl.jac
 essay_review.jac
+execution.impl.jac
 expert_answer.jac
 fam.jac
 fantasy_trading_game.jac
@@ -106,6 +111,7 @@ frontend.jac
 fstrings.jac
 func.jac
 funccall_genexpr.jac
+game.impl.jac
 grammar_checker.jac
 grammar_extract_pass.impl.jac
 guess_game2.jac
@@ -155,15 +161,21 @@ nested_impls.jac
 new_keyword_errors.jac
 normalize_pass.impl.jac
 one.jac
+other_root_access.jac
 param_syntax_err.jac
 parser.jac
+parser.impl.jac
 pass_keyword_errors.jac
 plugin.jac
 plugin_config.jac
 program.jac
 project.impl.jac
 project.jac
+pyast_gen_pass.jac
+pyast_load_pass.impl.jac
+pybc_gen_pass.jac
 py_imp_test.jac
+pyast_load_pass.impl.jac
 pyjac_ast_link_pass.impl.jac
 react_max_iterations.jac
 registry.jac
@@ -172,6 +184,7 @@ runtime.jac
 runtime_errors.na.jac
 safe_call_operator.jac
 schema.jac
+semantic_analysis_pass.jac
 sem_def_match_pass.impl.jac
 sem_manager.impl.jac
 sem_manager.jac
@@ -185,6 +198,7 @@ streaming_with_react.jac
 submit-button.jac
 symtab_build.jac
 symtable_test_helpers.jac
+sym_tab_build_pass.jac
 tagbreak.jac
 template_registry.jac
 test.impl.jac

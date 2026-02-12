@@ -308,7 +308,7 @@ def test_early_exit():
     # Use experimental=True to install from repo (PyPI packages may not be available)
     app_config = AppConfig(
         code_folder=todo_app_path,
-        file_name="app.jac",
+        file_name="app_err.jac",
         build=False,
         experimental=True,
     )
