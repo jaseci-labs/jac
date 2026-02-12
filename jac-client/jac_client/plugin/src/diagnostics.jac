@@ -1,0 +1,162 @@
+"""Diagnostics module for client build error reporting."""
+import os;
+import from pathlib { Path }
+
+glob BOX_H = "─",
+     BOX_V = "│",
+     BOX_TL = "┌",
+     BOX_TR = "┐",
+     BOX_BL = "└",
+     BOX_BR = "┘",
+     WIDTH = 70;
+
+"""Severity level for diagnostics."""
+enum Severity {
+    ERROR = "error",
+    WARNING = "warning",
+    INFO = "info"
+}
+
+"""Single diagnostic result from a detector."""
+class Diagnostic {
+    has code: str = "";
+    has severity: Severity = Severity.ERROR;
+    has title: str = "";
+    has message: str = "";
+    has file_path: str = "";
+    has line: int = 0;
+    has column: int = 0;
+    has source_snippet: str = "";
+    has hint: str = "";
+    has quick_fix: str = "";
+
+    def init(
+        self: Diagnostic,
+        code: str,
+        severity: Severity,
+        title: str,
+        message: str,
+        file_path: str = "",
+        line: int = 0,
+        column: int = 0,
+        source_snippet: str = "",
+        hint: str = "",
+        quick_fix: str = ""
+    );
+}
+
+"""Context passed to all detectors during analysis."""
+class BuildContext {
+    has error_output: str = "";
+    has source_map: dict[str, str] = {};
+    has project_dir: Path = Path(".");
+    has jac_files: list[Path] = [];
+    has installed_packages: set[str] = set();
+
+    def init(
+        self: BuildContext,
+        error_output: str,
+        project_dir: Path,
+        source_map: dict[str, str] = {},
+        jac_files: list[Path] = [],
+        installed_packages: set[str] = set()
+    );
+    def read_source_lines(self: BuildContext, file_path: str, line: int, context_lines: int = 2) -> str;
+}
+
+"""Collection of diagnostics."""
+class DiagnosticCollection {
+    has items: list[Diagnostic] = [];
+
+    def add(self: DiagnosticCollection, diagnostic: Diagnostic) -> None;
+    def add_all(self: DiagnosticCollection, diagnostics: list[Diagnostic]) -> None;
+}
+
+"""Base class for all diagnostic detectors."""
+class BaseDetector {
+    has code: str = "JAC_CLIENT_000";
+    has title: str = "Unknown Error";
+    has priority: int = 100;
+    has patterns: list[str] = [];
+
+    def handle(self: BaseDetector, error: str) -> bool;
+    def detect(self: BaseDetector, ctx: BuildContext) -> list[Diagnostic];
+    def create_diagnostic(
+        self: BaseDetector,
+        message: str,
+        severity: Severity = Severity.ERROR,
+        file_path: str = "",
+        line: int = 0,
+        hint: str = "",
+        quick_fix: str = ""
+    ) -> Diagnostic;
+    def extract_between(self: BaseDetector, text: str, start_delim: str, end_delim: str = "") -> str;
+    def find_importing_file(self: BaseDetector, module_name: str, ctx: BuildContext) -> tuple[str, int];
+}
+
+"""Detects missing npm dependencies."""
+class MissingDependencyDetector(BaseDetector) {
+    has code: str = "JAC_CLIENT_001";
+    has title: str = "Missing Dependency";
+    has priority: int = 10;
+    has patterns: list[str] = ["failed to resolve import", "cannot find module", "module not found", "can't resolve"];
+
+    def detect(self: MissingDependencyDetector, ctx: BuildContext) -> list[Diagnostic];
+}
+
+"""Detects syntax errors."""
+class SyntaxErrorDetector(BaseDetector) {
+    has code: str = "JAC_CLIENT_003";
+    has title: str = "Syntax Error";
+    has priority: int = 20;
+    has patterns: list[str] = ["syntaxerror", "unexpected token", "parsing error", "unterminated string"];
+
+    def detect(self: SyntaxErrorDetector, ctx: BuildContext) -> list[Diagnostic];
+}
+
+"""Detects Jac compilation/transpilation errors."""
+class CompilationErrorDetector(BaseDetector) {
+    has code: str = "JAC_CLIENT_005";
+    has title: str = "Compilation Error";
+    has priority: int = 1;
+    has patterns: list[str] = ["no bytecode found", "jacsyntaxerror", "jac syntax error", "compilation failed", "failed to compile"];
+
+    def detect(self: CompilationErrorDetector, ctx: BuildContext) -> list[Diagnostic];
+}
+
+"""Detects import path not found."""
+class ImportNotFoundDetector(BaseDetector) {
+    has code: str = "JAC_CLIENT_004";
+    has title: str = "Import Not Found";
+    has priority: int = 15;
+    has patterns: list[str] = ["failed to resolve import", "cannot find module"];
+
+    def detect(self: ImportNotFoundDetector, ctx: BuildContext) -> list[Diagnostic];
+}
+
+"""Main engine for running diagnostic detectors."""
+class DiagnosticEngine {
+    has detectors: list[BaseDetector] = [];
+
+    def register_all(self: DiagnosticEngine, detectors: list[BaseDetector]) -> None;
+    def analyze(self: DiagnosticEngine, ctx: BuildContext) -> DiagnosticCollection;
+}
+
+"""Formats diagnostics for console output."""
+class DiagnosticFormatter {
+    has width: int = WIDTH;
+
+    def format_diagnostic(self: DiagnosticFormatter, diag: Diagnostic) -> str;
+    def format_collection(self: DiagnosticFormatter, collection: DiagnosticCollection) -> str;
+    def _pad(self: DiagnosticFormatter, content: str) -> str;
+    def _wrap(self: DiagnosticFormatter, text: str, max_w: int) -> list[str];
+}
+
+"""Format a build error using the diagnostic system."""
+def format_build_error(error_output: str, project_dir: Path, source_map: dict[str, str] = {}, config: object = None) -> str;
+
+"""Check if debug mode is enabled."""
+def is_debug_mode(config: object = None) -> bool;
+
+"""Get all built-in detectors."""
+def get_default_detectors() -> list[BaseDetector];
