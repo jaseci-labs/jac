@@ -72,6 +72,23 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     assert isinstance(base_type, types.ClassType);
                     if member := self._lookup_class_member(base_type, expr.right.value) {
                         value = self._set_symbol_to_expr(expr.right, member.symbol);
+                        if base_type.is_enum_class() {
+                            member_name = expr.right.value;
+                            # Create EnumMemberType if member is registered in enum_members
+                            if (
+                                base_type.shared.enum_members
+                                and member_name in base_type.shared.enum_members
+                            ) {
+                                member_info = base_type.shared.enum_members[member_name];
+                                return types.EnumMemberType(
+                                    enum_class=base_type,
+                                    member_info=member_info,
+                                    flags=types.TypeFlags.Instance
+                                );
+                            }
+                            # Fallback for unrecognized enum members
+                            return base_type.clone_as_instance();
+                        }
                         return value;
                     }
                     return types.UnknownType();
