@@ -207,6 +207,8 @@ glob TOKEN_KIND_TO_TOK:
          TokenKind.KW_SEM: Tok.KW_SEM.value,
          TokenKind.KW_TEST: Tok.KW_TEST.value,
          TokenKind.KW_GLOBAL: Tok.KW_GLOBAL.value,
+         TokenKind.KW_GLOBAL_REF: Tok.GLOBAL_OP.value,
+         TokenKind.KW_NONLOCAL: Tok.NONLOCAL_OP.value,
          TokenKind.KW_IMPORT: Tok.KW_IMPORT.value,
          TokenKind.KW_INCLUDE: Tok.KW_INCLUDE.value,
          TokenKind.KW_FROM: Tok.KW_FROM.value,
@@ -453,9 +455,9 @@ obj Parser {
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
-    def parse_dict_with_spread -> DictVal;
+    def parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal;
     def parse_edge_ref_chain -> Expr;
-    def continue_edge_ref_chain(start_expr: Expr) -> Expr;
+    def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params(sig_kid: list) -> list;
@@ -492,7 +494,7 @@ obj Parser {
     def parse_tuple_sequence_pattern;
     def parse_mapping_pattern;
     def parse_literal_for_mapping;
-    def parse_class_pattern_args(names: list);
+    def parse_class_pattern_args(names: list, dot_unis: list | None = None);
     def parse_switch_stmt -> SwitchStmt;
     def parse_switch_case -> SwitchCase;
     def parse_return_stmt -> ReturnStmt;

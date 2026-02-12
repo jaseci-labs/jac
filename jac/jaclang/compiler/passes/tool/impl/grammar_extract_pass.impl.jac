@@ -437,7 +437,7 @@ impl GrammarExtractPass.extract_from_stmt(stmt: uni.UniNode) -> GExpr | None {
 impl GrammarExtractPass.analyze_func_call(call: uni.FuncCall) -> GExpr | None {
     method = self.get_self_method(call.target);
     if method is not None {
-        if method == "expect" {
+        if method == "expect" or method == "consume_uni" {
             tokens = self.get_token_args(call);
             if len(tokens) > 0 {
                 return GTok(name=tokens[0]);

@@ -1319,6 +1319,27 @@ impl JacAutoLintPass. _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> No
     new_sig = copy.deepcopy(decl.signature);
     new_sig.parent = impl_node;
     old_spec = impl_node.spec;
+    # Copy position info from old spec's tokens to new spec's tokens
+    # so the formatter places comments correctly relative to the signature
+    old_first_tok = old_spec.loc.first_tok;
+    old_last_tok = old_spec.loc.last_tok;
+    def _fix_token_positions(node: uni.UniNode) -> None {
+        if isinstance(node, uni.Token) {
+            node.orig_src = old_first_tok.orig_src;
+            node.line_no = old_first_tok.line_no;
+            node.end_line = old_first_tok.end_line;
+            node.c_start = old_first_tok.c_start;
+            node.c_end = old_first_tok.c_end;
+            node.pos_start = old_first_tok.pos_start;
+            node.pos_end = old_first_tok.pos_end;
+        }
+        for k in node.kid {
+            if k is not None {
+                _fix_token_positions(k);
+            }
+        }
+    }
+    _fix_token_positions(new_sig);
     impl_node.spec = new_sig;
     new_kids: list[uni.UniNode] = [];
     for kid in impl_node.kid {

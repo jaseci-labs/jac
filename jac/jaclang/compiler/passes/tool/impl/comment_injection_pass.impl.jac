@@ -811,11 +811,24 @@ impl CommentInjectionPass._inject_into_parts(
         processed = self._process(ctx, part);
         result.append(processed);
         tokens = self._get_tokens(processed);
-        if (tokens and self._comments) {
+        # Filter out synthetic tokens (gen_token) which have wrong positions
+        real_tokens = [
+            t
+            for t in tokens
+            if not getattr(t, '_is_synthetic', False)
+        ];
+        if (real_tokens and self._comments) {
             last_token = max(
-                tokens, key=lambda t: Any : (t.loc.last_line, t.loc.col_end)
+                real_tokens, key=lambda t: Any : (t.loc.last_line, t.loc.col_end)
             );
-            token_id: int = id(last_token);
+            token_id: int = hash(
+                (
+                    last_token.loc.first_line,
+                    last_token.loc.col_start,
+                    last_token.loc.last_line,
+                    last_token.loc.col_end
+                )
+            );
             for info in self._comments.take_inline(token_id) {
                 add_line: bool = True;
                 if ((index + 1) < len(parts)) {
@@ -1125,7 +1138,14 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         }
         anchor_token_id: (int | None) = None;
         if (left_token and (left_token.loc.last_line == comment.loc.first_line)) {
-            anchor_token_id = id(left_token);
+            anchor_token_id = hash(
+                (
+                    left_token.loc.first_line,
+                    left_token.loc.col_start,
+                    left_token.loc.last_line,
+                    left_token.loc.col_end
+                )
+            );
         }
         info = CommentInfo(comment_idx, comment, anchor_token_id);
         if info.is_inline {
