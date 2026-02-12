@@ -1,6 +1,6 @@
 """Return the effective type of the module item."""
 
-impl TypeEvaluator. get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase {
+impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase {
     # Module item can be both a module or a member of a module.
     # import from .. { mod }   # <-- Here mod is not a member but a module itself.
     # import from mod { item } # <-- Here item is not a module but a member of mod.
@@ -66,8 +66,9 @@ impl TypeEvaluator. get_type_of_module_item(node_: uni.ModuleItem) -> types.Type
     }
     return types.UnknownType();
 }
+
 """Return the effective type of the module."""
-impl TypeEvaluator. get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
+impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
     if node_.path {
         if node_.path[-1].type {
             return node_.path[-1].type;
@@ -113,7 +114,7 @@ impl TypeEvaluator. get_type_of_module(node_: uni.ModulePath) -> types.TypeBase 
 }
 
 """Import a module from the given path."""
-impl TypeEvaluator. _import_module_from_path(path: str) -> uni.Module {
+impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
     if path.endswith("typing.py") {
         path = self._TYPING_STUB_FILE_PATH;
     }
@@ -135,7 +136,7 @@ impl TypeEvaluator. _import_module_from_path(path: str) -> uni.Module {
 }
 
 """Return the effective type of the symbol."""
-impl TypeEvaluator. get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
+impl TypeEvaluator.get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     if self.push_symbol_resolution(symbol) {
         try {
             return self._get_type_of_symbol(symbol);

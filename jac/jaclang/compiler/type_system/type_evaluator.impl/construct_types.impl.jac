@@ -1,12 +1,13 @@
 """Return the effective type of root."""
 
-impl TypeEvaluator. _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
+impl TypeEvaluator._get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
     node_.sym = self.prefetch.root_class.get_class_symbol();
     node_.type = self.prefetch.root_class.clone_as_instance();
     return node_.type;
 }
+
 """Return the effective type of self."""
-impl TypeEvaluator. _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
+impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
         cls = method.method_owner;
         if isinstance(cls, uni.Archetype) {
@@ -21,26 +22,46 @@ impl TypeEvaluator. _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Return the effective type of super (first parent class in MRO)."""
+impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
+    if method := self._get_enclosing_method(node_) {
+        cls = method.method_owner;
+        if isinstance(cls, uni.Archetype) {
+            current_class_type = self.get_type_of_class(cls);
+            # MRO[0] is current class, MRO[1] is first parent
+            if len(current_class_type.shared.mro) > 1 {
+                parent_class_type = current_class_type.shared.mro[1];
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
+                node_.type = parent_class_type.clone_as_instance();
+                return node_.type;
+            }
+        }
+    }
+    return types.UnknownType();
+}
+
 """Return the effective type of the float."""
-impl TypeEvaluator. get_type_of_float(node: uni.Float) -> TypeBase {
+impl TypeEvaluator.get_type_of_float(node: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
     return self.prefetch.float_class;
 }
 
 """Return the effective type of the int."""
-impl TypeEvaluator. get_type_of_int(node: uni.Int) -> TypeBase {
+impl TypeEvaluator.get_type_of_int(node: uni.Int) -> TypeBase {
     assert self.prefetch.int_class is not None;
     return self.prefetch.int_class;
 }
 
 """Return the effective type of the string."""
-impl TypeEvaluator. get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase {
+impl TypeEvaluator.get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase {
     assert self.prefetch.str_class is not None;
     return self.prefetch.str_class;
 }
 
 """Return the effective type of an ability."""
-impl TypeEvaluator. get_type_of_ability(node_: uni.Ability) -> TypeBase {
+impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;
     }
@@ -142,7 +163,7 @@ impl TypeEvaluator. get_type_of_ability(node_: uni.Ability) -> TypeBase {
 }
 
 """Return the effective type of the class."""
-impl TypeEvaluator. get_type_of_class(node_: uni.Archetype) -> types.ClassType {
+impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     if node_.name_spec.type is not None {
         return cast(types.ClassType, node_.name_spec.type);
     }
@@ -184,14 +205,14 @@ impl TypeEvaluator. get_type_of_class(node_: uni.Archetype) -> types.ClassType {
 }
 
 """Return the built-in type with the given name."""
-impl TypeEvaluator. _get_type_from_module(module: uni.Module, name: str) -> TypeBase {
+impl TypeEvaluator._get_type_from_module(module: uni.Module, name: str) -> TypeBase {
     if (symbol := type_utils.lookup_symtab(module, name, self.builtins_module)) is not None {
         return self.get_type_of_symbol(symbol);
     }
     return types.UnknownType();
 }
 
-impl TypeEvaluator. get_none_type -> TypeBase {
+impl TypeEvaluator.get_none_type -> TypeBase {
     if self.prefetch and self.prefetch.none_type_class {
         return self.prefetch.none_type_class;
     }

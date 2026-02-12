@@ -1,6 +1,6 @@
 """Core function to get the type of the expression."""
 
-impl TypeEvaluator. _get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
+impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
     match expr {
         case uni.String() | uni.MultiString() | uni.FString():
             if self.prefetch {
@@ -70,6 +70,37 @@ impl TypeEvaluator. _get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     if member := self._lookup_object_member(
                         base_type, expr.right.value
                     ) {
+                        # For init method lookup: if the class is a data class and
+                        # doesn't have an explicit init defined directly (not inherited),
+                        # prefer the implicit dataclass init over inherited object.__init__.
+                        # But only if the class or its ancestors have 'has' variables.
+                        if (
+                            expr.right.value in ('init', '__init__')
+                            and base_type.is_data_class()
+                        ) {
+                            # Check if the class has explicit init in its own symbol table
+                            has_explicit_init = (
+                                'init' in base_type.shared.symbol_table.names_in_scope
+                                or '__init__' in base_type.shared.symbol_table.names_in_scope
+                            );
+                            # Check if there are any 'has' vars in the class hierarchy
+                            # (excluding object which has no has vars)
+                            has_any_has_vars = any(
+                                len(cls.shared.symbol_table.get_has_vars()) > 0
+                                for cls in base_type.shared.mro
+                                if cls.shared.class_name != "object"
+                            );
+                            # Only create implicit dataclass init if:
+                            # 1. No explicit init in the class itself
+                            # 2. There are 'has' vars somewhere in the hierarchy
+                            if not has_explicit_init and has_any_has_vars {
+                                implicit_init_type = self._create_dataclass_init_method(
+                                    base_type
+                                );
+                                expr.right.type = implicit_init_type;
+                                return implicit_init_type;
+                            }
+                        }
                         overloaded_ty: types.OverloadedType | None = None;
                         member_ty = self.get_type_of_symbol(member.symbol);
                         if isinstance(member_ty, types.FunctionType) {
@@ -114,6 +145,19 @@ impl TypeEvaluator. _get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         member.symbol.add_use(expr.right);
                         expr.right.type = overloaded_ty or member_ty;
                         return expr.right.type;
+                    }
+                    # Fallback for implicit init method on data classes (classes with 'has' vars).
+                    # When accessing .init on an instance and no explicit init is found,
+                    # create an implicit init from the 'has' variables.
+                    if (
+                        expr.right.value in ('init', '__init__')
+                        and base_type.is_data_class()
+                    ) {
+                        implicit_init_type = self._create_dataclass_init_method(
+                            base_type
+                        );
+                        expr.right.type = implicit_init_type;
+                        return implicit_init_type;
                     }
                     return types.UnknownType();
                 }
@@ -276,6 +320,11 @@ impl TypeEvaluator. _get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return self._get_type_of_self(expr);
             }
 
+            # Handle 'super' keyword - resolve to first parent class in MRO.
+            if self._is_expr_super(expr) {
+                return self._get_type_of_super(expr);
+            }
+
             if scope := expr.find_parent_of_type(uni.UniScopeNode) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
@@ -341,8 +390,9 @@ impl TypeEvaluator. _get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
     }
     return types.UnknownType();
 }
+
 """Return the declared type of the symbol."""
-impl TypeEvaluator. _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
+impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     node_ = symbol.decl.name_of;
     match node_ {
         case uni.Archetype() | uni.Enum():
@@ -479,7 +529,7 @@ impl TypeEvaluator. _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
 }
 
 """Assign the source class type to the destination class type."""
-impl TypeEvaluator. _assign_class(
+impl TypeEvaluator._assign_class(
     src_type: types.ClassType, dest_type: types.ClassType
 ) -> bool {
     if dest_type.shared == self.prefetch.final_class.shared {
@@ -512,7 +562,7 @@ impl TypeEvaluator. _assign_class(
     return False;
 }
 
-impl TypeEvaluator. is_sub_class(
+impl TypeEvaluator.is_sub_class(
     super_cls: types.ClassType, sub_cls: types.ClassType
 ) -> bool {
     for cls in sub_cls.shared.mro {
@@ -522,8 +572,9 @@ impl TypeEvaluator. is_sub_class(
     }
     return False;
 }
+
 """Return the effective return type of a magic method call."""
-impl TypeEvaluator. get_type_of_magic_method_call(
+impl TypeEvaluator.get_type_of_magic_method_call(
     obj_type: TypeBase,
     method_name: str,
     arg_nodes: list[uni.Expr],
@@ -567,7 +618,7 @@ impl TypeEvaluator. get_type_of_magic_method_call(
 }
 
 """Check if a type is Any, object, Unknown, or TypeVar."""
-impl TypeEvaluator. is_any_type(ty: TypeBase) -> bool {
+impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     if isinstance(ty, types.UnknownType) {
         return True;
     }
@@ -592,7 +643,7 @@ impl TypeEvaluator. is_any_type(ty: TypeBase) -> bool {
 }
 
 """Assign the source type to the destination type."""
-impl TypeEvaluator. assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
+impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool {
     if src_type == dest_type {
         return True;
     }
@@ -659,7 +710,7 @@ impl TypeEvaluator. assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool
 }
 
 """Return the effective type of the expression."""
-impl TypeEvaluator. get_type_of_expression(node_: uni.Expr) -> TypeBase {
+impl TypeEvaluator.get_type_of_expression(node_: uni.Expr) -> TypeBase {
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
@@ -672,7 +723,7 @@ impl TypeEvaluator. get_type_of_expression(node_: uni.Expr) -> TypeBase {
 }
 
 """Pop a symbol from the resolution stack."""
-impl TypeEvaluator. pop_symbol_resolution(symbol: uni.Symbol) -> bool {
+impl TypeEvaluator.pop_symbol_resolution(symbol: uni.Symbol) -> bool {
     popped_entry = self.symbol_resolution_stack.pop();
     assert popped_entry.symbol == symbol;
     return popped_entry.is_result_valid;
@@ -683,7 +734,7 @@ Push a symbol onto the resolution stack.
 
 Return False if recursion detected and in that case it won't push the symbol.
 """
-impl TypeEvaluator. push_symbol_resolution(symbol: uni.Symbol) -> bool {
+impl TypeEvaluator.push_symbol_resolution(symbol: uni.Symbol) -> bool {
     idx = self.get_index_of_symbol_resolution(symbol);
     if idx is not None {
         for i in range(idx, len(self.symbol_resolution_stack)) {
@@ -697,7 +748,7 @@ impl TypeEvaluator. push_symbol_resolution(symbol: uni.Symbol) -> bool {
 }
 
 """Get the index of a symbol in the resolution stack."""
-impl TypeEvaluator. get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None {
+impl TypeEvaluator.get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None {
     for (i, entry_) in enumerate(self.symbol_resolution_stack) {
         if entry_.symbol == symbol {
             return i;
@@ -707,7 +758,7 @@ impl TypeEvaluator. get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | 
 }
 
 """Return the prefetched types for the type evaluator."""
-impl TypeEvaluator. _prefetch_types{
+impl TypeEvaluator._prefetch_types{
     get_types_type = lambda type_name: str  -> types.TypeBase :
         self._get_type_from_module(self.types_module, type_name);
     get_typing_type = lambda type_name: str  -> types.TypeBase :
@@ -740,7 +791,7 @@ impl TypeEvaluator. _prefetch_types{
 }
 
 """Load and return builtins stub module."""
-impl TypeEvaluator. _load_stub_module(path: str) -> uni.Module {
+impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
     if not os.path.exists(path) {
         raise FileNotFoundError(f"Stub file not found at {path}") ;
     }
@@ -765,7 +816,7 @@ and does the prefetch once, however if we forgot to call prefetch
 in some place then it will not be available in the evaluator, So we
 are prefetching the builtins at the constructor level once.
 """
-impl TypeEvaluator. init(program: "JacProgram") -> None {
+impl TypeEvaluator.init(program: "JacProgram") -> None {
     self._BUILTINS_STUB_FILE_PATH: str = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/builtins.pyi"
     );
@@ -816,7 +867,7 @@ impl TypeEvaluator. init(program: "JacProgram") -> None {
 }
 
 """Entry point: get the CFG-based narrowed type for a symbol at a given AST node."""
-impl TypeEvaluator. get_narrowed_type(
+impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
@@ -833,7 +884,7 @@ impl TypeEvaluator. get_narrowed_type(
 }
 
 """Demand-driven backward CFG walk to compute narrowed type at a statement."""
-impl TypeEvaluator. _compute_narrowed_at(
+impl TypeEvaluator._compute_narrowed_at(
     symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
@@ -909,7 +960,7 @@ impl TypeEvaluator. _compute_narrowed_at(
 }
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
-impl TypeEvaluator. _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
+impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
     if pred.body and succ is pred.body[0] {
         return "true";
     }
@@ -928,7 +979,7 @@ impl TypeEvaluator. _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> st
 }
 
 """Find a narrowing predicate for a specific symbol in a condition expression."""
-impl TypeEvaluator. _find_predicate_for(
+impl TypeEvaluator._find_predicate_for(
     symbol: uni.Symbol, condition: uni.Expr
 ) -> NarrowingPredicate | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
@@ -976,7 +1027,7 @@ impl TypeEvaluator. _find_predicate_for(
 }
 
 """Apply a narrowing predicate to compute a narrowed type."""
-impl TypeEvaluator. _apply_narrowing(
+impl TypeEvaluator._apply_narrowing(
     predicate: NarrowingPredicate,
     incoming: TypeBase | None,
     is_true_branch: bool,
@@ -1000,7 +1051,7 @@ impl TypeEvaluator. _apply_narrowing(
 }
 
 """Union multiple narrowed types at a join point."""
-impl TypeEvaluator. _union_narrowed_types(types_list: list) -> TypeBase {
+impl TypeEvaluator._union_narrowed_types(types_list: list) -> TypeBase {
     if len(types_list) == 0 {
         return types.NeverType();
     }
@@ -1035,7 +1086,7 @@ impl TypeEvaluator. _union_narrowed_types(types_list: list) -> TypeBase {
 }
 
 """Exclude a type from a union, returning the remaining type(s)."""
-impl TypeEvaluator. exclude_type_from_union(
+impl TypeEvaluator.exclude_type_from_union(
     original: TypeBase, to_exclude: TypeBase
 ) -> TypeBase {
     if isinstance(original, types.UnionType) and original.types {

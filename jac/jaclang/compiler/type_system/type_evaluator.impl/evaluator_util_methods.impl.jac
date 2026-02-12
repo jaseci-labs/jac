@@ -1,4 +1,4 @@
-impl TypeEvaluator. _create_dataclass_init_method(
+impl TypeEvaluator._create_dataclass_init_method(
     class_type: types.ClassType
 ) -> types.FunctionType {
     parameters: list[types.Parameter] = [];
@@ -30,8 +30,9 @@ impl TypeEvaluator. _create_dataclass_init_method(
         func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
     );
 }
+
 """Lookup the object member type."""
-impl TypeEvaluator. _lookup_object_member(
+impl TypeEvaluator._lookup_object_member(
     base_type: types.ClassType, member: str
 ) -> type_utils.ClassMember | None {
     assert self.prefetch.int_class is not None;
@@ -42,7 +43,7 @@ impl TypeEvaluator. _lookup_object_member(
 }
 
 """Lookup the class member type."""
-impl TypeEvaluator. _lookup_class_member(
+impl TypeEvaluator._lookup_class_member(
     base_type: types.ClassType, member: str
 ) -> type_utils.ClassMember | None {
     for cls in base_type.shared.mro {
@@ -56,7 +57,7 @@ impl TypeEvaluator. _lookup_class_member(
 }
 
 """Convert a class type to an instance type."""
-impl TypeEvaluator. _convert_to_instance(jtype: TypeBase) -> TypeBase {
+impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     if jtype.is_instantiable_class() {
         assert isinstance(jtype, types.ClassType);
         return jtype.clone_as_instance();
@@ -68,15 +69,16 @@ impl TypeEvaluator. _convert_to_instance(jtype: TypeBase) -> TypeBase {
     return jtype;
 }
 
-impl TypeEvaluator. _get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None {
+impl TypeEvaluator._get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None {
     impl_ := node.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
     }
     return node.find_parent_of_type(uni.Archetype);
 }
+
 """Get the enclosing method (ability) of the given node."""
-impl TypeEvaluator. _get_enclosing_method(node: uni.UniNode) -> uni.Ability | None {
+impl TypeEvaluator._get_enclosing_method(node: uni.UniNode) -> uni.Ability | None {
     enclosing_fn = self._get_enclosing_function(node);
     while enclosing_fn and (not enclosing_fn.is_method) {
         enclosing_fn = self._get_enclosing_function(enclosing_fn);
@@ -88,16 +90,20 @@ impl TypeEvaluator. _get_enclosing_method(node: uni.UniNode) -> uni.Ability | No
 }
 
 """Get the enclosing function (ability) of the given node."""
-impl TypeEvaluator. _get_enclosing_function(node: uni.UniNode) -> uni.Ability | None {
-    if (impl := node.find_parent_of_type(uni.ImplDef))
-    and (isinstance(impl.decl_link, uni.Ability)) {
-        return impl.decl_link;
+impl TypeEvaluator._get_enclosing_function(node: uni.UniNode) -> uni.Ability | None {
+    while node := node.parent {
+        if isinstance(node, uni.Ability) {
+            return node;
+        }
+        if isinstance(node, uni.ImplDef) and isinstance(node.decl_link, uni.Ability) {
+            return node.decl_link;
+        }
     }
-    return node.find_parent_of_type(uni.Ability);
+    return None;
 }
 
 """Check if the expression is Name that is 'self' and in the method context."""
-impl TypeEvaluator. _is_expr_self(expr: uni.Expr) -> bool {
+impl TypeEvaluator._is_expr_self(expr: uni.Expr) -> bool {
     if (
         isinstance(expr, uni.Name)
         and (expr.value == TOKEN_MAP[Tok.KW_SELF])
@@ -110,13 +116,28 @@ impl TypeEvaluator. _is_expr_self(expr: uni.Expr) -> bool {
     return False;
 }
 
-impl TypeEvaluator. _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase {
+"""Check if the expression is Name that is 'super' and in the method context."""
+impl TypeEvaluator._is_expr_super(expr: uni.Expr) -> bool {
+    if (
+        isinstance(expr, uni.Name)
+        and (expr.value == TOKEN_MAP[Tok.KW_SUPER])
+        and (fn := self._get_enclosing_method(expr))
+        and (not fn.is_static)
+        and (not fn.is_cls_method)
+    ) {
+        return True;
+    }
+    return False;
+}
+
+impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase {
     sym.add_use(expr);
     expr.type = self.get_type_of_symbol(sym);
     return expr.type;
 }
+
 """Resolve the imported symbols to the actual symbol."""
-impl TypeEvaluator. resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
+impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
     if (
         isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
     ) {
@@ -132,7 +153,7 @@ impl TypeEvaluator. resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
 }
 
 """Set symbol and type for a module item node and its alias if present."""
-impl TypeEvaluator. _set_module_item_symbol_and_type(
+impl TypeEvaluator._set_module_item_symbol_and_type(
     node_: uni.ModuleItem, sym: uni.Symbol
 ) -> TypeBase {
     node_.name.sym = sym;
@@ -143,7 +164,7 @@ impl TypeEvaluator. _set_module_item_symbol_and_type(
     return node_.name.type;
 }
 
-impl TypeEvaluator. _extract_type_params(
+impl TypeEvaluator._extract_type_params(
     node_: uni.Archetype
 ) -> list[types.TypeVarType] {
     type_params: list[types.TypeVarType] = [];
@@ -174,8 +195,9 @@ impl TypeEvaluator. _extract_type_params(
     }
     return type_params;
 }
+
 """Add a diagnostic message to the program."""
-impl TypeEvaluator. add_diagnostic(
+impl TypeEvaluator.add_diagnostic(
     node: uni.UniNode, message: str, warning: bool = False
 ) -> None {
     if self.diagnostic_callback {
@@ -183,7 +205,7 @@ impl TypeEvaluator. add_diagnostic(
     }
 }
 
-impl TypeEvaluator. _is_ability_classmethod(node_: uni.Ability) -> bool {
+impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     if node_.name_spec and node_.name_spec.sym_name == "__new__" {
         return True;
     }
@@ -202,8 +224,9 @@ impl TypeEvaluator. _is_ability_classmethod(node_: uni.Ability) -> bool {
     }
     return False;
 }
+
 """Check if a symbol represents a property."""
-impl TypeEvaluator. _is_symbol_property(symbol: uni.Symbol) -> bool {
+impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
     node_ = symbol.decl.name_of;
     if isinstance(node_, uni.Ability) {
         ability = node_;
