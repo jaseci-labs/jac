@@ -1808,7 +1808,9 @@ def test_diagnostics_missing_dependency_in_console() -> None:
                         # Expected - build should fail with 500
                         print(f"[DEBUG] Got expected HTTP error: {http_err.code}")
                         if http_err.code == 500:
-                            error_body = http_err.read().decode("utf-8", errors="ignore")
+                            error_body = http_err.read().decode(
+                                "utf-8", errors="ignore"
+                            )
                             print(f"[DEBUG] Error response body:\n{error_body[:1000]}")
                             captured_output += "\n" + error_body
                         http_err.close()
