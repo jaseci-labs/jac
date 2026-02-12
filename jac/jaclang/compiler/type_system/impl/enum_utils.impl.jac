@@ -123,47 +123,50 @@ impl build_enum_members(
     return members;
 }
 
-"""Get the value type for special enum subclasses from base classes."""
+"""Get the value type for special enum subclasses from base classes.
+
+Uses name-based checking to detect IntEnum/StrEnum/IntFlag base classes.
+
+LIMITATION: This uses simple name matching, which means:
+- User-defined classes named "IntEnum" or "StrEnum" will be incorrectly
+  detected as stdlib enum types (false positive)
+- Aliased imports like `a = StrEnum; class C(a):` won't be detected (false negative)
+
+TODO: Implement proper stdlib module detection by checking if the class
+comes from Python's enum module (e.g., via module path or a stdlib flag).
+Pyright handles this with a BuiltIn flag + name check.
+"""
 impl get_special_enum_value_type_from_bases(
     base_classes: list[types.TypeBase], prefetch: "PrefetchedTypes"
 ) -> (types.TypeBase | None) {
     if not prefetch {
         return None;
     }
+    # Names of stdlib enum base classes that imply specific value types
+    int_enum_names: set[str] = {"IntEnum","IntFlag"};
+    str_enum_names: set[str] = {"StrEnum"};
     for base in base_classes {
         if not isinstance(base, types.ClassType) {
             continue;
         }
 
-        # Check for IntEnum
-        if prefetch.int_enum_class
-        and isinstance(prefetch.int_enum_class, types.ClassType) {
-            if base.shared == prefetch.int_enum_class.shared {
+        # Check base class name directly
+        base_name = base.shared.class_name;
+        if base_name in int_enum_names {
+            return prefetch.int_class;
+        }
+        if base_name in str_enum_names {
+            return prefetch.str_class;
+        }
+
+        # Check MRO for IntEnum/StrEnum (for deep inheritance)
+        for mro_cls in base.shared.mro {
+            mro_name = mro_cls.shared.class_name;
+            if mro_name in int_enum_names {
                 return prefetch.int_class;
             }
-        }
-
-        # Check for StrEnum
-        if prefetch.str_enum_class
-        and isinstance(prefetch.str_enum_class, types.ClassType) {
-            if base.shared == prefetch.str_enum_class.shared {
+            if mro_name in str_enum_names {
                 return prefetch.str_class;
-            }
-        }
-
-        # Recursively check base class's MRO for IntEnum/StrEnum
-        for mro_cls in base.shared.mro {
-            if prefetch.int_enum_class
-            and isinstance(prefetch.int_enum_class, types.ClassType) {
-                if mro_cls.shared == prefetch.int_enum_class.shared {
-                    return prefetch.int_class;
-                }
-            }
-            if prefetch.str_enum_class
-            and isinstance(prefetch.str_enum_class, types.ClassType) {
-                if mro_cls.shared == prefetch.str_enum_class.shared {
-                    return prefetch.str_class;
-                }
             }
         }
     }

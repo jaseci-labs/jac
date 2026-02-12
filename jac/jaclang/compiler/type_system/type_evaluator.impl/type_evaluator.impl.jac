@@ -1000,12 +1000,9 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.node_class = get_jac_builtin_type("Node");
     self.prefetch.walker_class = get_jac_builtin_type("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_type("JsxElement");
-    # Prefetch enum base classes - these may fail if enum module is not available
-    # which is OK since they are optional
+    # Note: IntEnum/StrEnum/Flag are in 'enum' module, not builtins.
+    # We use name-based checking in enum_utils instead of prefetch.
     self.prefetch.enum_class = get_builtin_type("Enum");
-    self.prefetch.int_enum_class = get_builtin_type("IntEnum");
-    self.prefetch.str_enum_class = get_builtin_type("StrEnum");
-    self.prefetch.flag_class = get_builtin_type("Flag");
 }
 
 """Load and return builtins stub module."""
