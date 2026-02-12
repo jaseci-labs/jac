@@ -1721,7 +1721,7 @@ def test_diagnostics_syntax_error_in_console() -> None:
             with open(jac_toml_path, "w") as f:
                 f.write(toml_content)
 
-            print(f"[DEBUG] Updated jac.toml with debug=true")
+            print("[DEBUG] Updated jac.toml with debug=true")
 
             # 3. Introduce a syntax error in login.jac
             login_jac_path = os.path.join(
@@ -1742,7 +1742,9 @@ def test_diagnostics_syntax_error_in_console() -> None:
                 with open(login_jac_path, "w") as f:
                     f.write(corrupted_content)
 
-                print("[DEBUG] Introduced syntax error in login.jac (corrupted cl block)")
+                print(
+                    "[DEBUG] Introduced syntax error in login.jac (corrupted cl block)"
+                )
 
             # 4. Start the server and capture output
             server: Popen[bytes] | None = None
