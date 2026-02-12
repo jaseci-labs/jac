@@ -20,6 +20,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
 -**Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
 - **1 Small Refactors**
+- **Fix: Go to Definition for Nested Types**: Fixed an issue where "Go to Definition" failed for nested type annotations (e.g., `Optional[uni.Module]`) and return types in function stubs.
 
 ## jaclang 0.10.0 (Latest Release)
 
