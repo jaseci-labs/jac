@@ -304,3 +304,24 @@ impl TypeBase.is_any_type -> bool {
     }
     return False;
 }
+
+"""Return a string representation of the enum member type."""
+impl EnumMemberType.__str__ -> str {
+    return f"<{self.enum_class.shared.class_name}.{self.member_info.member_name}>";
+}
+
+"""Return the value type of this enum member."""
+impl EnumMemberType.get_value_type -> TypeBase {
+    if self.member_info.value_type {
+        return self.member_info.value_type;
+    }
+    if self.enum_class.shared.enum_value_type {
+        return self.enum_class.shared.enum_value_type;
+    }
+    return UnknownType();
+}
+
+"""Return the name of this enum member as a string."""
+impl EnumMemberType.get_name_as_str -> str {
+    return self.member_info.member_name;
+}

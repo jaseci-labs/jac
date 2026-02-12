@@ -30,6 +30,7 @@ checker_connect_filter.jac
 checker_connect_typed.jac
 checker_dict_pop.jac
 checker_expr_call.jac
+checker_enum.jac
 checker_final.jac
 checker_float.jac
 checker_function_overload.jac

@@ -1402,3 +1402,68 @@ def test_super_init_with_explicit_init(fixture_path: Callable[[str], str]) -> No
         """Cannot assign <class int> to parameter 'owner' of type <class str>""",
         program.errors_had[3].pretty_print(),
     )
+
+
+def test_enum_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test comprehensive enum type checking.
+
+    Tests:
+    - Basic enum member access (Color.RED)
+    - .name and ._name_ property access (should be str)
+    - .value and ._value_ property access (should be value type: int or str)
+    - String enum value types (Status.PENDING.value should be str)
+    - Enum member assignment to enum type variable
+    - Function calls with enum parameters and return types
+    """
+    program = JacProgram()
+    path = fixture_path("checker_enum.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expected errors:
+    # 1. name_err: int = Color.RED.name (str assigned to int)
+    # 2. name2_err: int = Color.GREEN._name_ (str assigned to int)
+    # 3. value_err: str = Color.BLUE.value (int assigned to str)
+    # 4. value2_err: str = Color.RED._value_ (int assigned to str)
+    # 5. status_val_err: int = Status.ACTIVE.value (str assigned to int)
+    # 6. wrong_type: str = process_color("not a color") (str not Color)
+    assert len(program.errors_had) == 6, (
+        f"Expected 6 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    # Error 1: .name returns str, assigned to int
+    _assert_error_pretty_found(
+        """name_err: int = Color.RED.name;  # <-- Error: str assigned to int""",
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: ._name_ returns str, assigned to int
+    _assert_error_pretty_found(
+        """name2_err: int = Color.GREEN._name_;  # <-- Error: str assigned to int""",
+        program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: .value returns int, assigned to str
+    _assert_error_pretty_found(
+        """value_err: str = Color.BLUE.value;  # <-- Error: int assigned to str""",
+        program.errors_had[2].pretty_print(),
+    )
+
+    # Error 4: ._value_ returns int, assigned to str
+    _assert_error_pretty_found(
+        """value2_err: str = Color.RED._value_;  # <-- Error: int assigned to str""",
+        program.errors_had[3].pretty_print(),
+    )
+
+    # Error 5: Status.ACTIVE.value is str, assigned to int
+    _assert_error_pretty_found(
+        """status_val_err: int = Status.ACTIVE.value;  # <-- Error: str assigned to int""",
+        program.errors_had[4].pretty_print(),
+    )
+
+    # Error 6: passing string to function expecting Color enum
+    _assert_error_pretty_found(
+        """wrong_type: str = process_color("not a color");  # <-- Error: str not Color""",
+        program.errors_had[5].pretty_print(),
+    )

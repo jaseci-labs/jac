@@ -17,7 +17,11 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
             return node_.type;
         }
         if isinstance(cls, uni.Enum) {
-            # TODO: Implement type from enum.
+            node_.sym = type_utils.lookup_symtab(
+                method, node_.value, self.builtins_module
+            );
+            node_.type = self.get_type_of_enum(cls).clone_as_instance();
+            return node_.type;
         }
     }
     return types.UnknownType();
@@ -219,6 +223,51 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     type_utils.compute_mro_linearization(cls_type);
     # Cache the type, pyright is doing invalidateTypeCacheIfCanceled()
     # we're not doing that any time sooner.
+    node_.name_spec.type = cls_type;
+    return cls_type;
+}
+
+"""Return the effective type of an enum."""
+impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
+    import from jaclang.compiler.type_system { enum_utils }
+    # Is this type already cached?
+    if node_.name_spec.type is not None {
+        return cast(types.ClassType, node_.name_spec.type);
+    }
+    base_classes: list[TypeBase] = [];
+    for base_class in node_.base_classes or [] {
+        base_class_type = self.get_type_of_expression(base_class);
+        base_classes.append(base_class_type);
+    }
+    # Add Enum as implicit base if no base specified
+    if not base_classes and self.prefetch and self.prefetch.enum_class {
+        base_classes.append(self.prefetch.enum_class);
+    }
+    is_builtin_class = node_.find_parent_of_type(uni.Module) == self.builtins_module;
+    # Build enum members
+    enum_members = enum_utils.build_enum_members(node_, self);
+    # Determine value type from base class
+    enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
+        base_classes, self.prefetch
+    );
+    cls_type = types.ClassType(
+        shared=types.ClassType.ClassDetailsShared(
+            class_name=node_.name_spec.sym_name,
+            symbol_table=node_,
+            type_params=None,
+            base_classes=base_classes,
+            is_builtin_class=is_builtin_class,
+            is_data_class=False,
+            is_enum_class=True,
+            enum_value_type=enum_value_type,
+            enum_members=enum_members,
+        ),
+        private=None,
+        flags=types.TypeFlags.Instantiable,
+    );
+    # Compute the MRO for the class.
+    type_utils.compute_mro_linearization(cls_type);
+    # Cache the type
     node_.name_spec.type = cls_type;
     return cls_type;
 }
