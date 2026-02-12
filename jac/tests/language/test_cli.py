@@ -1263,3 +1263,27 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
     assert ":7" in stderr or "line 7" in stderr, (
         "stderr should indicate line number 7 where the error occurred"
     )
+
+
+def test_syntax_error_detailed_output(fixture_path: Callable[[str], str]) -> None:
+    """Test that syntax errors show detailed output with source code and caret."""
+    captured_stdout = io.StringIO()
+    captured_stderr = io.StringIO()
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = captured_stdout
+    sys.stderr = captured_stderr
+
+    try:
+        result = execution.run(fixture_path("test_syntax_err.jac"))
+        stderr = captured_stderr.getvalue()
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+
+    assert result == 1, "run command should exit with code 1 on syntax error"
+    assert "Error" in stderr
+    assert "test_syntax_err.jac" in stderr
+    assert 'print "Missing semicolon"' in stderr
+    assert "^" in stderr
+
