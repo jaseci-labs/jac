@@ -714,8 +714,8 @@ impl Lexer.scan_fstring_expr_token -> Token {
             TokenKind.CONV, "!" + conv, start_line, start_col, start_pos
         );
     }
-    # Check for format spec colon
-    if ch == ":" {
+    # Check for format spec colon (but not walrus := operator)
+    if ch == ":" and self.peek() != "=" {
         self.advance();
         return self.make_token(TokenKind.COLON, ":", start_line, start_col, start_pos);
     }
