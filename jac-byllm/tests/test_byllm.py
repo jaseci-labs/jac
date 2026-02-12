@@ -501,3 +501,21 @@ class TestApiKeyResolution:
 
         # Single char: fully masked
         assert len("x") <= 1  # triggers the "*" branch
+
+    def test_api_key_not_in_verbose_output(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Verbose logging with a real Model must not contain the raw api_key."""
+        from loguru import logger
+
+        captured_output = io.StringIO()
+        logger.remove()
+        logger.add(captured_output)
+        with contextlib.suppress(Exception):
+            # Will fail at litellm call (invalid key), but verbose logs are emitted before that
+            jac_import("api_key_verbose", base_path=fixture_path("./"))
+        log_value = captured_output.getvalue()
+        # The raw key must never appear in any log output
+        assert "sk-secret-test-key-do-not-leak" not in log_value
+        # Verbose log should have been emitted (proves we captured something)
+        assert "Calling LLM" in log_value
