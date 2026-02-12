@@ -15,8 +15,6 @@ base_route_app = "app"
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
-debug = true
-
 
 [plugins.client.app_meta_data]
 title = "All-In-One"
@@ -39,8 +37,9 @@ custom_extensions = [".py", ".js"]
 
 [dependencies.npm]
 antd = "^6.0.0"
+"jac-client-node" = "1.0.4"
 recharts = "latest"
-
+tailwindcss = "latest"
 
 [dependencies.npm.dev]
 "@jac-client/dev-deps" = "1.0.0"
