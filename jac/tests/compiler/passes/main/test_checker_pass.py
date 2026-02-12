@@ -417,15 +417,15 @@ def test_binary_op(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 2
     _assert_error_pretty_found(
         """
-        r2: A = a + a;  # <-- Error
-        ^^^^^^^^^^^^^^
+        r2: A = a + a,  # <-- Error
+        ^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        r4: str = (a + a) * B();  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^^^^^
+        r4: str = (a + a) * B(),  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print(),
     )

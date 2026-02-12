@@ -216,6 +216,7 @@ impl start(
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
+    # Load the Jac module (actual compilation/bundling happens in server.start())
     try {
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
@@ -307,8 +308,7 @@ impl start(
             vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
         }
     }
-    # Print startup message
-    _print_startup_message(dev, no_client, port, actual_api_port, base);
+    # Note: Startup banner is printed by server.start() AFTER compilation/bundling completes
     try {
         server.start(dev=dev, no_client=no_client);
         return 0;
@@ -512,8 +512,8 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
             bundler.create_package_json();
         }
 
-        # Start the dev server
-        return bundler.start_dev_server(vite_port);
+        # Start the dev server (messages handled by bundler)
+        return bundler.start_dev_server(vite_port, suppress_initial_output=True);
     } except ImportError as e {
         console.error(
             f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}"
