@@ -253,7 +253,7 @@ impl CFGBuildPass. enter_node(node: uni.UniNode) -> None {
             }
         }
         if isinstance(node, uni.Ability) {
-            self.ability_stack.append([node ]);
+            self.ability_stack.append([`node]);
         } elif self.ability_stack {
             self.ability_stack[-1].append(node);
         }

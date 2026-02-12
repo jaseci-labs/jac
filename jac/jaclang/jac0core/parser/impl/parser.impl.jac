@@ -341,8 +341,12 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
     # Create a unitree Name from a token
     # Strip backtick prefix from keyword-escaped names
     val = tok.value;
+    kwesc = False;
     if val.startswith("`") {
         val = val[1:];
+        kwesc = True;
+    } elif tok.kind == TokenKind.KWESC_NAME {
+        kwesc = True;
     }
     # Reject Python-only keywords that are not valid Jac identifiers
     if val == "pass" {
@@ -358,7 +362,8 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
         col_end=tok.loc.col_end,
         pos_start=tok.loc.pos_start,
         pos_end=tok.loc.pos_end,
-        is_enum_stmt=is_enum_stmt
+        is_enum_stmt=is_enum_stmt,
+        is_kwesc=kwesc
     );
 }
 
