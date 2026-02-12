@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
+- **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files.
 - **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections.
 - **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
 - **PWA Build Detection**: The stdlib server now detects existing PWA builds and serves Vite-hashed client files (`client.*.js`) correctly.

@@ -23,17 +23,20 @@ import from jaclang.jac0core.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.modresolver { resolve_relative_path }
+
 with entry {
     if TYPE_CHECKING {
         import from jaclang.compiler.type_system.types { TypeBase }
     }
 }
+
 import from jaclang.jac0core.treeprinter {
     print_ast_tree,
     print_symtab_tree,
     printgraph_ast_tree,
     printgraph_symtab_tree
 }
+
 """Abstract syntax tree node for Jac."""
 class UniNode {
     """Initialize ast."""
@@ -45,6 +48,7 @@ class UniNode {
         self._gen: (CodeGenTarget | None) = None;
         self.loc: CodeLocInfo = CodeLocInfo(*self.resolve_tok_range());
     }
+
     """Lazy initialization of CodeGenTarget."""
     @property
     def gen(self: UniNode) -> CodeGenTarget {
@@ -53,11 +57,13 @@ class UniNode {
         }
         return self._gen;
     }
+
     """Set CodeGenTarget."""
     @gen.setter
     def gen(self: UniNode, value: CodeGenTarget) -> None {
         self._gen = value;
     }
+
     """Lazy initialization of sub node table."""
     @property
     def _sub_node_tab(self: UniNode) -> dict[(type, list[UniNode])] {
@@ -67,6 +73,7 @@ class UniNode {
         }
         return self.__sub_node_tab;
     }
+
     """Construct sub node table."""
     def _construct_sub_node_tab(self: UniNode) -> None {
         for i in self.kid {
@@ -87,6 +94,7 @@ class UniNode {
             }
         }
     }
+
     """Get symbol table."""
     @property
     def sym_tab(self: UniNode) -> UniScopeNode {
@@ -94,6 +102,7 @@ class UniNode {
         if isinstance(self, UniScopeNode)
         else self.parent_of_type(UniScopeNode);
     }
+
     """Add kid left."""
     def add_kids_left(
         self: UniNode,
@@ -114,6 +123,7 @@ class UniNode {
         }
         return self;
     }
+
     """Add kid right."""
     def add_kids_right(
         self: UniNode,
@@ -134,10 +144,10 @@ class UniNode {
         }
         return self;
     }
+
     """Insert kids at position."""
     def insert_kids_at_pos(
-        self: UniNode, nodes: Sequence[UniNode], pos: int, pos_update: bool =
-True
+        self: UniNode, nodes: Sequence[UniNode], pos: int, pos_update: bool = True
     ) -> UniNode {
         self.kid = [*self.kid[:pos], *nodes, *self.kid[pos:]];
         if pos_update {
@@ -148,6 +158,7 @@ True
         }
         return self;
     }
+
     """Set kids."""
     def set_kids(self: UniNode, nodes: Sequence[UniNode]) -> UniNode {
         self.kid = [*nodes];
@@ -157,11 +168,13 @@ True
         self.loc.update_token_range(*self.resolve_tok_range());
         return self;
     }
+
     """Set parent."""
     def set_parent(self: UniNode, parent: UniNode) -> UniNode {
         self.parent = parent;
         return self;
     }
+
     def resolve_tok_range(self: UniNode) -> tuple[(Token, Token)] {
         if len(self.kid) {
             return (self.kid[0].loc.first_tok, self.kid[-1].loc.last_tok);
@@ -171,11 +184,13 @@ True
             raise ValueError(f"Empty kid for Token {type(self).__name__}") ;
         }
     }
-    def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token
-{
+
+    def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token {
         import from jaclang.jac0core.jac_parser { TOKEN_MAP }
-        value = value if value else (
-            DELIM_MAP[name] if (name in DELIM_MAP)
+        value = value
+        or (
+            DELIM_MAP[name]
+            if (name in DELIM_MAP)
             else TOKEN_MAP.get(name.value, name.value)
         );
         return Token(
@@ -190,28 +205,30 @@ True
             pos_end=0
         );
     }
+
     """Get all sub nodes of type."""
     def get_all_sub_nodes(
         self: UniNode, typ: type[T], brute_force: bool = True
     ) -> list[T] {
         import from jaclang.jac0core.passes { UniPass }
-        return UniPass.get_all_sub_nodes(`node=self, typ=typ,
-brute_force=brute_force);
+        return UniPass.get_all_sub_nodes(`node=self, typ=typ, brute_force=brute_force);
     }
+
     """Get parent of type."""
     def find_parent_of_type(self: UniNode, typ: type[T]) -> (T | None) {
         import from jaclang.jac0core.passes { UniPass }
         return UniPass.find_parent_of_type(`node=self, typ=typ);
     }
+
     def parent_of_type(self: UniNode, typ: type[T]) -> T {
         ret = self.find_parent_of_type(typ);
         if isinstance(ret, typ) {
             return ret;
         } else {
-            raise ValueError(f"Parent of type {typ} not found from
-{type(self)}.") ;
+            raise ValueError(f"Parent of type {typ} not found from{type(self)}.") ;
         }
     }
+
     """Check if this node is in a client-side context.
 
         This covers:
@@ -288,14 +305,17 @@ brute_force=brute_force);
         }
         return ret;
     }
+
     """Print ast."""
     def pp(self: UniNode, depth: (int | None) = None) -> str {
         return print_ast_tree(self, max_depth=depth);
     }
+
     """Print ast."""
     def printgraph(self: UniNode) -> str {
         return printgraph_ast_tree(self);
     }
+
     """Flatten ast."""
     def flatten(self: UniNode) -> list[UniNode] {
         ret: list[UniNode] = [self];
@@ -304,6 +324,7 @@ brute_force=brute_force);
         }
         return ret;
     }
+
     def unparse(self: UniNode) -> str {
         if self.gen.jac {
             return self.gen.jac;
@@ -330,21 +351,25 @@ class Symbol {
         self.parent_tab = parent_tab;
         self.semstr: str = '';
     }
+
     """Get decl."""
     @property
     def decl(self: Symbol) -> NameAtom {
         return self.defn[0];
     }
+
     """Get name."""
     @property
     def sym_name(self: Symbol) -> str {
         return self.decl.sym_name;
     }
+
     """Get sym_type."""
     @property
     def sym_type(self: Symbol) -> SymbolType {
         return self.decl.sym_category;
     }
+
     """Return a full path of the symbol."""
     @property
     def sym_dotted_name(self: Symbol) -> str {
@@ -357,6 +382,7 @@ class Symbol {
         out.reverse();
         return '.'.join(out);
     }
+
     """Get symbol table."""
     @property
     def symbol_table(self: Symbol) -> (UniScopeNode | None) {
@@ -365,22 +391,25 @@ class Symbol {
         }
         return None;
     }
+
     """Add defn."""
     def add_defn(self: Symbol, `node: NameAtom) -> None {
         self.defn.append(`node);
         `node.sym = self;
     }
+
     """Add use."""
     def add_use(self: Symbol, `node: NameAtom) -> None {
         self.uses.append(`node);
         `node.sym = self;
     }
+
     """Repr."""
     def __repr__(self: Symbol) -> str {
-        return f"Symbol({self.sym_name}, {self.sym_type}, {self.access},
-{self.defn})";
+        return f"Symbol({self.sym_name}, {self.sym_type}, {self.access},{self.defn})";
     }
 }
+
 """Represents an inherited symbol table for selective imports."""
 @dataclass
 class InheritedSymbolTable {
@@ -390,12 +419,12 @@ class InheritedSymbolTable {
         symbols: list[str] = field(default_factory=`list);
     }
 }
+
 """Symbol Table."""
 class UniScopeNode(UniNode) {
     """Initialize."""
     def init(
-        self: UniScopeNode, name: str, parent_scope: (UniScopeNode | None) =
-None
+        self: UniScopeNode, name: str, parent_scope: (UniScopeNode | None) = None
     ) -> None {
         self.scope_name = name;
         self.parent_scope = parent_scope;
@@ -404,6 +433,7 @@ None
         self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
         self.inherited_scope: list[InheritedSymbolTable] = [];
     }
+
     """Get type."""
     def get_type(self: UniScopeNode) -> SymbolType {
         if isinstance(self, AstSymbolNode) {
@@ -411,13 +441,16 @@ None
         }
         return SymbolType.VAR;
     }
+
     """Get parent."""
     def get_parent(self: UniScopeNode) -> (UniScopeNode | None) {
         return self.parent_scope;
     }
+
     static def get_python_scoping_nodes -> tuple[(type[UniScopeNode], ...)] {
         return (Module, Enum, Archetype, Ability, ImplDef, Test);
     }
+
     """Lookup a variable in the symbol table."""
     def lookup(
         self: UniScopeNode,
@@ -446,6 +479,7 @@ None
         }
         return None;
     }
+
     """Set a variable in the symbol table.
 
         Returns original symbol as collision if single check fails, none
@@ -466,14 +500,12 @@ otherwise.
         symbol = `node.name_spec.create_symbol(
             access=access_spec
             if isinstance(access_spec, SymbolAccess)
-            else access_spec.access_type if access_spec else
-SymbolAccess.PUBLIC,
+            else access_spec.access_type if access_spec else SymbolAccess.PUBLIC,
             parent_tab=self,
             imported=imported
         );
         if (`node.sym_name in self.names_in_scope) {
-            self.names_in_scope_overload.setdefault(`node.sym_name,
-[]).append(symbol);
+            self.names_in_scope_overload.setdefault(`node.sym_name, []).append(symbol);
         }
         if (force_overwrite or (`node.sym_name not in self.names_in_scope)) {
             self.names_in_scope[`node.sym_name] = symbol;
@@ -493,20 +525,21 @@ SymbolAccess.PUBLIC,
         }
         return None;
     }
+
     """Push a new scope onto the symbol table."""
-    def link_kid_scope(self: UniScopeNode, key_node: UniScopeNode) ->
-UniScopeNode {
+    def link_kid_scope(self: UniScopeNode, key_node: UniScopeNode) -> UniScopeNode {
         key_node.parent_scope = self;
         self.kid_scope.append(key_node);
         return self.kid_scope[-1];
     }
+
     """Inherit symbol table."""
-    def inherit_sym_tab(self: UniScopeNode, target_sym_tab: UniScopeNode) ->
-None {
+    def inherit_sym_tab(self: UniScopeNode, target_sym_tab: UniScopeNode) -> None {
         for i in target_sym_tab.names_in_scope.values() {
             self.def_insert(i.decl, access_spec=i.access);
         }
     }
+
     """Insert into symbol table."""
     def def_insert(
         self: UniScopeNode,
@@ -529,9 +562,9 @@ None {
         self.update_py_ctx_for_def(`node);
         return `node.sym;
     }
+
     """Link chain of containing names to symbol."""
-    def chain_def_insert(self: UniScopeNode, node_list: list[AstSymbolNode]) ->
-None {
+    def chain_def_insert(self: UniScopeNode, node_list: list[AstSymbolNode]) -> None {
         if not node_list {
             return;
         }
@@ -547,6 +580,7 @@ None {
             else None;
         }
     }
+
     """Link to symbol."""
     def use_lookup(
         self: UniScopeNode,
@@ -565,6 +599,7 @@ None {
         }
         return `node.sym;
     }
+
     """Link chain of containing names to symbol."""
     def chain_use_lookup(
         self: UniScopeNode, node_list: Sequence[AstSymbolNode]
@@ -591,9 +626,9 @@ None {
             }
         }
     }
+
     """Update python context for definition."""
-    def update_py_ctx_for_def(self: UniScopeNode, `node: AstSymbolNode) -> None
-{
+    def update_py_ctx_for_def(self: UniScopeNode, `node: AstSymbolNode) -> None {
         `node.name_spec.py_ctx_func = ast3.Store;
         if (isinstance(`node, (TupleVal, ListVal)) and `node.values) {
             def fix(item: TupleVal | ListVal | UnaryExpr) -> None {
@@ -617,14 +652,17 @@ None {
             fix(`node);
         }
     }
+
     """Pretty print."""
     def sym_pp(self: UniScopeNode, depth: (int | None) = None) -> str {
         return print_symtab_tree(`root=self, depth=depth);
     }
+
     """Generate dot graph for sym table."""
     def sym_printgraph(self: UniScopeNode) -> str {
         return printgraph_symtab_tree(self);
     }
+
     """Repr."""
     def __repr__(self: UniScopeNode) -> str {
         out = f"{self.scope_name} {super.__repr__()}:\n";
@@ -649,49 +687,57 @@ class AstSymbolNode(UniNode) {
         self.name_spec._sym_category = sym_category;
         self.semstr = '';
     }
+
     @property
     def sym(self: AstSymbolNode) -> (Symbol | None) {
         return self.name_spec.sym;
     }
+
     @property
     def sym_name(self: AstSymbolNode) -> str {
         return self.name_spec.sym_name;
     }
+
     @property
     def sym_category(self: AstSymbolNode) -> SymbolType {
         return self.name_spec.sym_category;
     }
+
     @property
     def py_ctx_func(self: AstSymbolNode) -> type[ast3.AST] {
         return self.name_spec.py_ctx_func;
     }
+
     @property
     def expr_type(self: AstSymbolNode) -> str {
         return self.name_spec.expr_type;
     }
+
     """Get type symbol table."""
     @property
     def type_sym_tab(self: AstSymbolNode) -> (UniScopeNode | None) {
         return self.name_spec.type_sym_tab;
     }
 }
+
 """Nodes that have link to a symbol in symbol table."""
 class AstSymbolStubNode(AstSymbolNode) {
     def init(self: AstSymbolStubNode, sym_type: SymbolType) -> None {
         AstSymbolNode.init(
             self,
             sym_name=f"[{self.__class__.__name__}]",
-            name_spec=Name.gen_stub_from_node(self,
-f"[{self.__class__.__name__}]"),
+            name_spec=Name.gen_stub_from_node(self, f"[{self.__class__.__name__}]"),
             sym_category=sym_type
         );
     }
 }
+
 """Nodes that have access."""
 class AstAccessNode(UniNode) {
     def init(self: AstAccessNode, access: (SubTag[Token] | None)) -> None {
         self.access: (SubTag[Token] | None) = access;
     }
+
     @property
     def access_type(self: AstAccessNode) -> SymbolAccess {
         return SymbolAccess.PRIVATE
@@ -700,11 +746,13 @@ class AstAccessNode(UniNode) {
         if (self.access and (self.access.tag.name == Tok.KW_PROT))
         else SymbolAccess.PUBLIC;
     }
+
     @property
     def public_access(self: AstAccessNode) -> bool {
         return (self.access_type == SymbolAccess.PUBLIC);
     }
 }
+
 glob T = TypeVar('T', bound=UniNode);
 """Base class for nodes that can be marked with execution context
 (client/server)."""
@@ -725,8 +773,7 @@ SERVER
     def _source_context_token(self: ContextAwareNode) -> (Token | None) {
         for kid in self.kid {
             if (
-                isinstance(kid, Token) and (kid.name in (Tok.KW_CLIENT,
-Tok.KW_SERVER))
+                isinstance(kid, Token) and (kid.name in (Tok.KW_CLIENT, Tok.KW_SERVER))
             ) {
                 return kid;
             }
@@ -741,31 +788,35 @@ class AstDocNode(UniNode) {
         self.doc: (String | None) = doc;
     }
 }
+
 """Nodes that have access."""
 class AstAsyncNode(UniNode) {
     def init(self: AstAsyncNode, is_async: bool) -> None {
         self.is_async: bool = is_async;
     }
 }
+
 """Nodes that have access."""
 class AstElseBodyNode(UniNode) {
-    def init(self: AstElseBodyNode, else_body: ElseStmt | ElseIf | None) -> None
-{
+    def init(self: AstElseBodyNode, else_body: ElseStmt | ElseIf | None) -> None {
         self.else_body: ElseStmt | ElseIf | None = else_body;
     }
 }
+
 """Nodes that have access."""
 class AstTypedVarNode(UniNode) {
     def init(self: AstTypedVarNode, type_tag: (SubTag[Expr] | None)) -> None {
         self.type_tag: (SubTag[Expr] | None) = type_tag;
     }
 }
+
 """WalkerStmtOnlyNode node type for Jac Ast."""
 class WalkerStmtOnlyNode(UniNode) {
     def init(self: WalkerStmtOnlyNode) -> None {
         self.from_walker: bool = False;
     }
 }
+
 """BasicBlockStmt node type for Jac Uniir."""
 class UniCFGNode(UniNode) {
     """Initialize basic block statement node."""
@@ -773,14 +824,14 @@ class UniCFGNode(UniNode) {
         self.bb_in: list[UniCFGNode] = [];
         self.bb_out: list[UniCFGNode] = [];
     }
+
     """Get head by walking up the CFG iteratively."""
     def get_head(self: UniCFGNode) -> UniCFGNode {
         `node = self;
         while (
             `node.bb_in
             and (len(`node.bb_in) == 1)
-            and not isinstance(`node.bb_in[0], (InForStmt, IterForStmt,
-WhileStmt))
+            and not isinstance(`node.bb_in[0], (InForStmt, IterForStmt, WhileStmt))
             and `node.bb_in[0].bb_out
             and (len(`node.bb_in[0].bb_out) == 1)
         ) {
@@ -788,14 +839,14 @@ WhileStmt))
         }
         return `node;
     }
+
     """Get tail by walking down the CFG iteratively."""
     def get_tail(self: UniCFGNode) -> UniCFGNode {
         `node = self;
         while (
             `node.bb_out
             and (len(`node.bb_out) == 1)
-            and not isinstance(`node.bb_out[0], (InForStmt, IterForStmt,
-WhileStmt))
+            and not isinstance(`node.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
             and `node.bb_out[0].bb_in
             and (len(`node.bb_out[0].bb_in) == 1)
         ) {
@@ -804,6 +855,7 @@ WhileStmt))
         return `node;
     }
 }
+
 """Expression is a combination of values, variables operators and fuctions that
 are evaluated to produce a value.
 
@@ -840,19 +892,23 @@ class Expr(UniNode) {
         self.type: (TypeBase | None) = None;
         self.attached_tokens: (list[Token] | None) = None;
     }
+
     @property
     def expr_type(self: Expr) -> str {
         return self._sym_type;
     }
+
     @expr_type.setter
     def expr_type(self: Expr, sym_type: str) -> None {
         self._sym_type = sym_type;
     }
+
     """Get type symbol table."""
     @property
     def type_sym_tab(self: Expr) -> (UniScopeNode | None) {
         return self._type_sym_tab;
     }
+
     """Set type symbol table."""
     @type_sym_tab.setter
     def type_sym_tab(self: Expr, type_sym_tab: UniScopeNode) -> None {
@@ -862,16 +918,20 @@ class Expr(UniNode) {
 
 """AtomExpr node type for Jac Ast."""
 class AtomExpr(Expr, AstSymbolStubNode) {}
+
 """ElementStmt node type for Jac Ast."""
 class ElementStmt(AstDocNode) {}
+
 """ArchBlockStmt node type for Jac Ast."""
 class ArchBlockStmt(UniNode) {}
+
 """EnumBlockStmt node type for Jac Ast."""
 class EnumBlockStmt(UniNode) {
     def init(self: EnumBlockStmt, is_enum_stmt: bool) -> None {
         self.is_enum_stmt = is_enum_stmt;
     }
 }
+
 """CodeBlockStmt node type for Jac Ast."""
 class CodeBlockStmt(UniCFGNode) {
     """Initialize code block statement node."""
@@ -879,16 +939,19 @@ class CodeBlockStmt(UniCFGNode) {
         UniCFGNode.init(self);
     }
 }
+
 """AstImplNeedingNode node type for Jac Ast."""
 class AstImplNeedingNode(AstSymbolNode, Generic[T]) {
     def init(self: AstImplNeedingNode, body: (T | None)) -> None {
         self.body = body;
     }
+
     @property
     def needs_impl(self: AstImplNeedingNode) -> bool {
         return (self.body is None);
     }
 }
+
 """NameAtom node type for Jac Ast."""
 class NameAtom(AtomExpr, EnumBlockStmt) {
     def init(self: NameAtom, is_enum_stmt: bool) -> None {
@@ -900,22 +963,27 @@ class NameAtom(AtomExpr, EnumBlockStmt) {
         AtomExpr.init(self);
         EnumBlockStmt.init(self, is_enum_stmt=is_enum_stmt);
     }
+
     @property
     def sym(self: NameAtom) -> (Symbol | None) {
         return self._sym;
     }
+
     @sym.setter
     def sym(self: NameAtom, sym: Symbol) -> None {
         self._sym = sym;
     }
+
     @property
     def sym_name(self: NameAtom) -> str {
         return self._sym_name;
     }
+
     @property
     def sym_category(self: NameAtom) -> SymbolType {
         return self._sym_category;
     }
+
     """Create symbol."""
     def create_symbol(
         self: NameAtom,
@@ -928,23 +996,25 @@ class NameAtom(AtomExpr, EnumBlockStmt) {
         );
         return sym;
     }
+
     @property
     def clean_type(self: NameAtom) -> str {
-        ret_type = self.expr_type.replace('builtins.', '').replace('NoType',
-'');
+        ret_type = self.expr_type.replace('builtins.', '').replace('NoType', '');
         return ret_type;
     }
+
     """Get python context function."""
     @property
     def py_ctx_func(self: NameAtom) -> type[ast3.expr_context] {
         return self._py_ctx_func;
     }
+
     """Set python context function."""
     @py_ctx_func.setter
-    def py_ctx_func(self: NameAtom, py_ctx_func: type[ast3.expr_context]) ->
-None {
+    def py_ctx_func(self: NameAtom, py_ctx_func: type[ast3.expr_context]) -> None {
         self._py_ctx_func = py_ctx_func;
     }
+
     """Resolve semantic token."""
     @property
     def sem_token(self: NameAtom) -> (tuple[(SemTokType, SemTokMod)] | None) {
@@ -989,20 +1059,21 @@ None {
         return None;
     }
 }
+
 """ArchSpec node type for Jac Ast."""
-class ArchSpec(ElementStmt, CodeBlockStmt, AstSymbolNode, AstAsyncNode,
-AstDocNode) {
+class ArchSpec(ElementStmt, CodeBlockStmt, AstSymbolNode, AstAsyncNode, AstDocNode) {
     def init(
-        self: ArchSpec, decorators: (Sequence[Expr] | None), is_async: bool =
-False
+        self: ArchSpec, decorators: (Sequence[Expr] | None), is_async: bool = False
     ) -> None {
         self.decorators = decorators;
         CodeBlockStmt.init(self);
         AstAsyncNode.init(self, is_async=is_async);
     }
 }
+
 """MatchPattern node type for Jac Ast."""
 class MatchPattern(UniNode) {}
+
 """SubTag node type for Jac Ast."""
 class SubTag(UniNode, Generic[T]) {
     def init(self: SubTag, tag: T, kid: Sequence[UniNode]) -> None {
@@ -1010,6 +1081,7 @@ class SubTag(UniNode, Generic[T]) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """Whole Program node type for Jac Ast."""
 class Module(AstDocNode, UniScopeNode) {
     def init(
@@ -1035,6 +1107,7 @@ class Module(AstDocNode, UniScopeNode) {
         AstDocNode.init(self, doc=doc);
         UniScopeNode.init(self, name=self.name);
     }
+
     """Get the base module path that this annex file belongs to.
 
         Uses discover_base_file to find the base .jac file for annex files
@@ -1053,19 +1126,16 @@ class Module(AstDocNode, UniScopeNode) {
 
     """Get all sub nodes of type."""
     def format(self: Module) -> str {
-        import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass
-}
-        import from jaclang.compiler.passes.tool.jac_formatter_pass {
-JacFormatPass }
+        import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
+        import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
         import from jaclang.jac0core.program { JacProgram }
         return JacFormatPass(
-            ir_in=DocIRGenPass(ir_in=self, prog=JacProgram()).ir_out,
-prog=JacProgram()
+            ir_in=DocIRGenPass(ir_in=self, prog=JacProgram()).ir_out, prog=JacProgram()
         ).ir_out.gen.jac;
     }
+
     def unparse(self: Module, requires_format: bool = True) -> str {
-        import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass
-}
+        import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
         import from jaclang.jac0core.program { JacProgram }
         NormalizePass(ir_in=self, prog=JacProgram());
         if requires_format {
@@ -1075,6 +1145,7 @@ prog=JacProgram()
         UnparsePass(ir_in=self, prog=JacProgram());
         return self.gen.jac;
     }
+
     """Create a stub module."""
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
@@ -1089,6 +1160,7 @@ prog=JacProgram()
             kid=[EmptyToken()]
         );
     }
+
     """Return the full path of the module that contains this node."""
     static def get_href_path(`node: UniNode) -> str {
         parent = `node.find_parent_of_type(Module);
@@ -1102,8 +1174,7 @@ prog=JacProgram()
         }
         mod_list.reverse();
         return '.'.join(
-            p.name if isinstance(p, Module) else p.name.sym_name for p in
-mod_list
+            p.name if isinstance(p, Module) else p.name.sym_name for p in mod_list
         );
     }
 }
@@ -1119,6 +1190,7 @@ class ProgramModule(UniNode) {
         else {};
     }
 }
+
 """GlobalVars node type for Jac Ast."""
 class GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
     def init(
@@ -1137,6 +1209,7 @@ class GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
         ContextAwareNode.init(self);
     }
 }
+
 """Test node type for Jac Ast."""
 class Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
     with entry {
@@ -1184,6 +1257,7 @@ class Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
         ContextAwareNode.init(self);
     }
 }
+
 """ModuleCode node type for Jac Ast."""
 class ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
     def init(
@@ -1202,6 +1276,7 @@ class ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
         ContextAwareNode.init(self);
     }
 }
+
 """ClientBlock node type for cl { ... } blocks in Jac Ast."""
 class ClientBlock(ElementStmt) {
     def init(
@@ -1215,6 +1290,7 @@ class ClientBlock(ElementStmt) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """ServerBlock node type for sv { ... } blocks in Jac Ast."""
 class ServerBlock(ElementStmt) {
     def init(
@@ -1228,6 +1304,7 @@ class ServerBlock(ElementStmt) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """NativeBlock node type for na { ... } blocks in Jac Ast."""
 class NativeBlock(ElementStmt) {
     def init(
@@ -1241,6 +1318,7 @@ class NativeBlock(ElementStmt) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """PyInlineCode node type for Jac Ast."""
 class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
     def init(
@@ -1257,6 +1335,7 @@ class PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
         EnumBlockStmt.init(self, is_enum_stmt=is_enum_stmt);
     }
 }
+
 """Import node type for Jac Ast."""
 class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     def init(
@@ -1276,6 +1355,7 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         CodeBlockStmt.init(self);
         ContextAwareNode.init(self);
     }
+
     """Check if import is python."""
     @property
     def is_py(self: Import) -> bool {
@@ -1287,6 +1367,7 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         }
         return False;
     }
+
     """Check if import is jac."""
     @property
     def is_jac(self: Import) -> bool {
@@ -1298,18 +1379,17 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         }
         return False;
     }
+
     """Check if import is jac."""
     @property
     def __jac_detected(self: Import) -> bool {
         if self.from_loc {
-            if self.from_loc.resolve_relative_path().endswith(('.jac',
-'.cl.jac')) {
+            if self.from_loc.resolve_relative_path().endswith(('.jac', '.cl.jac')) {
                 return True;
             }
             if os.path.isdir(self.from_loc.resolve_relative_path()) {
                 if os.path.exists(
-                    os.path.join(self.from_loc.resolve_relative_path(),
-'__init__.jac')
+                    os.path.join(self.from_loc.resolve_relative_path(), '__init__.jac')
                 ) {
                     return True;
                 }
@@ -1323,8 +1403,7 @@ class Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
                 for i in self.items {
                     if (
                         isinstance(i, ModuleItem)
-                        and
-self.from_loc.resolve_relative_path(i.name.value).endswith(
+                        and self.from_loc.resolve_relative_path(i.name.value).endswith(
                             ('.jac', '.cl.jac')
                         )
                     ) {
@@ -1341,6 +1420,7 @@ self.from_loc.resolve_relative_path(i.name.value).endswith(
         );
     }
 }
+
 """ModulePath node type for Jac Ast."""
 class ModulePath(UniNode) {
     def init(
@@ -1356,6 +1436,7 @@ class ModulePath(UniNode) {
         self.abs_path: (str | None) = None;
         UniNode.init(self, kid=kid);
     }
+
     """Check if this modulepath is from import."""
     @property
     def is_import_from(self: ModulePath) -> bool {
@@ -1364,11 +1445,11 @@ class ModulePath(UniNode) {
         }
         return False;
     }
+
     """Get path string."""
     @property
     def dot_path_str(self: ModulePath) -> str {
-        if (self.path and (len(self.path) == 1) and isinstance(self.path[0],
-String)) {
+        if (self.path and (len(self.path) == 1) and isinstance(self.path[0], String)) {
             return (('.' * self.level) + self.path[0].lit_value);
         }
         return (
@@ -1377,6 +1458,7 @@ String)) {
             )
         );
     }
+
     """Convert an import target string into a relative file path."""
     def resolve_relative_path(
         self: ModulePath, target_item: (str | None) = None
@@ -1400,6 +1482,7 @@ String)) {
         }
         return resolve_relative_path(target, self.loc.mod_path);
     }
+
     """Convert an import target string into a relative file path."""
     def resolve_relative_path_list(self: ModulePath) -> list[str] {
         parts = self.dot_path_str.split('.');
@@ -1411,6 +1494,7 @@ String)) {
         return paths;
     }
 }
+
 """ModuleItem node type for Jac Ast.
 
     Name can be either:
@@ -1430,6 +1514,7 @@ class ModuleItem(UniNode) {
         UniNode.init(self, kid=kid);
         self.abs_path: (str | None) = None;
     }
+
     """Get import parent."""
     @property
     def from_parent(self: ModuleItem) -> Import {
@@ -1438,19 +1523,19 @@ class ModuleItem(UniNode) {
         }
         return self.parent;
     }
+
     """Get relevant module path."""
     @property
     def from_mod_path(self: ModuleItem) -> ModulePath {
         if not self.from_parent.from_loc {
-            raise ValueError('Module items should have module path. Not Possible.');
+            raise ValueError('Module items should have module path. Not Possible.') ;
         }
         return self.from_parent.from_loc;
     }
 }
 
 """ObjectArch node type for Jac Ast."""
-class Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt,
-AstImplNeedingNode, UniScopeNode, UniCFGNode) {
+class Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     def init(
         self: Archetype,
         name: Name,
@@ -1464,8 +1549,7 @@ AstImplNeedingNode, UniScopeNode, UniCFGNode) {
     ) -> None {
         self.name = name;
         self.arch_type = arch_type;
-        self.base_classes: list[Expr] = `list(base_classes) if base_classes else
-[];
+        self.base_classes: list[Expr] = `list(base_classes) if base_classes else [];
         UniNode.init(self, kid=kid);
         AstSymbolNode.init(
             self,
@@ -1488,19 +1572,21 @@ AstImplNeedingNode, UniScopeNode, UniCFGNode) {
         CodeBlockStmt.init(self);
         ContextAwareNode.init(self);
     }
+
     def _get_impl_resolved_body(self: Archetype) -> list {
         return `list(self.body)
         if isinstance(self.body, Sequence)
         else `list(self.body.body)
-        if (isinstance(self.body, ImplDef) and isinstance(self.body.body,
-Sequence))
+        if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
         else [];
     }
+
     @property
     def is_abstract(self: Archetype) -> bool {
         body = self._get_impl_resolved_body();
         return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
     }
+
     def get_has_vars(self: Archetype) -> list[HasVar] {
         body = self._get_impl_resolved_body();
         has_vars: list[HasVar] = [];
@@ -1516,6 +1602,7 @@ Sequence))
         }
         return has_vars;
     }
+
     def get_methods(self: Archetype) -> list[Ability] {
         body = self._get_impl_resolved_body();
         methods: list[Ability] = [];
@@ -1527,9 +1614,9 @@ Sequence))
         return methods;
     }
 }
+
 """AstImplOnlyNode node type for Jac Ast."""
-class ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt,
-AstSymbolNode, UniScopeNode) {
+class ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
     def init(
         self: ImplDef,
         decorators: (Sequence[Expr] | None),
@@ -1557,6 +1644,7 @@ AstSymbolNode, UniScopeNode) {
         UniScopeNode.init(self, name=self.sym_name);
         ContextAwareNode.init(self);
     }
+
     def create_impl_name_node(self: ImplDef) -> Name {
         ret = Name(
             orig_src=self.target[-1].loc.orig_src,
@@ -1573,11 +1661,11 @@ AstSymbolNode, UniScopeNode) {
         return ret;
     }
 }
+
 """SemDef node type for Jac Ast."""
 class SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
     def init(
-        self: SemDef, target: Sequence[NameAtom], value: String, kid:
-Sequence[UniNode]
+        self: SemDef, target: Sequence[NameAtom], value: String, kid: Sequence[UniNode]
     ) -> None {
         self.target = target;
         self.value = value;
@@ -1590,6 +1678,7 @@ Sequence[UniNode]
         );
         UniScopeNode.init(self, name=self.sym_name);
     }
+
     def create_sem_name_node(self: SemDef) -> Name {
         ret = Name(
             orig_src=self.target[-1].loc.orig_src,
@@ -1606,9 +1695,9 @@ Sequence[UniNode]
         return ret;
     }
 }
+
 """Enum node type for Jac Ast."""
-class Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode,
-ArchBlockStmt, UniScopeNode) {
+class Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     def init(
         self: Enum,
         name: Name,
@@ -1620,8 +1709,7 @@ ArchBlockStmt, UniScopeNode) {
         decorators: (Sequence[Expr] | None) = None
     ) -> None {
         self.name = name;
-        self.base_classes: list[Expr] = `list(base_classes) if base_classes else
-[];
+        self.base_classes: list[Expr] = `list(base_classes) if base_classes else [];
         UniNode.init(self, kid=kid);
         AstSymbolNode.init(
             self,
@@ -1637,9 +1725,9 @@ ArchBlockStmt, UniScopeNode) {
         ContextAwareNode.init(self);
     }
 }
+
 """Ability node type for Jac Ast."""
-class Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode,
-ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
+class Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
     def init(
         self: Ability,
         name_ref: (NameAtom | None),
@@ -1674,8 +1762,7 @@ ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
                 and (signature.event.name == Tok.KW_ENTRY)
             )
             else 'exit';
-            synthetic_name =
-f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
+            synthetic_name = f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
             synthetic_name_ref: NameAtom = Name(
                 orig_src=first_tok.orig_src,
                 name=Tok.NAME,
@@ -1707,10 +1794,12 @@ f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
         CodeBlockStmt.init(self);
         ContextAwareNode.init(self);
     }
+
     @property
     def is_method(self: Ability) -> bool {
         return (self.method_owner is not None);
     }
+
     """Check if this ability is a class method."""
     @property
     def is_cls_method(self: Ability) -> bool {
@@ -1722,18 +1811,20 @@ f"__ability_{event_type}_{first_tok.line_no}_{first_tok.c_start}__";
             )
         );
     }
+
     @property
     def is_def(self: Ability) -> bool {
-        return (not self.signature or isinstance(self.signature,
-FuncSignature));
+        return (not self.signature or isinstance(self.signature, FuncSignature));
     }
+
     @property
     def method_owner(self: Ability) -> Archetype | Enum | None {
         found = (
             self.parent
             if (self.parent and isinstance(self.parent, (Archetype, Enum)))
             else None
-        ) or (
+        )
+        or (
             self.parent.decl_link
             if (
                 self.parent
@@ -1744,10 +1835,12 @@ FuncSignature));
         );
         return found;
     }
+
     @property
     def is_genai_ability(self: Ability) -> bool {
         return isinstance(self.body, Expr);
     }
+
     """Get the range of positional arguments for this ability.
 
         Returns -1 for maximum number of arguments if there is an unpacked
@@ -1778,8 +1871,7 @@ parameter (e.g., *args).
                 and (self.signature.event.name == Tok.KW_ENTRY)
             )
             else 'exit';
-            return
-f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__";
+            return f"__ability_{event_type}_{self.loc.first_line}_{self.loc.col_start}__";
         } elif isinstance(self.name_ref, Name) {
             return self.name_ref.value;
         } elif isinstance(self.name_ref, SpecialVarRef) {
@@ -1810,6 +1902,7 @@ class FuncSignature(UniNode) {
         self.return_type = return_type;
         UniNode.init(self, kid=kid);
     }
+
     """Return all parameters in the declared order."""
     def get_parameters(self: FuncSignature) -> list[ParamVar] {
         params = self.posonly_params + self.params;
@@ -1822,6 +1915,7 @@ class FuncSignature(UniNode) {
         }
         return params;
     }
+
     @property
     def is_static(self: FuncSignature) -> bool {
         return (
@@ -1833,6 +1927,7 @@ class FuncSignature(UniNode) {
             )
         );
     }
+
     @property
     def is_in_py_class(self: FuncSignature) -> bool {
         is_archi = self.find_parent_of_type(Archetype);
@@ -1854,6 +1949,7 @@ class FuncSignature(UniNode) {
         );
     }
 }
+
 """EventSignature node type for Jac Ast."""
 class EventSignature(WalkerStmtOnlyNode) {
     def init(
@@ -1868,6 +1964,7 @@ class EventSignature(WalkerStmtOnlyNode) {
         WalkerStmtOnlyNode.init(self);
     }
 }
+
 """Parameter kinds."""
 class ParamKind(IntEnum) {
     with entry {
@@ -1878,6 +1975,7 @@ class ParamKind(IntEnum) {
         KWARG = 4;
     }
 }
+
 """ParamVar node type for Jac Ast."""
 class ParamVar(AstSymbolNode, AstTypedVarNode) {
     def init(
@@ -1894,20 +1992,22 @@ class ParamVar(AstSymbolNode, AstTypedVarNode) {
         self.value = value;
         UniNode.init(self, kid=kid);
         AstSymbolNode.init(
-            self, sym_name=name.value, name_spec=name,
-sym_category=SymbolType.VAR
+            self, sym_name=name.value, name_spec=name, sym_category=SymbolType.VAR
         );
         AstTypedVarNode.init(self, type_tag=type_tag);
     }
+
     @property
     def is_vararg(self: ParamVar) -> bool {
         return bool((self.unpack and (self.unpack.name == Tok.STAR_MUL.name)));
     }
+
     @property
     def is_kwargs(self: ParamVar) -> bool {
         return bool((self.unpack and (self.unpack.name == Tok.STAR_POW.name)));
     }
 }
+
 """ArchHas node type for Jac Ast."""
 class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
     def init(
@@ -1928,6 +2028,7 @@ class ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """HasVar node type for Jac Ast."""
 class HasVar(AstSymbolNode, AstTypedVarNode) {
     def init(
@@ -1943,12 +2044,12 @@ class HasVar(AstSymbolNode, AstTypedVarNode) {
         self.defer = defer;
         UniNode.init(self, kid=kid);
         AstSymbolNode.init(
-            self, sym_name=name.value, name_spec=name,
-sym_category=SymbolType.HAS_VAR
+            self, sym_name=name.value, name_spec=name, sym_category=SymbolType.HAS_VAR
         );
         AstTypedVarNode.init(self, type_tag=type_tag);
     }
 }
+
 """TypedCtxBlock node type for Jac Ast."""
 class TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
     def init(
@@ -1965,6 +2066,7 @@ class TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
         WalkerStmtOnlyNode.init(self);
     }
 }
+
 """IfStmt node type for Jac Ast."""
 class IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
     def init(
@@ -1982,8 +2084,10 @@ class IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """ElseIf node type for Jac Ast."""
 class ElseIf(IfStmt) {}
+
 """ElseStmt node type for Jac Ast."""
 class ElseStmt(UniScopeNode) {
     def init(
@@ -1994,6 +2098,7 @@ class ElseStmt(UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """ExprStmt node type for Jac Ast."""
 class ExprStmt(CodeBlockStmt) {
     def init(
@@ -2005,6 +2110,7 @@ class ExprStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """TryStmt node type for Jac Ast."""
 class TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2024,6 +2130,7 @@ class TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """Except node type for Jac Ast."""
 class Except(CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2041,6 +2148,7 @@ class Except(CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """FinallyStmt node type for Jac Ast."""
 class FinallyStmt(CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2052,6 +2160,7 @@ class FinallyStmt(CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """IterForStmt node type for Jac Ast."""
 class IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2075,6 +2184,7 @@ class IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """InForStmt node type for Jac Ast."""
 class InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2096,6 +2206,7 @@ class InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """WhileStmt node type for Jac Ast."""
 class WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2113,6 +2224,7 @@ class WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """WithStmt node type for Jac Ast."""
 class WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
     def init(
@@ -2130,17 +2242,18 @@ class WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
         CodeBlockStmt.init(self);
     }
 }
+
 """ExprAsItem node type for Jac Ast."""
 class ExprAsItem(UniNode) {
     def init(
-        self: ExprAsItem, expr: Expr, alias: (Expr | None), kid:
-Sequence[UniNode]
+        self: ExprAsItem, expr: Expr, alias: (Expr | None), kid: Sequence[UniNode]
     ) -> None {
         self.expr = expr;
         self.alias = alias;
         UniNode.init(self, kid=kid);
     }
 }
+
 """RaiseStmt node type for Jac Ast."""
 class RaiseStmt(CodeBlockStmt) {
     def init(
@@ -2155,6 +2268,7 @@ class RaiseStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """AssertStmt node type for Jac Ast."""
 class AssertStmt(CodeBlockStmt) {
     def init(
@@ -2169,6 +2283,7 @@ class AssertStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """CtrlStmt node type for Jac Ast."""
 class CtrlStmt(CodeBlockStmt) {
     def init(self: CtrlStmt, ctrl: Token, kid: Sequence[UniNode]) -> None {
@@ -2177,6 +2292,7 @@ class CtrlStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """DeleteStmt node type for Jac Ast."""
 class DeleteStmt(CodeBlockStmt) {
     def init(self: DeleteStmt, target: Expr, kid: Sequence[UniNode]) -> None {
@@ -2184,6 +2300,7 @@ class DeleteStmt(CodeBlockStmt) {
         UniNode.init(self, kid=kid);
         CodeBlockStmt.init(self);
     }
+
     """Get Python AST targets (without setting ctx)."""
     @property
     def py_ast_targets(self: DeleteStmt) -> list[ast3.AST] {
@@ -2192,6 +2309,7 @@ class DeleteStmt(CodeBlockStmt) {
         else self.target.gen.py_ast;
     }
 }
+
 """ReportStmt node type for Jac Ast."""
 class ReportStmt(CodeBlockStmt) {
     def init(self: ReportStmt, expr: Expr, kid: Sequence[UniNode]) -> None {
@@ -2200,15 +2318,16 @@ class ReportStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """ReturnStmt node type for Jac Ast."""
 class ReturnStmt(CodeBlockStmt) {
-    def init(self: ReturnStmt, expr: (Expr | None), kid: Sequence[UniNode]) ->
-None {
+    def init(self: ReturnStmt, expr: (Expr | None), kid: Sequence[UniNode]) -> None {
         self.expr = expr;
         UniNode.init(self, kid=kid);
         CodeBlockStmt.init(self);
     }
 }
+
 """VisitStmt node type for Jac Ast."""
 class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
     def init(
@@ -2226,6 +2345,7 @@ class VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """DisengageStmt node type for Jac Ast."""
 class DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
     """Initialize disengage statement node."""
@@ -2235,6 +2355,7 @@ class DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """AwaitExpr node type for Jac Ast."""
 class AwaitExpr(Expr) {
     def init(self: AwaitExpr, target: Expr, kid: Sequence[UniNode]) -> None {
@@ -2243,6 +2364,7 @@ class AwaitExpr(Expr) {
         Expr.init(self);
     }
 }
+
 """GlobalStmt node type for Jac Ast."""
 class GlobalStmt(CodeBlockStmt) {
     def init(
@@ -2253,8 +2375,10 @@ class GlobalStmt(CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """NonLocalStmt node type for Jac Ast."""
 class NonLocalStmt(GlobalStmt) {}
+
 """Assignment node type for Jac Ast."""
 class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
     def init(
@@ -2277,11 +2401,11 @@ class Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
         EnumBlockStmt.init(self, is_enum_stmt=is_enum_stmt);
     }
 }
+
 """ConcurrentExpr node type for Jac Ast."""
 class ConcurrentExpr(Expr) {
     def init(
-        self: ConcurrentExpr, tok: (Token | None), target: Expr, kid:
-Sequence[UniNode]
+        self: ConcurrentExpr, tok: (Token | None), target: Expr, kid: Sequence[UniNode]
     ) -> None {
         UniNode.init(self, kid=kid);
         Expr.init(self);
@@ -2289,6 +2413,7 @@ Sequence[UniNode]
         self.target = target;
     }
 }
+
 """BinaryExpr node type for Jac Ast."""
 class BinaryExpr(Expr) {
     def init(
@@ -2305,6 +2430,7 @@ class BinaryExpr(Expr) {
         Expr.init(self);
     }
 }
+
 """CompareExpr node type for Jac Ast."""
 class CompareExpr(Expr) {
     def init(
@@ -2321,6 +2447,7 @@ class CompareExpr(Expr) {
         Expr.init(self);
     }
 }
+
 """BoolExpr node type for Jac Ast."""
 class BoolExpr(Expr) {
     def init(
@@ -2332,6 +2459,7 @@ class BoolExpr(Expr) {
         Expr.init(self);
     }
 }
+
 """LambdaExpr node type for Jac Ast."""
 class LambdaExpr(Expr, UniScopeNode) {
     def init(
@@ -2351,16 +2479,17 @@ class LambdaExpr(Expr, UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """UnaryExpr node type for Jac Ast."""
 class UnaryExpr(Expr) {
-    def init(self: UnaryExpr, operand: Expr, op: Token, kid: Sequence[UniNode])
--> None {
+    def init(self: UnaryExpr, operand: Expr, op: Token, kid: Sequence[UniNode]) -> None {
         self.operand = operand;
         self.op = op;
         UniNode.init(self, kid=kid);
         Expr.init(self);
     }
 }
+
 """IfElseExpr node type for Jac Ast."""
 class IfElseExpr(Expr) {
     def init(
@@ -2377,6 +2506,7 @@ class IfElseExpr(Expr) {
         Expr.init(self);
     }
 }
+
 """MultiString node type for Jac Ast."""
 class MultiString(AtomExpr) {
     def init(
@@ -2390,6 +2520,7 @@ class MultiString(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.STRING);
     }
 }
+
 """FString node type for Jac Ast."""
 class FString(AtomExpr) {
     def init(
@@ -2407,6 +2538,7 @@ class FString(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.STRING);
     }
 }
+
 """FormattedValue node type for Jac Ast."""
 class FormattedValue(Expr) {
     def init(
@@ -2423,16 +2555,17 @@ class FormattedValue(Expr) {
         Expr.init(self);
     }
 }
+
 """ListVal node type for Jac Ast."""
 class ListVal(AtomExpr) {
-    def init(self: ListVal, values: Sequence[Expr], kid: Sequence[UniNode]) ->
-None {
+    def init(self: ListVal, values: Sequence[Expr], kid: Sequence[UniNode]) -> None {
         self.values = values;
         UniNode.init(self, kid=kid);
         Expr.init(self);
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """SetVal node type for Jac Ast."""
 class SetVal(AtomExpr) {
     def init(
@@ -2444,11 +2577,11 @@ class SetVal(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """TupleVal node type for Jac Ast."""
 class TupleVal(AtomExpr) {
     def init(
-        self: TupleVal, values: Sequence[(Expr | KWPair)], kid:
-Sequence[UniNode]
+        self: TupleVal, values: Sequence[(Expr | KWPair)], kid: Sequence[UniNode]
     ) -> None {
         self.values = `list(values);
         UniNode.init(self, kid=kid);
@@ -2456,16 +2589,17 @@ Sequence[UniNode]
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """DictVal node type for Jac Ast."""
 class DictVal(AtomExpr) {
-    def init(self: DictVal, kv_pairs: Sequence[KVPair], kid: Sequence[UniNode])
--> None {
+    def init(self: DictVal, kv_pairs: Sequence[KVPair], kid: Sequence[UniNode]) -> None {
         self.kv_pairs = kv_pairs;
         UniNode.init(self, kid=kid);
         Expr.init(self);
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """KVPair node type for Jac Ast."""
 class KVPair(UniNode) {
     def init(
@@ -2476,17 +2610,18 @@ class KVPair(UniNode) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """KWPair node type for Jac Ast."""
 class KWPair(UniNode) {
     def init(
-        self: KWPair, key: (NameAtom | None), value: Expr, kid:
-Sequence[UniNode]
+        self: KWPair, key: (NameAtom | None), value: Expr, kid: Sequence[UniNode]
     ) -> None {
         self.key = key;
         self.value = value;
         UniNode.init(self, kid=kid);
     }
 }
+
 """InnerCompr node type for Jac Ast."""
 class InnerCompr(AstAsyncNode, UniScopeNode) {
     def init(
@@ -2505,6 +2640,7 @@ class InnerCompr(AstAsyncNode, UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """ListCompr node type for Jac Ast."""
 class ListCompr(AtomExpr, UniScopeNode) {
     def init(
@@ -2521,10 +2657,13 @@ class ListCompr(AtomExpr, UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """GenCompr node type for Jac Ast."""
 class GenCompr(ListCompr) {}
+
 """SetCompr node type for Jac Ast."""
 class SetCompr(ListCompr) {}
+
 """DictCompr node type for Jac Ast."""
 class DictCompr(AtomExpr, UniScopeNode) {
     def init(
@@ -2541,6 +2680,7 @@ class DictCompr(AtomExpr, UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """AtomTrailer node type for Jac Ast."""
 class AtomTrailer(Expr) {
     def init(
@@ -2560,12 +2700,11 @@ class AtomTrailer(Expr) {
         UniNode.init(self, kid=kid);
         Expr.init(self);
     }
+
     @property
     def as_attr_list(self: AtomTrailer) -> list[AstSymbolNode] {
-        left = self.right if isinstance(self.right, AtomTrailer) else
-self.target;
-        right = self.target if isinstance(self.right, AtomTrailer) else
-self.right;
+        left = self.right if isinstance(self.right, AtomTrailer) else self.target;
+        right = self.target if isinstance(self.right, AtomTrailer) else self.right;
         trag_list: list[AstSymbolNode] = [right]
         if isinstance(right, AstSymbolNode)
         else [];
@@ -2581,22 +2720,22 @@ self.right;
         return trag_list;
     }
 }
+
 """AtomUnit node type for Jac Ast."""
 class AtomUnit(Expr) {
     def init(
-        self: AtomUnit, value: Expr | YieldExpr | Ability, kid:
-Sequence[UniNode]
+        self: AtomUnit, value: Expr | YieldExpr | Ability, kid: Sequence[UniNode]
     ) -> None {
         self.value = value;
         UniNode.init(self, kid=kid);
         Expr.init(self);
     }
 }
+
 """YieldExpr node type for Jac Ast."""
 class YieldExpr(Expr) {
     def init(
-        self: YieldExpr, expr: (Expr | None), with_from: bool, kid:
-Sequence[UniNode]
+        self: YieldExpr, expr: (Expr | None), with_from: bool, kid: Sequence[UniNode]
     ) -> None {
         self.expr = expr;
         self.with_from = with_from;
@@ -2604,6 +2743,7 @@ Sequence[UniNode]
         Expr.init(self);
     }
 }
+
 """FuncCall node type for Jac Ast."""
 class FuncCall(Expr) {
     def init(
@@ -2620,6 +2760,7 @@ class FuncCall(Expr) {
         Expr.init(self);
     }
 }
+
 """IndexSlice node type for Jac Ast."""
 class IndexSlice(AtomExpr) {
     """Slice node type for Jac Ast."""
@@ -2633,8 +2774,7 @@ class IndexSlice(AtomExpr) {
     }
 
     def init(
-        self: IndexSlice, slices: list[Slice], is_range: bool, kid:
-Sequence[UniNode]
+        self: IndexSlice, slices: list[Slice], is_range: bool, kid: Sequence[UniNode]
     ) -> None {
         self.slices = slices;
         self.is_range = is_range;
@@ -2643,6 +2783,7 @@ Sequence[UniNode]
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """EdgeRefTrailer node type for Jac Ast."""
 class EdgeRefTrailer(Expr) {
     def init(
@@ -2659,6 +2800,7 @@ class EdgeRefTrailer(Expr) {
         Expr.init(self);
     }
 }
+
 """EdgeOpRef node type for Jac Ast."""
 class EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
     def init(
@@ -2675,15 +2817,16 @@ class EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """DisconnectOp node type for Jac Ast."""
 class DisconnectOp(WalkerStmtOnlyNode) {
-    def init(self: DisconnectOp, edge_spec: EdgeOpRef, kid: Sequence[UniNode])
--> None {
+    def init(self: DisconnectOp, edge_spec: EdgeOpRef, kid: Sequence[UniNode]) -> None {
         self.edge_spec = edge_spec;
         UniNode.init(self, kid=kid);
         WalkerStmtOnlyNode.init(self);
     }
 }
+
 """ConnectOpRef node type for Jac Ast."""
 class ConnectOp(UniNode) {
     def init(
@@ -2699,6 +2842,7 @@ class ConnectOp(UniNode) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """FilterCompr node type for Jac Ast."""
 class FilterCompr(AtomExpr) {
     def init(
@@ -2714,6 +2858,7 @@ class FilterCompr(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """AssignCompr node type for Jac Ast."""
 class AssignCompr(AtomExpr) {
     def init(
@@ -2725,6 +2870,7 @@ class AssignCompr(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.SEQUENCE);
     }
 }
+
 """JsxElement node type for Jac Ast."""
 class JsxElement(AtomExpr) {
     def init(
@@ -2748,30 +2894,32 @@ class JsxElement(AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=SymbolType.OBJECT_ARCH);
     }
 }
+
 """JsxElementName node type for Jac Ast."""
 class JsxElementName(UniNode) {
     def init(
-        self: JsxElementName, parts: Sequence[(Name | Token)], kid:
-Sequence[UniNode]
+        self: JsxElementName, parts: Sequence[(Name | Token)], kid: Sequence[UniNode]
     ) -> None {
         self.parts = `list(parts);
         UniNode.init(self, kid=kid);
     }
 }
+
 """JsxAttribute node type for Jac Ast (base class)."""
 class JsxAttribute(UniNode) {
     def init(self: JsxAttribute, kid: Sequence[UniNode]) -> None {
         UniNode.init(self, kid=kid);
     }
 }
+
 """JsxSpreadAttribute node type for Jac Ast."""
 class JsxSpreadAttribute(JsxAttribute) {
-    def init(self: JsxSpreadAttribute, expr: Expr, kid: Sequence[UniNode]) ->
-None {
+    def init(self: JsxSpreadAttribute, expr: Expr, kid: Sequence[UniNode]) -> None {
         self.expr = expr;
         JsxAttribute.init(self, kid=kid);
     }
 }
+
 """JsxNormalAttribute node type for Jac Ast."""
 class JsxNormalAttribute(JsxAttribute) {
     def init(
@@ -2785,20 +2933,22 @@ class JsxNormalAttribute(JsxAttribute) {
         JsxAttribute.init(self, kid=kid);
     }
 }
+
 """JsxChild node type for Jac Ast (base class)."""
 class JsxChild(UniNode) {
     def init(self: JsxChild, kid: Sequence[UniNode]) -> None {
         UniNode.init(self, kid=kid);
     }
 }
+
 """JsxText node type for Jac Ast."""
 class JsxText(JsxChild) {
-    def init(self: JsxText, value: (str | Token), kid: Sequence[UniNode]) ->
-None {
+    def init(self: JsxText, value: (str | Token), kid: Sequence[UniNode]) -> None {
         self.value = value;
         JsxChild.init(self, kid=kid);
     }
 }
+
 """JsxExpression node type for Jac Ast."""
 class JsxExpression(JsxChild) {
     def init(self: JsxExpression, expr: Expr, kid: Sequence[UniNode]) -> None {
@@ -2806,11 +2956,11 @@ class JsxExpression(JsxChild) {
         JsxChild.init(self, kid=kid);
     }
 }
+
 """MatchStmt node type for Jac Ast."""
 class MatchStmt(CodeBlockStmt) {
     def init(
-        self: MatchStmt, target: Expr, cases: list[MatchCase], kid:
-Sequence[UniNode]
+        self: MatchStmt, target: Expr, cases: list[MatchCase], kid: Sequence[UniNode]
     ) -> None {
         self.target = target;
         self.cases = cases;
@@ -2818,6 +2968,7 @@ Sequence[UniNode]
         CodeBlockStmt.init(self);
     }
 }
+
 """MatchCase node type for Jac Ast."""
 class MatchCase(UniScopeNode) {
     def init(
@@ -2834,11 +2985,11 @@ class MatchCase(UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """SwitchStmt node type for Jac Ast."""
 class SwitchStmt(CodeBlockStmt) {
     def init(
-        self: SwitchStmt, target: Expr, cases: list[SwitchCase], kid:
-Sequence[UniNode]
+        self: SwitchStmt, target: Expr, cases: list[SwitchCase], kid: Sequence[UniNode]
     ) -> None {
         self.target = target;
         self.cases = cases;
@@ -2846,6 +2997,7 @@ Sequence[UniNode]
         CodeBlockStmt.init(self);
     }
 }
+
 """SwitchCase node type for Jac Ast."""
 class SwitchCase(UniScopeNode) {
     def init(
@@ -2860,6 +3012,7 @@ class SwitchCase(UniScopeNode) {
         UniScopeNode.init(self, name=f"{self.__class__.__name__}");
     }
 }
+
 """MatchOr node type for Jac Ast."""
 class MatchOr(MatchPattern) {
     def init(
@@ -2869,6 +3022,7 @@ class MatchOr(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchAs node type for Jac Ast."""
 class MatchAs(MatchPattern) {
     def init(
@@ -2882,8 +3036,10 @@ class MatchAs(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchWild node type for Jac Ast."""
 class MatchWild(MatchPattern) {}
+
 """MatchValue node type for Jac Ast."""
 class MatchValue(MatchPattern) {
     def init(self: MatchValue, value: Expr, kid: Sequence[UniNode]) -> None {
@@ -2891,6 +3047,7 @@ class MatchValue(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchSingleton node type for Jac Ast."""
 class MatchSingleton(MatchPattern) {
     def init(
@@ -2900,6 +3057,7 @@ class MatchSingleton(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchSequence node type for Jac Ast."""
 class MatchSequence(MatchPattern) {
     def init(
@@ -2909,6 +3067,7 @@ class MatchSequence(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchMapping node type for Jac Ast."""
 class MatchMapping(MatchPattern) {
     def init(
@@ -2920,6 +3079,7 @@ class MatchMapping(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchKVPair node type for Jac Ast."""
 class MatchKVPair(MatchPattern) {
     def init(
@@ -2933,6 +3093,7 @@ class MatchKVPair(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchStar node type for Jac Ast."""
 class MatchStar(MatchPattern) {
     def init(
@@ -2943,6 +3104,7 @@ class MatchStar(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """MatchArch node type for Jac Ast."""
 class MatchArch(MatchPattern) {
     def init(
@@ -2958,6 +3120,7 @@ class MatchArch(MatchPattern) {
         UniNode.init(self, kid=kid);
     }
 }
+
 """Token node type for Jac Ast."""
 class Token(UniNode) {
     def init(
@@ -2983,9 +3146,11 @@ class Token(UniNode) {
         self.pos_end = pos_end;
         UniNode.init(self, kid=[]);
     }
+
     def __repr__(self: Token) -> str {
         return f"Token({self.name}, {self.value}, {self.loc})";
     }
+
     def unparse(self: Token) -> str {
         if self.gen.jac {
             return self.gen.jac;
@@ -2993,6 +3158,7 @@ class Token(UniNode) {
         return self.value;
     }
 }
+
 """Name node type for Jac Ast."""
 class Name(Token, NameAtom) {
     def init(
@@ -3027,10 +3193,10 @@ class Name(Token, NameAtom) {
             self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR
         );
     }
+
     """Generate name from node."""
     static def gen_stub_from_node(
-        `node: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None)
-= None
+        `node: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
     ) -> Name {
         ret = Name(
             orig_src=`node.loc.orig_src,
@@ -3048,10 +3214,10 @@ class Name(Token, NameAtom) {
         return ret;
     }
 }
+
 """SpecialVarRef node type for Jac Ast."""
 class SpecialVarRef(Name) {
-    def init(self: SpecialVarRef, var: Name, is_enum_stmt: bool = False) -> None
-{
+    def init(self: SpecialVarRef, var: Name, is_enum_stmt: bool = False) -> None {
         self.orig = var;
         Name.init(
             self,
@@ -3073,6 +3239,7 @@ class SpecialVarRef(Name) {
             sym_category=SymbolType.VAR
         );
     }
+
     def py_resolve_name(self: SpecialVarRef) -> str {
         if (self.orig.name == Tok.KW_SELF) {
             return 'self';
@@ -3092,11 +3259,11 @@ class SpecialVarRef(Name) {
         } elif (self.orig.name == Tok.KW_POST_INIT) {
             return '__post_init__';
         } else {
-            raise NotImplementedError('ICE: Special var reference not
-implemented') ;
+            raise NotImplementedError('ICE: Special var reference not implemented') ;
         }
     }
 }
+
 """Literal node type for Jac Ast."""
 class Literal(Token, AtomExpr) {
     with entry {
@@ -3142,6 +3309,7 @@ class Literal(Token, AtomExpr) {
         AstSymbolStubNode.init(self, sym_type=self.SYMBOL_TYPE);
         Expr.init(self);
     }
+
     """Return literal value in its python type."""
     @property
     def lit_value(
@@ -3150,6 +3318,7 @@ class Literal(Token, AtomExpr) {
         raise NotImplementedError ;
     }
 }
+
 """BuiltinType node type for Jac Ast."""
 class BuiltinType(Name, Literal) {
     with entry {
@@ -3165,6 +3334,7 @@ class BuiltinType(Name, Literal) {
         return Literal.type_map[self.value];
     }
 }
+
 """Float node type for Jac Ast."""
 class Float(Literal) {
     with entry {
@@ -3176,6 +3346,7 @@ class Float(Literal) {
         return float(self.value);
     }
 }
+
 """Int node type for Jac Ast."""
 class Int(Literal) {
     with entry {
@@ -3187,6 +3358,7 @@ class Int(Literal) {
         return int(self.value);
     }
 }
+
 """String node type for Jac Ast."""
 class String(Literal) {
     with entry {
@@ -3214,11 +3386,9 @@ class String(Literal) {
                     return ast3.literal_eval(self.value);
                 } except (ValueError, SyntaxError) {
                     if (
-                        (self.value.startswith('"""') and
-self.value.endswith('"""'))
+                        (self.value.startswith('"""') and self.value.endswith('"""'))
                         or (
-                            self.value.startswith("'''") and
-self.value.endswith("'''")
+                            self.value.startswith("'''") and self.value.endswith("'''")
                         )
                     ) {
                         return self.value[3:-3];
@@ -3254,6 +3424,7 @@ self.value.endswith("'''")
         }
     }
 }
+
 """Bool node type for Jac Ast."""
 class Bool(Literal) {
     with entry {
@@ -3265,6 +3436,7 @@ class Bool(Literal) {
         return (self.value == 'True');
     }
 }
+
 """Null node type for Jac Ast."""
 class Null(Literal) {
     with entry {
@@ -3276,6 +3448,7 @@ class Null(Literal) {
         return None;
     }
 }
+
 """Ellipsis node type for Jac Ast."""
 class Ellipsis(Literal) {
     with entry {
@@ -3287,6 +3460,7 @@ class Ellipsis(Literal) {
         return ...;
     }
 }
+
 """EmptyToken node type for Jac Ast."""
 class EmptyToken(Token) {
     def init(self: EmptyToken, orig_src: (Source | None) = None) -> None {
@@ -3303,6 +3477,7 @@ class EmptyToken(Token) {
         );
     }
 }
+
 """Semicolon node type for Jac Ast."""
 class Semi(Token, CodeBlockStmt) {
     """Initialize token."""
@@ -3333,6 +3508,7 @@ class Semi(Token, CodeBlockStmt) {
         CodeBlockStmt.init(self);
     }
 }
+
 """CommentToken node type for Jac Ast."""
 class CommentToken(Token) {
     def init(
@@ -3364,6 +3540,7 @@ class CommentToken(Token) {
         );
         UniNode.init(self, kid=kid);
     }
+
     @property
     def left_node(self: CommentToken) -> (UniNode | None) {
         if (self.parent and ((idx := self.parent.kid.index(self)) > 0)) {
@@ -3371,18 +3548,19 @@ class CommentToken(Token) {
         }
         return None;
     }
+
     @property
     def right_node(self: CommentToken) -> (UniNode | None) {
         if (
             self.parent
-            and ((idx := self.parent.kid.index(self)) < (len(self.parent.kid) -
-1))
+            and ((idx := self.parent.kid.index(self)) < (len(self.parent.kid) - 1))
         ) {
             return self.parent.kid[(idx + 1)];
         }
         return None;
     }
 }
+
 """SourceString node type for Jac Ast."""
 class Source(EmptyToken) {
     def init(self: Source, source: str, mod_path: str) -> None {
@@ -3392,16 +3570,17 @@ class Source(EmptyToken) {
         self.file_path = mod_path;
         self.comments: list[CommentToken] = [];
     }
+
     """Return the source code as string."""
     @property
     def code(self: Source) -> str {
         return self.value;
     }
 }
+
 """SourceString node type for Jac Ast."""
 class PythonModuleAst(EmptyToken) {
-    def init(self: PythonModuleAst, ast: ast3.Module, orig_src: Source) -> None
-{
+    def init(self: PythonModuleAst, ast: ast3.Module, orig_src: Source) -> None {
         super.init();
         self.ast = ast;
         self.orig_src = orig_src;
