@@ -28,6 +28,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
+import from jaclang.jac0core.unitree { CommentToken }
 import from jaclang.jac0core.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
 import from jaclang.jac0core.unitree {
     ArchHas,
@@ -3067,7 +3068,7 @@ impl Parser.parse_jsx_child -> Expr {
 # =============================================================================
 impl Parser.parse_element_stmt{
     while self.match_tok(TokenKind.SEMI) {
-        skip;
+        continue;
     }
     if self.at_end() {
         return None;
@@ -4614,7 +4615,7 @@ impl Parser.parse_global_stmt -> GlobalStmt {
     # Parse: global name1, name2, ...;
     self.expect(TokenKind.KW_GLOBAL_REF);
     targets: list = [];
-    kid: list = [self.gen_token("global")];
+    kid: list = [self.gen_token(Tok.GLOBAL_OP.value, "global")];
     name_tok = self.expect_name();
     name = self.make_name(name_tok);
     targets.append(name);
@@ -4636,7 +4637,7 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
     # Parse: nonlocal name1, name2, ...;
     self.expect(TokenKind.KW_NONLOCAL);
     targets: list = [];
-    kid: list = [self.gen_token("nonlocal")];
+    kid: list = [self.gen_token(Tok.NONLOCAL_OP.value, "nonlocal")];
     name_tok = self.expect_name();
     name = self.make_name(name_tok);
     targets.append(name);
@@ -4889,19 +4890,7 @@ impl Parser.parse_import_stmt -> Import {
                 path_kid.append(alias);
             }
             path = ModulePath(path=path_names, level=0, alias=alias, kid=path_kid);
-            if is_include {
-                # For include statements, items should contain ModulePath
-                items.append(path);
-            } else {
-                item = ModuleItem(
-                    name=path_names[-1]
-                    if path_names
-                    else self.gen_token(Tok.NAME.value, ""),
-                    alias=alias,
-                    kid=[path] if alias is None else [path, alias]
-                );
-                items.append(item);
-            }
+            items.append(path);
             kid.append(path);
             # Check for more imports
             if not self.match_tok(TokenKind.COMMA) {
@@ -5017,7 +5006,7 @@ impl Parser.parse_archetype -> Archetype {
 
 impl Parser.parse_archetype_member{
     while self.match_tok(TokenKind.SEMI) {
-        skip;
+        continue;
     }
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
@@ -5153,10 +5142,12 @@ impl Parser.parse_archetype_member{
 
 impl Parser.parse_has_stmt -> ArchHas {
     is_static = False;
+    static_tok = None;
     if self.match_tok(TokenKind.KW_STATIC) {
         is_static = True;
+        static_tok = self.previous();
     }
-    self.expect(TokenKind.KW_HAS);
+    has_tok = self.expect(TokenKind.KW_HAS);
     access = self.parse_access_tag();
     vars: list = [];
     vars.append(self.parse_has_var());
@@ -5166,9 +5157,9 @@ impl Parser.parse_has_stmt -> ArchHas {
     self.expect(TokenKind.SEMI);
     kid: list = [];
     if is_static {
-        kid.append(self.gen_token(Tok.KW_STATIC.value));
+        kid.append(self.make_uni_token(static_tok));
     }
-    kid.append(self.gen_token(Tok.KW_HAS.value));
+    kid.append(self.make_uni_token(has_tok));
     if access {
         kid.append(access);
     }
@@ -5259,16 +5250,22 @@ impl Parser.parse_ability -> Ability {
         decorators.append(self.parse_atomic_chain());
     }
     is_override = False;
+    override_tok = None;
     if self.match_tok(TokenKind.KW_OVERRIDE) {
         is_override = True;
+        override_tok = self.previous();
     }
     is_static = False;
+    static_tok = None;
     if self.match_tok(TokenKind.KW_STATIC) {
         is_static = True;
+        static_tok = self.previous();
     }
     is_async = False;
+    async_tok = None;
     if self.match_tok(TokenKind.KW_ASYNC) {
         is_async = True;
+        async_tok = self.previous();
     }
     is_can = self.check(TokenKind.KW_CAN);
     ability_tok = self.advance();
@@ -5345,13 +5342,13 @@ impl Parser.parse_ability -> Ability {
         kid.append(d);
     }
     if is_override {
-        kid.append(self.gen_token(Tok.KW_OVERRIDE.value));
+        kid.append(self.make_uni_token(override_tok));
     }
     if is_static {
-        kid.append(self.gen_token(Tok.KW_STATIC.value));
+        kid.append(self.make_uni_token(static_tok));
     }
     if is_async {
-        kid.append(self.gen_token(Tok.KW_ASYNC.value));
+        kid.append(self.make_uni_token(async_tok));
     }
     kid.append(self.make_uni_token(ability_tok));
     if access {

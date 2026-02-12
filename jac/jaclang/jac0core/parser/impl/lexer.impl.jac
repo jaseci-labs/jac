@@ -163,9 +163,16 @@ impl Lexer.skip_whitespace{
 }
 
 impl Lexer.skip_line_comment{
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
     while not self.at_end() and self.current() != "\n" {
         self.advance();
     }
+    comment_text = self.source[start_pos:self.pos];
+    self.comments.append(
+        (comment_text, start_line, start_line, start_col, self.col, start_pos, self.pos, False)
+    );
 }
 
 impl Lexer.skip_block_comment -> bool {
@@ -179,6 +186,10 @@ impl Lexer.skip_block_comment -> bool {
         if self.current() == "*" and self.peek() == "#" {
             self.advance();  # *
             self.advance();  # #
+            comment_text = self.source[start_pos:self.pos];
+            self.comments.append(
+                (comment_text, start_line, self.line, start_col, self.col, start_pos, self.pos, True)
+            );
             return True;
         }
         self.advance();

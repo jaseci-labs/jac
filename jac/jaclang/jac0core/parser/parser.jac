@@ -34,6 +34,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
+import from jaclang.jac0core.unitree { CommentToken }
 import from jaclang.jac0core.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
 import from jaclang.jac0core.unitree {
     ArchHas,
@@ -532,5 +533,25 @@ def parse(
     tokens = lexer.tokenize();
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
     module = parser.parse();
+    # Transfer captured comments from lexer to module source
+    if module.source and lexer.comments {
+        for cdata in lexer.comments {
+            # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+            ct = CommentToken(
+                orig_src=module.source,
+                name="COMMENT",
+                value=cdata[0],
+                line=cdata[1],
+                end_line=cdata[2],
+                col_start=cdata[3],
+                col_end=cdata[4],
+                pos_start=cdata[5],
+                pos_end=cdata[6],
+                kid=[],
+                is_inline=False
+            );
+            module.source.comments.append(ct);
+        }
+    }
     return (module, parser.errors, lexer.errors);
 }
