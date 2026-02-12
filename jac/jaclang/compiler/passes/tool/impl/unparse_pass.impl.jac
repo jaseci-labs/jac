@@ -13,7 +13,7 @@ impl UnparsePass._comma_sep(nodes: list) -> str {
             for n in nodes
             if n
         ]
-    );   
+    );
     if hasattr(nodes, "gen.jac"){
         return nodes.gen.jac;
     }
