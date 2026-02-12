@@ -98,13 +98,18 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
         if response.status == 401 {
             __removeLocalStorage("jac_token");
         } else {
-            console.error(f"Function {function_name} failed with status {response.status}");
+            console.error(
+                f"Function {function_name} failed with status {response.status}"
+            );
         }
         return None;
     }
     payload = await response.json();
     if not payload["ok"] {
-        console.error(f"Function {function_name} failed:", payload["error"] if payload["error"] else "Unknown error");
+        console.error(
+            f"Function {function_name} failed:",
+            payload["error"] if payload["error"] else "Unknown error"
+        );
         return None;
     }
     result = None;
