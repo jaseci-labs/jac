@@ -168,7 +168,6 @@ Holds the shared details of class type.
             is_data_class: bool = False,
             is_root_class: bool = False,
             is_enum_class: bool = False,
-            is_repr_enum: bool = False,
             enum_value_type: (TypeBase | None) = None,
             enum_members: (dict[str, EnumMemberInfo] | None) = None;
 

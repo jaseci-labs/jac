@@ -14,8 +14,7 @@ with entry {
 }
 
 # Names that are excluded from enum membership
-glob ENUM_RESERVED_NAMES: set[str] = {'name','value','_name_','_value_','_ignore_','_order_','__order__','_missing_','_generate_next_value_'},
-     ENUM_DUNDER_EXCLUSIONS: set[str] = {'_name_','_value_','_ignore_','_order_'};
+glob ENUM_RESERVED_NAMES: set[str] = {'name','value','_name_','_value_','_ignore_','_order_','__order__','_missing_','_generate_next_value_'};
 
 """Check if a name should be excluded from enum membership."""
 def is_excluded_enum_member_name(name: str) -> bool;
@@ -34,4 +33,3 @@ def build_enum_members(
 def get_special_enum_value_type_from_bases(
     base_classes: list[types.TypeBase], prefetch: "PrefetchedTypes"
 ) -> (types.TypeBase | None);
-# Single underscore names that are not enum members

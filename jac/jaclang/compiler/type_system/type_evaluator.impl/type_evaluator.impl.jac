@@ -70,53 +70,6 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
                     assert isinstance(base_type, types.ClassType);
-                    # Handle enum class member access
-                    if base_type.is_enum_class() {
-                        member_name = expr.right.value;
-                        # Handle .name / ._name_ on enum class (returns property)
-                        if member_name in ('name', '_name_') {
-                            if member := self._lookup_class_member(
-                                base_type, member_name
-                            ) {
-                                self._set_symbol_to_expr(expr.right, member.symbol);
-                            }
-                            return self._convert_to_instance(self.prefetch.str_class);
-                        }
-                        # Handle .value / ._value_ on enum class (returns property)
-                        if member_name in ('value', '_value_') {
-                            if member := self._lookup_class_member(
-                                base_type, member_name
-                            ) {
-                                self._set_symbol_to_expr(expr.right, member.symbol);
-                            }
-                            if base_type.shared.enum_value_type {
-                                return self._convert_to_instance(
-                                    base_type.shared.enum_value_type
-                                );
-                            }
-                            return self._convert_to_instance(self.prefetch.int_class);
-                        }
-                        # Handle enum member access (e.g., Color.RED)
-                        if base_type.shared.enum_members
-                        and member_name in base_type.shared.enum_members {
-                            member_info = base_type.shared.enum_members[member_name];
-                            if member := self._lookup_class_member(
-                                base_type, member_name
-                            ) {
-                                self._set_symbol_to_expr(expr.right, member.symbol);
-                            }
-                            return types.EnumMemberType(
-                                enum_class=base_type,
-                                member_info=member_info,
-                                flags=types.TypeFlags.Instance
-                            );
-                        }
-                        # Fall back to returning enum instance for unknown members
-                        if member := self._lookup_class_member(base_type, member_name) {
-                            self._set_symbol_to_expr(expr.right, member.symbol);
-                        }
-                        return base_type.clone_as_instance();
-                    }
                     if member := self._lookup_class_member(base_type, expr.right.value) {
                         value = self._set_symbol_to_expr(expr.right, member.symbol);
                         return value;
@@ -326,11 +279,6 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 if isinstance(expr.right, uni.IndexSlice) and expr.right.is_range {
                     # TODO: Validate the slice type arguments.
                     return self.get_type_of_expression(expr.target);
-                }
-                # Handle enum subscripting: MyEnum["RED"]
-                if isinstance(base_type, types.ClassType) and base_type.is_enum_class() {
-                    # For now, return enum instance (later can add string literal validation)
-                    return base_type.clone_as_instance();
                 }
                 # Regular <expr>[<expr>] case, we need to call __getitem__()
                 return self.get_type_of_magic_method_call(
