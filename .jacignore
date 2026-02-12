@@ -8,6 +8,7 @@ ability_has.jac
 access_mod_check.jac
 actions.jac
 advanced_language_features.jac
+api_key_verbose.jac
 app.cl.jac
 app.jac
 app_err.jac
