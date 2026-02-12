@@ -214,6 +214,90 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             if is_pkg:
                 # Empty package is OK - just register it
                 return
+            
+            # If no bytecode is found, check if there were compilation errors
+            if program.errors_had:
+                error_msg = ""
+                # Collect errors to process
+                errors = program.errors_had
+                
+                for i, e in enumerate(errors):
+                    # specific filtering for redundant errors
+                    if e.msg == "Unexpected token ''":
+                        continue
+                    
+                    # If this is an "Unexpected token" error, check if there's a "Missing SEMI" 
+                    # error at the same location (or very close). If so, skip this one as it's likely a side effect.
+                    if e.msg.startswith("Unexpected token"):
+                        is_redundant = False
+                        for other in errors:
+                            if other is not e and other.msg == "Missing SEMI":
+                                if (
+                                    hasattr(e, "loc") and hasattr(other, "loc") 
+                                    and e.loc and other.loc
+                                    and e.loc.mod_path == other.loc.mod_path
+                                    and e.loc.first_line == other.loc.first_line
+                                ):
+                                    is_redundant = True
+                                    break
+                        if is_redundant:
+                            continue
+
+                    if hasattr(e, "loc") and e.loc:
+                        file_path = e.loc.mod_path
+                        line_no = e.loc.first_line
+                        col_no = e.loc.col_start
+                        msg = e.msg
+                        
+                        # Heuristic for Missing SEMI at the start of a line (handling indentation)
+                        moved_to_prev_line = False
+                        if e.loc.orig_src and e.loc.orig_src.code:
+                            source_lines = e.loc.orig_src.code.splitlines()
+                            
+                            if 0 <= line_no - 1 < len(source_lines):
+                                current_line = source_lines[line_no - 1]
+                                # Check if token is at start of line (ignoring whitespace)
+                                prefix = current_line[:col_no-1]
+                                if not prefix.strip() and msg == "Missing SEMI":
+                                    # Start checking from the previous line
+                                    prev_line_idx = line_no - 2
+                                    while prev_line_idx >= 0:
+                                        prev_line = source_lines[prev_line_idx]
+                                        if prev_line.strip():
+                                            # Found a non-empty previous line
+                                            line_no = prev_line_idx + 1
+                                            moved_to_prev_line = True
+                                            break
+                                        prev_line_idx -= 1
+
+                        # Format like Python SyntaxError
+                        error_msg += f'\n  File "{file_path}", line {line_no}\n'
+                        
+                        # Display the (possibly updated) line
+                        if e.loc.orig_src and e.loc.orig_src.code:
+                            source_lines = e.loc.orig_src.code.splitlines()
+                            if 0 <= line_no - 1 < len(source_lines):
+                                display_line = source_lines[line_no - 1]
+                                error_msg += f"    {display_line}\n"
+                                
+                                # Calculate caret position
+                                if moved_to_prev_line:
+                                    # Point to the character after the last non-whitespace character
+                                    stripped_len = len(display_line.rstrip())
+                                    caret_col = stripped_len + 1
+                                else:
+                                    caret_col = col_no
+                                
+                                error_msg += f"    {' ' * (caret_col - 1)}^\n"
+
+                        error_msg += f"SyntaxError: {msg}\n"
+                    else:
+                        error_msg += f"\nError: {e}\n"
+                        
+                raise ImportError(
+                    f"Errors occurred during compilation of {file_path}:{error_msg}"
+                )
+
             raise ImportError(f"No bytecode found for {file_path}")
 
         # Inject native interop infrastructure if needed (sv↔na interop)
