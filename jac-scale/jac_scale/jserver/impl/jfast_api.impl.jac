@@ -69,6 +69,7 @@ class ConsoleLogHandler(logging.Handler) {
 impl JFastApiServer.run_server(
     self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000
 ) -> None {
+    import from jaclang.cli.console { console }
     app = self.create_server();
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
@@ -107,6 +108,10 @@ impl JFastApiServer.run_server(
         },
 
     };
+    # Print server started message before blocking uvicorn.run()
+    display_host = "localhost" if host == "0.0.0.0" else host;
+    console.print(f"Server started at http://{display_host}:{port}");
+    console.print(f"API docs available at http://{display_host}:{port}/docs");
     uvicorn.run(app, host=host, port=port, log_config=log_config);
 }
 
