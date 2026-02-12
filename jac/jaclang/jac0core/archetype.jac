@@ -62,8 +62,7 @@ class AnchorReport {
         context: dict[(str, Any)];
     }
 }
-glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
-list[Archetype] | None';
+glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
 """Object-Spatial Destination."""
 @dataclass(eq=False, repr=False)
 class ObjectSpatialDestination {

@@ -10,6 +10,7 @@ actions.jac
 advanced_language_features.jac
 app.cl.jac
 app.jac
+app_err.jac
 archetype.jac
 bccache.jac
 builtin.jac

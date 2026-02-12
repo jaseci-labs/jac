@@ -296,15 +296,15 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
 }
 
 """Format .jac files with improved code style."""
-impl format(paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False) -> int {
+impl format(
+    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+) -> int {
     import from jaclang.jac0core.program { JacProgram }
-    import os;
     if isinstance(paths, str) {
         paths = [paths];
     }
     # Track unformatted files for check mode
     unformatted_files: list[str] = [];
-
     def write_formatted_code(code: str, target_path: str) -> None {
         if to_screen {
             console.print(code);
@@ -406,28 +406,14 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False, check: 
             failed_files += 1;
         }
     }
-
     # In check mode, report unformatted files with clear actionable feedback
     if check and len(unformatted_files) > 0 {
-        console.print("");
         console.error("The following files are not properly formatted:");
-        console.print("==============================================");
         for file in unformatted_files {
-            console.print(f"  {file}");
-        }
-        console.print("");
-        console.print("Please run: jac format . --lintfix");
-        console.print("==============================================");
-        console.print("");
-        # Emit GitHub Actions error annotations if running in CI
-        if os.environ.get("GITHUB_ACTIONS") == "true" {
-            for file in unformatted_files {
-                print(f"::error file={file}::File is not properly formatted. Run 'jac format --lintfix {file}'");
-            }
+            console.error(f"  jac format {file} --lintfix");
         }
         return 1;
     }
-
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
         if check {
             summary_msg = f"Checked {(total_files - failed_files)}/{total_files} '.jac' files - all formatted correctly.";

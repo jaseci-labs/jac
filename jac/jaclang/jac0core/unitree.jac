@@ -3092,8 +3092,7 @@ class SpecialVarRef(Name) {
         } elif (self.orig.name == Tok.KW_POST_INIT) {
             return '__post_init__';
         } else {
-            raise NotImplementedError('ICE: Special var reference not
-implemented') ;
+            raise NotImplementedError('ICE: Special var reference not implemented') ;
         }
     }
 }
