@@ -296,15 +296,19 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
 }
 
 """Format .jac files with improved code style."""
-impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int {
+impl format(
+    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
+    # Track unformatted files for check mode
+    unformatted_files: list[str] = [];
     def write_formatted_code(code: str, target_path: str) -> None {
         if to_screen {
             console.print(code);
-        } else {
+        } elif not check {
             with open(target_path, 'w') as f {
                 f.write(code);
             }
@@ -376,6 +380,9 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int 
                 failed_files += 1;
             } elif changed {
                 changed_files += 1;
+                if check {
+                    unformatted_files.append(path);
+                }
             }
         } elif path_obj.is_dir() {
             for jac_file in path_obj.glob('**/*.jac') {
@@ -389,6 +396,9 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int 
                     failed_files += 1;
                 } elif changed {
                     changed_files += 1;
+                    if check {
+                        unformatted_files.append(str(jac_file));
+                    }
                 }
             }
         } else {
@@ -396,8 +406,20 @@ impl format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int 
             failed_files += 1;
         }
     }
+    # In check mode, report unformatted files with clear actionable feedback
+    if check and len(unformatted_files) > 0 {
+        console.error("The following files are not properly formatted:");
+        for file in unformatted_files {
+            console.error(f"  jac format {file} --lintfix");
+        }
+        return 1;
+    }
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
-        summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
+        if check {
+            summary_msg = f"Checked {(total_files - failed_files)}/{total_files} '.jac' files - all formatted correctly.";
+        } else {
+            summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
+        }
         if failed_files > 0 {
             console.error(summary_msg);
         } else {

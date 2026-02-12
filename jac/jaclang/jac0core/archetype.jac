@@ -14,6 +14,7 @@ glob logger = getLogger(__name__),
      TARCH = TypeVar('TARCH', bound='Archetype'),
      TANCH = TypeVar('TANCH', bound='Anchor'),
      T = TypeVar('T');
+
 """Access level enum."""
 class AccessLevel(IntEnum) {
     with entry {
@@ -34,6 +35,7 @@ class AccessLevel(IntEnum) {
         }
     }
 }
+
 """Access Structure."""
 @dataclass
 class Access {
@@ -46,6 +48,7 @@ class Access {
         return self.anchors.get(anchor);
     }
 }
+
 """Anchor Access Handler."""
 @dataclass
 class Permission {
@@ -54,6 +57,7 @@ class Permission {
         roots: Access = field(default_factory=Access);
     }
 }
+
 """Report Handler."""
 @dataclass
 class AnchorReport {
@@ -62,8 +66,8 @@ class AnchorReport {
         context: dict[(str, Any)];
     }
 }
-glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
-list[Archetype] | None';
+
+glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
 """Object-Spatial Destination."""
 @dataclass(eq=False, repr=False)
 class ObjectSpatialDestination {
@@ -77,11 +81,13 @@ class ObjectSpatialDestination {
     def edge_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool {
         return (not self.edge or self.edge(arch));
     }
+
     """Filter node."""
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool {
         return (not self.node or self.node(arch));
     }
 }
+
 """Object-Spatial Path."""
 @dataclass(eq=False, repr=False)
 class ObjectSpatialPath {
@@ -106,6 +112,7 @@ class ObjectSpatialPath {
         self.edge_only = False;
         self.from_visit = False;
     }
+
     """Convert filter."""
     def convert(
         self: ObjectSpatialPath, filter: ObjectSpatialFilter
@@ -120,6 +127,7 @@ class ObjectSpatialPath {
         }
         return lambda i: Any : (i == filter);
     }
+
     """Append destination."""
     def append(
         self: ObjectSpatialPath,
@@ -134,6 +142,7 @@ class ObjectSpatialPath {
         );
         return self;
     }
+
     """Override greater than function."""
     def edge_out(
         self: ObjectSpatialPath,
@@ -142,6 +151,7 @@ class ObjectSpatialPath {
     ) -> ObjectSpatialPath {
         return self.append(EdgeDir.OUT, `edge, `node);
     }
+
     """Override greater than function."""
     def edge_in(
         self: ObjectSpatialPath,
@@ -150,6 +160,7 @@ class ObjectSpatialPath {
     ) -> ObjectSpatialPath {
         return self.append(EdgeDir.IN, `edge, `node);
     }
+
     """Override greater than function."""
     def edge_any(
         self: ObjectSpatialPath,
@@ -158,16 +169,19 @@ class ObjectSpatialPath {
     ) -> ObjectSpatialPath {
         return self.append(EdgeDir.ANY, `edge, `node);
     }
+
     """Set edge only."""
     def set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath {
         self.edge_only = True;
         return self;
     }
+
     """Set edge only mode (alias for set_edge_only)."""
     def `edge(self: ObjectSpatialPath) -> ObjectSpatialPath {
         self.edge_only = True;
         return self;
     }
+
     """Set from visit mode."""
     def `visit(self: ObjectSpatialPath) -> ObjectSpatialPath {
         self.from_visit = True;
@@ -191,6 +205,7 @@ class ObjectSpatialPath {
         repr_str += f" (node{' filter' if dest.node else ''}) ";
         return repr_str;
     }
+
     """Override repr."""
     def __repr__(self: ObjectSpatialPath) -> str {
         repr_str = 'nodes ';
@@ -206,6 +221,7 @@ class ObjectSpatialPath {
         return repr_str.strip();
     }
 }
+
 """Object Anchor."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class Anchor {
@@ -222,6 +238,7 @@ class Anchor {
     def is_populated(self: Anchor) -> bool {
         return ('archetype' in self.__dict__);
     }
+
     """Return unsynced copy of anchor."""
     def make_stub(self: Anchor) -> TANCH {
         if self.is_populated() {
@@ -231,6 +248,7 @@ class Anchor {
         }
         return self;
     }
+
     """Retrieve the Archetype from db and return."""
     def populate(self: Anchor) -> None {
         import from jaclang { JacRuntimeInterface as Jac }
@@ -240,14 +258,14 @@ class Anchor {
             self.__dict__.update(anchor.__dict__);
         }
     }
+
     """Trigger load if detects unloaded state."""
     def __getattr__(self: Anchor, name: str) -> object {
         if not self.is_populated() {
             self.populate();
             if not self.is_populated() {
                 raise ValueError(
-                    f"{self.__class__.__name__} [{self.id}] is not a valid
-reference!"
+                    f"{self.__class__.__name__} [{self.id}] is not a validreference!"
                 ) ;
             }
             return getattr(self, name);
@@ -256,6 +274,7 @@ reference!"
             f"'{self.__class__.__name__} object has not attribute {name}'"
         ) ;
     }
+
     """Serialize Anchor."""
     def __getstate__(self: Anchor) -> dict[(str, Any)] {
         if self.is_populated() {
@@ -273,6 +292,7 @@ reference!"
             return {'id': self.id};
         }
     }
+
     """Deserialize Anchor."""
     def __setstate__(self: Anchor, state: dict[(str, Any)]) -> None {
         self.__dict__.update(state);
@@ -281,6 +301,7 @@ reference!"
             self.hash = hash(dumps(self));
         }
     }
+
     """Override representation."""
     def __repr__(self: Anchor) -> str {
         if self.is_populated() {
@@ -296,29 +317,31 @@ reference!"
         }
         return f"{self.__class__.__name__}({attrs})";
     }
+
     """Report Anchor."""
     def `report(self: Anchor) -> AnchorReport {
         return AnchorReport(
             id=self.id.hex,
             context=asdict(self.archetype)
-            if (is_dataclass(self.archetype) and not isinstance(self.archetype,
-`type))
+            if (is_dataclass(self.archetype) and not isinstance(self.archetype, `type))
             else {}
         );
     }
+
     """Override hash for anchor."""
     def __hash__(self: Anchor) -> int {
         return hash(self.id);
     }
+
     """Override equal implementation."""
     def __eq__(self: Anchor, other: object) -> bool {
         if isinstance(other, Anchor) {
-            return ((self.__class__ is other.__class__) and (self.id ==
-other.id));
+            return ((self.__class__ is other.__class__) and (self.id == other.id));
         }
         return False;
     }
 }
+
 """Node Anchor."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class NodeAnchor(Anchor) {
@@ -336,6 +359,7 @@ class NodeAnchor(Anchor) {
         return state;
     }
 }
+
 """Edge Anchor."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class EdgeAnchor(Anchor) {
@@ -361,6 +385,7 @@ class EdgeAnchor(Anchor) {
         return state;
     }
 }
+
 """Walker Anchor."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class WalkerAnchor(Anchor) {
@@ -372,6 +397,7 @@ class WalkerAnchor(Anchor) {
         disengaged: bool = False;
     }
 }
+
 """Object Anchor."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class ObjectAnchor(Anchor) {
@@ -379,6 +405,7 @@ class ObjectAnchor(Anchor) {
         archetype: ObjectArchetype;
     }
 }
+
 """Archetype Protocol."""
 @dataclass(eq=False, repr=False, kw_only=True)
 class Archetype {
@@ -392,6 +419,7 @@ class Archetype {
     def __jac__(self: Archetype) -> Anchor {
         return Anchor(archetype=self);
     }
+
     """Configure subclasses."""
     def __init_subclass__(cls: Any, **kwargs: object) -> None {
         super.__init_subclass__(**kwargs);
@@ -400,15 +428,18 @@ class Archetype {
             _.make_archetype(cls);
         }
     }
+
     """Override repr for archetype."""
     def __repr__(self: Archetype) -> str {
         return f"{self.__class__.__name__}";
     }
+
     """Override access validation."""
     def __jac_access__(self: Archetype) -> (AccessLevel | str | int | None) {
         return None;
     }
 }
+
 """Node Archetype Protocol."""
 class NodeArchetype(Archetype) {
     with entry {
@@ -421,6 +452,7 @@ class NodeArchetype(Archetype) {
         return NodeAnchor(archetype=self, edges=[]);
     }
 }
+
 """Edge Archetype Protocol."""
 class EdgeArchetype(Archetype) {
     with entry {
@@ -428,6 +460,7 @@ class EdgeArchetype(Archetype) {
         __jac__: EdgeAnchor;
     }
 }
+
 """Walker Archetype Protocol."""
 class WalkerArchetype(Archetype) {
     with entry {
@@ -442,6 +475,7 @@ class WalkerArchetype(Archetype) {
         return WalkerAnchor(archetype=self);
     }
 }
+
 """Object Archetype Protocol."""
 class ObjectArchetype(Archetype) {
     with entry {
@@ -454,6 +488,7 @@ class ObjectArchetype(Archetype) {
         return ObjectAnchor(archetype=self);
     }
 }
+
 """Generic Edge."""
 @dataclass(eq=False)
 class GenericEdge(EdgeArchetype) {
@@ -466,6 +501,7 @@ class GenericEdge(EdgeArchetype) {
         return f"{self.__class__.__name__}()";
     }
 }
+
 """Generic Root Node."""
 @dataclass(eq=False)
 class Root(NodeArchetype) {
@@ -478,11 +514,13 @@ class Root(NodeArchetype) {
     def __jac__(self: Root) -> NodeAnchor {
         return NodeAnchor(archetype=self, persistent=True, edges=[]);
     }
+
     """Override repr for archetype."""
     def __repr__(self: Root) -> str {
         return f"{self.__class__.__name__}()";
     }
 }
+
 """Object-Spatial Function."""
 @dataclass(eq=False)
 class ObjectSpatialFunction {
@@ -505,6 +543,7 @@ class ObjectSpatialFunction {
         return None;
     }
 }
+
 """JSX Element representation."""
 @dataclass(eq=False)
 class JsxElement {
