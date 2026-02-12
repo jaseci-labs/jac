@@ -9,7 +9,7 @@ import shutil
 import tempfile
 import time
 from http.client import RemoteDisconnected
-from subprocess import PIPE, Popen, run
+from subprocess import PIPE, STDOUT, Popen, run
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -178,7 +178,7 @@ def test_all_in_one_app_endpoints() -> None:
             assert os.path.isfile(app_jac_path), "all-in-one main.jac file missing"
 
             # 4. Start the server: `jac start main.jac`
-            # NOTE: We don't use text mode here, so `Popen` defaults to bytes.
+            # NOTE: We capture stdout/stderr to verify output ordering (compilation before ready)
             # Use `Popen[bytes]` in the type annotation to keep mypy happy.
             server: Popen[bytes] | None = None
             # Use dynamic port allocation to avoid conflicts when running tests in parallel
@@ -190,6 +190,8 @@ def test_all_in_one_app_endpoints() -> None:
                 server = Popen(
                     ["jac", "start", "main.jac", "-p", str(server_port)],
                     cwd=project_path,
+                    stdout=PIPE,
+                    stderr=STDOUT,
                 )
                 # Wait for localhost:8000 to become available
                 print(
@@ -199,6 +201,57 @@ def test_all_in_one_app_endpoints() -> None:
                 print(
                     f"[DEBUG] Server is now accepting connections on 127.0.0.1:{server_port}"
                 )
+
+                # Verify output ordering: compilation messages should appear before "ready"
+                import fcntl
+                import os as os_module
+
+                captured_output = ""
+                if server.stdout:
+                    fd = server.stdout.fileno()
+                    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os_module.O_NONBLOCK)
+                    try:
+                        raw = server.stdout.read()
+                        if raw:
+                            captured_output = (
+                                raw.decode("utf-8", errors="ignore")
+                                if isinstance(raw, bytes)
+                                else raw
+                            )
+                    except (OSError, BlockingIOError):
+                        pass
+
+                if captured_output:
+                    print(
+                        f"[DEBUG] Captured server output (first 500 chars):\n{captured_output[:500]}"
+                    )
+                    compilation_idx = -1
+                    ready_idx = -1
+                    output_lower = captured_output.lower()
+
+                    # Find first compilation-related marker
+                    for marker in ["compilation", "compiling", "building", "bundle"]:
+                        idx = output_lower.find(marker)
+                        if idx != -1 and (
+                            compilation_idx == -1 or idx < compilation_idx
+                        ):
+                            compilation_idx = idx
+
+                    # Find first server-ready marker
+                    for marker in ["server ready", "ready", "localhost", "local:"]:
+                        idx = output_lower.find(marker)
+                        if idx != -1 and (ready_idx == -1 or idx < ready_idx):
+                            ready_idx = idx
+
+                    if compilation_idx != -1 and ready_idx != -1:
+                        assert compilation_idx < ready_idx, (
+                            f"Output ordering error: 'ready' ({ready_idx}) appeared before "
+                            f"'compilation' ({compilation_idx}).\nOutput:\n{captured_output[:500]}"
+                        )
+                        print(
+                            "[DEBUG] Output ordering verified: compilation before ready"
+                        )
 
                 # "/" – server up (serves client app HTML due to base_route_app="app")
                 # Note: The root endpoint may return 503 while the client bundle is building.
@@ -536,6 +589,9 @@ def test_all_in_one_app_endpoints() -> None:
             finally:
                 if server is not None:
                     print("[DEBUG] Terminating server process")
+                    # Close stdout pipe to prevent ResourceWarning for unclosed file
+                    if server.stdout:
+                        server.stdout.close()
                     server.terminate()
                     try:
                         server.wait(timeout=15)
