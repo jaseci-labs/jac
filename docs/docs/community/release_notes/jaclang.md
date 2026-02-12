@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.1 (Unreleased)
 
+- **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files.
+- **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections.
 - **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
 - **PWA Build Detection**: The stdlib server now detects existing PWA builds and serves Vite-hashed client files (`client.*.js`) correctly.
 - **Fix: Serve JSON and JS files as static assets**: Added `.json` and `.js` to the list of recognized asset extensions, fixing PWA `manifest.json` and `sw.js` serving.
@@ -14,6 +16,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`jac --version` Shows Installed Plugins**: The version banner now lists all installed Jac plugins with their versions, making it easy to see the full environment at a glance.
 - **Fix: Type Checker Crashes**: Fixed crashes when type-checking default/star imports (`import from mod { default as X }`) and walker entry/exit handlers.
 - **Fix: LiteralString class in Typechecker**: Literal string class is now supported in typechecker which improves binary operator chain handling.
+- **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
+-**Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
 
 ## jaclang 0.10.0 (Latest Release)
 

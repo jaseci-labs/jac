@@ -10,6 +10,7 @@ actions.jac
 advanced_language_features.jac
 app.cl.jac
 app.jac
+app_err.jac
 archetype.jac
 bccache.jac
 builtin.jac
@@ -65,7 +66,6 @@ circle_template.jac
 cli.impl.jac
 cli.jac
 client_app.jac
-client_bundle.impl.jac
 client_bundle.jac
 client_fullstack_app.jac
 client_jsx.jac
@@ -81,6 +81,7 @@ config_loader.jac
 console.impl.jac
 console.jac
 context.jac
+context.impl.jac
 core.impl.jac
 core_language_features.jac
 corelib_fmt.jac
@@ -88,11 +89,11 @@ custom_access_validation.jac
 data_spatial_types.jac
 decorator_stack.jac
 defn_decl_mismatch.jac
+def_impl_match_pass.jac
 dep_registry.jac
 dependencies.jac
 desktop_config.jac
 desktop_target.impl.jac
-doc_ir.impl.jac
 doc_ir.jac
 doc_ir_gen_pass.impl.jac
 doc_ir_gen_pass.jac
@@ -101,6 +102,7 @@ es_unparse.impl.jac
 es_unparse.jac
 esast_gen_pass.impl.jac
 essay_review.jac
+execution.impl.jac
 expert_answer.jac
 fam.jac
 fantasy_trading_game.jac
@@ -127,15 +129,11 @@ interop_analysis_pass.jac
 jac_auto_lint_pass.jac
 jac_formatter_pass.impl.jac
 jac_formatter_pass.jac
-jaccomplete.impl.jac
-jaccomplete.jac
 jfast_api.impl.jac
 jfast_api.jac
 jserver.impl.jac
 jserver.jac
 jsx_processor.jac
-lang_tools.impl.jac
-lang_tools.jac
 level_genarator.jac
 level_manager.jac
 line_spacing.jac
@@ -152,7 +150,6 @@ modresolver.jac
 mtest.jac
 mtir_gen_pass.impl.jac
 mtir_gen_pass.jac
-mtp.jac
 multiple_syntax_errors.jac
 multistatement_lambda_client.jac
 na_compile_pass.impl.jac
@@ -164,12 +161,16 @@ normalize_pass.impl.jac
 one.jac
 param_syntax_err.jac
 parser.jac
+parser.impl.jac
 pass_keyword_errors.jac
 plugin.jac
 plugin_config.jac
 program.jac
 project.impl.jac
 project.jac
+pyast_gen_pass.jac
+pyast_load_pass.impl.jac
+pybc_gen_pass.jac
 py_imp_test.jac
 pyjac_ast_link_pass.impl.jac
 react_max_iterations.jac
@@ -178,8 +179,8 @@ rename.jac
 runtime.jac
 runtime_errors.na.jac
 safe_call_operator.jac
-schema.impl.jac
 schema.jac
+semantic_analysis_pass.jac
 sem_def_match_pass.impl.jac
 sem_manager.impl.jac
 sem_manager.jac
@@ -193,6 +194,7 @@ streaming_with_react.jac
 submit-button.jac
 symtab_build.jac
 symtable_test_helpers.jac
+sym_tab_build_pass.jac
 tagbreak.jac
 template_registry.jac
 test.impl.jac

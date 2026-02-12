@@ -341,9 +341,15 @@ class JacCompiler {
                 if not minimal {
                     self._save_mtir_cache(cache_key, actual_program);
                 }
-                if (might_have_native and (result.gen.llvm_ir is not None)) {
-                    self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir));
-                    self._cache_interop_manifest(cache_key, result);
+                if might_have_native {
+                    if (result.gen.llvm_ir is not None) {
+                        self._bytecode_cache.put_llvmir(
+                            cache_key, str(result.gen.llvm_ir)
+                        );
+                        self._cache_interop_manifest(cache_key, result);
+                    } else {
+                        self._bytecode_cache.put_llvmir(cache_key, "");
+                    }
                 }
             }
             return marshal.loads(result.gen.py_bytecode);
