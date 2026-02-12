@@ -1686,13 +1686,13 @@ system,
 
     """Mark a method as jac entry with this decorator."""
     static def on_entry(func: Callable) -> Callable {
-        setattr(func, '__jac_entry', None);
+        setattr(func, '__jac_entry', True);
         return func;
     }
 
     """Mark a method as jac exit with this decorator."""
     static def on_exit(func: Callable) -> Callable {
-        setattr(func, '__jac_exit', None);
+        setattr(func, '__jac_exit', True);
         return func;
     }
 }
