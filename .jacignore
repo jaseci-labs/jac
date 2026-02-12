@@ -65,7 +65,6 @@ circle_template.jac
 cli.impl.jac
 cli.jac
 client_app.jac
-client_bundle.impl.jac
 client_bundle.jac
 client_fullstack_app.jac
 client_jsx.jac
@@ -92,7 +91,6 @@ dep_registry.jac
 dependencies.jac
 desktop_config.jac
 desktop_target.impl.jac
-doc_ir.impl.jac
 doc_ir.jac
 doc_ir_gen_pass.impl.jac
 doc_ir_gen_pass.jac
@@ -127,15 +125,11 @@ interop_analysis_pass.jac
 jac_auto_lint_pass.jac
 jac_formatter_pass.impl.jac
 jac_formatter_pass.jac
-jaccomplete.impl.jac
-jaccomplete.jac
 jfast_api.impl.jac
 jfast_api.jac
 jserver.impl.jac
 jserver.jac
 jsx_processor.jac
-lang_tools.impl.jac
-lang_tools.jac
 level_genarator.jac
 level_manager.jac
 line_spacing.jac
@@ -152,7 +146,6 @@ modresolver.jac
 mtest.jac
 mtir_gen_pass.impl.jac
 mtir_gen_pass.jac
-mtp.jac
 multiple_syntax_errors.jac
 multistatement_lambda_client.jac
 na_compile_pass.impl.jac
@@ -178,7 +171,6 @@ rename.jac
 runtime.jac
 runtime_errors.na.jac
 safe_call_operator.jac
-schema.impl.jac
 schema.jac
 sem_def_match_pass.impl.jac
 sem_manager.impl.jac
