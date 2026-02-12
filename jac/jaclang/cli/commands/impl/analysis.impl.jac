@@ -416,15 +416,25 @@ impl format(
     }
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
         if check {
-            summary_msg = f"Checked {(total_files - failed_files)}/{total_files} '.jac' files - all formatted correctly.";
+            if failed_files > 0 {
+                summary_msg = f"Checked {(total_files - failed_files)}/{total_files} '.jac' files ({failed_files} failed with syntax errors).";
+                console.error(summary_msg);
+                console.error("Fix the syntax errors above or rename files with '*_err.jac' suffix to exclude them.");
+            } else {
+                summary_msg = f"Checked {total_files}/{total_files} '.jac' files - all formatted correctly.";
+                console.success(summary_msg);
+            }
         } else {
             summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
+            if failed_files > 0 {
+                console.error(summary_msg);
+            } else {
+                console.success(summary_msg);
+            }
         }
-        if failed_files > 0 {
-            console.error(summary_msg);
-        } else {
-            console.success(summary_msg);
-        }
+    }
+    if failed_files > 0 {
+        return 1;
     }
     if total_errors > 0 {
         return 1;
