@@ -146,7 +146,9 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
     ],
     group="analysis"
 )
-def format(paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False) -> int;
+def format(
+    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+) -> int;
 
 """Run the test suite in the specified .jac file or directory."""
 @registry.command(
