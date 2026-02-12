@@ -16,7 +16,8 @@ import from typing {
     Any,
     AsyncGenerator,
     Literal,
-    TypeAlias,
+    TypeAlias,  
+
     get_type_hints
 }
 import from urllib.parse { parse_qs, urlparse }
@@ -41,7 +42,10 @@ with entry {
 glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] | dict[
          (str, 'JsonValue')
      ],
-     StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
+    
+
+     StatusCode:
+      TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
 """Base response container (HTTP-specific, kept for backward compatibility)."""
 obj Response {
