@@ -399,7 +399,8 @@ list[
                     if isinstance(anchor, (NodeAnchor, EdgeAnchor)) {
                         next.append(anchor);
                     } else {
-                        raise ValueError('Anchor should be NodeAnchor or EdgeAnchor.') ;
+                        raise ValueError('Anchor should be NodeAnchor or
+EdgeAnchor.') ;
                     }
                 }
             }
