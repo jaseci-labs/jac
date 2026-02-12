@@ -295,6 +295,13 @@ impl DocIRGenPass.exit_impl_def(`node: uni.ImplDef) -> None {
         } elif self.is_within(i, `node.target) {
             parts.append(i.gen.doc_ir);
         } elif (
+            isinstance(i, uni.Token)
+            and (i.name == Tok.DOT)
+            and `node.target
+            and len(`node.target) > 1
+        ) {
+            parts.append(i.gen.doc_ir);
+        } elif (
             in_body
             or (
                 isinstance(`node.body, Sequence)

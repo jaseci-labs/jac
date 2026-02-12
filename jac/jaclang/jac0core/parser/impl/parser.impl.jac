@@ -1322,23 +1322,31 @@ impl Parser.parse_atomic_chain -> Expr {
                 name_tok = self.advance();
                 attr = self.make_special_name(name_tok);
             }
-            if attr {
-                kid: list = [expr];
-                if null_ok and null_ok_uni {
-                    kid.append(null_ok_uni);
-                }
-                kid.append(dot_uni);
-                kid.append(attr);
-                target_node = expr if not is_dot_bkwd else attr;
-                right_node = attr if not is_dot_bkwd else expr;
-                expr = AtomTrailer(
-                    target=target_node,
-                    right=right_node,
-                    is_attr=True,
-                    is_null_ok=null_ok,
-                    kid=kid
+            if not attr {
+                # No attribute after dot (e.g. foo.) - create placeholder for LSP completion
+                dot_tok = first_consumed_tok;
+                attr = Name(
+                    orig_src=self.get_source(), name=Tok.NAME.value, value="",
+                    line=dot_tok.loc.end_line, end_line=dot_tok.loc.end_line,
+                    col_start=dot_tok.loc.col_end, col_end=dot_tok.loc.col_end,
+                    pos_start=dot_tok.loc.pos_end, pos_end=dot_tok.loc.pos_end
                 );
             }
+            kid: list = [expr];
+            if null_ok and null_ok_uni {
+                kid.append(null_ok_uni);
+            }
+            kid.append(dot_uni);
+            kid.append(attr);
+            target_node = expr if not is_dot_bkwd else attr;
+            right_node = attr if not is_dot_bkwd else expr;
+            expr = AtomTrailer(
+                target=target_node,
+                right=right_node,
+                is_attr=True,
+                is_null_ok=null_ok,
+                kid=kid
+            );
         } elif self.check(TokenKind.LPAREN) {
             # Check if this is filter_compr: (?...) or (?:Type, ...)
             if self.peek().kind == TokenKind.NULL_OK {
@@ -2027,11 +2035,19 @@ impl Parser.parse_atom -> Expr {
             TokenKind.ARROW_R_P1,
             TokenKind.ARROW_L_P1,
             TokenKind.RETURN_HINT,  # For typed edges like [->:a:->]
-            TokenKind.KW_ASYNC,
-            TokenKind.KW_NODE,
-            TokenKind.KW_EDGE
+            TokenKind.KW_ASYNC
         ) {
             is_edge_ref = True;
+        } elif self.check_any(TokenKind.KW_NODE, TokenKind.KW_EDGE) {
+            # [node ...] or [edge ...] is only an edge ref if followed by an arrow
+            if self.peek().kind in [
+                TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI,
+                TokenKind.ARROW_R_P1, TokenKind.ARROW_L_P1, TokenKind.RETURN_HINT,
+                TokenKind.NAME, TokenKind.KW_ROOT, TokenKind.KW_SELF,
+                TokenKind.KW_HERE, TokenKind.KW_SUPER, TokenKind.KW_VISITOR
+            ] {
+                is_edge_ref = True;
+            }
         } elif self.check_any(
             TokenKind.NAME,
             TokenKind.KW_ROOT,
@@ -3744,19 +3760,16 @@ impl Parser.parse_statement{
         return self.parse_ability();
     }
     # Handle nested class/archetype definitions
-    # Only treat as declaration if followed by a name (not DOT, LPAREN, etc.)
-    # This allows keywords like `node`, `edge` to be used as variable names
     if self.check_any(
         TokenKind.KW_OBJECT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_CLASS
-    ) and self.peek().kind in (TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.LBRACE) {
+    ) {
         return self.parse_archetype();
     }
-    if self.check(TokenKind.KW_ENUM)
-    and self.peek().kind in (TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.LBRACE) {
+    if self.check(TokenKind.KW_ENUM) {
         return self.parse_enum();
     }
     # Handle impl inside code blocks

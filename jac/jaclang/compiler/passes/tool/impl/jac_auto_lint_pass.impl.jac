@@ -1,11 +1,12 @@
 """Initialize the JacAutoLintPass."""
 
-impl JacAutoLintPass. init(ir_in: uni.Module, prog: Any) -> None {
+impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
     self._load_lint_config();
     super.init(ir_in, prog);
 }
+
 """Load lint configuration from jac.toml if available."""
-impl JacAutoLintPass. _load_lint_config -> None {
+impl JacAutoLintPass._load_lint_config -> None {
     import from jaclang.project.config { get_config, LintRule as LR }
     rule_by_name: dict[str, LR] = {r.value: r for r in LR};
     non_default: set[LR] = {LR.NO_PRINT};
@@ -44,12 +45,12 @@ impl JacAutoLintPass. _load_lint_config -> None {
 }
 
 """Check if a specific lint rule is enabled."""
-impl JacAutoLintPass. is_rule_enabled(rule: LintRule) -> bool {
+impl JacAutoLintPass.is_rule_enabled(rule: LintRule) -> bool {
     return rule in self._enabled_rules;
 }
 
 """Check if a file path matches any exclude pattern."""
-impl JacAutoLintPass. _is_file_excluded(file_path: str) -> bool {
+impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
     import fnmatch;
     import os;
     if not self._exclude_patterns {
@@ -69,7 +70,7 @@ impl JacAutoLintPass. _is_file_excluded(file_path: str) -> bool {
 }
 
 """Remove empty parentheses from function signatures with no parameters."""
-impl JacAutoLintPass. exit_ability(ability_node: uni.Ability) -> None {
+impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_EMPTY_PARENS) {
         return;
     }
@@ -85,7 +86,7 @@ impl JacAutoLintPass. exit_ability(ability_node: uni.Ability) -> None {
 This preserves original token objects (for comment associations) while
 removing only the @staticmethod decorator tokens and inserting the static keyword.
 """
-impl JacAutoLintPass. _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None {
+impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -> None {
     new_kids: list[uni.UniNode] = [];
     i = 0;
     kids = ability_node.kid;
@@ -144,7 +145,7 @@ impl JacAutoLintPass. _remove_staticmethod_from_kids(ability_node: uni.Ability) 
 
 """Process ability to convert @staticmethod decorator to static keyword, __init__/__post_init__ to init/postinit,
 and combine consecutive has statements in function bodies."""
-impl JacAutoLintPass. enter_ability(ability_node: uni.Ability) -> None {
+impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -237,7 +238,7 @@ impl JacAutoLintPass. enter_ability(ability_node: uni.Ability) -> None {
 }
 
 """Process ImplDef to combine consecutive has statements."""
-impl JacAutoLintPass. enter_impl_def(node: uni.ImplDef) -> None {
+impl JacAutoLintPass.enter_impl_def(node: uni.ImplDef) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -261,7 +262,7 @@ impl JacAutoLintPass. enter_impl_def(node: uni.ImplDef) -> None {
 }
 
 """Remove empty parentheses from impl signatures with no parameters."""
-impl JacAutoLintPass. exit_impl_def(node: uni.ImplDef) -> None {
+impl JacAutoLintPass.exit_impl_def(node: uni.ImplDef) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_EMPTY_PARENS) {
         return;
     }
@@ -277,7 +278,7 @@ impl JacAutoLintPass. exit_impl_def(node: uni.ImplDef) -> None {
 This implementation avoids calling normalize() to preserve comment associations.
 We update the kid list by removing merged statements and keeping the combined ones.
 """
-impl JacAutoLintPass. enter_enum(node: uni.Enum) -> None {
+impl JacAutoLintPass.enter_enum(node: uni.Enum) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.COMBINE_HAS) {
         return;
     }
@@ -309,7 +310,7 @@ impl JacAutoLintPass. enter_enum(node: uni.Enum) -> None {
 This implementation avoids calling normalize() to preserve comment associations.
 We update the kid list by removing merged statements and keeping the combined ones.
 """
-impl JacAutoLintPass. enter_archetype(node: uni.Archetype) -> None {
+impl JacAutoLintPass.enter_archetype(node: uni.Archetype) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.COMBINE_HAS) {
         return;
     }
@@ -342,7 +343,7 @@ This implementation avoids calling normalize() to preserve comment associations.
 Instead of creating a new node, we modify the first statement in place and
 manually build the kid list to include assignments from merged statements.
 """
-impl JacAutoLintPass. combine_consecutive_glob(body: list) -> list {
+impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
     if len(body) <= 1 {
         return body;
     }
@@ -415,7 +416,7 @@ This implementation avoids calling normalize() to preserve comment associations.
 Instead of creating a new node, we modify the first statement in place and
 manually build the kid list to include vars from merged statements.
 """
-impl JacAutoLintPass. combine_consecutive_has(body: list) -> list {
+impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
     if len(body) <= 1 {
         return body;
     }
@@ -474,7 +475,7 @@ impl JacAutoLintPass. combine_consecutive_has(body: list) -> list {
 }
 
 """Check if two GlobalVars nodes can be combined (same access, frozen)."""
-impl JacAutoLintPass. can_combine_glob(
+impl JacAutoLintPass.can_combine_glob(
     glob1: uni.GlobalVars, glob2: uni.GlobalVars
 ) -> bool {
     if glob1.is_frozen != glob2.is_frozen {
@@ -489,7 +490,7 @@ impl JacAutoLintPass. can_combine_glob(
 }
 
 """Check if two ArchHas nodes can be combined (same static, access, frozen)."""
-impl JacAutoLintPass. can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool {
+impl JacAutoLintPass.can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> bool {
     if has1.is_static != has2.is_static {
         return False;
     }
@@ -509,7 +510,7 @@ impl JacAutoLintPass. can_combine_has(has1: uni.ArchHas, has2: uni.ArchHas) -> b
 This implementation avoids calling normalize() to preserve comment associations.
 We manually build the kid list with required tokens.
 """
-impl JacAutoLintPass. create_entry_block(stmts: list) -> uni.ModuleCode {
+impl JacAutoLintPass.create_entry_block(stmts: list) -> uni.ModuleCode {
     entry_block = uni.ModuleCode(name=None, body=stmts, kid=stmts, doc=None);
     new_kid: list[uni.UniNode] = [];
     new_kid.append(entry_block.gen_token(Tok.KW_WITH));
@@ -528,7 +529,7 @@ impl JacAutoLintPass. create_entry_block(stmts: list) -> uni.ModuleCode {
 This implementation avoids calling normalize() to preserve comment associations.
 We manually build the kid list with required tokens.
 """
-impl JacAutoLintPass. create_glob_from_assignment(
+impl JacAutoLintPass.create_glob_from_assignment(
     assignment: uni.Assignment
 ) -> uni.GlobalVars {
     glob_node = uni.GlobalVars(
@@ -546,7 +547,7 @@ impl JacAutoLintPass. create_glob_from_assignment(
 }
 
 """Check if a statement is a module-level construct that can be extracted."""
-impl JacAutoLintPass. is_module_level_construct(stmt: uni.UniNode) -> bool {
+impl JacAutoLintPass.is_module_level_construct(stmt: uni.UniNode) -> bool {
     return isinstance(
         stmt,
         (
@@ -562,7 +563,7 @@ impl JacAutoLintPass. is_module_level_construct(stmt: uni.UniNode) -> bool {
 }
 
 """Check if an assignment can be converted to glob."""
-impl JacAutoLintPass. can_convert_to_glob(assignment: uni.Assignment) -> bool {
+impl JacAutoLintPass.can_convert_to_glob(assignment: uni.Assignment) -> bool {
     if assignment.value is None {
         return False;
     }
@@ -578,7 +579,7 @@ impl JacAutoLintPass. can_convert_to_glob(assignment: uni.Assignment) -> bool {
 }
 
 """Process module to transform with entry blocks in-place."""
-impl JacAutoLintPass. enter_module(node: uni.Module) -> None {
+impl JacAutoLintPass.enter_module(node: uni.Module) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -651,7 +652,7 @@ Names only need backtick escaping if they conflict with:
 This also handles SpecialVarRef where the underlying name should
 never have backtick escaping since it's already recognized as a special keyword.
 """
-impl JacAutoLintPass. enter_name(node: uni.Name) -> None {
+impl JacAutoLintPass.enter_name(node: uni.Name) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
@@ -661,9 +662,10 @@ impl JacAutoLintPass. enter_name(node: uni.Name) -> None {
     jac_keywords = set(TOKEN_MAP.values());
     python_keywords = set(keyword.kwlist);
     reserved = jac_keywords | python_keywords;
-    if node.value not in reserved {
+    raw_value = node.value[1:] if node.value.startswith("`") else node.value;
+    if raw_value not in reserved {
         self.log_error(
-            f"Unnecessary keyword escape on '{node.value}' [remove-kwesc]",
+            f"Unnecessary keyword escape on '{raw_value}' [remove-kwesc]",
             node_override=node
         );
         `node.is_kwesc = False;
@@ -679,7 +681,7 @@ SpecialVarRef wraps special keywords like init, postinit, self, super,
 root, here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
-impl JacAutoLintPass. enter_special_var_ref(node: uni.SpecialVarRef) -> None {
+impl JacAutoLintPass.enter_special_var_ref(node: uni.SpecialVarRef) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
@@ -704,7 +706,7 @@ BuiltinType represents built-in types like str, int, float, bool, etc.
 These should never have backtick escaping since they are recognized as
 built-in type tokens in the grammar.
 """
-impl JacAutoLintPass. enter_builtin_type(node: uni.BuiltinType) -> None {
+impl JacAutoLintPass.enter_builtin_type(node: uni.BuiltinType) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.REMOVE_KWESC) {
         return;
     }
@@ -729,7 +731,7 @@ This helper checks if a FuncCall is a hasattr call with exactly two arguments:
 If valid, creates and returns an AtomTrailer with is_null_ok=True.
 Returns None if the call doesn't match the hasattr pattern.
 """
-impl JacAutoLintPass. _convert_hasattr_to_null_ok(
+impl JacAutoLintPass._convert_hasattr_to_null_ok(
     node: uni.FuncCall
 ) -> (uni.AtomTrailer | None) {
     if not isinstance(node.target, uni.Name) {
@@ -795,7 +797,7 @@ impl JacAutoLintPass. _convert_hasattr_to_null_ok(
 Returns True if the AtomTrailer represents obj.attr where obj matches
 the given object expression and attr matches the given attribute name.
 """
-impl JacAutoLintPass. _is_matching_attr_access(
+impl JacAutoLintPass._is_matching_attr_access(
     trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
 ) -> bool {
     if not trailer.is_attr {
@@ -816,7 +818,7 @@ Takes an existing obj.attr AtomTrailer and converts it to use null-safe access
 by setting is_null_ok=True. We surgically insert the NULL_OK token instead of
 calling normalize() to preserve comment associations.
 """
-impl JacAutoLintPass. _make_null_ok(trailer: uni.AtomTrailer) -> None {
+impl JacAutoLintPass._make_null_ok(trailer: uni.AtomTrailer) -> None {
     if not trailer.is_null_ok {
         trailer.is_null_ok = True;
         new_kid: list[uni.UniNode] = [];
@@ -841,7 +843,7 @@ the equivalent null-safe access expression.
 For IfElseExpr patterns like obj.attr if hasattr(obj, "attr") else default,
 this also converts the value expression to use null-safe access.
 """
-impl JacAutoLintPass. exit_func_call(node: uni.FuncCall) -> None {
+impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -919,7 +921,7 @@ impl JacAutoLintPass. exit_func_call(node: uni.FuncCall) -> None {
 }
 
 """Recursively collect all AtomTrailer nodes from a subtree."""
-impl JacAutoLintPass. _collect_atom_trailers(
+impl JacAutoLintPass._collect_atom_trailers(
     uni_node: uni.UniNode, results: list
 ) -> None {
     if isinstance(uni_node, uni.AtomTrailer) {
@@ -939,7 +941,7 @@ impl JacAutoLintPass. _collect_atom_trailers(
 This avoids triggering normalize() which corrupts token locations.
 Returns None if the expression is too complex to build a key from.
 """
-impl JacAutoLintPass. _expr_to_key(expr: uni.Expr) -> (str | None) {
+impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
     if isinstance(expr, uni.Name) {
         return expr.value;
     }
@@ -964,7 +966,7 @@ impl JacAutoLintPass. _expr_to_key(expr: uni.Expr) -> (str | None) {
 Returns a string like "obj.attr" that can be used to identify matching accesses.
 Returns None if the trailer is not a simple attribute access.
 """
-impl JacAutoLintPass. _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None) {
+impl JacAutoLintPass._get_trailer_key(trailer: uni.AtomTrailer) -> (str | None) {
     if not trailer.is_attr {
         return None;
     }
@@ -984,7 +986,7 @@ impl JacAutoLintPass. _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None)
 
 This avoids triggering normalize() which corrupts token locations.
 """
-impl JacAutoLintPass. _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool {
+impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool {
     if expr1 is expr2 {
         return True;
     }
@@ -1032,7 +1034,7 @@ Transforms:
 This only applies when the value and condition are identical expressions.
 This implementation avoids calling normalize() to preserve comment associations.
 """
-impl JacAutoLintPass. _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
+impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
     if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
         return False;
     }
@@ -1111,7 +1113,7 @@ Also converts patterns like:
 - x?.attr if x?.attr else None -> x?.attr (since null-safe already returns None)
 - x?.attr if x?.attr else default -> x?.attr or default
 """
-impl JacAutoLintPass. exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
+impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     if not self.lint_enabled {
         return;
     }
@@ -1154,7 +1156,7 @@ impl JacAutoLintPass. exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
 When an expression contains both null-safe and regular accesses for the same
 object and attribute, convert the regular accesses to null-safe.
 """
-impl JacAutoLintPass. exit_bool_expr(bool_node: uni.BoolExpr) -> None {
+impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     if not self.lint_enabled or not self.is_rule_enabled(LintRule.HASATTR_TO_NULL_OK) {
         return;
     }
@@ -1190,7 +1192,7 @@ impl JacAutoLintPass. exit_bool_expr(bool_node: uni.BoolExpr) -> None {
 This import is not needed in Jac since Jac already uses deferred annotation
 evaluation by default. Removing it cleans up code converted from Python.
 """
-impl JacAutoLintPass. _is_future_annotations_import(stmt: uni.UniNode) -> bool {
+impl JacAutoLintPass._is_future_annotations_import(stmt: uni.UniNode) -> bool {
     if not isinstance(stmt, uni.Import) {
         return False;
     }
@@ -1230,7 +1232,7 @@ not be set yet when this pass runs during formatting.
 Supports nested classes: for `impl OuterClass.InnerClass.method`, it navigates
 through OuterClass -> InnerClass -> method to find the correct declaration.
 """
-impl JacAutoLintPass. _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
+impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None {
     decl: uni.Ability | None = None;
     if isinstance(impl_node.decl_link, uni.Ability) {
         decl = impl_node.decl_link;
@@ -1323,17 +1325,17 @@ impl JacAutoLintPass. _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> No
     # so the formatter places comments correctly relative to the signature
     old_first_tok = old_spec.loc.first_tok;
     old_last_tok = old_spec.loc.last_tok;
-    def _fix_token_positions(node: uni.UniNode) -> None {
-        if isinstance(node, uni.Token) {
-            node.orig_src = old_first_tok.orig_src;
-            node.line_no = old_first_tok.line_no;
-            node.end_line = old_first_tok.end_line;
-            node.c_start = old_first_tok.c_start;
-            node.c_end = old_first_tok.c_end;
-            node.pos_start = old_first_tok.pos_start;
-            node.pos_end = old_first_tok.pos_end;
+    def _fix_token_positions(`node: uni.UniNode) -> None {
+        if isinstance(`node, uni.Token) {
+            `node.orig_src = old_first_tok.orig_src;
+            `node.line_no = old_first_tok.line_no;
+            `node.end_line = old_first_tok.end_line;
+            `node.c_start = old_first_tok.c_start;
+            `node.c_end = old_first_tok.c_end;
+            `node.pos_start = old_first_tok.pos_start;
+            `node.pos_end = old_first_tok.pos_end;
         }
-        for k in node.kid {
+        for k in `node.kid {
             if k is not None {
                 _fix_token_positions(k);
             }
@@ -1356,7 +1358,7 @@ impl JacAutoLintPass. _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> No
 
 Compares parameter counts and names to determine if signatures are equivalent.
 """
-impl JacAutoLintPass. _signatures_match(
+impl JacAutoLintPass._signatures_match(
     decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
 ) -> bool {
     if (
@@ -1398,7 +1400,7 @@ impl JacAutoLintPass. _signatures_match(
 When users write `import from X { ... };` inside a function/ability, the semicolon
 is parsed as a separate Semi statement. This removes those unnecessary semicolons.
 """
-impl JacAutoLintPass. enter_import(import_node: uni.Import) -> None {
+impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
     if not self.lint_enabled
     or not self.is_rule_enabled(LintRule.REMOVE_IMPORT_SEMI)
     or import_node.from_loc is None {
@@ -1446,7 +1448,7 @@ Args:
     sig_attr: The attribute name on the node that holds the signature
               ("signature" for Ability, "spec" for ImplDef)
 """
-impl JacAutoLintPass. _remove_empty_parens_from_sig(
+impl JacAutoLintPass._remove_empty_parens_from_sig(
     target_node: uni.UniNode, sig: uni.FuncSignature, sig_attr: str
 ) -> None {
     has_params = bool(
@@ -1498,7 +1500,7 @@ impl JacAutoLintPass. _remove_empty_parens_from_sig(
 Bare print() calls should use the console abstraction instead.
 Only flags calls where the target is a simple Name "print" (not console.print, etc.).
 """
-impl JacAutoLintPass. _check_no_print(node: uni.FuncCall) -> None {
+impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
     if not self.is_rule_enabled(LintRule.NO_PRINT) {
         return;
     }
@@ -1521,7 +1523,7 @@ impl JacAutoLintPass. _check_no_print(node: uni.FuncCall) -> None {
 Returns the unquoted string value, or None if the expression is not a simple string literal.
 Used by hasattr conversion to extract attribute names.
 """
-impl JacAutoLintPass. _extract_string_literal_value(expr: uni.Expr) -> (str | None) {
+impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | None) {
     attr_value: str | None = None;
     if isinstance(expr, uni.String) {
         attr_value = expr.value;
