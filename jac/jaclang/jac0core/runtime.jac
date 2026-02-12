@@ -1783,9 +1783,9 @@ class JacAPIServer {
             'argOrder': arg_order
         };
         safe_initial_json = json.dumps(initial_state).replace('</', '<\\/');
-        page = f'<!DOCTYPE html><html lang="en"><head><metacharset="utf-8"/><title>{html.escape(
+        page = f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>{html.escape(
             function_name
-        )}</title></head><body><div id="__jac_root"></div><scriptid="__jac_init__" type="application/json">{safe_initial_json}</script><scripttype="module"src="/static/client.js?hash={bundle_hash}"></script></body></html>';
+        )}</title></head><body><div id="__jac_root"></div><script id="__jac_init__" type="application/json">{safe_initial_json}</script><script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
         return {
             'html': page,
             'bundle_hash': bundle_hash,
