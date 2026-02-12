@@ -1286,4 +1286,3 @@ def test_syntax_error_detailed_output(fixture_path: Callable[[str], str]) -> Non
     assert "test_syntax_err.jac" in stderr
     assert 'print "Missing semicolon"' in stderr
     assert "^" in stderr
-
