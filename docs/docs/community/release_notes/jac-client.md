@@ -3,6 +3,7 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
 ## jac-client 0.2.17 (Unreleased)
+- **Structured Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes (JAC_CLIENT_XXX), source code snippets pointing to the error location, actionable hints, and quick fix commands. The diagnostic engine maps Vite/npm errors back to original `.jac` files, hiding internal JavaScript paths from developers. Detectors identify common issues: missing npm dependencies (JAC_CLIENT_001), syntax errors (JAC_CLIENT_003), and unresolved imports (JAC_CLIENT_004). Enable `debug = true` under `[plugins.client]` in `jac.toml` or set `JAC_DEBUG=1` to see raw error output alongside formatted diagnostics.
 
 - Various refactors
 - **Improved `jac start` Output Ordering**: Fixed misleading output timing where "Server ready" and localhost URLs appeared before compilation completed. The Vite dev server now captures its initial output and waits for the ready signal before displaying status messages, ensuring users see compilation progress first and server URLs only when the server is actually ready to accept connections.

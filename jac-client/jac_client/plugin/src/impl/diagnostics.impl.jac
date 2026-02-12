@@ -2,6 +2,30 @@
 import os;
 import from pathlib { Path }
 
+# ============== Source Snippet Formatting ==============
+
+glob SNIPPET_ARROW_PREFIX = " -> ";
+glob SNIPPET_SPACE_PREFIX = "    ";
+glob SNIPPET_LINE_SEPARATOR = " | ";
+
+# ============== Hint Messages ==============
+
+glob HINT_JAC_SYNTAX = "Check your Jac syntax:\n  - Missing semicolons\n  - Unclosed braces or parentheses\n  - Invalid syntax in cl {{ }} blocks";
+glob HINT_JS_SYNTAX = "Check for:\n  - Missing or extra braces { }\n  - Unclosed JSX tags\n  - Missing semicolons";
+glob HINT_IMPORT_PATH = "Check the import path for:\n  - Correct spelling and case\n  - File extension (.jac not needed)";
+glob HINT_CHECK_IMPORTS = "Check import statements for missing packages.";
+glob HINT_ADD_PACKAGE = "Add this package to your project.";
+glob HINT_DEBUG_MODE = "Run with debug=true in jac.toml for details.";
+glob HINT_CHECK_ERROR_OUTPUT = "Check the error output for details.";
+
+glob MSG_GENERIC_BUILD_ERROR = "An error occurred during build.";
+glob MSG_BUILD_FAILED = "Client bundle build failed.";
+
+# ============== Fallback Error Codes ==============
+
+glob FALLBACK_ERROR_CODE = "JAC_CLIENT_999";
+glob INTERNAL_ERROR_CODE = "JAC_CLIENT_INTERNAL";
+
 # ============== Diagnostic ==============
 
 impl Diagnostic.init(
@@ -56,8 +80,8 @@ impl BuildContext.read_source_lines(self: BuildContext, file_path: str, line: in
         snippet_lines: list[str] = [];
         for i in range(start, end) {
             line_num = i + 1;
-            prefix = " -> " if line_num == line else "    ";
-            snippet_lines.append(f"{prefix}{line_num:4} | {lines[i]}");
+            prefix = SNIPPET_ARROW_PREFIX if line_num == line else SNIPPET_SPACE_PREFIX;
+            snippet_lines.append(f"{prefix}{line_num:4}{SNIPPET_LINE_SEPARATOR}{lines[i]}");
         }
         return "\n".join(snippet_lines);
     } except Exception { return ""; }
@@ -89,8 +113,8 @@ impl BaseDetector.detect(self: BaseDetector, ctx: BuildContext) -> list[Diagnost
         code=self.code,
         severity=Severity.ERROR,
         title=self.title,
-        message="An error occurred during build.",
-        hint="Check the error output for details."
+        message=MSG_GENERIC_BUILD_ERROR,
+        hint=HINT_CHECK_ERROR_OUTPUT
     )];
 }
 
@@ -168,7 +192,7 @@ impl MissingDependencyDetector.detect(self: MissingDependencyDetector, ctx: Buil
     if not module_name {
         return [self.create_diagnostic(
             message="A required npm module could not be found.",
-            hint="Check import statements for missing packages.",
+            hint=HINT_CHECK_IMPORTS,
             quick_fix="jac add --npm <package-name>"
         )];
     }
@@ -203,7 +227,7 @@ impl MissingDependencyDetector.detect(self: MissingDependencyDetector, ctx: Buil
             message=f'Module "{module_name}" is not installed.',
             file_path=jac_file,
             line=line_num,
-            hint="Add this package to your project.",
+            hint=HINT_ADD_PACKAGE,
             quick_fix=f"jac add --npm {module_name}"
         );
     }
@@ -216,6 +240,71 @@ impl MissingDependencyDetector.detect(self: MissingDependencyDetector, ctx: Buil
 
 # ============== CompilationErrorDetector ==============
 
+# Marker strings for parsing error output
+glob LINE_MARKER = ", line ";
+glob COL_MARKER = ", col ";
+glob NO_BYTECODE_MARKER = "no bytecode found for";
+glob FAILED_TO_COMPILE_MARKER = "failed to compile";
+
+"""Extract leading digits from a string."""
+def _extract_leading_number(text: str) -> int {
+    num_str = "";
+    for ch in text {
+        if ch.isdigit() { num_str += ch; }
+        else { break; }
+    }
+    return int(num_str) if num_str else 0;
+}
+
+"""Extract file path from quoted text (single or double quotes)."""
+def _extract_quoted_path(text: str) -> str {
+    for quote in ("'", '"') {
+        if quote in text {
+            parts = text.split(quote);
+            if len(parts) >= 2 and parts[1] {
+                return parts[1];
+            }
+        }
+    }
+    return "";
+}
+
+"""Parse location info (line and column) from error output."""
+def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int] {
+    line_num = 0;
+    col_num = 0;
+
+    if LINE_MARKER in error_lower {
+        idx = error_lower.find(LINE_MARKER);
+        rest = error_output[idx + len(LINE_MARKER):];
+        line_num = _extract_leading_number(rest);
+    }
+
+    if COL_MARKER in error_lower {
+        idx = error_lower.find(COL_MARKER);
+        rest = error_output[idx + len(COL_MARKER):];
+        col_num = _extract_leading_number(rest);
+    }
+
+    return (line_num, col_num);
+}
+
+"""Extract error detail from the last colon in error output."""
+def _extract_error_detail(error_output: str) -> str {
+    if ": " not in error_output {
+        return "";
+    }
+    last_colon = error_output.rfind(": ");
+    if last_colon <= 0 {
+        return "";
+    }
+    detail = error_output[last_colon + 2:].strip();
+    if "\n" in detail {
+        detail = detail.split("\n")[0].strip();
+    }
+    return detail;
+}
+
 impl CompilationErrorDetector.detect(self: CompilationErrorDetector, ctx: BuildContext) -> list[Diagnostic] {
     file_path = "";
     line_num = 0;
@@ -225,55 +314,16 @@ impl CompilationErrorDetector.detect(self: CompilationErrorDetector, ctx: BuildC
     error_lower = ctx.error_output.lower();
 
     # Pattern 1: "Failed to compile '..path..' for client bundle:..path.., line X, col Y: Error"
-    if "failed to compile" in error_lower {
-        # Extract file path from between quotes
-        if "'" in ctx.error_output {
-            parts = ctx.error_output.split("'");
-            if len(parts) >= 2 {
-                file_path = parts[1];
-            }
-        }
-        # Extract line number
-        if ", line " in error_lower {
-            idx = error_lower.find(", line ");
-            rest = ctx.error_output[idx + 7:];
-            # Get the number before the next comma or colon
-            num_str = "";
-            for ch in rest {
-                if ch.isdigit() { num_str += ch; }
-                else { break; }
-            }
-            if num_str { line_num = int(num_str); }
-        }
-        # Extract column
-        if ", col " in error_lower {
-            idx = error_lower.find(", col ");
-            rest = ctx.error_output[idx + 6:];
-            num_str = "";
-            for ch in rest {
-                if ch.isdigit() { num_str += ch; }
-                else { break; }
-            }
-            if num_str { col_num = int(num_str); }
-        }
-        # Extract error detail (after the last colon)
-        if ": " in ctx.error_output {
-            # Find the last ": " which contains the actual error
-            last_colon = ctx.error_output.rfind(": ");
-            if last_colon > 0 {
-                error_detail = ctx.error_output[last_colon + 2:].strip();
-                # Clean up - get first line only
-                if "\n" in error_detail {
-                    error_detail = error_detail.split("\n")[0].strip();
-                }
-            }
-        }
+    if FAILED_TO_COMPILE_MARKER in error_lower {
+        file_path = _extract_quoted_path(ctx.error_output);
+        (line_num, col_num) = _parse_location_info(ctx.error_output, error_lower);
+        error_detail = _extract_error_detail(ctx.error_output);
     }
 
     # Pattern 2: "No bytecode found for ..path.."
-    if not file_path and "no bytecode found for" in error_lower {
-        idx = error_lower.find("no bytecode found for");
-        start = idx + len("no bytecode found for");
+    if not file_path and NO_BYTECODE_MARKER in error_lower {
+        idx = error_lower.find(NO_BYTECODE_MARKER);
+        start = idx + len(NO_BYTECODE_MARKER);
         rest = ctx.error_output[start:].strip();
         if "\n" in rest {
             file_path = rest.split("\n")[0].strip();
@@ -292,7 +342,7 @@ impl CompilationErrorDetector.detect(self: CompilationErrorDetector, ctx: BuildC
         message = "Jac compilation failed.";
     }
 
-    hint = "Check your Jac syntax:\n  - Missing semicolons\n  - Unclosed braces or parentheses\n  - Invalid syntax in cl {{ }} blocks";
+    hint = HINT_JAC_SYNTAX;
 
     diag = self.create_diagnostic(
         message=message,
@@ -314,8 +364,7 @@ impl CompilationErrorDetector.detect(self: CompilationErrorDetector, ctx: BuildC
 # ============== SyntaxErrorDetector ==============
 
 impl SyntaxErrorDetector.detect(self: SyntaxErrorDetector, ctx: BuildContext) -> list[Diagnostic] {
-    hint = "Check for:\n  - Missing or extra braces { }\n  - Unclosed JSX tags\n  - Missing semicolons";
-    return [self.create_diagnostic(message="Syntax error in client code.", hint=hint)];
+    return [self.create_diagnostic(message="Syntax error in client code.", hint=HINT_JS_SYNTAX)];
 }
 
 # ============== ImportNotFoundDetector ==============
@@ -324,8 +373,7 @@ impl ImportNotFoundDetector.detect(self: ImportNotFoundDetector, ctx: BuildConte
     import_path = self.extract_between(ctx.error_output, '"');
     if not import_path { import_path = self.extract_between(ctx.error_output, "'"); }
     if not import_path or not import_path.startswith(".") { return []; }
-    hint = "Check the import path for:\n  - Correct spelling and case\n  - File extension (.jac not needed)";
-    return [self.create_diagnostic(message=f'Cannot find module "{import_path}".', hint=hint)];
+    return [self.create_diagnostic(message=f'Cannot find module "{import_path}".', hint=HINT_IMPORT_PATH)];
 }
 
 # ============== DiagnosticEngine ==============
@@ -343,7 +391,7 @@ impl DiagnosticEngine.analyze(self: DiagnosticEngine, ctx: BuildContext) -> Diag
                 collection.add_all(detector.detect(ctx));
             } except Exception as e {
                 collection.add(Diagnostic(
-                    code="JAC_CLIENT_INTERNAL",
+                    code=INTERNAL_ERROR_CODE,
                     severity=Severity.WARNING,
                     title="Detector Error",
                     message=f"Detector {detector.code} failed: {str(e)}"
@@ -353,11 +401,11 @@ impl DiagnosticEngine.analyze(self: DiagnosticEngine, ctx: BuildContext) -> Diag
     }
     if len(collection.items) == 0 and ctx.error_output {
         collection.add(Diagnostic(
-            code="JAC_CLIENT_999",
+            code=FALLBACK_ERROR_CODE,
             severity=Severity.ERROR,
             title="Build Failed",
-            message="Client bundle build failed.",
-            hint="Run with debug=true in jac.toml for details."
+            message=MSG_BUILD_FAILED,
+            hint=HINT_DEBUG_MODE
         ));
     }
     return collection;
@@ -451,8 +499,8 @@ impl is_debug_mode(config: object = None) -> bool {
     return os.environ.get("JAC_DEBUG", "").lower() in ("1", "true", "yes");
 }
 
-impl format_build_error(error_output: str, project_dir: Path, source_map: dict[str, str] = {}, config: object = None) -> str {
-    # Build context
+"""Collect all .jac files in project, excluding build directories."""
+def _collect_jac_files(project_dir: Path) -> list[Path] {
     jac_files: list[Path] = [];
     try {
         for jac_file in project_dir.rglob("*.jac") {
@@ -462,34 +510,61 @@ impl format_build_error(error_output: str, project_dir: Path, source_map: dict[s
             }
         }
     } except Exception { ; }
+    return jac_files;
+}
 
+"""Scan node_modules to get installed package names."""
+def _scan_installed_packages(project_dir: Path) -> set[str] {
     installed_packages: set[str] = set();
     node_modules = project_dir / ".jac" / "client" / "node_modules";
-    if node_modules.exists() {
-        try {
-            for item in node_modules.iterdir() {
-                if item.is_dir() and not item.name.startswith(".") {
-                    if item.name.startswith("@") {
-                        for subitem in item.iterdir() {
-                            if subitem.is_dir() {
-                                installed_packages.add(f"{item.name}/{subitem.name}");
-                            }
-                        }
-                    } else {
-                        installed_packages.add(item.name);
-                    }
-                }
-            }
-        } except Exception { ; }
+
+    if not node_modules.exists() {
+        return installed_packages;
     }
 
-    ctx = BuildContext(
+    try {
+        for item in node_modules.iterdir() {
+            if not item.is_dir() or item.name.startswith(".") {
+                continue;
+            }
+            # Handle scoped packages (@org/package)
+            if item.name.startswith("@") {
+                for subitem in item.iterdir() {
+                    if subitem.is_dir() {
+                        installed_packages.add(f"{item.name}/{subitem.name}");
+                    }
+                }
+            } else {
+                installed_packages.add(item.name);
+            }
+        }
+    } except Exception { ; }
+
+    return installed_packages;
+}
+
+"""Create a BuildContext with all necessary information for diagnostics."""
+def _create_build_context(
+    error_output: str,
+    project_dir: Path,
+    source_map: dict[str, str] = {}
+) -> BuildContext {
+    return BuildContext(
         error_output=error_output,
         source_map=source_map,
         project_dir=project_dir,
-        jac_files=jac_files,
-        installed_packages=installed_packages
+        jac_files=_collect_jac_files(project_dir),
+        installed_packages=_scan_installed_packages(project_dir)
     );
+}
+
+"""Append debug information to formatted output."""
+def _append_debug_info(formatted: str, error_output: str) -> str {
+    return formatted + "\n\n--- Raw Error (debug=true) ---\n" + error_output + "\n--- End Raw Error ---\n";
+}
+
+impl format_build_error(error_output: str, project_dir: Path, source_map: dict[str, str] = {}, config: object = None) -> str {
+    ctx = _create_build_context(error_output, project_dir, source_map);
 
     # Run detectors
     engine = DiagnosticEngine();
@@ -501,9 +576,7 @@ impl format_build_error(error_output: str, project_dir: Path, source_map: dict[s
     formatted = formatter.format_collection(diagnostics);
 
     if is_debug_mode(config) {
-        formatted += "\n\n--- Raw Error (debug=true) ---\n";
-        formatted += error_output;
-        formatted += "\n--- End Raw Error ---\n";
+        formatted = _append_debug_info(formatted, error_output);
     }
     return formatted;
 }
