@@ -26,51 +26,9 @@ glob MSG_BUILD_FAILED = "Client bundle build failed.";
 glob FALLBACK_ERROR_CODE = "JAC_CLIENT_999";
 glob INTERNAL_ERROR_CODE = "JAC_CLIENT_INTERNAL";
 
-# ============== Diagnostic ==============
-
-impl Diagnostic.init(
-    self: Diagnostic,
-    code: str,
-    severity: Severity,
-    title: str,
-    message: str,
-    file_path: str = "",
-    line: int = 0,
-    column: int = 0,
-    source_snippet: str = "",
-    hint: str = "",
-    quick_fix: str = ""
-) {
-    self.code = code;
-    self.severity = severity;
-    self.title = title;
-    self.message = message;
-    self.file_path = file_path;
-    self.line = line;
-    self.column = column;
-    self.source_snippet = source_snippet;
-    self.hint = hint;
-    self.quick_fix = quick_fix;
-}
-
 # ============== BuildContext ==============
 
-impl BuildContext.init(
-    self: BuildContext,
-    error_output: str,
-    project_dir: Path,
-    source_map: dict[str, str] = {},
-    jac_files: list[Path] = [],
-    installed_packages: set[str] = set()
-) {
-    self.error_output = error_output;
-    self.project_dir = project_dir;
-    self.source_map = source_map;
-    self.jac_files = jac_files;
-    self.installed_packages = installed_packages;
-}
-
-impl BuildContext.read_source_lines(self: BuildContext, file_path: str, line: int, context_lines: int = 2) -> str {
+impl BuildContext.read_source_lines(file_path: str, line: int, context_lines: int = 2) -> str {
     try {
         path = Path(file_path);
         if not path.exists() { return ""; }

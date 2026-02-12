@@ -18,50 +18,28 @@ enum Severity {
 }
 
 """Single diagnostic result from a detector."""
-class Diagnostic {
-    has code: str = "";
-    has severity: Severity = Severity.ERROR;
-    has title: str = "";
-    has message: str = "";
-    has file_path: str = "";
-    has line: int = 0;
-    has column: int = 0;
-    has source_snippet: str = "";
-    has hint: str = "";
-    has quick_fix: str = "";
-
-    def init(
-        self: Diagnostic,
-        code: str,
-        severity: Severity,
-        title: str,
-        message: str,
+obj Diagnostic {
+    has code: str = "",
+        severity: Severity = Severity.ERROR,
+        title: str = "",
+        message: str = "",
         file_path: str = "",
         line: int = 0,
         column: int = 0,
         source_snippet: str = "",
         hint: str = "",
-        quick_fix: str = ""
-    );
+        quick_fix: str = "";
 }
 
 """Context passed to all detectors during analysis."""
-class BuildContext {
-    has error_output: str = "";
-    has source_map: dict[str, str] = {};
-    has project_dir: Path = Path(".");
-    has jac_files: list[Path] = [];
-    has installed_packages: set[str] = set();
-
-    def init(
-        self: BuildContext,
-        error_output: str,
-        project_dir: Path,
+obj BuildContext {
+    has error_output: str = "",
         source_map: dict[str, str] = {},
+        project_dir: Path = Path("."),
         jac_files: list[Path] = [],
-        installed_packages: set[str] = set()
-    );
-    def read_source_lines(self: BuildContext, file_path: str, line: int, context_lines: int = 2) -> str;
+        installed_packages: set[str] = set();
+
+    def read_source_lines(file_path: str, line: int, context_lines: int = 2) -> str;
 }
 
 """Collection of diagnostics."""
