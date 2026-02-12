@@ -132,6 +132,7 @@ import from jaclang.jac0core.unitree { JsxText, JsxExpression }
 
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.passes.transform { Alert }
 
 # =============================================================================
 # Token Access Implementations
@@ -200,12 +201,44 @@ impl Parser.expect(kind: TokenKind) -> Token {
     if self.check(kind) {
         return self.advance();
     }
-    self.error(f"Expected {kind}, got {self.current().kind}");
+    # Generate user-friendly error messages for common missing tokens
+    if kind == TokenKind.RPAREN {
+        self.error("Missing RPAREN");
+    } elif kind == TokenKind.RBRACE {
+        self.error("Missing RBRACE");
+    } elif kind == TokenKind.RSQUARE {
+        self.error("Missing RSQUARE");
+    } elif kind == TokenKind.SEMI {
+        self.error("Missing SEMI");
+    } elif kind == TokenKind.COMMA {
+        self.error("Missing COMMA");
+    } else {
+        self.error(f"Expected {kind}, got {self.current().kind}");
+    }
     return self.current();
 }
 
 impl Parser.error(message: str) {
-    self.errors.append(ParseError(message=message, loc=self.current().loc));
+    sloc = self.current().loc;
+    self.errors.append(ParseError(message=message, loc=sloc));
+    # Propagate to prog.errors_had as Alert if prog is available
+    if self.prog is not None and hasattr(self.prog, "errors_had") {
+        source = self.get_source();
+        tok = UniToken(
+            orig_src=source,
+            name="ERROR",
+            value="",
+            line=sloc.line,
+            end_line=sloc.end_line,
+            col_start=sloc.col_start,
+            col_end=sloc.col_end,
+            pos_start=sloc.pos_start,
+            pos_end=sloc.pos_end
+        );
+        loc = CodeLocInfo(tok, tok);
+        alrt = Alert(message, loc, Parser);
+        self.prog.errors_had.append(alrt);
+    }
 }
 
 impl Parser.check_name -> bool {
@@ -348,9 +381,10 @@ impl Parser.make_name(tok: Token, is_enum_stmt: bool = False) -> Name {
     } elif tok.kind == TokenKind.KWESC_NAME {
         kwesc = True;
     }
-    # Reject Python-only keywords that are not valid Jac identifiers
+    # Reject Python/JS keywords that are not valid Jac identifiers
     if val == "pass" {
         self.error("'pass' keyword is not allowed in Jac");
+        self.error("Jac does not allow this keyword in any syntactic position");
     }
     return Name(
         orig_src=self.get_source(),
@@ -1456,6 +1490,11 @@ impl Parser.parse_call_args(kid: list) -> list {
     if self.check(TokenKind.RPAREN) {
         return args;
     }
+    # If current token clearly cannot start an argument, return empty
+    # so that the caller's expect(RPAREN) generates "Missing RPAREN"
+    if self.check(TokenKind.SEMI) or self.check(TokenKind.RBRACE) {
+        return args;
+    }
     arg = self.parse_call_arg();
     args.append(arg);
     kid.append(arg);
@@ -1467,6 +1506,15 @@ impl Parser.parse_call_args(kid: list) -> list {
         arg = self.parse_call_arg();
         args.append(arg);
         kid.append(arg);
+    }
+    # Check for missing comma between arguments
+    if not self.check(TokenKind.RPAREN) and not self.at_end() {
+        self.error("Missing COMMA");
+        self.error("Unexpected token");
+        # Skip to RPAREN or end to recover
+        while not self.check(TokenKind.RPAREN) and not self.at_end() {
+            self.advance();
+        }
     }
     return args;
 }
@@ -1798,6 +1846,13 @@ impl Parser.parse_atom -> Expr {
         return MultiString(strings=strings, kid=strings);
     }
     if self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME) {
+        # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
+        # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
+        if self.check(TokenKind.NAME) and self.current().value == "new"
+        and self.peek().kind in [TokenKind.NAME, TokenKind.KWESC_NAME] {
+            self.error("The 'new' keyword is not supported in Jac");
+            self.error("Use `Reflect.construct(target, argumentsList)` method to create new instances");
+        }
         tok = self.advance();
         return self.make_name(tok);
     }
@@ -5144,7 +5199,13 @@ impl Parser.parse_archetype_member{
             return ModuleCode(name=None, body=body, kid=kid, doc=None);
         }
     }
-    self.error("Unexpected token in archetype body");
+    # Check for 'pass' keyword specifically
+    if self.check(TokenKind.NAME) and self.current().value == "pass" {
+        self.error("'pass' keyword is not allowed in Jac");
+        self.error("Jac does not allow this keyword in any syntactic position");
+    } else {
+        self.error("Unexpected token in archetype body");
+    }
     self.advance();
     return EmptyToken();
 }
@@ -5454,6 +5515,45 @@ impl Parser.parse_func_signature -> FuncSignature {
                 posonly_params = regular_params;
                 regular_params = [];
                 saw_slash = True;
+            }
+        }
+    }
+    # Validate parameter ordering rules (use elif to report one error per separator)
+    has_slash = False;
+    has_star = False;
+    has_kwargs = False;
+    for k in kid {
+        if isinstance(k, UniToken) and k.name == Tok.DIV {
+            if has_slash {
+                self.error("Duplicate '/' in parameter list");
+            } elif has_star {
+                self.error("'/' must appear before '*' in parameter list");
+            } elif has_kwargs {
+                self.error("'/' must appear before '**kwargs' in parameter list");
+            }
+            has_slash = True;
+        } elif isinstance(k, UniToken) and k.name == Tok.STAR_MUL {
+            if has_star {
+                self.error("Duplicate '*' in parameter list");
+            } elif has_kwargs {
+                self.error("'*' must appear before '**kwargs' in parameter list");
+            }
+            has_star = True;
+        } elif isinstance(k, ParamVar) {
+            if k.unpack and hasattr(k.unpack, "name") {
+                if k.unpack.name == Tok.STAR_MUL {
+                    if has_star {
+                        self.error("Duplicate '*' in parameter list");
+                    } elif has_kwargs {
+                        self.error("'*' must appear before '**kwargs' in parameter list");
+                    }
+                    has_star = True;
+                } elif k.unpack.name == Tok.STAR_POW {
+                    if has_kwargs {
+                        self.error("Duplicate '**kwargs' in parameter list");
+                    }
+                    has_kwargs = True;
+                }
             }
         }
     }
@@ -6087,7 +6187,13 @@ impl Parser.parse_impl_def -> ImplDef {
     }
     if isinstance(body, list) {
         kid.append(self.gen_token(Tok.LBRACE.value));
-        kid.extend(body);
+        for (i, item) in enumerate(body) {
+            kid.append(item);
+            # Add comma tokens between enum-style body items
+            if getattr(item, "is_enum_stmt", False) and i < len(body) - 1 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+        }
         kid.append(self.gen_token(Tok.RBRACE.value));
     } else {
         kid.append(body);
@@ -6125,6 +6231,8 @@ impl Parser.parse_impl_target_name -> Name {
 impl Parser.parse_impl_enum_body -> list {
     # Parse enum-style impl body: NAME = value, NAME: type = value, ...
     # Comma-separated assignments (final comma optional)
+    # Only Assignment nodes go into the body list (not COMMA tokens).
+    # This matches how parse_enum separates body from body_kid.
     members: list = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         if self.check_name() {
@@ -6160,10 +6268,8 @@ impl Parser.parse_impl_enum_body -> list {
                     is_enum_stmt=True
                 )
             );
-            # Consume optional comma and add to members list
-            if self.match_tok(TokenKind.COMMA) {
-                members.append(self.gen_token(Tok.COMMA.value, ","));
-            }
+            # Consume optional comma (not added to body list)
+            self.match_tok(TokenKind.COMMA);
         } else {
             break;
         }

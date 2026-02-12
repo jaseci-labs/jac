@@ -16,6 +16,8 @@ import from jaclang.jac0core.unitree {
     Token as UniToken,
     Expr
 }
+import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
     Ellipsis as EllipsisLit,
@@ -363,7 +365,8 @@ obj Parser {
         errors: list[ParseError] = [],
         file_path: str = "<input>",
         source_code: str = "",
-        source: Source | None = None;
+        source: Source | None = None,
+        prog: object | None = None;
 
     # -------------------------------------------------------------------------
     # Token Access
@@ -527,11 +530,11 @@ obj Parser {
 # Convenience Functions
 # =============================================================================
 def parse(
-    source: str, file_path: str = "<input>"
+    source: str, file_path: str = "<input>", prog: object | None = None
 ) -> tuple[Module, list[ParseError], list[LexerError]] {
     lexer = Lexer(source=source, file_path=file_path);
     tokens = lexer.tokenize();
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
     # Transfer captured comments from lexer to module source
     if module.source and lexer.comments {

@@ -639,7 +639,7 @@ class JacCompiler {
             mod = py_ast_ret.ir_out;
         } else {
             import from jaclang.jac0core.parser { parse as rd_parse }
-            (mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+            (mod, parse_errors, lex_errors) = rd_parse(source_str, file_path, prog=target_program);
             _recalculate_parents(mod);
             had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
             if had_error {
