@@ -308,9 +308,14 @@ impl start(
             vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
         }
     }
-    # Note: Startup banner is printed by server.start() AFTER compilation/bundling completes
+    # Pass startup banner callback so it's printed AFTER compilation/bundling completes
     try {
-        server.start(dev=dev, no_client=no_client);
+        server.start(
+            dev=dev,
+            no_client=no_client,
+            on_ready=lambda :
+                _print_startup_message(dev, no_client, port, actual_api_port, base)
+        );
         return 0;
     } except KeyboardInterrupt {
         console.print('\nShutting down...');

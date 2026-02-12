@@ -149,6 +149,23 @@ def test_create_tarball_captures_files(tmp_path: Path) -> None:
     assert "./hello.txt" in member_names
 
 
+def test_create_tarball_excludes_jac_folder(tmp_path: Path) -> None:
+    source_dir = tmp_path / "src"
+    source_dir.mkdir()
+    (source_dir / "app.py").write_text("print('hi')")
+    jac_dir = source_dir / ".jac"
+    jac_dir.mkdir()
+    (jac_dir / "cache.json").write_text("{}")
+    tar_path = tmp_path / "archive.tar.gz"
+
+    create_tarball(str(source_dir), str(tar_path))
+
+    with tarfile.open(tar_path, "r:gz") as tar:
+        member_names = tar.getnames()
+    assert "./app.py" in member_names
+    assert not any(".jac" in name for name in member_names)
+
+
 def test_create_tarball_missing_source(tmp_path: Path) -> None:
     tar_path = tmp_path / "archive.tar.gz"
 

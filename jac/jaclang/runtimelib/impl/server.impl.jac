@@ -1608,7 +1608,11 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[], None] | None = None
+) -> None {
     import from pathlib { Path }
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
@@ -1631,9 +1635,7 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                 } else {
                     self.introspector.ensure_bundle();
                 }
-                console.print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
-                );
+                # Callback will handle startup message if provided
             } except Exception as e {
                 bundle_error = str(e);
             }
@@ -1685,6 +1687,10 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                 emoji=True
             );
             console.print('=' * 70 + '\n', file=sys.stderr);
+        }
+        # Call the ready callback (e.g., to print startup banner)
+        if on_ready {
+            on_ready();
         }
         try {
             httpd.serve_forever();
