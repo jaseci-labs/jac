@@ -103,7 +103,11 @@ obj JacAPIServer(JServer) {
     def register_root_asset_endpoint -> None;
     def serve_root_asset(file_path: str) -> Response;
     def _configure_openapi_security -> None;
-    def start(dev: bool = False, no_client: bool = False) -> None;
+    def start(
+        dev: bool = False,
+        no_client: bool = False,
+        on_ready: Callable[[], None] | None = None
+    ) -> None;
     # HMR (Hot Module Replacement) dynamic routing methods
     def enable_hmr(hot_reloader: Any) -> None;
     def register_dynamic_walker_endpoint -> None;
