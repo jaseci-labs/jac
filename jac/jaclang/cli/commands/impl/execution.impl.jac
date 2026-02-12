@@ -313,7 +313,8 @@ impl start(
         server.start(
             dev=dev,
             no_client=no_client,
-            on_ready=lambda: _print_startup_message(dev, no_client, port, actual_api_port, base)
+            on_ready=lambda :
+                _print_startup_message(dev, no_client, port, actual_api_port, base)
         );
         return 0;
     } except KeyboardInterrupt {
