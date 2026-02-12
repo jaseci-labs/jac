@@ -816,9 +816,13 @@ def _is_vite_url_line(line: str) -> bool {
 """Forward Vite output to stdout, filtering URL lines after ready.
 
 This runs in a separate thread to avoid blocking the main thread.
+Buffers output before ready so errors can be shown if startup fails.
 """
 def _forward_vite_output(
-    proc: Any, ready_event: "threading.Event", sys_module: Any
+    proc: Any,
+    ready_event: "threading.Event",
+    sys_module: Any,
+    output_buffer: list[str]
 ) -> None {
     try {
         for line in iter(proc.stdout.readline, '') {
@@ -829,10 +833,15 @@ def _forward_vite_output(
             if _is_vite_ready_line(line) {
                 ready_event.set();
             }
-            # After ready, forward non-URL output to console
-            if ready_event.is_set() and not _is_vite_url_line(line) {
-                sys_module.stdout.write(line);
-                sys_module.stdout.flush();
+            if ready_event.is_set() {
+                # After ready, forward non-URL output to console
+                if not _is_vite_url_line(line) {
+                    sys_module.stdout.write(line);
+                    sys_module.stdout.flush();
+                }
+            } else {
+                # Buffer output before ready so we can show errors on failure
+                output_buffer.append(line);
             }
         }
     } except Exception {
@@ -949,9 +958,10 @@ impl ViteBundler._start_vite_with_output_capture(
         text=True
     );
     ready_event = threading.Event();
+    output_buffer: list[str] = [];
     output_thread = threading.Thread(
         target=_forward_vite_output,
-        args=(process, ready_event, sys_module),
+        args=(process, ready_event, sys_module, output_buffer),
         daemon=True
     );
     output_thread.start();
@@ -960,9 +970,23 @@ impl ViteBundler._start_vite_with_output_capture(
     if is_ready {
         console.print("  ✔ Vite dev server ready", style="success");
     } else {
-        console.warning(
-            f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
-        );
+        # Check if process exited (crashed) or just timed out
+        exit_code = process.poll();
+        if exit_code is not None {
+            # Process crashed - show buffered output for debugging
+            console.error("  ✖ Vite dev server failed to start");
+            if output_buffer {
+                console.print("\n  Vite output:");
+                for line in output_buffer {
+                    sys_module.stdout.write(f"    {line}");
+                }
+                sys_module.stdout.flush();
+            }
+        } else {
+            console.warning(
+                f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
+            );
+        }
     }
     return process;
 }
