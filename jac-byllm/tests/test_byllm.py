@@ -475,7 +475,15 @@ class TestApiKeyResolution:
         """Test masking shows last 4 chars for long keys, last 1 for short, * for single."""
         model = Model(model_name="gpt-4o-mini")
         # Long key: mask all but last 4
-        params = {"api_key": "sk-abcdef1234", "messages": [{"role": "system", "content": "t"}, {"role": "user", "content": "t"}], "tools": None, "response_format": None}
+        params = {
+            "api_key": "sk-abcdef1234",
+            "messages": [
+                {"role": "system", "content": "t"},
+                {"role": "user", "content": "t"},
+            ],
+            "tools": None,
+            "response_format": None,
+        }
         model.format_prompt(params)
         # params should be unchanged (format_prompt copies)
         assert params["api_key"] == "sk-abcdef1234"
