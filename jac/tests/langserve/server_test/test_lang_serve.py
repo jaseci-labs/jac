@@ -17,15 +17,6 @@ from tests.langserve.server_test.utils import (
 from jaclang.langserve.server import formatting
 from jaclang.vendor.pygls.uris import from_fs_path
 
-# NOTE: circle.jac emits a spurious type error at the call to super.init:
-# obj Circle(Shape) {
-#     def init(radius: float) {
-#         super.init(ShapeType.CIRCLE);
-#                    ^^^^^^^^^^^^^^^^
-# The call is correct: semantically super refers to the parent class. The
-# current static/type checker cannot reliably infer that relationship and
-# reports a false positive. This should be fixed in the type checker.
-
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
 EXPECTED_CIRCLE_TOKEN_COUNT = 355
