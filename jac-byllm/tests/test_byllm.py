@@ -489,8 +489,7 @@ class TestApiKeyResolution:
         assert params["api_key"] == "sk-abcdef1234"
 
         # Verify masking by checking the copy behavior directly
-        log_params = params.copy()
-        key = log_params["api_key"]
+        key = str(params["api_key"])
         masked = "*" * (len(key) - 4) + key[-4:]
         assert masked == "*********1234"
         assert "sk-abcdef" not in masked
