@@ -18,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: LiteralString class in Typechecker**: Literal string class is now supported in typechecker which improves binary operator chain handling.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
 -**Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
+- **Lark Parser Removal**: Replaced the Lark-based parser with a hand-written recursive descent parser as the default. Deleted `jac_parser.py`, `jac.lark`, `lark_jac_parser.py`, and the vendored `lark/` directory. All 110 language tests, 438 format tests, and 15 LSP server tests pass with the new parser.
 - **1 Small Refactors**
 
 ## jaclang 0.10.0 (Latest Release)

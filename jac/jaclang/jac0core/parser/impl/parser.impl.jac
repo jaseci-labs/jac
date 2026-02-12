@@ -3163,14 +3163,16 @@ impl Parser.parse_jsx_child -> Expr {
             # Whitespace-only text node, try next child
             return self.parse_jsx_child();
         }
-        # Normalize: strip leading newlines+indentation but preserve leading same-line spaces
-        # e.g. "\n            Hello World\n        " → "Hello World"
-        # e.g. "  # comment\n        " → "  # comment"
+        # Normalize JSX text whitespace (like HTML):
+        # 1. Strip leading/trailing newlines+whitespace
+        # 2. Collapse internal newline+whitespace sequences into single space
         import re;
         normalized = re.sub(r'^\s*\n\s*', '', text_tok.value).rstrip();
         if not normalized {
             normalized = fully_stripped;
         }
+        # Collapse any remaining internal newline+whitespace into single space
+        normalized = re.sub(r'\s*\n\s*', ' ', normalized);
         # Escape quotes in JSX text (matching old parser behavior)
         escaped = normalized.replace('"', '\\"').replace("'", "\\'");
         text_node = self.make_uni_token(text_tok);

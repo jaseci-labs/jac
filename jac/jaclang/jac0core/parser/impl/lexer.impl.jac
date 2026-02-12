@@ -817,6 +817,11 @@ impl Lexer.scan_jsx_tag_token -> Token {
 
 """Scan JSX content between tags."""
 impl Lexer.scan_jsx_content -> Token {
+    self.skip_whitespace_and_comments();
+    if self.at_end() {
+        self.error("Unexpected end of JSX content", self.line, self.col, self.pos);
+        return self.make_token(TokenKind.ERROR, "", self.line, self.col, self.pos);
+    }
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
@@ -872,11 +877,16 @@ impl Lexer.scan_jsx_content -> Token {
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
-    # Text content - collect until we hit <, {, or end
+    # Text content - collect until we hit <, {, #comment, or end
     value = "";
     while not self.at_end() {
         ch = self.current();
         if ch == "<" or ch == "{" {
+            break;
+        }
+        if ch == "#" {
+            # Could be a comment - stop text collection and let
+            # skip_whitespace_and_comments handle it on next call
             break;
         }
         value += self.advance();
