@@ -6,133 +6,16 @@ impl SemTokManager.postinit -> None {
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
 }
 
-"""Resolve symbol for a NameAtom node.
-
-Searches hub modules to find and assign the correct symbol for an
-unresolved NameAtom. Sets nd.sym and nd.name_of so that the sem_token
-property computes correctly.
-"""
-impl SemTokManager.resolve_symbol(nd: uni.NameAtom) -> None {
-    import from jaclang.jac0core.constant { JacSemTokenType }
-    if nd.sym is not None or not nd?.value {
-        return;
-    }
-    symbol = None;
-    # Handle member access (right side of AtomTrailer)
-    parent = nd.parent;
-    if isinstance(parent, uni.AtomTrailer) and parent.is_attr and parent.right == nd {
-        target = parent.target;
-        if isinstance(target, uni.NameAtom) and target.sym {
-            target_sym = target.sym;
-            if target_sym.decl and isinstance(target_sym.decl.name_of, uni.Archetype) {
-                archetype = target_sym.decl.name_of;
-                if member_sym := archetype.lookup(nd.value, deep=False) {
-                    symbol = member_sym;
-                }
-            }
-        }
-    }
-    # Scan hub modules
-    if symbol is None {
-        for (path, mod) in self.hub.items() {
-            if found := mod.lookup(nd.value, deep=True, incl_inner_scope=True) {
-                # Resolve imported symbols if needed
-                if found?.via_import and found?.via_import {
-                    if found.decl and found.decl?.name_of {
-                        if isinstance(found.decl.name_of, uni.ModuleItem) {
-                            if found.decl.name_of.sym {
-                                found = found.decl.name_of.sym;
-                            }
-                        }
-                    }
-                }
-                symbol = found;
-                break;
-            }
-        }
-    }
-    # Apply the resolved symbol to the node
-    if symbol is not None {
-        symbol.add_use(nd);
-        nd.sym = symbol;
-        if symbol.decl and symbol.decl.name_of {
-            nd.name_of = symbol.decl.name_of;
-        }
-        if nd.sem_token is None and symbol.decl and symbol.decl.name_of {
-            decl = symbol.decl.name_of;
-            if isinstance(decl, (uni.Architype, uni.Enum)) {
-                nd.sem_token = (JacSemTokenType.CLASS, 0);
-            } elif isinstance(decl, uni.Ability) {
-                nd.sem_token = (JacSemTokenType.FUNCTION, 0);
-            } elif isinstance(decl, uni.HasVar) {
-                nd.sem_token = (JacSemTokenType.PROPERTY, 0);
-            } else {
-                nd.sem_token = (JacSemTokenType.VARIABLE, 0);
-            }
-        }
-    }
-}
-
 """Collect all resolved NameAtom nodes from the module IR.
 
 Iterates all in-module nodes and collects those with valid semantic tokens.
-Resolves unresolved NameAtoms via hub lookup and patches ImplDef target names
-where DeclImplMatchPass sets name_spec.sym but NameAtom.sym reads _sym.
 """
 impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
     nodes: list = [];
-    # First pass: collect NameAtoms, resolving any that lack symbols.
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
-            self.resolve_symbol(nd);
             if nd.sem_token {
                 nodes.append(nd);
-            }
-        }
-    }
-    # Second pass: handle ImplDef target names and FuncSignature type annotations.
-    for nd in ir._in_mod_nodes {
-        if isinstance(nd, uni.ImplDef) {
-            # Patch target NameAtoms: DeclImplMatchPass sets name_spec.sym
-            # but NameAtom.sym reads from _sym, so copy from decl_link.
-            if nd.decl_link and nd.target {
-                method_nd = nd.target[-1];
-                if (
-                    isinstance(method_nd, uni.NameAtom)
-                    and method_nd.sym is None
-                    and nd.decl_link.sym
-                ) {
-                    method_nd.sym = nd.decl_link.sym;
-                }
-                if isinstance(method_nd, uni.NameAtom) and method_nd.sem_token {
-                    nodes.append(method_nd);
-                }
-            }
-            # Resolve type annotations in impl FuncSignature params/return.
-            if isinstance(nd.spec, uni.FuncSignature) {
-                sig = nd.spec;
-                all_params = (
-                    list(sig.posonly_params) + list(sig.params) + (
-                        [sig.varargs] if sig.varargs else []
-                    ) + list(sig.kwonlyargs) + ([sig.kwargs] if sig.kwargs else [])
-                );
-                for param in all_params {
-                    if param.type_tag and isinstance(param.type_tag, uni.SubTag) {
-                        tag = param.type_tag.tag;
-                        if isinstance(tag, uni.NameAtom) {
-                            self.resolve_symbol(tag);
-                            if tag.sem_token {
-                                nodes.append(tag);
-                            }
-                        }
-                    }
-                }
-                if sig.return_type and isinstance(sig.return_type, uni.NameAtom) {
-                    self.resolve_symbol(sig.return_type);
-                    if sig.return_type.sem_token {
-                        nodes.append(sig.return_type);
-                    }
-                }
             }
         }
     }
