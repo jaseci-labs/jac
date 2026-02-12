@@ -3421,6 +3421,10 @@ impl Parser.parse_native_block -> NativeBlock {
             if stmt is not None {
                 body.append(stmt);
                 kid.append(stmt);
+                # Mark as native context
+                if stmt?.code_context {
+                    stmt.code_context = CodeContext.NATIVE;
+                }
             }
         }
         self.expect(TokenKind.RBRACE);
