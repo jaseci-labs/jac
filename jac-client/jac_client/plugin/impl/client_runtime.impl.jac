@@ -67,9 +67,13 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
         url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
     );
     if not response.ok {
-        error_text = await response.text();
-        walker_name = f"{left}/{right}" if right else left;
-        raise Exception(f"Walker {walker_name} failed: {error_text}") ;
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+        } else {
+            walker_name = f"{left}/{right}" if right else left;
+            console.error(f"Walker {walker_name} failed with status {response.status}");
+        }
+        return {};
     }
     payload = await response.json();
     return payload["data"] if payload["data"] else {};
@@ -91,13 +95,17 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
-        error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}") ;
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+        } else {
+            console.error(f"Function {function_name} failed with status {response.status}");
+        }
+        return None;
     }
     payload = await response.json();
     if not payload["ok"] {
-        error_msg = payload["error"] if payload["error"] else "Unknown error";
-        raise Exception(f"Function {function_name} failed: {error_msg}") ;
+        console.error(f"Function {function_name} failed:", payload["error"] if payload["error"] else "Unknown error");
+        return None;
     }
     result = None;
     try {
@@ -181,7 +189,30 @@ impl jacLogout -> None {
 
 impl jacIsLoggedIn -> bool {
     token = __getLocalStorage("jac_token");
-    return token != None and token != "";
+    if not token or token == "" {
+        return False;
+    }
+    base_url = __getApiBaseUrl();
+    response = await fetch(
+        f"{base_url}/user/refresh-token",
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": JSON.stringify({"token": token})
+        }
+    );
+    if response.status == 401 {
+        __removeLocalStorage("jac_token");
+        return False;
+    }
+    if response.ok {
+        payload = await response.json();
+        new_token = payload["data"]["token"] if payload["data"] else None;
+        if new_token {
+            __setLocalStorage("jac_token", new_token);
+        }
+        return True;
+    }
 }
 
 impl __getLocalStorage(key: str) -> str {
@@ -206,7 +237,8 @@ impl __removeLocalStorage(key: str) -> None {
 """Auth guard component for file-based routing. Renders child routes if
 authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> any {
-    if jacIsLoggedIn() {
+    token = __getLocalStorage("jac_token");
+    if token and token != "" {
         return
             <ReactRouterOutlet />;
     }

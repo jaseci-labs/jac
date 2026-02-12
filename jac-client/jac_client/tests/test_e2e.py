@@ -221,3 +221,29 @@ class TestAuthenticationE2E:
 
         page.goto(f"{base_url}/nested", wait_until="networkidle", timeout=30000)
         assert "/nested" in page.url.lower()
+
+    def test_stale_token_redirects_to_login(
+        self, running_server: dict, page: Page
+    ) -> None:
+        """A stale token should be cleared on 401 so AuthGuard redirects to login."""
+        base_url = running_server["url"]
+
+        # Inject a fake but structurally valid JWT into localStorage
+        page.goto(base_url, wait_until="networkidle", timeout=60000)
+        page.evaluate(
+            'localStorage.setItem("jac_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+            'eyJ1c2VybmFtZSI6Imdob3N0X3VzZXIiLCJleHAiOjk5OTk5OTk5OTksImlhdCI6MTcwMDAwMDAwMH0.'
+            'invalid_signature")'
+        )
+
+        # Visit a protected route — walker calls will get 401 and clear the token
+        page.goto(
+            f"{base_url}/nested", wait_until="networkidle", timeout=30000
+        )
+        page.wait_for_timeout(3000)
+
+        # After token is cleared, reloading should redirect to login via AuthGuard
+        page.reload(wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(2000)
+
+        assert "/login" in page.url.lower()

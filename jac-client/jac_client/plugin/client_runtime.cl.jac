@@ -41,7 +41,7 @@ async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
 async def:pub jacSignup(username: str, password: str) -> dict;
 async def:pub jacLogin(username: str, password: str) -> bool;
 def:pub jacLogout -> None;
-def:pub jacIsLoggedIn -> bool;
+async def:pub jacIsLoggedIn -> bool;
 def:pub __getApiBaseUrl -> str;
 def:pub __getLocalStorage(key: str) -> str;
 def:pub __setLocalStorage(key: str, value: str) -> None;

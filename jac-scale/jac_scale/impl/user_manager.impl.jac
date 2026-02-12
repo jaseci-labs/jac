@@ -70,7 +70,7 @@ impl JacScaleUserManager.refresh_jwt_token(token: str) -> (str | None) {
         );
         username = decoded.get('username');
 
-        if not username {
+        if not username or not self.user_exists(username) {
             return None;
         }
 
