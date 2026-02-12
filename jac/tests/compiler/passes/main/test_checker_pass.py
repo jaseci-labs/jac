@@ -1357,29 +1357,32 @@ def test_nested_types_resolution(fixture_path: Callable[[str], str]) -> None:
     found_module = False
 
     for ability in mod.get_all_sub_nodes(uni.Ability):
-        if ability.sym_name == "get_ir":
-            if ability.signature and ability.signature.return_type:
-                ret_type = ability.signature.return_type
-                if isinstance(ret_type, uni.AtomTrailer):
-                    # Check 'uni'
-                    if (
-                        isinstance(ret_type.target, uni.Name)
-                        and ret_type.target.value == "uni"
-                    ):
-                        assert ret_type.target.sym is not None, (
-                            "Symbol for 'uni' not, resolved"
-                        )
-                        found_uni = True
+        if (
+            ability.sym_name == "get_ir"
+            and ability.signature
+            and ability.signature.return_type
+        ):
+            ret_type = ability.signature.return_type
+            if isinstance(ret_type, uni.AtomTrailer):
+                # Check 'uni'
+                if (
+                    isinstance(ret_type.target, uni.Name)
+                    and ret_type.target.value == "uni"
+                ):
+                    assert ret_type.target.sym is not None, (
+                        "Symbol for 'uni' not, resolved"
+                    )
+                    found_uni = True
 
-                    # Check 'Module'
-                    if (
-                        isinstance(ret_type.right, uni.Name)
-                        and ret_type.right.value == "Module"
-                    ):
-                        assert ret_type.right.sym is not None, (
-                            "Symbol for 'Module' not resolved"
-                        )
-                        found_module = True
+                # Check 'Module'
+                if (
+                    isinstance(ret_type.right, uni.Name)
+                    and ret_type.right.value == "Module"
+                ):
+                    assert ret_type.right.sym is not None, (
+                        "Symbol for 'Module' not resolved"
+                    )
+                    found_module = True
 
     assert found_uni, "Could not find 'uni' name node in AST"
     assert found_module, "Could not find 'Module' name node in AST"
