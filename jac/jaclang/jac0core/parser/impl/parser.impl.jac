@@ -2445,6 +2445,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             arrow_r_tok = self.previous();
             self.advance();  # :
             start_uni = self.make_uni_token(arrow_r_tok);
+            colon_uni = self.make_uni_token(self.previous());
             # Parse typed filter compare list
             f_type = None;
             compares: list = [];
@@ -2489,7 +2490,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             edge_op_ref = EdgeOpRef(
                 filter_cond=fcond,
                 edge_dir=EdgeDir.OUT,
-                kid=[start_uni, fcond, end_uni]
+                kid=[start_uni, colon_uni, fcond, end_uni]
             );
         }
         # Typed edge in: <-:type:<- or <-:type:a==1,b==2:<-
@@ -3743,16 +3744,19 @@ impl Parser.parse_statement{
         return self.parse_ability();
     }
     # Handle nested class/archetype definitions
+    # Only treat as declaration if followed by a name (not DOT, LPAREN, etc.)
+    # This allows keywords like `node`, `edge` to be used as variable names
     if self.check_any(
         TokenKind.KW_OBJECT,
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_CLASS
-    ) {
+    ) and self.peek().kind in (TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.LBRACE) {
         return self.parse_archetype();
     }
-    if self.check(TokenKind.KW_ENUM) {
+    if self.check(TokenKind.KW_ENUM)
+    and self.peek().kind in (TokenKind.NAME, TokenKind.KWESC_NAME, TokenKind.LBRACE) {
         return self.parse_enum();
     }
     # Handle impl inside code blocks
