@@ -5,7 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
-- **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files.
+- **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files. Exits with status 1 if files need formatting or have syntax errors.
 - **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections.
 - **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
 - **PWA Build Detection**: The stdlib server now detects existing PWA builds and serves Vite-hashed client files (`client.*.js`) correctly.
@@ -19,6 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: LiteralString class in Typechecker**: Literal string class is now supported in typechecker which improves binary operator chain handling.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
 -**Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
+- **1 Small Refactors**
 
 ## jaclang 0.10.0 (Latest Release)
 

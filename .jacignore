@@ -97,6 +97,7 @@ desktop_target.impl.jac
 doc_ir.jac
 doc_ir_gen_pass.impl.jac
 doc_ir_gen_pass.jac
+engine.impl.jac
 err2.jac
 es_unparse.impl.jac
 es_unparse.jac
@@ -110,6 +111,7 @@ frontend.jac
 fstrings.jac
 func.jac
 funccall_genexpr.jac
+game.impl.jac
 grammar_checker.jac
 grammar_extract_pass.impl.jac
 guess_game2.jac
@@ -159,6 +161,7 @@ nested_impls.jac
 new_keyword_errors.jac
 normalize_pass.impl.jac
 one.jac
+other_root_access.jac
 param_syntax_err.jac
 parser.jac
 parser.impl.jac
@@ -172,6 +175,7 @@ pyast_gen_pass.jac
 pyast_load_pass.impl.jac
 pybc_gen_pass.jac
 py_imp_test.jac
+pyast_load_pass.impl.jac
 pyjac_ast_link_pass.impl.jac
 react_max_iterations.jac
 registry.jac
