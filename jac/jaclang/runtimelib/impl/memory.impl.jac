@@ -11,7 +11,6 @@ import from pickle { dumps, loads }
 import from typing { cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.utils { is_valid_anchor }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 
