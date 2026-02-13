@@ -22,6 +22,22 @@ import from jaclang.jac0core.mtp {
 """Initialize the pass with the input IR and program context."""
 impl MTIRGenPass.postinit -> None {
     super.init(self.ir_in, self.prog, self.cancel_token);
+    # Set the entry module name on the program for runtime scope resolution.
+    # This enables fetch_mtir to resolve __main__ to the correct module name.
+    if self.prog and self.prog.mod and self.prog.mod.main {
+        main_mod = self.prog.mod.main;
+        if main_mod.loc and main_mod.loc.mod_path {
+            mod_path = Path(main_mod.loc.mod_path);
+            # Strip .jac extension to get the module name
+            entry_name = mod_path.stem;
+            if entry_name.endswith(".impl") {
+                entry_name = entry_name[:-5];
+            } elif entry_name.endswith(".cl") or entry_name.endswith(".sv") {
+                entry_name = entry_name[:-3];
+            }
+            self.prog.entry_module_name = entry_name;
+        }
+    }
 }
 
 """Check if a type expression represents a primitive type."""
@@ -374,8 +390,9 @@ impl MTIRGenPass._get_scope_str(node: uni.UniScopeNode) -> str {
             try {
                 rel_path = path.relative_to(base);
             } except ValueError {
-                # File not under base_path, use filename
-                rel_path = path;
+                # File not under base_path, use just the filename (stem)
+                # This ensures consistent scope keys across environments
+                rel_path = Path(path.name);
             }
             # Remove .jac extension and convert path separators to dots
             module_parts: list[str] = [];
