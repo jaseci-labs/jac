@@ -461,7 +461,7 @@ cl {
 }
 ```
 
-> **Note**: `jacIsLoggedIn` is async — always use `await` inside an `async can with entry` block.
+> **Note**: `jacIsLoggedIn` is async - always use `await` inside an `async can with entry` block.
 
 ---
 

@@ -402,7 +402,7 @@ cl {
 }
 ```
 
-> **Note**: `jacIsLoggedIn` is async — it validates the token against the backend. Use `await jacIsLoggedIn()` inside an `async can with entry` block.
+> **Note**: `jacIsLoggedIn` is async - it validates the token against the backend. Use `await jacIsLoggedIn()` inside an `async can with entry` block.
 
 ### 2 User Management
 
