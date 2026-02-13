@@ -1622,7 +1622,7 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
                 try:
                     print("[DEBUG] Fetching /sw.js")
                     sw_bytes = _wait_for_endpoint(
-                        f"http://127.0.0.1:{server_port}/sw.js",
+                        f"http://127.0.0.1:{server_port}/static/sw.js",
                         timeout=60.0,
                         poll_interval=2.0,
                         request_timeout=20.0,
