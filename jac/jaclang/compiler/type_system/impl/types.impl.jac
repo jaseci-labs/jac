@@ -346,7 +346,10 @@ Check if this function type was created from a Callable annotation.
 This distinguishes between:
 - Actual function definitions: `def foo(x: int) -> str: ...`
 - Callable type annotations: `callback: Callable[[int], str]`
+
+In Jac, Callable annotations are identified by having an empty func_name,
+since all actual function definitions have a name.
 """
 impl FunctionType.is_from_callable_annotation -> bool {
-    return bool(self.function_flags & FunctionTypeFlags.FromCallableAnnotation);
+    return self.func_name == "";
 }

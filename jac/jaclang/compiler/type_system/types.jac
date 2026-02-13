@@ -219,16 +219,15 @@ enum FunctionTypeFlags(IntEnum) {
         # The *args and **kwargs parameters do not need to be present for this
         # function to be compatible. This is used for Callable[..., x] (gradual typing).
         # When set, the function accepts any arguments.
+        # Note: In Jac, all function parameters are typed (Any if unknown), so
+        # GradualCallableForm can only come from Callable[..., T] annotations.
         GradualCallableForm = 1 << 0,
-        # This function type was created from a Callable type annotation
-        # rather than from an actual function definition.
-        FromCallableAnnotation = 1 << 1,
         # Function is decorated with @staticmethod
-        StaticMethod = 1 << 2,
+        StaticMethod = 1 << 1,
         # Function is decorated with @classmethod
-        ClassMethod = 1 << 3,
+        ClassMethod = 1 << 2,
         # Function is a synthesized method (e.g., dataclass __init__)
-        SynthesizedMethod = 1 << 4,
+        SynthesizedMethod = 1 << 3,
 }
 
 """Represents a function parameter."""
@@ -246,14 +245,12 @@ obj Parameter {
 Represents a function type.
 
 This type is used both for actual function definitions and for
-Callable type annotations. The `function_flags` field distinguishes
-between these cases and controls type checking behavior.
+Callable type annotations. Callable annotations are distinguished by
+having an empty `func_name`.
 
 For Callable types:
-    - `Callable[[int, str], bool]` creates a FunctionType with
-      FromCallableAnnotation flag and specific parameter types.
-    - `Callable[..., bool]` creates a FunctionType with both
-      FromCallableAnnotation and GradualCallableForm flags.
+    - `Callable[[int, str], bool]` creates a FunctionType with empty func_name.
+    - `Callable[..., bool]` creates a FunctionType with GradualCallableForm flag.
 """
 obj FunctionType(TypeBase) {
     has func_name: str = "",
@@ -284,7 +281,8 @@ obj FunctionType(TypeBase) {
 Create a callable type from parameter types and return type.
 
 This is a factory function for creating FunctionType instances that
-represent Callable type annotations.
+represent Callable type annotations. The resulting FunctionType has
+an empty func_name to distinguish it from actual function definitions.
 
 Args:
     param_types: List of parameter types (e.g., [int, str] for Callable[[int, str], ...])
@@ -292,7 +290,7 @@ Args:
     is_gradual: If True, creates a gradual callable form (Callable[..., T])
 
 Returns:
-    A FunctionType with the FromCallableAnnotation flag set.
+    A FunctionType with empty func_name (and GradualCallableForm flag if gradual).
 """
 def create_callable_type(
     param_types: list[TypeBase],
@@ -316,11 +314,8 @@ def create_callable_type(
         );
     }
 
-    # Set the appropriate flags (use int for bitwise operations)
-    flags: int = FunctionTypeFlags.FromCallableAnnotation;
-    if is_gradual {
-        flags = FunctionTypeFlags.FromCallableAnnotation | FunctionTypeFlags.GradualCallableForm;
-    }
+    # Set GradualCallableForm flag only for Callable[..., T] form
+    flags: int = FunctionTypeFlags.GradualCallableForm if is_gradual else FunctionTypeFlags.Null;
 
     return FunctionType(
         func_name="",

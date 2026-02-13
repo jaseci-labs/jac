@@ -1425,6 +1425,7 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
     - Basic Callable[[ParamTypes], ReturnType] annotation
     - Gradual callable form Callable[..., ReturnType]
     - Function assignment to Callable-typed variables
+    - Multi-parameter Callable types
     - Type errors for mismatched callable signatures
     """
     program = JacProgram()
@@ -1432,11 +1433,14 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
 
-    # Expect 2 errors:
+    # Expect 5 errors:
     # 1. str_to_str assigned to Callable[[int], str] (wrong param type)
     # 2. takes_callback returns str, assigned to int
-    assert len(program.errors_had) == 2, (
-        f"Expected 2 type errors, but got {len(program.errors_had)}: "
+    # 3. wrong_order assigned to Callable[[int, int], int] (wrong param types)
+    # 4. concat_three assigned to Callable[[int, int], int] (wrong param count/types)
+    # 5. add_two assigned to Callable[[int, int], str] (wrong return type)
+    assert len(program.errors_had) == 5, (
+        f"Expected 5 type errors, but got {len(program.errors_had)}: "
         + "\n".join([err.pretty_print() for err in program.errors_had])
     )
 
@@ -1456,4 +1460,31 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: Wrong parameter order/types for multi-param Callable
+    _assert_error_pretty_found(
+        """
+        e1: Callable[[int, int], int] = wrong_order;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+
+    # Error 4: Wrong number of parameters for multi-param Callable
+    _assert_error_pretty_found(
+        """
+        e2: Callable[[int, int], int] = concat_three;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[3].pretty_print(),
+    )
+
+    # Error 5: Wrong return type for multi-param Callable
+    _assert_error_pretty_found(
+        """
+        e3: Callable[[int, int], str] = add_two;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[4].pretty_print(),
     )
