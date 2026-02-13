@@ -12,6 +12,7 @@ import importlib.machinery
 import importlib.util
 import logging
 import os
+import shutil
 import sys
 import types
 from collections.abc import Sequence
@@ -19,7 +20,58 @@ from functools import cache
 from pathlib import Path
 from types import ModuleType
 
-from jaclang.jac0 import compile_jac as _jac0_compile
+
+def _handle_early_purge() -> None:
+    """Handle 'jac purge -f' before any Jac initialization.
+
+    This allows cache cleanup even when cache is corrupted.
+    Requires -f flag to prevent accidental triggering.
+    """
+    if not (
+        len(sys.argv) >= 3
+        and os.path.basename(sys.argv[0]) == "jac"
+        and sys.argv[1] == "purge"
+        and sys.argv[2] == "-f"
+    ):
+        return
+
+    def _get_cache_dir() -> Path:
+        if sys.platform == "win32":
+            base = Path(
+                os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+            )
+            return base / "jac" / "cache" / "bytecode"
+        elif sys.platform == "darwin":
+            return Path.home() / "Library" / "Caches" / "jac" / "bytecode"
+        else:
+            xdg = os.environ.get("XDG_CACHE_HOME")
+            base = Path(xdg) if xdg else (Path.home() / ".cache")
+            return base / "jac" / "bytecode"
+
+    cache_dir = _get_cache_dir()
+    if not cache_dir.exists():
+        print(f"Cache directory does not exist: {cache_dir}")  # noqa: T201
+        sys.stdout.flush()
+        os._exit(0)
+
+    file_count = sum(1 for f in cache_dir.iterdir() if f.is_file())
+    total_size = sum(f.stat().st_size for f in cache_dir.iterdir() if f.is_file())
+
+    try:
+        shutil.rmtree(cache_dir)
+        print(f"Purged {file_count} cached files ({total_size / 1024:.1f} KB)")  # noqa: T201
+        print(f"Removed: {cache_dir}")  # noqa: T201
+        sys.stdout.flush()
+        os._exit(0)
+    except OSError as e:
+        print(f"Error purging cache: {e}", file=sys.stderr)  # noqa: T201
+        sys.stderr.flush()
+        os._exit(1)
+
+
+_handle_early_purge()
+
+from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 
 # Inline logging config (previously in jaclang.jac0core.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
