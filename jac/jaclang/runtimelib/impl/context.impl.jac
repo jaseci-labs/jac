@@ -41,18 +41,30 @@ impl ExecutionContext._cleanup_stale_edges(node_anchor: NodeAnchor) -> None {
     found_stale = False;
     for edge in node_anchor.edges {
         try {
-            # Access target.id from __dict__ to avoid triggering populate() during init
-            # This prevents recursion when context is not fully initialized yet
-            target_obj = edge.__dict__.get('target');
-            if target_obj {
+            # Access target from __dict__ to avoid triggering populate() during init.
+            # This prevents recursion when context is not fully initialized yet.
+            # Stub edges (created by make_stub()) only have 'id' in __dict__ and
+            # no 'target' key. These are valid unpopulated references, not stale edges.
+            edge_dict = edge.__dict__;
+            target_obj = edge_dict.get('target');
+            if target_obj is None {
+                # No 'target' key means this is a stub edge (valid lazy reference).
+                # Verify the edge itself still exists in storage before keeping it.
+                edge_id = edge_dict.get('id');
+                if edge_id and self.mem.has(edge_id) {
+                    valid_edges.append(edge);
+                } else {
+                    # Edge anchor itself is gone from storage - truly stale
+                    found_stale = True;
+                }
+            } else {
+                # Edge is fully populated (has a target object) - check target exists
                 target_id = target_obj.__dict__.get('id');
                 if target_id and self.mem.has(target_id) {
                     valid_edges.append(edge);
                 } else {
                     found_stale = True;
                 }
-            } else {
-                found_stale = True;
             }
         } except (AttributeError, TypeError) {
             found_stale = True;
