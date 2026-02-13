@@ -252,11 +252,9 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     return self._create_callable_type(type_args_expr, expr);
                 }
-
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
-
                     # --- Handle other generic types ---
                     # Collect the type arguments.
                     type_args: list[types.TypeBase] = [];
@@ -636,6 +634,7 @@ This handles Callable assignment compatibility following Python's typing rules:
 - Callable[..., T] (gradual form) accepts any callable
 - Parameter types are contravariant (dest params must be assignable to src params)
 - Return types are covariant (src return must be assignable to dest return)
+- Extra src params beyond dest count must have defaults (Pyright behavior)
 
 Future work:
     - TypeVar handling for generic callables
@@ -652,31 +651,38 @@ impl TypeEvaluator._assign_callable(
         }
         return True;
     }
-
     # If source is gradual callable form but dest is not, it's not assignable
     # (we can't guarantee the source accepts the required parameters)
     if src_func.is_gradual_callable_form() {
         return False;
     }
-
     # Get non-self/cls parameters for comparison
-    src_params = [p for p in (src_func.parameters or []) if not p.is_self and not p.is_cls];
-    dest_params = [p for p in (dest_func.parameters or []) if not p.is_self and not p.is_cls];
-
-    # Count required parameters (those without default values)
-    src_required = len([p for p in src_params if p.default_value is None]);
-    dest_required = len([p for p in dest_params if p.default_value is None]);
-
-    # Source must accept at least as many parameters as dest requires
+    src_params = [
+        p
+        for p in (src_func.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+    dest_params = [
+        p
+        for p in (dest_func.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+    # Count required dest parameters (those without default values)
+    dest_required = len(
+        [
+            p
+            for p in dest_params
+            if p.default_value is None
+        ]
+    );
+    # Source must have at least as many params as dest requires
     if len(src_params) < dest_required {
         return False;
     }
-
     # Check parameter compatibility (contravariant)
-    # For each parameter position, dest param type should be assignable to src param type
     for (i, dest_param) in enumerate(dest_params) {
         if i >= len(src_params) {
-            # Dest has more params than src - check if extra dest params have defaults
+            # Dest has more params than src - extra dest params must have defaults
             if dest_param.default_value is None {
                 return False;
             }
@@ -691,20 +697,27 @@ impl TypeEvaluator._assign_callable(
         }
 
         # Contravariance: dest param type should be assignable to src param type
-        # This means src can accept more specific types than dest requires
         if not self.assign_type(dest_param.param_type, src_param.param_type) {
             return False;
         }
     }
-
+    # Check extra src params beyond dest count - they must have defaults
+    # (Following Pyright: caller will only pass dest's param count, extras need defaults)
+    if len(src_params) > len(dest_params) {
+        for i in range(len(dest_params), len(src_params)) {
+            src_param = src_params[i];
+            if src_param.default_value is None {
+                # Extra src param without default - incompatible
+                return False;
+            }
+        }
+    }
     # Check return type compatibility (covariant)
-    # Source return type should be assignable to dest return type
     if dest_func.return_type and src_func.return_type {
         if not self.assign_type(src_func.return_type, dest_func.return_type) {
             return False;
         }
     }
-
     return True;
 }
 
@@ -896,7 +909,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
-
     # Source is FunctionType assigned to a different type
     if isinstance(src_type, types.FunctionType) {
         # Check if dest_type is a class with __call__ method (callable object)
@@ -909,7 +921,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
-
     # Everything is assignable to object, Any, Unknown, or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;

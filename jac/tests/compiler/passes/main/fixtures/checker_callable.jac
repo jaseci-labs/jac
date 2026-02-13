@@ -58,6 +58,76 @@ def apply_mixed(op: Callable[[int, str, float], str], x: int, y: str, z: float) 
     return op(x, y, z);
 }
 
+# --- Extra params with defaults tests ---
+# If src has more params than dest, extra params must have defaults
+
+# Function with extra param that HAS default - OK
+def with_default(a: int, b: int, c: int = 10) -> int {
+    return a + b + c;
+}
+
+# Function with extra param that has NO default - ERROR
+def without_default(a: int, b: int, c: int) -> int {
+    return a + b + c;
+}
+
+# --- Contravariance tests (Animal/Dog hierarchy) ---
+# Parameters are contravariant: function must accept AT LEAST as general types
+
+class Animal {}
+class Dog(Animal) {}
+class Cat(Animal) {}
+
+# Function that accepts any Animal (wider type)
+def handle_animal(a: Animal) -> str {
+    return "handled animal";
+}
+
+# Function that only accepts Dog (narrower type)
+def handle_dog(d: Dog) -> str {
+    return "handled dog";
+}
+
+# Function expecting Callable that takes Dog
+def apply_to_dog(handler: Callable[[Dog], str], d: Dog) -> str {
+    return handler(d);
+}
+
+# Function expecting Callable that takes Animal
+def apply_to_animal(handler: Callable[[Animal], str], a: Animal) -> str {
+    return handler(a);
+}
+
+# --- Method and classmethod tests ---
+# In Jac, methods have implicit self (no need to declare)
+# self/cls should be filtered when checking Callable compatibility
+
+class Calculator {
+    # Method with implicit self - takes int, returns int
+    def double(x: int) -> int {
+        return x * 2;
+    }
+
+    @classmethod
+    def class_double(cls: type, x: int) -> int {
+        return x * 2;
+    }
+
+    @classmethod
+    def class_describe(cls: type, x: int) -> str {
+        return f"Class value: {x}";
+    }
+}
+
+# Function that takes method as Callable
+def apply_int_op(op: Callable[[int], int], x: int) -> int {
+    return op(x);
+}
+
+def apply_int_to_str(op: Callable[[int], str], x: int) -> str {
+    return op(x);
+}
+
 with entry {
     # --- Valid assignments ---
 
@@ -100,6 +170,37 @@ with entry {
     # NOTE: Bare `Callable` (without type args) is not yet supported.
     # Use `Callable[..., Any]` instead for a fully gradual callable.
 
+    # --- Method/classmethod as Callable (self/cls filtered) ---
+
+    calc = Calculator();
+
+    # Method with implicit self -> Callable[[int], int]
+    # self is filtered, only x:int remains
+    c1: Callable[[int], int] = calc.double;  # <-- Ok
+    # Classmethod -> Callable[[int], int]
+    # cls is filtered, only x:int remains
+    c4: Callable[[int], int] = Calculator.class_double;  # <-- Ok
+
+    # Classmethod returning str
+    c5: Callable[[int], str] = Calculator.class_describe;  # <-- Ok
+
+    # Using method in higher-order function
+    c6: int = apply_int_op(calc.double, 5);  # <-- Ok
+
+    # --- Extra params with defaults tests ---
+    # Function with 3 params (c has default) assigned to Callable expecting 2 params
+    d1: Callable[[int, int], int] = with_default;  # <-- Ok (c has default)
+
+    # --- Contravariance tests ---
+    # Contravariance: function accepting wider type can be assigned to Callable expecting narrower type
+
+    # handle_animal accepts Animal, Callable expects Dog
+    # OK because: if caller passes Dog, function accepts Animal, Dog IS an Animal
+    v1: Callable[[Dog], str] = handle_animal;  # <-- Ok (contravariant)
+
+    # Using in higher-order function
+    v2: str = apply_to_dog(handle_animal, Dog());  # <-- Ok
+
     # --- Type errors ---
 
     # Wrong parameter type (expects int -> str, got str -> str)
@@ -118,4 +219,21 @@ with entry {
 
     # Wrong return type for multi-param
     e3: Callable[[int, int], str] = add_two;  # <-- Error
+
+    # --- Method/classmethod type errors ---
+
+    # Wrong return type for method
+    e4: Callable[[int], str] = calc.double;  # <-- Error (returns int, not str)
+
+    # Wrong param type for classmethod
+    e5: Callable[[str], int] = Calculator.class_double;  # <-- Error (expects int, not str)
+
+    # --- Contravariance errors ---
+    # handle_dog only accepts Dog, but Callable expects Animal
+    # FAIL because: caller might pass Cat (an Animal), but function only accepts Dog
+    e6: Callable[[Animal], str] = handle_dog;  # <-- Error (contravariance violation)
+
+    # --- Extra params without defaults errors ---
+    # Function with 3 params (NO defaults) assigned to Callable expecting 2 params
+    e7: Callable[[int, int], int] = without_default;  # <-- Error (c has no default)
 }

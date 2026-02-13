@@ -1426,6 +1426,7 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
     - Gradual callable form Callable[..., ReturnType]
     - Function assignment to Callable-typed variables
     - Multi-parameter Callable types
+    - Method/classmethod as Callable (self/cls filtered out)
     - Type errors for mismatched callable signatures
     """
     program = JacProgram()
@@ -1433,14 +1434,18 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
     mod = program.compile(path)
     TypeCheckPass(ir_in=mod, prog=program)
 
-    # Expect 5 errors:
+    # Expect 9 errors:
     # 1. str_to_str assigned to Callable[[int], str] (wrong param type)
     # 2. takes_callback returns str, assigned to int
     # 3. wrong_order assigned to Callable[[int, int], int] (wrong param types)
     # 4. concat_three assigned to Callable[[int, int], int] (wrong param count/types)
     # 5. add_two assigned to Callable[[int, int], str] (wrong return type)
-    assert len(program.errors_had) == 5, (
-        f"Expected 5 type errors, but got {len(program.errors_had)}: "
+    # 6. calc.double assigned to Callable[[int], str] (wrong return type)
+    # 7. Calculator.class_double assigned to Callable[[str], int] (wrong param type)
+    # 8. handle_dog assigned to Callable[[Animal], str] (contravariance violation)
+    # 9. without_default assigned to Callable[[int, int], int] (extra param has no default)
+    assert len(program.errors_had) == 9, (
+        f"Expected 9 type errors, but got {len(program.errors_had)}: "
         + "\n".join([err.pretty_print() for err in program.errors_had])
     )
 
@@ -1487,4 +1492,40 @@ def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[4].pretty_print(),
+    )
+
+    # Error 6: Method with wrong return type (self filtered, but return type mismatch)
+    _assert_error_pretty_found(
+        """
+        e4: Callable[[int], str] = calc.double;  # <-- Error (returns int, not str)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[5].pretty_print(),
+    )
+
+    # Error 7: Classmethod with wrong param type (cls filtered, but param type mismatch)
+    _assert_error_pretty_found(
+        """
+        e5: Callable[[str], int] = Calculator.class_double;  # <-- Error (expects int, not str)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[6].pretty_print(),
+    )
+
+    # Error 8: Contravariance violation - handle_dog(Dog) cannot be assigned to Callable[[Animal], str]
+    _assert_error_pretty_found(
+        """
+        e6: Callable[[Animal], str] = handle_dog;  # <-- Error (contravariance violation)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[7].pretty_print(),
+    )
+
+    # Error 9: Extra param without default - without_default(a, b, c) cannot be Callable[[int, int], int]
+    _assert_error_pretty_found(
+        """
+        e7: Callable[[int, int], int] = without_default;  # <-- Error (c has no default)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[8].pretty_print(),
     )
