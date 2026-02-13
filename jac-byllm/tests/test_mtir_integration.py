@@ -958,9 +958,7 @@ class TestScopeResolutionConsistency:
         mtir_map = JacRuntime.program.mtir_map
 
         # Find all process_data scopes
-        process_data_scopes = [
-            scope for scope in mtir_map if "process_data" in scope
-        ]
+        process_data_scopes = [scope for scope in mtir_map if "process_data" in scope]
 
         # Should have exactly 2 distinct scopes for process_data
         assert len(process_data_scopes) >= 2, (
@@ -977,8 +975,7 @@ class TestScopeResolutionConsistency:
             f"found: {alpha_scope}"
         )
         assert len(beta_scope) == 1, (
-            f"Expected exactly one module_beta.process_data scope, "
-            f"found: {beta_scope}"
+            f"Expected exactly one module_beta.process_data scope, found: {beta_scope}"
         )
 
         # Verify they are different entries
@@ -1015,8 +1012,7 @@ class TestScopeResolutionConsistency:
 
         # Find scopes that should match this file
         matching_scopes = [
-            scope for scope in mtir_map
-            if scope.startswith(f"{expected_stem}.")
+            scope for scope in mtir_map if scope.startswith(f"{expected_stem}.")
         ]
 
         assert len(matching_scopes) > 0, (
