@@ -1604,7 +1604,7 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
                 try:
                     print("[DEBUG] Fetching /manifest.json")
                     manifest_bytes = _wait_for_endpoint(
-                        f"http://127.0.0.1:{server_port}/manifest.json",
+                        f"http://127.0.0.1:{server_port}/static/manifest.json",
                         timeout=60.0,
                         poll_interval=2.0,
                         request_timeout=20.0,
