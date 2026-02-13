@@ -64,6 +64,13 @@ obj JacAutoLintPass(UniPass) {
     ) -> bool;
 
     def _make_null_ok(trailer: uni.AtomTrailer) -> None;
+    def _bool_expr_has_matching_access(
+        parent: uni.BoolExpr,
+        hasattr_node: uni.FuncCall,
+        obj_expr: uni.Expr,
+        attr_name: str
+    ) -> bool;
+
     def _collect_atom_trailers(uni_node: uni.UniNode, results: list) -> None;
     def _expr_to_key(expr: uni.Expr) -> (str | None);
     def _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None);

@@ -633,10 +633,13 @@ class TestHasattrConversion:
         assert "instance?.value" in formatted
         assert "instance?.name" in formatted
 
-        # hasattr calls should be replaced with null-safe access
+        # hasattr calls in safe patterns (ternary, guard-and-use) should be converted
         assert 'hasattr(instance, "value")' not in formatted
-        assert 'hasattr(instance, "name")' not in formatted
         assert "hasattr(instance, 'value')" not in formatted
+
+        # hasattr in standalone boolean context (or False) should NOT be converted
+        # because hasattr() returns bool while obj?.attr returns the value
+        assert 'hasattr(instance, "name") or False' in formatted
 
         # The if-else expressions with hasattr should be converted to or expressions
         # Pattern: obj.attr if hasattr(obj, "attr") else default

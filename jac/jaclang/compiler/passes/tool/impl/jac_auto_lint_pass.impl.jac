@@ -835,13 +835,44 @@ impl JacAutoLintPass._make_null_ok(trailer: uni.AtomTrailer) -> None {
     }
 }
 
+"""Check if a BoolExpr has a matching obj.attr access in any operand other than the hasattr call.
+
+This determines whether hasattr is being used as a guard before accessing the attribute
+(safe to convert) vs a standalone existence check (not safe to convert).
+"""
+impl JacAutoLintPass._bool_expr_has_matching_access(
+    parent: uni.BoolExpr,
+    hasattr_node: uni.FuncCall,
+    obj_expr: uni.Expr,
+    attr_name: str
+) -> bool {
+    for val in parent.values {
+        if val is hasattr_node {
+            continue;
+        }
+        trailers: list[uni.AtomTrailer] = [];
+        self._collect_atom_trailers(val, trailers);
+        for trailer in trailers {
+            if self._is_matching_attr_access(trailer, obj_expr, attr_name) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 """Process FuncCall to convert hasattr(obj, "attr") to null-safe access.
 
 This replaces hasattr calls in the parent node's children with
 the equivalent null-safe access expression.
 
-For IfElseExpr patterns like obj.attr if hasattr(obj, "attr") else default,
-this also converts the value expression to use null-safe access.
+Only converts in semantically safe patterns:
+- IfElseExpr: obj.attr if hasattr(obj, "attr") else default
+- BoolExpr: hasattr(obj, "attr") and obj.attr (guard-then-use with matching access)
+
+Does NOT convert standalone boolean checks (IfStmt, WhileStmt, UnaryExpr, BinaryExpr,
+or BoolExpr without matching attr access) because hasattr() returns True/False
+while obj?.attr returns the attribute value which may be falsy ([], 0, "", None).
 """
 impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     if not self.lint_enabled {
@@ -855,10 +886,6 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     if replacement is None {
         return;
     }
-    self.log_error(
-        "hasattr() should use null-safe access [hasattr-to-null-ok]",
-        node_override=node
-    );
     obj_expr = node.params[0];
     attr_expr = node.params[1];
     attr_name = self._extract_string_literal_value(attr_expr);
@@ -866,6 +893,25 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
     if parent is None {
         return;
     }
+    # Only convert in semantically safe patterns.
+    # hasattr() returns bool (existence check), obj?.attr returns the value.
+    # These differ when the attribute value is falsy ([], 0, "", None).
+    if isinstance(parent, uni.IfElseExpr) {
+        # Safe: ternary guard pattern
+    } elif isinstance(parent, uni.BoolExpr) {
+        # Only safe when another operand accesses the same obj.attr (guard-then-use)
+        if attr_name is None
+        or not self._bool_expr_has_matching_access(parent, node, obj_expr, attr_name) {
+            return;
+        }
+    } else {
+        # IfStmt, WhileStmt, UnaryExpr, BinaryExpr — standalone boolean check, not safe
+        return;
+    }
+    self.log_error(
+        "hasattr() should use null-safe access [hasattr-to-null-ok]",
+        node_override=node
+    );
     replacement.parent = parent;
     if isinstance(parent, uni.IfElseExpr) {
         if parent.condition is node {
@@ -880,12 +926,6 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
         } elif parent.else_value is node {
             parent.else_value = replacement;
         }
-    } elif isinstance(parent, uni.BinaryExpr) {
-        if parent.left is node {
-            parent.left = replacement;
-        } elif parent.right is node {
-            parent.right = replacement;
-        }
     } elif isinstance(parent, uni.BoolExpr) {
         new_values: list[uni.Expr] = [];
         for val in parent.values {
@@ -896,18 +936,6 @@ impl JacAutoLintPass.exit_func_call(node: uni.FuncCall) -> None {
             }
         }
         parent.values = new_values;
-    } elif isinstance(parent, uni.UnaryExpr) {
-        if parent.operand is node {
-            parent.operand = replacement;
-        }
-    } elif isinstance(parent, uni.IfStmt) {
-        if parent.condition is node {
-            parent.condition = replacement;
-        }
-    } elif isinstance(parent, uni.WhileStmt) {
-        if parent.condition is node {
-            parent.condition = replacement;
-        }
     }
     new_kids: list[uni.UniNode] = [];
     for kid in parent.kid {

@@ -229,7 +229,7 @@ impl Parser.error(message: str) {
     sloc = self.current().loc;
     self.errors.append(ParseError(message=message, loc=sloc));
     # Propagate to prog.errors_had as Alert if prog is available
-    if self.prog is not None and self.prog?.errors_had {
+    if self.prog is not None and hasattr(self.prog, "errors_had") {
         source = self.get_source();
         tok = UniToken(
             orig_src=source,
@@ -709,7 +709,7 @@ impl Parser.parse_module -> Module {
         if nid not in seen {
             seen[nid] = True;
             node_list.append(`node);
-            if `node?.kid {
+            if hasattr(`node, "kid") {
                 for child in `node.kid {
                     stack.append(child);
                 }
