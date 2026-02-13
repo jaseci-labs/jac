@@ -533,8 +533,20 @@ impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
         }
     }
     self._do_type_check(file_uri);
-    # Wait for dispatcher to become idle
-    self._idle_event.wait();
+    # Wait for dispatcher to become idle and re-check queue state after wake to avoid races with stale work events.
+    while True {
+        self._idle_event.wait();
+        with self._state_lock {
+            has_pending_work = bool(
+                self.pipe or self.dirty_files or self._debounce_timer
+            );
+        }
+        if not has_pending_work {
+            break;
+        }
+        self._idle_event.clear();
+        self._work_event.set();
+    }
     self.debug("Server is now idle");
 }
 
