@@ -10,7 +10,6 @@ import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from typing { cast }
 import from uuid { UUID }
-
 import from jaclang.runtimelib.utils { is_valid_anchor }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 
