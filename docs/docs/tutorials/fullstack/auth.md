@@ -452,6 +452,7 @@ cl {
 ```
 
 The `AuthGuard` component:
+
 - Checks if user is logged in via `jacIsLoggedIn()`
 - If authenticated: renders child routes via `<Outlet />`
 - If not authenticated: redirects to the specified path

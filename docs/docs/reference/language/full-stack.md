@@ -398,6 +398,7 @@ cl {
 | `node_id spawn WalkerName()` | Spawn from specific node |
 
 The spawn call returns a result object with:
+
 - `result.reports` - Data reported by the walker
 - `result.status` - HTTP status code
 
