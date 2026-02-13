@@ -117,11 +117,15 @@ impl TypeEvaluator._get_enclosing_method(node: uni.UniNode) -> uni.Ability | Non
 
 """Get the enclosing function (ability) of the given node."""
 impl TypeEvaluator._get_enclosing_function(node: uni.UniNode) -> uni.Ability | None {
-    if (impl := node.find_parent_of_type(uni.ImplDef))
-    and (isinstance(impl.decl_link, uni.Ability)) {
-        return impl.decl_link;
+    while node := node.parent {
+        if isinstance(node, uni.Ability) {
+            return node;
+        }
+        if isinstance(node, uni.ImplDef) and isinstance(node.decl_link, uni.Ability) {
+            return node.decl_link;
+        }
     }
-    return node.find_parent_of_type(uni.Ability);
+    return None;
 }
 
 """Check if the expression is Name that is 'self' and in the method context."""
@@ -129,6 +133,20 @@ impl TypeEvaluator._is_expr_self(expr: uni.Expr) -> bool {
     if (
         isinstance(expr, uni.Name)
         and (expr.value == TOKEN_MAP[Tok.KW_SELF])
+        and (fn := self._get_enclosing_method(expr))
+        and (not fn.is_static)
+        and (not fn.is_cls_method)
+    ) {
+        return True;
+    }
+    return False;
+}
+
+"""Check if the expression is Name that is 'super' and in the method context."""
+impl TypeEvaluator._is_expr_super(expr: uni.Expr) -> bool {
+    if (
+        isinstance(expr, uni.Name)
+        and (expr.value == TOKEN_MAP[Tok.KW_SUPER])
         and (fn := self._get_enclosing_method(expr))
         and (not fn.is_static)
         and (not fn.is_cls_method)

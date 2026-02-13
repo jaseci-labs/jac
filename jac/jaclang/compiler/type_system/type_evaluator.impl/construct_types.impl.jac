@@ -23,6 +23,26 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Return the effective type of super (first parent class in MRO)."""
+impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
+    if method := self._get_enclosing_method(node_) {
+        cls = method.method_owner;
+        if isinstance(cls, uni.Archetype) {
+            current_class_type = self.get_type_of_class(cls);
+            # MRO[0] is current class, MRO[1] is first parent
+            if len(current_class_type.shared.mro) > 1 {
+                parent_class_type = current_class_type.shared.mro[1];
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
+                node_.type = parent_class_type.clone_as_instance();
+                return node_.type;
+            }
+        }
+    }
+    return types.UnknownType();
+}
+
 """Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(node: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
