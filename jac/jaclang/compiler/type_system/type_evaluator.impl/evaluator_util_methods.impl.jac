@@ -264,3 +264,117 @@ impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
     }
     return False;
 }
+
+"""
+Create a Callable type from type arguments.
+
+This method evaluates type arguments for a Callable type annotation.
+It should have zero to two arguments:
+- The first argument, if present, should be an ellipsis (...) or a list of
+  positional parameter types.
+- The second argument, if present, should specify the return type.
+
+Examples:
+    Callable[[int, str], bool]  -> FunctionType with int, str params and bool return
+    Callable[..., bool]         -> FunctionType with GradualCallableForm flag
+    Callable                    -> FunctionType with GradualCallableForm flag (gradual)
+
+Based on Pyright's createCallableType function.
+
+Future work:
+    - TypeVar support in parameter types and return type
+    - ParamSpec support (Callable[P, T])
+    - Concatenate support (Callable[Concatenate[int, P], T])
+    - String annotations (forward references)
+"""
+impl TypeEvaluator._create_callable_type(
+    type_args_expr: uni.Expr | None,
+    error_node: uni.Expr
+) -> types.FunctionType {
+    param_types: list[types.TypeBase] = [];
+    return_type: types.TypeBase = types.UnknownType();
+    is_gradual: bool = False;
+
+    if type_args_expr is None {
+        # Bare Callable without type arguments - treat as gradual form
+        is_gradual = True;
+        return types.create_callable_type([], return_type, is_gradual=True);
+    }
+
+    # Handle the case where type_args_expr is a TupleVal (Callable[[...], ReturnType])
+    if isinstance(type_args_expr, uni.TupleVal) {
+        type_arg_values = type_args_expr.values;
+
+        if len(type_arg_values) == 0 {
+            # Empty Callable[] - emit error and return gradual form
+            self.add_diagnostic(
+                error_node,
+                "Callable requires at least one type argument for return type"
+            );
+            return types.create_callable_type([], types.UnknownType(), is_gradual=True);
+        }
+
+        # First argument: parameter types list or ellipsis
+        first_arg = type_arg_values[0];
+
+        if isinstance(first_arg, uni.Ellipsis) {
+            # Callable[..., ReturnType] - gradual callable form
+            is_gradual = True;
+        } elif isinstance(first_arg, uni.ListVal) {
+            # Callable[[Type1, Type2, ...], ReturnType]
+            for param_expr in first_arg.values {
+                param_type = self.get_type_of_expression(param_expr);
+                param_type = self._convert_to_instance(param_type);
+                param_types.append(param_type);
+            }
+        } else {
+            # Invalid first argument - should be [...] or ...
+            self.add_diagnostic(
+                first_arg,
+                "First argument to Callable must be a list of types [...] or ellipsis (...)"
+            );
+            # Try to recover by treating it as a single parameter type
+            # This handles cases like Callable[int, str] (incorrect but common mistake)
+            param_type = self.get_type_of_expression(first_arg);
+            param_type = self._convert_to_instance(param_type);
+            param_types.append(param_type);
+        }
+
+        # Second argument: return type
+        if len(type_arg_values) >= 2 {
+            return_type_expr = type_arg_values[1];
+            return_type = self.get_type_of_expression(return_type_expr);
+            return_type = self._convert_to_instance(return_type);
+        } else {
+            # Missing return type
+            self.add_diagnostic(
+                error_node,
+                "Callable requires a return type as second argument"
+            );
+            return_type = types.UnknownType();
+        }
+
+        # Check for extra arguments
+        if len(type_arg_values) > 2 {
+            self.add_diagnostic(
+                type_arg_values[2],
+                "Callable accepts only two type arguments: parameter types and return type"
+            );
+        }
+    } else {
+        # Single type argument - could be:
+        # 1. Invalid usage like Callable[ReturnType] (should be Callable[[], ReturnType])
+        # 2. Valid advanced patterns like Callable[ParamSpec, T] (not yet supported)
+        #
+        # For robustness (especially with typeshed stubs), we don't emit an error
+        # and instead return a gradual callable form. This avoids false positives
+        # when parsing typeshed files that use advanced typing features.
+        #
+        # Future work: Support ParamSpec, Concatenate, and other advanced Callable patterns.
+        return_type = self.get_type_of_expression(type_args_expr);
+        return_type = self._convert_to_instance(return_type);
+        is_gradual = True;
+    }
+
+    return types.create_callable_type(param_types, return_type, is_gradual=is_gradual);
+}

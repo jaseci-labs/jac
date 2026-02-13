@@ -65,6 +65,7 @@ obj PrefetchedTypes {
         # Prefetch from typing.pyi file
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
+        callable_class: TypeBase | None = None,
         # Prefetched from jac_builtins.pyi file
         final_class: TypeBase | None = None,
         literal_string_class: TypeBase | None = None,
@@ -148,6 +149,11 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
+    # --- Callable assignment compatibility ---
+    def _assign_callable(
+        src_func: types.FunctionType, dest_func: types.FunctionType
+    ) -> bool;
+
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
     def _is_symbol_property(symbol: uni.Symbol) -> bool;
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
@@ -180,6 +186,12 @@ obj TypeEvaluator {
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    # --- Callable type handling (similar to Pyright's createCallableType) ---
+    def _create_callable_type(
+        type_args_expr: uni.Expr | None,
+        error_node: uni.Expr
+    ) -> types.FunctionType;
+
     def _lookup_class_member(
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;

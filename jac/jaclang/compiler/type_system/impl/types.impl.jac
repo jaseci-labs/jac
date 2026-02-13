@@ -113,6 +113,28 @@ impl FunctionType.postinit -> None {
 
 """Return a string representation of the function type."""
 impl FunctionType.__str__ -> str {
+    # For functions created from Callable annotations, use Callable[...] format
+    if self.is_from_callable_annotation() {
+        if self.is_gradual_callable_form() {
+            return_type_str = str(self.return_type) if self.return_type else "Unknown";
+            return f"Callable[..., {return_type_str}]";
+        }
+
+        # Collect parameter types
+        param_type_strs: list[str] = [];
+        for param in self.parameters or [] {
+            if param.param_type {
+                param_type_strs.append(str(param.param_type));
+            } else {
+                param_type_strs.append("Unknown");
+            }
+        }
+        params_str = ", ".join(param_type_strs);
+        return_type_str = str(self.return_type) if self.return_type else "Unknown";
+        return f"Callable[[{params_str}], {return_type_str}]";
+    }
+
+    # Standard function representation
     param_strs: list[str] = [];
     for param in self.parameters or [] {
         param_str = param.name;
@@ -304,3 +326,28 @@ impl TypeBase.is_any_type -> bool {
     }
     return False;
 }
+
+# --- FunctionType Callable support methods ---
+
+"""
+Check if this is a gradual callable form (Callable[..., T]).
+
+Gradual callable forms accept any arguments and are compatible with
+any function signature. This is used when the parameter types are
+not specified (using ellipsis).
+"""
+impl FunctionType.is_gradual_callable_form -> bool {
+    return bool(self.function_flags & FunctionTypeFlags.GradualCallableForm);
+}
+
+"""
+Check if this function type was created from a Callable annotation.
+
+This distinguishes between:
+- Actual function definitions: `def foo(x: int) -> str: ...`
+- Callable type annotations: `callback: Callable[[int], str]`
+"""
+impl FunctionType.is_from_callable_annotation -> bool {
+    return bool(self.function_flags & FunctionTypeFlags.FromCallableAnnotation);
+}
+

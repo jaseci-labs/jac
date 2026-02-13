@@ -234,9 +234,30 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return base_type;
             } else {  # <expr>[<expr>]
 
+                # --- Handle Callable special form ---
+                # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
+                # Note: Callable in Python's typing module is a _SpecialForm instance,
+                # so we check before the is_instantiable_class() check.
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and self.prefetch
+                    and self.prefetch.callable_class
+                    and isinstance(self.prefetch.callable_class, types.ClassType)
+                    and base_type.shared == self.prefetch.callable_class.shared
+                ) {
+                    # Extract type arguments for Callable
+                    type_args_expr: uni.Expr | None = None;
+                    if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
+                        type_args_expr = expr.right.slices[0].start;
+                    }
+                    return self._create_callable_type(type_args_expr, expr);
+                }
+
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
+
+                    # --- Handle other generic types ---
                     # Collect the type arguments.
                     type_args: list[types.TypeBase] = [];
                     if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
@@ -608,6 +629,85 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     return types.UnknownType();
 }
 
+"""
+Assign a source function type to a destination callable type.
+
+This handles Callable assignment compatibility following Python's typing rules:
+- Callable[..., T] (gradual form) accepts any callable
+- Parameter types are contravariant (dest params must be assignable to src params)
+- Return types are covariant (src return must be assignable to dest return)
+
+Future work:
+    - TypeVar handling for generic callables
+    - ParamSpec support
+"""
+impl TypeEvaluator._assign_callable(
+    src_func: types.FunctionType, dest_func: types.FunctionType
+) -> bool {
+    # If destination is gradual callable form (Callable[..., T]), any callable is compatible
+    if dest_func.is_gradual_callable_form() {
+        # Only need to check return type compatibility
+        if dest_func.return_type and src_func.return_type {
+            return self.assign_type(src_func.return_type, dest_func.return_type);
+        }
+        return True;
+    }
+
+    # If source is gradual callable form but dest is not, it's not assignable
+    # (we can't guarantee the source accepts the required parameters)
+    if src_func.is_gradual_callable_form() {
+        return False;
+    }
+
+    # Get non-self/cls parameters for comparison
+    src_params = [p for p in (src_func.parameters or []) if not p.is_self and not p.is_cls];
+    dest_params = [p for p in (dest_func.parameters or []) if not p.is_self and not p.is_cls];
+
+    # Count required parameters (those without default values)
+    src_required = len([p for p in src_params if p.default_value is None]);
+    dest_required = len([p for p in dest_params if p.default_value is None]);
+
+    # Source must accept at least as many parameters as dest requires
+    if len(src_params) < dest_required {
+        return False;
+    }
+
+    # Check parameter compatibility (contravariant)
+    # For each parameter position, dest param type should be assignable to src param type
+    for (i, dest_param) in enumerate(dest_params) {
+        if i >= len(src_params) {
+            # Dest has more params than src - check if extra dest params have defaults
+            if dest_param.default_value is None {
+                return False;
+            }
+            continue;
+        }
+
+        src_param = src_params[i];
+
+        # Skip type checking if either parameter has no type annotation
+        if dest_param.param_type is None or src_param.param_type is None {
+            continue;
+        }
+
+        # Contravariance: dest param type should be assignable to src param type
+        # This means src can accept more specific types than dest requires
+        if not self.assign_type(dest_param.param_type, src_param.param_type) {
+            return False;
+        }
+    }
+
+    # Check return type compatibility (covariant)
+    # Source return type should be assignable to dest return type
+    if dest_func.return_type and src_func.return_type {
+        if not self.assign_type(src_func.return_type, dest_func.return_type) {
+            return False;
+        }
+    }
+
+    return True;
+}
+
 """Assign the source class type to the destination class type."""
 impl TypeEvaluator._assign_class(
     src_type: types.ClassType, dest_type: types.ClassType
@@ -771,6 +871,45 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
+    # --- Callable/FunctionType assignment compatibility ---
+    # Handle assignment of functions to Callable types and vice versa.
+    if isinstance(dest_type, types.FunctionType) {
+        if isinstance(src_type, types.FunctionType) {
+            return self._assign_callable(src_type, dest_type);
+        }
+        # OverloadedType can be assigned to Callable if any overload matches
+        if isinstance(src_type, types.OverloadedType) and src_type.overloads {
+            for overload in src_type.overloads {
+                if self._assign_callable(overload, dest_type) {
+                    return True;
+                }
+            }
+            return False;
+        }
+        # Class with __call__ method can be assigned to Callable
+        if isinstance(src_type, types.ClassType) and src_type.is_class_instance() {
+            if call_member := self._lookup_object_member(src_type, "__call__") {
+                call_type = self.get_type_of_symbol(call_member.symbol);
+                if isinstance(call_type, types.FunctionType) {
+                    return self._assign_callable(call_type, dest_type);
+                }
+            }
+        }
+    }
+
+    # Source is FunctionType assigned to a different type
+    if isinstance(src_type, types.FunctionType) {
+        # Check if dest_type is a class with __call__ method (callable object)
+        if isinstance(dest_type, types.ClassType) and dest_type.is_class_instance() {
+            if call_member := self._lookup_object_member(dest_type, "__call__") {
+                call_type = self.get_type_of_symbol(call_member.symbol);
+                if isinstance(call_type, types.FunctionType) {
+                    return self._assign_callable(src_type, call_type);
+                }
+            }
+        }
+    }
+
     # Everything is assignable to object, Any, Unknown, or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
@@ -901,6 +1040,7 @@ impl TypeEvaluator._prefetch_types{
     # self.prefetch.template_class =
     self.prefetch.protocol_class = get_typing_type("Protocol");
     self.prefetch.any_class = get_typing_type("Any");
+    self.prefetch.callable_class = get_typing_type("Callable");
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;

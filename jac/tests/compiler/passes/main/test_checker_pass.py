@@ -1416,3 +1416,44 @@ def test_nested_functions_in_impl_blocks(fixture_path: Callable[[str], str]) -> 
         f"Expected no type checking errors, but got {len(program.errors_had)}: "
         + "\n".join([err.pretty_print() for err in program.errors_had])
     )
+
+
+def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
+    """Test Callable type annotation support.
+
+    Tests:
+    - Basic Callable[[ParamTypes], ReturnType] annotation
+    - Gradual callable form Callable[..., ReturnType]
+    - Function assignment to Callable-typed variables
+    - Type errors for mismatched callable signatures
+    """
+    program = JacProgram()
+    path = fixture_path("checker_callable.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expect 2 errors:
+    # 1. str_to_str assigned to Callable[[int], str] (wrong param type)
+    # 2. takes_callback returns str, assigned to int
+    assert len(program.errors_had) == 2, (
+        f"Expected 2 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    # Error 1: Wrong parameter type in Callable assignment
+    _assert_error_pretty_found(
+        """
+        f5: Callable[[int], str] = str_to_str;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: Wrong return type assignment (str to int)
+    _assert_error_pretty_found(
+        """
+        r3: int = takes_callback(int_to_str);   # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print(),
+    )

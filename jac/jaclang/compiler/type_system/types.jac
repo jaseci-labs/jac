@@ -12,19 +12,17 @@ with entry {
 }
 
 """Enumeration of type categories."""
-class TypeCategory(IntEnum) {
-    with entry {
-        Unbound = auto();
-        Unknown = auto();
-        Never = auto();
-        Any = auto();
-        Module = auto();
-        TypeVar = auto();
-        Class = auto();
-        Function = auto();
-        Overload = auto();
-        Union = auto();
-    }
+enum TypeCategory(IntEnum) {
+        Unbound,
+        Unknown,
+        Never,
+        Any,
+        Module,
+        TypeVar,
+        Class,
+        Function,
+        Overload,
+        Union,
 }
 
 """
@@ -210,6 +208,29 @@ class ParamKind(IntEnum) {
     }
 }
 
+"""
+Flags for function types.
+
+Based on Pyright's FunctionTypeFlags. These flags control how the
+function type behaves during type checking.
+"""
+enum FunctionTypeFlags(IntEnum) {
+        Null = 0,
+        # The *args and **kwargs parameters do not need to be present for this
+        # function to be compatible. This is used for Callable[..., x] (gradual typing).
+        # When set, the function accepts any arguments.
+        GradualCallableForm = 1 << 0,
+        # This function type was created from a Callable type annotation
+        # rather than from an actual function definition.
+        FromCallableAnnotation = 1 << 1,
+        # Function is decorated with @staticmethod
+        StaticMethod = 1 << 2,
+        # Function is decorated with @classmethod
+        ClassMethod = 1 << 3,
+        # Function is a synthesized method (e.g., dataclass __init__)
+        SynthesizedMethod = 1 << 4,
+}
+
 """Represents a function parameter."""
 obj Parameter {
     has name: str,
@@ -221,11 +242,25 @@ obj Parameter {
         param_kind: ParamKind = ParamKind.NORMAL;
 }
 
-"""Represents a function type."""
+"""
+Represents a function type.
+
+This type is used both for actual function definitions and for
+Callable type annotations. The `function_flags` field distinguishes
+between these cases and controls type checking behavior.
+
+For Callable types:
+    - `Callable[[int, str], bool]` creates a FunctionType with
+      FromCallableAnnotation flag and specific parameter types.
+    - `Callable[..., bool]` creates a FunctionType with both
+      FromCallableAnnotation and GradualCallableForm flags.
+"""
 obj FunctionType(TypeBase) {
     has func_name: str = "",
         return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) = None;
+        parameters: (list[Parameter] | None) = None,
+        # Using int for bitwise flag operations (FunctionTypeFlags values combined)
+        function_flags: int = 0;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -235,6 +270,64 @@ obj FunctionType(TypeBase) {
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
+
+    # --- Flag checking methods (following Pyright's pattern) ---
+
+    """Check if this is a gradual callable form (Callable[..., T])."""
+    def is_gradual_callable_form -> bool;
+
+    """Check if this function type was created from a Callable annotation."""
+    def is_from_callable_annotation -> bool;
+}
+
+"""
+Create a callable type from parameter types and return type.
+
+This is a factory function for creating FunctionType instances that
+represent Callable type annotations.
+
+Args:
+    param_types: List of parameter types (e.g., [int, str] for Callable[[int, str], ...])
+    return_type: The return type of the callable
+    is_gradual: If True, creates a gradual callable form (Callable[..., T])
+
+Returns:
+    A FunctionType with the FromCallableAnnotation flag set.
+"""
+def create_callable_type(
+    param_types: list[TypeBase],
+    return_type: TypeBase,
+    is_gradual: bool = False
+) -> FunctionType {
+    parameters: list[Parameter] = [];
+
+    # Create positional-only parameters with synthesized names
+    for (idx, param_type) in enumerate(param_types) {
+        parameters.append(
+            Parameter(
+                name=f"__p{idx}",
+                category=ParameterCategory.Positional,
+                param_type=param_type,
+                default_value=None,
+                is_self=False,
+                is_cls=False,
+                param_kind=ParamKind.POSONLY
+            )
+        );
+    }
+
+    # Set the appropriate flags (use int for bitwise operations)
+    flags: int = FunctionTypeFlags.FromCallableAnnotation;
+    if is_gradual {
+        flags = FunctionTypeFlags.FromCallableAnnotation | FunctionTypeFlags.GradualCallableForm;
+    }
+
+    return FunctionType(
+        func_name="",
+        return_type=return_type,
+        parameters=parameters,
+        function_flags=flags
+    );
 }
 
 """Represents an overloaded type."""
