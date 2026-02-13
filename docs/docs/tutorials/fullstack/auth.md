@@ -183,7 +183,7 @@ cl {
     glob AuthContext = createContext(None);
 
     # Auth Provider component
-    def:pub AuthProvider(props: dict) -> any {
+    def:pub AuthProvider(props: dict) -> JsxElement {
         has user: any = None;
         has token: str = "";
         has loading: bool = True;
@@ -275,7 +275,7 @@ cl {
 
 ```jac
 cl {
-    def:pub LoginForm() -> any {
+    def:pub LoginForm() -> JsxElement {
         has email: str = "";
         has password: str = "";
         has error: str = "";
@@ -341,7 +341,7 @@ cl {
 
 ```jac
 cl {
-    def:pub SignupForm() -> any {
+    def:pub SignupForm() -> JsxElement {
         has name: str = "";
         has email: str = "";
         has password: str = "";
@@ -437,7 +437,7 @@ cl {
 
 ```jac
 cl {
-    def:pub ProtectedRoute(props: dict) -> any {
+    def:pub ProtectedRoute(props: dict) -> JsxElement {
         auth = use_auth();
 
         # Still loading auth state
@@ -462,7 +462,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Dashboard() -> any {
+    def:pub Dashboard() -> JsxElement {
         auth = use_auth();
 
         return <ProtectedRoute>
@@ -486,7 +486,7 @@ cl {
 cl {
     import from jac_client { Router, Route }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <AuthProvider>
             <Router>
                 <nav>
@@ -504,7 +504,7 @@ cl {
         </AuthProvider>;
     }
 
-    def:pub NavBar() -> any {
+    def:pub NavBar() -> JsxElement {
         auth = use_auth();
 
         return <div className="navbar">
@@ -539,7 +539,7 @@ cl {
 cl {
     import from jac_client { callWalker }
 
-    def:pub UserData() -> any {
+    def:pub UserData() -> JsxElement {
         has data: any = None;
         auth = use_auth();
 

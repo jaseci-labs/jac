@@ -19,7 +19,7 @@ cl import from "@jac/runtime" {
 
 cl {
     # Navigation Component
-    def Navigation -> any {
+    def Navigation -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
@@ -110,7 +110,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage -> any {
+    def LoginPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -234,7 +234,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage -> any {
+    def SignupPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -358,7 +358,7 @@ cl {
     }
 
     # Dashboard Page (Protected Route)
-    def DashboardPage -> any {
+    def DashboardPage -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return
@@ -419,7 +419,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect based on auth status
-    def HomePage -> any {
+    def HomePage -> JsxElement {
         if jacIsLoggedIn() {
             return
                 <Navigate to="/dashboard" />;
@@ -429,7 +429,7 @@ cl {
     }
 
     # Main App with React Router
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div

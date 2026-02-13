@@ -12,7 +12,7 @@ cl import from "@jac/runtime" {
 
 cl {
     # Home Page Component
-    def Home -> any {
+    def Home -> JsxElement {
         location = useLocation();
         navigate = useNavigate();
 
@@ -48,7 +48,7 @@ cl {
     }
 
     # About Page Component
-    def About -> any {
+    def About -> JsxElement {
         location = useLocation();
 
         return
@@ -77,7 +77,7 @@ cl {
     }
 
     # Team Page Component (nested route example)
-    def Team -> any {
+    def Team -> JsxElement {
         return
             <div>
                 <h1>
@@ -93,7 +93,7 @@ cl {
     }
 
     # User Profile Component (with URL parameters)
-    def UserProfile -> any {
+    def UserProfile -> JsxElement {
         params = useParams();
         userId = params.id or "Unknown";
 
@@ -121,7 +121,7 @@ cl {
     }
 
     # Contact Page Component
-    def Contact -> any {
+    def Contact -> JsxElement {
         has submitted: bool = False;
 
         def handleSubmit(e: any) -> None {
@@ -181,7 +181,7 @@ cl {
     }
 
     # 404 Not Found Component
-    def NotFound -> any {
+    def NotFound -> JsxElement {
         location = useLocation();
         navigate = useNavigate();
 
@@ -208,7 +208,7 @@ cl {
     }
 
     # Navigation Component with active link styling
-    def Navigation -> any {
+    def Navigation -> JsxElement {
         location = useLocation();
 
         def linkStyle(path: str) -> dict {
@@ -259,7 +259,7 @@ cl {
     }
 
     # Main App Component with React Router HashRouter
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}>

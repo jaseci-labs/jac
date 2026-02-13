@@ -2,7 +2,7 @@
 cl import ".styles.scss";
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
