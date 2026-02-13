@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.1 (Unreleased)
 
 - **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
+- **Fix: MTIR scope key uses file stem for portability**: Fixed MTIR scope key generation to use only the file stem (filename without extension) instead of path-relative module names. This ensures consistent scope keys across different execution environments (local vs Docker) and enables compiled bytecode to be portable across different directory structures.
 - **Fix: False Type Errors in Nested Functions**: Fixed incorrect type checking errors when using nested functions inside `impl` blocks. Nested functions now correctly validate their return statements against their own return type instead of the outer function's return type.
 - **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections. Added `on_ready` callback parameter to `JacAPIServer.start()` for consistent startup message handling across stdlib and jac-scale servers.
 - **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files. Exits with status 1 if files need formatting or have syntax errors.
@@ -21,7 +22,7 @@ This document provides a summary of new features, improvements, and bug fixes in
   - **Fix: LiteralString Type Support**: Added `LiteralString` class to the type checker, improving binary operator chain handling and ensuring type compatibility between `LiteralString` and `str` types.
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
-- **1 Small Refactors**
+- **2 Small Refactors**
 
 ## jaclang 0.10.0 (Latest Release)
 
