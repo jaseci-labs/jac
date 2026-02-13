@@ -20,6 +20,7 @@ This document provides a summary of new features, improvements, and bug fixes in
   - **Fix: LiteralString Type Support**: Added `LiteralString` class to the type checker, improving binary operator chain handling and ensuring type compatibility between `LiteralString` and `str` types.
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
+- Docs update: return type `any` -> `JsxElement`
 - **1 Small Refactors**
 
 ## jaclang 0.10.0 (Latest Release)
