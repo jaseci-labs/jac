@@ -1,4 +1,4 @@
-import from jaclang.pycore.archetype { AccessLevel }
+import from jaclang.jac0core.archetype { AccessLevel }
 
 node A {
     has val1: str = "NO_ACCESS";

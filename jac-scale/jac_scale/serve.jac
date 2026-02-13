@@ -18,7 +18,7 @@ import from jac_scale.jserver.jserver {
     JEndPoint,
     ParameterType
 }
-import from jaclang.pycore.runtime { JacRuntime as Jac }
+import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
@@ -27,6 +27,7 @@ import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
+import from jac_scale.abstractions.metrics { MetricsCollector }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -53,6 +54,7 @@ obj JacAPIServer(JServer) {
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
+        _metrics: MetricsCollector | None = None,
         _ws_manager: WebSocketConnectionManager | None = None;
 
     def postinit -> None;
@@ -101,7 +103,11 @@ obj JacAPIServer(JServer) {
     def register_root_asset_endpoint -> None;
     def serve_root_asset(file_path: str) -> Response;
     def _configure_openapi_security -> None;
-    def start(dev: bool = False, no_client: bool = False) -> None;
+    def start(
+        dev: bool = False,
+        no_client: bool = False,
+        on_ready: Callable[[], None] | None = None
+    ) -> None;
     # HMR (Hot Module Replacement) dynamic routing methods
     def enable_hmr(hot_reloader: Any) -> None;
     def register_dynamic_walker_endpoint -> None;

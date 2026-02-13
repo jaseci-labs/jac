@@ -5,7 +5,7 @@ import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
-import from jaclang.pycore.runtime { hookimpl, plugin_manager }
+import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .context { JScaleExecutionContext }
@@ -54,6 +54,8 @@ def _scale_pre_hook(context: HookContext) -> None {
         deployment_target = DeploymentTargetFactory.create(
             target, target_config, logger
         );
+        # Resolve secrets from [plugins.scale.secrets] config
+        deployment_target.secrets = scale_config.get_secrets_config();
         # Handle image registry if build is requested
         if build {
             # Use target config for registry (it contains docker credentials)

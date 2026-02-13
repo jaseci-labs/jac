@@ -13,6 +13,8 @@ import from kubernetes.client.rest { ApiException }
 import from kubernetes.config.config_exception { ConfigException }
 import from requests.exceptions { RequestException }
 
+def check_pods_restarted(namespace: str, app_name: str) -> bool;
+
 def debug_print(statement: str, debug_only: bool = False) -> None;
 
 def parse_cpu_quantity(quantity: str) -> float;
@@ -28,6 +30,17 @@ def validate_resource_limits(
 
 def load_env_variables(code_folder: str) -> list;
 
+def create_k8s_secret(
+    core_v1: client.CoreV1Api,
+    namespace: str,
+    secret_name: str,
+    secret_data: dict[str, str]
+) -> bool;
+
+def delete_k8s_secret(
+    core_v1: client.CoreV1Api, namespace: str, secret_name: str
+) -> None;
+
 def check_K8s_status -> None;
 
 def delete_if_exists(
@@ -35,6 +48,8 @@ def delete_if_exists(
 ) -> None;
 
 def ensure_namespace_exists(namespace: str) -> None;
+
+def exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo];
 
 def create_tarball(source_dir: str, tar_path: str) -> None;
 
@@ -47,8 +62,10 @@ def check_deployment_status(
     path: str = '/docs',
     interval: int = 15,
     max_retries: int = 30,
-    nlb_url: (str | None) = None
-) -> bool;
+    nlb_url: (str | None) = None,
+    namespace: str = "default",
+    app_name: str = "jaseci",
+) -> tuple[bool, str];
 
 def cluster_type -> str;
 

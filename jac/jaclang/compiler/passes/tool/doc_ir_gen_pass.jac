@@ -5,9 +5,9 @@ This is a pass for generating DocIr for Jac code.
 """
 import from collections.abc { Sequence }
 import jaclang.compiler.passes.tool.doc_ir as doc;
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.passes { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.passes { UniPass }
 """DocIrGenPass generate DocIr for Jac code."""
 obj DocIRGenPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;

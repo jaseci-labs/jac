@@ -5,13 +5,13 @@ import from dataclasses { MISSING }
 import from typing { Any, cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
-import from jaclang.pycore.constant { Constants as Con }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.memory { TieredMemory }
 
 """Initialize ExecutionContext."""
 impl ExecutionContext.postinit -> None {
-    import from jaclang.pycore.runtime { JacRuntime }
+    import from jaclang.jac0core.runtime { JacRuntime }
     # Create TieredMemory - persistence only enabled if base_path_dir is explicitly set
     # If base_path_dir is None, no L3 persistence (faster for tests)
     self.mem = TieredMemory(base_path=JacRuntime.base_path_dir);

@@ -6,8 +6,8 @@ import from dataclasses { MISSING }
 import from typing { Any, cast }
 import from uuid { UUID }
 
-import from jaclang.pycore.archetype { Anchor, NodeAnchor, Root }
-import from jaclang.pycore.constant { Constants as Con }
+import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
 glob __all__ = ['ExecutionContext'];

@@ -23,6 +23,26 @@ impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Return the effective type of super (first parent class in MRO)."""
+impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
+    if method := self._get_enclosing_method(node_) {
+        cls = method.method_owner;
+        if isinstance(cls, uni.Archetype) {
+            current_class_type = self.get_type_of_class(cls);
+            # MRO[0] is current class, MRO[1] is first parent
+            if len(current_class_type.shared.mro) > 1 {
+                parent_class_type = current_class_type.shared.mro[1];
+                node_.sym = type_utils.lookup_symtab(
+                    method, node_.value, self.builtins_module
+                );
+                node_.type = parent_class_type.clone_as_instance();
+                return node_.type;
+            }
+        }
+    }
+    return types.UnknownType();
+}
+
 """Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(node: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
@@ -170,6 +190,13 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         base_classes.append(base_class_type);
     }
     is_builtin_class = node_.find_parent_of_type(uni.Module) == self.builtins_module;
+    # Add object as implicit base class (Every class inherits from object)
+    if not base_classes and self.prefetch and self.prefetch.object_class {
+        is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
+        if not is_object_class {
+            base_classes.append(self.prefetch.object_class);
+        }
+    }
     # NOTE: obj, walker, node, edge are dataclass with symbol type as such but
     # other classes are with symbol type TYPE.
     # TODO: We need to handle @dataclass decorator as well.

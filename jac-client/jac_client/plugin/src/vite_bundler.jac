@@ -11,7 +11,11 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from .config_loader { JacClientConfig }
 
 glob logger = logging.getLogger(__name__),
-     API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL";
+     API_BASE_URL_ENV_VAR = "JAC_CLIENT_API_BASE_URL",
+     JAC_API_BASE_URL_KEY = "globalThis.__JAC_API_BASE_URL__",
+     VITE_READY_TIMEOUT_SECONDS = 60,  # Max time to wait for Vite to be ready
+     VITE_READY_PATTERNS = ['ready in', 'local:'],
+     VITE_URL_PATTERNS = ['localhost', 'Local:', 'Network:'];
 
 """Handles Vite bundling operations."""
 class ViteBundler {
@@ -44,6 +48,11 @@ class ViteBundler {
     def _get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str;
     def _format_plugin_options(self: ViteBundler, options: dict) -> str;
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
+    """Format define entries for Vite config (build-time constants)."""
+    def _format_define_entries(
+        self: ViteBundler, api_base_url: str, custom_defines: dict
+    ) -> str;
+
     def _ensure_root_package_json(self: ViteBundler) -> None;
     def _cleanup_root_package_files(self: ViteBundler) -> None;
     def _generate_vite_config_content(
@@ -62,8 +71,28 @@ class ViteBundler {
     """Create config files from jac.toml [plugins.client.configs]."""
     def create_config_files(self: ViteBundler) -> list[Path];
 
-    """Start Vite dev server as a subprocess."""
-    def start_dev_server(self: ViteBundler, port: int = 3000) -> Any;
+    """Start Vite dev server as a subprocess.
+
+    Args:
+        port: Port for the dev server
+        suppress_initial_output: If True, capture Vite's stdout until ready
+    """
+    def start_dev_server(
+        self: ViteBundler, port: int = 3000, suppress_initial_output: bool = False
+    ) -> Any;
+
+    # Internal helpers for dev server
+    def _ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None;
+    def _ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None;
+    def _start_vite_with_output_capture(
+        self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
+    ) -> Any;
 }
 # Env var used to pass API base URL through deep call chains
 # (e.g., DesktopTarget.start -> WebTarget.build -> ViteBundler.create_vite_config)
+
+# Vite dev server configuration
+
+# Patterns to detect Vite server ready state
+
+# Patterns to filter from Vite output (we print our own URLs)

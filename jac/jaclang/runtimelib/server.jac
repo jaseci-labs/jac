@@ -34,7 +34,7 @@ import from jaclang.project.config { get_config }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.constructs { Archetype, WalkerArchetype }
+        import from jaclang.jac0core.constructs { Archetype, WalkerArchetype }
     }
 }
 
@@ -246,7 +246,11 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
-    def start(dev: bool = False, no_client: bool = False) -> None;
+    def start(
+        dev: bool = False,
+        no_client: bool = False,
+        on_ready: Callable[[], None] | None = None
+    ) -> None;
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""

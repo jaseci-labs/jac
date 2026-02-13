@@ -9,10 +9,10 @@ import from jaclang.cli.console { console }
 
 """Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
-    import jaclang.pycore.unitree as uni;
+    import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main { PyastBuildPass }
-    import from jaclang.pycore.program { JacProgram }
-    import from jaclang.pycore.helpers { read_file_with_encoding }
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
         code = PyastBuildPass(
@@ -26,7 +26,7 @@ impl py2jac(filename: str) -> int {
         prog = JacProgram.jac_str_formatter(
             source_str=code, file_path=filename, auto_lint=True
         );
-        console.print(prog.mod.main.gen.jac);
+        console.print(prog.mod.main.gen.jac, markup=False, highlight=False);
         for error in prog.errors_had {
             console.error(f"{error}");
         }
@@ -42,11 +42,11 @@ impl py2jac(filename: str) -> int {
 
 """Convert Jac to Python."""
 impl jac2py(filename: str) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
         code = JacProgram().compile(file_path=filename).gen.py;
         if code {
-            console.print(code);
+            console.print(code, markup=False, highlight=False);
             return 0;
         } else {
             return 1;
@@ -59,7 +59,7 @@ impl jac2py(filename: str) -> int {
 
 """Convert Jac to JavaScript."""
 impl js(filename: str) -> int {
-    import from jaclang.pycore.program { JacProgram }
+    import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
         try {
             prog = JacProgram();
@@ -75,7 +75,7 @@ impl js(filename: str) -> int {
                 console.error('ECMAScript code generation produced no output.');
                 return 1;
             }
-            console.print(js_output);
+            console.print(js_output, markup=False, highlight=False);
             return 0;
         } except Exception as e {
             console.error(f"Generating JavaScript failed: {e}");

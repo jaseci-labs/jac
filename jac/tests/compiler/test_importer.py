@@ -11,7 +11,7 @@ import pytest
 from jaclang import JacRuntime as Jac
 from jaclang import JacRuntimeInterface
 from jaclang.cli.commands import execution  # type: ignore[attr-defined]
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 @pytest.fixture

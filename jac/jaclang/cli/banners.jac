@@ -40,6 +40,24 @@ def print_version_banner(version: str) -> None {
     console.print(f'\n📚 Documentation: [url]{JAC_DOCS_URL}[/url]');
     console.print(f'💬 Community:     [url]{JAC_DISCORD_URL}[/url]');
     console.print(f'🐛 Issues:        [url]{JAC_ISSUES_URL}[/url]');
+    # Show installed plugins
+    try {
+        import from jaclang.jac0core.runtime { plugin_manager }
+        seen: dict[str, str] = {};
+        for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
+            name = dist_facade.project_name;
+            ver = dist_facade.version;
+            if name not in seen {
+                seen[name] = ver;
+            }
+        }
+        if seen {
+            console.print('\n🔌 Plugins Detected:');
+            for name in sorted(seen.keys()) {
+                console.print(f'   {name}=={seen[name]}');
+            }
+        }
+    } except Exception { }
     console.print();
 }
 

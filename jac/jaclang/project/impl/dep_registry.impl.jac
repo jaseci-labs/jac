@@ -88,7 +88,7 @@ impl get_dependency_registry -> DependencyRegistry {
 
 """Initialize the registry by calling plugin hooks."""
 impl initialize_dependency_registry -> None {
-    import from jaclang.pycore.runtime { JacRuntime }
+    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_dependency_registry();
     # Call the hook - may return a single dict or list of dicts
     results = JacRuntime.register_dependency_type();

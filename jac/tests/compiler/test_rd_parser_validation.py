@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 
 from conftest import get_micro_jac_files
-from jaclang.pycore.jac_parser import JacParser
-from jaclang.pycore.program import JacProgram
-from jaclang.pycore.unitree import (
+from jaclang.jac0core.jac_parser import JacParser
+from jaclang.jac0core.program import JacProgram
+from jaclang.jac0core.unitree import (
     FString,
     JsxText,
     Module,
@@ -27,7 +27,7 @@ from jaclang.pycore.unitree import (
     Token,
     UniNode,
 )
-from jaclang.pycore.unitree import (
+from jaclang.jac0core.unitree import (
     Test as JacTest,
 )
 from jaclang.runtimelib.utils import read_file_with_encoding
@@ -207,6 +207,17 @@ _gap_files = [
         "tests/compiler/fixtures/rd_parser_gaps/match_multistring.jac",
         "tests/compiler/fixtures/rd_parser_gaps/enum_pynline.jac",
         "tests/compiler/fixtures/rd_parser_gaps/enum_free_code.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/trailing_comma_collections.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/safe_call_subscript.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/bool_operators_symbols.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/init_as_call.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/decorator_on_impl.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/rstring_concat.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/impl_in_code_block.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/enum_impl_typed.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/glob_chained_assign.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/edge_ref_subscript.jac",
+        "tests/compiler/fixtures/rd_parser_gaps/lambda_typed_params.jac",
     ]
 ]
 

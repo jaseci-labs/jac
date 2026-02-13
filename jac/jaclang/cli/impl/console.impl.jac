@@ -43,34 +43,45 @@ impl JacConsole._should_use_color -> bool {
     return True;
 }
 
-"""Print to stdout, stripping Rich markup when Rich isn't available."""
+"""Print to stdout, stripping Rich markup when Rich isn't available.
+
+When markup=False is passed, skip all markup stripping (useful for raw code output).
+Rich-specific kwargs (style, highlight, markup) are filtered before calling print().
+"""
 impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
     import re;
-    # Remove style and other Rich-specific kwargs
+    # Extract Rich-specific kwargs before passing to built-in print()
+    skip_markup_strip = kwargs.pop('markup', True) is False;
+    kwargs.pop('highlight', None);
     filtered_kwargs = {
         k: v
         for (k, v) in kwargs.items()
-        if k not in ['style', 'file']
+        if k not in ['style']
     };
-    # Strip Rich markup tags like [cyan], [/cyan], [bold], [dim], etc.
-    # Only match closing tags [/...] and known Rich style/color keywords
-    # to avoid stripping content like TOML headers [project] or graphviz [label=...]
-    _rich_styles = (
-        'bold|dim|italic|underline|strike|reverse|blink|overline|'
-        'red|green|blue|cyan|magenta|yellow|white|black|'
-        'bright_red|bright_green|bright_blue|bright_cyan|bright_magenta|bright_yellow|bright_white|'
-        'grey0|grey100|muted|info|success|warning|error|link'
-    );
-    markup_pattern = re.compile(
-        r'\[/[a-zA-Z_][a-zA-Z0-9_ ]*\]'  # Closing tags: [/bold], [/red], etc.
-        r'|'
-        r'\[(?:' + _rich_styles + r')(?:\s[^\]]*?)?\]'  # Opening style tags
-    );
-    stripped_args = tuple(
-        markup_pattern.sub('', str(arg)) if isinstance(arg, str) else arg
-        for arg in args
-    );
-    print(*stripped_args, **filtered_kwargs);
+    if skip_markup_strip {
+        # Raw output mode - no markup stripping (for code output, etc.)
+        print(*args, **filtered_kwargs);
+    } else {
+        # Strip Rich markup tags like [cyan], [/cyan], [bold], [dim], etc.
+        # Only match closing tags [/...] and known Rich style/color keywords
+        # to avoid stripping content like TOML headers [project] or graphviz [label=...]
+        _rich_styles = (
+            'bold|dim|italic|underline|strike|reverse|blink|overline|'
+            'red|green|blue|cyan|magenta|yellow|white|black|'
+            'bright_red|bright_green|bright_blue|bright_cyan|bright_magenta|bright_yellow|bright_white|'
+            'grey0|grey100|muted|info|success|warning|error|link'
+        );
+        markup_pattern = re.compile(
+            r'\[/[a-zA-Z_][a-zA-Z0-9_ ]*\]'  # Closing tags: [/bold], [/red], etc.
+            r'|'
+            r'\[(?:' + _rich_styles + r')(?:\s[^\]]*?)?\]'  # Opening style tags
+        );
+        stripped_args = tuple(
+            markup_pattern.sub('', str(arg)) if isinstance(arg, str) else arg
+            for arg in args
+        );
+        print(*stripped_args, **filtered_kwargs);
+    }
     # Flush stdout so output is visible immediately when piped (piped stdout
     # uses block buffering, which can cause subprocess readline() to hang).
     sys.stdout.flush();
@@ -287,7 +298,7 @@ impl JacConsole.print_watching(pattern: str, count: int) -> None {
 impl _get_console -> JacConsole {
     global _console_instance;
     if _console_instance is None {
-        import from jaclang.pycore.runtime { JacRuntime as Jac }
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
         _console_instance = Jac.get_console();
         _console_instance.init();
     }

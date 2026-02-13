@@ -89,6 +89,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         "messages": mt_run.get_msg_list(),
         "tools": mt_run.get_tool_list() or None,
         "response_format": mt_run.get_output_schema(),
+        "api_key": self.api_key or None,
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
 
@@ -113,7 +114,14 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     RESET = "\033[0m";
     log_params = params.copy();
     if log_params.get("api_key") {
-        log_params["api_key"] = "*" * len(log_params["api_key"]);
+        key = log_params["api_key"];
+        if len(key) <= 1 {
+            log_params["api_key"] = "*";
+        } elif len(key) < 4 {
+            log_params["api_key"] = "*" * (len(key) - 1) + key[-1:];
+        } else {
+            log_params["api_key"] = "*" * (len(key) - 4) + key[-4:];
+        }
     }
     log = f"""
     {MAGENTA}[SYSTEM]{RESET}
@@ -149,8 +157,8 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
-    self.api_key = params.get("api_key");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    params.pop("api_key", None);
     response = self.model_call_no_stream(params);
     # Output format:
     # https://docs.litellm.ai/docs/#response-format-openai-format
@@ -187,8 +195,8 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
-    self.api_key = params.get("api_key");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    params.pop("api_key", None);
     response = self.model_call_with_stream(params);
     for chunk in response {
         if chunk?.choices and chunk?.choices?[0]?.delta {

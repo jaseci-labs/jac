@@ -2198,8 +2198,10 @@ impl DesktopTarget.dev(
         is_dev=True,
         api_port=api_port
     );
-    # Start Vite dev server
-    vite_process = bundler.start_dev_server(port=vite_port);
+    # Start Vite dev server (suppress initial output for cleaner startup)
+    vite_process = bundler.start_dev_server(
+        port=vite_port, suppress_initial_output=True
+    );
     if not vite_process {
         raise RuntimeError("Failed to start Vite dev server") ;
     }

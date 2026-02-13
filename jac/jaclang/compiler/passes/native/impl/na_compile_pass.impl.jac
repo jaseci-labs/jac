@@ -49,7 +49,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         manifest = module.gen.interop_manifest;
         native_imports = manifest.native_imports;
         if native_imports {
-            import from jaclang.pycore.interop_bridge { register_py_callbacks }
+            import from jaclang.jac0core.interop_bridge { register_py_callbacks }
             py_func_table: dict = {};
             callbacks_list: list = [];
             register_py_callbacks(manifest, py_func_table, callbacks_list);
@@ -81,7 +81,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
     module: uni.Module, main_mod: object, imports: list, target_machine: object
 ) -> None {
     import os;
-    import from jaclang.pycore.codeinfo { NativeModuleInfo, NativeFunctionInfo }
+    import from jaclang.jac0core.codeinfo { NativeModuleInfo, NativeFunctionInfo }
     # Keep track of linked modules to avoid duplicate linking
     linked_modules: dict = {};
     for binding in imports {
@@ -111,7 +111,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
 
         # Compile the imported module to get its LLVM IR.
         # Use options with skip_native_engine=True to skip JIT engine creation.
-        import from jaclang.pycore.compile_options { CompileOptions }
+        import from jaclang.jac0core.compile_options { CompileOptions }
         import_options = CompileOptions(skip_native_engine=True);
         try {
             imported_ir = self.prog.compile(

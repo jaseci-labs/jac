@@ -134,6 +134,12 @@ class MockScaleConfig:
             "exp_delta_days": 1,
         }
 
+    def get_kubernetes_config(self) -> dict:
+        return {"namespace": "default"}
+
+    def get_metrics_config(self) -> dict:
+        return {"enabled": False}
+
 
 class TestJacScaleUserManagerSSO:
     """Test SSO functionality in JacScaleUserManager."""
@@ -625,7 +631,7 @@ class TestJacAPIServerEndpoints:
         with (
             patch("jac_scale.serve.get_scale_config", return_value=self.mock_config),
             patch(
-                "jaclang.pycore.runtime.JacRuntimeInterface.get_user_manager",
+                "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
                 return_value=self.mock_user_manager,
             ),
         ):
