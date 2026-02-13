@@ -783,6 +783,7 @@ jac start --dev              # Dev server with HMR
 Native desktop applications using Tauri. Creates installers for Windows, macOS, and Linux.
 
 **Prerequisites:**
+
 - Rust/Cargo: [rustup.rs](https://rustup.rs)
 - Build tools (platform-specific)
 
@@ -805,6 +806,7 @@ jac build --client desktop --platform linux
 ```
 
 **Output:** Installers in `src-tauri/target/release/bundle/`:
+
 - Windows: `.exe` installer
 - macOS: `.dmg` or `.app` bundle
 - Linux: `.AppImage`, `.deb`, or `.rpm`
@@ -816,6 +818,7 @@ jac build --client desktop --platform linux
 Progressive Web App with offline support, installability, and native-like experience.
 
 **Features:**
+
 - Offline support via Service Worker
 - Installable on devices
 - Auto-generated `manifest.json`
