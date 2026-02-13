@@ -68,10 +68,8 @@ def test_ability_connected_to_decl(fixture_path: Callable[[str], str]) -> None:
         state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
     )
     assert isinstance(say_hi_node, uni.ImplDef) and say_hi_node.body is not None
-    assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
-    init_node = (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of
-    )
+    assert "impl.Test.init" in state.impl_mod[0].sym_tab.names_in_scope
+    init_node = state.impl_mod[0].sym_tab.names_in_scope["impl.Test.init"].decl.name_of
     assert isinstance(init_node, uni.ImplDef) and init_node.body is not None
 
 
@@ -84,10 +82,8 @@ def test_ability_connected_to_decl_post(fixture_path: Callable[[str], str]) -> N
         state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
     )
     assert isinstance(say_hi_node, uni.ImplDef) and say_hi_node.body is not None
-    assert "impl.Test.__init__" in state.impl_mod[0].sym_tab.names_in_scope
-    init_node = (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.__init__"].decl.name_of
-    )
+    assert "impl.Test.init" in state.impl_mod[0].sym_tab.names_in_scope
+    init_node = state.impl_mod[0].sym_tab.names_in_scope["impl.Test.init"].decl.name_of
     assert isinstance(init_node, uni.ImplDef) and init_node.body is not None
 
 
