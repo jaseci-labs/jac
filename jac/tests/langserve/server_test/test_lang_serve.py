@@ -17,15 +17,6 @@ from tests.langserve.server_test.utils import (
 from jaclang.langserve.server import formatting
 from jaclang.vendor.pygls.uris import from_fs_path
 
-# NOTE: circle.jac emits a spurious type error at the call to super.init:
-# obj Circle(Shape) {
-#     def init(radius: float) {
-#         super.init(ShapeType.CIRCLE);
-#                    ^^^^^^^^^^^^^^^^
-# The call is correct: semantically super refers to the parent class. The
-# current static/type checker cannot reliably infer that relationship and
-# reports a false positive. This should be fixed in the type checker.
-
 CIRCLE_TEMPLATE = "circle_template.jac"
 GLOB_TEMPLATE = "glob_template.jac"
 EXPECTED_CIRCLE_TOKEN_COUNT = 355
@@ -43,11 +34,7 @@ def test_open_valid_file_no_diagnostics():
 
     try:
         helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
-        )
+        helper.assert_no_diagnostics()
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -63,7 +50,7 @@ def test_open_with_syntax_error():
 
     try:
         helper.open_document()
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        helper.assert_has_diagnostics(count=1, message_contains="Unexpected token")
 
         diagnostics = helper.get_diagnostics()
         assert str(diagnostics[0].range) == "57:0-57:5"
@@ -83,18 +70,14 @@ def test_did_open_and_simple_syntax_error():
         # Open valid file
         print("Opening valid file...")
         helper.open_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
-        )
+        helper.assert_no_diagnostics()
 
         # Introduce syntax error
         broken_code = load_jac_template(
             test_file._get_template_path(CIRCLE_TEMPLATE), "error"
         )
         helper.change_document(broken_code)
-        helper.assert_has_diagnostics(count=2)
+        helper.assert_has_diagnostics(count=1)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
     finally:
         ls.shutdown()
@@ -112,11 +95,7 @@ def test_did_save():
     try:
         helper.open_document()
         helper.save_document()
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
-        )
+        helper.assert_no_diagnostics()
 
         # Save with syntax error
         broken_code = load_jac_template(
@@ -124,7 +103,7 @@ def test_did_save():
         )
         helper.save_document(broken_code)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT_ERROR)
-        helper.assert_has_diagnostics(count=2, message_contains="Unexpected token")
+        helper.assert_has_diagnostics(count=1, message_contains="Unexpected token")
     finally:
         ls.shutdown()
         test_file.cleanup()
@@ -143,17 +122,13 @@ def test_did_change():
 
         # Change without error
         helper.change_document("\n" + test_file.code)
-        # helper.assert_no_diagnostics()
-        helper.assert_has_diagnostics(
-            count=1,
-            message_contains="Cannot assign <class ShapeType> to parameter 'radius' of type <class float>",
-        )
+        helper.assert_no_diagnostics()
 
         # Change with syntax error
         helper.change_document("\nerror" + test_file.code)
         helper.assert_semantic_tokens_count(EXPECTED_CIRCLE_TOKEN_COUNT)
         helper.assert_has_diagnostics(
-            count=2, message_contains="Unexpected token 'error'"
+            count=1, message_contains="Unexpected token 'error'"
         )
     finally:
         ls.shutdown()
