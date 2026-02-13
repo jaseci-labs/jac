@@ -1386,6 +1386,8 @@ def test_nested_types_resolution(fixture_path: Callable[[str], str]) -> None:
 
     assert found_uni, "Could not find 'uni' name node in AST"
     assert found_module, "Could not find 'Module' name node in AST"
+
+
 def test_super_init_with_has_vars(fixture_path: Callable[[str], str]) -> None:
     """Test super.init() type checking with has variables (implicit dataclass init)."""
     program = JacProgram()
