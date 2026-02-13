@@ -22,7 +22,7 @@ def _ensure_jac_runtime -> None {
     }
 }
 
-"""Re-discover jac.toml from the file's directory when an absolute/relative path is given.
+"""Discover jac.toml from the file's directory when an absolute/relative path is given.
 
 This ensures that when running `jac start /path/to/project/main.jac` from any directory,
 the jac.toml in /path/to/project/ is found and used for plugin configuration.
@@ -37,15 +37,12 @@ def _discover_config_from_file(filename: str) -> None {
     file_path = Path(filename).resolve();
     file_dir = file_path.parent;
 
-    # Capture active profile from current config before re-discovery
-    old_config = get_config();
-    active_profile = old_config.active_profile if old_config else "";
-
-    # Re-discover config with profile applied in one step
+    # Use get_config with start_path to discover from the file's directory.
+    # This ensures we don't accidentally discover config from cwd first.
+    # If a config was already loaded, force_discover ensures we re-discover
+    # from the correct location.
     try {
-        config = JacConfig.discover(
-            start_path=file_dir, profile=active_profile or None
-        );
+        config = get_config(start_path=file_dir, force_discover=True);
     } except (OSError, KeyError, ValueError) as e {
         console.print(
             f"Warning: Failed to discover config from {file_dir}: {e}", style="warning"
@@ -53,7 +50,6 @@ def _discover_config_from_file(filename: str) -> None {
         return;
     }
     if config is not None {
-        set_config(config);
         add_venv_to_path(config);
     }
 }
