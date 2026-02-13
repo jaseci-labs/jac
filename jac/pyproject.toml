@@ -27,7 +27,7 @@ Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
 
 [project.scripts]
-jac = "jaclang.cli.cli:start_cli"
+jac = "jaclang.jac0core.cli_boot:start_cli"
 
 [project.optional-dependencies]
 dev = [
