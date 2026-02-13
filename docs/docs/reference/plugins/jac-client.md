@@ -673,9 +673,13 @@ content = ["./src/**/*.{jac,tsx,jsx}"]
 | `jac create myapp --use client` | Create new full-stack project |
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
+| `jac start --client pwa` | Start PWA (builds then serves) |
+| `jac start --client desktop` | Start desktop app in dev mode |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app |
+| `jac build --client pwa` | Build PWA with offline support |
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
+| `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
 | `jac remove --npm <pkg>` | Remove npm package |
 
@@ -690,7 +694,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`) | `web` |
+| `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
 | `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
 
 **Examples:**
@@ -701,6 +705,9 @@ jac build
 
 # Build specific file
 jac build main.jac
+
+# Build PWA with offline support
+jac build --client pwa
 
 # Build desktop app for current platform
 jac build --client desktop
@@ -722,13 +729,16 @@ jac setup <target>
 
 | Option | Description |
 |--------|-------------|
-| `target` | Target to setup (e.g., `desktop`) |
+| `target` | Target to setup (`desktop`, `pwa`) |
 
 **Examples:**
 
 ```bash
-# Setup desktop target (installs Tauri prerequisites)
+# Setup desktop target (creates src-tauri/ directory)
 jac setup desktop
+
+# Setup PWA target (creates pwa_icons/ directory)
+jac setup pwa
 ```
 
 ### Extended Core Commands
@@ -749,6 +759,12 @@ jac-client extends several core commands:
 
 jac-client supports building for multiple deployment targets from a single codebase.
 
+| Target | Command | Output | Setup Required |
+|--------|---------|--------|----------------|
+| **Web** (default) | `jac build` | `.jac/client/dist/` | No |
+| **Desktop** (Tauri) | `jac build --client desktop` | Native installers | Yes |
+| **PWA** | `jac build --client pwa` | Installable web app | No |
+
 ### Web Target (Default)
 
 Standard browser deployment using Vite:
@@ -758,17 +774,84 @@ jac build                    # Build for web
 jac start --dev              # Dev server with HMR
 ```
 
+**Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
+
 ### Desktop Target (Tauri)
 
-Native desktop applications using Tauri:
+Native desktop applications using Tauri. Creates installers for Windows, macOS, and Linux.
+
+**Prerequisites:**
+- Rust/Cargo: [rustup.rs](https://rustup.rs)
+- Build tools (platform-specific)
+
+**Setup & Build:**
 
 ```bash
-jac setup desktop            # One-time setup
-jac build --client desktop   # Build desktop app
-jac start --client desktop   # Dev mode for desktop
+# 1. One-time setup (creates src-tauri/ directory)
+jac setup desktop
+
+# 2. Development with hot reload
+jac start main.jac --client desktop --dev
+
+# 3. Build installer for current platform
+jac build --client desktop
+
+# 4. Build for specific platform
+jac build --client desktop --platform windows
+jac build --client desktop --platform macos
+jac build --client desktop --platform linux
 ```
 
-Desktop builds produce native executables for Windows, macOS, and Linux.
+**Output:** Installers in `src-tauri/target/release/bundle/`:
+- Windows: `.exe` installer
+- macOS: `.dmg` or `.app` bundle
+- Linux: `.AppImage`, `.deb`, or `.rpm`
+
+**Configuration:** Edit `src-tauri/tauri.conf.json` to customize window size, title, and app metadata.
+
+### PWA Target
+
+Progressive Web App with offline support, installability, and native-like experience.
+
+**Features:**
+- Offline support via Service Worker
+- Installable on devices
+- Auto-generated `manifest.json`
+- Automatic icon generation (with Pillow)
+
+**Setup & Build:**
+
+```bash
+# Optional: One-time setup (creates pwa_icons/ directory)
+jac setup pwa
+
+# Build PWA (includes manifest + service worker)
+jac build --client pwa
+
+# Development (service worker disabled for better DX)
+jac start --client pwa --dev
+
+# Production (builds PWA then serves)
+jac start --client pwa
+```
+
+**Output:** Web bundle + `manifest.json` + `sw.js` (service worker)
+
+**Configuration in jac.toml:**
+
+```toml
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+cache_name = "my-app-cache-v1"
+
+[plugins.client.pwa.manifest]
+name = "My App"
+short_name = "App"
+description = "My awesome Jac app"
+```
+
+**Custom Icons:** Add `pwa-192x192.png` and `pwa-512x512.png` to `pwa_icons/` directory.
 
 ---
 
