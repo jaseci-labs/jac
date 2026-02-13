@@ -49,6 +49,8 @@ def delete_if_exists(
 
 def ensure_namespace_exists(namespace: str) -> None;
 
+def exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo];
+
 def create_tarball(source_dir: str, tar_path: str) -> None;
 
 def create_or_update_configmap(

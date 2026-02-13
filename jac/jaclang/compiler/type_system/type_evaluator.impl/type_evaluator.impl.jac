@@ -85,6 +85,37 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     if member := self._lookup_object_member(
                         base_type, expr.right.value
                     ) {
+                        # For init method lookup: if the class is a data class and
+                        # doesn't have an explicit init defined directly (not inherited),
+                        # prefer the implicit dataclass init over inherited object.__init__.
+                        # But only if the class or its ancestors have 'has' variables.
+                        if (
+                            expr.right.value in ('init', '__init__')
+                            and base_type.is_data_class()
+                        ) {
+                            # Check if the class has explicit init in its own symbol table
+                            has_explicit_init = (
+                                'init' in base_type.shared.symbol_table.names_in_scope
+                                or '__init__' in base_type.shared.symbol_table.names_in_scope
+                            );
+                            # Check if there are any 'has' vars in the class hierarchy
+                            # (excluding object which has no has vars)
+                            has_any_has_vars = any(
+                                len(cls.shared.symbol_table.get_has_vars()) > 0
+                                for cls in base_type.shared.mro
+                                if cls.shared.class_name != "object"
+                            );
+                            # Only create implicit dataclass init if:
+                            # 1. No explicit init in the class itself
+                            # 2. There are 'has' vars somewhere in the hierarchy
+                            if not has_explicit_init and has_any_has_vars {
+                                implicit_init_type = self._create_dataclass_init_method(
+                                    base_type
+                                );
+                                expr.right.type = implicit_init_type;
+                                return implicit_init_type;
+                            }
+                        }
                         overloaded_ty: types.OverloadedType | None = None;
                         member_ty = self.get_type_of_symbol(member.symbol);
                         if isinstance(member_ty, types.FunctionType) {
@@ -139,6 +170,19 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         member.symbol.add_use(expr.right);
                         expr.right.type = overloaded_ty or member_ty;
                         return expr.right.type;
+                    }
+                    # Fallback for implicit init method on data classes (classes with 'has' vars).
+                    # When accessing .init on an instance and no explicit init is found,
+                    # create an implicit init from the 'has' variables.
+                    if (
+                        expr.right.value in ('init', '__init__')
+                        and base_type.is_data_class()
+                    ) {
+                        implicit_init_type = self._create_dataclass_init_method(
+                            base_type
+                        );
+                        expr.right.type = implicit_init_type;
+                        return implicit_init_type;
                     }
                     return types.UnknownType();
                 }
@@ -328,6 +372,11 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
             # and self is a keyword, we need to do it in this way.
             if self._is_expr_self(expr) {
                 return self._get_type_of_self(expr);
+            }
+
+            # Handle 'super' keyword - resolve to first parent class in MRO.
+            if self._is_expr_super(expr) {
+                return self._get_type_of_super(expr);
             }
 
             if scope := expr.find_parent_of_type(uni.UniScopeNode) {

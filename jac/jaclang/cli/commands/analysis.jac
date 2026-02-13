@@ -127,6 +127,13 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
             help="Also apply auto-lint fixes in the same pass",
             short="l"
         ),
+        Arg.create(
+            "check",
+            typ=bool,
+            default=False,
+            help="Check if files are formatted without modifying them (exit 1 if unformatted)",
+            short="c"
+        ),
 
     ],
     examples=[
@@ -134,11 +141,14 @@ def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
         ("jac format myproject/", "Format all files in directory"),
         ("jac format myfile.jac --to_screen", "Preview formatted output"),
         ("jac format . --lintfix", "Format and auto-fix lint violations"),
+        ("jac format . --check", "Check formatting without modifying files"),
 
     ],
     group="analysis"
 )
-def format(paths: list, to_screen: bool = False, lintfix: bool = False) -> int;
+def format(
+    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+) -> int;
 
 """Run the test suite in the specified .jac file or directory."""
 @registry.command(
