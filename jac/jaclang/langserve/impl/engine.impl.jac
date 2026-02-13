@@ -100,6 +100,13 @@ impl JacLangServer.type_check_file(
                 annex_view=fs_path,
             );
         }
+        # Aggregate errors from internal_program (jaclang.* modules) if any
+        all_errors = list(self.errors_had);
+        all_warnings = list(self.warnings_had);
+        if (self._compiler and self._compiler._internal_program) {
+            all_errors.extend(self._compiler._internal_program.errors_had);
+            all_warnings.extend(self._compiler._internal_program.warnings_had);
+        }
         self.publish_diagnostics(
             (
                 uris.from_fs_path(annex_view)
@@ -107,14 +114,12 @@ impl JacLangServer.type_check_file(
                 else uris.from_fs_path(fs_path)
                 # to display diagnostic , it need URI starts with "file://"
             ),
-            utils.gen_diagnostics(
-                (annex_view or fs_path), self.errors_had, self.warnings_had
-            )
+            utils.gen_diagnostics((annex_view or fs_path), all_errors, all_warnings)
         );
         if annex_view {
             self.publish_diagnostics(
                 uris.from_fs_path(fs_path),
-                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
+                utils.gen_diagnostics(fs_path, all_errors, all_warnings)
             );
         }
     } except Exception as e {
@@ -637,16 +642,35 @@ impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
 """Remove errors and warnings for a specific file from the lists."""
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     self.module_manager.clear_alerts_for_file(file_path);
+    # Also clear from internal_program (jaclang.* modules) if it exists
+    if (self._compiler and self._compiler._internal_program) {
+        internal = self._compiler._internal_program;
+        internal.errors_had = [
+            e
+            for e in internal.errors_had
+            if e.loc.mod_path != file_path
+        ];
+        internal.warnings_had = [
+            w
+            for w in internal.warnings_had
+            if w.loc.mod_path != file_path
+        ];
+    }
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
 impl JacLangServer.diagnostics -> dict[str, list] {
+    # Aggregate errors from internal_program (jaclang.* modules) if any
+    all_errors = list(self.errors_had);
+    all_warnings = list(self.warnings_had);
+    if (self._compiler and self._compiler._internal_program) {
+        all_errors.extend(self._compiler._internal_program.errors_had);
+        all_warnings.extend(self._compiler._internal_program.warnings_had);
+    }
     result = {};
     for file_path in self.mod.hub {
         uri = uris.from_fs_path(file_path);
-        result[uri] = utils.gen_diagnostics(
-            file_path, self.errors_had, self.warnings_had
-        );
+        result[uri] = utils.gen_diagnostics(file_path, all_errors, all_warnings);
     }
     return result;
 }
