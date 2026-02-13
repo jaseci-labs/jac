@@ -351,6 +351,7 @@ cl {
 jac-client supports file-based routing using a `pages/` directory:
 
 ```
+
 myapp/
 ├── main.jac
 └── pages/
@@ -363,6 +364,7 @@ myapp/
         ├── layout.jac     # Shared layout for auth routes
         ├── login.jac      # /login
         └── signup.jac     # /signup
+
 ```
 
 Each page file exports a `page` function:
