@@ -42,9 +42,7 @@ def fetch_mtir(func: Callable) -> Info | None {
             module = stem;
         } else {
             # Fallback to argv if __file__ is not available
-            module = Path(sys.argv[0]).stem
-            if sys.argv and sys.argv[0]
-            else "__main__";
+            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
         }
     } elif module_name {
         module = module_name;
