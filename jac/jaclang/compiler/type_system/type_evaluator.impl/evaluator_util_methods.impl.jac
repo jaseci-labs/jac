@@ -288,23 +288,19 @@ Future work:
     - String annotations (forward references)
 """
 impl TypeEvaluator._create_callable_type(
-    type_args_expr: uni.Expr | None,
-    error_node: uni.Expr
+    type_args_expr: uni.Expr | None, error_node: uni.Expr
 ) -> types.FunctionType {
     param_types: list[types.TypeBase] = [];
     return_type: types.TypeBase = types.UnknownType();
     is_gradual: bool = False;
-
     if type_args_expr is None {
         # Bare Callable without type arguments - treat as gradual form
         is_gradual = True;
         return types.create_callable_type([], return_type, is_gradual=True);
     }
-
     # Handle the case where type_args_expr is a TupleVal (Callable[[...], ReturnType])
     if isinstance(type_args_expr, uni.TupleVal) {
         type_arg_values = type_args_expr.values;
-
         if len(type_arg_values) == 0 {
             # Empty Callable[] - emit error and return gradual form
             self.add_diagnostic(
@@ -313,10 +309,8 @@ impl TypeEvaluator._create_callable_type(
             );
             return types.create_callable_type([], types.UnknownType(), is_gradual=True);
         }
-
         # First argument: parameter types list or ellipsis
         first_arg = type_arg_values[0];
-
         if isinstance(first_arg, uni.Ellipsis) {
             # Callable[..., ReturnType] - gradual callable form
             is_gradual = True;
@@ -339,7 +333,6 @@ impl TypeEvaluator._create_callable_type(
             param_type = self._convert_to_instance(param_type);
             param_types.append(param_type);
         }
-
         # Second argument: return type
         if len(type_arg_values) >= 2 {
             return_type_expr = type_arg_values[1];
@@ -348,12 +341,10 @@ impl TypeEvaluator._create_callable_type(
         } else {
             # Missing return type
             self.add_diagnostic(
-                error_node,
-                "Callable requires a return type as second argument"
+                error_node, "Callable requires a return type as second argument"
             );
             return_type = types.UnknownType();
         }
-
         # Check for extra arguments
         if len(type_arg_values) > 2 {
             self.add_diagnostic(
@@ -375,6 +366,5 @@ impl TypeEvaluator._create_callable_type(
         return_type = self._convert_to_instance(return_type);
         is_gradual = True;
     }
-
     return types.create_callable_type(param_types, return_type, is_gradual=is_gradual);
 }

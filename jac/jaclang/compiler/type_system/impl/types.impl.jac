@@ -119,7 +119,6 @@ impl FunctionType.__str__ -> str {
             return_type_str = str(self.return_type) if self.return_type else "Unknown";
             return f"Callable[..., {return_type_str}]";
         }
-
         # Collect parameter types
         param_type_strs: list[str] = [];
         for param in self.parameters or [] {
@@ -133,7 +132,6 @@ impl FunctionType.__str__ -> str {
         return_type_str = str(self.return_type) if self.return_type else "Unknown";
         return f"Callable[[{params_str}], {return_type_str}]";
     }
-
     # Standard function representation
     param_strs: list[str] = [];
     for param in self.parameters or [] {
@@ -328,7 +326,6 @@ impl TypeBase.is_any_type -> bool {
 }
 
 # --- FunctionType Callable support methods ---
-
 """
 Check if this is a gradual callable form (Callable[..., T]).
 

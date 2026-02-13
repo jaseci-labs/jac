@@ -12,17 +12,17 @@ with entry {
 }
 
 """Enumeration of type categories."""
-enum TypeCategory(IntEnum) {
-        Unbound,
-        Unknown,
-        Never,
-        Any,
-        Module,
-        TypeVar,
-        Class,
-        Function,
-        Overload,
-        Union,
+enum TypeCategory ( IntEnum ) {
+    Unbound,
+    Unknown,
+    Never,
+    Any,
+    Module,
+    TypeVar,
+    Class,
+    Function,
+    Overload,
+    Union,
 }
 
 """
@@ -214,20 +214,20 @@ Flags for function types.
 Based on Pyright's FunctionTypeFlags. These flags control how the
 function type behaves during type checking.
 """
-enum FunctionTypeFlags(IntEnum) {
-        Null = 0,
-        # The *args and **kwargs parameters do not need to be present for this
-        # function to be compatible. This is used for Callable[..., x] (gradual typing).
-        # When set, the function accepts any arguments.
-        # Note: In Jac, all function parameters are typed (Any if unknown), so
-        # GradualCallableForm can only come from Callable[..., T] annotations.
-        GradualCallableForm = 1 << 0,
-        # Function is decorated with @staticmethod
-        StaticMethod = 1 << 1,
-        # Function is decorated with @classmethod
-        ClassMethod = 1 << 2,
-        # Function is a synthesized method (e.g., dataclass __init__)
-        SynthesizedMethod = 1 << 3,
+enum FunctionTypeFlags ( IntEnum ) {
+    Null = 0,
+    # The *args and **kwargs parameters do not need to be present for this
+    # function to be compatible. This is used for Callable[..., x] (gradual typing).
+    # When set, the function accepts any arguments.
+    # Note: In Jac, all function parameters are typed (Any if unknown), so
+    # GradualCallableForm can only come from Callable[..., T] annotations.
+    GradualCallableForm = 1 << 0,
+    # Function is decorated with @staticmethod
+    StaticMethod = 1 << 1,
+    # Function is decorated with @classmethod
+    ClassMethod = 1 << 2,
+    # Function is a synthesized method (e.g., dataclass __init__)
+    SynthesizedMethod = 1 << 3,
 }
 
 """Represents a function parameter."""
@@ -267,9 +267,7 @@ obj FunctionType(TypeBase) {
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
-
     # --- Flag checking methods (following Pyright's pattern) ---
-
     """Check if this is a gradual callable form (Callable[..., T])."""
     def is_gradual_callable_form -> bool;
 
@@ -293,9 +291,7 @@ Returns:
     A FunctionType with empty func_name (and GradualCallableForm flag if gradual).
 """
 def create_callable_type(
-    param_types: list[TypeBase],
-    return_type: TypeBase,
-    is_gradual: bool = False
+    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
 ) -> FunctionType {
     parameters: list[Parameter] = [];
 
@@ -315,7 +311,9 @@ def create_callable_type(
     }
 
     # Set GradualCallableForm flag only for Callable[..., T] form
-    flags: int = FunctionTypeFlags.GradualCallableForm if is_gradual else FunctionTypeFlags.Null;
+    flags: int = FunctionTypeFlags.GradualCallableForm
+    if is_gradual
+    else FunctionTypeFlags.Null;
 
     return FunctionType(
         func_name="",

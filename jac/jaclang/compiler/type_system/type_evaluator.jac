@@ -188,8 +188,7 @@ obj TypeEvaluator {
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
     def _create_callable_type(
-        type_args_expr: uni.Expr | None,
-        error_node: uni.Expr
+        type_args_expr: uni.Expr | None, error_node: uni.Expr
     ) -> types.FunctionType;
 
     def _lookup_class_member(
