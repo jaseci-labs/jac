@@ -214,6 +214,8 @@ impl Parser.expect(kind: TokenKind) -> Token {
         self.error("Missing COMMA");
     } else {
         self.error(f"Expected {kind}, got {self.current().kind}");
+        # Advance past the unexpected token to guarantee forward progress
+        return self.advance();
     }
     return self.current();
 }
@@ -668,9 +670,14 @@ impl Parser.parse_module -> Module {
         doc = self.make_string(tok);
     }
     while not self.at_end() {
+        before = self.pos;
         stmt = self.parse_element_stmt();
         if stmt is not None {
             body.append(stmt);
+        }
+        # Guard: ensure forward progress to prevent infinite loops
+        if self.pos == before and not self.at_end() {
+            self.advance();
         }
     }
     kid: list = [];
@@ -3557,6 +3564,7 @@ impl Parser.parse_module_code -> ModuleCode {
 impl Parser.parse_code_block_stmts -> list {
     stmts: list = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
+        before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             stmts.append(stmt);
@@ -3577,6 +3585,10 @@ impl Parser.parse_code_block_stmts -> list {
                     )
                 );
             }
+        }
+        # Guard: ensure forward progress to prevent infinite loops
+        if self.pos == before {
+            self.advance();
         }
     }
     return stmts;
@@ -4133,9 +4145,14 @@ impl Parser.parse_match_case -> MatchCase {
     colon_uni = self.consume_uni(TokenKind.COLON);
     body: list = [];
     while not self.check_any(TokenKind.KW_CASE, TokenKind.RBRACE) and not self.at_end() {
+        before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             body.append(stmt);
+        }
+        # Guard: ensure forward progress to prevent infinite loops
+        if self.pos == before {
+            self.advance();
         }
     }
     kid: list = [case_uni, pattern];
@@ -5040,9 +5057,14 @@ impl Parser.parse_archetype -> Archetype {
         body_lb_uni = self.make_uni_token(self.previous());
         body = [];
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
+            before = self.pos;
             member = self.parse_archetype_member();
             if member is not None {
                 body.append(member);
+            }
+            # Guard: ensure forward progress to prevent infinite loops
+            if self.pos == before {
+                self.advance();
             }
         }
         body_rb_uni = self.consume_uni(TokenKind.RBRACE);
@@ -5941,9 +5963,14 @@ impl Parser.parse_switch_case -> SwitchCase {
     body: list = [];
     while not self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE)
     and not self.at_end() {
+        before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             body.append(stmt);
+        }
+        # Guard: ensure forward progress to prevent infinite loops
+        if self.pos == before {
+            self.advance();
         }
     }
     kid: list = [kw_uni];
