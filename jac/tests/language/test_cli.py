@@ -57,7 +57,6 @@ def test_jac_cli_run_python_file(
     assert "10" in stdout_value
 
 
-
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
