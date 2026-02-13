@@ -57,16 +57,6 @@ def test_jac_cli_run_python_file(
     assert "10" in stdout_value
 
 
-@pytest.fixture(autouse=True)
-def clean_jac_runtime() -> typing.Generator[None, None, None]:
-    """Clean up JacRuntime state after each test."""
-    yield
-    from jaclang.jac0core.runtime import JacRuntime
-
-    if JacRuntime.program:
-        JacRuntime.program.errors_had.clear()
-        JacRuntime.program.warnings_had.clear()
-
 
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
