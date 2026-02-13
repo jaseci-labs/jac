@@ -103,9 +103,10 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 );
             }
         }
-        # Fall back to __init__ if __new__ didn't have meaningful params
+        # Fall back to init if __new__ didn't have meaningful params
         if not validated {
-            if init_method := self._lookup_class_member(caller_type, "__init__") {
+            init_method = self._lookup_class_member(caller_type, "init");
+            if init_method {
                 validated = self._validate_constructor_method(
                     expr, self.get_type_of_symbol(init_method.symbol)
                 );

@@ -1712,6 +1712,17 @@ class JacClientBundle {
         builder = JacRuntimeInterface.get_client_bundle_builder();
         return builder.build(module, force=force);
     }
+
+    """Format a build error for display.
+
+        Plugins can override this hook to provide rich error formatting.
+        Default implementation returns the raw error output.
+        """
+    static def format_build_error(
+        error_output: str, project_dir: Path, config: object = None
+    ) -> str {
+        return error_output;
+    }
 }
 
 """Jac Console Operations - Generic interface for console output."""

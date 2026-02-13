@@ -1671,22 +1671,23 @@ impl JacAPIServer.start(
         # Display bundle error after endpoints if one occurred
         if bundle_error {
             import sys;
-            console.print('\n' + '=' * 70, file=sys.stderr);
-            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
-            console.print('=' * 70, file=sys.stderr);
+            formatted_error = Jac.format_build_error(
+                error_output=bundle_error,
+                project_dir=Path(self.base_path),
+                config=config
+            );
             console.print(file=sys.stderr);
-            console.print(bundle_error, file=sys.stderr);
+            console.print(formatted_error, file=sys.stderr);
             console.print(file=sys.stderr);
             console.warning(
                 'Client pages will not be available until this is fixed.', emoji=True
             );
             console.print(file=sys.stderr);
-            console.info('Try again after running: jac clean --all', emoji=True);
             console.info(
                 f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                 emoji=True
             );
-            console.print('=' * 70 + '\n', file=sys.stderr);
+            console.print(file=sys.stderr);
         }
         # Call the ready callback (e.g., to print startup banner)
         if on_ready {
