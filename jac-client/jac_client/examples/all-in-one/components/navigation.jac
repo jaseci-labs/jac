@@ -37,7 +37,6 @@ cl {
 
         authButtons = None;
         if isLoggedIn {
-            console.log("User is logged in, showing logout button.");
             authButtons = <button
                 onClick={handleLogout}
                 style={{
