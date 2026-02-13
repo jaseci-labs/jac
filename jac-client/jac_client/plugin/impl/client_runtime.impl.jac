@@ -243,7 +243,6 @@ impl __removeLocalStorage(key: str) -> None {
 authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> any {
     authState = reactUseState("checking");
-
     async def checkAuth -> None {
         token = __getLocalStorage("jac_token");
         if not token or token == "" {
@@ -253,9 +252,7 @@ impl AuthGuard(redirect: str = "/login") -> any {
         loggedIn = await jacIsLoggedIn();
         authState[1]("authenticated" if loggedIn else "unauthenticated");
     }
-
-    reactUseEffect(lambda -> None { checkAuth(); }, []);
-
+    reactUseEffect(lambda -> None { checkAuth();}, []);
     if authState[0] == "checking" {
         return None;
     }
