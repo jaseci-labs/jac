@@ -18,6 +18,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 - **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
 - **1 Small Refactors**
+- **fix**: `refresh_jwt_token` now verifies the user still exists before issuing a new token.
 
 ## jac-scale 0.1.7 (Latest Release)
 
