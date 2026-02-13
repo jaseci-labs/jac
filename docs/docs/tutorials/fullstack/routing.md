@@ -11,21 +11,67 @@ Build multi-page applications with client-side routing.
 
 ## Overview
 
-Jac-client provides React Router-style routing:
+Jac-client supports two routing approaches:
+
+1. **File-Based Routing** (Recommended) - Convention over configuration
+2. **Manual Routing** - React Router-style explicit routes
+
+---
+
+## File-Based Routing (Recommended)
+
+Create a `pages/` directory with `.jac` files that automatically become routes:
+
+```
+myapp/
+├── main.jac
+└── pages/
+    ├── index.jac          # /
+    ├── about.jac          # /about
+    ├── contact.jac        # /contact
+    ├── users/
+    │   ├── index.jac      # /users
+    │   └── [id].jac       # /users/:id (dynamic route)
+    └── (auth)/            # Route group (parentheses)
+        ├── layout.jac     # Shared layout for auth routes
+        ├── login.jac      # /login
+        └── signup.jac     # /signup
+```
+
+Each page file exports a `page` function:
 
 ```jac
+# pages/about.jac
 cl {
-    import from jac_client { Router, Route, Link }
-
-    def:pub app() -> any {
-        return <Router>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
-        </Router>;
+    def:pub page() -> any {
+        return <div>
+            <h1>About Us</h1>
+            <p>Learn more about our company.</p>
+        </div>;
     }
 }
 ```
+
+---
+
+## Manual Routing
+
+For explicit route configuration, import from `@jac/runtime`:
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
+
+cl {
+    def:pub app() -> any {
+        return <Router>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/contact" element={<Contact />} />
+            </Routes>
+        </Router>;
+    }
+}
 
 ---
 
@@ -34,9 +80,9 @@ cl {
 ### Setting Up Routes
 
 ```jac
-cl {
-    import from jac_client { Router, Route, Link }
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
+cl {
     def:pub Home() -> any {
         return <div>
             <h1>Home Page</h1>
@@ -67,9 +113,11 @@ cl {
             </nav>
 
             <main>
-                <Route path="/" element={<Home />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
+                <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/about" element={<About />} />
+                    <Route path="/contact" element={<Contact />} />
+                </Routes>
             </main>
         </Router>;
     }
@@ -80,7 +128,7 @@ cl {
 
 ```jac
 cl {
-    # Navigation example showing Link vs anchor
+    # Use Link for internal navigation, anchor for external
     def:pub NavExample() -> any {
         return <div>
             <Link to="/about">About</Link>
@@ -96,12 +144,38 @@ cl {
 
 ### URL Parameters
 
-```jac
-cl {
-    import from jac_client { Router, Route, useParams }
+**File-Based Approach:**
 
+Create a file with brackets for dynamic segments:
+
+```
+pages/users/[id].jac  # Matches /users/:id
+```
+
+```jac
+# pages/users/[id].jac
+cl import from "@jac/runtime" { useParams }
+
+cl {
+    def:pub page() -> any {
+        params = useParams();
+        user_id = params["id"];
+
+        return <div>
+            <h1>User Profile</h1>
+            <p>Viewing user: {user_id}</p>
+        </div>;
+    }
+}
+```
+
+**Manual Route Approach:**
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, useParams }
+
+cl {
     def:pub UserProfile() -> any {
-        # Get URL parameters
         params = useParams();
         user_id = params["id"];
 
@@ -113,7 +187,9 @@ cl {
 
     def:pub app() -> any {
         return <Router>
-            <Route path="/user/:id" element={<UserProfile />} />
+            <Routes>
+                <Route path="/user/:id" element={<UserProfile />} />
+            </Routes>
         </Router>;
     }
 }
@@ -122,9 +198,9 @@ cl {
 ### Multiple Parameters
 
 ```jac
-cl {
-    import from jac_client { useParams }
+cl import from "@jac/runtime" { useParams }
 
+cl {
     def:pub BlogPost() -> any {
         params = useParams();
 
@@ -138,18 +214,51 @@ cl {
     # URL: /blog/tech/123
     # params = {"category": "tech", "postId": "123"}
 }
-```
 
 ---
 
 ## Nested Routes
 
-### Layout Pattern
+### Layout Pattern (File-Based)
+
+Create a `layout.jac` file in a route group:
+
+```
+pages/
+└── (dashboard)/           # Route group
+    ├── layout.jac         # Shared layout
+    ├── index.jac          # /dashboard
+    ├── settings.jac       # /dashboard/settings
+    └── profile.jac        # /dashboard/profile
+```
 
 ```jac
-cl {
-    import from jac_client { Router, Route, Outlet }
+# pages/(dashboard)/layout.jac
+cl import from "@jac/runtime" { Outlet, Link }
 
+cl {
+    def:pub layout() -> any {
+        return <div className="dashboard">
+            <aside>
+                <Link to="/dashboard">Overview</Link>
+                <Link to="/dashboard/settings">Settings</Link>
+                <Link to="/dashboard/profile">Profile</Link>
+            </aside>
+
+            <main>
+                <Outlet />
+            </main>
+        </div>;
+    }
+}
+```
+
+### Layout Pattern (Manual)
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Outlet, Link }
+
+cl {
     def:pub DashboardLayout() -> any {
         return <div className="dashboard">
             <aside>
@@ -178,15 +287,16 @@ cl {
 
     def:pub app() -> any {
         return <Router>
-            <Route path="/dashboard" element={<DashboardLayout />}>
-                <Route index element={<DashboardHome />} />
-                <Route path="settings" element={<DashboardSettings />} />
-                <Route path="profile" element={<DashboardProfile />} />
-            </Route>
+            <Routes>
+                <Route path="/dashboard" element={<DashboardLayout />}>
+                    <Route index element={<DashboardHome />} />
+                    <Route path="settings" element={<DashboardSettings />} />
+                    <Route path="profile" element={<DashboardProfile />} />
+                </Route>
+            </Routes>
         </Router>;
     }
 }
-```
 
 ---
 
@@ -195,9 +305,9 @@ cl {
 ### useNavigate Hook
 
 ```jac
-cl {
-    import from jac_client { useNavigate }
+cl import from "@jac/runtime" { useNavigate }
 
+cl {
     def:pub LoginForm() -> any {
         has email: str = "";
         has password: str = "";
@@ -229,9 +339,9 @@ cl {
 ### Navigation Options
 
 ```jac
-cl {
-    import from jac_client { useNavigate }
+cl import from "@jac/runtime" { useNavigate }
 
+cl {
     def:pub NavExample() -> any {
         navigate = useNavigate();
 
@@ -254,45 +364,51 @@ cl {
         </div>;
     }
 }
-```
 
 ---
 
 ## Route Guards
 
-### Protected Routes
+### Using AuthGuard (Recommended)
+
+For file-based routing, use the built-in `AuthGuard` component in a layout file:
 
 ```jac
+# pages/(protected)/layout.jac
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
 cl {
-    import from jac_client { useNavigate }
+    def:pub layout() -> any {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
+    }
+}
+```
 
+Any pages in the `(protected)` group will require authentication.
+
+### Custom Protected Routes
+
+```jac
+cl import from "@jac/runtime" { useNavigate, jacIsLoggedIn }
+
+cl {
     def:pub ProtectedRoute(props: dict) -> any {
-        auth = use_auth();
         navigate = useNavigate();
+        isAuthenticated = jacIsLoggedIn();
 
-        if auth.loading {
-            return <div>Loading...</div>;
+        can with entry {
+            if not isAuthenticated {
+                navigate("/login", {"replace": True});
+            }
         }
 
-        if not auth.isAuthenticated {
-            # Redirect to login
-            navigate("/login", {"replace": True});
-            return None;
+        if not isAuthenticated {
+            return <div>Redirecting...</div>;
         }
 
         return <div>{props.children}</div>;
-    }
-
-    def:pub app() -> any {
-        return <Router>
-            <Route path="/login" element={<Login />} />
-
-            <Route path="/dashboard" element={
-                <ProtectedRoute>
-                    <Dashboard />
-                </ProtectedRoute>
-            } />
-        </Router>;
     }
 }
 ```
@@ -300,15 +416,19 @@ cl {
 ### Role-Based Access
 
 ```jac
+cl import from "@jac/runtime" { Navigate, jacIsLoggedIn }
+
 cl {
     def:pub AdminRoute(props: dict) -> any {
-        auth = use_auth();
+        has user: dict = {};
 
-        if not auth.isAuthenticated {
+        isAuthenticated = jacIsLoggedIn();
+
+        if not isAuthenticated {
             return <Navigate to="/login" />;
         }
 
-        if auth.user.role != "admin" {
+        if user.get("role") != "admin" {
             return <div className="error">
                 <h2>Access Denied</h2>
                 <p>You need admin privileges to view this page.</p>
@@ -318,26 +438,30 @@ cl {
         return <>{props.children}</>;
     }
 }
-```
 
 ---
 
 ## Query Parameters
 
-### useSearchParams Hook
+### Using useLocation
+
+Access query parameters using `useLocation` and standard URL parsing:
 
 ```jac
+cl import from "@jac/runtime" { useLocation, useNavigate }
+
 cl {
-    import from jac_client { useSearchParams }
-
     def:pub SearchResults() -> any {
-        (searchParams, setSearchParams) = useSearchParams();
+        location = useLocation();
+        navigate = useNavigate();
 
+        # Parse query parameters from location.search
+        searchParams = URLSearchParams(location.search);
         query = searchParams.get("q") or "";
-        page = int(searchParams.get("page") or "1");
+        page = parseInt(searchParams.get("page") or "1");
 
-        def update_page(new_page: int) -> None {
-            setSearchParams({"q": query, "page": str(new_page)});
+        def updatePage(newPage: int) -> None {
+            navigate(f"/search?q={query}&page={newPage}");
         }
 
         return <div>
@@ -345,13 +469,13 @@ cl {
             <p>Page: {page}</p>
 
             <button
-                onClick={lambda -> None { update_page(page - 1); }}
+                onClick={lambda -> None { updatePage(page - 1); }}
                 disabled={page <= 1}
             >
                 Previous
             </button>
 
-            <button onClick={lambda -> None { update_page(page + 1); }}>
+            <button onClick={lambda -> None { updatePage(page + 1); }}>
                 Next
             </button>
         </div>;
@@ -359,16 +483,15 @@ cl {
 
     # URL: /search?q=hello&page=2
 }
-```
 
 ---
 
 ## 404 Not Found
 
 ```jac
-cl {
-    import from jac_client { Router, Route }
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
+cl {
     def:pub NotFound() -> any {
         return <div className="error-page">
             <h1>404</h1>
@@ -379,42 +502,46 @@ cl {
 
     def:pub app() -> any {
         return <Router>
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
-
-            <Route path="*" element={<NotFound />} />
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="*" element={<NotFound />} />
+            </Routes>
         </Router>;
     }
 }
-```
 
 ---
 
 ## Active Link Styling
 
-```jac
-cl {
-    import from jac_client { NavLink }
+Use `useLocation` with `Link` to create active link styling:
 
+```jac
+cl import from "@jac/runtime" { Link, useLocation }
+
+cl {
     def:pub Navigation() -> any {
+        location = useLocation();
+
+        def isActive(path: str) -> bool {
+            return location.pathname == path;
+        }
+
         return <nav>
-            <NavLink
+            <Link
                 to="/"
-                className={lambda info: any -> str {
-                    return "nav-link " + ("active" if info.isActive else "");
-                }}
+                className={"nav-link " + ("active" if isActive("/") else "")}
             >
                 Home
-            </NavLink>
+            </Link>
 
-            <NavLink
+            <Link
                 to="/about"
-                className={lambda info: any -> str {
-                    return "nav-link " + ("active" if info.isActive else "");
-                }}
+                className={"nav-link " + ("active" if isActive("/about") else "")}
             >
                 About
-            </NavLink>
+            </Link>
         </nav>;
     }
 }
@@ -431,16 +558,15 @@ cl {
     color: blue;
     font-weight: bold;
 }
-```
 
 ---
 
 ## Complete Example
 
 ```jac
-cl {
-    import from jac_client { Router, Route, Link, Outlet, useParams, useNavigate }
+cl import from "@jac/runtime" { Router, Routes, Route, Link, Outlet, useParams, useNavigate }
 
+cl {
     # Layout
     def:pub Layout() -> any {
         return <div className="app">
@@ -523,17 +649,18 @@ cl {
     # App
     def:pub app() -> any {
         return <Router>
-            <Route path="/" element={<Layout />}>
-                <Route index element={<Home />} />
-                <Route path="products" element={<Products />} />
-                <Route path="products/:id" element={<ProductDetail />} />
-                <Route path="about" element={<About />} />
-                <Route path="*" element={<NotFound />} />
-            </Route>
+            <Routes>
+                <Route path="/" element={<Layout />}>
+                    <Route index element={<Home />} />
+                    <Route path="products" element={<Products />} />
+                    <Route path="products/:id" element={<ProductDetail />} />
+                    <Route path="about" element={<About />} />
+                    <Route path="*" element={<NotFound />} />
+                </Route>
+            </Routes>
         </Router>;
     }
 }
-```
 
 ---
 
@@ -541,12 +668,14 @@ cl {
 
 | Concept | Usage |
 |---------|-------|
+| File-based routing | Create files in `pages/` directory |
 | Define routes | `<Route path="/..." element={<Comp />} />` |
 | Navigation links | `<Link to="/path">Text</Link>` |
 | URL parameters | `useParams()` returns `{param: value}` |
 | Programmatic nav | `navigate("/path")` or `navigate(-1)` |
-| Query strings | `useSearchParams()` |
+| Query strings | `useLocation().search` + `URLSearchParams` |
 | Nested routes | `<Outlet />` renders child routes |
+| Protected routes | Use `AuthGuard` component |
 | 404 handling | `<Route path="*" element={<NotFound />} />` |
 
 ---

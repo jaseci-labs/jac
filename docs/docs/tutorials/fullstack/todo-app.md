@@ -284,7 +284,7 @@ cl {
 """Todo App - Client-Side UI."""
 
 import from react { useEffect }
-import from "@jac-client/utils" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
+import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 # Import server-side walkers for client use
 sv import from endpoints { AddTodo, ListTodos, ToggleTodo, DeleteTodo }
