@@ -1712,6 +1712,7 @@ class JacClientBundle {
         builder = JacRuntimeInterface.get_client_bundle_builder();
         return builder.build(module, force=force);
     }
+
     """Format a build error for display.
 
         Plugins can override this hook to provide rich error formatting.
