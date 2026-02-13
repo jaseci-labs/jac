@@ -56,6 +56,9 @@ def test_jac_cli_run_python_file(
     assert "Python execution completed." in stdout_value
     assert "10" in stdout_value
 
+def _assert_error_pretty_found(needle: str, haystack: str) -> None:
+    for line in [line.strip() for line in needle.splitlines() if line.strip()]:
+        assert line in haystack, f"Expected line '{line}' not found in:\n{haystack}"
 
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
@@ -1253,25 +1256,53 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
         "stderr should indicate line number 7 where the error occurred"
     )
 
+def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
+    """Test that syntax errors are pretty printed correctly."""
+    from jaclang.jac0core.program import JacProgram
 
-def test_syntax_error_detailed_output(fixture_path: Callable[[str], str]) -> None:
-    """Test that syntax errors show detailed output with source code and caret."""
-    captured_stdout = io.StringIO()
-    captured_stderr = io.StringIO()
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    sys.stdout = captured_stdout
-    sys.stderr = captured_stderr
-
-    try:
-        result = execution.run(fixture_path("test_syntax_err.jac"))
-        stderr = captured_stderr.getvalue()
-    finally:
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
-    assert result == 1, "run command should exit with code 1 on syntax error"
-    assert "Error" in stderr
-    assert "test_syntax_err.jac" in stderr
-    assert 'print "Missing semicolon"' in stderr
-    assert "^" in stderr
+    program = JacProgram()
+    program.compile(fixture_path("test_syntax_err.jac"))
+    assert len(program.errors_had) > 0
+    _assert_error_pretty_found(
+        """
+        2 | 
+        3 | walker w {
+        4 |     can foo {
+          |             ^
+        5 |         print "Missing semicolon"
+        6 |     }
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        3 | walker w {
+        4 |     can foo {
+        5 |         print "Missing semicolon"
+          |         ^^^^^
+        6 |     }
+        7 | }
+    """,
+        program.errors_had[1].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        3 | walker w {
+        4 |     can foo {
+        5 |         print "Missing semicolon"
+          |               ^^^^^^^^^^^^^^^^^^^
+        6 |     }
+        7 | }
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        5 |         print "Missing semicolon"
+        6 |     }
+        7 | }
+          | ^
+        8 |
+    """,
+        program.errors_had[4].pretty_print(),
+    )
