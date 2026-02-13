@@ -223,7 +223,9 @@ cl obj ClientProfile {
 }
 
 # UI Components - Render a single tweet card
-cl def TweetCard(tweet: ClientTweet) -> JsxElement {
+cl def TweetCard(
+    tweet: ClientTweet
+) -> JsxElement {
     return
         <div
             class="tweet-card"
