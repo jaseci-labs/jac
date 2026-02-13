@@ -939,6 +939,84 @@ cl {
 
 ---
 
+## Error Handling
+
+### JacClientErrorBoundary
+
+`JacClientErrorBoundary` is a specialized error boundary component that catches rendering errors in your component tree, logs them, and displays a fallback UI, preventing the entire app from crashing when a descendant component fails.
+
+### Quick Start
+
+Import and wrap `JacClientErrorBoundary` around any subtree where you want to catch render-time errors:
+
+```jac
+cl import from "@jac/runtime" { JacClientErrorBoundary }
+
+cl {
+    def:pub app() -> any {
+        return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
+            <MainAppComponents />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+### Built-in Wrapping
+
+By default, jac-client internally wraps your entire application with `JacClientErrorBoundary`. This means:
+
+- You don't need to manually wrap your root app component
+- Errors in any component are caught and handled gracefully
+- The app continues to run and displays a fallback UI instead of crashing
+
+### Props
+
+| Prop               | Type              | Description                          |
+|--------------------|-------------------|--------------------------------------|
+| `fallback`         | JsxElement        | Custom fallback UI to show on error  |
+| `FallbackComponent`| Component         | Show default fallback UI with error  |
+| `children`         | JsxElement        | Components to protect                |
+
+### Example with Custom Fallback
+
+```jac
+cl {
+    def:pub App() -> any {
+        return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
+            <ExpensiveWidget />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+### Nested Boundaries
+
+You can nest multiple error boundaries for fine-grained error isolation:
+
+```jac
+cl {
+    def:pub App() -> any {
+        return <JacClientErrorBoundary fallback={<div>App error</div>}>
+            <Header />
+            <JacClientErrorBoundary fallback={<div>Content error</div>}>
+                <MainContent />
+            </JacClientErrorBoundary>
+            <Footer />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+If `MainContent` throws an error, only that boundary's fallback is shown, while `Header` and `Footer` continue rendering normally.
+
+### Use Cases
+
+1. **Isolate Failure-Prone Widgets**: Protect sections that fetch data, embed third-party code, or are unstable
+2. **Per-Page Protection**: Wrap top-level pages/routes to prevent one error from failing the whole app
+3. **Micro-Frontend Boundaries**: Nest boundaries around embeddables for fault isolation
+
+---
+
 ## Related Resources
 
 - [Fullstack Setup Tutorial](../../tutorials/fullstack/setup.md)
