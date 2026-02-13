@@ -350,4 +350,3 @@ This distinguishes between:
 impl FunctionType.is_from_callable_annotation -> bool {
     return bool(self.function_flags & FunctionTypeFlags.FromCallableAnnotation);
 }
-
