@@ -1976,19 +1976,6 @@ allowed
         }
         return JacRuntime.program.mtir_map[scope];
     }
-
-    """Get the entry module name for runtime scope resolution.
-
-    Returns the file stem of the main entry point (e.g., "test" for "test.jac").
-    This allows runtime code to resolve __main__ back to the correct module name
-    for consistent MTIR lookup.
-    """
-    static def get_entry_module_name() -> (str | None) {
-        if (JacRuntime.program is None) {
-            return None;
-        }
-        return JacRuntime.program.entry_module_name;
-    }
 }
 
 """Jac Machine Utilities."""

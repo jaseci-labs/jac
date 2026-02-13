@@ -54,11 +54,6 @@ default.
         self._bytecode_cache: BytecodeCache = bytecode_cache or get_bytecode_cache();
         self._compiler: (JacCompiler | None) = None;
         self._compile_options: CompileOptions = CompileOptions();
-        # The entry module name is set during MTIR generation to enable
-        # consistent scope key resolution at runtime. This stores the file stem
-        # of the main entry point (e.g., "test" for "test.jac") so that runtime
-        # can resolve __main__ back to the correct module name.
-        self.entry_module_name: (str | None) = None;
     }
 
     """Get a JacCompiler instance configured with this program's cache."""
