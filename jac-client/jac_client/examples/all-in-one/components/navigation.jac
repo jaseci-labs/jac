@@ -8,9 +8,13 @@ cl import from "@jac/runtime" {
 
 cl {
     def:pub Navigation -> JsxElement {
+        has isLoggedIn: bool = False;
         location = useLocation();
-        isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
+
+        async can with location entry {
+            isLoggedIn = await jacIsLoggedIn();
+        }
 
         def linkStyle(path: str) -> dict {
             isActive = location.pathname == path;
@@ -33,6 +37,7 @@ cl {
 
         authButtons = None;
         if isLoggedIn {
+            console.log("User is logged in, showing logout button.");
             authButtons = <button
                 onClick={handleLogout}
                 style={{

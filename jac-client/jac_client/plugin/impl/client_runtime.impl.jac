@@ -216,8 +216,8 @@ impl jacIsLoggedIn -> bool {
         if new_token {
             __setLocalStorage("jac_token", new_token);
         }
-        return True;
     }
+    return True;
 }
 
 impl __getLocalStorage(key: str) -> str {
@@ -242,8 +242,24 @@ impl __removeLocalStorage(key: str) -> None {
 """Auth guard component for file-based routing. Renders child routes if
 authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> any {
-    token = __getLocalStorage("jac_token");
-    if token and token != "" {
+    authState = reactUseState("checking");
+
+    async def checkAuth -> None {
+        token = __getLocalStorage("jac_token");
+        if not token or token == "" {
+            authState[1]("unauthenticated");
+            return;
+        }
+        loggedIn = await jacIsLoggedIn();
+        authState[1]("authenticated" if loggedIn else "unauthenticated");
+    }
+
+    reactUseEffect(lambda -> None { checkAuth(); }, []);
+
+    if authState[0] == "checking" {
+        return None;
+    }
+    if authState[0] == "authenticated" {
         return
             <ReactRouterOutlet />;
     }
