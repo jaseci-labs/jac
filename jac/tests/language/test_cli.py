@@ -56,9 +56,11 @@ def test_jac_cli_run_python_file(
     assert "Python execution completed." in stdout_value
     assert "10" in stdout_value
 
+
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
     for line in [line.strip() for line in needle.splitlines() if line.strip()]:
         assert line in haystack, f"Expected line '{line}' not found in:\n{haystack}"
+
 
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
@@ -1256,6 +1258,7 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
         "stderr should indicate line number 7 where the error occurred"
     )
 
+
 def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
     """Test that syntax errors are pretty printed correctly."""
     from jaclang.jac0core.program import JacProgram
@@ -1265,7 +1268,7 @@ def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) > 0
     _assert_error_pretty_found(
         """
-        2 | 
+        2 |
         3 | walker w {
         4 |     can foo {
           |             ^
