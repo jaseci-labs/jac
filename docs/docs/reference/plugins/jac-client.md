@@ -438,6 +438,31 @@ cl {
 }
 ```
 
+### jacIsLoggedIn
+
+Validates the current token against the backend by calling `/user/refresh-token`. Returns `True` if the token is valid, `False` otherwise. On success, the token is refreshed. On 401, the token is cleared from localStorage.
+
+```jac
+cl import from "@jac/runtime" { jacIsLoggedIn }
+
+cl {
+    def:pub MyComponent -> any {
+        has isLoggedIn: bool = False;
+
+        async can with entry {
+            isLoggedIn = await jacIsLoggedIn();
+        }
+
+        if not isLoggedIn {
+            return <Navigate to="/login" />;
+        }
+        return <div>Protected content</div>;
+    }
+}
+```
+
+> **Note**: `jacIsLoggedIn` is async — always use `await` inside an `async can with entry` block.
+
 ---
 
 ## Styling

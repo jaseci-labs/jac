@@ -16,8 +16,8 @@ cl {
             loading: bool = False;
 
         # Check login status on mount
-        can with entry {
-            isLoggedIn = jacIsLoggedIn();
+        async can with entry {
+            isLoggedIn = await jacIsLoggedIn();
         }
 
         # Handle login

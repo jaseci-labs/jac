@@ -54,8 +54,13 @@ walker toggle_todo {
 cl {
     # Navigation
     def Navigation -> any {
-        isLoggedIn = jacIsLoggedIn();
+        has isLoggedIn: bool = False;
+        location = useLocation();
         navigate = useNavigate();
+
+        async can with location entry {
+            isLoggedIn = await jacIsLoggedIn();
+        }
 
         def handleLogout(e: any) -> None {
             e.preventDefault();
@@ -553,8 +558,13 @@ cl {
 
     # Todos Page (Protected)
     def TodosPage -> any {
-        # Check if user is logged in, redirect if not
-        if not jacIsLoggedIn() {
+        has isLoggedIn: bool = False;
+
+        async can with entry {
+            isLoggedIn = await jacIsLoggedIn();
+        }
+
+        if not isLoggedIn {
             return
                 <Navigate to="/login" />;
         }
@@ -663,7 +673,13 @@ cl {
 
     # Home/Landing Page - auto-redirect
     def HomePage -> any {
-        if jacIsLoggedIn() {
+        has isLoggedIn: bool = False;
+
+        async can with entry {
+            isLoggedIn = await jacIsLoggedIn();
+        }
+
+        if isLoggedIn {
             return
                 <Navigate to="/todos" />;
         }

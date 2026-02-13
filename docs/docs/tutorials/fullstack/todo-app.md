@@ -296,16 +296,13 @@ def:pub app -> any {
         newTodoText: str = "",
         todosLoading: bool = True;
 
-    # Check auth on mount
-    useEffect(lambda -> None {
-        isLoggedIn = jacIsLoggedIn();
-    }, []);
-
-    # Fetch todos when logged in
-    useEffect(
-        lambda -> None { if isLoggedIn { fetchTodos(); }},
-        [isLoggedIn]
-    );
+    # Check auth on mount and fetch todos if logged in
+    async can with entry {
+        isLoggedIn = await jacIsLoggedIn();
+        if isLoggedIn {
+            fetchTodos();
+        }
+    }
 
     # Fetch all todos from server
     async def fetchTodos -> None {

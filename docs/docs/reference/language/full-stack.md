@@ -373,7 +373,7 @@ jac start main.jac --port 8000
 ### 1 Built-in Auth Functions
 
 ```jac
-import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -401,6 +401,8 @@ cl {
     }
 }
 ```
+
+> **Note**: `jacIsLoggedIn` is async — it validates the token against the backend. Use `await jacIsLoggedIn()` inside an `async can with entry` block.
 
 ### 2 User Management
 

@@ -377,12 +377,9 @@ def:pub app -> any {
         ingredients: list = [],
         ingredientsLoading: bool = False;
 
-    can with entry {
-        isLoggedIn = jacIsLoggedIn();
+    async can with entry {
+        isLoggedIn = await jacIsLoggedIn();
         checkingAuth = False;
-    }
-
-    can with [isLoggedIn] entry {
         if isLoggedIn {
             fetchTodos();
             fetchMealPlan();
@@ -908,12 +905,9 @@ All the complete files are in the collapsible sections below. Create each file i
             ingredients: list = [],
             ingredientsLoading: bool = False;
 
-        can with entry {
-            isLoggedIn = jacIsLoggedIn();
+        async can with entry {
+            isLoggedIn = await jacIsLoggedIn();
             checkingAuth = False;
-        }
-
-        can with [isLoggedIn] entry {
             if isLoggedIn {
                 fetchTodos();
                 fetchMealPlan();
