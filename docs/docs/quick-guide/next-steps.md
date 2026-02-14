@@ -17,8 +17,8 @@ Choose a learning path based on your goals and background.
 **Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models. The compiler generates prompts from function names, parameter names, and type signatures. Use `sem` for additional semantic context.
 
 ```jac
-sem summarize = "Summarize the article in 2-3 sentences.";
 def summarize(text: str) -> str by llm();
+sem summarize = "Summarize the article in 2-3 sentences.";
 ```
 
 ---
