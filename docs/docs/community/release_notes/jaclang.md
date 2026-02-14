@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.2 (Unreleased)
 
+- **`# nolint` Comment Support**: Added inline lint suppression via comments. Place on the line before or inline with code. Formats: `# nolint` (suppress all rules), `# nolint: no-print` (suppress one rule), `# nolint: no-print, combine-has` (suppress multiple rules). Case insensitive.
+
 ## jaclang 0.10.1 (Latest Release)
 
 - **`jac purge` Command**: Added `jac purge` to clear the bytecode cache. Works even when the cache is corrupted.
