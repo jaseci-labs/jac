@@ -152,6 +152,40 @@ def micro_suite_test(filename: str, auto_lint: bool = False) -> None:
         raise e
 
 
+def test_fstring_comment_not_injected(fixture_path: Callable[[str], str]) -> None:
+    """Test that standalone comments are not injected inside f-strings.
+
+    Regression test: CommentInjectionPass would inject standalone comments
+    into f-strings with escaped braces (e.g. f"{{{len(x)} keys}}") because
+    the escaped-brace tokens have loc (0,0), causing prev_line to regress
+    and open a huge comment search window.
+    """
+    path = os.path.join(fixture_path(""), "fstring_comment.jac")
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True)
+    formatted = prog.mod.main.gen.jac
+
+    # The comment must remain as a standalone line, not inside any f-string
+    assert "# Standalone comment" in formatted, "Comment was lost entirely"
+
+    # Check no f-string contains the comment text
+    in_fstring = False
+    for line in formatted.splitlines():
+        stripped = line.strip()
+        if 'f"' in stripped or "f'" in stripped:
+            in_fstring = True
+        if in_fstring and "# Standalone comment" in line:
+            raise AssertionError(
+                "Comment was injected inside an f-string:\n" + formatted
+            )
+        if in_fstring and '";' in stripped:
+            in_fstring = False
+
+    # Also verify idempotency: formatting twice should produce same output
+    prog2 = JacProgram.jac_file_formatter(path, auto_lint=True)
+    formatted2 = prog2.mod.main.gen.jac
+    assert formatted == formatted2, "Formatting is not idempotent"
+
+
 # Generate micro suite tests dynamically
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Generate test cases for all micro jac files."""

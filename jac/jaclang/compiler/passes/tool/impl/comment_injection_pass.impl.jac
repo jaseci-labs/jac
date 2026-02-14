@@ -777,7 +777,7 @@ impl CommentInjectionPass._inject_standalone_by_spans(
             }
         }
         result.append(part);
-        if (part_end is not None) {
+        if (part_end is not None) and (prev_line is None or part_end >= prev_line) {
             prev_line = part_end;
         }
     }
@@ -944,7 +944,7 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, `node: doc.DocType) -> doc.
             processed_parts = self._handle_empty_body_comments(ctx, processed_parts);
         }
         target_ctx = `node.ast_node;
-        if target_ctx {
+        if target_ctx and not isinstance(target_ctx, uni.FString) {
             processed_parts = self._inject_standalone_by_spans(
                 processed_parts,
                 target_ctx,
