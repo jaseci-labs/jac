@@ -7,7 +7,12 @@ Common questions and answers. If you don't see your question below and couldn't 
 ??? "Getting Started & Setup"
 
     ??? question "I updated to the latest Jaseci PyPI packages and my project won't `jac start` properly."
-        Clear your cache by running following command based on your operating system:
+        Run `jac purge` to clear the global bytecode cache. This is the recommended approach after upgrading packages:
+        ```bash
+        jac purge
+        ```
+
+        This command works even when the cache is corrupted. If `jac purge` is not available (older versions), manually clear the cache:
         ```
         Linux:   rm -rf ~/.cache/jac/bytecode/
         macOS:   rm -rf ~/Library/Caches/jac/bytecode/

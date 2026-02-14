@@ -51,6 +51,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac remove <pkg>` | Remove dependency |
 | `jac update [pkg]` | Update dependencies to latest compatible versions |
 | `jac clean` | Clean build artifacts |
+| `jac purge` | Purge global bytecode cache |
 | `jac script <name>` | Run project script |
 
 ### 5 Tool Commands
