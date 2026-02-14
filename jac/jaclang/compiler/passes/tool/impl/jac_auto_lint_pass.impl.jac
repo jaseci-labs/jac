@@ -1635,6 +1635,9 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
 
 Bare print() calls should use the console abstraction instead.
 Only flags calls where the target is a simple Name "print" (not console.print, etc.).
+
+Supports inline suppression via comments:
+- `# nolint` or `# nolint: no-print`
 """
 impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
     if not self.is_rule_enabled(LintRule.NO_PRINT) {
@@ -1648,6 +1651,10 @@ impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
     }
     # Skip excluded files (docs, examples, tests, console.impl.jac, etc.)
     if self._is_file_excluded(node.loc.mod_path) {
+        return;
+    }
+    # Skip if nolint comment is present
+    if self._has_nolint_comment(node, LintRule.NO_PRINT) {
         return;
     }
     # It's a bare print() call — report error with location
@@ -1681,4 +1688,50 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
         return attr_value[1:-1];
     }
     return None;
+}
+
+"""Check if a node has a nolint comment that disables a specific rule.
+
+Supports the following formats:
+- `# nolint` - disables all rules for this line
+- `# nolint: rule-name` - disables specific rule
+- `# nolint: rule1, rule2` - disables multiple rules
+"""
+impl JacAutoLintPass._has_nolint_comment(node: uni.UniNode, rule: LintRule) -> bool {
+    import re;
+    # Get source code from the node's location
+    if node.loc is None or node.loc.orig_src is None {
+        return False;
+    }
+    source = node.loc.orig_src.code;
+    if not source {
+        return False;
+    }
+    source_lines = source.splitlines();
+    first_line = node.loc.first_line;
+    # Lines to check: line before and first line of the statement
+    lines_to_check = [first_line - 1, first_line];
+    for line_num in lines_to_check {
+        if line_num < 1 or line_num > len(source_lines) {
+            continue;
+        }
+        line = source_lines[line_num - 1];
+        # Look for # nolint comment
+        nolint_match = re.search(r'#\s*nolint\s*(?::\s*(.*))?$', line, re.IGNORECASE);
+        if nolint_match {
+            rules_str = nolint_match.group(1);
+            if rules_str is None or rules_str.strip() == "" {
+                # Generic nolint - disables all rules
+                return True;
+            }
+            # Parse comma-separated rule names
+            specified_rules = [r.strip().lower() for r in rules_str.split(',')];
+            # Check if the specific rule is in the list
+            # rule.value is the kebab-case name like "no-print"
+            if rule.value.lower() in specified_rules {
+                return True;
+            }
+        }
+    }
+    return False;
 }

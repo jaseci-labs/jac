@@ -83,4 +83,5 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(node: uni.FuncCall) -> None;
+    def _has_nolint_comment(node: uni.UniNode, rule: LintRule) -> bool;
 }

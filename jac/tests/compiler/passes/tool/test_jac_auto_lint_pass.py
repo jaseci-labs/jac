@@ -1224,3 +1224,46 @@ class TestCommentPreservation:
         assert len(no_print_errors) == 0, (
             f"Expected no no-print errors by default, got: {no_print_errors}"
         )
+
+
+class TestNolintComment:
+    """Tests for # nolint comment suppression."""
+
+    def test_nolint_comment_suppression(
+        self, auto_lint_fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test all nolint comment variations."""
+        from jaclang.project.config import (
+            CheckConfig,
+            JacConfig,
+            LintConfig,
+            set_config,
+        )
+
+        input_path = auto_lint_fixture_path("nolint_comment.jac")
+
+        # Enable all rules including no-print
+        config = JacConfig()
+        config.check = CheckConfig(lint=LintConfig(select=["all"]))
+        set_config(config)
+        try:
+            prog = JacProgram.jac_file_formatter(input_path, auto_lint=True)
+        finally:
+            set_config(None)
+
+        # Get error details
+        error_details = [(e.msg, e.loc.first_line) for e in prog.errors_had]
+        no_print_errors = [
+            (msg, line) for (msg, line) in error_details if "[no-print]" in msg
+        ]
+
+        # Only lines 5 and 32 should have errors
+        error_lines = sorted([line for (_, line) in no_print_errors])
+        assert error_lines == [5, 32], (
+            f"Expected errors on lines [5, 32], got: {error_lines}"
+        )
+
+        # Check error message contains suppression hint
+        for msg, _ in no_print_errors:
+            assert "[no-print]" in msg
+            assert "# nolint: no-print" in msg
