@@ -1,5 +1,11 @@
 """Initialize the JacAutoLintPass."""
 impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
+    self.lint_enabled: bool = True;
+    self.main_module: uni.Module | None = None;
+    self._enabled_rules: set[LintRule] = set();
+    self._exclude_patterns: list[str] = [];
+    self._project_root: str = "";
+    self._nolint_cache: dict[str, dict[int, set[str]]] = {};  # {filepath: {line: {rules}}}
     # Load lint config before super.init() since super triggers the full traversal
     self._load_lint_config();
     super.init(ir_in, prog);
@@ -1697,7 +1703,9 @@ Parses the source once and caches the result for O(1) lookups.
 Returns a dict mapping line numbers to sets of suppressed rule names.
 A "*" in the set means all rules are suppressed for that line.
 """
-impl JacAutoLintPass._get_nolint_lines(mod_path: str, source: str) -> dict[int, set[str]] {
+impl JacAutoLintPass._get_nolint_lines(
+    mod_path: str, source: str
+) -> dict[int, set[str]] {
     import re;
     # Return cached result if available
     if mod_path in self._nolint_cache {
@@ -1714,7 +1722,9 @@ impl JacAutoLintPass._get_nolint_lines(mod_path: str, source: str) -> dict[int, 
                 nolint_map[line_num] = {"*"};
             } else {
                 # Specific rules
-                nolint_map[line_num] = {r.strip().lower() for r in rules_str.split(',')};
+                nolint_map[line_num] = {
+                    r.strip().lower() for r in rules_str.split(',')
+                };
             }
         }
     }
