@@ -266,7 +266,7 @@ sv {
 cl {
     import from frontend { app as ClientApp }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <ClientApp />;
     }
 }
@@ -289,7 +289,7 @@ import from "@jac-client/utils" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn 
 # Import server-side walkers for client use
 sv import from endpoints { AddTodo, ListTodos, ToggleTodo, DeleteTodo }
 
-def:pub app -> any {
+def:pub app -> JsxElement {
     # Component state
     has isLoggedIn: bool = False,
         todos: list = [],
@@ -511,7 +511,7 @@ Add to `frontend.cl.jac`:
 ```jac
 sv import from endpoints { AddTodo, ListTodos, ToggleTodo, DeleteTodo, MealToIngredients }
 
-def:pub app -> any {
+def:pub app -> JsxElement {
     has mealDescription: str = "",
         mealLoading: bool = False;
     # ... other state ...

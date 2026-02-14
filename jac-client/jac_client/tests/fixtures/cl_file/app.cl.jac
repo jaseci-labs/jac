@@ -1,6 +1,6 @@
 import from react { useState }
 
-def app()  -> any {
+def app()  -> JsxElement {
     [todos, setTodos] = useState([]);
     [input, setInput] = useState("");
 

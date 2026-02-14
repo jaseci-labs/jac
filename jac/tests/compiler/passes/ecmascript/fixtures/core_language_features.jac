@@ -235,7 +235,7 @@ cl {
         };
     }
 
-    def app()  -> any {
+    def app()  -> JsxElement {
         return <div>
             <h1>
                 "Authentication" App

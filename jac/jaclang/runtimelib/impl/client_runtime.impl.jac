@@ -277,7 +277,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
         }setCurrentPath(newPath);}
     );
     # Render method - returns component for current route
-    def render -> any {
+    def render -> JsxElement {
         path = currentPath();  # Track dependency!
 
         # Find matching route
@@ -315,7 +315,7 @@ impl Route(path: str, component: any, guard: any = None) -> dict {
     return {"path": path, "component": component, "guard": guard};
 }
 
-impl Link(props: dict) -> any {
+impl Link(props: dict) -> JsxElement {
     href = props["href"] if "href" in props else "/";
     children = props["children"] if "children" in props else [];
     def handleClick(event: any) -> None {

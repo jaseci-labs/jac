@@ -85,7 +85,7 @@ cl import from .styled {
 # Note: useState is auto-injected when using `has` variables
 
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         return <Container>
             <Card>
                 <Button bgColor="#ef4444" onClick={handleClick}>

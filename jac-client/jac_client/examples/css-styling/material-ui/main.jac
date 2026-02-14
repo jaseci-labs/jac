@@ -11,7 +11,7 @@ cl import from '@mui/icons-material/Remove' { default as RemoveIcon }
 cl import from '@mui/icons-material/Refresh' { default as RefreshIcon }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {

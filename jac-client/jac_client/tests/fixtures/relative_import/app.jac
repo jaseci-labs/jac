@@ -1,11 +1,11 @@
 cl import from .button { CustomButton }
 
-cl def RelativeImport()  -> any {
+cl def RelativeImport()  -> JsxElement {
     return <div>
         <CustomButton />
     </div>;
 }
 
-cl def app()  -> any {
+cl def app()  -> JsxElement {
     return <RelativeImport />;
 }

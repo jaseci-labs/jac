@@ -229,7 +229,7 @@ VITE_API_URL=https://api.example.com
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         api_url = import.meta.env.VITE_API_URL;
         return <div>{api_url}</div>;
     }
@@ -347,7 +347,7 @@ typescript = true
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         # Window
         width = window.innerWidth;
 

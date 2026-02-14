@@ -215,7 +215,7 @@ walker AddTodo { has title: str; }
 ```jac
 # main.cl.jac - auto-annexed to main.jac (no explicit import needed)
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <div>Hello World</div>;
     }
 }
@@ -233,7 +233,7 @@ walker AddTodo { has title: str; }
 cl {
     import from .frontend { app as ClientApp }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <ClientApp />;
     }
 }
@@ -241,7 +241,7 @@ cl {
 
 ```jac
 # frontend.cl.jac - standalone client module (renamed from main.cl.jac)
-def:pub app -> any {
+def:pub app -> JsxElement {
     return <div>Hello World</div>;
 }
 ```
@@ -262,7 +262,7 @@ def:pub app -> any {
    cl {
        import from .frontend { app as ClientApp }
 
-       def:pub app -> any {
+       def:pub app -> JsxElement {
            return <ClientApp />;
        }
    }
@@ -275,7 +275,7 @@ def:pub app -> any {
    walker AddTodo { has title: str; }  # Stub for RPC calls
    walker ListTodos {}
 
-   def:pub app -> any { ... }
+   def:pub app -> JsxElement { ... }
    ```
 
 **Note:** `.cl.jac` files can still have their own `.impl.jac` annexes for separating declarations from implementations.
