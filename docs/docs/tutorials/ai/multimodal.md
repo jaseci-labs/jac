@@ -247,8 +247,10 @@ with entry {
 
     print(f"Problem: {solution.problem}");
     print("Solution steps:");
-    for i, step in enumerate(solution.steps) {
-        print(f"  {i+1}. {step}");
+    idx = 0;
+    for step in solution.steps {
+        print(f"  {idx+1}. {step}");
+        idx += 1;
     }
     print(f"Answer: {solution.answer}");
 }

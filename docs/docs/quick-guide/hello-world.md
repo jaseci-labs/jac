@@ -54,9 +54,9 @@ One of Jac's standout features is **compiler-integrated AI** using the **byLLM**
 Create `sentiment.jac`:
 
 ```jac
-import from byllm {Model}
+import from byllm {Model};
 
-glob llm = Model(model_name="gpt-4o")
+glob llm = Model(model_name="gpt-4o");
 
 enum Sentiment {
     POSITIVE,
