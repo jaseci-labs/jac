@@ -7,6 +7,7 @@ native machine code, and produce correct results when executed via ctypes.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -1290,6 +1291,33 @@ class TestNativeMultiModuleInterop:
             exec(py_code, namespace)  # noqa: S102
         output = buf.getvalue().strip()
         assert output == "35"
+
+
+class TestNativeDetectionHeuristic:
+    """Verify _might_have_native_code avoids false positives from docstrings."""
+
+    def test_na_in_docstring_is_not_detected(self):
+        """Files with 'na {' only in docstrings/comments should return False."""
+        import tempfile
+
+        from jaclang.jac0core.compiler import JacCompiler
+
+        compiler = JacCompiler()
+        # na { inside a docstring — should NOT trigger native detection
+        code = '"""Example: na {obj Bar {}} block"""\nobj Foo {}\n'
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(code)
+            tmp.flush()
+            assert not compiler._might_have_native_code(tmp.name)
+            os.unlink(tmp.name)
+
+        # Actual na block at statement level — SHOULD trigger
+        code_real = "na {\n    int x = 1;\n}\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write(code_real)
+            tmp.flush()
+            assert compiler._might_have_native_code(tmp.name)
+            os.unlink(tmp.name)
 
 
 class TestNativeLLVMIR:

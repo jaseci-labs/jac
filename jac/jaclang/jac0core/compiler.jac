@@ -87,7 +87,12 @@ def get_minimal_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
     return [PyastGenPass, PyBytecodeGenPass];
 }
 
-"""Format schedule. If auto_lint=True, includes auto-linting pass."""
+"""Format schedule. If auto_lint=True, includes auto-linting pass.
+
+    Note: Annex modules (.impl.jac, .test.jac) are loaded by the caller
+    (jac_file_formatter) via parse-only, NOT through JacAnnexPass which
+    triggers cascading compilation of the entire import graph.
+    """
 def get_format_sched(
     auto_lint: bool = False
 ) -> list[type[Transform[(uni.Module, uni.Module)]]] {
@@ -97,25 +102,21 @@ def get_format_sched(
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
-    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
     if auto_lint {
-        return [
-            JacAnnexPass,
-            JacAutoLintPass,
-            DocIRGenPass,
-            CommentInjectionPass,
-            JacFormatPass
-        ];
+        return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
     } else {
         return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
     }
 }
 
-"""Lint-only schedule. Runs lint rules for error reporting without formatting."""
+"""Lint-only schedule. Runs lint rules for error reporting without formatting.
+
+    Note: Annex modules are loaded by the caller (jac_file_linter) via
+    parse-only to avoid cascading compilation through the import graph.
+    """
 def get_lint_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
-    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
-    return [JacAnnexPass, JacAutoLintPass];
+    return [JacAutoLintPass];
 }
 
 """Tracks and displays progress during first-run compilation of internal modules."""
@@ -438,17 +439,12 @@ class JacCompiler {
                         self._load_native_from_cache(
                             full_target, actual_program, cached_ir, cached_interop
                         );
-                        if not minimal {
-                            self._load_mtir_cache(cache_key, actual_program);
-                        }
-                        return cached_code;
                     }
-                } else {
-                    if not minimal {
-                        self._load_mtir_cache(cache_key, actual_program);
-                    }
-                    return cached_code;
                 }
+                if not minimal {
+                    self._load_mtir_cache(cache_key, actual_program);
+                }
+                return cached_code;
             }
         }
         is_internal = actual_program is self._internal_program;
@@ -592,10 +588,12 @@ class JacCompiler {
 
         Returns True for:
         - .na.jac files (fully native modules)
-        - .jac files that contain 'na {' or 'na{' blocks
+        - .jac files that contain 'na {' or 'na{' blocks at statement level
 
         This is a heuristic check to determine if we need full compilation
         (including native JIT) rather than using cached bytecode.
+        Uses a line-start anchor to avoid false positives from docstrings
+        and comments that mention na blocks.
         """
     def _might_have_native_code(self: JacCompiler, file_path: str) -> bool {
         if file_path.endswith('.na.jac') {
@@ -606,7 +604,7 @@ class JacCompiler {
                 with open(file_path, encoding='utf-8') as f {
                     content = f.read();
                 }
-                if re.search('\\bna\\s*\\{', content) {
+                if re.search('^\\s*na\\s*\\{', content, re.MULTILINE) {
                     return True;
                 }
             } except OSError {
@@ -771,6 +769,7 @@ class JacCompiler {
     ) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
         import from jaclang.jac0core.parser { parse as rd_parse }
+        import from jaclang.jac0core.bccache { discover_annex_files }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
         (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
@@ -779,6 +778,32 @@ class JacCompiler {
             current_mod.has_syntax_errors = True;
             prog.mod = uni.ProgramModule(current_mod);
             return prog;
+        }
+        # Parse-only annex loading: just parse .impl.jac/.test.jac files
+        # without running SymTabBuildPass or any compilation passes.
+        # This avoids cascading import resolution that would compile the
+        # entire dependency graph for each formatted file.
+        if auto_lint {
+            for annex_path in discover_annex_files(file_path, '.impl.jac') {
+                try {
+                    annex_src = read_file_with_encoding(annex_path);
+                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    _recalculate_parents(annex_mod);
+                    current_mod.impl_mod.append(annex_mod);
+                } except Exception {
+                    ;
+                }
+            }
+            for annex_path in discover_annex_files(file_path, '.test.jac') {
+                try {
+                    annex_src = read_file_with_encoding(annex_path);
+                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    _recalculate_parents(annex_mod);
+                    current_mod.test_mod.append(annex_mod);
+                } except Exception {
+                    ;
+                }
+            }
         }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
@@ -812,10 +837,22 @@ class JacCompiler {
     static def jac_file_linter(file_path: str) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
         import from jaclang.jac0core.parser { parse as rd_parse }
+        import from jaclang.jac0core.bccache { discover_annex_files }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
         (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
         _recalculate_parents(current_mod);
+        # Parse-only annex loading (same as jac_file_formatter)
+        for annex_path in discover_annex_files(file_path, '.impl.jac') {
+            try {
+                annex_src = read_file_with_encoding(annex_path);
+                (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                _recalculate_parents(annex_mod);
+                current_mod.impl_mod.append(annex_mod);
+            } except Exception {
+                ;
+            }
+        }
         for pass_cls in get_lint_sched() {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
