@@ -10,15 +10,16 @@ impl cfg_dot_from_file(file_name: str) -> str {
     dot = cfg_pass.printgraph_cfg();
     return dot;
 }
+
 """Initialize CoalesceBBPass."""
-impl CoalesceBBPass. init(
+impl CoalesceBBPass.init(
     ir_in: uni.Module, prog: Any, cancel_token: Any = None
 ) -> None {
     super.init(ir_in, prog, cancel_token);
 }
 
 """Generate dot graph for CFG."""
-impl CoalesceBBPass. printgraph_cfg -> str {
+impl CoalesceBBPass.printgraph_cfg -> str {
     cfg: dict = {};
     dot = 'digraph G {\n';
     for (key, bb) in self.basic_blocks.items() {
@@ -89,7 +90,7 @@ impl CoalesceBBPass. printgraph_cfg -> str {
 }
 
 """Enter BasicBlockStmt nodes."""
-impl CoalesceBBPass. enter_node(node: uni.UniNode) -> None {
+impl CoalesceBBPass.enter_node(node: uni.UniNode) -> None {
     if (isinstance(node, uni.UniCFGNode) and not isinstance(node, uni.Semi)) {
         tail = node.get_tail();
         bb = self.get_bb(node);
@@ -104,7 +105,7 @@ impl CoalesceBBPass. enter_node(node: uni.UniNode) -> None {
 }
 
 """Get basic block."""
-impl CoalesceBBPass. get_bb(node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
+impl CoalesceBBPass.get_bb(node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
     head = node.get_head();
     tail = node.get_tail();
     bb_list: list[uni.UniCFGNode] = [];
@@ -125,16 +126,17 @@ impl CoalesceBBPass. get_bb(node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
 }
 
 """Before pass."""
-impl CoalesceBBPass. before_pass -> None {
+impl CoalesceBBPass.before_pass -> None {
     self.basic_blocks: dict = {};
     self.bb_counter: int = 0;
 }
 
-impl CFGBuildPass. init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
+impl CFGBuildPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None {
     super.init(ir_in, prog, cancel_token);
 }
+
 """After pass."""
-impl CFGBuildPass. after_pass -> None {
+impl CFGBuildPass.after_pass -> None {
     if self.to_connect {
         for node in self.to_connect {
             if isinstance(node, uni.UniCFGNode) {
@@ -148,7 +150,7 @@ impl CFGBuildPass. after_pass -> None {
 }
 
 """Exit BasicBlockStmt nodes."""
-impl CFGBuildPass. exit_node(node: uni.UniNode) -> None {
+impl CFGBuildPass.exit_node(node: uni.UniNode) -> None {
     if (isinstance(node, uni.UniCFGNode) and not isinstance(node, uni.Semi)) {
         self.first_exit = True;
         if (not node.bb_out and not isinstance(node, (uni.ReturnStmt, uni.ArchHas))) {
@@ -188,7 +190,7 @@ impl CFGBuildPass. exit_node(node: uni.UniNode) -> None {
 }
 
 """Enter BasicBlockStmt nodes."""
-impl CFGBuildPass. enter_node(node: uni.UniNode) -> None {
+impl CFGBuildPass.enter_node(node: uni.UniNode) -> None {
     if (isinstance(node, uni.UniCFGNode) and not isinstance(node, uni.Semi)) {
         bb_stmts = self.get_code_block_sequence(node.parent);
         if (
@@ -261,7 +263,7 @@ impl CFGBuildPass. enter_node(node: uni.UniNode) -> None {
 }
 
 """Get code block sequence."""
-impl CFGBuildPass. get_code_block_sequence(
+impl CFGBuildPass.get_code_block_sequence(
     node: (uni.UniNode | None)
 ) -> (list[uni.UniCFGNode] | None) {
     sequence: list[uni.UniCFGNode] = [];
@@ -282,7 +284,7 @@ impl CFGBuildPass. get_code_block_sequence(
 }
 
 """Link basic blocks."""
-impl CFGBuildPass. link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None {
+impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None {
     if (source and target) {
         if source.bb_out {
             source.bb_out.append(target);
@@ -298,7 +300,7 @@ impl CFGBuildPass. link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> N
 }
 
 """Get parent basic block."""
-impl CFGBuildPass. get_parent_bb_stmt(node: uni.UniCFGNode) -> (uni.UniCFGNode | None) {
+impl CFGBuildPass.get_parent_bb_stmt(node: uni.UniCFGNode) -> (uni.UniCFGNode | None) {
     if not isinstance(node, uni.Module) {
         try {
             parent_bb_stmt = node.parent_of_type(uni.UniCFGNode);
@@ -312,7 +314,7 @@ impl CFGBuildPass. get_parent_bb_stmt(node: uni.UniCFGNode) -> (uni.UniCFGNode |
 }
 
 """Pop loop stack."""
-impl CFGBuildPass. pop_loop_stack(node: uni.UniCFGNode) -> None {
+impl CFGBuildPass.pop_loop_stack(node: uni.UniCFGNode) -> None {
     if (isinstance(node, uni.WhileStmt) and (len(self.while_loop_stack) > 0)) {
         self.while_loop_stack.pop();
     } elif (
@@ -324,7 +326,7 @@ impl CFGBuildPass. pop_loop_stack(node: uni.UniCFGNode) -> None {
 }
 
 """Push loop stack."""
-impl CFGBuildPass. push_loop_stack(loop_header: uni.UniCFGNode) -> None {
+impl CFGBuildPass.push_loop_stack(loop_header: uni.UniCFGNode) -> None {
     if isinstance(loop_header, uni.WhileStmt) {
         self.while_loop_stack.append([loop_header]);
     } elif isinstance(loop_header, (uni.InForStmt, uni.IterForStmt)) {
@@ -333,7 +335,7 @@ impl CFGBuildPass. push_loop_stack(loop_header: uni.UniCFGNode) -> None {
 }
 
 """Before pass."""
-impl CFGBuildPass. before_pass -> None {
+impl CFGBuildPass.before_pass -> None {
     self.while_loop_stack: list[list[uni.UniCFGNode]] = [];
     self.for_loop_stack: list[list[uni.UniCFGNode]] = [];
     self.ability_stack: list[list[uni.UniCFGNode]] = [];

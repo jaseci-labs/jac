@@ -11,16 +11,16 @@ cl def:pub app -> JsxElement {
                 Nested Folder Levels Demo
             </h1>
             <div style={{margin: "10px 0"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <ButtonSecondL />
+                <ButtonSecondL/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <ButtonThirdL />
+                <ButtonThirdL/>
             </div>
             <div style={{margin: "10px 0"}}>
-                <Card />
+                <Card/>
             </div>
         </div>;
 }

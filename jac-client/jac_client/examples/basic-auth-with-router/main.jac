@@ -362,7 +362,7 @@ cl {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         return
@@ -422,10 +422,10 @@ cl {
     def HomePage -> JsxElement {
         if jacIsLoggedIn() {
             return
-                <Navigate to="/dashboard" />;
+                <Navigate to="/dashboard"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
@@ -438,12 +438,12 @@ cl {
                         "minHeight": "100vh"
                     }}
                 >
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/dashboard" element={<DashboardPage/>}/>
                     </Routes>
                 </div>
             </Router>;

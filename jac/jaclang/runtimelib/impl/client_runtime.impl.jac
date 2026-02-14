@@ -297,7 +297,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
         # No match - show 404
         return
             <div>
-                404 - Route not found: {path}
+                404 - Route not found:{path}
             </div>;
     }
     # Navigate method

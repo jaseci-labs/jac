@@ -263,7 +263,7 @@ cl {
         return
             <Router>
                 <div style={{"fontFamily": "system-ui, -apple-system, sans-serif"}}>
-                    <Navigation />
+                    <Navigation/>
                     <div
                         style={{
                             "maxWidth": "1200px",
@@ -272,12 +272,12 @@ cl {
                         }}
                     >
                         <Routes>
-                            <Route path="/" element={<Home />} />
-                            <Route path="/about" element={<About />} />
-                            <Route path="/about/team" element={<Team />} />
-                            <Route path="/contact" element={<Contact />} />
-                            <Route path="/user/:id" element={<UserProfile />} />
-                            <Route path="*" element={<NotFound />} />
+                            <Route path="/" element={<Home/>}/>
+                            <Route path="/about" element={<About/>}/>
+                            <Route path="/about/team" element={<Team/>}/>
+                            <Route path="/contact" element={<Contact/>}/>
+                            <Route path="/user/:id" element={<UserProfile/>}/>
+                            <Route path="*" element={<NotFound/>}/>
                         </Routes>
                     </div>
                 </div>

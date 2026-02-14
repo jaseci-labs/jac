@@ -179,7 +179,7 @@ cl {
                             Action
                         </label>
                         <button type="submit" className="submit-btn">
-                            Add {(txType[0].toUpperCase() + txType.slice(1))}
+                            Add{(txType[0].toUpperCase() + txType.slice(1))}
                         </button>
                     </div>
                 </div>

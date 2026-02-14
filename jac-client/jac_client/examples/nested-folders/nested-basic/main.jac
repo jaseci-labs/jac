@@ -4,12 +4,12 @@ cl import from .button { CustomButtonRoot }
 cl def RelativeImport -> JsxElement {
     return
         <div>
-            <CustomButton />
-            <CustomButtonRoot />
+            <CustomButton/>
+            <CustomButtonRoot/>
         </div>;
 }
 
 cl def:pub app -> JsxElement {
     return
-        <RelativeImport />;
+        <RelativeImport/>;
 }

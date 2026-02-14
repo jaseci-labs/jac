@@ -208,6 +208,45 @@ def test_fstring_comment_not_injected(fixture_path: Callable[[str], str]) -> Non
     assert formatted == formatted2, "Formatting is not idempotent"
 
 
+def test_jsx_hash_text_preserved(fixture_path: Callable[[str], str]) -> None:
+    """Test that # inside JSX text is treated as content, not a comment.
+
+    Regression test: the lexer's scan_jsx_content called
+    skip_whitespace_and_comments(), which consumed # as a comment start.
+    In JSX, # is a regular text character (like HTML).
+    """
+    path = os.path.join(fixture_path(""), "jsx_hash_text.jac")
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True)
+    formatted = prog.mod.main.gen.jac
+
+    # The # text must remain inside the <p> element, not displaced
+    assert "# for client-side routing." in formatted, (
+        "Hash-prefixed JSX text was lost:\n" + formatted
+    )
+
+    # It must appear BEFORE </p>, not at the end of the file
+    lines = formatted.splitlines()
+    hash_idx = next(
+        (i for i, ln in enumerate(lines) if "# for client-side routing." in ln),
+        None,
+    )
+    close_p_idx = next(
+        (i for i, ln in enumerate(lines) if "</p>" in ln),
+        None,
+    )
+    assert hash_idx is not None and close_p_idx is not None, (
+        "Could not find hash text or </p> in formatted output:\n" + formatted
+    )
+    assert hash_idx < close_p_idx, (
+        f"Hash text at line {hash_idx + 1} should be before </p> at "
+        f"line {close_p_idx + 1}:\n" + formatted
+    )
+
+    # Idempotency
+    prog2 = JacProgram.jac_file_formatter(path, auto_lint=True)
+    assert formatted == prog2.mod.main.gen.jac, "Formatting is not idempotent"
+
+
 # Generate micro suite tests dynamically
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Generate test cases for all micro jac files."""
