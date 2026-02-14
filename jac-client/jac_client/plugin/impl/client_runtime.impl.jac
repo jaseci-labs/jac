@@ -205,7 +205,7 @@ impl __removeLocalStorage(key: str) -> None {
 
 """Auth guard component for file-based routing. Renders child routes if
 authenticated, otherwise redirects to the login path."""
-impl AuthGuard(redirect: str = "/login") -> any {
+impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
         return
             <ReactRouterOutlet />;
@@ -214,7 +214,7 @@ impl AuthGuard(redirect: str = "/login") -> any {
         <ReactRouterNavigate to={redirect} replace={True} />;
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
     return
         <div
             role="alert"
@@ -280,7 +280,7 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> any {
         </div>;
 }
 
-impl errorOverlay(filePath: str, errors: str) -> any {
+impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     return (
         <div
             style={{

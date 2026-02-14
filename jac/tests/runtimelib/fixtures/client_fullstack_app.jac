@@ -4,7 +4,7 @@ def:pub get_items -> list {
     return [{"name": "alpha"}, {"name": "beta"}];
 }
 
-cl def:pub app() -> any {
+cl def:pub app() -> JsxElement {
     has items: list = [];
 
     async can with entry {

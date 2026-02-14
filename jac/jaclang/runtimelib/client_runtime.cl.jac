@@ -92,7 +92,7 @@ def createRouter(
 # Route config factory
 def Route(path: str, component: any, guard: any = None) -> dict;
 # Link component for declarative navigation
-def Link(props: dict) -> any;
+def Link(props: dict) -> JsxElement;
 # Navigate programmatically
 def navigate(path: str) -> None;
 # Hook to access router in components

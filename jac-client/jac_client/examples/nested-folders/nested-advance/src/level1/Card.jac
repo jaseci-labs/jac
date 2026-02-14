@@ -5,7 +5,7 @@ cl import from ..ButtonRoot {
 }
 cl import from .level2.ButtonThirdL { ButtonThirdL }
 
-cl def:pub Card -> any {
+cl def:pub Card -> JsxElement {
     return
         <div
             style={{

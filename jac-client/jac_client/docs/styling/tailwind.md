@@ -77,7 +77,7 @@ cl import ".global.css";
 # Note: useState is auto-injected when using `has` variables
 
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         return <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
             <h1 className="text-3xl font-bold">Hello, Tailwind!</h1>
         </div>;

@@ -61,7 +61,7 @@ cl import from '@jac/runtime' { jacSpawn }
 # Note: When using `has` variables, useState is auto-injected
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
 
         useEffect(lambda -> None {
@@ -102,7 +102,7 @@ jacSpawn(walker_name: str, node_id: str, params: dict) -> any
 cl import from '@jac/runtime' { jacLogin, navigate }
 
 cl {
-    def LoginForm() -> any {
+    def LoginForm() -> JsxElement {
         async def handleLogin(e: any) -> None {
             e.preventDefault();
             username = document.getElementById("username").value;
@@ -132,7 +132,7 @@ cl {
 cl import from '@jac/runtime' { jacSignup, navigate }
 
 cl {
-    def SignupForm() -> any {
+    def SignupForm() -> JsxElement {
         async def handleSignup(e: any) -> None {
             e.preventDefault();
             username = document.getElementById("username").value;
@@ -163,7 +163,7 @@ cl {
 cl import from '@jac/runtime' { jacLogout, navigate }
 
 cl {
-    def Header() -> any {
+    def Header() -> JsxElement {
         def handleLogout() -> None {
             jacLogout();
             navigate("/login");
@@ -182,7 +182,7 @@ cl {
 cl import from '@jac/runtime' { jacIsLoggedIn, navigate }
 
 cl {
-    def ProtectedPage() -> any {
+    def ProtectedPage() -> JsxElement {
         if not jacIsLoggedIn() {
             navigate("/login");
             return <div>Redirecting...</div>;
@@ -204,7 +204,7 @@ cl {
 cl import from '@jac/runtime' { navigate }
 
 cl {
-    def MyComponent() -> any {
+    def MyComponent() -> JsxElement {
         def goToHome() -> None {
             navigate("/");
         }
@@ -227,7 +227,7 @@ cl {
 cl import from '@jac/runtime' { Link }
 
 cl {
-    def Navigation() -> any {
+    def Navigation() -> JsxElement {
         return <nav>
             <Link href="/">Home</Link>
             <Link href="/about">About</Link>
@@ -243,7 +243,7 @@ cl {
 cl import from '@jac/runtime' { initRouter, jacIsLoggedIn }
 
 cl {
-    def App() -> any {
+    def App() -> JsxElement {
         # Define routes
         routes = [
             {
@@ -291,7 +291,7 @@ cl import from '@jac/runtime' {
 # Note: When using `has` variables, useState is auto-injected
 
 cl {
-    def LoginPage() -> any {
+    def LoginPage() -> JsxElement {
         [error, setError] = useState("");
 
         async def handleLogin(e: any) -> None {
@@ -334,7 +334,7 @@ cl {
         </div>;
     }
 
-    def Dashboard() -> any {
+    def Dashboard() -> JsxElement {
         if not jacIsLoggedIn() {
             navigate("/login");
             return <div>Redirecting...</div>;
@@ -352,7 +352,7 @@ cl {
         </div>;
     }
 
-    def App() -> any {
+    def App() -> JsxElement {
         routes = [
             {"path": "/login", "component": lambda -> any { return LoginPage(); }, "guard": None},
             {"path": "/dashboard", "component": lambda -> any { return Dashboard(); }, "guard": jacIsLoggedIn}
@@ -378,7 +378,7 @@ cl import from '@jac/runtime' { jacIsLoggedIn, jacSpawn, navigate }
 # Note: When using `has` variables, useState is auto-injected
 
 cl {
-    def ProtectedDashboard() -> any {
+    def ProtectedDashboard() -> JsxElement {
         [user, setUser] = useState(None);
         [loading, setLoading] = useState(True);
 
@@ -414,7 +414,7 @@ cl import from '@jac/runtime' { jacSpawn }
 # Note: When using `has` variables, useState is auto-injected
 
 cl {
-    def CreateTodoForm() -> any {
+    def CreateTodoForm() -> JsxElement {
         [text, setText] = useState("");
         [loading, setLoading] = useState(False);
 
@@ -455,7 +455,7 @@ cl {
 cl import from '@jac/runtime' { Link, jacIsLoggedIn, jacLogout, navigate }
 
 cl {
-    def Navigation() -> any {
+    def Navigation() -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
 
         def handleLogout() -> None {
@@ -598,7 +598,7 @@ npm install antd
 cl import from antd { Button, Input, Card, Typography, Space }
 
 cl {
-    def MyApp() -> any {
+    def MyApp() -> JsxElement {
         return <div>
             <Card title="Welcome" style={{"maxWidth": "400px", "margin": "50px auto"}}>
                 <Card.Meta title="Hello" description="Welcome to Jac!" />
@@ -614,7 +614,7 @@ cl {
         </div>;
     }
 
-    def jac_app() -> any {
+    def jac_app() -> JsxElement {
         return MyApp();
     }
 }
@@ -639,7 +639,7 @@ cl import from react { useEffect }
 cl {
     has count: int = 0;  # Automatically creates React state
 
-    def Counter() -> any {
+    def Counter() -> JsxElement {
         useEffect(lambda -> None {
             console.log("Count: ", count);
         }, [count]);
@@ -671,7 +671,7 @@ npm install lodash
 cl import from lodash { * as _ }
 
 cl {
-    def RandomQuoteCard() -> any {
+    def RandomQuoteCard() -> JsxElement {
         suggestions = ['good luck', 'have fun', 'enjoy the ride'];
         randomSuggestion = _.sample(suggestions);  # Pick random item
 
@@ -700,7 +700,7 @@ cl import from pluralize { default as pluralize }
 cl import from 'react-animated-components' { Rotate }
 
 cl {
-    def AnimatedDemo() -> any {
+    def AnimatedDemo() -> JsxElement {
         word = "tweet";
         count = 5;
         pluralWord = pluralize(word, count);
@@ -730,7 +730,7 @@ cl import from antd {
     Table
 }
 
-cl def FormExample() -> any {
+cl def FormExample() -> JsxElement {
     return <Card title="Form Example">
         <Form>
             <Input placeholder="Name" />
@@ -771,7 +771,7 @@ cl import from antd {
     Modal
 }
 
-cl def MyComponent() -> any {
+cl def MyComponent() -> JsxElement {
     return <div>
         <Card title="My Card">
             <Button
@@ -816,7 +816,7 @@ cl import from .module_name {
 ```jac
 """Button component."""
 
-cl def:pub CustomButton(props: dict) -> any {
+cl def:pub CustomButton(props: dict) -> JsxElement {
     return <button
         style={{
             "padding": "10px 20px",
@@ -832,7 +832,7 @@ cl def:pub CustomButton(props: dict) -> any {
     </button>;
 }
 
-cl def:pub PrimaryButton(props: dict) -> any {
+cl def:pub PrimaryButton(props: dict) -> JsxElement {
     return <button
         style={{
             "padding": "10px 20px",
@@ -859,7 +859,7 @@ cl import from .button {
     PrimaryButton
 }
 
-cl def:pub App() -> any {
+cl def:pub App() -> JsxElement {
     return <div>
         <CustomButton onClick={lambda -> None { console.log("Clicked!"); }}>
             Custom Button
@@ -870,7 +870,7 @@ cl def:pub App() -> any {
     </div>;
 }
 
-cl def:pub jac_app() -> any {
+cl def:pub jac_app() -> JsxElement {
     return App();
 }
 ```
@@ -929,7 +929,7 @@ cl import from .utils {
     MessageFormatter
 }
 
-cl def:pub JsImportTest() -> any {
+cl def:pub JsImportTest() -> JsxElement {
     greeting = formatMessage("Jac");
     sum = calculateSum(5, 3);
     formatter = MessageFormatter("JS");
@@ -944,7 +944,7 @@ cl def:pub JsImportTest() -> any {
     </div>;
 }
 
-cl def:pub jac_app() -> any {
+cl def:pub jac_app() -> JsxElement {
     return JsImportTest();
 }
 ```
@@ -965,7 +965,7 @@ cl import from .stringUtils {
     slugify
 }
 
-cl def DateComponent() -> any {
+cl def DateComponent() -> JsxElement {
     today = new Date();
     formatted = formatDate(today);
 
@@ -986,7 +986,7 @@ cl import from .validators {
     PasswordValidator
 }
 
-cl def ValidationForm() -> any {
+cl def ValidationForm() -> JsxElement {
     emailValidator = EmailValidator();
     passwordValidator = PasswordValidator();
 
@@ -1060,7 +1060,7 @@ cl import from antd {
     Layout
 }
 
-cl def Dashboard() -> any {
+cl def Dashboard() -> JsxElement {
     return <Layout>
         <Card title="Dashboard">
             <Space direction="vertical">
@@ -1087,7 +1087,7 @@ cl import from .stringUtils {
     truncate
 }
 
-cl def PostCard(post: dict) -> any {
+cl def PostCard(post: dict) -> JsxElement {
     return <div>
         <h3>{capitalize(post.title)}</h3>
         <p>{truncate(post.content, 100)}</p>
@@ -1113,7 +1113,7 @@ cl import from .layout {
     Column
 }
 
-cl def ContactForm() -> any {
+cl def ContactForm() -> JsxElement {
     return <Container>
         <Row>
             <Column>

@@ -18,7 +18,7 @@ cl {
         isBusiness: bool,
         clientName: any,
         onDelete: any
-    ) -> any {
+    ) -> JsxElement {
         isIncome = txType == "income";
         color = CATEGORY_COLORS[category];
         label = CATEGORY_LABELS[category];

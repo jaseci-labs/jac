@@ -33,7 +33,7 @@ walker positional_walker {
 
 # Client-side code testing both spawn orderings
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         has standardResult: any = None;
         has standardComputed: any = None;
         has reverseResult: any = None;

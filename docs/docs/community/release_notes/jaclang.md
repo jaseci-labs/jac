@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.10.1 (Unreleased)
+## jaclang 0.10.2 (Unreleased)
+
+## jaclang 0.10.1 (Latest Release)
 
 - **Stale Persistence Cache Handling**:  Resolved an issue where running different Jac applications sequentially caused NodeAnchor [UUID] is not a valid reference! errors due to stale anchors persisting in SQLite/MongoDB/Redis backends. The runtime now validates that an anchor’s archetype still exists before loading it and automatically removes invalid entries. This removes the need for manual cache deletion in normal workflows.
 - **Code refactors**: Backtick escape, etc.
@@ -25,9 +27,11 @@ This document provides a summary of new features, improvements, and bug fixes in
   - **Fix: LiteralString Type Support**: Added `LiteralString` class to the type checker, improving binary operator chain handling and ensuring type compatibility between `LiteralString` and `str` types.
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
+- Docs update: return type `any` -> `JsxElement`
+- **Fix:** Spurious Write Access Warning on System Root During Sync
 - **3 Small Refactors**
 
-## jaclang 0.10.0 (Latest Release)
+## jaclang 0.10.0
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Keyword-escaped names now use a backtick prefix (`` `node ``) instead of the angle-bracket prefix (`<>node`). All `.jac` source files, the lexer, parser, unparse/DocIR passes, and auto-lint rules have been updated accordingly.
 - **Remove Backtick Type Operator**: Removed the backtick (`` ` ``) `TYPE_OP` token and `TypeRef` AST node from the language. The `Root` type is now referenced directly by name (e.g., `with Root entry` instead of `` with `root entry ``). Filter comprehension syntax changed from `` (`?Type:field==val) `` to `(?:Type, field==val)`. `Root` is automatically imported from `jaclib` when used in walker event signatures.

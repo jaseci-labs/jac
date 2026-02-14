@@ -7,7 +7,7 @@ cl import from '@jac/runtime' {
 }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has isLoggedIn: bool = False,
             isSignup: bool = False,
             username: str = "",

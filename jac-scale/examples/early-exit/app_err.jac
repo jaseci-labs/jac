@@ -23,7 +23,7 @@ cl import from react {
 }
 
 cl {
-    def app -> any {
+    def app -> JsxElement {
         has todos: list = [],
             input: str = "";
 
