@@ -3132,10 +3132,8 @@ impl Parser.parse_jsx_child -> Expr {
         }
         # Collapse any remaining internal newline+whitespace into single space
         normalized = re.sub(r'\s*\n\s*', ' ', normalized);
-        # Escape quotes in JSX text (matching old parser behavior)
-        escaped = normalized.replace('"', '\\"').replace("'", "\\'");
         text_node = self.make_uni_token(text_tok);
-        return JsxText(value=escaped, kid=[text_node]);
+        return JsxText(value=normalized, kid=[text_node]);
     }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
