@@ -6,15 +6,36 @@ instead of real HTTP connections, making tests faster and more reliable.
 
 from __future__ import annotations
 
+import io
+import logging
 import shutil
 import uuid
 from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
 from jaclang.runtimelib.testing import JacTestClient
 from tests.runtimelib.conftest import fixture_abs_path
+
+
+@contextmanager
+def _capture_log(
+    logger: logging.Logger, level: int = logging.DEBUG
+) -> Generator[io.StringIO, None, None]:
+    """Temporarily attach a StringIO handler to *logger* and yield the buffer."""
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    handler.setLevel(level)
+    logger.addHandler(handler)
+    old_level = logger.level
+    logger.setLevel(level)
+    try:
+        yield buf
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
 
 
 @pytest.fixture
@@ -1435,3 +1456,72 @@ class TestSPACatchAll:
         assert not response.ok
         data = response.data
         assert "error" in data
+
+
+class TestSyncAccessControl:
+    """Tests for memory sync not producing spurious write access warnings."""
+
+    def test_sync_skips_write_access_check_on_unchanged_anchors(
+        self, client: JacTestClient
+    ) -> None:
+        """SqliteMemory.sync() must not call check_write_access() for anchors
+        whose access and archetype fields have not changed since last persist.
+
+        Regression test: sync() used to call check_write_access() unconditionally
+        on every persistent anchor, even unchanged ones.  When the system root
+        (owned by nobody / the super-root) was present in L3 memory — e.g. after
+        a server restart that loaded it from the database — every authenticated
+        user commit would log a spurious INFO warning:
+            "Current root doesn't have write access to NodeAnchor Root[0000…]"
+        """
+        import logging
+
+        # Register a user so subsequent requests run as a non-system root.
+        client.register_user("syncuser", "pass")
+
+        # -- Simulate server-restart conditions --
+        # After a restart the system root is loaded from the DB into L3's
+        # in-memory dict and marked persistent.  On a fresh test run neither
+        # happens, so we replicate it manually.
+        from jaclang.jac0core.runtime import JacRuntimeInterface as Jac
+
+        ctx = Jac.get_context()
+        sys_root = ctx.system_root
+
+        # Simulate a DB round-trip: after a server restart the system root is
+        # loaded from SQLite via pickle, which makes it persistent with a
+        # non-zero hash (the access-level check short-circuits on hash==0).
+        sys_root.persistent = True
+        from pickle import dumps, loads
+
+        sys_root_copy = loads(dumps(sys_root))  # round-trip sets hash
+        sys_root.__dict__.update(sys_root_copy.__dict__)
+        sys_root.persistent = True
+        sys_root.hash = hash(dumps(sys_root))  # non-zero like after real DB load
+
+        # Ensure it is present in L3's __mem__ (simulates DB read-through)
+        l3 = ctx.mem.l3
+        if l3 is not None:
+            l3.put(sys_root)
+            # Persist it so sync() finds a stored copy to compare against
+            l3._ensure_connection()
+            l3.__conn__.execute(
+                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
+                (str(sys_root.id), dumps(sys_root)),
+            )
+            l3.__conn__.commit()
+
+        # Capture logs from the runtime module where check_write_access logs
+        logger = logging.getLogger("jaclang.jac0core.runtime")
+        with _capture_log(logger) as log_output:
+            # Spawn walkers that read/write the graph — each commit triggers sync()
+            client.post(
+                "/walker/CreateTask",
+                json={"title": "Sync Test", "priority": 1},
+            )
+            client.post("/walker/ListTasks", json={})
+
+        # The system root warning must NOT appear
+        assert "Current root doesn't have write access" not in log_output.getvalue(), (
+            "SqliteMemory.sync() should not check write access on unchanged anchors"
+        )

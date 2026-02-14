@@ -55,7 +55,7 @@ def:pub add_todo(title: str) -> dict {
 
 # Client codespace
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has items: list = [];
 
         async def add -> None {

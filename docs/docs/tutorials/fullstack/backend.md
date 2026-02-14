@@ -119,7 +119,7 @@ walker:pub delete_task {
 cl {
     import from jac_client { useWalker }
 
-    def:pub TaskList() -> any {
+    def:pub TaskList() -> JsxElement {
         # Fetch data from walker
         (data, loading, error, refetch) = useWalker("get_tasks");
 
@@ -157,7 +157,7 @@ cl {
 cl {
     import from jac_client { useWalker }
 
-    def:pub FilteredTasks() -> any {
+    def:pub FilteredTasks() -> JsxElement {
         has show_completed: bool = False;
 
         # Pass parameters to walker
@@ -200,7 +200,7 @@ For create, update, delete operations, use `callWalker`:
 cl {
     import from jac_client { useWalker, callWalker }
 
-    def:pub TaskManager() -> any {
+    def:pub TaskManager() -> JsxElement {
         has new_title: str = "";
 
         # Fetch tasks
@@ -275,7 +275,7 @@ cl {
 cl {
     import from jac_client { callWalker }
 
-    def:pub SafeSubmit() -> any {
+    def:pub SafeSubmit() -> JsxElement {
         has error_msg: str = "";
         has submitting: bool = False;
 
@@ -312,7 +312,7 @@ cl {
 
 ```jac
 cl {
-    def:pub DataView() -> any {
+    def:pub DataView() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
         has error: str = "";
@@ -352,7 +352,7 @@ cl {
     import from react { useEffect }
     import from jac_client { useWalker }
 
-    def:pub LiveData() -> any {
+    def:pub LiveData() -> JsxElement {
         (data, loading, error, refetch) = useWalker("get_live_data");
 
         # Poll every 5 seconds
@@ -375,7 +375,7 @@ cl {
     import from react { useEffect }
     import from jac_client { useWalkerStream }
 
-    def:pub StreamingData() -> any {
+    def:pub StreamingData() -> JsxElement {
         # Subscribe to walker updates
         (data, connected) = useWalkerStream("watch_updates");
 
@@ -442,7 +442,7 @@ walker:pub toggle_task {
 cl {
     import from jac_client { useWalker, callWalker }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         has input_text: str = "";
         (tasks, loading, _, refetch) = useWalker("get_tasks");
 

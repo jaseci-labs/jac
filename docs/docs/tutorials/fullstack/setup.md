@@ -55,7 +55,7 @@ walker:pub get_todos {
 
 # Frontend code (inside cl block)
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         has message: str = "Hello from Jac!";
 
         return <div>
@@ -131,7 +131,7 @@ walker api_endpoint {
 
 # This is frontend code (runs in browser)
 cl {
-    def:pub MyComponent() -> any {
+    def:pub MyComponent() -> JsxElement {
         return <div>I run in the browser</div>;
     }
 }
@@ -160,7 +160,7 @@ walker get_user {
 
 # Frontend
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>App</div>;
     }
 }
@@ -205,7 +205,7 @@ walker get_user {
 cl {
     import from "./components/Header.cl.jac" { Header }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <Header />
             <main>Content</main>
@@ -243,7 +243,7 @@ Then use in frontend:
 cl {
     import lodash;
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         items = lodash.sortBy(["c", "a", "b"]);
         return <ul>{items.map(lambda i: any -> any { return <li>{i}</li>; })}</ul>;
     }
@@ -286,7 +286,7 @@ Create this minimal `main.jac`:
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         has count: int = 0;
 
         return <div style={{"textAlign": "center", "marginTop": "50px"}}>

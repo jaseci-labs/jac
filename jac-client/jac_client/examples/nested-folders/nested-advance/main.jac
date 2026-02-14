@@ -4,7 +4,7 @@ cl import from .level1.ButtonSecondL { ButtonSecondL }
 cl import from .level1.level2.ButtonThirdL { ButtonThirdL }
 cl import from .level1.Card { Card }
 
-cl def:pub app -> any {
+cl def:pub app -> JsxElement {
     return
         <div style={{padding: "20px"}}>
             <h1>

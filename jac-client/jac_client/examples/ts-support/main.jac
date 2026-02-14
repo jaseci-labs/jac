@@ -3,7 +3,7 @@
 cl import from ".components/Button.tsx" { Button }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {

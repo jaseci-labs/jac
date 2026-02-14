@@ -51,6 +51,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac remove <pkg>` | Remove dependency |
 | `jac update [pkg]` | Update dependencies to latest compatible versions |
 | `jac clean` | Clean build artifacts |
+| `jac purge` | Purge global bytecode cache |
 | `jac script <name>` | Run project script |
 
 ### 5 Tool Commands
@@ -228,7 +229,7 @@ VITE_API_URL=https://api.example.com
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         api_url = import.meta.env.VITE_API_URL;
         return <div>{api_url}</div>;
     }
@@ -346,7 +347,7 @@ typescript = true
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         # Window
         width = window.innerWidth;
 
