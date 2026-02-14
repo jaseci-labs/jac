@@ -1659,7 +1659,8 @@ impl JacAutoLintPass._check_no_print(node: uni.FuncCall) -> None {
     }
     # It's a bare print() call — report error with location
     self.log_error(
-        "Calling print() is disallowed by rule [no-print]", node_override=node
+        "Calling print() is disallowed by rule [no-print]. Use `# nolint: no-print` to suppress.",
+        node_override=node
     );
 }
 
@@ -1690,15 +1691,47 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
     return None;
 }
 
+"""Parse and cache nolint comments for a source file.
+
+Parses the source once and caches the result for O(1) lookups.
+Returns a dict mapping line numbers to sets of suppressed rule names.
+A "*" in the set means all rules are suppressed for that line.
+"""
+impl JacAutoLintPass._get_nolint_lines(mod_path: str, source: str) -> dict[int, set[str]] {
+    import re;
+    # Return cached result if available
+    if mod_path in self._nolint_cache {
+        return self._nolint_cache[mod_path];
+    }
+    # Parse nolint comments once for this file
+    nolint_map: dict[int, set[str]] = {};
+    for (line_num, line) in enumerate(source.splitlines(), 1) {
+        nolint_match = re.search(r'#\s*nolint\s*(?::\s*(.*))?$', line, re.IGNORECASE);
+        if nolint_match {
+            rules_str = nolint_match.group(1);
+            if rules_str is None or rules_str.strip() == "" {
+                # Generic nolint - suppresses all rules
+                nolint_map[line_num] = {"*"};
+            } else {
+                # Specific rules
+                nolint_map[line_num] = {r.strip().lower() for r in rules_str.split(',')};
+            }
+        }
+    }
+    # Cache and return
+    self._nolint_cache[mod_path] = nolint_map;
+    return nolint_map;
+}
+
 """Check if a node has a nolint comment that disables a specific rule.
 
+Uses cached nolint line data for O(1) lookup per check.
 Supports the following formats:
 - `# nolint` - disables all rules for this line
 - `# nolint: rule-name` - disables specific rule
 - `# nolint: rule1, rule2` - disables multiple rules
 """
 impl JacAutoLintPass._has_nolint_comment(node: uni.UniNode, rule: LintRule) -> bool {
-    import re;
     # Get source code from the node's location
     if node.loc is None or node.loc.orig_src is None {
         return False;
@@ -1707,28 +1740,16 @@ impl JacAutoLintPass._has_nolint_comment(node: uni.UniNode, rule: LintRule) -> b
     if not source {
         return False;
     }
-    source_lines = source.splitlines();
+    mod_path = node.loc.mod_path or "";
+    # Get cached nolint lines for this file
+    nolint_map = self._get_nolint_lines(mod_path, source);
     first_line = node.loc.first_line;
-    # Lines to check: line before and first line of the statement
-    lines_to_check = [first_line - 1, first_line];
-    for line_num in lines_to_check {
-        if line_num < 1 or line_num > len(source_lines) {
-            continue;
-        }
-        line = source_lines[line_num - 1];
-        # Look for # nolint comment
-        nolint_match = re.search(r'#\s*nolint\s*(?::\s*(.*))?$', line, re.IGNORECASE);
-        if nolint_match {
-            rules_str = nolint_match.group(1);
-            if rules_str is None or rules_str.strip() == "" {
-                # Generic nolint - disables all rules
-                return True;
-            }
-            # Parse comma-separated rule names
-            specified_rules = [r.strip().lower() for r in rules_str.split(',')];
-            # Check if the specific rule is in the list
-            # rule.value is the kebab-case name like "no-print"
-            if rule.value.lower() in specified_rules {
+    # Check line before and first line of the statement
+    for check_line in [first_line - 1, first_line] {
+        if check_line in nolint_map {
+            rules = nolint_map[check_line];
+            # "*" means all rules suppressed, otherwise check specific rule
+            if "*" in rules or rule.value.lower() in rules {
                 return True;
             }
         }

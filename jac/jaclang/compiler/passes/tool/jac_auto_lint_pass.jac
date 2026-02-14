@@ -31,7 +31,8 @@ obj JacAutoLintPass(UniPass) {
         main_module: uni.Module | None = None,
         _enabled_rules: set[LintRule] = set(),
         _exclude_patterns: list[str] = [],
-        _project_root: str = "";
+        _project_root: str = "",
+        _nolint_cache: dict[str, dict[int, set[str]]] = {};  # {filepath: {line: {rules}}}
 
     def init(ir_in: uni.Module, prog: Any) -> None;
     def _load_lint_config -> None;
@@ -83,5 +84,6 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(node: uni.FuncCall) -> None;
+    def _get_nolint_lines(mod_path: str, source: str) -> dict[int, set[str]];
     def _has_nolint_comment(node: uni.UniNode, rule: LintRule) -> bool;
 }
