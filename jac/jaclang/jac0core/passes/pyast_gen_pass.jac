@@ -272,6 +272,14 @@ needs_enum)
         return f"__jac_{prefix}_{self._temp_name_counter}";
     }
 
+    """Convert Jac identifiers to Python runtime identifiers."""
+    def _py_name(self: PyastGenPass, `node: uni.AstSymbolNode) -> str {
+        if (isinstance(`node, uni.SpecialVarRef) and (`node.name == Tok.KW_INIT)) {
+            return '__init__';
+        }
+        return `node.sym_name;
+    }
+
     """Convert a synthesized function definition into an executable expression.
 
         Instead of using make_block_lambda at runtime, we hoist the function
@@ -1103,12 +1111,14 @@ variables
             );
             caller = self.sync(
                 ast3.Attribute(
-                    value=owner, attr=`node.name_ref.sym_name, ctx=ast3.Load()
+                    value=owner, attr=self._py_name(`node.name_ref), ctx=ast3.Load()
                 ),
                 jac_node=`node.method_owner
             );
         } else {
-            caller = self.sync(ast3.Name(`node.name_ref.sym_name, ctx=ast3.Load()));
+            caller = self.sync(
+                ast3.Name(self._py_name(`node.name_ref), ctx=ast3.Load())
+            );
         }
         args = self.sync(
             ast3.Dict(
@@ -1247,7 +1257,7 @@ variables
         }
         func_def = self.sync(
             func_type(
-                name=`node.name_ref.sym_name,
+                name=self._py_name(`node.name_ref),
                 args=cast(ast3.arguments, `node.signature.gen.py_ast[0])
                 if `node.signature
                 else self.sync(
@@ -2779,7 +2789,7 @@ variables
                     self.sync(
                         ast3.Attribute(
                             value=cast(ast3.expr, `node.target.gen.py_ast[0]),
-                            attr=`node.right.sym_name,
+                            attr=self._py_name(`node.right),
                             ctx=cast(ast3.expr_context, `node.right.py_ctx_func())
                         )
                     )
@@ -3064,7 +3074,7 @@ variables
             ];
         } else {
             `node.gen.py_ast = [
-                self.sync(ast3.Name(id=`node.sym_name, ctx=`node.py_ctx_func()))
+                self.sync(ast3.Name(id=self._py_name(`node), ctx=`node.py_ctx_func()))
             ];
         }
     }

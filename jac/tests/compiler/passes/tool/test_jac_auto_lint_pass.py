@@ -828,37 +828,35 @@ class TestNestedClassSignatureFix:
                 target_path = get_target_path(stmt)
                 impl_defs[target_path] = stmt
 
-        # OuterClass.__init__ should have: self, shared, private (already correct)
-        assert "OuterClass.__init__" in impl_defs, "OuterClass.__init__ impl not found"
-        outer_init_params = get_impl_params(impl_defs["OuterClass.__init__"])
+        # OuterClass.init should have: self, shared, private (already correct)
+        assert "OuterClass.init" in impl_defs, "OuterClass.init impl not found"
+        outer_init_params = get_impl_params(impl_defs["OuterClass.init"])
         assert outer_init_params == ["self", "shared", "private"], (
-            f"OuterClass.__init__ should have [self, shared, private], got: {outer_init_params}"
+            f"OuterClass.init should have [self, shared, private], got: {outer_init_params}"
         )
 
-        # OuterClass.InnerClass.__init__ should be FIXED from (self, a, b) to (self, name)
+        # OuterClass.InnerClass.init should be FIXED from (self, a, b) to (self, name)
         # NOT: (self, shared, private) which would happen if bug exists
-        assert "OuterClass.InnerClass.__init__" in impl_defs, (
-            "OuterClass.InnerClass.__init__ impl not found"
+        assert "OuterClass.InnerClass.init" in impl_defs, (
+            "OuterClass.InnerClass.init impl not found"
         )
-        inner_init_params = get_impl_params(impl_defs["OuterClass.InnerClass.__init__"])
+        inner_init_params = get_impl_params(impl_defs["OuterClass.InnerClass.init"])
         assert inner_init_params == ["self", "name"], (
-            f"OuterClass.InnerClass.__init__ should be FIXED to [self, name] "
+            f"OuterClass.InnerClass.init should be FIXED to [self, name] "
             f"(matching InnerClass.init decl), got: {inner_init_params}. "
             f"Original impl had [self, a, b]. "
             f"If you got [self, shared, private], the bug is that auto-lint looked up "
-            f"OuterClass.__init__ instead of InnerClass.__init__."
+            f"OuterClass.init instead of InnerClass.init."
         )
 
-        # OuterClass.AnotherInner.__init__ should be FIXED from (self, foo) to (self, x, y)
+        # OuterClass.AnotherInner.init should be FIXED from (self, foo) to (self, x, y)
         # (plus kwonly z, but we only check positional params here)
-        assert "OuterClass.AnotherInner.__init__" in impl_defs, (
-            "OuterClass.AnotherInner.__init__ impl not found"
+        assert "OuterClass.AnotherInner.init" in impl_defs, (
+            "OuterClass.AnotherInner.init impl not found"
         )
-        another_init_params = get_impl_params(
-            impl_defs["OuterClass.AnotherInner.__init__"]
-        )
+        another_init_params = get_impl_params(impl_defs["OuterClass.AnotherInner.init"])
         assert another_init_params == ["self", "x", "y"], (
-            f"OuterClass.AnotherInner.__init__ should be FIXED to [self, x, y] "
+            f"OuterClass.AnotherInner.init should be FIXED to [self, x, y] "
             f"(matching AnotherInner.init decl), got: {another_init_params}. "
             f"Original impl had [self, foo]."
         )

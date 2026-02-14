@@ -16,7 +16,9 @@ with entry {
 
 """Fetch MTIR from the map, returning None if not found (e.g., in Python lib mode)."""
 def fetch_mtir(func: Callable) -> Info | None {
-    # Resolve module name
+    # Resolve module name using the same logic as compile time.
+    # At compile time, _get_scope_str uses Path(mod_path).stem for the module.
+    # At runtime, we use sys.modules['__main__'].__file__ to get the same value.
     module_name = None;
     try {
         module_name = getattr(func, "__module__");
@@ -24,30 +26,28 @@ def fetch_mtir(func: Callable) -> Info | None {
         module_name = None;
     }
 
-    if module_name and module_name != "__main__" {
+    if module_name and module_name == "__main__" {
+        # For __main__, get the file stem from sys.modules to match compile-time scope
+        main_mod = sys.modules.get("__main__");
+        main_file = getattr(main_mod, "__file__", None) if main_mod else None;
+        if main_file {
+            # Use the file stem to match compile-time _get_scope_str
+            stem = Path(main_file).stem;
+            # Handle multi-extension files like .impl.jac
+            if stem.endswith(".impl") {
+                stem = stem[:-5];
+            } elif stem.endswith(".cl") or stem.endswith(".sv") {
+                stem = stem[:-3];
+            }
+            module = stem;
+        } else {
+            # Fallback to argv if __file__ is not available
+            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
+        }
+    } elif module_name {
         module = module_name;
     } else {
-        # Try to get the module object
-        mod = inspect.getmodule(func);
-        if mod and getattr(mod, "__name__", None) != "__main__" {
-            module = mod.__name__;
-        } else {
-            # Fall back to the source file name (script filename without suffix)
-            file = None;
-            try {
-                file = inspect.getsourcefile(func) or inspect.getfile(func);
-            } except TypeError {
-                file = None;
-            }
-            if file {
-                module = Path(file).stem;
-            } else {
-                # As a last resort, use the invoked script name from argv
-                module = Path(sys.argv[0]).stem
-                if sys.argv and sys.argv[0]
-                else "__main__";
-            }
-        }
+        module = "__main__";
     }
 
     try {
