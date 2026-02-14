@@ -316,7 +316,6 @@ sem Customer.name = "Full legal name of the customer";
 sem Customer.tier = "Service tier: 'basic', 'premium', or 'enterprise'";
 ```
 
-
 ---
 
 ## Tool Calling (ReAct)

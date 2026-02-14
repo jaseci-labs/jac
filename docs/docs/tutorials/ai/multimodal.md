@@ -161,9 +161,9 @@ with entry {
 **Output:**
 
 ```
-The video features a large rabbit emerging from a burrow in a lush, green 
-environment. The rabbit stretches and yawns, seemingly enjoying the morning. 
-The scene is set in a vibrant, natural setting with bright skies and trees, 
+The video features a large rabbit emerging from a burrow in a lush, green
+environment. The rabbit stretches and yawns, seemingly enjoying the morning.
+The scene is set in a vibrant, natural setting with bright skies and trees,
 creating a peaceful and cheerful atmosphere.
 ```
 
@@ -214,7 +214,7 @@ def parse_receipt(img: Image) -> Receipt by llm();
 with entry {
     receipt_image = Image("receipt.jpg");
     receipt = parse_receipt(receipt_image);
-    
+
     print(f"Store: {receipt.store_name}");
     print(f"Date: {receipt.date}");
     print("Items:");
@@ -244,7 +244,7 @@ def solve_math(img: Image) -> MathSolution by llm();
 with entry {
     problem_image = Image("math_problem.png");
     solution = solve_math(problem_image);
-    
+
     print(f"Problem: {solution.problem}");
     print("Solution steps:");
     for i, step in enumerate(solution.steps) {
@@ -274,7 +274,7 @@ def analyze_video(video: Video) -> VideoAnalysis by llm();
 with entry {
     video = Video(path="presentation.mp4", fps=1);
     analysis = analyze_video(video);
-    
+
     print(f"Summary: {analysis.summary}");
     print(f"Content Type: {analysis.content_type}");
     print("Key Events:");
