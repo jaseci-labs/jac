@@ -669,13 +669,13 @@ impl CommentInjectionPass._handle_body_comments(
             continue;
         }
         part_line: (int | None) = None;
-        tokens = self._get_tokens(part);
+        tokens = [
+            t
+            for t in self._get_tokens(part)
+            if t.loc and t.loc.first_line > 0
+        ];
         if tokens {
-            part_line = min(
-                t.loc.first_line
-                for t in tokens
-                if t.loc
-            );
+            part_line = min(t.loc.first_line for t in tokens);
         }
         if (part_line and (body_idx < len(body))) {
             while (body_idx < len(body)) {
@@ -854,22 +854,14 @@ impl CommentInjectionPass._doc_line_span(
     tokens = [
         t
         for t in self._get_tokens(`node)
-        if getattr(t, 'loc', None)
+        if getattr(t, 'loc', None) and t.loc.first_line > 0
     ];
     if not tokens {
         return (None, None);
     }
     return (
-        min(
-            t.loc.first_line
-            for t in tokens
-            if t.loc
-        ),
-        max(
-            t.loc.last_line
-            for t in tokens
-            if t.loc
-        )
+        min(t.loc.first_line for t in tokens),
+        max(t.loc.last_line for t in tokens)
     );
 }
 

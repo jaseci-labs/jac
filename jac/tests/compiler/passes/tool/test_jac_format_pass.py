@@ -153,23 +153,22 @@ def micro_suite_test(filename: str, auto_lint: bool = False) -> None:
 
 
 def test_fstring_comment_not_injected(fixture_path: Callable[[str], str]) -> None:
-    """Test that standalone comments are not injected inside f-strings.
+    """Test that comments near f-strings with escaped braces are not displaced.
 
-    Regression test: CommentInjectionPass would inject standalone comments
-    into f-strings with escaped braces (e.g. f"{{{len(x)} keys}}") because
-    the escaped-brace tokens have loc (0,0), causing prev_line to regress
-    and open a huge comment search window.
+    Regression test for two CommentInjectionPass bugs caused by escaped-brace
+    tokens ({{ / }}) in f-strings having loc (0,0):
+    1. Comments injected *inside* f-strings (corrupting output).
+    2. Comments preceding f-string statements displaced *after* them.
     """
     path = os.path.join(fixture_path(""), "fstring_comment.jac")
     prog = JacProgram.jac_file_formatter(path, auto_lint=True)
     formatted = prog.mod.main.gen.jac
+    lines = formatted.splitlines()
 
-    # The comment must remain as a standalone line, not inside any f-string
-    assert "# Standalone comment" in formatted, "Comment was lost entirely"
-
-    # Check no f-string contains the comment text
+    # --- Check 1: Module-level comment must not end up inside an f-string ---
+    assert "# Standalone comment" in formatted, "Module comment was lost"
     in_fstring = False
-    for line in formatted.splitlines():
+    for line in lines:
         stripped = line.strip()
         if 'f"' in stripped or "f'" in stripped:
             in_fstring = True
@@ -180,7 +179,30 @@ def test_fstring_comment_not_injected(fixture_path: Callable[[str], str]) -> Non
         if in_fstring and '";' in stripped:
             in_fstring = False
 
-    # Also verify idempotency: formatting twice should produce same output
+    # --- Check 2: Body-level comments must stay next to their statements ---
+    # "Comment before" must appear BEFORE the f-string append, not after it.
+    before_idx = next(
+        (i for i, ln in enumerate(lines) if "# Comment before" in ln), None
+    )
+    fstring_idx = next(
+        (i for i, ln in enumerate(lines) if "function guard()" in ln), None
+    )
+    after_idx = next((i for i, ln in enumerate(lines) if "# Comment after" in ln), None)
+    assert before_idx is not None, "'# Comment before' was lost"
+    assert fstring_idx is not None, "f-string statement was lost"
+    assert after_idx is not None, "'# Comment after' was lost"
+    assert before_idx < fstring_idx, (
+        f"Comment before f-string was displaced after it "
+        f"(comment at line {before_idx + 1}, f-string at line {fstring_idx + 1}):\n"
+        + formatted
+    )
+    assert after_idx > fstring_idx, (
+        f"Comment after f-string was displaced before it "
+        f"(comment at line {after_idx + 1}, f-string at line {fstring_idx + 1}):\n"
+        + formatted
+    )
+
+    # --- Check 3: Idempotency ---
     prog2 = JacProgram.jac_file_formatter(path, auto_lint=True)
     formatted2 = prog2.mod.main.gen.jac
     assert formatted == formatted2, "Formatting is not idempotent"
