@@ -3255,7 +3255,7 @@ class SpecialVarRef(Name) {
         } elif (self.orig.name == Tok.KW_VISITOR) {
             return Con.VISITOR.value;
         } elif (self.orig.name == Tok.KW_INIT) {
-            return '__init__';
+            return 'init';
         } elif (self.orig.name == Tok.KW_POST_INIT) {
             return '__post_init__';
         } else {

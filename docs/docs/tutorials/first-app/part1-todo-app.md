@@ -111,7 +111,7 @@ root ---> Todo("Buy groceries")
 ## Build the Frontend
 
 ```jac
-cl def:pub app -> any {
+cl def:pub app -> JsxElement {
     has items: list = [],
         text: str = "";
 
@@ -241,7 +241,7 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
         return {};
     }
 
-    cl def:pub app -> any {
+    cl def:pub app -> JsxElement {
         has items: list = [],
             text: str = "";
 

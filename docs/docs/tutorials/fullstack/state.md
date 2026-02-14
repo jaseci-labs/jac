@@ -15,7 +15,7 @@ Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`):
 
 ```jac
 cl {
-    def:pub Counter() -> any {
+    def:pub Counter() -> JsxElement {
         has count: int = 0;  # Reactive state
 
         return <div>
@@ -40,7 +40,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Form() -> any {
+    def:pub Form() -> JsxElement {
         has name: str = "";
         has email: str = "";
         has submitted: bool = False;
@@ -82,7 +82,7 @@ cl {
 
 ```jac
 cl {
-    def:pub TodoApp() -> any {
+    def:pub TodoApp() -> JsxElement {
         has todos: list = [];
         has input_text: str = "";
 
@@ -134,7 +134,7 @@ Similar to how `has` automatically generates `useState`, you can use `can with e
 
 ```jac
 cl {
-    def:pub DataFetcher() -> any {
+    def:pub DataFetcher() -> JsxElement {
         has data: list = [];
         has loading: bool = True;
 
@@ -164,7 +164,7 @@ Use list `[dep]` or tuple `(dep1, dep2)` syntax to specify dependencies:
 
 ```jac
 cl {
-    def:pub SearchResults() -> any {
+    def:pub SearchResults() -> JsxElement {
         has query: str = "";
         has results: list = [];
 
@@ -194,7 +194,7 @@ Use `can with exit` for cleanup logic (runs on unmount):
 
 ```jac
 cl {
-    def:pub Timer() -> any {
+    def:pub Timer() -> JsxElement {
         has seconds: int = 0;
 
         # Setup interval on mount
@@ -222,7 +222,7 @@ You can also use `useEffect` manually by importing from React:
 cl {
     import from react { useEffect }
 
-    def:pub DataFetcher() -> any {
+    def:pub DataFetcher() -> JsxElement {
         has data: list = [];
 
         useEffect(lambda -> None {
@@ -248,7 +248,7 @@ cl {
     glob AppContext = createContext(None);
 
     # Provider component
-    def:pub AppProvider(props: dict) -> any {
+    def:pub AppProvider(props: dict) -> JsxElement {
         has user: any = None;
         has theme: str = "light";
 
@@ -265,7 +265,7 @@ cl {
     }
 
     # Consumer component
-    def:pub UserDisplay() -> any {
+    def:pub UserDisplay() -> JsxElement {
         ctx = useContext(AppContext);
 
         if ctx.user {
@@ -274,7 +274,7 @@ cl {
         return <p>Not logged in</p>;
     }
 
-    def:pub ThemeToggle() -> any {
+    def:pub ThemeToggle() -> JsxElement {
         ctx = useContext(AppContext);
 
         return <button onClick={lambda -> None {
@@ -284,7 +284,7 @@ cl {
         </button>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <AppProvider>
             <UserDisplay />
             <ThemeToggle />
@@ -323,7 +323,7 @@ cl {
         return (value, lambda v: any -> None { value = v; });
     }
 
-    def:pub Settings() -> any {
+    def:pub Settings() -> JsxElement {
         (theme, set_theme) = use_local_storage("theme", "light");
 
         return <div>
@@ -347,7 +347,7 @@ cl {
 
 ```jac
 cl {
-    def:pub DataComponent() -> any {
+    def:pub DataComponent() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
         has error: str = "";
@@ -371,7 +371,7 @@ cl {
 
 ```jac
 cl {
-    def:pub ContactForm() -> any {
+    def:pub ContactForm() -> JsxElement {
         has form_data: dict = {
             "name": "",
             "email": "",

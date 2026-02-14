@@ -2,8 +2,12 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.10.1 (Unreleased)
+## jaclang 0.10.2 (Unreleased)
 
+## jaclang 0.10.1 (Latest Release)
+
+- **`jac purge` Command**: Added `jac purge` to clear the bytecode cache. Works even when the cache is corrupted.
+- **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
 - **Fix: MTIR scope key uses file stem for portability**: Fixed MTIR scope key generation to use only the file stem (filename without extension) instead of path-relative module names. This ensures consistent scope keys across different execution environments (local vs Docker) and enables compiled bytecode to be portable across different directory structures.
 - **Fix: False Type Errors in Nested Functions**: Fixed incorrect type checking errors when using nested functions inside `impl` blocks. Nested functions now correctly validate their return statements against their own return type instead of the outer function's return type.
 - **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections. Added `on_ready` callback parameter to `JacAPIServer.start()` for consistent startup message handling across stdlib and jac-scale servers.
@@ -24,8 +28,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
 - **Lark Parser Removal**: Replaced the Lark-based parser with a hand-written recursive descent parser as the default. Deleted `jac_parser.py`, `jac.lark`, `lark_jac_parser.py`, and the vendored `lark/` directory. All 110 language tests, 438 format tests, and 15 LSP server tests pass with the new parser.
 - **1 Small Refactors**
+- Docs update: return type `any` -> `JsxElement`
+- **Fix:** Spurious Write Access Warning on System Root During Sync
+- **3 Small Refactors**
 
-## jaclang 0.10.0 (Latest Release)
+## jaclang 0.10.0
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Keyword-escaped names now use a backtick prefix (`` `node ``) instead of the angle-bracket prefix (`<>node`). All `.jac` source files, the lexer, parser, unparse/DocIR passes, and auto-lint rules have been updated accordingly.
 - **Remove Backtick Type Operator**: Removed the backtick (`` ` ``) `TYPE_OP` token and `TypeRef` AST node from the language. The `Root` type is now referenced directly by name (e.g., `with Root entry` instead of `` with `root entry ``). Filter comprehension syntax changed from `` (`?Type:field==val) `` to `(?:Type, field==val)`. `Root` is automatically imported from `jaclib` when used in walker event signatures.
