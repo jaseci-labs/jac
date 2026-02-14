@@ -3,7 +3,6 @@ import ast as py_ast;
 import atexit;
 import marshal;
 import os;
-import re;
 import sys;
 import types;
 import from threading { Event }
@@ -427,19 +426,16 @@ class JacCompiler {
             codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
             return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
         }
-        might_have_native = self._might_have_native_code(full_target);
         cache_key = CacheKey.for_source(full_target, minimal);
         if isinstance(self._bytecode_cache, DiskBytecodeCache) {
             cached_code = self._bytecode_cache.get(cache_key);
             if (cached_code is not None) {
-                if might_have_native {
-                    cached_ir = self._bytecode_cache.get_llvmir(cache_key);
+                cached_ir = self._bytecode_cache.get_llvmir(cache_key);
+                if (cached_ir is not None and cached_ir != "") {
                     cached_interop = self._bytecode_cache.get_interop(cache_key);
-                    if (cached_ir is not None) {
-                        self._load_native_from_cache(
-                            full_target, actual_program, cached_ir, cached_interop
-                        );
-                    }
+                    self._load_native_from_cache(
+                        full_target, actual_program, cached_ir, cached_interop
+                    );
                 }
                 if not minimal {
                     self._load_mtir_cache(cache_key, actual_program);
@@ -461,15 +457,11 @@ class JacCompiler {
                 if not minimal {
                     self._save_mtir_cache(cache_key, actual_program);
                 }
-                if might_have_native {
-                    if (result.gen.llvm_ir is not None) {
-                        self._bytecode_cache.put_llvmir(
-                            cache_key, str(result.gen.llvm_ir)
-                        );
-                        self._cache_interop_manifest(cache_key, result);
-                    } else {
-                        self._bytecode_cache.put_llvmir(cache_key, "");
-                    }
+                if (result.gen.llvm_ir is not None) {
+                    self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir));
+                    self._cache_interop_manifest(cache_key, result);
+                } else {
+                    self._bytecode_cache.put_llvmir(cache_key, "");
                 }
             }
             return marshal.loads(result.gen.py_bytecode);
@@ -582,36 +574,6 @@ class JacCompiler {
             };
         }
         self._bytecode_cache.put_interop(cache_key, interop_data);
-    }
-
-    """Check if a file might contain native code.
-
-        Returns True for:
-        - .na.jac files (fully native modules)
-        - .jac files that contain 'na {' or 'na{' blocks at statement level
-
-        This is a heuristic check to determine if we need full compilation
-        (including native JIT) rather than using cached bytecode.
-        Uses a line-start anchor to avoid false positives from docstrings
-        and comments that mention na blocks.
-        """
-    def _might_have_native_code(self: JacCompiler, file_path: str) -> bool {
-        if file_path.endswith('.na.jac') {
-            return True;
-        }
-        if file_path.endswith('.jac') {
-            try {
-                with open(file_path, encoding='utf-8') as f {
-                    content = f.read();
-                }
-                if re.search('^\\s*na\\s*\\{', content, re.MULTILINE) {
-                    return True;
-                }
-            } except OSError {
-                ;
-            }
-        }
-        return False;
     }
 
     """Parse source string into AST module."""

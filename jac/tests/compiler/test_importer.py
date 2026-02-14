@@ -324,13 +324,12 @@ def test_compiler_separates_internal_from_user_modules() -> None:
 def test_get_bytecode_returns_cache_when_llvmir_missing() -> None:
     """get_bytecode should return cached bytecode even when LLVM IR cache is missing.
 
-    Regression test: previously, if _might_have_native_code returned True but
-    the LLVM IR cache was absent, get_bytecode would fall through to a full
-    recompilation instead of returning the already-valid cached bytecode.
+    Regression test: previously, get_bytecode would fall through to a full
+    recompilation when the LLVM IR cache was absent, even though valid
+    bytecode existed in the cache.
     """
     import marshal
     import tempfile
-    from unittest.mock import patch
 
     from jaclang.jac0core.bccache import CacheKey, DiskBytecodeCache
     from jaclang.jac0core.compiler import JacCompiler
@@ -341,33 +340,34 @@ def test_get_bytecode_returns_cache_when_llvmir_missing() -> None:
         tmp.flush()
         jac_file = tmp.name
 
+    # Set source mtime slightly in the past so cache files are strictly newer
+    import time
+
+    past = time.time() - 2
+    os.utime(jac_file, (past, past))
+
     try:
         cache = DiskBytecodeCache()
         cache._cache_dir = Path(tempfile.mkdtemp())
         compiler = JacCompiler(bytecode_cache=cache)
-        prog = JacProgram()
 
-        # Force _might_have_native_code to return True (simulates false positive)
-        with patch.object(compiler, "_might_have_native_code", return_value=True):
-            # First call: compiles and caches (stores "" for llvm_ir since no real na)
-            code1 = compiler.get_bytecode(jac_file, prog)
-            assert code1 is not None, "First compilation should succeed"
+        # First call: compiles and caches bytecode + "" for llvm_ir
+        code1 = compiler.get_bytecode(jac_file, JacProgram())
+        assert code1 is not None, "First compilation should succeed"
 
-            # Verify bytecode was cached
-            key = CacheKey.for_source(jac_file, minimal=False)
-            assert cache.get(key) is not None, "Bytecode should be cached"
+        # Verify both caches were populated
+        key = CacheKey.for_source(jac_file, minimal=False)
+        assert cache.get(key) is not None, "Bytecode should be cached"
+        assert cache.get_llvmir(key) == "", "LLVM IR should be cached as empty string"
 
-            # Delete the LLVM IR cache file to simulate missing IR
-            llvmir_path = cache._get_llvmir_cache_path(key)
-            if llvmir_path.exists():
-                llvmir_path.unlink()
-            assert cache.get_llvmir(key) is None, "LLVM IR cache should be gone"
+        # Delete the LLVM IR cache file to simulate missing IR
+        cache._get_llvmir_cache_path(key).unlink()
+        assert cache.get_llvmir(key) is None, "LLVM IR cache should be gone"
 
-            # Second call: should return cached bytecode, NOT recompile
-            prog2 = JacProgram()
-            code2 = compiler.get_bytecode(jac_file, prog2)
-            assert code2 is not None, "Should return cached bytecode"
-            assert marshal.dumps(code1) == marshal.dumps(code2)
+        # Second call: should return cached bytecode, NOT recompile
+        code2 = compiler.get_bytecode(jac_file, JacProgram())
+        assert code2 is not None, "Should return cached bytecode"
+        assert marshal.dumps(code1) == marshal.dumps(code2)
     finally:
         os.unlink(jac_file)
         import shutil
