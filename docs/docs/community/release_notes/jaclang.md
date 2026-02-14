@@ -26,6 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
 - Docs update: return type `any` -> `JsxElement`
+- **Fix:** Spurious Write Access Warning on System Root During Sync
 - **3 Small Refactors**
 
 ## jaclang 0.10.0
