@@ -1,8 +1,7 @@
 """Code location info for AST nodes."""
 import ast as ast3;
 import from collections.abc { Sequence }
-import from dataclasses { dataclass, field }
-import from enum { Enum }
+import from dataclasses { field }
 import from typing { TYPE_CHECKING, Any }
 
 with entry {
@@ -15,49 +14,38 @@ with entry {
 }
 
 """Client-side rendering manifest metadata."""
-@dataclass
-class ClientManifest {
-    with entry {
-        exports: list = field(default_factory=`list);
-        globals: list = field(default_factory=`list);
-        params: dict[(str, list)] = field(default_factory=`dict);
-        globals_values: dict[(str, Any)] = field(default_factory=`dict);
-        has_client: bool = False;
+obj ClientManifest {
+    has exports: list = [],
+        globals: list = [],
+        params: dict[(str, list)] = field(default_factory=`dict),
+        globals_values: dict[(str, Any)] = field(default_factory=`dict),
+        has_client: bool = False,
         imports: dict[(str, str)] = field(default_factory=`dict);
-    }
 }
 
 """Codespace context for interop bindings."""
-class InteropContext(Enum) {
-    with entry {
-        SERVER = 'server';
-        NATIVE = 'native';
-        CLIENT = 'client';
-    }
+enum InteropContext {
+    SERVER = 'server',
+    NATIVE = 'native',
+    CLIENT = 'client'
 }
 
 """Metadata for an exported native function."""
-@dataclass
-class NativeFunctionInfo {
-    with entry {
-        name: str;
-        ret_type: str = 'int';
-        param_types: list = field(default_factory=`list);
-        param_names: list = field(default_factory=`list);
-    }
+obj NativeFunctionInfo {
+    has name: str,
+        ret_type: str = 'int',
+        param_types: list = [],
+        param_names: list = [];
 }
 
 """Metadata for a compiled .na.jac module."""
-@dataclass
-class NativeModuleInfo {
-    with entry {
-        mod_path: str;
-        llvm_module: Any = None;
-        native_engine: Any = None;
+obj NativeModuleInfo {
+    has mod_path: str,
+        llvm_module: Any = None,
+        native_engine: Any = None,
         exported_functions: dict[(str, NativeFunctionInfo)] = field(
             default_factory=`dict
         );
-    }
 }
 
 """A function callable across codespace boundaries.
@@ -65,106 +53,36 @@ class NativeModuleInfo {
     Records that a function defined in `source_context` is called from
     one or more other codespace contexts listed in `callers`.
     """
-@dataclass
-class InteropBinding {
-    with entry {
-        name: str;
-        source_context: InteropContext;
-        callers: set[InteropContext] = field(default_factory=`set);
-        ret_type: str = 'int';
-        param_types: list = field(default_factory=`list);
-        param_names: list = field(default_factory=`list);
-        ast_node: Any = None;
-        route: list[InteropContext] = field(default_factory=`list);
+obj InteropBinding {
+    has name: str,
+        source_context: InteropContext,
+        callers: set[InteropContext] = field(default_factory=`set),
+        ret_type: str = 'int',
+        param_types: list = [],
+        param_names: list = [],
+        ast_node: Any = None,
+        route: list[InteropContext] = [],
         source_module: (str | None) = None;
-    }
 
-    """True if the bridge is a single hop (e.g. svâna)."""
     @property
-    def is_direct(self: InteropBinding) -> bool {
-        return (len(self.route) == 2);
-    }
+    def is_direct(self: InteropBinding) -> bool;
 
-    """True if the bridge requires multiple hops (e.g. clâsvâna)."""
     @property
-    def is_composed(self: InteropBinding) -> bool {
-        return (len(self.route) > 2);
-    }
+    def is_composed(self: InteropBinding) -> bool;
 
-    """True if the function is imported from another module."""
     @property
-    def is_cross_module(self: InteropBinding) -> bool {
-        return (self.source_module is not None);
-    }
+    def is_cross_module(self: InteropBinding) -> bool;
 }
 
 """All cross-boundary function bindings for a module.
 
     Built by InteropAnalysisPass, consumed by codegen passes.
     """
-@dataclass
-class InteropManifest {
-    with entry {
-        bindings: dict[(str, InteropBinding)] = field(default_factory=`dict);
+obj InteropManifest {
+    has bindings: dict[(str, InteropBinding)] = field(default_factory=`dict),
         native_module_imports: dict[(str, NativeModuleInfo)] = field(
             default_factory=`dict
-        );
-    }
-
-    """Server (Python) functions that native code calls."""
-    @property
-    def native_imports(self: InteropManifest) -> list[InteropBinding] {
-        return [
-            b
-            for b in self.bindings.values()
-            if (
-                (b.source_context == InteropContext.SERVER)
-                and (InteropContext.NATIVE in b.callers)
-            )
-        ];
-    }
-
-    """Native functions that server (Python) code calls."""
-    @property
-    def native_exports(self: InteropManifest) -> list[InteropBinding] {
-        return [
-            b
-            for b in self.bindings.values()
-            if (
-                (b.source_context == InteropContext.NATIVE)
-                and (InteropContext.SERVER in b.callers)
-            )
-        ];
-    }
-
-    """Native functions imported from other .na.jac modules."""
-    @property
-    def native_cross_module_imports(self: InteropManifest) -> list[InteropBinding] {
-        return [
-            b
-            for b in self.bindings.values()
-            if (
-                (b.source_context == InteropContext.NATIVE)
-                and (InteropContext.NATIVE in b.callers)
-                and (b.source_module is not None)
-            )
-        ];
-    }
-
-    """Server functions that client (JS) code calls."""
-    @property
-    def server_exports_to_client(self: InteropManifest) -> list[InteropBinding] {
-        return [
-            b
-            for b in self.bindings.values()
-            if (
-                (b.source_context == InteropContext.SERVER)
-                and (InteropContext.CLIENT in b.callers)
-            )
-        ];
-    }
-
-    with entry {
+        ),
         JAC_TO_CTYPES: dict[(str, str)] = field(
             default_factory=lambda() :
                 {
@@ -174,7 +92,18 @@ class InteropManifest {
                     'str': 'ctypes.c_char_p'
                 }
         );
-    }
+
+    @property
+    def native_imports(self: InteropManifest) -> list[InteropBinding];
+
+    @property
+    def native_exports(self: InteropManifest) -> list[InteropBinding];
+
+    @property
+    def native_cross_module_imports(self: InteropManifest) -> list[InteropBinding];
+
+    @property
+    def server_exports_to_client(self: InteropManifest) -> list[InteropBinding];
 }
 
 """Code generation target."""

@@ -10,33 +10,33 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
 }
 
 """Generate IR for a single statement."""
-impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
+impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     if self.builder is None or self.builder.block.is_terminated {
         return;
     }
-    if isinstance(node, uni.ReturnStmt) {
-        self._codegen_return(node);
-    } elif isinstance(node, uni.IfStmt) {
-        self._codegen_if(node);
-    } elif isinstance(node, uni.WhileStmt) {
-        self._codegen_while(node);
-    } elif isinstance(node, uni.InForStmt) {
-        self._codegen_for(node);
-    } elif isinstance(node, uni.Assignment) {
-        self._codegen_assignment(node);
-    } elif isinstance(node, uni.CtrlStmt) {
-        self._codegen_ctrl(node);
-    } elif isinstance(node, uni.ExprStmt) {
-        self._codegen_expr(node.expr);
-    } elif isinstance(node, uni.TryStmt) {
-        self._codegen_try(node);
-    } elif isinstance(node, uni.RaiseStmt) {
-        self._codegen_raise(node);
-    } elif isinstance(node, uni.WithStmt) {
-        self._codegen_with(node);
-    } elif isinstance(node, uni.AssertStmt) {
+    if isinstance(nd, uni.ReturnStmt) {
+        self._codegen_return(nd);
+    } elif isinstance(nd, uni.IfStmt) {
+        self._codegen_if(nd);
+    } elif isinstance(nd, uni.WhileStmt) {
+        self._codegen_while(nd);
+    } elif isinstance(nd, uni.InForStmt) {
+        self._codegen_for(nd);
+    } elif isinstance(nd, uni.Assignment) {
+        self._codegen_assignment(nd);
+    } elif isinstance(nd, uni.CtrlStmt) {
+        self._codegen_ctrl(nd);
+    } elif isinstance(nd, uni.ExprStmt) {
+        self._codegen_expr(nd.expr);
+    } elif isinstance(nd, uni.TryStmt) {
+        self._codegen_try(nd);
+    } elif isinstance(nd, uni.RaiseStmt) {
+        self._codegen_raise(nd);
+    } elif isinstance(nd, uni.WithStmt) {
+        self._codegen_with(nd);
+    } elif isinstance(nd, uni.AssertStmt) {
         # AssertionError: evaluate condition, raise if false
-        cond = self._codegen_expr(node.condition);
+        cond = self._codegen_expr(nd.condition);
         if cond is not None {
             cond_bool = self._to_bool(cond);
             # assert fires when condition is FALSE
@@ -47,9 +47,9 @@ impl NaIRGenPass._codegen_stmt(node: uni.UniNode) -> None {
 }
 
 """Generate return statement."""
-impl NaIRGenPass._codegen_return(node: uni.ReturnStmt) -> None {
+impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     func_ret_type = self.builder.function.return_value.type;
-    if node.expr is not None {
+    if nd.expr is not None {
         # Set list type hint from function return type for list comprehensions
         self._list_type_hint = None;
         if isinstance(func_ret_type, ir.PointerType) {
@@ -64,7 +64,7 @@ impl NaIRGenPass._codegen_return(node: uni.ReturnStmt) -> None {
                 self._list_type_hint = elem_type;
             }
         }
-        val = self._codegen_expr(node.expr);
+        val = self._codegen_expr(nd.expr);
         self._list_type_hint = None;
         if val is not None {
             val = self._coerce_type(val, func_ret_type);
@@ -83,8 +83,8 @@ impl NaIRGenPass._codegen_return(node: uni.ReturnStmt) -> None {
 }
 
 """Generate if/else/elif statement with proper basic blocks."""
-impl NaIRGenPass._codegen_if(node: uni.IfStmt) -> None {
-    cond = self._codegen_expr(node.condition);
+impl NaIRGenPass._codegen_if(nd: uni.IfStmt) -> None {
+    cond = self._codegen_expr(nd.condition);
     if cond is None {
         return;
     }
@@ -97,20 +97,20 @@ impl NaIRGenPass._codegen_if(node: uni.IfStmt) -> None {
     self.builder.cbranch(cond, then_bb, else_bb);
     # Then block
     self.builder.position_at_end(then_bb);
-    if isinstance(node.body, (list, tuple)) {
-        self._codegen_body(node.body);
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(merge_bb);
     }
     # Else block
     self.builder.position_at_end(else_bb);
-    if node.else_body is not None {
-        if isinstance(node.else_body, uni.ElseIf) {
-            self._codegen_if(node.else_body);
-        } elif isinstance(node.else_body, uni.ElseStmt) {
-            if isinstance(node.else_body.body, (list, tuple)) {
-                self._codegen_body(node.else_body.body);
+    if nd.else_body is not None {
+        if isinstance(nd.else_body, uni.ElseIf) {
+            self._codegen_if(nd.else_body);
+        } elif isinstance(nd.else_body, uni.ElseStmt) {
+            if isinstance(nd.else_body.body, (list, tuple)) {
+                self._codegen_body(nd.else_body.body);
             }
         }
     }
@@ -121,7 +121,7 @@ impl NaIRGenPass._codegen_if(node: uni.IfStmt) -> None {
 }
 
 """Generate while loop with proper basic blocks."""
-impl NaIRGenPass._codegen_while(node: uni.WhileStmt) -> None {
+impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="while.cond");
     body_bb = func.append_basic_block(name="while.body");
@@ -130,7 +130,7 @@ impl NaIRGenPass._codegen_while(node: uni.WhileStmt) -> None {
     self.builder.branch(cond_bb);
     # Condition block
     self.builder.position_at_end(cond_bb);
-    cond = self._codegen_expr(node.condition);
+    cond = self._codegen_expr(nd.condition);
     if cond is not None {
         cond = self._to_bool(cond);
         self.builder.cbranch(cond, body_bb, end_bb);
@@ -140,8 +140,8 @@ impl NaIRGenPass._codegen_while(node: uni.WhileStmt) -> None {
     # Body block — push loop context for break/continue
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
-    if isinstance(node.body, (list, tuple)) {
-        self._codegen_body(node.body);
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(cond_bb);
@@ -152,22 +152,22 @@ impl NaIRGenPass._codegen_while(node: uni.WhileStmt) -> None {
 }
 
 """Generate assignment statement."""
-impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
+impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     # Set list type hint from context before evaluating expression
     # This helps _codegen_list_val create the correct empty list type
     self._list_type_hint = None;
     # 1. From explicit type annotation: var: list[T] = []
-    if node.type_tag and node.type_tag.tag {
-        hint = self._get_list_elem_from_type_node(node.type_tag.tag);
+    if nd.type_tag and nd.type_tag.tag {
+        hint = self._get_list_elem_from_type_node(nd.type_tag.tag);
         if hint is not None {
             self._list_type_hint = hint;
         }
     }
     # 2. From field target: self.field = [] where field has known list type
     if self._list_type_hint is None {
-        check_targets = node.target
-        if isinstance(node.target, (list, tuple))
-        else [(node.target)];
+        check_targets = nd.target
+        if isinstance(nd.target, (list, tuple))
+        else [(nd.target)];
         for ct in check_targets {
             if isinstance(ct, uni.AtomTrailer) and ct.is_attr {
                 ct_target_name = self._get_name(ct.target);
@@ -188,13 +188,13 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
             }
         }
     }
-    value = self._codegen_expr(node.value) if node.value else None;
+    value = self._codegen_expr(nd.value) if nd.value else None;
     self._list_type_hint = None;
     # Handle empty dict literal {} with type annotation
-    if value is None and isinstance(node.value, uni.DictVal) {
-        if not node.value.kv_pairs and node.type_tag and node.type_tag.tag {
+    if value is None and isinstance(nd.value, uni.DictVal) {
+        if not nd.value.kv_pairs and nd.type_tag and nd.type_tag.tag {
             # Empty dict with type hint - create empty dict of correct type
-            dict_type = self._resolve_jac_type(node.type_tag.tag);
+            dict_type = self._resolve_jac_type(nd.type_tag.tag);
             if isinstance(dict_type, ir.PointerType) {
                 # Find the dict helpers for this type
                 for (dict_key, dtype) in self.dict_types.items() {
@@ -212,10 +212,10 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         }
     }
     # Handle empty set literal {} that should be a set with type annotation
-    if value is None and isinstance(node.value, uni.SetVal) {
-        if not node.value.values and node.type_tag and node.type_tag.tag {
+    if value is None and isinstance(nd.value, uni.SetVal) {
+        if not nd.value.values and nd.type_tag and nd.type_tag.tag {
             # Empty set with type hint - create empty set of correct type
-            set_type = self._resolve_jac_type(node.type_tag.tag);
+            set_type = self._resolve_jac_type(nd.type_tag.tag);
             if isinstance(set_type, ir.PointerType) {
                 # Find the set helpers for this type
                 for (elem_name, stype) in self.set_types.items() {
@@ -233,11 +233,11 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         }
     }
     # Handle set() constructor call with type annotation
-    if value is None and isinstance(node.value, uni.FuncCall) {
-        func_name = self._get_name(node.value.target);
-        if func_name == "set" and node.type_tag and node.type_tag.tag {
+    if value is None and isinstance(nd.value, uni.FuncCall) {
+        func_name = self._get_name(nd.value.target);
+        if func_name == "set" and nd.type_tag and nd.type_tag.tag {
             # set() constructor with type annotation - create empty set
-            set_type = self._resolve_jac_type(node.type_tag.tag);
+            set_type = self._resolve_jac_type(nd.type_tag.tag);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
@@ -256,13 +256,11 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
     if value is None {
         return;
     }
-    targets = node.target
-    if isinstance(node.target, (list, tuple))
-    else [(node.target)];
+    targets = nd.target if isinstance(nd.target, (list, tuple)) else [(nd.target)];
     for target_expr in targets {
         # Handle tuple unpacking: (a, b) = expr
         if isinstance(target_expr, uni.TupleVal) {
-            self._codegen_tuple_unpack(target_expr.values, value, node.value);
+            self._codegen_tuple_unpack(target_expr.values, value, nd.value);
             continue;
         }
         # Handle field assignment: self.x = val or obj.field = val
@@ -335,8 +333,8 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
             # Update existing variable
             alloca = self.local_vars[var_name];
             # Handle augmented assignment: +=, -=, *=, //=, %=
-            if node.aug_op is not None {
-                aug_op_val = node.aug_op.value;
+            if nd.aug_op is not None {
+                aug_op_val = nd.aug_op.value;
                 current = self.builder.load(alloca, name=f"{var_name}.cur");
                 coerced = self._coerce_type(value, current.type);
                 if aug_op_val == "+=" {
@@ -482,8 +480,8 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
         } else {
             # New variable — allocate and store
             var_type = value.type;
-            if node.type_tag and node.type_tag.tag {
-                var_type = self._resolve_jac_type(node.type_tag.tag);
+            if nd.type_tag and nd.type_tag.tag {
+                var_type = self._resolve_jac_type(nd.type_tag.tag);
                 value = self._coerce_type(value, var_type);
             }
             alloca = self._entry_alloca(var_type, var_name);
@@ -501,8 +499,8 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
             }
         }
         # Track from type_tag annotation (supports T and T | None union types)
-        if node.type_tag and node.type_tag.tag {
-            tag_node = node.type_tag.tag;
+        if nd.type_tag and nd.type_tag.tag {
+            tag_node = nd.type_tag.tag;
             tag_name = self._get_name(tag_node);
             # Handle union type: T | None → extract T
             if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
@@ -543,11 +541,11 @@ impl NaIRGenPass._codegen_assignment(node: uni.Assignment) -> None {
 
 # ─── Expression Codegen ──────────────────────────────────────
 """Generate break or continue statement."""
-impl NaIRGenPass._codegen_ctrl(node: uni.CtrlStmt) -> None {
+impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
     if not self.loop_stack {
         return;
     }
-    ctrl_name = node.ctrl.name if isinstance(node.ctrl, uni.Token) else str(node.ctrl);
+    ctrl_name = nd.ctrl.name if isinstance(nd.ctrl, uni.Token) else str(nd.ctrl);
     (continue_bb, break_bb) = self.loop_stack[-1];
     if ctrl_name == Tok.KW_BREAK {
         self.builder.branch(break_bb);
@@ -558,19 +556,19 @@ impl NaIRGenPass._codegen_ctrl(node: uni.CtrlStmt) -> None {
 
 # ─── Phase 1: For Loops ──────────────────────────────────────
 """Generate for loop (currently supports range(n) and range(start, stop))."""
-impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
+impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     # Extract loop variable name
-    loop_var_name = self._get_name(node.target);
+    loop_var_name = self._get_name(nd.target);
     if loop_var_name is None {
         return;
     }
     # Detect range() calls
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
-    if isinstance(node.collection, uni.FuncCall) {
-        call_name = self._get_name(node.collection.target);
+    if isinstance(nd.collection, uni.FuncCall) {
+        call_name = self._get_name(nd.collection.target);
         if call_name == "range" {
-            params = node.collection.params or [];
+            params = nd.collection.params or [];
             if len(params) == 1 {
                 start_val = ir.Constant(ir.IntType(64), 0);
                 stop_val = self._codegen_expr(params[0]);
@@ -599,8 +597,8 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         self.builder.cbranch(cmp, body_bb, end_bb);
         self.loop_stack.append((incr_bb, end_bb));
         self.builder.position_at_end(body_bb);
-        if isinstance(node.body, (list, tuple)) {
-            self._codegen_body(node.body);
+        if isinstance(nd.body, (list, tuple)) {
+            self._codegen_body(nd.body);
         }
         if not self.builder.block.is_terminated {
             self.builder.branch(incr_bb);
@@ -619,7 +617,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
     # ── Dict iteration: for k in dict ──
     # Only use dict iteration if the collection variable is explicitly tracked as a dict
     # (This avoids premature code generation from type inference)
-    coll_name = self._get_name(node.collection);
+    coll_name = self._get_name(nd.collection);
     dict_type_key: (str | None) = None;
     if coll_name is not None and coll_name in self.var_dict_type {
         dict_type_key = self.var_dict_type[coll_name];
@@ -628,7 +626,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         # This is dict iteration
         helpers = self.dict_helpers.get(dict_type_key);
         if helpers is not None {
-            collection_val = self._codegen_expr(node.collection);
+            collection_val = self._codegen_expr(nd.collection);
             if collection_val is not None {
                 i64 = ir.IntType(64);
                 key_type = helpers["key_type"];
@@ -661,8 +659,8 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
                     helpers["get_key"], [collection_val, body_idx], name="ford.key"
                 );
                 self.builder.store(key_val, loop_alloca);
-                if isinstance(node.body, (list, tuple)) {
-                    self._codegen_body(node.body);
+                if isinstance(nd.body, (list, tuple)) {
+                    self._codegen_body(nd.body);
                 }
                 if not self.builder.block.is_terminated {
                     self.builder.branch(incr_bb);
@@ -685,7 +683,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
     # ── List iteration: for x in items ──
     # Set list type hint in case collection is a list literal
     self._list_type_hint = None;
-    coll_name = self._get_name(node.collection);
+    coll_name = self._get_name(nd.collection);
     # Infer elem type hint from collection variable's type node
     if coll_name is not None and coll_name in self.var_type_node {
         coll_type_node = self.var_type_node[coll_name];
@@ -695,7 +693,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         }
     }
     self._last_type_node_hint = None;
-    collection_val = self._codegen_expr(node.collection);
+    collection_val = self._codegen_expr(nd.collection);
     coll_type_hint = self._last_type_node_hint;
     self._list_type_hint = None;
     if collection_val is None {
@@ -732,7 +730,7 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         coll_type_node = coll_type_hint;
     }
     if elem_type_name == "ptr" {
-        inner_type = self._resolve_for_loop_elem_type(coll_name, node.collection);
+        inner_type = self._resolve_for_loop_elem_type(coll_name, nd.collection);
         # Fallback: use coll_type_hint from field access
         if inner_type is None and coll_type_node is not None {
             (_, inner_type_from_hint, _) = self._peel_list_type(coll_type_node);
@@ -790,8 +788,8 @@ impl NaIRGenPass._codegen_for(node: uni.InForStmt) -> None {
         elem_val = self.builder.bitcast(elem_val, inner_type, name="forl.cast");
     }
     self.builder.store(elem_val, loop_alloca);
-    if isinstance(node.body, (list, tuple)) {
-        self._codegen_body(node.body);
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(incr_bb);

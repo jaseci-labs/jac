@@ -7,6 +7,7 @@ native machine code, and produce correct results when executed via ctypes.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -1290,6 +1291,46 @@ class TestNativeMultiModuleInterop:
             exec(py_code, namespace)  # noqa: S102
         output = buf.getvalue().strip()
         assert output == "35"
+
+
+class TestNativeCacheMarker:
+    """Verify LLVM IR cache stores empty string for non-native files."""
+
+    def test_non_native_file_caches_empty_llvmir(self):
+        """Compiling a file without na blocks stores '' for llvm_ir in cache."""
+        import tempfile
+
+        from jaclang.jac0core.bccache import CacheKey, DiskBytecodeCache
+        from jaclang.jac0core.compiler import JacCompiler
+        from jaclang.jac0core.program import JacProgram
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write("glob x = 1;\n")
+            tmp.flush()
+            jac_file = tmp.name
+
+        # Set source mtime slightly in the past so cache files are strictly newer
+        import time
+
+        past = time.time() - 2
+        os.utime(jac_file, (past, past))
+
+        try:
+            cache = DiskBytecodeCache()
+            cache._cache_dir = Path(tempfile.mkdtemp())
+            compiler = JacCompiler(bytecode_cache=cache)
+            compiler.get_bytecode(jac_file, JacProgram())
+
+            key = CacheKey.for_source(jac_file)
+            cached_ir = cache.get_llvmir(key)
+            assert cached_ir == "", (
+                f"Non-native file should cache empty llvm_ir, got {cached_ir!r}"
+            )
+        finally:
+            os.unlink(jac_file)
+            import shutil
+
+            shutil.rmtree(str(cache._cache_dir), ignore_errors=True)
 
 
 class TestNativeLLVMIR:

@@ -404,7 +404,7 @@ Examples:
 Version: 3.1
 Last Updated: January 2026
 
-**Validation Status:** Validated against `jac/jaclang/pycore/jac.lark`
+**Validation Status:** Validated against the Jac recursive descent parser (jaclang 0.10.0)
 
 **Resources:**
 

@@ -65,13 +65,13 @@ Injects comments using token sequence analysis for perfect precision.
 obj CommentInjectionPass(Transform[(uni.Module, uni.Module)]) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None);
     def transform(ir_in: uni.Module) -> uni.Module;
-    def _process(ctx: uni.UniNode, `node: doc.DocType) -> doc.DocType;
+    def _process(ctx: uni.UniNode, nd: doc.DocType) -> doc.DocType;
     def _find_delimiters(
         parts: list[doc.DocType], open_tok: Tok, close_tok: Tok
     ) -> (DelimiterInfo | None);
 
-    def _get_tokens(`node: doc.DocType) -> list[uni.Token];
-    def _doc_line_span(`node: doc.DocType) -> tuple[(int | None), (int | None)];
+    def _get_tokens(nd: doc.DocType) -> list[uni.Token];
+    def _doc_line_span(nd: doc.DocType) -> tuple[(int | None), (int | None)];
     def _inject_into_parts(
         parts: list[doc.DocType], ctx: uni.UniNode
     ) -> list[doc.DocType];
@@ -80,13 +80,13 @@ obj CommentInjectionPass(Transform[(uni.Module, uni.Module)]) {
         parts: list[doc.DocType], ctx: uni.UniNode, *, drain_after: bool = False
     ) -> list[doc.DocType];
 
-    def _handle_body_comments(`node: uni.UniNode, indent: doc.Indent) -> doc.Indent;
+    def _handle_body_comments(nd: uni.UniNode, indent: doc.Indent) -> doc.Indent;
     def _handle_paren_comments(
         items: (Sequence[uni.UniNode] | None), parts: list[doc.DocType]
     ) -> list[doc.DocType];
 
     def _handle_empty_body_comments(
-        `node: uni.UniNode, parts: list[doc.DocType]
+        nd: uni.UniNode, parts: list[doc.DocType]
     ) -> list[doc.DocType];
 
     def _fix_empty_region_spacing(parts: list[doc.DocType]) -> list[doc.DocType];
@@ -108,7 +108,7 @@ obj CommentInjectionPass(Transform[(uni.Module, uni.Module)]) {
     def _strip_trailing_line_from_comment(comment: doc.DocType) -> doc.DocType;
     def _ends_with_hard_line(sink: Sequence[doc.DocType]) -> bool;
     def _collapse_duplicate_hard_lines(sink: list[doc.DocType]) -> None;
-    def _ends_with_inline_comment_line(`node: doc.DocType) -> bool;
-    def _remove_trailing_line_from_inline_comment(`node: doc.DocType) -> doc.DocType;
-    def _remove_redundant_lines(`node: doc.DocType) -> doc.DocType;
+    def _ends_with_inline_comment_line(nd: doc.DocType) -> bool;
+    def _remove_trailing_line_from_inline_comment(nd: doc.DocType) -> doc.DocType;
+    def _remove_redundant_lines(nd: doc.DocType) -> doc.DocType;
 }

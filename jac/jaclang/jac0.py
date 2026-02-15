@@ -1,21 +1,14 @@
-#!/usr/bin/env python3
 """jac0 - Bootstrap Jac-to-Python transpiler.
 
-A single-file compiler that reads the Jac subset produced by py2jac
-and emits equivalent Python source code. This closes the bootstrap loop
-for Jac self-hosting.
-
-Usage:
-    python jac0.py file.jac [-o output.py]
-    python jac0.py file1.jac file2.jac --outdir build/
+A single-file compiler that reads the Jac subset used in jac0core
+and emits equivalent Python source code. Called in-memory by
+meta_importer._exec_bootstrap() at import time — no disk I/O needed.
 """
 
 from __future__ import annotations
 
-import argparse
 import enum
 import os
-import sys
 from dataclasses import dataclass, field
 
 # =============================================================================
@@ -120,6 +113,7 @@ class Lexer:
 
     def __init__(self, source: str, filename: str = "<unknown>") -> None:
         self.source = source
+        self._source_len = len(source)
         self.filename = filename
         self.pos = 0
         self.line = 1
@@ -128,11 +122,11 @@ class Lexer:
         self._tokenize()
 
     def _ch(self) -> str:
-        return self.source[self.pos] if self.pos < len(self.source) else ""
+        return self.source[self.pos] if self.pos < self._source_len else ""
 
     def _peek(self, offset: int = 0) -> str:
         p = self.pos + offset
-        return self.source[p] if p < len(self.source) else ""
+        return self.source[p] if p < self._source_len else ""
 
     def _advance(self, n: int = 1) -> str:
         result = self.source[self.pos : self.pos + n]
@@ -149,7 +143,7 @@ class Lexer:
         self.tokens.append(Token(tt, value, line, col))
 
     def _skip_ws_and_comments(self) -> None:
-        while self.pos < len(self.source):
+        while self.pos < self._source_len:
             c = self._ch()
             if c in " \t\r\n":
                 self._advance()
@@ -157,14 +151,14 @@ class Lexer:
                 if self._peek(1) == "*":
                     # Block comment #* ... *#
                     self._advance(2)
-                    while self.pos < len(self.source):
+                    while self.pos < self._source_len:
                         if self._ch() == "*" and self._peek(1) == "#":
                             self._advance(2)
                             break
                         self._advance()
                 else:
                     # Line comment
-                    while self.pos < len(self.source) and self._ch() != "\n":
+                    while self.pos < self._source_len and self._ch() != "\n":
                         self._advance()
             else:
                 break
@@ -172,9 +166,9 @@ class Lexer:
     def _is_string_prefix(self) -> bool:
         """Check if current position starts a string (with optional prefix)."""
         save = self.pos
-        while self.pos < len(self.source) and self.source[self.pos] in "fFrRbBuU":
+        while self.pos < self._source_len and self.source[self.pos] in "fFrRbBuU":
             self.pos += 1
-        result = self.pos < len(self.source) and self.source[self.pos] in "\"'"
+        result = self.pos < self._source_len and self.source[self.pos] in "\"'"
         self.pos = save
         return result
 
@@ -182,7 +176,7 @@ class Lexer:
         line, col = self.line, self.col
         start = self.pos
         # Read prefix
-        while self.pos < len(self.source) and self.source[self.pos] in "fFrRbBuU":
+        while self.pos < self._source_len and self.source[self.pos] in "fFrRbBuU":
             self._advance()
         # Read quote
         q = self._ch()
@@ -193,7 +187,7 @@ class Lexer:
             triple = True
             self._advance(2)
         # Read body
-        while self.pos < len(self.source):
+        while self.pos < self._source_len:
             c = self._ch()
             if c == "\\":
                 self._advance(2)
@@ -223,18 +217,18 @@ class Lexer:
         start = self.pos
         if self._ch() == "0" and self._peek(1) in "xXoObB":
             self._advance(2)
-            while self.pos < len(self.source) and (
+            while self.pos < self._source_len and (
                 self._ch().isalnum() or self._ch() == "_"
             ):
                 self._advance()
         else:
-            while self.pos < len(self.source) and (
+            while self.pos < self._source_len and (
                 self._ch().isdigit() or self._ch() == "_"
             ):
                 self._advance()
             if self._ch() == "." and self._peek(1) != ".":
                 self._advance()
-                while self.pos < len(self.source) and (
+                while self.pos < self._source_len and (
                     self._ch().isdigit() or self._ch() == "_"
                 ):
                     self._advance()
@@ -242,7 +236,7 @@ class Lexer:
                 self._advance()
                 if self._ch() in "+-":
                     self._advance()
-                while self.pos < len(self.source) and (
+                while self.pos < self._source_len and (
                     self._ch().isdigit() or self._ch() == "_"
                 ):
                     self._advance()
@@ -253,7 +247,7 @@ class Lexer:
     def _read_name(self) -> None:
         line, col = self.line, self.col
         start = self.pos
-        while self.pos < len(self.source) and (
+        while self.pos < self._source_len and (
             self._ch().isalnum() or self._ch() == "_"
         ):
             self._advance()
@@ -264,7 +258,7 @@ class Lexer:
         line, col = self.line, self.col
         self._advance()  # skip backtick
         start = self.pos
-        while self.pos < len(self.source) and (
+        while self.pos < self._source_len and (
             self._ch().isalnum() or self._ch() == "_"
         ):
             self._advance()
@@ -296,7 +290,7 @@ class Lexer:
 
         while True:
             self._skip_ws_and_comments()
-            if self.pos >= len(self.source):
+            if self.pos >= self._source_len:
                 break
             line, col = self.line, self.col
             c = self._ch()
@@ -879,13 +873,14 @@ class Parser:
         self, tokens: list[Token], source: str = "", filename: str = ""
     ) -> None:
         self.tokens = tokens
+        self._tokens_len = len(tokens)
         self.pos = 0
         self.source = source
         self.filename = filename
 
     def _peek(self, offset: int = 0) -> Token:
         p = self.pos + offset
-        if p < len(self.tokens):
+        if p < self._tokens_len:
             return self.tokens[p]
         return self.tokens[-1]  # EOF
 
@@ -951,10 +946,17 @@ class Parser:
         return self._collect_until(*stops, stop_values=stop_vals or {"="})
 
     def _collect_dotted(self) -> str:
-        parts = [self._expect(TT.NAME).value]
-        while self._match(TT.DOT):
-            parts.append(self._expect(TT.NAME).value)
-        return ".".join(parts)
+        # Handle leading dots for relative imports (e.g., .tokens, ..utils)
+        prefix = ""
+        while self._at(TT.DOT):
+            prefix += "."
+            self._advance()
+        if self._at(TT.NAME):
+            parts = [self._expect(TT.NAME).value]
+            while self._match(TT.DOT):
+                parts.append(self._expect(TT.NAME).value)
+            return prefix + ".".join(parts)
+        return prefix
 
     # ── Decorators ────────────────────────────────────────────────────────
 
@@ -1189,9 +1191,38 @@ class Parser:
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
         self._expect(TT.LBRACE)
-        body = self._parse_body()
+        body = self._parse_enum_body()
         self._expect(TT.RBRACE)
         return EnumDef(name=name, bases=bases, body=body, decorators=decorators)
+
+    def _parse_enum_body(self) -> list:
+        """Parse enum body — handles comma OR semicolon separated members."""
+        body: list = []
+        while not self._at(TT.RBRACE) and not self._at(TT.EOF):
+            # Check for nested constructs (def, has, etc.)
+            tok = self._peek()
+            if tok.type == TT.NAME and not tok.backtick:
+                v = tok.value
+                if v in ("def", "static", "async", "can"):
+                    body.append(self._parse_funcdef([]))
+                    continue
+                if v == "has":
+                    body.append(self._parse_has())
+                    continue
+                if v == "with" and self._peek(1).value == "entry":
+                    body.append(self._parse_with_entry())
+                    continue
+            if self._at(TT.AT):
+                decs = self._parse_decorators()
+                body.append(self._parse_decorated(decs))
+                continue
+            # Collect expression (enum member) until comma, semi, or closing brace
+            expr = self._collect_until(TT.SEMI, TT.COMMA)
+            self._match(TT.SEMI)
+            self._match(TT.COMMA)
+            if expr.strip():
+                body.append(ExprStmt(expr=expr))
+        return body
 
     # ── Functions ─────────────────────────────────────────────────────────
 
@@ -1215,9 +1246,12 @@ class Parser:
         return_type = ""
         if self._match(TT.ARROW):
             return_type = self._collect_type()
-        self._expect(TT.LBRACE)
-        body = self._parse_body()
-        self._expect(TT.RBRACE)
+        if self._match(TT.SEMI):
+            body = [PassStmt()]
+        else:
+            self._expect(TT.LBRACE)
+            body = self._parse_body()
+            self._expect(TT.RBRACE)
         return FuncDef(
             name=name,
             params=params,
@@ -1591,7 +1625,9 @@ class CodeGen:
         self.lines: list[str] = []
         self.indent = 0
         self.needs_dataclass_import = False
+        self.needs_enum_import = False
         self.impl_registry: dict[str, list[ImplDef]] = {}
+        self._in_class = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -1619,6 +1655,8 @@ class CodeGen:
         self._line("from __future__ import annotations")
         if self.needs_dataclass_import:
             self._line("from dataclasses import dataclass, field")
+        if self.needs_enum_import:
+            self._line("import enum")
         self._line()
         for node in module.body:
             self._emit(node)
@@ -1632,6 +1670,9 @@ class CodeGen:
                     if not has_dc:
                         self.needs_dataclass_import = True
                 self._scan_needs(node.body)
+            elif isinstance(node, EnumDef):
+                if not node.bases:
+                    self.needs_enum_import = True
             elif isinstance(node, WithEntry):
                 self._scan_needs(node.body)
 
@@ -1724,16 +1765,23 @@ class CodeGen:
         if not body and not impls:
             self._line("pass")
         else:
+            prev_in_class = self._in_class
+            self._in_class = True
             self._emit_body(body)
             for impl in impls:
                 self._emit_impl_as_method(impl)
+            self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 
     def _emit_enum(self, node: EnumDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
-        bases = node.bases if node.bases else "enum.Enum"
+        if node.bases:
+            bases = node.bases
+        else:
+            bases = "enum.Enum"
+            self.needs_enum_import = True
         self._line(f"class {node.name}({bases}):")
         self.indent += 1
         if not node.body:
@@ -1751,12 +1799,23 @@ class CodeGen:
         if node.is_static:
             self._line("@staticmethod")
         name = "__init__" if node.name == "init" else node.name
-        params = self._format_params(node.params)
+        func_params = list(node.params)
+        # Auto-add self for instance methods inside a class
+        if (
+            self._in_class
+            and not node.is_static
+            and (not func_params or func_params[0].name not in ("self", "cls"))
+        ):
+            func_params.insert(0, Param(name="self"))
+        params = self._format_params(func_params)
         ap = "async " if node.is_async else ""
         ret = f" -> {node.return_type}" if node.return_type else ""
         self._line(f"{ap}def {name}({params}){ret}:")
         self.indent += 1
+        prev_in_class = self._in_class
+        self._in_class = False  # nested functions are not methods
         self._emit_body(node.body)
+        self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 
@@ -1783,7 +1842,17 @@ class CodeGen:
             if var.by_postinit:
                 self._line(f"{var.name}: {var.type_ann} = field(init=False)")
             elif var.default:
-                self._line(f"{var.name}: {var.type_ann} = {var.default}")
+                d = var.default.strip()
+                if d == "[]":
+                    self._line(
+                        f"{var.name}: {var.type_ann} = field(default_factory=list)"
+                    )
+                elif d == "{}":
+                    self._line(
+                        f"{var.name}: {var.type_ann} = field(default_factory=dict)"
+                    )
+                else:
+                    self._line(f"{var.name}: {var.type_ann} = {var.default}")
             else:
                 self._line(f"{var.name}: {var.type_ann}")
 
@@ -1810,12 +1879,21 @@ class CodeGen:
             self._line(f"@{dec}")
         if impl.is_static:
             self._line("@staticmethod")
-        params = self._format_params(impl.params)
+        func_params = list(impl.params)
+        # Auto-add self for instance methods
+        if not impl.is_static and (
+            not func_params or func_params[0].name not in ("self", "cls")
+        ):
+            func_params.insert(0, Param(name="self"))
+        params = self._format_params(func_params)
         ap = "async " if impl.is_async else ""
         ret = f" -> {impl.return_type}" if impl.return_type else ""
         self._line(f"{ap}def {method_name}({params}){ret}:")
         self.indent += 1
+        prev_in_class = self._in_class
+        self._in_class = False  # nested functions are not methods
         self._emit_body(impl.body)
+        self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 
@@ -1956,46 +2034,3 @@ def compile_jac(
                     codegen.impl_registry.setdefault(cls, []).append(node)
 
     return codegen.generate(module)
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(
-        description="jac0 - Bootstrap Jac-to-Python transpiler"
-    )
-    ap.add_argument("files", nargs="+", help="Jac source files to compile")
-    ap.add_argument("-o", "--output", help="Output file (default: stdout)")
-    ap.add_argument(
-        "--outdir", help="Output directory (writes <name>.py for each input)"
-    )
-    ap.add_argument("--no-impls", action="store_true", help="Skip impl file discovery")
-    args = ap.parse_args()
-
-    for jac_file in args.files:
-        with open(jac_file, encoding="utf-8") as f:
-            source = f.read()
-
-        impl_sources: list[tuple[str, str]] = []
-        if not args.no_impls:
-            for impl_path in discover_impl_files(jac_file):
-                with open(impl_path, encoding="utf-8") as f:
-                    impl_sources.append((f.read(), impl_path))
-
-        py_source = compile_jac(source, jac_file, impl_sources)
-
-        if args.outdir:
-            os.makedirs(args.outdir, exist_ok=True)
-            base = os.path.basename(jac_file)
-            out_name = base.replace(".jac", ".py")
-            out_path = os.path.join(args.outdir, out_name)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(py_source)
-            sys.stderr.write(f"  {jac_file} -> {out_path}\n")
-        elif args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(py_source)
-        else:
-            sys.stdout.write(py_source)
-
-
-if __name__ == "__main__":
-    main()

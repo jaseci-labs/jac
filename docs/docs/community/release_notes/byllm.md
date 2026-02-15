@@ -2,12 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.4.19 (Unreleased)
+## byllm 0.4.20 (Unreleased)
+
+- Minor internal refactors
+
+## byllm 0.4.19 (Latest Release)
 
 - Various refactors
 - **Fix: `api_key` parameter no longer silently ignored**: The `api_key` passed via constructor, instance config, or global config (`jac.toml`) was being overwritten with `None` before every LLM call. The key is now properly resolved with a clear priority chain (constructor > instance config > global config > environment variables) and passed to LiteLLM, OpenAI client, and HTTP calls. API keys are also masked in verbose logs, showing only the last 4 characters.
+- **Fix: MTIR scope key mismatch between compile-time and runtime**: Fixed a bug where MTIR entries stored at compile-time could not be retrieved at runtime due to mismatched scope keys. At compile-time, the scope key was generated using the module's file path, while at runtime it used `__main__`. This caused `by llm()` calls to silently fall back to introspection mode, losing all `sem` string descriptions. The fix uses `sys.modules['__main__'].__file__` at runtime to get the entry point's file path, then extracts the file stem to match the compile-time scope key format.
 
-## byllm 0.4.18 (Latest Release)
+## byllm 0.4.18
 
 ## byllm 0.4.17
 

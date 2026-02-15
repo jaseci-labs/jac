@@ -436,7 +436,7 @@ def:pub FeaturesTest -> JsxElement {
                                                 "color": "#6b7280"
                                             }}
                                         >
-                                            Count: {item.count}| Created: {item.created_at}
+                                            Count:{item.count}| Created:{item.created_at}
                                         </div>
                                     </div>
                                     <div style={{"display": "flex", "gap": "8px"}}>
@@ -521,7 +521,7 @@ def:pub FeaturesTest -> JsxElement {
                             />
                         </div>
                         {stringResult
-                        and <ResultDisplay data={stringResult} label="Walker Result" />}
+                        and <ResultDisplay data={stringResult} label="Walker Result"/>}
                     </div>
                 </div>
             </TestCard>
@@ -560,19 +560,30 @@ def:pub FeaturesTest -> JsxElement {
                     />}
                 </div>
             </TestCard>
-            # # Section 4: TypeScript Component Integration
-            # <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
-            #     <div>
-            #         <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
-            #             Imported TypeScript React component with data from JAC.
-            #         </p>
-            #         # <PieChart data={chart_data} title="Feature Test Distribution" />
-            #         <p style={{"marginTop": "10px", "color": "#6b7280", "fontSize": "14px"}}>
-            #             Total tests: {total_tests} (calculated using JS helper: sumBy)
-            #         </p>
-            #     </div>
-            # </TestCard>
-
+            # # Section 4: TypeScript Component Integration #
+            <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
+                #
+                <div>
+                    #
+                    <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
+                        #             Imported TypeScript React component with data from JAC. #
+                    </p>
+                    #         #
+                    <PieChart data={chart_data} title="Feature Test Distribution"/>
+                    #
+                    <p
+                        style={{
+                            "marginTop": "10px",
+                            "color": "#6b7280",
+                            "fontSize": "14px"
+                        }}
+                    >
+                        #             Total tests:{total_tests}(calculated using JS helper: sumBy) #
+                    </p>
+                    #
+                </div>
+                #
+            </TestCard>
             # # Section 5: Import Demonstrations
             <TestCard title="5. Import Demonstrations" color="#fed7aa">
                 <div>
@@ -592,7 +603,13 @@ def:pub FeaturesTest -> JsxElement {
                             </strong>
                             Hooks (useState, useEffect)
                         </li>
-                        # <li><strong>TypeScript:</strong> PieChart component from .tsx file</li>
+                        #
+                        <li>
+                            <strong>
+                                TypeScript:
+                            </strong>
+                            PieChart component from .tsx file
+                        </li>
                         <li>
                             <strong>
                                 JavaScript:
@@ -603,8 +620,7 @@ def:pub FeaturesTest -> JsxElement {
                             <strong>
                                 JAC Files:
                             </strong>
-                            for
-                            matCurrency from utils/formatters.jac
+                            for matCurrency from utils/formatters.jac
                         </li>
                     </ul>
                     <div
@@ -626,13 +642,13 @@ def:pub FeaturesTest -> JsxElement {
                             }}
                         >
                             <div>
-                                Generated ID: {generateId()}
+                                Generated ID:{generateId()}
                             </div>
                             <div>
-                                Formatted Currency: {formatCurrency(1234.56)}
+                                Formatted Currency:{formatCurrency(1234.56)}
                             </div>
                             <div>
-                                Percentage Calc: {calculatePercentage(75, 100)}%
+                                Percentage Calc:{calculatePercentage(75, 100)}%
                             </div>
                         </div>
                     </div>

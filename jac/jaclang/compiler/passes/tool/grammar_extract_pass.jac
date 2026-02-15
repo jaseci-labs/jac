@@ -93,7 +93,7 @@ obj GrammarExtractPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     # UniPass hooks
     def before_pass -> None;
-    def enter_impl_def(`node: uni.ImplDef) -> None;
+    def enter_impl_def(nd: uni.ImplDef) -> None;
     def after_pass -> None;
     # Formatting (static-like helpers, called with self)
     def format_ebnf(expr: GExpr) -> str;
@@ -110,10 +110,10 @@ obj GrammarExtractPass(UniPass) {
     def collect_elif_chain(stmt: uni.IfStmt) -> list;
     def has_early_return(stmts: list) -> bool;
     # AST helpers
-    def get_self_method(node: uni.Expr) -> str | None;
+    def get_self_method(nd: uni.Expr) -> str | None;
     def get_token_args(call: uni.FuncCall) -> list;
     def get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | None;
-    def get_impl_target_names(node: uni.ImplDef) -> list;
+    def get_impl_target_names(nd: uni.ImplDef) -> list;
     # Output
     def emit_ebnf -> str;
     def emit_lark -> str;

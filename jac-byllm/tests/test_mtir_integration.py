@@ -11,6 +11,7 @@ Note: MTIR extraction from compiled code is tested in:
 """
 
 import os
+import sys
 from collections.abc import Callable
 from dataclasses import fields
 from pathlib import Path
@@ -289,7 +290,7 @@ class TestMTIRCaching:
         """Test that cache keys work for MTIR storage."""
         from jaclang.jac0core.bccache import CacheKey
 
-        key = CacheKey.for_source("/path/to/test.jac", minimal=False)
+        key = CacheKey.for_source("/path/to/test.jac")
         assert key is not None
         assert key.source_path == "/path/to/test.jac"
 
@@ -312,7 +313,7 @@ class TestMTIRCaching:
         cache = DiskBytecodeCache()
 
         # Create cache key
-        key = CacheKey.for_source(str(test_file), minimal=False)
+        key = CacheKey.for_source(str(test_file))
 
         # Create test MTIR data
         test_mtir_map = {
@@ -913,3 +914,150 @@ class TestEnumExtraction:
 
         # If verbose is enabled, output should contain schema information
         # This verifies the enum information flows through to schema generation
+
+
+# =============================================================================
+# Scope Resolution Consistency Tests (Runtime vs Compile-time)
+# =============================================================================
+
+
+class TestScopeResolutionConsistency:
+    """Tests that scope keys match between compile-time MTIR and runtime fetch.
+
+    This test class verifies the fix for the bug where `sem` declarations were
+    silently dropped at runtime because the scope key used at compile-time
+    (based on file path) didn't match the scope key generated at runtime
+    (based on __module__ which was '__main__').
+
+    The fix ensures both compile-time and runtime use the file stem (filename
+    without extension) for the entry module's scope key.
+    """
+
+    def test_same_function_name_different_files_resolve_distinctly(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that same-named functions in different files get distinct scope keys.
+
+        This verifies that scope resolution uses the file stem to distinguish
+        between functions with the same name defined in different modules,
+        even when both are imported into a single main entry point.
+        """
+        import io
+
+        # Run the main entry point which imports from both module_alpha and module_beta
+        # Both modules have a function named "process_data"
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+
+        try:
+            jac_import("scope_main", base_path=fixture_path("./"))
+        finally:
+            sys.stdout = sys.__stdout__
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Find all process_data scopes
+        process_data_scopes = [scope for scope in mtir_map if "process_data" in scope]
+
+        # Should have exactly 2 distinct scopes for process_data
+        assert len(process_data_scopes) >= 2, (
+            f"Expected at least 2 process_data scopes (one per module), "
+            f"found: {process_data_scopes}"
+        )
+
+        # Verify we have both module_alpha.process_data and module_beta.process_data
+        alpha_scope = [s for s in process_data_scopes if "module_alpha" in s]
+        beta_scope = [s for s in process_data_scopes if "module_beta" in s]
+
+        assert len(alpha_scope) == 1, (
+            f"Expected exactly one module_alpha.process_data scope, "
+            f"found: {alpha_scope}"
+        )
+        assert len(beta_scope) == 1, (
+            f"Expected exactly one module_beta.process_data scope, found: {beta_scope}"
+        )
+
+        # Verify they are different entries
+        assert alpha_scope[0] != beta_scope[0], (
+            "Alpha and beta scopes should be different"
+        )
+
+        # Verify each has the correct return type
+        alpha_info = mtir_map[alpha_scope[0]]
+        beta_info = mtir_map[beta_scope[0]]
+
+        assert isinstance(alpha_info, FunctionInfo)
+        assert isinstance(beta_info, FunctionInfo)
+        assert alpha_info.return_type.name == "AlphaResult"
+        assert beta_info.return_type.name == "BetaResult"
+
+    def test_runtime_scope_resolution_matches_compile_time(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that runtime scope lookup finds compile-time stored MTIR.
+
+        This is the core test for the scope mismatch bug fix.
+        """
+        prog = JacProgram()
+        fixture = fixture_path("basic_compile.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had, f"Compilation errors: {prog.errors_had}"
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # Get the expected file stem (what runtime would use)
+        expected_stem = Path(fixture).stem  # "basic_compile"
+
+        # Find scopes that should match this file
+        matching_scopes = [
+            scope for scope in mtir_map if scope.startswith(f"{expected_stem}.")
+        ]
+
+        assert len(matching_scopes) > 0, (
+            f"Should find scopes starting with '{expected_stem}.'. "
+            f"Available scopes: {list(mtir_map.keys())}"
+        )
+
+        # Simulate runtime scope key generation
+        # At runtime, for __main__ module, we'd use sys.modules['__main__'].__file__
+        runtime_stem = expected_stem  # This is what the fix provides
+
+        # Verify the stored scopes match what runtime would generate
+        for scope in matching_scopes:
+            module_part = scope.split(".")[0]
+            assert module_part == runtime_stem, (
+                f"Scope '{scope}' module part '{module_part}' doesn't match "
+                f"expected runtime stem '{runtime_stem}'"
+            )
+
+    def test_scope_portable_across_paths(
+        self, fixture_path: Callable[[str], str]
+    ) -> None:
+        """Test that scope keys are portable (not tied to absolute paths).
+
+        This ensures compiled bytecode can be shipped to different environments
+        where the absolute path differs.
+        """
+        prog = JacProgram()
+        fixture = fixture_path("basic_compile.jac")
+        prog.compile(fixture)
+        assert not prog.errors_had
+
+        assert JacRuntime.program is not None
+        mtir_map = JacRuntime.program.mtir_map
+
+        # No scope should contain absolute path components
+        for scope in mtir_map:
+            assert not scope.startswith("/"), (
+                f"Scope '{scope}' should not start with absolute path"
+            )
+            assert ":\\" not in scope and ":/" not in scope, (
+                f"Scope '{scope}' should not contain Windows drive letters"
+            )
+            # Should not contain directory separators
+            module_part = scope.split(".")[0]
+            assert "/" not in module_part and "\\" not in module_part, (
+                f"Module part '{module_part}' should not contain path separators"
+            )

@@ -1,8 +1,8 @@
 """Convert an ESTree node to a dictionary representation."""
 
-impl es_node_to_dict(`node: Node) -> dict[str, Any] {
-    result: dict[(str, Any)] = {'type': `node.type};
-    for (key, value) in `node.__dict__.items() {
+impl es_node_to_dict(nd: Node) -> dict[str, Any] {
+    result: dict[(str, Any)] = {'type': nd.type};
+    for (key, value) in nd.__dict__.items() {
         if ((key in ('type', 'loc')) or (value is None)) {
             continue;
         }
@@ -17,14 +17,14 @@ impl es_node_to_dict(`node: Node) -> dict[str, Any] {
             result[key] = value;
         }
     }
-    if `node.loc {
+    if nd.loc {
         result['loc'] = {
-            'source': `node.loc.source,
-            'start': {'line': `node.loc.start.line, 'column': `node.loc.start.column}
-            if `node.loc.start
+            'source': nd.loc.source,
+            'start': {'line': nd.loc.start.line, 'column': nd.loc.start.column}
+            if nd.loc.start
             else None,
-            'end': {'line': `node.loc.end.line, 'column': `node.loc.end.column}
-            if `node.loc.end
+            'end': {'line': nd.loc.end.line, 'column': nd.loc.end.column}
+            if nd.loc.end
             else None
         };
     }

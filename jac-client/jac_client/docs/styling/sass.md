@@ -59,7 +59,7 @@ cl import ".styles.scss";
 # Note: useState is auto-injected when using `has` variables
 
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         return <div className="container">
             <button className="button">Click Me</button>
         </div>;
