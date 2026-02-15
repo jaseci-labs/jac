@@ -19,52 +19,50 @@ with entry {
 class EsJsxProcessor {
     def init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None;
     """Process JSX element into __jacJsx(tag, props, children) call."""
-    def element(self: EsJsxProcessor, `node: uni.JsxElement) -> Expression;
+    def element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression;
 
     """Process JSX element name."""
-    def element_name(self: EsJsxProcessor, `node: uni.JsxElementName) -> Expression;
+    def element_name(self: EsJsxProcessor, nd: uni.JsxElementName) -> Expression;
 
     """Process JSX spread attribute."""
     def spread_attribute(
-        self: EsJsxProcessor, `node: uni.JsxSpreadAttribute
+        self: EsJsxProcessor, nd: uni.JsxSpreadAttribute
     ) -> Expression;
 
     """Process JSX normal attribute."""
-    def normal_attribute(
-        self: EsJsxProcessor, `node: uni.JsxNormalAttribute
-    ) -> Property;
+    def normal_attribute(self: EsJsxProcessor, nd: uni.JsxNormalAttribute) -> Property;
 
     """Process JSX text node."""
-    def text(self: EsJsxProcessor, `node: uni.JsxText) -> Expression;
+    def text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression;
 
     """Process JSX expression child."""
-    def expression(self: EsJsxProcessor, `node: uni.JsxExpression) -> Expression;
+    def expression(self: EsJsxProcessor, nd: uni.JsxExpression) -> Expression;
 }
 
 """Generate Python AST structures for JSX nodes."""
 class PyJsxProcessor {
     def init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None;
     """Generate Python AST for JSX elements."""
-    def element(self: PyJsxProcessor, `node: uni.JsxElement) -> list[ast3.AST];
+    def element(self: PyJsxProcessor, nd: uni.JsxElement) -> list[ast3.AST];
 
     """Generate Python AST for JSX element names."""
-    def element_name(self: PyJsxProcessor, `node: uni.JsxElementName) -> list[ast3.AST];
+    def element_name(self: PyJsxProcessor, nd: uni.JsxElementName) -> list[ast3.AST];
 
     """Generate Python AST for JSX spread attributes."""
     def spread_attribute(
-        self: PyJsxProcessor, `node: uni.JsxSpreadAttribute
+        self: PyJsxProcessor, nd: uni.JsxSpreadAttribute
     ) -> list[ast3.AST];
 
     """Generate Python AST for JSX normal attributes."""
     def normal_attribute(
-        self: PyJsxProcessor, `node: uni.JsxNormalAttribute
+        self: PyJsxProcessor, nd: uni.JsxNormalAttribute
     ) -> list[ast3.AST];
 
     """Generate Python AST for JSX text nodes."""
-    def text(self: PyJsxProcessor, `node: uni.JsxText) -> list[ast3.AST];
+    def text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST];
 
     """Generate Python AST for JSX expression children."""
-    def expression(self: PyJsxProcessor, `node: uni.JsxExpression) -> list[ast3.AST];
+    def expression(self: PyJsxProcessor, nd: uni.JsxExpression) -> list[ast3.AST];
 }
 
 glob __all__ = ['EsJsxProcessor', 'PyJsxProcessor'];

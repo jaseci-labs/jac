@@ -8,12 +8,12 @@ impl InteropAnalysisPass.before_pass(self: InteropAnalysisPass) -> None {
 
 """Determine the codespace context of a node."""
 impl InteropAnalysisPass._get_context(
-    self: InteropAnalysisPass, `node: uni.UniNode
+    self: InteropAnalysisPass, nd: uni.UniNode
 ) -> InteropContext {
-    if `node.in_native_context() {
+    if nd.in_native_context() {
         return InteropContext.NATIVE;
     }
-    if `node.in_client_context() {
+    if nd.in_client_context() {
         return InteropContext.CLIENT;
     }
     return InteropContext.SERVER;
@@ -61,20 +61,20 @@ impl InteropAnalysisPass._resolve_native_module(
 
 """Track imports from .na.jac modules."""
 impl InteropAnalysisPass.enter_import(
-    self: InteropAnalysisPass, `node: uni.Import
+    self: InteropAnalysisPass, nd: uni.Import
 ) -> None {
-    import_context = self._get_context(`node);
-    if (`node.from_loc and isinstance(`node.from_loc, uni.ModulePath)) {
-        module_name = getattr(`node.from_loc, 'dot_path_str', None);
-        if (not module_name and `node.from_loc?.path and `node.from_loc.path) {
+    import_context = self._get_context(nd);
+    if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
+        module_name = getattr(nd.from_loc, 'dot_path_str', None);
+        if (not module_name and nd.from_loc?.path and nd.from_loc.path) {
             module_name = '.'.join(
-                getattr(p, 'value', str(p)) for p in `node.from_loc.path
+                getattr(p, 'value', str(p)) for p in nd.from_loc.path
             );
         }
         if module_name {
             native_path = self._resolve_native_module(module_name);
-            if (native_path and `node.items) {
-                for item in `node.items {
+            if (native_path and nd.items) {
+                for item in nd.items {
                     if isinstance(item, uni.ModuleItem) {
                         func_name = getattr(item.name, 'value', str(item.name));
                         self._imported_native_funcs[func_name] = (
@@ -90,28 +90,28 @@ impl InteropAnalysisPass.enter_import(
 
 """Record function definition and its context."""
 impl InteropAnalysisPass.enter_ability(
-    self: InteropAnalysisPass, `node: uni.Ability
+    self: InteropAnalysisPass, nd: uni.Ability
 ) -> None {
-    if (`node.sym_name and isinstance(`node.signature, uni.FuncSignature)) {
-        ctx = self._get_context(`node);
-        self._func_defs[`node.sym_name] = (ctx, `node);
+    if (nd.sym_name and isinstance(nd.signature, uni.FuncSignature)) {
+        ctx = self._get_context(nd);
+        self._func_defs[nd.sym_name] = (ctx, nd);
     }
 }
 
 """Check if a function call crosses context boundaries."""
 impl InteropAnalysisPass.enter_func_call(
-    self: InteropAnalysisPass, `node: uni.FuncCall
+    self: InteropAnalysisPass, nd: uni.FuncCall
 ) -> None {
     func_name = None;
-    if isinstance(`node.target, uni.Name) {
-        func_name = `node.target.value;
-    } elif isinstance(`node.target, uni.NameAtom) {
-        func_name = `node.target.sym_name;
+    if isinstance(nd.target, uni.Name) {
+        func_name = nd.target.value;
+    } elif isinstance(nd.target, uni.NameAtom) {
+        func_name = nd.target.sym_name;
     }
     if not func_name {
         return;
     }
-    caller_ctx = self._get_context(`node);
+    caller_ctx = self._get_context(nd);
     manifest = self.ir_in.gen.interop_manifest;
     if (func_name in self._imported_native_funcs) {
         (source_module, import_ctx) = self._imported_native_funcs[func_name];

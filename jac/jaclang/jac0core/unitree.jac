@@ -173,10 +173,10 @@ class Symbol {
     def symbol_table(self: Symbol) -> (UniScopeNode | None);
 
     """Add defn."""
-    def add_defn(self: Symbol, `node: NameAtom) -> None;
+    def add_defn(self: Symbol, nd: NameAtom) -> None;
 
     """Add use."""
-    def add_use(self: Symbol, `node: NameAtom) -> None;
+    def add_use(self: Symbol, nd: NameAtom) -> None;
 
     """Repr."""
     def __repr__(self: Symbol) -> str;
@@ -225,7 +225,7 @@ otherwise.
         """
     def insert(
         self: UniScopeNode,
-        `node: AstSymbolNode,
+        nd: AstSymbolNode,
         access_spec: AstAccessNode | None | SymbolAccess = None,
         single: bool = False,
         force_overwrite: bool = False,
@@ -244,7 +244,7 @@ otherwise.
     """Insert into symbol table."""
     def def_insert(
         self: UniScopeNode,
-        `node: AstSymbolNode,
+        nd: AstSymbolNode,
         access_spec: AstAccessNode | None | SymbolAccess = None,
         single_decl: (str | None) = None,
         force_overwrite: bool = False,
@@ -256,9 +256,7 @@ otherwise.
 
     """Link to symbol."""
     def use_lookup(
-        self: UniScopeNode,
-        `node: AstSymbolNode,
-        sym_table: (UniScopeNode | None) = None
+        self: UniScopeNode, nd: AstSymbolNode, sym_table: (UniScopeNode | None) = None
     ) -> (Symbol | None);
 
     """Link chain of containing names to symbol."""
@@ -267,7 +265,7 @@ otherwise.
     ) -> None;
 
     """Update python context for definition."""
-    def update_py_ctx_for_def(self: UniScopeNode, `node: AstSymbolNode) -> None;
+    def update_py_ctx_for_def(self: UniScopeNode, nd: AstSymbolNode) -> None;
 
     """Pretty print."""
     def sym_pp(self: UniScopeNode, depth: (int | None) = None) -> str;
@@ -565,11 +563,11 @@ class Module(AstDocNode, UniScopeNode) {
     }
 
     """Return the full path of the module that contains this node."""
-    static def get_href_path(`node: UniNode) -> str {
-        parent = `node.find_parent_of_type(Module);
+    static def get_href_path(nd: UniNode) -> str {
+        parent = nd.find_parent_of_type(Module);
         mod_list: list[(Module | Archetype)] = [];
-        if isinstance(`node, (Module, Archetype)) {
-            mod_list.append(`node);
+        if isinstance(nd, (Module, Archetype)) {
+            mod_list.append(nd);
         }
         while (parent is not None) {
             mod_list.append(parent);
@@ -1644,20 +1642,20 @@ class Name(Token, NameAtom) {
 
     """Generate name from node."""
     static def gen_stub_from_node(
-        `node: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
+        nd: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
     ) -> Name {
         ret = Name(
-            orig_src=`node.loc.orig_src,
+            orig_src=nd.loc.orig_src,
             name=Tok.NAME.value,
             value=name_str,
-            col_start=`node.loc.col_start,
-            col_end=`node.loc.col_end,
-            line=`node.loc.first_line,
-            end_line=`node.loc.last_line,
-            pos_start=`node.loc.pos_start,
-            pos_end=`node.loc.pos_end
+            col_start=nd.loc.col_start,
+            col_end=nd.loc.col_end,
+            line=nd.loc.first_line,
+            end_line=nd.loc.last_line,
+            pos_start=nd.loc.pos_start,
+            pos_end=nd.loc.pos_end
         );
-        ret.parent = `node.parent;
+        ret.parent = nd.parent;
         ret.name_of = set_name_of or ret;
         return ret;
     }

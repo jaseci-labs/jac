@@ -157,13 +157,13 @@ impl UniNode.get_all_sub_nodes(
     self: UniNode, typ: type[T], brute_force: bool = True
 ) -> list[T] {
     import from jaclang.jac0core.passes { UniPass }
-    return UniPass.get_all_sub_nodes(`node=self, typ=typ, brute_force=brute_force);
+    return UniPass.get_all_sub_nodes(nd=self, typ=typ, brute_force=brute_force);
 }
 
 """Get parent of type."""
 impl UniNode.find_parent_of_type(self: UniNode, typ: type[T]) -> (T | None) {
     import from jaclang.jac0core.passes { UniPass }
-    return UniPass.find_parent_of_type(`node=self, typ=typ);
+    return UniPass.find_parent_of_type(nd=self, typ=typ);
 }
 
 impl UniNode.parent_of_type(self: UniNode, typ: type[T]) -> T {
@@ -185,21 +185,21 @@ impl UniNode.parent_of_type(self: UniNode, typ: type[T]) -> T {
         Uses single traversal for efficiency since this is called frequently.
         """
 impl UniNode.in_client_context(self: UniNode) -> bool {
-    `node: (UniNode | None) = self.parent;
-    while (`node is not None) {
-        if isinstance(`node, ServerBlock) {
+    nd: (UniNode | None) = self.parent;
+    while (nd is not None) {
+        if isinstance(nd, ServerBlock) {
             return False;
         }
-        if isinstance(`node, ClientBlock) {
+        if isinstance(nd, ClientBlock) {
             return True;
         }
-        if isinstance(`node, Ability) {
-            context = getattr(`node, 'code_context', CodeContext.SERVER);
+        if isinstance(nd, Ability) {
+            context = getattr(nd, 'code_context', CodeContext.SERVER);
             if (context == CodeContext.CLIENT) {
                 return True;
             }
         }
-        `node = `node.parent;
+        nd = nd.parent;
     }
     return False;
 }
@@ -212,21 +212,21 @@ impl UniNode.in_client_context(self: UniNode) -> bool {
         - Overridden by sv {} or cl {} blocks
         """
 impl UniNode.in_native_context(self: UniNode) -> bool {
-    `node: (UniNode | None) = self.parent;
-    while (`node is not None) {
-        if isinstance(`node, (ServerBlock, ClientBlock)) {
+    nd: (UniNode | None) = self.parent;
+    while (nd is not None) {
+        if isinstance(nd, (ServerBlock, ClientBlock)) {
             return False;
         }
-        if isinstance(`node, NativeBlock) {
+        if isinstance(nd, NativeBlock) {
             return True;
         }
-        if isinstance(`node, Ability) {
-            context = getattr(`node, 'code_context', CodeContext.SERVER);
+        if isinstance(nd, Ability) {
+            context = getattr(nd, 'code_context', CodeContext.SERVER);
             if (context == CodeContext.NATIVE) {
                 return True;
             }
         }
-        `node = `node.parent;
+        nd = nd.parent;
     }
     return False;
 }
@@ -336,15 +336,15 @@ impl Symbol.symbol_table(self: Symbol) -> (UniScopeNode | None) {
 }
 
 """Add defn."""
-impl Symbol.add_defn(self: Symbol, `node: NameAtom) -> None {
-    self.defn.append(`node);
-    `node.sym = self;
+impl Symbol.add_defn(self: Symbol, nd: NameAtom) -> None {
+    self.defn.append(nd);
+    nd.sym = self;
 }
 
 """Add use."""
-impl Symbol.add_use(self: Symbol, `node: NameAtom) -> None {
-    self.uses.append(`node);
-    `node.sym = self;
+impl Symbol.add_use(self: Symbol, nd: NameAtom) -> None {
+    self.uses.append(nd);
+    nd.sym = self;
 }
 
 """Repr."""
@@ -408,31 +408,31 @@ otherwise.
         """
 impl UniScopeNode.insert(
     self: UniScopeNode,
-    `node: AstSymbolNode,
+    nd: AstSymbolNode,
     access_spec: AstAccessNode | None | SymbolAccess = None,
     single: bool = False,
     force_overwrite: bool = False,
     imported: bool = False
 ) -> (UniNode | None) {
-    collision = self.names_in_scope[`node.sym_name].defn[-1]
-    if (single and (`node.sym_name in self.names_in_scope))
+    collision = self.names_in_scope[nd.sym_name].defn[-1]
+    if (single and (nd.sym_name in self.names_in_scope))
     else None;
-    symbol = `node.name_spec.create_symbol(
+    symbol = nd.name_spec.create_symbol(
         access=access_spec
         if isinstance(access_spec, SymbolAccess)
         else access_spec.access_type if access_spec else SymbolAccess.PUBLIC,
         parent_tab=self,
         imported=imported
     );
-    if (`node.sym_name in self.names_in_scope) {
-        self.names_in_scope_overload.setdefault(`node.sym_name, []).append(symbol);
+    if (nd.sym_name in self.names_in_scope) {
+        self.names_in_scope_overload.setdefault(nd.sym_name, []).append(symbol);
     }
-    if (force_overwrite or (`node.sym_name not in self.names_in_scope)) {
-        self.names_in_scope[`node.sym_name] = symbol;
+    if (force_overwrite or (nd.sym_name not in self.names_in_scope)) {
+        self.names_in_scope[nd.sym_name] = symbol;
     } else {
-        self.names_in_scope[`node.sym_name].add_defn(`node.name_spec);
+        self.names_in_scope[nd.sym_name].add_defn(nd.name_spec);
     }
-    `node.name_spec.sym = self.names_in_scope[`node.sym_name];
+    nd.name_spec.sym = self.names_in_scope[nd.sym_name];
     return collision;
 }
 
@@ -467,24 +467,24 @@ impl UniScopeNode.inherit_sym_tab(
 """Insert into symbol table."""
 impl UniScopeNode.def_insert(
     self: UniScopeNode,
-    `node: AstSymbolNode,
+    nd: AstSymbolNode,
     access_spec: AstAccessNode | None | SymbolAccess = None,
     single_decl: (str | None) = None,
     force_overwrite: bool = False,
     imported: bool = False
 ) -> (Symbol | None) {
-    if (`node.sym and (self == `node.sym.parent_tab)) {
-        return `node.sym;
+    if (nd.sym and (self == nd.sym.parent_tab)) {
+        return nd.sym;
     }
     self.insert(
-        `node=`node,
+        nd=nd,
         single=(single_decl is not None),
         access_spec=access_spec,
         force_overwrite=force_overwrite,
         imported=imported
     );
-    self.update_py_ctx_for_def(`node);
-    return `node.sym;
+    self.update_py_ctx_for_def(nd);
+    return nd.sym;
 }
 
 """Link chain of containing names to symbol."""
@@ -509,19 +509,19 @@ impl UniScopeNode.chain_def_insert(
 
 """Link to symbol."""
 impl UniScopeNode.use_lookup(
-    self: UniScopeNode, `node: AstSymbolNode, sym_table: (UniScopeNode | None) = None
+    self: UniScopeNode, nd: AstSymbolNode, sym_table: (UniScopeNode | None) = None
 ) -> (Symbol | None) {
-    if `node.sym {
-        return `node.sym;
+    if nd.sym {
+        return nd.sym;
     }
     if not sym_table {
-        sym_table = `node.sym_tab;
+        sym_table = nd.sym_tab;
     }
     if sym_table {
-        lookup = sym_table.lookup(name=`node.sym_name, deep=True);
-        lookup.add_use(`node.name_spec) if lookup else None;
+        lookup = sym_table.lookup(name=nd.sym_name, deep=True);
+        lookup.add_use(nd.name_spec) if lookup else None;
     }
-    return `node.sym;
+    return nd.sym;
 }
 
 """Link chain of containing names to symbol."""
@@ -552,11 +552,9 @@ impl UniScopeNode.chain_use_lookup(
 }
 
 """Update python context for definition."""
-impl UniScopeNode.update_py_ctx_for_def(
-    self: UniScopeNode, `node: AstSymbolNode
-) -> None {
-    `node.name_spec.py_ctx_func = ast3.Store;
-    if (isinstance(`node, (TupleVal, ListVal)) and `node.values) {
+impl UniScopeNode.update_py_ctx_for_def(self: UniScopeNode, nd: AstSymbolNode) -> None {
+    nd.name_spec.py_ctx_func = ast3.Store;
+    if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
         def fix(item: TupleVal | ListVal | UnaryExpr) -> None {
             if isinstance(item, UnaryExpr) {
                 if isinstance(item.operand, AstSymbolNode) {
@@ -575,7 +573,7 @@ impl UniScopeNode.update_py_ctx_for_def(
                 }
             }
         }
-        fix(`node);
+        fix(nd);
     }
 }
 
@@ -720,32 +718,32 @@ impl UniCFGNode.init(self: UniCFGNode) -> None {
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head(self: UniCFGNode) -> UniCFGNode {
-    `node = self;
+    nd = self;
     while (
-        `node.bb_in
-        and (len(`node.bb_in) == 1)
-        and not isinstance(`node.bb_in[0], (InForStmt, IterForStmt, WhileStmt))
-        and `node.bb_in[0].bb_out
-        and (len(`node.bb_in[0].bb_out) == 1)
+        nd.bb_in
+        and (len(nd.bb_in) == 1)
+        and not isinstance(nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt))
+        and nd.bb_in[0].bb_out
+        and (len(nd.bb_in[0].bb_out) == 1)
     ) {
-        `node = `node.bb_in[0];
+        nd = nd.bb_in[0];
     }
-    return `node;
+    return nd;
 }
 
 """Get tail by walking down the CFG iteratively."""
 impl UniCFGNode.get_tail(self: UniCFGNode) -> UniCFGNode {
-    `node = self;
+    nd = self;
     while (
-        `node.bb_out
-        and (len(`node.bb_out) == 1)
-        and not isinstance(`node.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
-        and `node.bb_out[0].bb_in
-        and (len(`node.bb_out[0].bb_in) == 1)
+        nd.bb_out
+        and (len(nd.bb_out) == 1)
+        and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
+        and nd.bb_out[0].bb_in
+        and (len(nd.bb_out[0].bb_in) == 1)
     ) {
-        `node = `node.bb_out[0];
+        nd = nd.bb_out[0];
     }
-    return `node;
+    return nd;
 }
 
 impl Expr.init(self: Expr) -> None {
@@ -1291,11 +1289,11 @@ impl Archetype.is_abstract(self: Archetype) -> bool {
 impl Archetype.get_has_vars(self: Archetype) -> list[HasVar] {
     body = self._get_impl_resolved_body();
     has_vars: list[HasVar] = [];
-    for `node in body {
-        if not isinstance(`node, ArchHas) {
+    for nd in body {
+        if not isinstance(nd, ArchHas) {
             continue;
         }
-        for has_ in `node.vars {
+        for has_ in nd.vars {
             if isinstance(has_, HasVar) {
                 has_vars.append(has_);
             }
@@ -1307,9 +1305,9 @@ impl Archetype.get_has_vars(self: Archetype) -> list[HasVar] {
 impl Archetype.get_methods(self: Archetype) -> list[Ability] {
     body = self._get_impl_resolved_body();
     methods: list[Ability] = [];
-    for `node in body {
-        if (isinstance(`node, Ability) and `node.is_method) {
-            methods.append(`node);
+    for nd in body {
+        if (isinstance(nd, Ability) and nd.is_method) {
+            methods.append(nd);
         }
     }
     return methods;

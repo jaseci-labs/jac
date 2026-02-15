@@ -19,7 +19,7 @@ class InteropAnalysisPass(UniPass) {
     def before_pass(self: InteropAnalysisPass) -> None;
 
     """Determine the codespace context of a node."""
-    def _get_context(self: InteropAnalysisPass, `node: uni.UniNode) -> InteropContext;
+    def _get_context(self: InteropAnalysisPass, nd: uni.UniNode) -> InteropContext;
 
     """Extract a type name string from a type annotation expression."""
     def _extract_type_name(
@@ -40,11 +40,11 @@ linking
     ) -> (str | None);
 
     """Track imports from .na.jac modules."""
-    def enter_import(self: InteropAnalysisPass, `node: uni.Import) -> None;
+    def enter_import(self: InteropAnalysisPass, nd: uni.Import) -> None;
 
     """Record function definition and its context."""
-    def enter_ability(self: InteropAnalysisPass, `node: uni.Ability) -> None;
+    def enter_ability(self: InteropAnalysisPass, nd: uni.Ability) -> None;
 
     """Check if a function call crosses context boundaries."""
-    def enter_func_call(self: InteropAnalysisPass, `node: uni.FuncCall) -> None;
+    def enter_func_call(self: InteropAnalysisPass, nd: uni.FuncCall) -> None;
 }

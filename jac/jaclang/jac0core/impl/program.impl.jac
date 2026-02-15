@@ -48,8 +48,8 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
         self.mod.hub.clear();
     } else {
         for mod in self.mod.hub.values() {
-            for `node in mod.get_all_sub_nodes(uni.Expr, brute_force=True) {
-                `node.type = None;
+            for nd in mod.get_all_sub_nodes(uni.Expr, brute_force=True) {
+                nd.type = None;
             }
         }
     }

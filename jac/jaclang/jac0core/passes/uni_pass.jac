@@ -28,34 +28,34 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     def after_pass(self: UniPass) -> None;
 
     """Run on entering node."""
-    def enter_node(self: UniPass, `node: uni.UniNode) -> None;
+    def enter_node(self: UniPass, nd: uni.UniNode) -> None;
 
     """Run on exiting node."""
-    def exit_node(self: UniPass, `node: uni.UniNode) -> None;
+    def exit_node(self: UniPass, nd: uni.UniNode) -> None;
 
     """Prune traversal."""
     def prune(self: UniPass) -> None;
 
     """Get all sub nodes of type."""
     static def get_all_sub_nodes(
-        `node: uni.UniNode, typ: type[T], brute_force: bool = False
+        nd: uni.UniNode, typ: type[T], brute_force: bool = False
     ) -> list[T] {
         result: list[T] = [];
-        if not `node {
+        if not nd {
             return result;
-        } elif len(`node._sub_node_tab) {
-            if (typ in `node._sub_node_tab) {
-                for i in `node._sub_node_tab[typ] {
+        } elif len(nd._sub_node_tab) {
+            if (typ in nd._sub_node_tab) {
+                for i in nd._sub_node_tab[typ] {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
                 }
             }
-        } elif len(`node.kid) {
+        } elif len(nd.kid) {
             if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(`node)) ;
+                raise ValueError("Node has no sub_node_tab. " + str(nd)) ;
             } else {
-                for i in `node.kid {
+                for i in nd.kid {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
@@ -67,33 +67,33 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     }
 
     """Check if node has parent of type."""
-    static def find_parent_of_type(`node: uni.UniNode, typ: type[T]) -> (T | None) {
-        while `node.parent {
-            if isinstance(`node.parent, typ) {
-                return `node.parent;
+    static def find_parent_of_type(nd: uni.UniNode, typ: type[T]) -> (T | None) {
+        while nd.parent {
+            if isinstance(nd.parent, typ) {
+                return nd.parent;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return None;
     }
 
     """Check if node has parent of type."""
-    static def has_parent_of_node(`node: uni.UniNode, parent: uni.UniNode) -> bool {
-        while `node.parent {
-            if (`node.parent == parent) {
+    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
+        while nd.parent {
+            if (nd.parent == parent) {
                 return True;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return False;
     }
 
     """Recalculate parents."""
-    def recalculate_parents(self: UniPass, `node: uni.UniNode) -> None;
+    def recalculate_parents(self: UniPass, nd: uni.UniNode) -> None;
 
     """Run pass."""
     def transform(self: UniPass, ir_in: uni.Module) -> uni.Module;
 
     """Traverse tree."""
-    def traverse(self: UniPass, `node: uni.UniNode) -> uni.UniNode;
+    def traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode;
 }

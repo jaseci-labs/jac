@@ -69,17 +69,17 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     return jtype;
 }
 
-impl TypeEvaluator._get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None {
-    impl_ := node.find_parent_of_type(uni.ImplDef);
+impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {
+    impl_ := nd.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
     }
-    return node.find_parent_of_type(uni.Archetype);
+    return nd.find_parent_of_type(uni.Archetype);
 }
 
 """Get the enclosing method (ability) of the given node."""
-impl TypeEvaluator._get_enclosing_method(node: uni.UniNode) -> uni.Ability | None {
-    enclosing_fn = self._get_enclosing_function(node);
+impl TypeEvaluator._get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None {
+    enclosing_fn = self._get_enclosing_function(nd);
     while enclosing_fn and (not enclosing_fn.is_method) {
         enclosing_fn = self._get_enclosing_function(enclosing_fn);
     }
@@ -90,13 +90,13 @@ impl TypeEvaluator._get_enclosing_method(node: uni.UniNode) -> uni.Ability | Non
 }
 
 """Get the enclosing function (ability) of the given node."""
-impl TypeEvaluator._get_enclosing_function(node: uni.UniNode) -> uni.Ability | None {
-    while node := node.parent {
-        if isinstance(node, uni.Ability) {
-            return node;
+impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None {
+    while nd := nd.parent {
+        if isinstance(nd, uni.Ability) {
+            return nd;
         }
-        if isinstance(node, uni.ImplDef) and isinstance(node.decl_link, uni.Ability) {
-            return node.decl_link;
+        if isinstance(nd, uni.ImplDef) and isinstance(nd.decl_link, uni.Ability) {
+            return nd.decl_link;
         }
     }
     return None;
@@ -198,10 +198,10 @@ impl TypeEvaluator._extract_type_params(
 
 """Add a diagnostic message to the program."""
 impl TypeEvaluator.add_diagnostic(
-    node: uni.UniNode, message: str, warning: bool = False
+    nd: uni.UniNode, message: str, warning: bool = False
 ) -> None {
     if self.diagnostic_callback {
-        self.diagnostic_callback(node, message, warning);
+        self.diagnostic_callback(nd, message, warning);
     }
 }
 

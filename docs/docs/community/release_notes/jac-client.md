@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.18 (Unreleased)
 
-- Minor internal refactors
+- 2 Minor internal refactors
 
 ## jac-client 0.2.17 (Latest Release)
 

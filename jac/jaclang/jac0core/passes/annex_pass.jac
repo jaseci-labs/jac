@@ -32,6 +32,6 @@ class JacAnnexPass(Transform[(uni.Module, uni.Module)]) {
 
     """Parse and attach annex modules to the node."""
     def _load_annexes(
-        self: JacAnnexPass, jac_program: JacProgram, `node: uni.Module, mod_path: str
+        self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
     ) -> None;
 }

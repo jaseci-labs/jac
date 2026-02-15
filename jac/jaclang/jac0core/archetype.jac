@@ -62,7 +62,7 @@ glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype |
 obj ObjectSpatialDestination {
     has direction: EdgeDir,
         `edge: (Callable[([Archetype], bool)] | None) = None,
-        `node: (Callable[([Archetype], bool)] | None) = None;
+        nd: (Callable[([Archetype], bool)] | None) = None;
 
     def edge_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool;
@@ -90,25 +90,25 @@ obj ObjectSpatialPath {
         self: ObjectSpatialPath,
         direction: EdgeDir,
         `edge: ObjectSpatialFilter,
-        `node: ObjectSpatialFilter
+        nd: ObjectSpatialFilter
     ) -> ObjectSpatialPath;
 
     def edge_out(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath;
 
     def edge_in(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath;
 
     def edge_any(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath;
 
     def set_edge_only(self: ObjectSpatialPath) -> ObjectSpatialPath;

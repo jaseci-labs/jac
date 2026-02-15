@@ -19,18 +19,18 @@ impl UniPass.before_pass(self: UniPass) -> None { }
 impl UniPass.after_pass(self: UniPass) -> None { }
 
 """Run on entering node."""
-impl UniPass.enter_node(self: UniPass, `node: uni.UniNode) -> None {
+impl UniPass.enter_node(self: UniPass, nd: uni.UniNode) -> None {
     import from jaclang.jac0core.helpers { pascal_to_snake }
-    if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}") {
-        getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(`node);
+    if hasattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}") {
+        getattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}")(nd);
     }
 }
 
 """Run on exiting node."""
-impl UniPass.exit_node(self: UniPass, `node: uni.UniNode) -> None {
+impl UniPass.exit_node(self: UniPass, nd: uni.UniNode) -> None {
     import from jaclang.jac0core.helpers { pascal_to_snake }
-    if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}") {
-        getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(`node);
+    if hasattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}") {
+        getattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}")(nd);
     }
 }
 
@@ -40,13 +40,13 @@ impl UniPass.prune(self: UniPass) -> None {
 }
 
 """Recalculate parents."""
-impl UniPass.recalculate_parents(self: UniPass, `node: uni.UniNode) -> None {
-    if not `node {
+impl UniPass.recalculate_parents(self: UniPass, nd: uni.UniNode) -> None {
+    if not nd {
         return;
     }
-    for i in `node.kid {
+    for i in nd.kid {
         if i {
-            i.parent = `node;
+            i.parent = nd;
             self.recalculate_parents(i);
         }
     }
@@ -68,14 +68,14 @@ impl UniPass.transform(self: UniPass, ir_in: uni.Module) -> uni.Module {
 }
 
 """Traverse tree."""
-impl UniPass.traverse(self: UniPass, `node: uni.UniNode) -> uni.UniNode {
+impl UniPass.traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode {
     if self.is_canceled() {
-        return `node;
+        return nd;
     }
-    self.cur_node = `node;
-    self.enter_node(`node);
+    self.cur_node = nd;
+    self.enter_node(nd);
     if not self.prune_signal {
-        for i in `node.kid {
+        for i in nd.kid {
             if i {
                 self.traverse(i);
             }
@@ -83,10 +83,10 @@ impl UniPass.traverse(self: UniPass, `node: uni.UniNode) -> uni.UniNode {
     } else {
         self.prune_signal = False;
     }
-    self.cur_node = `node;
+    self.cur_node = nd;
     if self.is_canceled() {
-        return `node;
+        return nd;
     }
-    self.exit_node(`node);
-    return `node;
+    self.exit_node(nd);
+    return nd;
 }

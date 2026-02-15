@@ -28,14 +28,14 @@ def debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]];
 def sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode];
 
 def find_deepest_symbol_node_at_pos(
-    `node: uni.UniNode, line: int, character: int
+    nd: uni.UniNode, line: int, character: int
 ) -> Optional[uni.AstSymbolNode];
 
 def position_within_node(n: uni.UniNode, line: int, character: int) -> bool;
 
 def find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int];
 
-def get_symbols_for_outline(`node: UniScopeNode) -> list[lspt.DocumentSymbol];
+def get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol];
 
 def owner_sym(table: UniScopeNode) -> Optional[Symbol];
 

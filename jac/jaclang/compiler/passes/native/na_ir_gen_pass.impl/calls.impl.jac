@@ -1,21 +1,21 @@
 """Function call codegen including builtins and method calls."""
 """Generate function call."""
-impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Handle method calls: obj.method(args)
-    if isinstance(node.target, uni.AtomTrailer) and node.target.is_attr {
-        return self._codegen_method_call(node);
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        return self._codegen_method_call(nd);
     }
-    func_name = self._get_name(node.target);
+    func_name = self._get_name(nd.target);
     if func_name is None {
         return None;
     }
     # Handle print() specially
     if func_name == "print" {
-        return self._emit_print(node);
+        return self._emit_print(nd);
     }
     # Handle len() builtin for lists, dicts, sets, and strings
     if func_name == "len" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_name = self._get_name(params_l[0]);
             elem_type_name: (str | None) = None;
@@ -86,7 +86,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle ord() builtin: load first byte, zero-extend to i64
     if func_name == "ord" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
@@ -97,7 +97,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle int() builtin: call strtol with ValueError check
     if func_name == "int" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
@@ -138,7 +138,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle chr() builtin: convert integer to single-character string
     if func_name == "chr" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
@@ -165,7 +165,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle str() builtin: convert int to string using snprintf
     if func_name == "str" {
-        params_l = node.params or [];
+        params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
@@ -206,7 +206,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     # Handle input() builtin: printf prompt, fgets from stdin
     if func_name == "input" {
         i8p = ir.IntType(8).as_pointer();
-        params_l = node.params or [];
+        params_l = nd.params or [];
         # Print prompt if provided
         if params_l {
             prompt_val = self._codegen_expr(params_l[0]);
@@ -333,11 +333,11 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle open() builtin for file I/O
     if func_name == "open" {
-        return self._emit_open(node);
+        return self._emit_open(nd);
     }
     # Handle object instantiation: ClassName(args)
     if func_name in self.struct_types {
-        return self._codegen_instantiation(node);
+        return self._codegen_instantiation(nd);
     }
     func = self.func_symtab.get(func_name);
     if func is None {
@@ -366,7 +366,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
                     }
                 } else {
                     # Infer parameter types from call arguments
-                    params = node.params or [];
+                    params = nd.params or [];
                     for param in params {
                         param_ir_types.append(ir.IntType(64));  # Default to i64
                     }
@@ -383,7 +383,7 @@ impl NaIRGenPass._codegen_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Build arguments
     args: list[ir.Value] = [];
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         val = self._codegen_expr(param);
         if val is not None {
