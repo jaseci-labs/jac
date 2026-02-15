@@ -34,31 +34,42 @@ def _handle_purge -> None {
     }
 
     cache_dir = _get_cache_dir();
-    if not cache_dir.exists() {
+    bootstrap_dir = cache_dir.parent / "bootstrap";
+
+    total_files = 0;
+    total_size = 0;
+    removed_dirs: list[str] = [];
+    for d in [cache_dir, bootstrap_dir] {
+        if d.exists() {
+            total_files += sum(
+                1
+                for f in d.iterdir()
+                if f.is_file()
+            );
+            total_size += sum(
+                f.stat().st_size
+                for f in d.iterdir()
+                if f.is_file()
+            );
+            try {
+                shutil.rmtree(d);
+                removed_dirs.append(str(d));
+            } except OSError as e {
+                print(f"Error purging {d}: {e}", file=sys.stderr);
+            }
+        }
+    }
+
+    if not removed_dirs {
         print(f"Cache directory does not exist: {cache_dir}");
         sys.exit(0);
     }
 
-    file_count = sum(
-        1
-        for f in cache_dir.iterdir()
-        if f.is_file()
-    );
-    total_size = sum(
-        f.stat().st_size
-        for f in cache_dir.iterdir()
-        if f.is_file()
-    );
-
-    try {
-        shutil.rmtree(cache_dir);
-        print(f"Purged {file_count} cached files ({total_size / 1024:.1f} KB)");
-        print(f"Removed: {cache_dir}");
-        sys.exit(0);
-    } except OSError as e {
-        print(f"Error purging cache: {e}", file=sys.stderr);
-        sys.exit(1);
+    print(f"Purged {total_files} cached files ({total_size / 1024:.1f} KB)");
+    for rd in removed_dirs {
+        print(f"Removed: {rd}");
     }
+    sys.exit(0);
 }
 
 """Start the Jac CLI."""
