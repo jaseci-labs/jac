@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.9 (Unreleased)
 
+- 1 Minor refactors/changes.
+
 ## jac-scale 0.1.8 (Latest Release)
 
 - **Stale Cache Validation for Distributed Backends**: MongoDB and Redis backends now automatically detect and remove stale anchors from previous application runs, preventing `NodeAnchor [UUID] is not a valid reference!` errors when switching between Jac applications.

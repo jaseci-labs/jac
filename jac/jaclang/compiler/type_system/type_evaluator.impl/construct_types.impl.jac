@@ -43,19 +43,19 @@ impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
 }
 
 """Return the effective type of the float."""
-impl TypeEvaluator.get_type_of_float(node: uni.Float) -> TypeBase {
+impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
     return self.prefetch.float_class;
 }
 
 """Return the effective type of the int."""
-impl TypeEvaluator.get_type_of_int(node: uni.Int) -> TypeBase {
+impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     assert self.prefetch.int_class is not None;
     return self.prefetch.int_class;
 }
 
 """Return the effective type of the string."""
-impl TypeEvaluator.get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase {
+impl TypeEvaluator.get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase {
     assert self.prefetch.str_class is not None;
     return self.prefetch.str_class;
 }

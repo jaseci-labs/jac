@@ -711,13 +711,13 @@ impl Parser.parse_module -> Module {
     seen: dict = {};
     stack: list = [module];
     while stack {
-        `node = stack.pop();
-        nid = id(`node);
+        nd = stack.pop();
+        nid = id(nd);
         if nid not in seen {
             seen[nid] = True;
-            node_list.append(`node);
-            if hasattr(`node, "kid") {
-                for child in `node.kid {
+            node_list.append(nd);
+            if hasattr(nd, "kid") {
+                for child in nd.kid {
                     stack.append(child);
                 }
             }

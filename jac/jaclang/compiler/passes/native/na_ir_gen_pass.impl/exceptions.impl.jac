@@ -245,7 +245,7 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
 
 # ─── Raise Statement Codegen ────────────────────────────────
 """Generate IR for raise statement: raise ExcType('message')."""
-impl NaIRGenPass._codegen_raise(node: uni.RaiseStmt) -> None {
+impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     # Ensure exception runtime is available
@@ -256,19 +256,19 @@ impl NaIRGenPass._codegen_raise(node: uni.RaiseStmt) -> None {
     exc_msg: (ir.Value | None) = None;
     exc_type_name = "Exception";
     exc_type_id = 0;
-    if node.cause is not None {
+    if nd.cause is not None {
         # raise ExcType("message") — handle FuncCall form
-        if isinstance(node.cause, uni.FuncCall) {
-            exc_type_name = self._get_name(node.cause.target) or "Exception";
+        if isinstance(nd.cause, uni.FuncCall) {
+            exc_type_name = self._get_name(nd.cause.target) or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
             # Get the message argument if any
-            params = node.cause.params or [];
+            params = nd.cause.params or [];
             if params {
                 exc_msg = self._codegen_expr(params[0]);
             }
         } else {
             # raise expr — evaluate the expression as the message
-            exc_msg = self._codegen_expr(node.cause);
+            exc_msg = self._codegen_expr(nd.cause);
         }
     }
     # Default to empty message if none provided
@@ -297,7 +297,7 @@ Control flow:
   finally.bb:  execute finally body → merge.bb
   merge.bb:    continue
 """
-impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
+impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     # Ensure exception runtime is available
@@ -335,8 +335,8 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
     self.builder.cbranch(is_exception, dispatch_bb, body_bb);
     # ── try.body: execute try block statements ──
     self.builder.position_at_end(body_bb);
-    if isinstance(node.body, (list, tuple)) {
-        self._codegen_body(node.body);
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
         self.builder.branch(success_bb);
@@ -345,13 +345,13 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
     self.builder.position_at_end(success_bb);
     self.builder.call(self._exc_pop_fn, []);
     # If there's an else block, generate it here (executes only when no exception)
-    if node.else_body is not None {
+    if nd.else_body is not None {
         else_bb = func.append_basic_block(name="try.else");
         self.builder.branch(else_bb);
         self.builder.position_at_end(else_bb);
-        if isinstance(node.else_body, uni.ElseStmt) {
-            if isinstance(node.else_body.body, (list, tuple)) {
-                self._codegen_body(node.else_body.body);
+        if isinstance(nd.else_body, uni.ElseStmt) {
+            if isinstance(nd.else_body.body, (list, tuple)) {
+                self._codegen_body(nd.else_body.body);
             }
         }
         if not self.builder.block.is_terminated {
@@ -374,12 +374,12 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
     );
     exc_obj_val = self.builder.load(exc_obj_ptr, name="exc.obj");
-    if node.excepts {
+    if nd.excepts {
         # Chain of dispatch blocks for each except clause
         current_dispatch_bb = dispatch_bb;
-        for (i, except_node) in enumerate(node.excepts) {
+        for (i, except_node) in enumerate(nd.excepts) {
             handler_bb = func.append_basic_block(name=f"except.handler.{i}");
-            is_last = i == len(node.excepts) - 1;
+            is_last = i == len(nd.excepts) - 1;
 
             if not is_last {
                 next_dispatch_bb = func.append_basic_block(
@@ -466,9 +466,9 @@ impl NaIRGenPass._codegen_try(node: uni.TryStmt) -> None {
     }
     # ── finally.bb: execute finally body (always runs) ──
     self.builder.position_at_end(finally_bb);
-    if node.finally_body is not None {
-        if isinstance(node.finally_body.body, (list, tuple)) {
-            self._codegen_body(node.finally_body.body);
+    if nd.finally_body is not None {
+        if isinstance(nd.finally_body.body, (list, tuple)) {
+            self._codegen_body(nd.finally_body.body);
         }
     }
     if not self.builder.block.is_terminated {

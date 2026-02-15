@@ -2,18 +2,18 @@ impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
     return JsxElement(tag=tag, props=props, children=children);
 }
 
-impl renderJsxTree(node: JsxElement, container: any) -> None {
-    container.replaceChildren(__buildDom(node));
+impl renderJsxTree(nd: JsxElement, container: any) -> None {
+    container.replaceChildren(__buildDom(nd));
 }
 
-impl __buildDom(node: any) -> any {
-    if node == None {
+impl __buildDom(nd: any) -> any {
+    if nd == None {
         return document.createTextNode("");
     }
     # Handle arrays (from .map() calls) - return a document fragment
-    if Array.isArray(node) {
+    if Array.isArray(nd) {
         fragment = document.createDocumentFragment();
-        for item in node {
+        for item in nd {
             childDom = __buildDom(item);
             if childDom {
                 fragment.appendChild(childDom);
@@ -21,14 +21,14 @@ impl __buildDom(node: any) -> any {
         }
         return fragment;
     }
-    if not __isObject(node) {
-        return document.createTextNode(String(node));
+    if not __isObject(nd) {
+        return document.createTextNode(String(nd));
     }
     # Handle component functions
-    tag = node.tag;
+    tag = nd.tag;
     if __isFunction(tag) {
-        props = node.props;
-        children = node.children;
+        props = nd.props;
+        children = nd.children;
         # Merge children into props for component
         if children and children.length > 0 {
             props["children"] = children;
@@ -38,13 +38,13 @@ impl __buildDom(node: any) -> any {
     # Create element
     element = document.createElement(tag or "div");
     # Apply properties
-    props = node.props;
+    props = nd.props;
     for key in __objectKeys(props) {
         value = props.get(key);
         __applyProp(element, key, value);
     }
     # Render children
-    children = node.children;
+    children = nd.children;
     for child in children {
         childDom = __buildDom(child);
         if childDom {
@@ -671,12 +671,12 @@ impl __jacEnsureRegistry -> dict {
     return registry;
 }
 
-impl __jacApplyRender(renderer: any, container: any, node: any) -> None {
+impl __jacApplyRender(renderer: any, container: any, nd: any) -> None {
     if not renderer or not container {
         return;
     }
     try {
-        renderer(node, container);
+        renderer(nd, container);
     } except Exception as err {
         console.error("[Jac] Failed to render JSX tree", err);
     }
@@ -752,9 +752,7 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(
-            lambda node: any  -> None { __jacApplyRender(renderer, rootEl, node);}
-        ).catch(
+        value.then(lambda nd: any  -> None { __jacApplyRender(renderer, rootEl, nd);}).catch(
             lambda err: any  -> None { console.error(
                 "[Jac] Error resolving client function promise", err
             );}

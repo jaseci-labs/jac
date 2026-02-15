@@ -38,7 +38,7 @@ obj JacAutoLintPass(UniPass) {
     def _load_lint_config -> None;
     def is_rule_enabled(rule: LintRule) -> bool;
     def _is_file_excluded(file_path: str) -> bool;
-    def enter_module(node: uni.Module) -> None;
+    def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
     def is_module_level_construct(stmt: uni.UniNode) -> bool;
     def create_glob_from_assignment(assignment: uni.Assignment) -> uni.GlobalVars;
@@ -47,18 +47,18 @@ obj JacAutoLintPass(UniPass) {
     def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
     def combine_consecutive_has(body: list) -> list;
     def combine_consecutive_glob(body: list) -> list;
-    def enter_archetype(node: uni.Archetype) -> None;
-    def enter_enum(node: uni.Enum) -> None;
-    def enter_impl_def(node: uni.ImplDef) -> None;
-    def exit_impl_def(node: uni.ImplDef) -> None;
+    def enter_archetype(nd: uni.Archetype) -> None;
+    def enter_enum(nd: uni.Enum) -> None;
+    def enter_impl_def(nd: uni.ImplDef) -> None;
+    def exit_impl_def(nd: uni.ImplDef) -> None;
     def enter_ability(ability_node: uni.Ability) -> None;
     def _remove_staticmethod_from_kids(ability_node: uni.Ability) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
-    def enter_name(node: uni.Name) -> None;
-    def enter_special_var_ref(node: uni.SpecialVarRef) -> None;
-    def enter_builtin_type(node: uni.BuiltinType) -> None;
-    def exit_func_call(node: uni.FuncCall) -> None;
-    def _convert_hasattr_to_null_ok(node: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def enter_name(nd: uni.Name) -> None;
+    def enter_special_var_ref(nd: uni.SpecialVarRef) -> None;
+    def enter_builtin_type(nd: uni.BuiltinType) -> None;
+    def exit_func_call(nd: uni.FuncCall) -> None;
+    def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _is_matching_attr_access(
         trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
     ) -> bool;
@@ -90,5 +90,5 @@ obj JacAutoLintPass(UniPass) {
     ) -> None;
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
-    def _check_no_print(node: uni.FuncCall) -> None;
+    def _check_no_print(nd: uni.FuncCall) -> None;
 }

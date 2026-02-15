@@ -92,7 +92,7 @@ obj TypeEvaluator {
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
     def get_none_type -> TypeBase;
-    def add_diagnostic(node: uni.UniNode, message: str, warning: bool = False) -> None;
+    def add_diagnostic(nd: uni.UniNode, message: str, warning: bool = False) -> None;
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
@@ -103,9 +103,9 @@ obj TypeEvaluator {
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
-    def get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase;
-    def get_type_of_int(node: uni.Int) -> TypeBase;
-    def get_type_of_float(node: uni.Float) -> TypeBase;
+    def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
+    def get_type_of_int(nd: uni.Int) -> TypeBase;
+    def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
     def is_any_type(ty: TypeBase) -> bool;
     def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
@@ -130,9 +130,9 @@ obj TypeEvaluator {
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
-    def _get_enclosing_function(node: uni.UniNode) -> uni.Ability | None;
-    def _get_enclosing_method(node: uni.UniNode) -> uni.Ability | None;
-    def _get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None;
+    def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;

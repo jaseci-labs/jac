@@ -261,8 +261,8 @@ impl GrammarExtractPass.after_pass -> None {
 # Visitor: enter_impl_def
 # -------------------------------------------------------------------------
 """Check if this impl targets a parse method and extract its rule."""
-impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
-    names = self.get_impl_target_names(node);
+impl GrammarExtractPass.enter_impl_def(nd: uni.ImplDef) -> None {
+    names = self.get_impl_target_names(nd);
     if len(names) < 2 {
         return;
     }
@@ -275,7 +275,7 @@ impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
         return;
     }
     rule_name = method_name[6:];  # strip "parse_"
-    body = node.body;
+    body = nd.body;
     if not isinstance(body, list) and not isinstance(body, tuple) {
         return;
     }
@@ -290,9 +290,9 @@ impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
 # get_impl_target_names
 # -------------------------------------------------------------------------
 """Extract class and method names from an ImplDef target."""
-impl GrammarExtractPass.get_impl_target_names(node: uni.ImplDef) -> list {
+impl GrammarExtractPass.get_impl_target_names(nd: uni.ImplDef) -> list {
     names: list = [];
-    for name_atom in node.target {
+    for name_atom in nd.target {
         if isinstance(name_atom, uni.Name) {
             names.append(name_atom.value);
         } elif name_atom?.sym_name {
@@ -786,10 +786,10 @@ impl GrammarExtractPass.analyze_condition(cond: uni.Expr) -> tuple | None {
 # AST helpers
 # -------------------------------------------------------------------------
 """Extract method name from self.method access."""
-impl GrammarExtractPass.get_self_method(node: uni.Expr) -> str | None {
-    if isinstance(node, uni.AtomTrailer) and node.is_attr {
-        target = node.target;
-        right = node.right;
+impl GrammarExtractPass.get_self_method(nd: uni.Expr) -> str | None {
+    if isinstance(nd, uni.AtomTrailer) and nd.is_attr {
+        target = nd.target;
+        right = nd.right;
         is_self = False;
         if isinstance(target, uni.SpecialVarRef) {
             is_self = target.value == "self";

@@ -179,9 +179,9 @@ class _SetupProgress {
 glob setup_progress = _SetupProgress();
 
 """Recalculate parent pointers after mutating node children."""
-def _recalculate_parents(node: uni.UniNode) -> None {
-    for child in node.kid {
-        child.parent = node;
+def _recalculate_parents(nd: uni.UniNode) -> None {
+    for child in nd.kid {
+        child.parent = nd;
         _recalculate_parents(child);
     }
 }
