@@ -1293,8 +1293,7 @@ def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
     program = JacProgram()
     program.compile(fixture_path("test_syntax_err.jac"))
     assert len(program.errors_had) == 1, (
-        f"Expected 1 error with improved error reporting, "
-        f"got {len(program.errors_had)}"
+        f"Expected 1 error with improved error reporting, got {len(program.errors_had)}"
     )
     # The new error reporting gives a single, clear error message
     # pointing to exactly where the problem is
