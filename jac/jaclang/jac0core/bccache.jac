@@ -110,17 +110,15 @@ def discover_base_file(annex_path: str) -> (str | None) {
 
     Attributes:
         source_path: Absolute path to the source .jac file.
-        minimal: Whether minimal compilation mode was used.
         python_version: Python version tuple (major, minor).
     """
 @dataclass(frozen=True, slots=True)
 obj CacheKey {
     has source_path: str,
-        minimal: bool,
         python_version: tuple[(int, int)];
 
     @classmethod
-    def for_source(cls: Any, source_path: str, minimal: bool = False) -> CacheKey;
+    def for_source(cls: Any, source_path: str) -> CacheKey;
 }
 
 """Abstract interface for bytecode caching."""
@@ -143,13 +141,12 @@ class BytecodeCache {
     - macOS:   ~/Library/Caches/jac/bytecode/
     - Windows: %LOCALAPPDATA%/jac/cache/bytecode/
 
-    Filenames include a path hash, Python version, and compilation mode
+    Filenames include a path hash and Python version
     to ensure uniqueness across different projects and avoid conflicts.
 
     Example:
         source:  /project/src/main.jac
         cache:   ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.jbc
-                 ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.minimal.jbc
                  ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.mtir.pkl
                  ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.llvmir  (native modules)
                  ~/.cache/jac/bytecode/main.a1b2c3d4.cpython-312.interop.pkl  (native interop)
@@ -157,7 +154,6 @@ class BytecodeCache {
 class DiskBytecodeCache(BytecodeCache) {
     with entry {
         EXTENSION: Final[str] = '.jbc';
-        MINIMAL_SUFFIX: Final[str] = '.minimal';
         MTIR_EXTENSION: Final[str] = '.mtir.pkl';
         LLVMIR_EXTENSION: Final[str] = '.llvmir';
         INTEROP_EXTENSION: Final[str] = '.interop.pkl';
@@ -189,10 +185,7 @@ class DiskBytecodeCache(BytecodeCache) {
         path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
         (major, minor) = key.python_version;
         py_version = f"cpython-{major}{minor}";
-        suffix = f"{self.MINIMAL_SUFFIX}{self.EXTENSION}"
-        if key.minimal
-        else self.EXTENSION;
-        cache_name = f"{source.stem}.{path_hash}.{py_version}{suffix}";
+        cache_name = f"{source.stem}.{path_hash}.{py_version}{self.EXTENSION}";
         return (cache_dir / cache_name);
     }
 

@@ -235,3 +235,6 @@ init_as_call.jac
 impl_match_confused.impl.jac
 archetype.impl.jac
 pyast_gen_pass.impl.jac
+executor.impl.jac
+help.impl.jac
+mtir.impl.jac

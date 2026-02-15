@@ -39,9 +39,7 @@ class JacProgram {
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
 
     """Get the bytecode for a specific module."""
-    def get_bytecode(
-        self: JacProgram, full_target: str, minimal: bool = False
-    ) -> (types.CodeType | None);
+    def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
 
     """Parse source string into an AST module."""
     def parse_str(
@@ -59,7 +57,6 @@ class JacProgram {
         no_cgen: bool = False,
         type_check: bool = False,
         symtab_ir_only: bool = False,
-        minimal: bool = False,
         cancel_token: (Event | None) = None,
         options: (CompileOptions | None) = None
     ) -> uni.Module;

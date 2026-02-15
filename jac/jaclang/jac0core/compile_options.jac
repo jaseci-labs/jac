@@ -7,8 +7,7 @@ import from typing { Any }
 
 """Options controlling Jac compilation behavior."""
 obj CompileOptions {
-    has minimal: bool = False,
-        type_check: bool = False,
+    has type_check: bool = False,
         symtab_ir_only: bool = False,
         no_cgen: bool = False,
         skip_native_engine: bool = False,

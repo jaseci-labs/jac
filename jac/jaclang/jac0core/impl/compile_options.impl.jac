@@ -5,7 +5,6 @@ impl CompileOptions.with_skip_native_engine(
     self: CompileOptions, `skip: bool = True
 ) -> CompileOptions {
     return CompileOptions(
-        minimal=self.minimal,
         type_check=self.type_check,
         symtab_ir_only=self.symtab_ir_only,
         no_cgen=self.no_cgen,

@@ -1321,7 +1321,7 @@ class TestNativeCacheMarker:
             compiler = JacCompiler(bytecode_cache=cache)
             compiler.get_bytecode(jac_file, JacProgram())
 
-            key = CacheKey.for_source(jac_file, minimal=False)
+            key = CacheKey.for_source(jac_file)
             cached_ir = cache.get_llvmir(key)
             assert cached_ir == "", (
                 f"Non-native file should cache empty llvm_ir, got {cached_ir!r}"
