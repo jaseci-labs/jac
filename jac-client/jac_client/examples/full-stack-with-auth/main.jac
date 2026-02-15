@@ -556,7 +556,7 @@ cl {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         [todos, setTodos] = useState([]);
@@ -635,8 +635,8 @@ cl {
                 <h1 style={{"marginBottom": "20px"}}>
                     My Todos
                 </h1>
-                <TodoInput input={input} setInput={setInput} addTodo={addTodo} />
-                <TodoFilters filter={filter} setFilter={setFilter} />
+                <TodoInput input={input} setInput={setInput} addTodo={addTodo}/>
+                <TodoFilters filter={filter} setFilter={setFilter}/>
                 <TodoList
                     filteredTodos={filteredTodos}
                     toggleTodo={toggleTodo}
@@ -665,10 +665,10 @@ cl {
     def HomePage -> JsxElement {
         if jacIsLoggedIn() {
             return
-                <Navigate to="/todos" />;
+                <Navigate to="/todos"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
@@ -676,12 +676,12 @@ cl {
         return
             <Router>
                 <div style={{"fontFamily": "system-ui, sans-serif"}}>
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/todos" element={<TodosPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/todos" element={<TodosPage/>}/>
                     </Routes>
                 </div>
             </Router>;

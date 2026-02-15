@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.20 (Unreleased)
 
+- Minor internal refactors
+
 ## byllm 0.4.19 (Latest Release)
 
 - Various refactors

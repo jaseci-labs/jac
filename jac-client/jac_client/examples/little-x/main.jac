@@ -309,7 +309,7 @@ cl def LoginForm -> JsxElement {
             title="Login to LittleX"
             style={{"maxWidth": "400px", "margin": "50px auto"}}
         >
-            <Card.Meta title={randomSuggestion} description={result} />
+            <Card.Meta title={randomSuggestion} description={result}/>
             <form onSubmit={handle_login}>
                 <div style={{"marginBottom": "15px"}}>
                     <label style={{"display": "block", "marginBottom": "5px"}}>

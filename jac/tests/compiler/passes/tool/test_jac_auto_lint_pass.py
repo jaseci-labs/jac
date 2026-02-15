@@ -272,14 +272,20 @@ class TestCombineConsecutiveHas:
         # Verify statements were actually combined (count has statements)
         # app function: 1 combined has statement (originally 3)
         app_section = formatted.split("def app")[1].split("}")[0]
-        app_has_count = app_section.count("has ")
+        app_has_count = sum(
+            1 for line in app_section.splitlines() if line.lstrip().startswith("has ")
+        )
         assert app_has_count == 1, (
             f"Expected 1 has statement in app, got {app_has_count}"
         )
 
         # render method: 1 combined has statement (originally 3)
         render_section = formatted.split("def render")[1].split("}")[0]
-        render_has_count = render_section.count("has ")
+        render_has_count = sum(
+            1
+            for line in render_section.splitlines()
+            if line.lstrip().startswith("has ")
+        )
         assert render_has_count == 1, (
             f"Expected 1 has statement in render, got {render_has_count}"
         )
@@ -454,7 +460,7 @@ class TestFormatCommandIntegration:
                 updated_impl = f.read()
 
             # The impl file should have been fixed: param names changed from a,b to x,y
-            assert "impl Calculator.add(x: int, y: int)" in updated_impl, (
+            assert ".add(x: int, y: int)" in updated_impl, (
                 f"Impl file should have been updated with fixed params.\n"
                 f"Got: {updated_impl}"
             )
@@ -627,10 +633,13 @@ class TestHasattrConversion:
         assert "instance?.value" in formatted
         assert "instance?.name" in formatted
 
-        # hasattr calls should be replaced with null-safe access
+        # hasattr calls in safe patterns (ternary, guard-and-use) should be converted
         assert 'hasattr(instance, "value")' not in formatted
-        assert 'hasattr(instance, "name")' not in formatted
         assert "hasattr(instance, 'value')" not in formatted
+
+        # hasattr in standalone boolean context (or False) should NOT be converted
+        # because hasattr() returns bool while obj?.attr returns the value
+        assert 'hasattr(instance, "name") or False' in formatted
 
         # The if-else expressions with hasattr should be converted to or expressions
         # Pattern: obj.attr if hasattr(obj, "attr") else default

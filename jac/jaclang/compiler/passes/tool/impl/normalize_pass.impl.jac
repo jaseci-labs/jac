@@ -1571,13 +1571,12 @@ impl NormalizePass.enter_jsx_normal_attribute(`node: uni.JsxNormalAttribute) -> 
 
 """Normalize JsxText kid list."""
 impl NormalizePass.enter_jsx_text(`node: uni.JsxText) -> None {
-    # JSX text is represented as a token
-    if isinstance(`node.value, Token) {
-        new_kid: list[uni.UniNode] = [`node.value];
+    # Value is always a Token now (parser stores raw token)
+    if isinstance(`node.value, uni.Token) {
+        `node.set_kids(nodes=[`node.value]);
     } else {
-        new_kid = [`node.gen_token(Tok.JSX_TEXT, value=str(`node.value))];
+        `node.set_kids(nodes=[`node.gen_token(Tok.JSX_TEXT, value=str(`node.value))]);
     }
-    `node.set_kids(nodes=new_kid);
 }
 
 """Normalize JsxExpression kid list."""

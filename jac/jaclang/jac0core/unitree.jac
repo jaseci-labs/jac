@@ -186,7 +186,7 @@ class UniNode {
     }
 
     def gen_token(self: UniNode, name: Tok, value: (str | None) = None) -> Token {
-        import from jaclang.jac0core.jac_parser { TOKEN_MAP }
+        import from jaclang.jac0core.constant { TOKEN_MAP }
         value = value
         or (
             DELIM_MAP[name]
@@ -2893,6 +2893,38 @@ class JsxElement(AtomExpr) {
         Expr.init(self);
         AstSymbolStubNode.init(self, sym_type=SymbolType.OBJECT_ARCH);
     }
+
+    """Get the source line after the opening tag's '>' token (body start)."""
+    def get_body_start_line(self: JsxElement) -> (int | None) {
+        if not self.kid {
+            return None;
+        }
+        opening_tag = self.kid[0];
+        if isinstance(opening_tag, JsxElement) {
+            for k in opening_tag.kid {
+                if (isinstance(k, Token) and (k.name == Tok.JSX_TAG_END) and k.loc) {
+                    return k.loc.last_line + 1;
+                }
+            }
+        }
+        return None;
+    }
+
+    """Get the source line of the closing tag's '</' token (body end)."""
+    def get_body_end_line(self: JsxElement) -> (int | None) {
+        if not self.kid {
+            return None;
+        }
+        closing_tag = self.kid[-1];
+        if isinstance(closing_tag, JsxElement) {
+            for k in closing_tag.kid {
+                if (isinstance(k, Token) and (k.name == Tok.JSX_CLOSE_START) and k.loc) {
+                    return k.loc.first_line;
+                }
+            }
+        }
+        return None;
+    }
 }
 
 """JsxElementName node type for Jac Ast."""
@@ -2946,6 +2978,27 @@ class JsxText(JsxChild) {
     def init(self: JsxText, value: (str | Token), kid: Sequence[UniNode]) -> None {
         self.value = value;
         JsxChild.init(self, kid=kid);
+    }
+
+    """Normalize JSX text whitespace (single source of truth).
+
+    HTML-like rules: strip leading/trailing newline+whitespace,
+    collapse internal newline+whitespace sequences to a single space.
+    """
+    def get_normalized_text(self: JsxText) -> str {
+        import re;
+        raw = self.value.value if isinstance(self.value, Token) else str(self.value);
+        stripped = raw.strip();
+        if not stripped {
+            return "";
+        }
+        # Strip leading newline+whitespace, trailing whitespace
+        result = re.sub(r'^\s*\n\s*', '', raw).rstrip();
+        if not result {
+            result = stripped;
+        }
+        # Collapse internal newline+whitespace to single space
+        return re.sub(r'\s*\n\s*', ' ', result);
     }
 }
 
@@ -3355,7 +3408,7 @@ class Int(Literal) {
 
     @property
     def lit_value(self: Int) -> int {
-        return int(self.value);
+        return int(self.value, 0);
     }
 }
 

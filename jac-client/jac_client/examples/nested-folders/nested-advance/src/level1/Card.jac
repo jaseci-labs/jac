@@ -31,10 +31,10 @@ cl def:pub Card -> JsxElement {
                 </li>
             </ul>
             <div style={{marginTop: "15px"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
             <div style={{marginTop: "10px"}}>
-                <ButtonThirdL />
+                <ButtonThirdL/>
             </div>
         </div>;
 }

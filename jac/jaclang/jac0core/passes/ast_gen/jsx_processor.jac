@@ -221,10 +221,9 @@ class EsJsxProcessor {
     """Process JSX text node."""
     def text(self: EsJsxProcessor, `node: uni.JsxText) -> Expression {
         es = self.es;
-        raw_value = `node.value.value
-        if isinstance(`node.value, uni.Token)
-        else `node.value;
-        expr = self.pass_ref.sync_loc(es.Literal(value=str(raw_value)), jac_node=`node);
+        expr = self.pass_ref.sync_loc(
+            es.Literal(value=`node.get_normalized_text()), jac_node=`node
+        );
         `node.gen.es_ast = expr;
         return expr;
     }
@@ -362,10 +361,9 @@ class PyJsxProcessor {
 
     """Generate Python AST for JSX text nodes."""
     def text(self: PyJsxProcessor, `node: uni.JsxText) -> list[ast3.AST] {
-        raw_value = `node.value.value
-        if isinstance(`node.value, uni.Token)
-        else `node.value;
-        expr = self.pass_ref.sync(ast3.Constant(value=str(raw_value)), `node);
+        expr = self.pass_ref.sync(
+            ast3.Constant(value=`node.get_normalized_text()), `node
+        );
         `node.gen.py_ast = [expr];
         return `node.gen.py_ast;
     }

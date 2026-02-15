@@ -6,6 +6,16 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### CLI Dependency Commands Redesigned (0.10.0)
+
+The `jac add`, `jac install`, `jac remove`, and `jac update` commands were redesigned. Key behavioral changes:
+
+- `jac add` now **requires** at least one package argument (previously, calling `jac add` with no args silently fell through to install)
+- `jac add` without a version spec now queries the installed version and records `~=X.Y` (previously recorded `>=0.0.0`)
+- `jac install` now syncs all dependency types (pip, git, and plugin-provided like npm)
+- New `jac update` command for updating dependencies to latest compatible versions
+- Virtual environment is now at `.jac/venv/` instead of `.jac/packages/`
+
 ### KWESC_NAME Syntax Changed from `<>` to Backtick
 
 Keyword-escaped names now use a backtick (`` ` ``) prefix instead of the angle-bracket (`<>`) prefix. This affects any identifier that uses a Jac keyword as a variable, field, or parameter name.

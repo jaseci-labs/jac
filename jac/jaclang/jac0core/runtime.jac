@@ -607,7 +607,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_execute_entries(
+    static async def _async_execute_entries(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         current_loc: (NodeArchetype | EdgeArchetype)
@@ -664,7 +664,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_execute_exits(
+    static async def _async_execute_exits(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         current_loc: (NodeArchetype | EdgeArchetype)
@@ -725,7 +725,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_visit_node_recursive(
+    static async def _async_visit_node_recursive(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         anchor: (NodeAnchor | EdgeAnchor)
@@ -757,7 +757,7 @@ class JacWalker {
         Entry abilities execute when entering a node, exit abilities execute
         after all descendants are visited (post-order/LIFO).
         """
-    async static def async_spawn_call(
+    static async def async_spawn_call(
         `walker: WalkerAnchor, `node: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype {
         warch = `walker.archetype;
@@ -1452,7 +1452,7 @@ system,
     }
 
     """Jac's apply_dir stmt feature."""
-    async static def arefs(
+    static async def arefs(
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
     ) -> None {
         ;
@@ -1944,7 +1944,7 @@ allowed
 
             Returns an empty list if no nodes are deemed visitable.
             """;
-        @JacByLLM.by(model=model)
+        @JacByLLM.by (model=model)
         def _filter_visitable_by(
             connected_nodes: list[NodeArchetype], descriptions: str = ''
         ) -> list[int] {

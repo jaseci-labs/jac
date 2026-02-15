@@ -208,10 +208,10 @@ authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
         return
-            <ReactRouterOutlet />;
+            <ReactRouterOutlet/>;
     }
     return
-        <ReactRouterNavigate to={redirect} replace={True} />;
+        <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {

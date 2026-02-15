@@ -951,10 +951,17 @@ class Parser:
         return self._collect_until(*stops, stop_values=stop_vals or {"="})
 
     def _collect_dotted(self) -> str:
-        parts = [self._expect(TT.NAME).value]
-        while self._match(TT.DOT):
-            parts.append(self._expect(TT.NAME).value)
-        return ".".join(parts)
+        # Handle leading dots for relative imports (e.g., .tokens, ..utils)
+        prefix = ""
+        while self._at(TT.DOT):
+            prefix += "."
+            self._advance()
+        if self._at(TT.NAME):
+            parts = [self._expect(TT.NAME).value]
+            while self._match(TT.DOT):
+                parts.append(self._expect(TT.NAME).value)
+            return prefix + ".".join(parts)
+        return prefix
 
     # ── Decorators ────────────────────────────────────────────────────────
 
@@ -1189,9 +1196,35 @@ class Parser:
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
         self._expect(TT.LBRACE)
-        body = self._parse_body()
+        body = self._parse_enum_body()
         self._expect(TT.RBRACE)
         return EnumDef(name=name, bases=bases, body=body, decorators=decorators)
+
+    def _parse_enum_body(self) -> list:
+        """Parse enum body — handles comma OR semicolon separated members."""
+        body: list = []
+        while not self._at(TT.RBRACE) and not self._at(TT.EOF):
+            # Check for nested constructs (def, has, etc.)
+            tok = self._peek()
+            if tok.type == TT.NAME and not tok.backtick:
+                v = tok.value
+                if v in ("def", "static", "async", "can"):
+                    body.append(self._parse_funcdef([]))
+                    continue
+                if v == "has":
+                    body.append(self._parse_has())
+                    continue
+            if self._at(TT.AT):
+                decs = self._parse_decorators()
+                body.append(self._parse_decorated(decs))
+                continue
+            # Collect expression (enum member) until comma, semi, or closing brace
+            expr = self._collect_until(TT.SEMI, TT.COMMA)
+            self._match(TT.SEMI)
+            self._match(TT.COMMA)
+            if expr.strip():
+                body.append(ExprStmt(expr=expr))
+        return body
 
     # ── Functions ─────────────────────────────────────────────────────────
 
@@ -1215,9 +1248,12 @@ class Parser:
         return_type = ""
         if self._match(TT.ARROW):
             return_type = self._collect_type()
-        self._expect(TT.LBRACE)
-        body = self._parse_body()
-        self._expect(TT.RBRACE)
+        if self._match(TT.SEMI):
+            body = [PassStmt()]
+        else:
+            self._expect(TT.LBRACE)
+            body = self._parse_body()
+            self._expect(TT.RBRACE)
         return FuncDef(
             name=name,
             params=params,
@@ -1591,7 +1627,9 @@ class CodeGen:
         self.lines: list[str] = []
         self.indent = 0
         self.needs_dataclass_import = False
+        self.needs_enum_import = False
         self.impl_registry: dict[str, list[ImplDef]] = {}
+        self._in_class = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -1619,6 +1657,8 @@ class CodeGen:
         self._line("from __future__ import annotations")
         if self.needs_dataclass_import:
             self._line("from dataclasses import dataclass, field")
+        if self.needs_enum_import:
+            self._line("import enum")
         self._line()
         for node in module.body:
             self._emit(node)
@@ -1632,6 +1672,9 @@ class CodeGen:
                     if not has_dc:
                         self.needs_dataclass_import = True
                 self._scan_needs(node.body)
+            elif isinstance(node, EnumDef):
+                if not node.bases:
+                    self.needs_enum_import = True
             elif isinstance(node, WithEntry):
                 self._scan_needs(node.body)
 
@@ -1724,16 +1767,23 @@ class CodeGen:
         if not body and not impls:
             self._line("pass")
         else:
+            prev_in_class = self._in_class
+            self._in_class = True
             self._emit_body(body)
             for impl in impls:
                 self._emit_impl_as_method(impl)
+            self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 
     def _emit_enum(self, node: EnumDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
-        bases = node.bases if node.bases else "enum.Enum"
+        if node.bases:
+            bases = node.bases
+        else:
+            bases = "enum.Enum"
+            self.needs_enum_import = True
         self._line(f"class {node.name}({bases}):")
         self.indent += 1
         if not node.body:
@@ -1751,12 +1801,23 @@ class CodeGen:
         if node.is_static:
             self._line("@staticmethod")
         name = "__init__" if node.name == "init" else node.name
-        params = self._format_params(node.params)
+        func_params = list(node.params)
+        # Auto-add self for instance methods inside a class
+        if (
+            self._in_class
+            and not node.is_static
+            and (not func_params or func_params[0].name not in ("self", "cls"))
+        ):
+            func_params.insert(0, Param(name="self"))
+        params = self._format_params(func_params)
         ap = "async " if node.is_async else ""
         ret = f" -> {node.return_type}" if node.return_type else ""
         self._line(f"{ap}def {name}({params}){ret}:")
         self.indent += 1
+        prev_in_class = self._in_class
+        self._in_class = False  # nested functions are not methods
         self._emit_body(node.body)
+        self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 
@@ -1783,7 +1844,17 @@ class CodeGen:
             if var.by_postinit:
                 self._line(f"{var.name}: {var.type_ann} = field(init=False)")
             elif var.default:
-                self._line(f"{var.name}: {var.type_ann} = {var.default}")
+                d = var.default.strip()
+                if d == "[]":
+                    self._line(
+                        f"{var.name}: {var.type_ann} = field(default_factory=list)"
+                    )
+                elif d == "{}":
+                    self._line(
+                        f"{var.name}: {var.type_ann} = field(default_factory=dict)"
+                    )
+                else:
+                    self._line(f"{var.name}: {var.type_ann} = {var.default}")
             else:
                 self._line(f"{var.name}: {var.type_ann}")
 
@@ -1810,12 +1881,21 @@ class CodeGen:
             self._line(f"@{dec}")
         if impl.is_static:
             self._line("@staticmethod")
-        params = self._format_params(impl.params)
+        func_params = list(impl.params)
+        # Auto-add self for instance methods
+        if not impl.is_static and (
+            not func_params or func_params[0].name not in ("self", "cls")
+        ):
+            func_params.insert(0, Param(name="self"))
+        params = self._format_params(func_params)
         ap = "async " if impl.is_async else ""
         ret = f" -> {impl.return_type}" if impl.return_type else ""
         self._line(f"{ap}def {method_name}({params}){ret}:")
         self.indent += 1
+        prev_in_class = self._in_class
+        self._in_class = False  # nested functions are not methods
         self._emit_body(impl.body)
+        self._in_class = prev_in_class
         self.indent -= 1
         self._line()
 

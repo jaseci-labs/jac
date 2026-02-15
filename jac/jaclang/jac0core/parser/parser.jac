@@ -16,6 +16,8 @@ import from jaclang.jac0core.unitree {
     Token as UniToken,
     Expr
 }
+import from jaclang.jac0core.codeinfo { CodeLocInfo }
+import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
     Ellipsis as EllipsisLit,
@@ -32,14 +34,16 @@ import from jaclang.jac0core.unitree {
     ModuleCode,
     PyInlineCode
 }
-import from jaclang.jac0core.unitree { ClientBlock, ServerBlock }
+import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
+import from jaclang.jac0core.unitree { CommentToken }
 import from jaclang.jac0core.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
 import from jaclang.jac0core.unitree {
     ArchHas,
     HasVar,
     SubTag,
     ParamVar,
+    ParamKind,
     FuncSignature,
     EventSignature
 }
@@ -203,6 +207,8 @@ glob TOKEN_KIND_TO_TOK:
          TokenKind.KW_SEM: Tok.KW_SEM.value,
          TokenKind.KW_TEST: Tok.KW_TEST.value,
          TokenKind.KW_GLOBAL: Tok.KW_GLOBAL.value,
+         TokenKind.KW_GLOBAL_REF: Tok.GLOBAL_OP.value,
+         TokenKind.KW_NONLOCAL: Tok.NONLOCAL_OP.value,
          TokenKind.KW_IMPORT: Tok.KW_IMPORT.value,
          TokenKind.KW_INCLUDE: Tok.KW_INCLUDE.value,
          TokenKind.KW_FROM: Tok.KW_FROM.value,
@@ -362,7 +368,8 @@ obj Parser {
         errors: list[ParseError] = [],
         file_path: str = "<input>",
         source_code: str = "",
-        source: Source | None = None;
+        source: Source | None = None,
+        prog: object | None = None;
 
     # -------------------------------------------------------------------------
     # Token Access
@@ -379,6 +386,7 @@ obj Parser {
     def get_source -> Source;
     def match_tok(kind: TokenKind) -> Token | None;
     def expect(kind: TokenKind) -> Token;
+    def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def error(message: str);
     # -------------------------------------------------------------------------
@@ -447,9 +455,9 @@ obj Parser {
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
     def parse_dict_or_set -> Expr;
-    def parse_dict_with_spread -> DictVal;
+    def parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal;
     def parse_edge_ref_chain -> Expr;
-    def continue_edge_ref_chain(start_expr: Expr) -> Expr;
+    def continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr;
     def parse_comprehension_clauses -> list;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params(sig_kid: list) -> list;
@@ -486,7 +494,7 @@ obj Parser {
     def parse_tuple_sequence_pattern;
     def parse_mapping_pattern;
     def parse_literal_for_mapping;
-    def parse_class_pattern_args(names: list);
+    def parse_class_pattern_args(names: list, dot_unis: list | None = None);
     def parse_switch_stmt -> SwitchStmt;
     def parse_switch_case -> SwitchCase;
     def parse_return_stmt -> ReturnStmt;
@@ -526,5 +534,31 @@ obj Parser {
 # Convenience Functions
 # =============================================================================
 def parse(
-    source: str, file_path: str = "<input>"
-) -> tuple[Module, list[ParseError], list[LexerError]];
+    source: str, file_path: str = "<input>", prog: object | None = None
+) -> tuple[Module, list[ParseError], list[LexerError]] {
+    lexer = Lexer(source=source, file_path=file_path);
+    tokens = lexer.tokenize();
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
+    module = parser.parse();
+    # Transfer captured comments from lexer to module source
+    if module.source and lexer.comments {
+        for cdata in lexer.comments {
+            # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+            ct = CommentToken(
+                orig_src=module.source,
+                name="COMMENT",
+                value=cdata[0],
+                line=cdata[1],
+                end_line=cdata[2],
+                col_start=cdata[3],
+                col_end=cdata[4],
+                pos_start=cdata[5],
+                pos_end=cdata[6],
+                kid=[],
+                is_inline=False
+            );
+            module.source.comments.append(ct);
+        }
+    }
+    return (module, parser.errors, lexer.errors);
+}
