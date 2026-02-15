@@ -1,21 +1,14 @@
-#!/usr/bin/env python3
 """jac0 - Bootstrap Jac-to-Python transpiler.
 
-A single-file compiler that reads the Jac subset produced by py2jac
-and emits equivalent Python source code. This closes the bootstrap loop
-for Jac self-hosting.
-
-Usage:
-    python jac0.py file.jac [-o output.py]
-    python jac0.py file1.jac file2.jac --outdir build/
+A single-file compiler that reads the Jac subset used in jac0core
+and emits equivalent Python source code. Called in-memory by
+meta_importer._exec_bootstrap() at import time — no disk I/O needed.
 """
 
 from __future__ import annotations
 
-import argparse
 import enum
 import os
-import sys
 from dataclasses import dataclass, field
 
 # =============================================================================
@@ -1214,6 +1207,9 @@ class Parser:
                 if v == "has":
                     body.append(self._parse_has())
                     continue
+                if v == "with" and self._peek(1).value == "entry":
+                    body.append(self._parse_with_entry())
+                    continue
             if self._at(TT.AT):
                 decs = self._parse_decorators()
                 body.append(self._parse_decorated(decs))
@@ -2036,46 +2032,3 @@ def compile_jac(
                     codegen.impl_registry.setdefault(cls, []).append(node)
 
     return codegen.generate(module)
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(
-        description="jac0 - Bootstrap Jac-to-Python transpiler"
-    )
-    ap.add_argument("files", nargs="+", help="Jac source files to compile")
-    ap.add_argument("-o", "--output", help="Output file (default: stdout)")
-    ap.add_argument(
-        "--outdir", help="Output directory (writes <name>.py for each input)"
-    )
-    ap.add_argument("--no-impls", action="store_true", help="Skip impl file discovery")
-    args = ap.parse_args()
-
-    for jac_file in args.files:
-        with open(jac_file, encoding="utf-8") as f:
-            source = f.read()
-
-        impl_sources: list[tuple[str, str]] = []
-        if not args.no_impls:
-            for impl_path in discover_impl_files(jac_file):
-                with open(impl_path, encoding="utf-8") as f:
-                    impl_sources.append((f.read(), impl_path))
-
-        py_source = compile_jac(source, jac_file, impl_sources)
-
-        if args.outdir:
-            os.makedirs(args.outdir, exist_ok=True)
-            base = os.path.basename(jac_file)
-            out_name = base.replace(".jac", ".py")
-            out_path = os.path.join(args.outdir, out_name)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(py_source)
-            sys.stderr.write(f"  {jac_file} -> {out_path}\n")
-        elif args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(py_source)
-        else:
-            sys.stdout.write(py_source)
-
-
-if __name__ == "__main__":
-    main()

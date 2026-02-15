@@ -13,8 +13,8 @@ import os;
 import pickle;
 import sys;
 import types;
-import from dataclasses { dataclass }
 import from pathlib { Path }
+import from dataclasses { dataclass }
 import from typing { TYPE_CHECKING, Any, Final }
 
 with entry {
@@ -114,22 +114,13 @@ def discover_base_file(annex_path: str) -> (str | None) {
         python_version: Python version tuple (major, minor).
     """
 @dataclass(frozen=True, slots=True)
-class CacheKey {
-    with entry {
-        source_path: str;
-        minimal: bool;
+obj CacheKey {
+    has source_path: str,
+        minimal: bool,
         python_version: tuple[(int, int)];
-    }
 
-    """Create a cache key for the current Python version."""
     @classmethod
-    def for_source(cls: Any, source_path: str, minimal: bool = False) -> CacheKey {
-        return cls(
-            source_path=source_path,
-            minimal=minimal,
-            python_version=(sys.version_info.major, sys.version_info.minor)
-        );
-    }
+    def for_source(cls: Any, source_path: str, minimal: bool = False) -> CacheKey;
 }
 
 """Abstract interface for bytecode caching."""

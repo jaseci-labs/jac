@@ -147,9 +147,6 @@ import from jaclang.jac0core.constant {
     CodeContext
 }
 
-# =============================================================================
-# Parser Error
-# =============================================================================
 obj ParseError {
     has message: str,
         loc: SourceLoc;
@@ -159,11 +156,7 @@ obj ParseError {
     }
 }
 
-# =============================================================================
-# Token Kind to Tok Mapping
-# =============================================================================
-glob TOKEN_KIND_TO_TOK:
-         dict[TokenKind, str] = {
+glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          # Literals
          TokenKind.INT: Tok.INT.value,
          TokenKind.HEX: Tok.HEX.value,
@@ -359,9 +352,6 @@ glob TOKEN_KIND_TO_TOK:
          TokenKind.EOF: "EOF"
      };
 
-# =============================================================================
-# Parser
-# =============================================================================
 obj Parser {
     has tokens: list[Token],
         pos: int = 0,
@@ -371,9 +361,6 @@ obj Parser {
         source: Source | None = None,
         prog: object | None = None;
 
-    # -------------------------------------------------------------------------
-    # Token Access
-    # -------------------------------------------------------------------------
     def current -> Token;
     def peek(offset: int = 1) -> Token;
     def advance -> Token;
@@ -389,9 +376,6 @@ obj Parser {
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def error(message: str);
-    # -------------------------------------------------------------------------
-    # UniToken Creation
-    # -------------------------------------------------------------------------
     def make_uni_token(tok: Token) -> UniToken;
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;
@@ -406,18 +390,9 @@ obj Parser {
     def make_ellipsis(tok: Token) -> EllipsisLit;
     def gen_token(tok_type: str, value: str | None = None) -> UniToken;
     def make_semi -> Semi;
-    # -------------------------------------------------------------------------
-    # Synchronization (Error Recovery)
-    # -------------------------------------------------------------------------
     def synchronize;
-    # -------------------------------------------------------------------------
-    # Entry Point
-    # -------------------------------------------------------------------------
     def parse -> Module;
     def parse_module -> Module;
-    # =========================================================================
-    # EXPRESSION PARSING
-    # =========================================================================
     def parse_expression -> Expr;
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
@@ -467,9 +442,6 @@ obj Parser {
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
     def parse_jsx_child -> Expr;
-    # =========================================================================
-    # STATEMENT PARSING
-    # =========================================================================
     def parse_element_stmt;
     def parse_client_block -> ClientBlock;
     def parse_server_block -> ServerBlock;
@@ -507,9 +479,6 @@ obj Parser {
     def parse_visit_stmt -> VisitStmt;
     def parse_report_stmt -> ReportStmt;
     def parse_assignment_with_target(target: Expr) -> Assignment;
-    # =========================================================================
-    # DECLARATION PARSING
-    # =========================================================================
     def parse_import_stmt -> Import;
     def parse_archetype -> Archetype;
     def parse_archetype_member;
@@ -530,9 +499,6 @@ obj Parser {
     def parse_dotted_name -> Expr;
 }
 
-# =============================================================================
-# Convenience Functions
-# =============================================================================
 def parse(
     source: str, file_path: str = "<input>", prog: object | None = None
 ) -> tuple[Module, list[ParseError], list[LexerError]] {

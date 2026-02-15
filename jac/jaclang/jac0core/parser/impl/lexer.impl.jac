@@ -4,12 +4,7 @@ This file contains the method implementations for the Lexer class.
 The signatures are defined in lexer.jac.
 """
 
-# =============================================================================
-# Mode Management Implementations
-# =============================================================================
-impl Lexer.push_mode(
-    mode: LexerMode
-) {
+impl Lexer.push_mode(mode: LexerMode) {
     self.mode_stack.append(mode);
 }
 
@@ -43,9 +38,6 @@ impl Lexer.in_jsx -> bool {
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
 }
 
-# =============================================================================
-# Character Access Implementations
-# =============================================================================
 impl Lexer.current -> str {
     if self.pos >= len(self.source) {
         return "";
@@ -95,12 +87,7 @@ impl Lexer.match_string(expected: str) -> bool {
     return False;
 }
 
-# =============================================================================
-# Location Tracking Implementations
-# =============================================================================
-impl Lexer.make_loc(
-    start_line: int, start_col: int, start_pos: int
-) -> SourceLoc {
+impl Lexer.make_loc(start_line: int, start_col: int, start_pos: int) -> SourceLoc {
     return SourceLoc(
         file_path=self.file_path,
         line=start_line,
@@ -128,12 +115,7 @@ impl Lexer.error(message: str, start_line: int, start_col: int, start_pos: int) 
     );
 }
 
-# =============================================================================
-# Character Classification Implementations
-# =============================================================================
-impl Lexer.is_digit(
-    ch: str
-) -> bool {
+impl Lexer.is_digit(ch: str) -> bool {
     return ch >= "0" and ch <= "9";
 }
 
@@ -153,9 +135,6 @@ impl Lexer.is_whitespace(ch: str) -> bool {
     return ch == " " or ch == "\t" or ch == "\r" or ch == "\n";
 }
 
-# =============================================================================
-# Skip Whitespace and Comments Implementations
-# =============================================================================
 impl Lexer.skip_whitespace{
     while not self.at_end() and self.is_whitespace(self.current()) {
         self.advance();
@@ -234,9 +213,6 @@ impl Lexer.skip_whitespace_and_comments{
     }
 }
 
-# =============================================================================
-# Token Scanning Implementations
-# =============================================================================
 impl Lexer.scan_identifier -> Token {
     start_line = self.line;
     start_col = self.col;
@@ -741,9 +717,6 @@ impl Lexer.scan_fstring_expr_token -> Token {
     return self.scan_regular_token();
 }
 
-# =============================================================================
-# JSX Scanning
-# =============================================================================
 """Scan JSX opening tag start: consume < and enter tag mode."""
 impl Lexer.scan_jsx_open_start -> Token {
     start_line = self.line;
@@ -1463,9 +1436,6 @@ impl Lexer.scan_operator -> Token {
     return self.make_token(TokenKind.ERROR, ch, start_line, start_col, start_pos);
 }
 
-# =============================================================================
-# Main Tokenization Implementations
-# =============================================================================
 impl Lexer.next_token -> Token {
     mode = self.current_mode();
     # Handle f-string modes
@@ -1568,9 +1538,6 @@ impl Lexer.has_errors -> bool {
     return len(self.errors) > 0;
 }
 
-# =============================================================================
-# Convenience Function Implementation
-# =============================================================================
 impl tokenize(
     source: str, file_path: str = "<input>"
 ) -> tuple[list[Token], list[LexerError]] {

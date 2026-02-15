@@ -134,9 +134,6 @@ import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType 
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
 
-# =============================================================================
-# Token Access Implementations
-# =============================================================================
 impl Parser.current -> Token {
     if self.pos < len(self.tokens) {
         return self.tokens[self.pos];
@@ -356,12 +353,7 @@ impl Parser.expect_name -> Token {
     return self.current();
 }
 
-# =============================================================================
-# UniToken Creation Implementations
-# =============================================================================
-impl Parser.make_uni_token(
-    tok: Token
-) -> UniToken {
+impl Parser.make_uni_token(tok: Token) -> UniToken {
     # Convert parser Token into unitree UniToken
     tok_name: str = TOKEN_KIND_TO_TOK[tok.kind]
     if tok.kind in TOKEN_KIND_TO_TOK
@@ -609,9 +601,6 @@ impl Parser.make_semi -> Semi {
     );
 }
 
-# =============================================================================
-# Synchronization (Error Recovery) Implementations
-# =============================================================================
 impl Parser.synchronize{
     self.advance();
     while not self.at_end() {
@@ -650,9 +639,6 @@ impl Parser.synchronize{
     }
 }
 
-# =============================================================================
-# Entry Point Implementations
-# =============================================================================
 impl Parser.parse -> Module {
     return self.parse_module();
 }
@@ -727,9 +713,6 @@ impl Parser.parse_module -> Module {
     return module;
 }
 
-# =============================================================================
-# EXPRESSION PARSING Implementations
-# =============================================================================
 impl Parser.parse_expression -> Expr {
     if self.check(TokenKind.KW_LAMBDA) {
         return self.parse_lambda_expr();
@@ -2923,9 +2906,6 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
     return params;
 }
 
-# =============================================================================
-# JSX PARSING Implementations
-# =============================================================================
 """Parse a JSX element: <Tag>...</Tag> or <Tag /> or <>...</>"""
 impl Parser.parse_jsx_element -> Expr {
     kid: list = [];
@@ -3141,9 +3121,6 @@ impl Parser.parse_jsx_child -> Expr {
     return None;
 }
 
-# =============================================================================
-# STATEMENT PARSING Implementations
-# =============================================================================
 impl Parser.parse_element_stmt{
     while self.match_tok(TokenKind.SEMI) {
         continue;
@@ -4826,9 +4803,6 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
     );
 }
 
-# =============================================================================
-# DECLARATION PARSING Implementations
-# =============================================================================
 impl Parser.parse_import_stmt -> Import {
     is_include = self.check(TokenKind.KW_INCLUDE);
     hint_tok = self.advance();
@@ -5917,9 +5891,6 @@ impl Parser.parse_test -> Test {
     return Test(name=name, body=body, kid=kid, doc=None);
 }
 
-# =============================================================================
-# Switch Statement Implementation
-# =============================================================================
 impl Parser.parse_switch_stmt -> SwitchStmt {
     switch_uni = self.consume_uni(TokenKind.KW_SWITCH);
     target = self.parse_expression();
@@ -5969,9 +5940,6 @@ impl Parser.parse_switch_case -> SwitchCase {
     return SwitchCase(pattern=pattern, body=body, kid=kid);
 }
 
-# =============================================================================
-# Global Variable Implementation
-# =============================================================================
 impl Parser.parse_global_var -> GlobalVars {
     glob_kw_uni = self.consume_uni(TokenKind.KW_GLOBAL);
     access = self.parse_access_tag();
@@ -6072,9 +6040,6 @@ impl Parser.parse_global_var_assignment -> Assignment {
     );
 }
 
-# =============================================================================
-# Impl Definition Implementation
-# =============================================================================
 impl Parser.parse_impl_def -> ImplDef {
     decorators: list = [];
     impl_decor_unis: list = [];
@@ -6458,9 +6423,6 @@ impl Parser.parse_dotted_name -> Expr {
     return result;
 }
 
-# =============================================================================
-# Visit Statement Implementation
-# =============================================================================
 impl Parser.parse_visit_stmt -> VisitStmt {
     visit_uni = self.consume_uni(TokenKind.KW_VISIT);
     # Check for optional insert location: visit :SomeExpr: target
@@ -6497,9 +6459,6 @@ impl Parser.parse_visit_stmt -> VisitStmt {
     );
 }
 
-# =============================================================================
-# Report Statement Implementation
-# =============================================================================
 impl Parser.parse_report_stmt -> ReportStmt {
     report_uni = self.consume_uni(TokenKind.KW_REPORT);
     expr = self.parse_expression();
@@ -6510,9 +6469,6 @@ impl Parser.parse_report_stmt -> ReportStmt {
     return ReportStmt(expr=expr, kid=kid);
 }
 
-# =============================================================================
-# Convenience Function Implementation
-# =============================================================================
 impl parse(
     source: str, file_path: str = "<input>"
 ) -> tuple[Module, list[ParseError], list[LexerError]] {
