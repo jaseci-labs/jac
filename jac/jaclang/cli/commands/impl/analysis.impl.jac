@@ -501,7 +501,7 @@ impl grammar(lark: bool = False, output: str = "") -> int {
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
     parser_path = str(
-        Path(jaclang.__file__).parent / "compiler" / "parser" / "parser.jac"
+        Path(jaclang.__file__).parent / "jac0core" / "parser" / "parser.jac"
     );
     prog = JacProgram();
     mod = prog.compile(parser_path, no_cgen=True);

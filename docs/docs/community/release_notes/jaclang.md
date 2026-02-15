@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.2 (Unreleased)
 
+- **Fix: `jac grammar` Command Broken Path**: Fixed the `jac grammar` CLI command.
 - 3 Minor refactors/changes.
 
 ## jaclang 0.10.1 (Latest Release)
