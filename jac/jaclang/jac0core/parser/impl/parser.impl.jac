@@ -3132,6 +3132,23 @@ impl Parser.parse_jsx_child -> Expr {
         }
         # Collapse any remaining internal newline+whitespace into single space
         normalized = re.sub(r'\s*\n\s*', ' ', normalized);
+        # Preserve meaningful same-line separator spaces that appear immediately
+        # before this JSX_TEXT token (e.g., "{expr}  # text"). The lexer can
+        # omit these from token value, so recover them from source text.
+        tok_pos_start = text_tok.loc.pos_start if text_tok.loc else 0;
+        if (self.source_code and (tok_pos_start > 0)) {
+            line_start = self.source_code.rfind('\n', 0, tok_pos_start) + 1;
+            prefix = self.source_code[line_start:tok_pos_start];
+            if (prefix and prefix[-1].isspace()) {
+                stripped_prefix = prefix.rstrip();
+                if stripped_prefix {
+                    trailing_ws = len(prefix) - len(stripped_prefix);
+                    if trailing_ws > 0 {
+                        normalized = (' ' * trailing_ws) + normalized;
+                    }
+                }
+            }
+        }
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=normalized, kid=[text_node]);
     }
