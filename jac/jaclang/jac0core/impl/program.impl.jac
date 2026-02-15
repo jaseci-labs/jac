@@ -57,9 +57,9 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
 
 """Get the bytecode for a specific module."""
 impl JacProgram.get_bytecode(
-    self: JacProgram, full_target: str, minimal: bool = False
+    self: JacProgram, full_target: str
 ) -> (types.CodeType | None) {
-    return self._get_compiler().get_bytecode(full_target, self, minimal);
+    return self._get_compiler().get_bytecode(full_target, self);
 }
 
 """Parse source string into an AST module."""
@@ -80,13 +80,11 @@ impl JacProgram.compile(
     no_cgen: bool = False,
     type_check: bool = False,
     symtab_ir_only: bool = False,
-    minimal: bool = False,
     cancel_token: (Event | None) = None,
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
         options = CompileOptions(
-            minimal=minimal,
             type_check=type_check,
             symtab_ir_only=symtab_ir_only,
             no_cgen=no_cgen,

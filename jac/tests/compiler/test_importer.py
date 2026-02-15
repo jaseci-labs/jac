@@ -356,7 +356,7 @@ def test_get_bytecode_returns_cache_when_llvmir_missing() -> None:
         assert code1 is not None, "First compilation should succeed"
 
         # Verify both caches were populated
-        key = CacheKey.for_source(jac_file, minimal=False)
+        key = CacheKey.for_source(jac_file)
         assert cache.get(key) is not None, "Bytecode should be cached"
         assert cache.get_llvmir(key) == "", "LLVM IR should be cached as empty string"
 

@@ -16,7 +16,6 @@ import shutil
 import sys
 import types
 from collections.abc import Sequence
-from functools import cache
 from pathlib import Path
 from types import ModuleType
 
@@ -91,33 +90,11 @@ sys.modules["jaclang.jac0core.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 
-@cache
-def _discover_minimal_compile_modules() -> frozenset[str]:
-    """Auto-discover .jac compiler passes that need minimal compilation."""
-    jaclang_dir = Path(__file__).parent
-    passes_dir = jaclang_dir / "compiler" / "passes"
-    modules = set()
-
-    for subdir in ["main", "ecmascript", "native"]:
-        for jac_file in (passes_dir / subdir).rglob("*.jac"):
-            if jac_file.name.endswith(".impl.jac"):
-                continue
-            module_path = jac_file.relative_to(jaclang_dir).with_suffix("")
-            modules.add(f"jaclang.{module_path.as_posix().replace('/', '.')}")
-
-    return frozenset(modules)
-
-
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     """Meta path importer to load .jac modules via Python's import system."""
 
     # Directory containing the jaclang package (for bootstrap detection)
     _jaclang_dir: str = str(Path(__file__).parent)
-
-    @property
-    def MINIMAL_COMPILE_MODULES(self) -> frozenset[str]:  # noqa: N802
-        """Compiler passes written in Jac that need minimal compilation."""
-        return _discover_minimal_compile_modules()
 
     # Directory containing bootstrap .jac files (jac0core infrastructure)
     _bootstrap_dir: str = str(Path(__file__).parent / "jac0core")
@@ -256,16 +233,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         if not module.__name__.startswith("jaclang."):
             Jac.load_module(module.__name__, module)
 
-        # Use minimal compilation for compiler passes to avoid circular imports
-        use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
-
         # Get and execute bytecode using the compiler singleton
         compiler = Jac.get_compiler()
         program = Jac.get_program()
         codeobj = compiler.get_bytecode(
             full_target=file_path,
             target_program=program,
-            minimal=use_minimal,
         )
         if not codeobj:
             if is_pkg:
@@ -299,9 +272,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         paths_to_search = get_jac_search_paths()
         module_path_parts = fullname.split(".")
 
-        # Use minimal compilation for compiler passes to avoid circular imports
-        use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
-
         compiler = Jac.get_compiler()
         program = Jac.get_program()
 
@@ -314,14 +284,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     return compiler.get_bytecode(
                         full_target=init_file,
                         target_program=program,
-                        minimal=use_minimal,
                     )
                 init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
                 if os.path.isfile(init_cl_file):
                     return compiler.get_bytecode(
                         full_target=init_cl_file,
                         target_program=program,
-                        minimal=use_minimal,
                     )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
@@ -329,14 +297,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 return compiler.get_bytecode(
                     full_target=jac_file,
                     target_program=program,
-                    minimal=use_minimal,
                 )
             cl_jac_file = candidate_path + ".cl.jac"
             if os.path.isfile(cl_jac_file):
                 return compiler.get_bytecode(
                     full_target=cl_jac_file,
                     target_program=program,
-                    minimal=use_minimal,
                 )
 
         return None

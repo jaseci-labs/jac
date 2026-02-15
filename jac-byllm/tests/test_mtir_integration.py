@@ -290,7 +290,7 @@ class TestMTIRCaching:
         """Test that cache keys work for MTIR storage."""
         from jaclang.jac0core.bccache import CacheKey
 
-        key = CacheKey.for_source("/path/to/test.jac", minimal=False)
+        key = CacheKey.for_source("/path/to/test.jac")
         assert key is not None
         assert key.source_path == "/path/to/test.jac"
 
@@ -313,7 +313,7 @@ class TestMTIRCaching:
         cache = DiskBytecodeCache()
 
         # Create cache key
-        key = CacheKey.for_source(str(test_file), minimal=False)
+        key = CacheKey.for_source(str(test_file))
 
         # Create test MTIR data
         test_mtir_map = {

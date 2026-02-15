@@ -39,21 +39,40 @@ def get_symtab_ir_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     return [SymTabBuildPass, DeclImplMatchPass];
 }
 
-"""Full IR generation schedule."""
+glob _ir_sched_loading = False,
+     _codegen_sched_loading = False;
+
+"""Full IR generation schedule.
+
+    Uses a re-entrancy guard: when compiling the pass modules that this
+    schedule depends on (CFGBuildPass, etc.), the lazy imports would
+    trigger recursive compilation. The guard detects this and falls back
+    to the basic schedule (symtab + semantic analysis only), which uses
+    only jac0core passes with no lazy imports.
+    """
 def get_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    import from jaclang.compiler.passes.main {
-        CFGBuildPass,
-        MTIRGenPass,
-        SemDefMatchPass
+    global _ir_sched_loading;
+    if _ir_sched_loading {
+        return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
     }
-    return [
-        SymTabBuildPass,
-        DeclImplMatchPass,
-        SemanticAnalysisPass,
-        SemDefMatchPass,
-        CFGBuildPass,
-        MTIRGenPass
-    ];
+    _ir_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main {
+            CFGBuildPass,
+            MTIRGenPass,
+            SemDefMatchPass
+        }
+        return [
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass,
+            SemDefMatchPass,
+            CFGBuildPass,
+            MTIRGenPass
+        ];
+    } finally {
+        _ir_sched_loading = False;
+    }
 }
 
 """Type checking schedule."""
@@ -62,28 +81,31 @@ def get_type_check_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     return [TypeCheckPass];
 }
 
-"""Full Python code generation schedule."""
+"""Full Python code generation schedule.
+
+    Same re-entrancy guard as get_ir_gen_sched: when compiling the pass
+    modules this depends on, falls back to bytecode-only generation.
+    """
 def get_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-    import from jaclang.compiler.passes.main { PyJacAstLinkPass }
-    passes: list[type[Transform[(uni.Module, uni.Module)]]] = [
-        InteropAnalysisPass,
-        EsastGenPass
-    ];
-    import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-    passes.extend([NaIRGenPass, NativeCompilePass]);
-    passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
-    return passes;
-}
-
-"""Minimal IR schedule (no CFG) for bootstrap modules."""
-def get_minimal_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
-}
-
-"""Minimal codegen (bytecode only, no JS) for bootstrap modules."""
-def get_minimal_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    return [PyastGenPass, PyBytecodeGenPass];
+    global _codegen_sched_loading;
+    if _codegen_sched_loading {
+        return [PyastGenPass, PyBytecodeGenPass];
+    }
+    _codegen_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main { PyJacAstLinkPass }
+        passes: list[type[Transform[(uni.Module, uni.Module)]]] = [
+            InteropAnalysisPass,
+            EsastGenPass
+        ];
+        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
+        passes.extend([NaIRGenPass, NativeCompilePass]);
+        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        return passes;
+    } finally {
+        _codegen_sched_loading = False;
+    }
 }
 
 """Format schedule. If auto_lint=True, includes auto-linting pass.
@@ -413,10 +435,7 @@ class JacCompiler {
         JIT engines each process (required since engines can't be serialized).
         """
     def get_bytecode(
-        self: JacCompiler,
-        full_target: str,
-        target_program: JacProgram,
-        minimal: bool = False
+        self: JacCompiler, full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None) {
         actual_program = self._resolve_program(full_target, target_program);
         if (
@@ -426,7 +445,7 @@ class JacCompiler {
             codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
             return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
         }
-        cache_key = CacheKey.for_source(full_target, minimal);
+        cache_key = CacheKey.for_source(full_target);
         if isinstance(self._bytecode_cache, DiskBytecodeCache) {
             cached_code = self._bytecode_cache.get(cache_key);
             if (cached_code is not None) {
@@ -437,9 +456,7 @@ class JacCompiler {
                         full_target, actual_program, cached_ir, cached_interop
                     );
                 }
-                if not minimal {
-                    self._load_mtir_cache(cache_key, actual_program);
-                }
+                self._load_mtir_cache(cache_key, actual_program);
                 return cached_code;
             }
         }
@@ -447,16 +464,14 @@ class JacCompiler {
         if is_internal {
             setup_progress.on_internal_compile(full_target);
         }
-        options = CompileOptions(minimal=minimal);
+        options = CompileOptions();
         result = self.compile(
             file_path=full_target, target_program=actual_program, options=options
         );
         if result.gen.py_bytecode {
             if isinstance(self._bytecode_cache, DiskBytecodeCache) {
                 self._bytecode_cache.put(cache_key, result.gen.py_bytecode);
-                if not minimal {
-                    self._save_mtir_cache(cache_key, actual_program);
-                }
+                self._save_mtir_cache(cache_key, actual_program);
                 if (result.gen.llvm_ir is not None) {
                     self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir));
                     self._cache_interop_manifest(cache_key, result);
@@ -657,13 +672,6 @@ class JacCompiler {
                 passes=get_symtab_ir_sched(),
                 cancel_token=options.cancel_token
             );
-        } elif options.minimal {
-            self.run_schedule(
-                mod=mod_targ,
-                target_program=actual_program,
-                passes=get_minimal_ir_gen_sched(),
-                cancel_token=options.cancel_token
-            );
         } else {
             self.run_schedule(
                 mod=mod_targ,
@@ -672,7 +680,7 @@ class JacCompiler {
                 cancel_token=options.cancel_token
             );
         }
-        if (options.type_check and not options.minimal) {
+        if options.type_check {
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
@@ -681,13 +689,10 @@ class JacCompiler {
             );
         }
         if (not mod_targ.has_syntax_errors and not options.no_cgen) {
-            codegen_sched = get_minimal_py_code_gen()
-            if options.minimal
-            else get_py_code_gen();
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
-                passes=codegen_sched,
+                passes=get_py_code_gen(),
                 cancel_token=options.cancel_token
             );
         }
