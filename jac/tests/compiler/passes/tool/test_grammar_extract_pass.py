@@ -43,22 +43,31 @@ def _parse_spec(text: str) -> dict[str, str]:
     current_body: str = ""
     for line in text.strip().splitlines():
         line = line.rstrip()
-        if not line:
+        if not line or line.startswith("#") or line.startswith("//"):
             continue
         if "::=" in line:
             # Flush previous rule
             if current_name is not None:
-                rules[current_name] = current_body.strip()
+                rules[current_name] = _normalize_body(current_body)
             name, _, body = line.partition("::=")
             current_name = name.strip()
             current_body = body.strip()
         elif current_name is not None:
-            # Continuation of previous rule
-            current_body += " " + line.strip()
+            # Continuation line (e.g. "| alt" or indented sequence)
+            stripped = line.strip()
+            if stripped.startswith("| "):
+                current_body += " " + stripped
+            else:
+                current_body += " " + stripped
     # Flush last rule
     if current_name is not None:
-        rules[current_name] = current_body.strip()
+        rules[current_name] = _normalize_body(current_body)
     return rules
+
+
+def _normalize_body(body: str) -> str:
+    """Normalize rule body by collapsing whitespace."""
+    return " ".join(body.split())
 
 
 def _fmt(expr: GSeq | GAlt | GOpt | GStar | GTok | GRef) -> str:
@@ -237,16 +246,21 @@ class TestGrammarExtraction:
         assert len(ebnf) > 100
         assert "::=" in ebnf
         for line in ebnf.strip().split("\n"):
-            if line.strip():
-                assert "::=" in line, f"Malformed line: {line}"
+            s = line.strip()
+            if not s:
+                continue
+            # Either a rule definition or a continuation (| alt or indented seq)
+            assert "::=" in line or line.startswith(" "), f"Malformed line: {line}"
 
     def test_lark_output_nonempty(self, extracted: GrammarExtractPass) -> None:
         """Verify that Lark output uses colon syntax."""
         lark = extracted.emit_lark()
         assert len(lark) > 100
         for line in lark.strip().split("\n"):
-            if line.strip():
-                assert ":" in line
+            s = line.strip()
+            if not s:
+                continue
+            assert ":" in line or line.startswith(" "), f"Malformed line: {line}"
 
     def test_no_duplicate_rules(self, extracted: GrammarExtractPass) -> None:
         """Verify there are no duplicate rule names."""

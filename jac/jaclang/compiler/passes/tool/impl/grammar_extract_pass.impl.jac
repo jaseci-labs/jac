@@ -1249,20 +1249,182 @@ impl GrammarExtractPass.get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | Non
 # -------------------------------------------------------------------------
 # Output
 # -------------------------------------------------------------------------
+"""Format a rule with Black-style line-breaking.
+
+Short rules stay on one line. Long rules break after ::= with
+4-space indented body. Uses recursive tree-based formatting.
+"""
+impl GrammarExtractPass.format_rule_pretty(
+    rule: GrammarRule, sep: str = "::=", max_line: int = 88
+) -> str {
+    body = GrammarExtractPass.format_ebnf(self, rule.body);
+    prefix = f"{rule.name} {sep} ";
+    if len(prefix + body) <= max_line {
+        return prefix + body;
+    }
+    return f"{rule.name} {sep}\n" + self.format_expr_pretty(rule.body, 4, max_line);
+}
+
+"""Format a grammar expression with Black-style indentation.
+
+Tries flat rendering first. If it doesn't fit, expands based on
+expression type with fixed 4-space indent increments.
+"""
+impl GrammarExtractPass.format_expr_pretty(
+    expr: GExpr, indent: int, max_line: int
+) -> str {
+    pad = " " * indent;
+    flat = GrammarExtractPass.format_ebnf(self, expr);
+    if len(pad) + len(flat) <= max_line {
+        return pad + flat;
+    }
+    if isinstance(expr, GAlt) {
+        return self.format_alt_pretty(expr.choices, indent, max_line);
+    }
+    if isinstance(expr, GSeq) {
+        return self.format_seq_pretty(expr.items, indent, max_line);
+    }
+    if isinstance(expr, GOpt) {
+        return self.format_group_pretty(expr.inner, indent, max_line, "?");
+    }
+    if isinstance(expr, GStar) {
+        return self.format_group_pretty(expr.inner, indent, max_line, "*");
+    }
+    return pad + flat;
+}
+
+"""Format alternatives, one per line with | prefix for 2nd+."""
+impl GrammarExtractPass.format_alt_pretty(
+    choices: list, indent: int, max_line: int
+) -> str {
+    lines: list = [];
+    for (i, choice) in enumerate(choices) {
+        if i == 0 {
+            prefix = " " * indent;
+        } else {
+            prefix = " " * indent + "| ";
+        }
+        choice_flat = GrammarExtractPass.format_ebnf(self, choice);
+        if len(prefix) + len(choice_flat) <= max_line {
+            lines.append(prefix + choice_flat);
+        } else {
+            expanded = self.format_expr_pretty(choice, len(prefix), max_line);
+            exp_lines = expanded.split("\n");
+            lines.append(prefix + exp_lines[0].lstrip());
+            for el in exp_lines[1:] {
+                lines.append(el);
+            }
+        }
+    }
+    return "\n".join(lines);
+}
+
+"""Format a sequence by greedily packing items onto lines.
+
+When an item (GOpt/GStar with complex inner, or GAlt) needs multi-line
+expansion, opens ( on the current line, formats inner at indent+4,
+and closes ) at indent.
+"""
+impl GrammarExtractPass.format_seq_pretty(
+    items: list, indent: int, max_line: int
+) -> str {
+    pad = " " * indent;
+    lines: list = [];
+    cur = pad;
+    for item in items {
+        item_flat = GrammarExtractPass.format_ebnf(self, item);
+        if isinstance(item, GAlt) and len(item.choices) > 1 {
+            item_flat = f"({item_flat})";
+        }
+        # Try to append to current line
+        if cur == pad {
+            candidate = cur + item_flat;
+        } else {
+            candidate = cur + " " + item_flat;
+        }
+        if len(candidate) <= max_line {
+            cur = candidate;
+            continue;
+        }
+        # Doesn't fit. Try starting on a new line.
+        if len(pad + item_flat) <= max_line {
+            if cur != pad {
+                lines.append(cur);
+            }
+            cur = pad + item_flat;
+            continue;
+        }
+        # Item needs multi-line expansion
+        group_inner: GExpr | None = None;
+        suffix = "";
+        if isinstance(item, GOpt) and isinstance(item.inner, (GAlt, GSeq)) {
+            group_inner = item.inner;
+            suffix = "?";
+        } elif isinstance(item, GStar) and isinstance(item.inner, (GAlt, GSeq)) {
+            group_inner = item.inner;
+            suffix = "*";
+        } elif isinstance(item, GAlt) and len(item.choices) > 1 {
+            group_inner = item;
+            suffix = "";
+        }
+        if group_inner is not None {
+            # Put ( on current line
+            if cur != pad {
+                lines.append(cur + " (");
+            } else {
+                lines.append(pad + "(");
+            }
+            # Format inner at indent + 4
+            inner_str = self.format_expr_pretty(group_inner, indent + 4, max_line);
+            lines.append(inner_str);
+            cur = pad + ")" + suffix;
+        } else {
+            if cur != pad {
+                lines.append(cur);
+            }
+            expanded = self.format_expr_pretty(item, indent, max_line);
+            lines.append(expanded);
+            cur = pad;
+        }
+    }
+    if cur != pad {
+        lines.append(cur);
+    }
+    return "\n".join(lines);
+}
+
+"""Format GOpt/GStar: try inline (inner)suffix, else expand."""
+impl GrammarExtractPass.format_group_pretty(
+    inner: GExpr, indent: int, max_line: int, suffix: str
+) -> str {
+    pad = " " * indent;
+    inner_flat = GrammarExtractPass.format_ebnf(self, inner);
+    needs_parens = isinstance(inner, (GAlt, GSeq));
+    if not needs_parens {
+        return pad + inner_flat + suffix;
+    }
+    inline = f"({inner_flat}){suffix}";
+    if len(pad) + len(inline) <= max_line {
+        return pad + inline;
+    }
+    inner_str = self.format_expr_pretty(inner, indent + 4, max_line);
+    return f"{pad}(\n{inner_str}\n{pad}){suffix}";
+}
+
 """Emit all extracted rules in EBNF format."""
 impl GrammarExtractPass.emit_ebnf -> str {
     lines: list = [];
     for rule in self.rules {
-        lines.append(rule.to_ebnf());
+        lines.append(self.format_rule_pretty(rule, "::=", 88));
     }
-    return "\n".join(lines);
+    return "\n\n".join(lines);
 }
 
 """Emit all extracted rules in Lark format."""
 impl GrammarExtractPass.emit_lark -> str {
     lines: list = [];
     for rule in self.rules {
-        lines.append(rule.to_lark());
+        lines.append(self.format_rule_pretty(rule, ":", 88));
     }
-    return "\n".join(lines);
+    return "\n\n".join(lines);
 }

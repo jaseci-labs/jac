@@ -119,6 +119,17 @@ obj GrammarExtractPass(UniPass) {
     def get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | None;
     def get_impl_target_names(nd: uni.ImplDef) -> list;
     # Output
+    def format_rule_pretty(
+        rule: GrammarRule, sep: str = "::=", max_line: int = 88
+    ) -> str;
+
+    def format_expr_pretty(expr: GExpr, indent: int, max_line: int) -> str;
+    def format_alt_pretty(choices: list, indent: int, max_line: int) -> str;
+    def format_seq_pretty(items: list, indent: int, max_line: int) -> str;
+    def format_group_pretty(
+        inner: GExpr, indent: int, max_line: int, suffix: str
+    ) -> str;
+
     def emit_ebnf -> str;
     def emit_lark -> str;
 }
