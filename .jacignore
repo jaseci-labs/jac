@@ -233,3 +233,5 @@ with_llm_method.jac
 yield_in_assignment.jac
 init_as_call.jac
 impl_match_confused.impl.jac
+archetype.impl.jac
+pyast_gen_pass.impl.jac
