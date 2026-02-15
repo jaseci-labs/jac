@@ -32,6 +32,7 @@ obj Lexer {
         pos: int = 0,
         line: int = 1,
         col: int = 1,
+        _source_len: int = 0,
         errors: list[LexerError] = [],
         mode_stack: list[LexerMode] = [],
         fstring_brace_depth: int = 0,  # Track nested braces in f-string expressions

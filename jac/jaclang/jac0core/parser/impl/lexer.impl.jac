@@ -39,7 +39,7 @@ impl Lexer.in_jsx -> bool {
 }
 
 impl Lexer.current -> str {
-    if self.pos >= len(self.source) {
+    if self.pos >= self._source_len {
         return "";
     }
     return self.source[self.pos];
@@ -47,7 +47,7 @@ impl Lexer.current -> str {
 
 impl Lexer.peek(offset: int = 1) -> str {
     idx = self.pos + offset;
-    if idx >= len(self.source) {
+    if idx >= self._source_len {
         return "";
     }
     return self.source[idx];
@@ -66,7 +66,7 @@ impl Lexer.advance -> str {
 }
 
 impl Lexer.at_end -> bool {
-    return self.pos >= len(self.source);
+    return self.pos >= self._source_len;
 }
 
 impl Lexer.match_char(expected: str) -> bool {
@@ -235,7 +235,7 @@ impl Lexer.scan_identifier -> Token {
         if not self.at_end() and self.current() == "i" {
             if self.source[self.pos:self.pos + 2] == "in"
             and (
-                self.pos + 2 >= len(self.source)
+                self.pos + 2 >= self._source_len
                 or not self.is_alnum(self.source[self.pos + 2])
             ) {
                 self.advance();  # i
@@ -263,7 +263,7 @@ impl Lexer.scan_identifier -> Token {
         if not self.at_end() and self.current() == "n" {
             if self.source[self.pos:self.pos + 3] == "not"
             and (
-                self.pos + 3 >= len(self.source)
+                self.pos + 3 >= self._source_len
                 or not self.is_alnum(self.source[self.pos + 3])
             ) {
                 self.advance();  # n
@@ -1523,6 +1523,7 @@ impl Lexer.next_token -> Token {
 }
 
 impl Lexer.tokenize -> list[Token] {
+    self._source_len = len(self.source);
     tokens: list[Token] = [];
     while True {
         token = self.next_token();

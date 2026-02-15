@@ -135,7 +135,7 @@ import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.passes.transform { Alert }
 
 impl Parser.current -> Token {
-    if self.pos < len(self.tokens) {
+    if self.pos < self._tokens_len {
         return self.tokens[self.pos];
     }
     return self.tokens[-1];
@@ -143,7 +143,7 @@ impl Parser.current -> Token {
 
 impl Parser.peek(offset: int = 1) -> Token {
     idx = self.pos + offset;
-    if idx < len(self.tokens) {
+    if idx < self._tokens_len {
         return self.tokens[idx];
     }
     return self.tokens[-1];
@@ -151,7 +151,7 @@ impl Parser.peek(offset: int = 1) -> Token {
 
 impl Parser.advance -> Token {
     tok = self.current();
-    if self.pos < len(self.tokens) - 1 {
+    if self.pos < self._tokens_len - 1 {
         self.pos += 1;
     }
     return tok;
@@ -640,6 +640,7 @@ impl Parser.synchronize{
 }
 
 impl Parser.parse -> Module {
+    self._tokens_len = len(self.tokens);
     return self.parse_module();
 }
 

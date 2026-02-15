@@ -355,6 +355,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
 obj Parser {
     has tokens: list[Token],
         pos: int = 0,
+        _tokens_len: int = 0,
         errors: list[ParseError] = [],
         file_path: str = "<input>",
         source_code: str = "",
