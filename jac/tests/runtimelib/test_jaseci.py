@@ -103,7 +103,7 @@ def test_entrypoint_root(
         filename=fixture_abs_path("simple_persistent.jac"),
         entrypoint="traverse",
         args=[],
-        node=str(obj["id"]),
+        nd=str(obj["id"]),
     )
     output = output_capturer["get"]().strip()
     assert output == "node a\nnode b"
@@ -135,7 +135,7 @@ def test_entrypoint_non_root(
     execution.enter(
         filename=fixture_abs_path("simple_persistent.jac"),
         entrypoint="traverse",
-        node=str(a_obj["id"]),
+        nd=str(a_obj["id"]),
         args=[],
     )
     output = output_capturer["get"]().strip()
@@ -358,14 +358,14 @@ def trigger_access_validation_test(
         entrypoint="allow_other_root_access",
         args=[roots[1], 0, via_all],
         root=roots[0],
-        node=node_1,
+        nd=node_1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[0], 0, via_all],
         root=roots[1],
-        node=node_2,
+        nd=node_2,
     )
 
     execution.enter(
@@ -373,14 +373,14 @@ def trigger_access_validation_test(
         entrypoint="update_node",
         args=[20],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[10],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
 
     execution.enter(
@@ -402,14 +402,14 @@ def trigger_access_validation_test(
         entrypoint="check_node",
         args=[],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
     archs = output_capturer["get"]().strip().split("\n")
     assert len(archs) == 2
@@ -427,14 +427,14 @@ def trigger_access_validation_test(
         entrypoint="disallow_other_root_access",
         args=[roots[1], via_all],
         root=roots[0],
-        node=node_1,
+        nd=node_1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[0], via_all],
         root=roots[1],
-        node=node_2,
+        nd=node_2,
     )
 
     execution.enter(
@@ -442,14 +442,14 @@ def trigger_access_validation_test(
         entrypoint="check_node",
         args=[],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
     assert not output_capturer["get"]().strip()
 
@@ -462,14 +462,14 @@ def trigger_access_validation_test(
         entrypoint="allow_other_root_access",
         args=[roots[1], "WRITE", via_all],
         root=roots[0],
-        node=node_1,
+        nd=node_1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="allow_other_root_access",
         args=[roots[0], "WRITE", via_all],
         root=roots[1],
-        node=node_2,
+        nd=node_2,
     )
 
     execution.enter(
@@ -477,14 +477,14 @@ def trigger_access_validation_test(
         entrypoint="update_node",
         args=[200],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[100],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
 
     execution.enter(
@@ -492,14 +492,14 @@ def trigger_access_validation_test(
         entrypoint="check_node",
         args=[],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
     archs = output_capturer["get"]().strip().split("\n")
     assert len(archs) == 2
@@ -517,14 +517,14 @@ def trigger_access_validation_test(
         entrypoint="disallow_other_root_access",
         args=[roots[1], via_all],
         root=roots[0],
-        node=node_1,
+        nd=node_1,
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="disallow_other_root_access",
         args=[roots[0], via_all],
         root=roots[1],
-        node=node_2,
+        nd=node_2,
     )
 
     execution.enter(
@@ -532,14 +532,14 @@ def trigger_access_validation_test(
         entrypoint="check_node",
         args=[],
         root=roots[0],
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
         root=roots[1],
-        node=nodes[0],
+        nd=nodes[0],
     )
     assert not output_capturer["get"]().strip()
 
@@ -550,14 +550,14 @@ def trigger_access_validation_test(
         entrypoint="update_node",
         args=[1],
         root=roots[0],
-        node=nodes[0],
+        nd=nodes[0],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="update_node",
         args=[2],
         root=roots[1],
-        node=nodes[1],
+        nd=nodes[1],
     )
 
 
@@ -639,14 +639,14 @@ def test_other_root_access(
         entrypoint="check_node",
         args=[],
         root=root1,
-        node=nodes[1],
+        nd=nodes[1],
     )
     execution.enter(
         filename=fixture_abs_path("other_root_access.jac"),
         entrypoint="check_node",
         args=[],
         root=root2,
-        node=nodes[0],
+        nd=nodes[0],
     )
     assert not output_capturer["get"]().strip()
 
@@ -805,7 +805,7 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='NO_ACCESS', val2=0)"
@@ -817,7 +817,7 @@ def test_custom_access_validation(
         entrypoint="check",
         args=[],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == ""
@@ -831,7 +831,7 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["READ", None],
-        node=node,
+        nd=node,
     )
 
     # CHECK BY OTHER
@@ -841,7 +841,7 @@ def test_custom_access_validation(
         entrypoint="check",
         args=[],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='READ', val2=0)"
@@ -856,7 +856,7 @@ def test_custom_access_validation(
         entrypoint="update",
         args=[None, 1],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     # CHECK BY OTHER
@@ -866,7 +866,7 @@ def test_custom_access_validation(
         entrypoint="check",
         args=[],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='READ', val2=0)"
@@ -880,7 +880,7 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["WRITE", None],
-        node=node,
+        nd=node,
     )
 
     # UPDATE BY OTHER
@@ -889,7 +889,7 @@ def test_custom_access_validation(
         entrypoint="update",
         args=[None, 2],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     # CHECK BY OTHER
@@ -899,7 +899,7 @@ def test_custom_access_validation(
         entrypoint="check",
         args=[],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='WRITE', val2=2)"
@@ -913,7 +913,7 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="update",
         args=["NO_ACCESS", None],
-        node=node,
+        nd=node,
     )
 
     # UPDATE BY OTHER
@@ -922,7 +922,7 @@ def test_custom_access_validation(
         entrypoint="update",
         args=[None, 5],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     # CHECK BY OTHER
@@ -932,7 +932,7 @@ def test_custom_access_validation(
         entrypoint="check",
         args=[],
         root=other_root,
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == ""
@@ -943,7 +943,7 @@ def test_custom_access_validation(
         filename=fixture_abs_path("custom_access_validation.jac"),
         entrypoint="check",
         args=[],
-        node=node,
+        nd=node,
     )
 
     assert output_capturer["get"]().strip() == "A(val1='NO_ACCESS', val2=2)"
@@ -1097,7 +1097,7 @@ def test_user_isolation_via_set_user_root(
         entrypoint="check_node",
         args=[],
         root=user1_root,
-        node=user2_node,
+        nd=user2_node,
     )
     cross_access = output_capturer["get"]().strip()
     assert cross_access == "", (
@@ -1111,7 +1111,7 @@ def test_user_isolation_via_set_user_root(
         entrypoint="check_node",
         args=[],
         root=user2_root,
-        node=user1_node,
+        nd=user1_node,
     )
     cross_access = output_capturer["get"]().strip()
     assert cross_access == "", (

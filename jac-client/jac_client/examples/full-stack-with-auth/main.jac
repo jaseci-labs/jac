@@ -53,7 +53,7 @@ walker toggle_todo {
 # Frontend Components
 cl {
     # Navigation
-    def Navigation -> any {
+    def Navigation -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
@@ -132,7 +132,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage -> any {
+    def LoginPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -256,7 +256,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage -> any {
+    def SignupPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -380,7 +380,7 @@ cl {
     }
 
     # TodoInput Component
-    def TodoInput(props: any) -> any {
+    def TodoInput(props: any) -> JsxElement {
         input = props.input;
         setInput = props.setInput;
         addTodo = props.addTodo;
@@ -420,7 +420,7 @@ cl {
     }
 
     # TodoFilters Component
-    def TodoFilters(props: any) -> any {
+    def TodoFilters(props: any) -> JsxElement {
         filter = props.filter;
         setFilter = props.setFilter;
 
@@ -474,7 +474,7 @@ cl {
     }
 
     # TodoItem Component
-    def TodoItem(props: any) -> any {
+    def TodoItem(props: any) -> JsxElement {
         todo = props.todo;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -523,7 +523,7 @@ cl {
     }
 
     # TodoList Component
-    def TodoList(props: any) -> any {
+    def TodoList(props: any) -> JsxElement {
         filteredTodos = props.filteredTodos;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -552,11 +552,11 @@ cl {
     }
 
     # Todos Page (Protected)
-    def TodosPage -> any {
+    def TodosPage -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         [todos, setTodos] = useState([]);
@@ -635,8 +635,8 @@ cl {
                 <h1 style={{"marginBottom": "20px"}}>
                     My Todos
                 </h1>
-                <TodoInput input={input} setInput={setInput} addTodo={addTodo} />
-                <TodoFilters filter={filter} setFilter={setFilter} />
+                <TodoInput input={input} setInput={setInput} addTodo={addTodo}/>
+                <TodoFilters filter={filter} setFilter={setFilter}/>
                 <TodoList
                     filteredTodos={filteredTodos}
                     toggleTodo={toggleTodo}
@@ -662,26 +662,26 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect
-    def HomePage -> any {
+    def HomePage -> JsxElement {
         if jacIsLoggedIn() {
             return
-                <Navigate to="/todos" />;
+                <Navigate to="/todos"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div style={{"fontFamily": "system-ui, sans-serif"}}>
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/todos" element={<TodosPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/todos" element={<TodosPage/>}/>
                     </Routes>
                 </div>
             </Router>;

@@ -141,7 +141,7 @@ impl enter(
     args: list = [],
     main: bool = True,
     `root: str = '',
-    `node: str = ''
+    nd: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -170,7 +170,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(`node);
+            mach.set_entry_node(nd);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)

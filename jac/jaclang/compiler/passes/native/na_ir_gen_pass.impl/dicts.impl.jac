@@ -407,13 +407,13 @@ impl NaIRGenPass._emit_dict_helpers(
 }
 
 """Generate code for a dict literal {k1: v1, k2: v2, ...}."""
-impl NaIRGenPass._codegen_dict_val(node: uni.DictVal) -> (ir.Value | None) {
-    if not node.kv_pairs {
+impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
+    if not nd.kv_pairs {
         # Empty dict: need type hint
         return None;
     }
     # Get first key-value pair to determine types
-    first_pair = node.kv_pairs[0];
+    first_pair = nd.kv_pairs[0];
     first_key = self._codegen_expr(first_pair.key);
     first_val = self._codegen_expr(first_pair.value);
     if first_key is None or first_val is None {
@@ -443,8 +443,8 @@ impl NaIRGenPass._codegen_dict_val(node: uni.DictVal) -> (ir.Value | None) {
     # Add first pair
     self.builder.call(helpers["set"], [dict_val, first_key, first_val]);
     # Add remaining pairs
-    for i in range(1, len(node.kv_pairs)) {
-        pair = node.kv_pairs[i];
+    for i in range(1, len(nd.kv_pairs)) {
+        pair = nd.kv_pairs[i];
         k = self._codegen_expr(pair.key);
         v = self._codegen_expr(pair.value);
         if k is not None and v is not None {

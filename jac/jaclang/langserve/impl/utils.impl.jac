@@ -247,13 +247,13 @@ impl owner_sym(table: UniScopeNode) -> Optional[Symbol] {
 }
 
 """Recursively collect symbols from the AST."""
-impl get_symbols_for_outline(`node: UniScopeNode) -> list[lspt.DocumentSymbol] {
+impl get_symbols_for_outline(nd: UniScopeNode) -> list[lspt.DocumentSymbol] {
     symbols = [];
-    owner_syms = {owner_sym(tab) for tab in `node.kid_scope};
-    for (key, item) in `node.names_in_scope.items() {
+    owner_syms = {owner_sym(tab) for tab in nd.kid_scope};
+    for (key, item) in nd.names_in_scope.items() {
         if key in _BUILTIN_NAMES
         or item in owner_syms
-        or item.decl.loc.mod_path != `node.loc.mod_path {
+        or item.decl.loc.mod_path != nd.loc.mod_path {
             continue;
         }
         pos = create_range(item.decl.loc);
@@ -268,8 +268,8 @@ impl get_symbols_for_outline(`node: UniScopeNode) -> list[lspt.DocumentSymbol] {
     }
     for sub_tab in [
         i
-        for i in `node.kid_scope
-        if i.loc.mod_path == `node.loc.mod_path
+        for i in nd.kid_scope
+        if i.loc.mod_path == nd.loc.mod_path
     ] {
         sub_symbols = get_symbols_for_outline(sub_tab);
         if isinstance(
@@ -339,17 +339,17 @@ impl position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
 
 """Return the deepest symbol node that contains the given position."""
 impl find_deepest_symbol_node_at_pos(
-    `node: uni.UniNode, line: int, character: int
+    nd: uni.UniNode, line: int, character: int
 ) -> Optional[uni.AstSymbolNode] {
     last_symbol_node = None;
-    if position_within_node(`node, line, character) {
-        if isinstance(`node, uni.AstSymbolNode) {
-            last_symbol_node = `node;
+    if position_within_node(nd, line, character) {
+        if isinstance(nd, uni.AstSymbolNode) {
+            last_symbol_node = nd;
         }
         for child in [
             i
-            for i in `node.kid
-            if i.loc.mod_path == `node.loc.mod_path
+            for i in nd.kid
+            if i.loc.mod_path == nd.loc.mod_path
         ] {
             if position_within_node(child, line, character) {
                 deeper_node = find_deepest_symbol_node_at_pos(child, line, character);

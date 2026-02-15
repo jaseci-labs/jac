@@ -3,7 +3,6 @@ import ast as py_ast;
 import atexit;
 import marshal;
 import os;
-import re;
 import sys;
 import types;
 import from threading { Event }
@@ -17,7 +16,7 @@ import from jaclang.jac0core.bccache {
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.jac0core.jac_parser { JacParser }
+import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     InteropAnalysisPass,
@@ -40,21 +39,40 @@ def get_symtab_ir_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     return [SymTabBuildPass, DeclImplMatchPass];
 }
 
-"""Full IR generation schedule."""
+glob _ir_sched_loading = False,
+     _codegen_sched_loading = False;
+
+"""Full IR generation schedule.
+
+    Uses a re-entrancy guard: when compiling the pass modules that this
+    schedule depends on (CFGBuildPass, etc.), the lazy imports would
+    trigger recursive compilation. The guard detects this and falls back
+    to the basic schedule (symtab + semantic analysis only), which uses
+    only jac0core passes with no lazy imports.
+    """
 def get_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    import from jaclang.compiler.passes.main {
-        CFGBuildPass,
-        MTIRGenPass,
-        SemDefMatchPass
+    global _ir_sched_loading;
+    if _ir_sched_loading {
+        return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
     }
-    return [
-        SymTabBuildPass,
-        DeclImplMatchPass,
-        SemanticAnalysisPass,
-        SemDefMatchPass,
-        CFGBuildPass,
-        MTIRGenPass
-    ];
+    _ir_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main {
+            CFGBuildPass,
+            MTIRGenPass,
+            SemDefMatchPass
+        }
+        return [
+            SymTabBuildPass,
+            DeclImplMatchPass,
+            SemanticAnalysisPass,
+            SemDefMatchPass,
+            CFGBuildPass,
+            MTIRGenPass
+        ];
+    } finally {
+        _ir_sched_loading = False;
+    }
 }
 
 """Type checking schedule."""
@@ -63,31 +81,39 @@ def get_type_check_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     return [TypeCheckPass];
 }
 
-"""Full Python code generation schedule."""
+"""Full Python code generation schedule.
+
+    Same re-entrancy guard as get_ir_gen_sched: when compiling the pass
+    modules this depends on, falls back to bytecode-only generation.
+    """
 def get_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-    import from jaclang.compiler.passes.main { PyJacAstLinkPass }
-    passes: list[type[Transform[(uni.Module, uni.Module)]]] = [
-        InteropAnalysisPass,
-        EsastGenPass
-    ];
-    import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-    passes.extend([NaIRGenPass, NativeCompilePass]);
-    passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
-    return passes;
+    global _codegen_sched_loading;
+    if _codegen_sched_loading {
+        return [PyastGenPass, PyBytecodeGenPass];
+    }
+    _codegen_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+        import from jaclang.compiler.passes.main { PyJacAstLinkPass }
+        passes: list[type[Transform[(uni.Module, uni.Module)]]] = [
+            InteropAnalysisPass,
+            EsastGenPass
+        ];
+        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
+        passes.extend([NaIRGenPass, NativeCompilePass]);
+        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        return passes;
+    } finally {
+        _codegen_sched_loading = False;
+    }
 }
 
-"""Minimal IR schedule (no CFG) for bootstrap modules."""
-def get_minimal_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    return [SymTabBuildPass, DeclImplMatchPass, SemanticAnalysisPass];
-}
+"""Format schedule. If auto_lint=True, includes auto-linting pass.
 
-"""Minimal codegen (bytecode only, no JS) for bootstrap modules."""
-def get_minimal_py_code_gen -> list[type[Transform[(uni.Module, uni.Module)]]] {
-    return [PyastGenPass, PyBytecodeGenPass];
-}
-
-"""Format schedule. If auto_lint=True, includes auto-linting pass."""
+    Note: Annex modules (.impl.jac, .test.jac) are loaded by the caller
+    (jac_file_formatter) via parse-only, NOT through JacAnnexPass which
+    triggers cascading compilation of the entire import graph.
+    """
 def get_format_sched(
     auto_lint: bool = False
 ) -> list[type[Transform[(uni.Module, uni.Module)]]] {
@@ -97,25 +123,21 @@ def get_format_sched(
     import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
     import from jaclang.compiler.passes.tool.jac_formatter_pass { JacFormatPass }
-    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
     if auto_lint {
-        return [
-            JacAnnexPass,
-            JacAutoLintPass,
-            DocIRGenPass,
-            CommentInjectionPass,
-            JacFormatPass
-        ];
+        return [JacAutoLintPass, DocIRGenPass, CommentInjectionPass, JacFormatPass];
     } else {
         return [DocIRGenPass, CommentInjectionPass, JacFormatPass];
     }
 }
 
-"""Lint-only schedule. Runs lint rules for error reporting without formatting."""
+"""Lint-only schedule. Runs lint rules for error reporting without formatting.
+
+    Note: Annex modules are loaded by the caller (jac_file_linter) via
+    parse-only to avoid cascading compilation through the import graph.
+    """
 def get_lint_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
     import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacAutoLintPass }
-    import from jaclang.jac0core.passes.annex_pass { JacAnnexPass }
-    return [JacAnnexPass, JacAutoLintPass];
+    return [JacAutoLintPass];
 }
 
 """Tracks and displays progress during first-run compilation of internal modules."""
@@ -177,6 +199,130 @@ class _SetupProgress {
 }
 
 glob setup_progress = _SetupProgress();
+
+"""Recalculate parent pointers after mutating node children."""
+def _recalculate_parents(nd: uni.UniNode) -> None {
+    for child in nd.kid {
+        child.parent = nd;
+        _recalculate_parents(child);
+    }
+}
+
+"""Coerce a .cl.jac module to client context."""
+def _coerce_client_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.ClientBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, uni.ServerBlock) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, uni.ServerBlock) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            context_token = elem._source_context_token();
+            if (context_token is not None and context_token.name == Tok.KW_SERVER) {
+                continue;
+            }
+            elem.code_context = CodeContext.CLIENT;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.CLIENT;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
+"""Coerce a .sv.jac module to server context."""
+def _coerce_server_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.ServerBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, uni.ClientBlock) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, uni.ClientBlock) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            elem.code_context = CodeContext.SERVER;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.SERVER;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
+"""Coerce a .na.jac module to native context."""
+def _coerce_native_module(module: uni.Module) -> None {
+    elements: list[uni.ElementStmt] = [];
+    for stmt in module.body {
+        if isinstance(stmt, uni.NativeBlock) {
+            elements.extend(stmt.body);
+        } elif isinstance(stmt, (uni.ServerBlock, uni.ClientBlock)) {
+            elements.append(stmt);
+        } elif isinstance(stmt, uni.ElementStmt) {
+            elements.append(stmt);
+        }
+    }
+    for elem in elements {
+        if isinstance(elem, (uni.ServerBlock, uni.ClientBlock)) {
+            continue;
+        }
+        if isinstance(elem, uni.ContextAwareNode) {
+            elem.code_context = CodeContext.NATIVE;
+            if (isinstance(elem, uni.ModuleCode) and elem.body) {
+                for inner in elem.body {
+                    if isinstance(inner, uni.ContextAwareNode) {
+                        inner.code_context = CodeContext.NATIVE;
+                    }
+                }
+            }
+        }
+    }
+    module.body = elements;
+    new_kid: list[uni.UniNode] = [];
+    if module.doc {
+        new_kid.append(module.doc);
+    }
+    new_kid.extend(module.body);
+    module.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+    _recalculate_parents(module);
+}
+
 """Jac Compiler singleton.
 
     Maintains separate module hub for jaclang.* modules (internal_program)
@@ -289,10 +435,7 @@ class JacCompiler {
         JIT engines each process (required since engines can't be serialized).
         """
     def get_bytecode(
-        self: JacCompiler,
-        full_target: str,
-        target_program: JacProgram,
-        minimal: bool = False
+        self: JacCompiler, full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None) {
         actual_program = self._resolve_program(full_target, target_program);
         if (
@@ -302,54 +445,38 @@ class JacCompiler {
             codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
             return marshal.loads(codeobj) if isinstance(codeobj, `bytes) else None;
         }
-        might_have_native = self._might_have_native_code(full_target);
-        cache_key = CacheKey.for_source(full_target, minimal);
+        cache_key = CacheKey.for_source(full_target);
         if isinstance(self._bytecode_cache, DiskBytecodeCache) {
             cached_code = self._bytecode_cache.get(cache_key);
             if (cached_code is not None) {
-                if might_have_native {
-                    cached_ir = self._bytecode_cache.get_llvmir(cache_key);
+                cached_ir = self._bytecode_cache.get_llvmir(cache_key);
+                if (cached_ir is not None and cached_ir != "") {
                     cached_interop = self._bytecode_cache.get_interop(cache_key);
-                    if (cached_ir is not None) {
-                        self._load_native_from_cache(
-                            full_target, actual_program, cached_ir, cached_interop
-                        );
-                        if not minimal {
-                            self._load_mtir_cache(cache_key, actual_program);
-                        }
-                        return cached_code;
-                    }
-                } else {
-                    if not minimal {
-                        self._load_mtir_cache(cache_key, actual_program);
-                    }
-                    return cached_code;
+                    self._load_native_from_cache(
+                        full_target, actual_program, cached_ir, cached_interop
+                    );
                 }
+                self._load_mtir_cache(cache_key, actual_program);
+                return cached_code;
             }
         }
         is_internal = actual_program is self._internal_program;
         if is_internal {
             setup_progress.on_internal_compile(full_target);
         }
-        options = CompileOptions(minimal=minimal);
+        options = CompileOptions();
         result = self.compile(
             file_path=full_target, target_program=actual_program, options=options
         );
         if result.gen.py_bytecode {
             if isinstance(self._bytecode_cache, DiskBytecodeCache) {
                 self._bytecode_cache.put(cache_key, result.gen.py_bytecode);
-                if not minimal {
-                    self._save_mtir_cache(cache_key, actual_program);
-                }
-                if might_have_native {
-                    if (result.gen.llvm_ir is not None) {
-                        self._bytecode_cache.put_llvmir(
-                            cache_key, str(result.gen.llvm_ir)
-                        );
-                        self._cache_interop_manifest(cache_key, result);
-                    } else {
-                        self._bytecode_cache.put_llvmir(cache_key, "");
-                    }
+                self._save_mtir_cache(cache_key, actual_program);
+                if (result.gen.llvm_ir is not None) {
+                    self._bytecode_cache.put_llvmir(cache_key, str(result.gen.llvm_ir));
+                    self._cache_interop_manifest(cache_key, result);
+                } else {
+                    self._bytecode_cache.put_llvmir(cache_key, "");
                 }
             }
             return marshal.loads(result.gen.py_bytecode);
@@ -464,34 +591,6 @@ class JacCompiler {
         self._bytecode_cache.put_interop(cache_key, interop_data);
     }
 
-    """Check if a file might contain native code.
-
-        Returns True for:
-        - .na.jac files (fully native modules)
-        - .jac files that contain 'na {' or 'na{' blocks
-
-        This is a heuristic check to determine if we need full compilation
-        (including native JIT) rather than using cached bytecode.
-        """
-    def _might_have_native_code(self: JacCompiler, file_path: str) -> bool {
-        if file_path.endswith('.na.jac') {
-            return True;
-        }
-        if file_path.endswith('.jac') {
-            try {
-                with open(file_path, encoding='utf-8') as f {
-                    content = f.read();
-                }
-                if re.search('\\bna\\s*\\{', content) {
-                    return True;
-                }
-            } except OSError {
-                ;
-            }
-        }
-        return False;
-    }
-
     """Parse source string into AST module."""
     def parse_str(
         self: JacCompiler,
@@ -514,12 +613,22 @@ class JacCompiler {
             had_error = len(py_ast_ret.errors_had) > 0;
             mod = py_ast_ret.ir_out;
         } else {
-            source = uni.Source(source_str, mod_path=file_path);
-            jac_ast_ret: Transform[(uni.Source, uni.Module)] = JacParser(
-                root_ir=source, prog=target_program, cancel_token=cancel_token
+            import from jaclang.jac0core.parser { parse as rd_parse }
+            (mod, parse_errors, lex_errors) = rd_parse(
+                source_str, file_path, prog=target_program
             );
-            had_error = len(jac_ast_ret.errors_had) > 0;
-            mod = jac_ast_ret.ir_out;
+            _recalculate_parents(mod);
+            had_error = len(parse_errors) > 0 or len(lex_errors) > 0;
+            if had_error {
+                mod.has_syntax_errors = True;
+            }
+            if file_path.endswith('.cl.jac') {
+                _coerce_client_module(mod);
+            } elif file_path.endswith('.sv.jac') {
+                _coerce_server_module(mod);
+            } elif file_path.endswith('.na.jac') {
+                _coerce_native_module(mod);
+            }
         }
         if had_error {
             return mod;
@@ -563,13 +672,6 @@ class JacCompiler {
                 passes=get_symtab_ir_sched(),
                 cancel_token=options.cancel_token
             );
-        } elif options.minimal {
-            self.run_schedule(
-                mod=mod_targ,
-                target_program=actual_program,
-                passes=get_minimal_ir_gen_sched(),
-                cancel_token=options.cancel_token
-            );
         } else {
             self.run_schedule(
                 mod=mod_targ,
@@ -578,7 +680,7 @@ class JacCompiler {
                 cancel_token=options.cancel_token
             );
         }
-        if (options.type_check and not options.minimal) {
+        if options.type_check {
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
@@ -587,13 +689,10 @@ class JacCompiler {
             );
         }
         if (not mod_targ.has_syntax_errors and not options.no_cgen) {
-            codegen_sched = get_minimal_py_code_gen()
-            if options.minimal
-            else get_py_code_gen();
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
-                passes=codegen_sched,
+                passes=get_py_code_gen(),
                 cancel_token=options.cancel_token
             );
         }
@@ -636,11 +735,43 @@ class JacCompiler {
         file_path: str, auto_lint: bool = False
     ) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
+        import from jaclang.jac0core.bccache { discover_annex_files }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
+        if len(parse_errors) > 0 or len(lex_errors) > 0 {
+            current_mod.has_syntax_errors = True;
+            prog.mod = uni.ProgramModule(current_mod);
+            return prog;
+        }
+        # Parse-only annex loading: just parse .impl.jac/.test.jac files
+        # without running SymTabBuildPass or any compilation passes.
+        # This avoids cascading import resolution that would compile the
+        # entire dependency graph for each formatted file.
+        if auto_lint {
+            for annex_path in discover_annex_files(file_path, '.impl.jac') {
+                try {
+                    annex_src = read_file_with_encoding(annex_path);
+                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    _recalculate_parents(annex_mod);
+                    current_mod.impl_mod.append(annex_mod);
+                } except Exception {
+                    ;
+                }
+            }
+            for annex_path in discover_annex_files(file_path, '.test.jac') {
+                try {
+                    annex_src = read_file_with_encoding(annex_path);
+                    (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                    _recalculate_parents(annex_mod);
+                    current_mod.test_mod.append(annex_mod);
+                } except Exception {
+                    ;
+                }
+            }
+        }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
@@ -653,10 +784,15 @@ class JacCompiler {
         source_str: str, file_path: str, auto_lint: bool = False
     ) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
         prog = JacProgram();
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
+        if len(parse_errors) > 0 or len(lex_errors) > 0 {
+            current_mod.has_syntax_errors = True;
+            prog.mod = uni.ProgramModule(current_mod);
+            return prog;
+        }
         for pass_cls in get_format_sched(auto_lint=auto_lint) {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }
@@ -667,11 +803,23 @@ class JacCompiler {
     """Lint a Jac file (report only, no formatting or output generation)."""
     static def jac_file_linter(file_path: str) -> JacProgram {
         import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.parser { parse as rd_parse }
+        import from jaclang.jac0core.bccache { discover_annex_files }
         prog = JacProgram();
         source_str = read_file_with_encoding(file_path);
-        source = uni.Source(source_str, mod_path=file_path);
-        parser_pass = JacParser(root_ir=source, prog=prog);
-        current_mod = parser_pass.ir_out;
+        (current_mod, parse_errors, lex_errors) = rd_parse(source_str, file_path);
+        _recalculate_parents(current_mod);
+        # Parse-only annex loading (same as jac_file_formatter)
+        for annex_path in discover_annex_files(file_path, '.impl.jac') {
+            try {
+                annex_src = read_file_with_encoding(annex_path);
+                (annex_mod, _, _) = rd_parse(annex_src, annex_path);
+                _recalculate_parents(annex_mod);
+                current_mod.impl_mod.append(annex_mod);
+            } except Exception {
+                ;
+            }
+        }
         for pass_cls in get_lint_sched() {
             current_mod = pass_cls(ir_in=current_mod, prog=prog).ir_out;
         }

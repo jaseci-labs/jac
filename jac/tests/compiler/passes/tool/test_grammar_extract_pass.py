@@ -25,7 +25,7 @@ from jaclang.jac0core.program import JacProgram
 PARSER_PATH = (
     Path(__file__).parent.parent.parent.parent.parent
     / "jaclang"
-    / "compiler"
+    / "jac0core"
     / "parser"
     / "parser.jac"
 )

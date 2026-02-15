@@ -1,18 +1,18 @@
 # Core Concepts
 
-Most of Jac will be recognizable if you are familary with another programming language like Python -- Jac is a Python superset, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [tutorials](../tutorials/index.md) and [language reference](../reference/language/index.md).
+Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [tutorials](../tutorials/index.md) and [language reference](../reference/language/index.md).
 
-This page focuses on the three concepts that Jac adds beyond traditional programming languges. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
+This page focuses on the three concepts that Jac adds beyond traditional programming languages. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
 
 1. [How can one language target frontend, backend, and native binaries at the same time?](#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time)
 2. [How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?](#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data)
-3. [How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?](#3-how-does-jac-abstract-away-the-laborius-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem)
+3. [How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?](#3-how-does-jac-abstract-away-the-laborious-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem)
 
 ---
 
 ## 1. How can one language target frontends, backends, and native binaries at the same time?
 
-Similar to namespaces, the Jac language introduces the conecept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace either with a **block prefix** inside a file or with a **file extension**:
+Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace either with a **block prefix** inside a file or with a **file extension**:
 
 ```mermaid
 graph LR
@@ -55,7 +55,7 @@ def:pub add_todo(title: str) -> dict {
 
 # Client codespace
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has items: list = [];
 
         async def add -> None {
@@ -80,7 +80,7 @@ Codespaces are similar to namespaces, but instead of organizing names, they orga
 
 ## 2. How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?
 
-Jac introduces graph-based Object Spatial Programming (OSP) contructs. OSP gives us two key capabilities. It provides us with a natural way to articulate solutions to problems with graph-like and hierarchical properties, and importantly, a way to organize a programs interaction with data that allows us to hide the complexity of database organization and management.
+Jac introduces graph-based Object Spatial Programming (OSP) constructs. OSP gives us two key capabilities. It provides us with a natural way to articulate solutions to problems with graph-like and hierarchical properties, and importantly, a way to organize a programs interaction with data that allows us to hide the complexity of database organization and management.
 
 Standard object-oriented programming models data as isolated objects -- you call methods to bring data to computation. OSP adds a layer on top: objects exist in a **graph** with explicit relationships. Additionally, the `walker` construct is also introduced allowing computation to **move to the data** by traversing that graph.
 
@@ -131,7 +131,7 @@ You declare `node Todo { has title: str; }`, connect instances to `root`, and th
 
 ---
 
-## 3. How does Jac abstract away the laborius task of prompt/context engineering for AI and turn it into a compiler/runtime problem?
+## 3. How does Jac abstract away the laborious task of prompt/context engineering for AI and turn it into a compiler/runtime problem?
 
 Jac introduces Compiler-Integrated AI through its `by` and `sem` keywords. These  two keywords allow integrating language models into programs at the language level rather than through library calls.
 

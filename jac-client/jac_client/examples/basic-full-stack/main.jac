@@ -31,7 +31,7 @@ walker read_todos {
 }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has todos: list = [],
             inputValue: str = "",
             filter: str = "all";
