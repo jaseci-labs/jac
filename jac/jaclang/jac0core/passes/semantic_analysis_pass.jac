@@ -6,34 +6,32 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 """Jac Semantic Analysis Pass."""
 class SemanticAnalysisPass(UniPass) {
-    def enter_archetype(self: SemanticAnalysisPass, `node: uni.Archetype) -> None {
-        def inform_from_walker(`node: uni.UniNode) -> None {
-            for i in `node.get_all_sub_nodes(uni.VisitStmt) + `node.get_all_sub_nodes(
+    def enter_archetype(self: SemanticAnalysisPass, nd: uni.Archetype) -> None {
+        def inform_from_walker(nd: uni.UniNode) -> None {
+            for i in nd.get_all_sub_nodes(uni.VisitStmt) + nd.get_all_sub_nodes(
                 uni.DisengageStmt
-            ) + `node.get_all_sub_nodes(uni.EdgeOpRef) + `node.get_all_sub_nodes(
+            ) + nd.get_all_sub_nodes(uni.EdgeOpRef) + nd.get_all_sub_nodes(
                 uni.EventSignature
-            ) + `node.get_all_sub_nodes(uni.TypedCtxBlock) {
+            ) + nd.get_all_sub_nodes(uni.TypedCtxBlock) {
                 i.from_walker = True;
             }
         }
-        if (`node.arch_type.name == Tok.KW_WALKER) {
-            inform_from_walker(`node);
-            for i in self.get_all_sub_nodes(`node, uni.Ability) {
+        if (nd.arch_type.name == Tok.KW_WALKER) {
+            inform_from_walker(nd);
+            for i in self.get_all_sub_nodes(nd, uni.Ability) {
                 if isinstance(i.body, uni.ImplDef) {
                     inform_from_walker(i.body);
                 }
             }
         }
-        self._check_archetype(`node);
+        self._check_archetype(nd);
     }
 
     """Check a single archetype for issues with attributes and methods."""
-    def _check_archetype(self: SemanticAnalysisPass, `node: uni.Archetype) -> None {
-        if (
-            (`node.arch_type.name != Tok.KW_CLASS) and isinstance(`node.body, Sequence)
-        ) {
+    def _check_archetype(self: SemanticAnalysisPass, nd: uni.Archetype) -> None {
+        if ((nd.arch_type.name != Tok.KW_CLASS) and isinstance(nd.body, Sequence)) {
             found_default_init = False;
-            for stmnt in `node.body {
+            for stmnt in nd.body {
                 if not isinstance(stmnt, uni.ArchHas) {
                     continue;
                 }
@@ -51,7 +49,7 @@ class SemanticAnalysisPass(UniPass) {
             }
             post_init_vars: list = [];
             postinit_method: (uni.Ability | None) = None;
-            for item in `node.body {
+            for item in nd.body {
                 if isinstance(item, uni.ArchHas) {
                     for var in item.vars {
                         if var.defer {
@@ -79,53 +77,53 @@ class SemanticAnalysisPass(UniPass) {
         }
     }
 
-    def _update_ctx(self: SemanticAnalysisPass, `node: uni.UniNode) -> None {
-        if isinstance(`node, uni.AtomTrailer) {
-            self._change_atom_trailer_ctx(`node);
-        } elif isinstance(`node, uni.AstSymbolNode) {
-            `node.sym_tab.update_py_ctx_for_def(`node);
+    def _update_ctx(self: SemanticAnalysisPass, nd: uni.UniNode) -> None {
+        if isinstance(nd, uni.AtomTrailer) {
+            self._change_atom_trailer_ctx(nd);
+        } elif isinstance(nd, uni.AstSymbolNode) {
+            nd.sym_tab.update_py_ctx_for_def(nd);
         } else {
-            self.log_error(f"Invalid target for context update: {type(node).__name__}");
+            self.log_error(f"Invalid target for context update: {type(nd).__name__}");
         }
     }
 
-    def enter_has_var(self: SemanticAnalysisPass, `node: uni.HasVar) -> None {
-        if isinstance(`node.parent, uni.ArchHas) {
-            `node.sym_tab.update_py_ctx_for_def(`node);
+    def enter_has_var(self: SemanticAnalysisPass, nd: uni.HasVar) -> None {
+        if isinstance(nd.parent, uni.ArchHas) {
+            nd.sym_tab.update_py_ctx_for_def(nd);
         } else {
             self.ice('HasVar should be under ArchHas');
         }
     }
 
-    def enter_param_var(self: SemanticAnalysisPass, `node: uni.ParamVar) -> None {
-        `node.sym_tab.update_py_ctx_for_def(`node);
+    def enter_param_var(self: SemanticAnalysisPass, nd: uni.ParamVar) -> None {
+        nd.sym_tab.update_py_ctx_for_def(nd);
     }
 
-    def enter_assignment(self: SemanticAnalysisPass, `node: uni.Assignment) -> None {
-        for target in `node.target {
+    def enter_assignment(self: SemanticAnalysisPass, nd: uni.Assignment) -> None {
+        for target in nd.target {
             self._update_ctx(target);
         }
     }
 
-    def enter_in_for_stmt(self: SemanticAnalysisPass, `node: uni.InForStmt) -> None {
-        self._update_ctx(`node.target);
+    def enter_in_for_stmt(self: SemanticAnalysisPass, nd: uni.InForStmt) -> None {
+        self._update_ctx(nd.target);
     }
 
-    def enter_expr_as_item(self: SemanticAnalysisPass, `node: uni.ExprAsItem) -> None {
-        if `node.alias {
-            self._update_ctx(`node.alias);
+    def enter_expr_as_item(self: SemanticAnalysisPass, nd: uni.ExprAsItem) -> None {
+        if nd.alias {
+            self._update_ctx(nd.alias);
         }
     }
 
-    def enter_inner_compr(self: SemanticAnalysisPass, `node: uni.InnerCompr) -> None {
-        self._update_ctx(`node.target);
+    def enter_inner_compr(self: SemanticAnalysisPass, nd: uni.InnerCompr) -> None {
+        self._update_ctx(nd.target);
     }
 
     """Mark final element in trailer chain as a Store context."""
     def _change_atom_trailer_ctx(
-        self: SemanticAnalysisPass, `node: uni.AtomTrailer
+        self: SemanticAnalysisPass, nd: uni.AtomTrailer
     ) -> None {
-        last = `node.right;
+        last = nd.right;
         if isinstance(last, uni.AtomExpr) {
             last.name_spec.py_ctx_func = ast3.Store;
             if isinstance(last.name_spec, uni.AstSymbolNode) {

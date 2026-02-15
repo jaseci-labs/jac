@@ -3,6 +3,6 @@ cl {
 
     def:pub page -> JsxElement {
         return
-            <FeaturesTestUI />;
+            <FeaturesTestUI/>;
     }
 }

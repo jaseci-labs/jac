@@ -161,6 +161,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1);
         }
+        console.print(f"  Linting {file_path}...");
         try {
             prog = JacProgram.jac_file_linter(str(path_obj));
             error_count = 0;
@@ -181,6 +182,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 1);
         }
+        console.print(f"  Lint-fixing {file_path}...");
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=True);
             try {
@@ -321,6 +323,7 @@ impl format(
             console.error(f"File '{file_path}' does not exist.");
             return (False, False, 0);
         }
+        console.print(f"  Formatting {file_path}...");
         try {
             prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
             if prog.mod.main.has_syntax_errors {

@@ -10,9 +10,9 @@ glob T = TypeVar('T'),
 class BaseAstGenPass(UniPass, Generic[T]) {
     """Return the list of body statements regardless of ImplDef wrapping."""
     def _get_body_inner(
-        self: BaseAstGenPass, `node: uni.Archetype | uni.Enum | uni.Ability
+        self: BaseAstGenPass, nd: uni.Archetype | uni.Enum | uni.Ability
     ) -> (Sequence | None) {
-        body = `node.body;
+        body = nd.body;
         if (isinstance(body, uni.ImplDef) and isinstance(body.body, `list)) {
             return body.body;
         }
@@ -23,18 +23,18 @@ class BaseAstGenPass(UniPass, Generic[T]) {
     }
 
     """Concatenate impl/test bodies with the main module body."""
-    def _merge_module_bodies(self: BaseAstGenPass, `node: uni.Module) -> list {
+    def _merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -> list {
         clean_body = [
             item
-            for item in `node.body
+            for item in nd.body
             if not isinstance(item, uni.ImplDef)
         ];
         merged: list = [];
-        for mod in `node.impl_mod {
+        for mod in nd.impl_mod {
             merged.extend(mod.body);
         }
         merged.extend(clean_body);
-        for mod in `node.test_mod {
+        for mod in nd.test_mod {
             merged.extend(mod.body);
         }
         return merged;

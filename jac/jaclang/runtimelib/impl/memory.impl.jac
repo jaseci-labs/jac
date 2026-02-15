@@ -355,6 +355,7 @@ impl SqliteMemory.sync -> None {
             stored = loads(row[0]) if row else None;
 
             if stored {
+                changed = False;
                 # Handle edge updates (CONNECT access)
                 if (
                     isinstance(stored, NodeAnchor)
@@ -369,20 +370,33 @@ impl SqliteMemory.sync -> None {
                         continue;
                     }
                     stored.edges = anchor.edges;
+                    changed = True;
                 }
                 # Handle access/archetype updates (WRITE access)
-                if Jac.check_write_access(anchor) {
-                    if hash(dumps(stored.access)) != hash(dumps(anchor.access)) {
+                # Only check write access when there are actual changes
+                access_changed = hash(dumps(stored.access)) != hash(
+                    dumps(anchor.access)
+                );
+                archetype_changed = hash(dumps(stored.archetype)) != hash(
+                    dumps(anchor.archetype)
+                );
+                if (access_changed or archetype_changed)
+                and Jac.check_write_access(anchor) {
+                    if access_changed {
                         stored.access = anchor.access;
                     }
-                    if hash(dumps(stored.archetype)) != hash(dumps(anchor.archetype)) {
+                    if archetype_changed {
                         stored.archetype = anchor.archetype;
                     }
+                    changed = True;
                 }
-                self.__conn__.execute(
-                    "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                    (key, dumps(stored))
-                );
+                # Only write to database if something actually changed
+                if changed {
+                    self.__conn__.execute(
+                        "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
+                        (key, dumps(stored))
+                    );
+                }
             } elif not (
                 isinstance(anchor, NodeAnchor)
                 and not isinstance(anchor.archetype, Root)

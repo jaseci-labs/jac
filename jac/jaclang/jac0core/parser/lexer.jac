@@ -48,7 +48,8 @@ obj Lexer {
         jsx_depth: int = 0,  # Track nested JSX elements
         jsx_brace_depth: int = 0,  # Track nested braces in JSX expressions
         jsx_brace_depth_stack: list[int] = [],  # Stack for nested JSX brace depth
-        jsx_closing_tag: bool = False;  # True when scanning a closing tag </...>
+        jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
+        comments: list[tuple] = [];  # Captured comments: (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
 
     # Mode management
     def push_mode(mode: LexerMode);
@@ -111,4 +112,8 @@ obj Lexer {
 # =============================================================================
 def tokenize(
     source: str, file_path: str = "<input>"
-) -> tuple[list[Token], list[LexerError]];
+) -> tuple[list[Token], list[LexerError]] {
+    lexer = Lexer(source=source, file_path=file_path);
+    tokens = lexer.tokenize();
+    return (tokens, lexer.errors);
+}

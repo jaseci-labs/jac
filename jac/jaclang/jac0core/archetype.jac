@@ -74,7 +74,7 @@ class ObjectSpatialDestination {
     with entry {
         direction: EdgeDir;
         `edge: (Callable[([Archetype], bool)] | None) = None;
-        `node: (Callable[([Archetype], bool)] | None) = None;
+        nd: (Callable[([Archetype], bool)] | None) = None;
     }
 
     """Filter edge."""
@@ -84,7 +84,7 @@ class ObjectSpatialDestination {
 
     """Filter node."""
     def node_filter(self: ObjectSpatialDestination, arch: Archetype) -> bool {
-        return (not self.node or self.node(arch));
+        return (not self.nd or self.nd(arch));
     }
 }
 
@@ -133,12 +133,10 @@ class ObjectSpatialPath {
         self: ObjectSpatialPath,
         direction: EdgeDir,
         `edge: ObjectSpatialFilter,
-        `node: ObjectSpatialFilter
+        nd: ObjectSpatialFilter
     ) -> ObjectSpatialPath {
         self.destinations.append(
-            ObjectSpatialDestination(
-                direction, self.convert(`edge), self.convert(`node)
-            )
+            ObjectSpatialDestination(direction, self.convert(`edge), self.convert(nd))
         );
         return self;
     }
@@ -147,27 +145,27 @@ class ObjectSpatialPath {
     def edge_out(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath {
-        return self.append(EdgeDir.OUT, `edge, `node);
+        return self.append(EdgeDir.OUT, `edge, nd);
     }
 
     """Override greater than function."""
     def edge_in(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath {
-        return self.append(EdgeDir.IN, `edge, `node);
+        return self.append(EdgeDir.IN, `edge, nd);
     }
 
     """Override greater than function."""
     def edge_any(
         self: ObjectSpatialPath,
         `edge: ObjectSpatialFilter = None,
-        `node: ObjectSpatialFilter = None
+        nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath {
-        return self.append(EdgeDir.ANY, `edge, `node);
+        return self.append(EdgeDir.ANY, `edge, nd);
     }
 
     """Set edge only."""
@@ -202,7 +200,7 @@ class ObjectSpatialPath {
         repr_str += mark;
         repr_str += f" (edge{' filter' if dest.edge else ''}) ";
         repr_str += mark;
-        repr_str += f" (node{' filter' if dest.node else ''}) ";
+        repr_str += f" (node{' filter' if dest.nd else ''}) ";
         return repr_str;
     }
 

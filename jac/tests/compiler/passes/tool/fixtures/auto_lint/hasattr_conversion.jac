@@ -24,7 +24,8 @@ glob result3 = instance.name if hasattr(instance, "name") else None;
 # hasattr in binary expression (and)
 glob result4 = hasattr(instance, "value") and instance.value > 0;
 
-# hasattr in binary expression (or)
+# hasattr in binary expression (or) — should NOT be converted
+# (standalone boolean check with no matching attr access in other operand)
 glob result5 = hasattr(instance, "name") or False;
 
 # hasattr with single quotes

@@ -45,10 +45,8 @@ jac start --scale
 
 | Variable | Description |
 |----------|-------------|
-| `REDIS_HOST` | Redis server host |
-| `REDIS_PORT` | Redis server port |
-| `MONGO_URI` | MongoDB connection URI |
-| `MONGO_DB` | MongoDB database name |
+| `REDIS_URL` | Redis connection URL |
+| `MONGODB_URI` | MongoDB connection URI |
 | `K8S_NAMESPACE` | Kubernetes namespace |
 | `K8S_REPLICAS` | Number of replicas |
 

@@ -163,9 +163,25 @@ impl Lexer.skip_whitespace{
 }
 
 impl Lexer.skip_line_comment{
+    start_line = self.line;
+    start_col = self.col;
+    start_pos = self.pos;
     while not self.at_end() and self.current() != "\n" {
         self.advance();
     }
+    comment_text = self.source[start_pos:self.pos];
+    self.comments.append(
+        (
+            comment_text,
+            start_line,
+            start_line,
+            start_col,
+            self.col,
+            start_pos,
+            self.pos,
+            False
+        )
+    );
 }
 
 impl Lexer.skip_block_comment -> bool {
@@ -179,6 +195,19 @@ impl Lexer.skip_block_comment -> bool {
         if self.current() == "*" and self.peek() == "#" {
             self.advance();  # *
             self.advance();  # #
+            comment_text = self.source[start_pos:self.pos];
+            self.comments.append(
+                (
+                    comment_text,
+                    start_line,
+                    self.line,
+                    start_col,
+                    self.col,
+                    start_pos,
+                    self.pos,
+                    True
+                )
+            );
             return True;
         }
         self.advance();
@@ -703,8 +732,8 @@ impl Lexer.scan_fstring_expr_token -> Token {
             TokenKind.CONV, "!" + conv, start_line, start_col, start_pos
         );
     }
-    # Check for format spec colon
-    if ch == ":" {
+    # Check for format spec colon (but not walrus := operator)
+    if ch == ":" and self.peek() != "=" {
         self.advance();
         return self.make_token(TokenKind.COLON, ":", start_line, start_col, start_pos);
     }
@@ -806,6 +835,14 @@ impl Lexer.scan_jsx_tag_token -> Token {
 
 """Scan JSX content between tags."""
 impl Lexer.scan_jsx_content -> Token {
+    # Do NOT skip whitespace here — whitespace in JSX content is significant
+    # for same-line spacing (e.g., "{expr}  text"). Whitespace normalization
+    # is handled downstream by JsxText.get_normalized_text(). Whitespace-only
+    # text nodes are filtered by the parser.
+    if self.at_end() {
+        self.error("Unexpected end of JSX content", self.line, self.col, self.pos);
+        return self.make_token(TokenKind.ERROR, "", self.line, self.col, self.pos);
+    }
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
@@ -868,6 +905,9 @@ impl Lexer.scan_jsx_content -> Token {
         if ch == "<" or ch == "{" {
             break;
         }
+        # Note: # is NOT treated as a comment inside JSX children.
+        # JSX text content is like HTML — # is a regular text character.
+        # Use {/* ... */} style in JSX expressions for comments if needed.
         value += self.advance();
     }
     if len(value) > 0 {

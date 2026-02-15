@@ -32,18 +32,18 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     def after_pass(self: UniPass) -> None { }
 
     """Run on entering node."""
-    def enter_node(self: UniPass, `node: uni.UniNode) -> None {
+    def enter_node(self: UniPass, nd: uni.UniNode) -> None {
         import from jaclang.jac0core.helpers { pascal_to_snake }
-        if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}") {
-            getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(`node);
+        if hasattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}") {
+            getattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}")(nd);
         }
     }
 
     """Run on exiting node."""
-    def exit_node(self: UniPass, `node: uni.UniNode) -> None {
+    def exit_node(self: UniPass, nd: uni.UniNode) -> None {
         import from jaclang.jac0core.helpers { pascal_to_snake }
-        if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}") {
-            getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(`node);
+        if hasattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}") {
+            getattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}")(nd);
         }
     }
 
@@ -54,24 +54,24 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
 
     """Get all sub nodes of type."""
     static def get_all_sub_nodes(
-        `node: uni.UniNode, typ: type[T], brute_force: bool = False
+        nd: uni.UniNode, typ: type[T], brute_force: bool = False
     ) -> list[T] {
         result: list[T] = [];
-        if not `node {
+        if not nd {
             return result;
-        } elif len(`node._sub_node_tab) {
-            if (typ in `node._sub_node_tab) {
-                for i in `node._sub_node_tab[typ] {
+        } elif len(nd._sub_node_tab) {
+            if (typ in nd._sub_node_tab) {
+                for i in nd._sub_node_tab[typ] {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
                 }
             }
-        } elif len(`node.kid) {
+        } elif len(nd.kid) {
             if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(`node)) ;
+                raise ValueError("Node has no sub_node_tab. " + str(nd)) ;
             } else {
-                for i in `node.kid {
+                for i in nd.kid {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
@@ -83,35 +83,35 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     }
 
     """Check if node has parent of type."""
-    static def find_parent_of_type(`node: uni.UniNode, typ: type[T]) -> (T | None) {
-        while `node.parent {
-            if isinstance(`node.parent, typ) {
-                return `node.parent;
+    static def find_parent_of_type(nd: uni.UniNode, typ: type[T]) -> (T | None) {
+        while nd.parent {
+            if isinstance(nd.parent, typ) {
+                return nd.parent;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return None;
     }
 
     """Check if node has parent of type."""
-    static def has_parent_of_node(`node: uni.UniNode, parent: uni.UniNode) -> bool {
-        while `node.parent {
-            if (`node.parent == parent) {
+    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
+        while nd.parent {
+            if (nd.parent == parent) {
                 return True;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return False;
     }
 
     """Recalculate parents."""
-    def recalculate_parents(self: UniPass, `node: uni.UniNode) -> None {
-        if not `node {
+    def recalculate_parents(self: UniPass, nd: uni.UniNode) -> None {
+        if not nd {
             return;
         }
-        for i in `node.kid {
+        for i in nd.kid {
             if i {
-                i.parent = `node;
+                i.parent = nd;
                 self.recalculate_parents(i);
             }
         }
@@ -133,14 +133,14 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     }
 
     """Traverse tree."""
-    def traverse(self: UniPass, `node: uni.UniNode) -> uni.UniNode {
+    def traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode {
         if self.is_canceled() {
-            return `node;
+            return nd;
         }
-        self.cur_node = `node;
-        self.enter_node(`node);
+        self.cur_node = nd;
+        self.enter_node(nd);
         if not self.prune_signal {
-            for i in `node.kid {
+            for i in nd.kid {
                 if i {
                     self.traverse(i);
                 }
@@ -148,11 +148,11 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
         } else {
             self.prune_signal = False;
         }
-        self.cur_node = `node;
+        self.cur_node = nd;
         if self.is_canceled() {
-            return `node;
+            return nd;
         }
-        self.exit_node(`node);
-        return `node;
+        self.exit_node(nd);
+        return nd;
     }
 }

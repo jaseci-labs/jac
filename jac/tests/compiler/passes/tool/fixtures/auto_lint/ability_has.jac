@@ -14,7 +14,7 @@ def app() -> any {
 
 # has statements in client-side function (typically in .cl.jac files)
 cl {
-    def:pub counter() -> any {
+    def:pub counter() -> JsxElement {
         has value: int = 0;
         has label: str = "Counter";
         has visible: bool = True;

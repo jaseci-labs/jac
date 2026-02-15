@@ -10,9 +10,9 @@ Learn Jac syntax and fundamentals, especially if you're coming from Python.
 
 ---
 
-## Jac is a Superset of Python and TypeScript/JavaScript
+## Jac is a Superset of Python
 
-Jac extends both Python and TypeScript/JavaScript - concepts from both languages apply. The main syntactic differences from Python are:
+Jac supersets Python with new paradigms -- familiar Python concepts all apply. The main syntactic differences from Python are:
 
 | Python | Jac |
 |--------|-----|

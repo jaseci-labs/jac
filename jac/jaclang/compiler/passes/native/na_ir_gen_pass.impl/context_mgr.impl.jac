@@ -15,17 +15,17 @@ recursive nesting — outer __enter__ first, inner __exit__ first (LIFO).
 
 # ─── With Statement Codegen ──────────────────────────────────
 """Generate IR for with statement: with expr as var { body }."""
-impl NaIRGenPass._codegen_with(node: uni.WithStmt) -> None {
-    if not node.exprs {
+impl NaIRGenPass._codegen_with(nd: uni.WithStmt) -> None {
+    if not nd.exprs {
         # Empty with statement — just generate body
-        if isinstance(node.body, (list, tuple)) {
-            self._codegen_body(node.body);
+        if isinstance(nd.body, (list, tuple)) {
+            self._codegen_body(nd.body);
         }
         return;
     }
     # For multiple context managers, process recursively (nest them)
     # with a as x, b as y { body } → with a as x { with b as y { body } }
-    self._codegen_with_recursive(node.exprs, 0, node.body);
+    self._codegen_with_recursive(nd.exprs, 0, nd.body);
 }
 
 """Recursively generate nested with blocks for multiple context managers."""

@@ -99,7 +99,7 @@ Tools, plugins, and interoperability.
 - Plugin System
 - Project Configuration
 - Python Interoperability
-- JavaScript/TypeScript Interoperability
+- JavaScript/npm Interoperability
 - **[Python Integration](python-integration.md)** - 5 adoption patterns, transpilation details
 
 ### [Part IX: Deployment and Scaling](deployment.md)

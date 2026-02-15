@@ -379,7 +379,7 @@ def test_graph_coverage() -> None:
     graph_params = set(inspect.signature(tools.dot).parameters.keys())
     printgraph_params = set(inspect.signature(printgraph).parameters.keys())
     printgraph_params = printgraph_params - {
-        "node",
+        "nd",
         "file",
         "edge_type",
     }

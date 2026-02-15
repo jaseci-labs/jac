@@ -215,12 +215,17 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
         """
-        from jaclang.jac0 import compile_jac
+        from jaclang.jac0 import compile_jac, discover_impl_files
 
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
 
-        py_source = compile_jac(jac_source, file_path)
+        impl_sources: list[tuple[str, str]] = []
+        for impl_path in discover_impl_files(file_path):
+            with open(impl_path, encoding="utf-8") as f:
+                impl_sources.append((f.read(), impl_path))
+
+        py_source = compile_jac(jac_source, file_path, impl_sources=impl_sources)
         code = compile(py_source, file_path, "exec")
         exec(code, module.__dict__)
 

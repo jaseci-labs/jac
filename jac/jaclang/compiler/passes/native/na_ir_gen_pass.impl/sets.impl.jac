@@ -260,13 +260,13 @@ impl NaIRGenPass._emit_set_helpers(
 }
 
 """Generate code for a set literal {a, b, c, ...}."""
-impl NaIRGenPass._codegen_set_val(node: uni.SetVal) -> (ir.Value | None) {
-    if not node.values {
+impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
+    if not nd.values {
         # Empty set: need type hint
         return None;
     }
     # Get first element to determine type
-    first_val = self._codegen_expr(node.values[0]);
+    first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {
         return None;
     }
@@ -292,8 +292,8 @@ impl NaIRGenPass._codegen_set_val(node: uni.SetVal) -> (ir.Value | None) {
     # Add first element
     self.builder.call(helpers["add"], [set_val, first_val]);
     # Add remaining elements
-    for i in range(1, len(node.values)) {
-        val = self._codegen_expr(node.values[i]);
+    for i in range(1, len(nd.values)) {
+        val = self._codegen_expr(nd.values[i]);
         if val is not None {
             val = self._coerce_type(val, elem_type);
             self.builder.call(helpers["add"], [set_val, val]);

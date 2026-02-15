@@ -230,9 +230,9 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
         mod = prog.compile(file_path, no_cgen=True);
 
         # Check top-level declarations in module body for code_context
-        for node in mod.body {
-            if node?.code_context {
-                if node.code_context == CodeContext.CLIENT {
+        for nd in mod.body {
+            if nd?.code_context {
+                if nd.code_context == CodeContext.CLIENT {
                     has_client = True;
                 } else {
                     has_server = True;

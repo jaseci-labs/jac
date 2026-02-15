@@ -39,16 +39,16 @@ class JacAnnexPass(Transform[(uni.Module, uni.Module)]) {
 
     """Parse and attach annex modules to the node."""
     def _load_annexes(
-        self: JacAnnexPass, jac_program: JacProgram, `node: uni.Module, mod_path: str
+        self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
     ) -> None {
         for path in discover_annex_files(mod_path, '.impl.jac') {
             if (mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True)) {
-                `node.impl_mod.append(mod);
+                nd.impl_mod.append(mod);
             }
         }
         for path in discover_annex_files(mod_path, '.test.jac') {
             if (mod := jac_program.compile(file_path=path, no_cgen=True, minimal=True)) {
-                `node.test_mod.append(mod);
+                nd.test_mod.append(mod);
             }
         }
     }
