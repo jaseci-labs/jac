@@ -1,36 +1,36 @@
 """Constants across the project."""
 import from enum { Enum, IntEnum, IntFlag, StrEnum }
-"""Symbol types."""
-class SymbolType(Enum) {
-    with entry {
-        MODULE = 'module';
-        MOD_VAR = 'mod_var';
-        VAR = 'variable';
-        IMM_VAR = 'immutable';
-        ABILITY = 'ability';
-        OBJECT_ARCH = 'object';
-        NODE_ARCH = 'node';
-        EDGE_ARCH = 'edge';
-        WALKER_ARCH = 'walker';
-        ENUM_ARCH = 'enum';
-        TEST = 'test';
-        TYPE = 'type';
-        IMPL = 'impl';
-        SEM = 'sem';
-        HAS_VAR = 'field';
-        METHOD = 'method';
-        CONSTRUCTOR = 'constructor';
-        ENUM_MEMBER = 'enum_member';
-        NUMBER = 'number';
-        STRING = 'string';
-        BOOL = 'bool';
-        SEQUENCE = 'sequence';
-        NULL = 'null';
-        UNKNOWN = 'unknown';
-    }
 
-    def __str__(self: SymbolType) -> str {
-        return self.value;
+"""Symbol types."""
+enum SymbolType {
+    MODULE = 'module',
+    MOD_VAR = 'mod_var',
+    VAR = 'variable',
+    IMM_VAR = 'immutable',
+    ABILITY = 'ability',
+    OBJECT_ARCH = 'object',
+    NODE_ARCH = 'node',
+    EDGE_ARCH = 'edge',
+    WALKER_ARCH = 'walker',
+    ENUM_ARCH = 'enum',
+    TEST = 'test',
+    TYPE = 'type',
+    IMPL = 'impl',
+    SEM = 'sem',
+    HAS_VAR = 'field',
+    METHOD = 'method',
+    CONSTRUCTOR = 'constructor',
+    ENUM_MEMBER = 'enum_member',
+    NUMBER = 'number',
+    STRING = 'string',
+    BOOL = 'bool',
+    SEQUENCE = 'sequence',
+    NULL = 'null',
+    UNKNOWN = 'unknown',
+    with entry {
+        def __str__(self: SymbolType) -> str {
+            return self.value;
+        }
     }
 }
 
@@ -112,57 +112,48 @@ class Constants(StrEnum) {
 }
 
 """Code execution context for client/server/native separation."""
-class CodeContext(Enum) {
+enum CodeContext {
+    SERVER = 'server',
+    CLIENT = 'client',
+    NATIVE = 'native',
     with entry {
-        SERVER = 'server';
-        CLIENT = 'client';
-        NATIVE = 'native';
-    }
+        def __str__(self: CodeContext) -> str {
+            return self.value;
+        }
 
-    """Return the string representation of the context."""
-    def __str__(self: CodeContext) -> str {
-        return self.value;
-    }
+        @property
+        def is_server(self: CodeContext) -> bool {
+            return (self == CodeContext.SERVER);
+        }
 
-    """Check if this is server context."""
-    @property
-    def is_server(self: CodeContext) -> bool {
-        return (self == CodeContext.SERVER);
-    }
+        @property
+        def is_client(self: CodeContext) -> bool {
+            return (self == CodeContext.CLIENT);
+        }
 
-    """Check if this is client context."""
-    @property
-    def is_client(self: CodeContext) -> bool {
-        return (self == CodeContext.CLIENT);
-    }
-
-    """Check if this is native context."""
-    @property
-    def is_native(self: CodeContext) -> bool {
-        return (self == CodeContext.NATIVE);
+        @property
+        def is_native(self: CodeContext) -> bool {
+            return (self == CodeContext.NATIVE);
+        }
     }
 }
 
 """Edge direction indicator."""
-class EdgeDir(Enum) {
-    with entry {
-        IN = 1;
-        OUT = 2;
-        ANY = 3;
-    }
+enum EdgeDir {
+    IN = 1,
+    OUT = 2,
+    ANY = 3
 }
 
-"""Symbol types."""
-class SymbolAccess(Enum) {
+"""Symbol access levels."""
+enum SymbolAccess {
+    PRIVATE = 'private',
+    PUBLIC = 'public',
+    PROTECTED = 'protected',
     with entry {
-        PRIVATE = 'private';
-        PUBLIC = 'public';
-        PROTECTED = 'protected';
-    }
-
-    """Stringify."""
-    def __str__(self: SymbolAccess) -> str {
-        return self.value;
+        def __str__(self: SymbolAccess) -> str {
+            return self.value;
+        }
     }
 }
 
@@ -377,7 +368,7 @@ class Tokens(str, Enum) {
     }
 }
 
-"""Token name to string value mapping (formerly built from Lark terminals)."""
+"""Token name to string value mapping."""
 glob TOKEN_MAP: dict[str, str] = {
          'ABILITY_OP': ':can:',
          'ADD_EQ': '+=',

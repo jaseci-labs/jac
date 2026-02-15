@@ -3,9 +3,6 @@
 This file contains the implementations for Token and SourceLoc methods.
 """
 
-# =============================================================================
-# SourceLoc Implementations
-# =============================================================================
 """Create a new SourceLoc spanning from this location to another."""
 impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     return SourceLoc(
@@ -19,9 +16,6 @@ impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     );
 }
 
-# =============================================================================
-# Token Implementations
-# =============================================================================
 """Check if this token is a keyword."""
 impl Token.is_keyword -> bool {
     return self.kind.value.startswith("KW_") or self.kind.value.startswith("TYP_");

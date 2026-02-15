@@ -6,9 +6,6 @@ to be native-compilation friendly with no runtime reflection.
 
 import from .tokens { Token, TokenKind, SourceLoc, lookup_keyword, KEYWORDS }
 
-# =============================================================================
-# Lexer Mode - For contextual lexing (f-strings, JSX)
-# =============================================================================
 enum LexerMode {
     NORMAL = "normal",
     FSTRING_DQ = "fstring_dq",  # Inside f"..."
@@ -20,9 +17,6 @@ enum LexerMode {
     JSX_CONTENT = "jsx_content"  # Between JSX tags
 }
 
-# =============================================================================
-# Lexer Error
-# =============================================================================
 obj LexerError {
     has message: str,
         loc: SourceLoc;
@@ -32,15 +26,13 @@ obj LexerError {
     }
 }
 
-# =============================================================================
-# Lexer
-# =============================================================================
 obj Lexer {
     has source: str,
         file_path: str = "<input>",
         pos: int = 0,
         line: int = 1,
         col: int = 1,
+        _source_len: int = 0,
         errors: list[LexerError] = [],
         mode_stack: list[LexerMode] = [],
         fstring_brace_depth: int = 0,  # Track nested braces in f-string expressions
@@ -107,9 +99,6 @@ obj Lexer {
     def has_errors -> bool;
 }
 
-# =============================================================================
-# Convenience Function
-# =============================================================================
 def tokenize(
     source: str, file_path: str = "<input>"
 ) -> tuple[list[Token], list[LexerError]] {
