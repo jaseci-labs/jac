@@ -47,6 +47,56 @@ with entry {
 
 ---
 
+## Add AI with `by llm()`
+
+One of Jac's standout features is **compiler-integrated AI** using the **byLLM** plugin. Instead of writing prompts, you write typed functions and let the compiler handle the rest.
+
+Create `sentiment.jac`:
+
+```jac
+import from byllm {Model};
+
+glob llm = Model(model_name="gpt-4o");
+
+enum Sentiment {
+    POSITIVE,
+    NEGATIVE,
+    NEUTRAL
+}
+
+def analyze(text: str) -> Sentiment by llm();
+
+with entry {
+    result = analyze("I absolutely love this product!");
+    print(result);
+}
+```
+
+Run it (requires an API key):
+
+```bash
+export OPENAI_API_KEY="your-key-here"
+jac sentiment.jac
+```
+
+Output:
+
+```
+Sentiment.POSITIVE
+```
+
+**What just happened?** The `by llm()` syntax tells Jac to delegate the function body to an LLM. The compiler extracts intent from:
+
+- Function name: `analyze`
+- Parameter: `text: str`
+- Return type: `Sentiment` (an enum with three options)
+
+No prompt engineering required. The types *are* the prompt.
+
+→ Learn more in the [byLLM Quickstart](../tutorials/ai/quickstart.md)
+
+---
+
 ## Run a Full-Stack App
 
 Want to go beyond a single file? Jac can scaffold a complete full-stack application in one command.
