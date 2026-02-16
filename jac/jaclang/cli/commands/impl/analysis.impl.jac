@@ -428,6 +428,10 @@ impl format(
             );
             has_errors = True;
         }
+        if total_errors > 0 {
+            console.error(f"\n{total_errors} lint error(s) found (see errors above).");
+            has_errors = True;
+        }
         if has_errors {
             return 1;
         }
