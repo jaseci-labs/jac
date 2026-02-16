@@ -26,22 +26,7 @@ impl lookup_symtab(
     if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
         mod.parent_scope = builtins_to_inject;
     }
-    result = symtable.lookup(name, deep=True, incl_inner_scope=True);
-    # If not found, traverse up the parent chain to find an ImplDef
-    if (result is None) {
-        impl_def: uni.ImplDef | None = (
-            symtable
-            if isinstance(symtable, uni.ImplDef)
-            else symtable.find_parent_of_type(uni.ImplDef)
-        );
-        # If we found an ImplDef with a decl_link, search in the declaration's symbol table
-        if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
-            result = impl_def.decl_link.sym_tab.lookup(
-                name, deep=True, incl_inner_scope=True
-            );
-        }
-    }
-    return result;
+    return symtable.lookup(name, deep=True, incl_inner_scope=True);
 }
 
 """Return a list of completion items for the type."""
