@@ -29,6 +29,9 @@ Documentation = "https://docs.jaseci.org"
 [project.scripts]
 jac = "jaclang.jac0core.cli_boot:start_cli"
 
+[project.entry-points.pytest11]
+jaclang = "jaclang.pytest_plugin"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.1",

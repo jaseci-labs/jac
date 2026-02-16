@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-client 0.2.18 (Unreleased)
 
 - 2 Minor internal refactors
+- **Standardize Jac idioms in examples and runtime**: Replaced JS-style method calls with Jac-idiomatic equivalents across all examples, test fixtures, and the client runtime plugin (`.trim()` → `.strip()`, `.push()` → `.append()`, `.length` → `len()`, `.toUpperCase()/.toLowerCase()` → `.upper()/.lower()`, `console.log()` → `print()`, etc.). These are now translated to the correct JS equivalents at compile time via the primitive emitter infrastructure.
 
 ## jac-client 0.2.17 (Latest Release)
 

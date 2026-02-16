@@ -4,10 +4,14 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.2 (Unreleased)
 
+- **Unified Primitive Codegen Interface**: Added abstract emitter contracts (`primitives.jac`) for all Jac primitive type methods and builtin functions. Each compilation backend (Python, ECMAScript, Native) must implement these interfaces, ensuring consistent primitive support across all code generation pathways. Python, JS, and Native backend implementations provided.
+- **Pytest Plugin for Native Jac Tests**: Added a `pytest11` entry-point plugin (`jaclang.pytest_plugin`) that discovers and runs `test` blocks in `.jac` files alongside Python tests with zero configuration. Migrated ~79 language integration tests and 8 compilation tests from Python to native Jac `test` keyword.
 - **Perf: Bootstrap Bytecode Cache**: Cache the jac0-transpiled bytecode for jac0core modules on disk, eliminating ~200ms of repeated transpilation on every invocation. `jac purge -f` clears both caches.
 - **Perf: Cache `len()` in Lexer/Parser Hot Paths**: Cached source and token list lengths in the jac0 bootstrap transpiler and the RD parser/lexer, eliminating ~1.8M redundant `len()` calls per startup.
 - 3 Minor refactors/changes.
 - **Fix: `jac grammar` Command Broken Path**: Fixed the `jac grammar` CLI command.
+- **Grammar Extraction Pass Improvements & Spec Snapshot Test**: Improved `jac grammar` extraction accuracy for negated-check loops, optional dispatch branches, `while True` parse-and-break patterns, and standalone `match_tok` calls. Added a golden-file snapshot test (`jac.spec`) that validates extracted grammar rules against a checked-in spec, catching unintended grammar drift on every CI run.
+- **Black-style Grammar Formatting**: Replaced alignment-based `jac grammar` formatting with Black-style fixed 4-space indentation, blank lines between rules, and 88-char line width. Uses a recursive tree-based formatter instead of the previous string-based wrapping.
 - 4 Minor refactors/changes.
 - **Fix: Display detailed syntax error messages**: Display detailed syntax error messages in `jac run` and `jac start` commands instead of generic import errors.
 

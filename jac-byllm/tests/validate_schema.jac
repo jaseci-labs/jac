@@ -22,7 +22,7 @@ The statement is a string that describes the condition to be met.
 """
 def assert_statement_met_expectation(statement: str, expectation: str,) -> bool by llm();
 
-test assert_statement_met_expectation_working {
+test "assert statement met expectation working" {
     is_true = assert_statement_met_expectation(
         "La météo à Paris est de 22°C et venteux.",
         "The weather in Paris *MUST* match 22 degrees Celsius and windy."
@@ -42,7 +42,7 @@ obj Person {
 
 def generate_random_person -> Person by llm();
 
-test simple_object {
+test "simple object" {
     person = generate_random_person();
     assert isinstance(person, Person);
     print(
@@ -67,7 +67,7 @@ obj User {
 
 def generate_random_user -> User by llm();
 
-test nested_object {
+test "nested object" {
     user = generate_random_user();
     assert isinstance(user, User);
     assert isinstance(user.address, Address);
@@ -98,7 +98,7 @@ obj MyPet {
 
 def generate_random_pet -> MyPet by llm();
 
-test union_types_and_inheritance {
+test "union types and inheritance" {
     pet = generate_random_pet();
     assert isinstance(pet, MyPet);
     print(f"Generated Pet: {pet.pet.name}, Age: {pet.pet.age}");
@@ -117,7 +117,7 @@ test union_types_and_inheritance {
 # we'll need to wrap them in an object.
 def is_statement_true(statement: str) -> bool by llm();
 
-test bool_return {
+test "bool return" {
     # Should be true.
     statement = "The sky is blue";
     is_true = is_statement_true(statement);
@@ -144,7 +144,7 @@ enum Color {
 
 def get_random_color -> Color by llm();
 
-test enum_case {
+test "enum case" {
     color = get_random_color();
     assert isinstance(color, Color);
     print(f"Generated Color: {color}");
@@ -163,7 +163,7 @@ enum WeatherCondition {
 
 def get_random_weather_condition -> WeatherCondition by llm();
 
-test enum_string_case {
+test "enum string case" {
     condition = get_random_weather_condition();
     assert isinstance(condition, WeatherCondition);
     print(f"Generated Weather Condition: {condition}");
@@ -206,7 +206,7 @@ def answer_user(question: str) -> str by llm(
     tools=[get_weather, translate_from_english],
 );
 
-test tool_functionality {
+test "tool functionality" {
     statement = answer_user("Tell me the weather in paris in French.");
     assert assert_statement_met_expectation(
         statement,
@@ -228,7 +228,7 @@ sem Client.major = "Should always be 'Legal Advisor'";
 
 def generate_client -> Client by llm();
 
-test semstrings_attached_in_schema {
+test "semstrings attached in schema" {
     client = generate_client();
     assert isinstance(client, Client);
     assert client.name == "Alice";
@@ -243,7 +243,7 @@ def get_first_n_numbers_of_fibonacci(
     n: int
 ) -> list[int] by llm();
 
-test annotated_list {
+test "annotated list" {
     n = 10;
     fibonacci_numbers = get_first_n_numbers_of_fibonacci(n);
     print(f"FibonacciNumbers({n}) = {fibonacci_numbers}");
@@ -266,7 +266,7 @@ obj ColorContainer {
 
 def generate_random_colors -> ColorContainer by llm();
 
-test annotated_tuple {
+test "annotated tuple" {
     container = generate_random_colors();
     print(f"Generated ColorContainer: {container}");
     assert isinstance(container, ColorContainer);
@@ -289,7 +289,7 @@ def generate_random_name_and_age -> dict[
 
 sem generate_random_name_and_age.name = "Returns a dictionary with names as keys and ages as values";
 
-test annotated_dictionary {
+test "annotated dictionary" {
     name_age_dict = generate_random_name_and_age();
     print(f"Generated Name-Age Dictionary: {name_age_dict}");
 
@@ -315,7 +315,7 @@ dictionary, where the key is the student's name in that class and value is
 their average score.
 """;
 
-test recursive_dictionary {
+test "recursive dictionary" {
     student_data = generate_student_data();
     print(f"Generated Student Data: {student_data}");
 

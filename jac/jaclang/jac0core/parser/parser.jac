@@ -369,6 +369,8 @@ obj Parser {
     def at_end -> bool;
     def check(kind: TokenKind) -> bool;
     def check_any(*kinds: TokenKind) -> bool;
+    def check_peek(kind: TokenKind) -> bool;
+    def check_peek_any(*kinds: TokenKind) -> bool;
     def check_name -> bool;
     def is_keyword_token -> bool;
     def get_source -> Source;
@@ -377,6 +379,8 @@ obj Parser {
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def error(message: str);
+    def error_at(message: str, loc: SourceLoc);
+    def warn_at(message: str, loc: SourceLoc);
     def make_uni_token(tok: Token) -> UniToken;
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;

@@ -609,7 +609,8 @@ class Test(ContextAwareNode, AstSymbolNode, ElementStmt, UniScopeNode) {
         name: (Name | Token),
         body: Sequence[CodeBlockStmt],
         kid: Sequence[UniNode],
-        doc: (String | None) = None
+        doc: (String | None) = None,
+        description: (String | None) = None
     ) -> None;
 }
 

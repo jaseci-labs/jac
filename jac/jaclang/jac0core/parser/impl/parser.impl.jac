@@ -176,6 +176,14 @@ impl Parser.check_any(*kinds: TokenKind) -> bool {
     return self.current().kind in kinds;
 }
 
+impl Parser.check_peek(kind: TokenKind) -> bool {
+    return self.peek().kind == kind;
+}
+
+impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
+    return self.peek().kind in kinds;
+}
+
 impl Parser.get_source -> Source {
     # Return the cached source (set in parse_module) or create new one
     # Note: self.source is guaranteed to be set in parse_module before any token creation
@@ -244,6 +252,47 @@ impl Parser.error(message: str) {
         loc = CodeLocInfo(tok, tok);
         alrt = Alert(message, loc, Parser);
         self.prog.errors_had.append(alrt);
+    }
+}
+
+impl Parser.error_at(message: str, loc: SourceLoc) {
+    self.errors.append(ParseError(message=message, loc=loc));
+    if self.prog is not None and hasattr(self.prog, "errors_had") {
+        source = self.get_source();
+        tok = UniToken(
+            orig_src=source,
+            name="ERROR",
+            value="",
+            line=loc.line,
+            end_line=loc.end_line,
+            col_start=loc.col_start,
+            col_end=loc.col_end,
+            pos_start=loc.pos_start,
+            pos_end=loc.pos_end
+        );
+        code_loc = CodeLocInfo(tok, tok);
+        alrt = Alert(message, code_loc, Parser);
+        self.prog.errors_had.append(alrt);
+    }
+}
+
+impl Parser.warn_at(message: str, loc: SourceLoc) {
+    if self.prog is not None and hasattr(self.prog, "warnings_had") {
+        source = self.get_source();
+        tok = UniToken(
+            orig_src=source,
+            name="WARNING",
+            value="",
+            line=loc.line,
+            end_line=loc.end_line,
+            col_start=loc.col_start,
+            col_end=loc.col_end,
+            pos_start=loc.pos_start,
+            pos_end=loc.pos_end
+        );
+        code_loc = CodeLocInfo(tok, tok);
+        alrt = Alert(message, code_loc, Parser);
+        self.prog.warnings_had.append(alrt);
     }
 }
 
@@ -1033,13 +1082,13 @@ impl Parser.parse_edge_op_ref_inline -> EdgeOpRef | None {
 impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
     # Check for disconnect: del followed by edge_op_ref (-->, <--, <-->, or typed variants)
     if self.check(TokenKind.KW_DELETE)
-    and self.peek().kind in [
+    and self.check_peek_any(
         TokenKind.ARROW_R,
         TokenKind.ARROW_L,
         TokenKind.ARROW_BI,
         TokenKind.ARROW_R_P1,
         TokenKind.ARROW_L_P1
-    ] {
+    ) {
         del_tok = self.advance();
         # Parse the edge op ref directly (not in brackets)
         edge_op = self.parse_edge_op_ref_inline();
@@ -1254,7 +1303,7 @@ impl Parser.parse_atomic_chain -> Expr {
         if self.match_tok(TokenKind.DOT)
         or (
             self.check(TokenKind.NULL_OK)
-            and self.peek().kind != TokenKind.LSQUARE
+            and not self.check_peek(TokenKind.LSQUARE)
             and self.match_tok(TokenKind.NULL_OK)
         )
         or self.match_tok(TokenKind.DOT_FWD)
@@ -1336,7 +1385,7 @@ impl Parser.parse_atomic_chain -> Expr {
             );
         } elif self.check(TokenKind.LPAREN) {
             # Check if this is filter_compr: (?...) or (?:Type, ...)
-            if self.peek().kind == TokenKind.NULL_OK {
+            if self.check_peek(TokenKind.NULL_OK) {
                 # Parse filter comprehension: (?val==10) or (?:Type, val==10)
                 self.advance();  # consume LPAREN
                 filter_expr = self.parse_filter_compr_inner();
@@ -1349,7 +1398,7 @@ impl Parser.parse_atomic_chain -> Expr {
                     is_null_ok=False,
                     kid=kid
                 );
-            } elif self.peek().kind == TokenKind.EQ {
+            } elif self.check_peek(TokenKind.EQ) {
                 # Parse assign_compr: (=a=5, b=6)
                 self.advance();  # consume LPAREN
                 assign_expr = self.parse_assign_compr_inner();
@@ -1388,9 +1437,7 @@ impl Parser.parse_atomic_chain -> Expr {
                 }
                 expr = FuncCall(target=expr, params=args, genai_call=None, kid=kid);
             }
-        } elif (
-            self.check(TokenKind.NULL_OK) and self.peek().kind == TokenKind.LSQUARE
-        )
+        } elif (self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE))
         or self.check(TokenKind.LSQUARE) {
             # Parse index or slice: a[x], a?[x], a[x,y], a[1:2], a[::3], etc.
             is_null_ok_index = False;
@@ -1560,8 +1607,7 @@ impl Parser.parse_call_args(kid: list) -> list {
 
 impl Parser.parse_call_arg -> Expr | KWPair {
     # Check for keyword argument: NAME = expr (also KWESC_NAME like `type)
-    if (self.check_name() or self.is_keyword_token())
-    and self.peek().kind == TokenKind.EQ {
+    if (self.check_name() or self.is_keyword_token()) and self.check_peek(TokenKind.EQ) {
         name_tok = self.advance();
         name: Name;
         if name_tok.kind == TokenKind.NAME or name_tok.kind == TokenKind.KWESC_NAME {
@@ -1602,7 +1648,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
     expr = self.parse_expression();
     # If followed by 'for' or 'async for', it's a generator expression: all(x > 0 for x in items)
     if self.check(TokenKind.KW_FOR)
-    or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+    or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
         comprs = self.parse_comprehension_clauses();
         kid: list = [expr];
         kid.extend(comprs);
@@ -1734,9 +1780,9 @@ impl Parser.parse_atom -> Expr {
                 "BR",
                 "RB"
             ]
-            and self.peek().kind == TokenKind.STRING
+            and self.check_peek(TokenKind.STRING)
         ) {
-            if self.check(TokenKind.NAME) and self.peek().kind == TokenKind.STRING {
+            if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
                 ptok = self.advance();
                 stok = self.advance();
                 s = self.make_string(stok);
@@ -1834,7 +1880,7 @@ impl Parser.parse_atom -> Expr {
         "BR",
         "RB"
     ]
-    and self.peek().kind == TokenKind.STRING {
+    and self.check_peek(TokenKind.STRING) {
         prefix_tok = self.advance();
         str_tok = self.advance();
         combined = self.make_string(str_tok);
@@ -1867,9 +1913,9 @@ impl Parser.parse_atom -> Expr {
                 "BR",
                 "RB"
             ]
-            and self.peek().kind == TokenKind.STRING
+            and self.check_peek(TokenKind.STRING)
         ) {
-            if self.check(TokenKind.NAME) and self.peek().kind == TokenKind.STRING {
+            if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
                 ptok = self.advance();
                 stok = self.advance();
                 s = self.make_string(stok);
@@ -1889,7 +1935,7 @@ impl Parser.parse_atom -> Expr {
         # Allow 'new' as a regular variable name (e.g., new = out(), new.cnt)
         if self.check(TokenKind.NAME)
         and self.current().value == "new"
-        and self.peek().kind in [TokenKind.NAME, TokenKind.KWESC_NAME] {
+        and self.check_peek_any(TokenKind.NAME, TokenKind.KWESC_NAME) {
             self.error("The 'new' keyword is not supported in Jac");
             self.error(
                 "Use `Reflect.construct(target, argumentsList)` method to create new instances"
@@ -1939,7 +1985,7 @@ impl Parser.parse_atom -> Expr {
         expr = self.parse_expression();
         # Standalone generator expression: (expr for x in items) or (expr async for x in items)
         if self.check(TokenKind.KW_FOR)
-        or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+        or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
             comprs = self.parse_comprehension_clauses();
             gc_kid: list = [lp_uni, expr];
             gc_kid.extend(comprs);
@@ -1997,7 +2043,7 @@ impl Parser.parse_atom -> Expr {
             is_edge_ref = True;
         } elif self.check_any(TokenKind.KW_NODE, TokenKind.KW_EDGE) {
             # [node ...] or [edge ...] is only an edge ref if followed by an arrow
-            if self.peek().kind in [
+            if self.check_peek_any(
                 TokenKind.ARROW_R,
                 TokenKind.ARROW_L,
                 TokenKind.ARROW_BI,
@@ -2010,7 +2056,7 @@ impl Parser.parse_atom -> Expr {
                 TokenKind.KW_HERE,
                 TokenKind.KW_SUPER,
                 TokenKind.KW_VISITOR
-            ] {
+            ) {
                 is_edge_ref = True;
             }
         } elif self.check_any(
@@ -2021,16 +2067,16 @@ impl Parser.parse_atom -> Expr {
             TokenKind.KW_SUPER,
             TokenKind.KW_VISITOR
         ) {
-            if self.peek().kind in [
+            if self.check_peek_any(
                 TokenKind.ARROW_R,
                 TokenKind.ARROW_L,
                 TokenKind.ARROW_BI,
                 TokenKind.ARROW_R_P1,  # For typed edges like [self->:Type:->]
                 TokenKind.ARROW_L_P1,  # For typed edges like [self<-:Type:<-]
                 TokenKind.RETURN_HINT  # For [root->:a:->]
-            ] {
+            ) {
                 is_edge_ref = True;
-            } elif self.peek().kind == TokenKind.LSQUARE {
+            } elif self.check_peek(TokenKind.LSQUARE) {
                 # Check for NAME[subscript]->... pattern (e.g., [parent[0]->:Edge:->])
                 save_pos = self.pos;
                 self.advance();  # skip NAME
@@ -2254,7 +2300,7 @@ impl Parser.parse_list_or_compr -> Expr {
     }
     first = self.parse_expression();
     if self.check(TokenKind.KW_FOR)
-    or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+    or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
         comprs = self.parse_comprehension_clauses();
         kid: list = [lsquare_uni, first];
         kid.extend(comprs);
@@ -2346,7 +2392,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
         }
         # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
         if self.check(TokenKind.LPAREN) {
-            if self.peek().kind == TokenKind.NULL_OK {
+            if self.check_peek(TokenKind.NULL_OK) {
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2417,7 +2463,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             edge_op_ref = EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
         }
         # Typed edge out: ->:type:-> (as RETURN_HINT + COLON ... ARROW_R_P2)
-        elif self.check(TokenKind.RETURN_HINT) and self.peek().kind == TokenKind.COLON {
+        elif self.check(TokenKind.RETURN_HINT) and self.check_peek(TokenKind.COLON) {
             self.advance();  # ->
             arrow_r_tok = self.previous();
             self.advance();  # :
@@ -2529,7 +2575,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
         }
         # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
         if self.check(TokenKind.LPAREN) {
-            if self.peek().kind == TokenKind.NULL_OK {
+            if self.check_peek(TokenKind.NULL_OK) {
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2581,7 +2627,7 @@ impl Parser.parse_dict_or_set -> Expr {
         colon_uni = self.make_uni_token(self.previous());
         value = self.parse_expression();
         if self.check(TokenKind.KW_FOR)
-        or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+        or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
             comprs = self.parse_comprehension_clauses();
             kv = KVPair(key=first, value=value, kid=[first, colon_uni, value]);
             kid: list = [lbrace_uni, kv];
@@ -2617,7 +2663,7 @@ impl Parser.parse_dict_or_set -> Expr {
         return DictVal(kv_pairs=pairs, kid=kid);
     }
     if self.check(TokenKind.KW_FOR)
-    or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+    or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
         comprs = self.parse_comprehension_clauses();
         kid = [lbrace_uni, first];
         kid.extend(comprs);
@@ -2669,7 +2715,7 @@ impl Parser.parse_dict_with_spread(lbrace_uni: UniToken) -> DictVal {
 impl Parser.parse_comprehension_clauses -> list {
     comprs: list = [];
     while self.check(TokenKind.KW_FOR)
-    or (self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR) {
+    or (self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR)) {
         is_async = False;
         async_uni: UniToken | None = None;
         if self.match_tok(TokenKind.KW_ASYNC) {
@@ -2794,10 +2840,10 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
         # Handle bare * (keyword-only separator)
         if self.check(TokenKind.STAR_MUL)
         and (
-            self.peek().kind == TokenKind.COMMA
-            or self.peek().kind == TokenKind.COLON
-            or self.peek().kind == TokenKind.RETURN_HINT
-            or self.peek().kind == TokenKind.LBRACE
+            self.check_peek(TokenKind.COMMA)
+            or self.check_peek(TokenKind.COLON)
+            or self.check_peek(TokenKind.RETURN_HINT)
+            or self.check_peek(TokenKind.LBRACE)
         ) {
             star_tok = self.advance();
             star_uni = self.make_uni_token(star_tok);
@@ -2811,10 +2857,10 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
         # Handle / (positional-only separator)
         if self.check(TokenKind.DIV)
         and (
-            self.peek().kind == TokenKind.COMMA
-            or self.peek().kind == TokenKind.COLON
-            or self.peek().kind == TokenKind.RETURN_HINT
-            or self.peek().kind == TokenKind.LBRACE
+            self.check_peek(TokenKind.COMMA)
+            or self.check_peek(TokenKind.COLON)
+            or self.check_peek(TokenKind.RETURN_HINT)
+            or self.check_peek(TokenKind.LBRACE)
         ) {
             div_tok = self.advance();
             div_uni = self.make_uni_token(div_tok);
@@ -3131,7 +3177,7 @@ impl Parser.parse_element_stmt{
     }
     # Handle client/server/native context blocks: cl { ... } or cl stmt
     if self.check(TokenKind.KW_CLIENT) {
-        if self.peek().kind == TokenKind.LBRACE {
+        if self.check_peek(TokenKind.LBRACE) {
             return self.parse_client_block();
         } else {
             # Single statement: cl def ..., cl import ..., etc.
@@ -3148,7 +3194,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_SERVER) {
-        if self.peek().kind == TokenKind.LBRACE {
+        if self.check_peek(TokenKind.LBRACE) {
             return self.parse_server_block();
         } else {
             self.advance();  # consume sv
@@ -3164,7 +3210,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_NATIVE) {
-        if self.peek().kind == TokenKind.LBRACE {
+        if self.check_peek(TokenKind.LBRACE) {
             return self.parse_native_block();
         } else {
             self.advance();  # consume na
@@ -3191,20 +3237,20 @@ impl Parser.parse_element_stmt{
     )
     or (
         self.check(TokenKind.KW_ABSTRACT)
-        and self.peek().kind in [
+        and self.check_peek_any(
             TokenKind.KW_OBJECT,
             TokenKind.KW_NODE,
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
             TokenKind.KW_CLASS
-        ]
+        )
     ) {
         return self.parse_archetype();
     }
     if self.check(TokenKind.KW_ENUM) {
         return self.parse_enum();
     }
-    if self.check(TokenKind.STRING) and self.peek().kind == TokenKind.KW_TEST {
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_TEST) {
         doc_tok = self.advance();
         elem_doc = self.make_string(doc_tok);
         test = self.parse_test();
@@ -3216,7 +3262,7 @@ impl Parser.parse_element_stmt{
         return self.parse_test();
     }
     if self.check(TokenKind.STRING)
-    and self.peek().kind in [
+    and self.check_peek_any(
         TokenKind.KW_DEF,
         TokenKind.KW_CAN,
         TokenKind.KW_OVERRIDE,
@@ -3230,7 +3276,7 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_CLASS,
         TokenKind.KW_ABSTRACT,
         TokenKind.KW_IMPL
-    ] {
+    ) {
         # Need to look ahead past decorators/async/abs to determine if ability, archetype, enum, or impl
         save_pos = self.pos;
         self.advance();  # skip STRING
@@ -3279,7 +3325,7 @@ impl Parser.parse_element_stmt{
             return ability;
         }
     }
-    if self.check(TokenKind.STRING) and self.peek().kind == TokenKind.KW_ENUM {
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_ENUM) {
         doc_tok = self.advance();
         elem_doc = self.make_string(doc_tok);
         en = self.parse_enum();
@@ -3291,7 +3337,7 @@ impl Parser.parse_element_stmt{
         return self.parse_ability();
     }
     # Handle docstring before glob: "docstring" glob ...
-    if self.check(TokenKind.STRING) and self.peek().kind == TokenKind.KW_GLOBAL {
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_GLOBAL) {
         doc_tok = self.advance();
         elem_doc = self.make_string(doc_tok);
         gv = self.parse_global_var();
@@ -3304,7 +3350,7 @@ impl Parser.parse_element_stmt{
         return self.parse_global_var();
     }
     # Handle docstring before impl
-    if self.check(TokenKind.STRING) and self.peek().kind == TokenKind.KW_IMPL {
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_IMPL) {
         doc_tok = self.advance();
         elem_doc = self.make_string(doc_tok);
         impl_def = self.parse_impl_def();
@@ -3327,7 +3373,7 @@ impl Parser.parse_element_stmt{
         return PyInlineCode(code=py_code, kid=[py_code]);
     }
     # Handle docstring before 'with entry { ... }' module code
-    if self.check(TokenKind.STRING) and self.peek().kind == TokenKind.KW_WITH {
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_WITH) {
         doc_tok = self.advance();
         elem_doc = self.make_string(doc_tok);
         mc = self.parse_module_code();
@@ -3528,10 +3574,37 @@ impl Parser.parse_module_code -> ModuleCode {
 
 impl Parser.parse_code_block_stmts -> list {
     stmts: list = [];
+    checked_first = False;
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
+            # Reject Python-style docstrings as first statement in code block.
+            # In Jac, semstrings go before the declaration, not inside.
+            is_docstring = False;
+            if (
+                not checked_first
+                and isinstance(stmt, ExprStmt)
+                and not stmt.in_fstring
+            ) {
+                if isinstance(stmt.expr, String) {
+                    is_docstring = True;
+                } elif (
+                    isinstance(stmt.expr, MultiString)
+                    and all(isinstance(s, String) for s in stmt.expr.strings)
+                ) {
+                    is_docstring = True;
+                }
+            }
+            if is_docstring {
+                self.warn_at(
+                    'Docstrings in Jac go before the declaration, not inside the body. ' + 'Move this string before the enclosing test/can/obj/etc.',
+                    self.tokens[before].loc
+                );
+            }
+            if not isinstance(stmt, Semi) {
+                checked_first = True;
+            }
             stmts.append(stmt);
             # Add Semi token if present (for statements like assignment SEMI)
             if self.match_tok(TokenKind.SEMI) {
@@ -3577,10 +3650,10 @@ impl Parser.parse_statement{
         return self.parse_while_stmt();
     }
     # Handle async for/with statements
-    if self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_FOR {
+    if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
         return self.parse_for_stmt();
     }
-    if self.check(TokenKind.KW_ASYNC) and self.peek().kind == TokenKind.KW_WITH {
+    if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_WITH) {
         return self.parse_with_stmt();
     }
     if self.check(TokenKind.KW_FOR) {
@@ -3705,7 +3778,7 @@ impl Parser.parse_statement{
     }
     # Handle has statements (in impl bodies and archetype bodies)
     if self.check(TokenKind.KW_HAS)
-    or (self.check(TokenKind.KW_STATIC) and self.peek().kind == TokenKind.KW_HAS) {
+    or (self.check(TokenKind.KW_STATIC) and self.check_peek(TokenKind.KW_HAS)) {
         return self.parse_has_stmt();
     }
     # Handle inline Python: ::py:: ... ::py::
@@ -3715,7 +3788,7 @@ impl Parser.parse_statement{
         return PyInlineCode(code=py_code, kid=[py_code]);
     }
     # Handle typed context block: -> Type { ... }
-    if self.check(TokenKind.RETURN_HINT) and self.peek().kind != TokenKind.SEMI {
+    if self.check(TokenKind.RETURN_HINT) and not self.check_peek(TokenKind.SEMI) {
         self.advance();  # consume ->
         arrow_uni = self.make_uni_token(self.previous());
         type_ctx = self.parse_expression();
@@ -4544,7 +4617,7 @@ impl Parser.parse_class_pattern_args(names: list, dot_unis: list | None = None) 
     # Parse patterns
     while not self.check(TokenKind.RPAREN) and not self.at_end() {
         # Check if it's a keyword pattern (NAME EQ)
-        if self.check_name() and self.peek().kind == TokenKind.EQ {
+        if self.check_name() and self.check_peek(TokenKind.EQ) {
             # Keyword pattern
             name_tok = self.advance();
             eq_uni = self.consume_uni(TokenKind.EQ);
@@ -5104,7 +5177,7 @@ impl Parser.parse_archetype_member{
     # Handle static has or static def/can
     if self.check(TokenKind.KW_STATIC) {
         # Look ahead to see if it's static has or static def/can
-        if self.peek().kind == TokenKind.KW_HAS {
+        if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
                 has_stmt.doc = doc;
@@ -5154,13 +5227,13 @@ impl Parser.parse_archetype_member{
     )
     or (
         self.check(TokenKind.KW_ABSTRACT)
-        and self.peek().kind in [
+        and self.check_peek_any(
             TokenKind.KW_OBJECT,
             TokenKind.KW_NODE,
             TokenKind.KW_EDGE,
             TokenKind.KW_WALKER,
             TokenKind.KW_CLASS
-        ]
+        )
     ) {
         archetype = self.parse_archetype();
         if doc {
@@ -5622,9 +5695,7 @@ impl Parser.parse_func_params(kid: list) -> list {
     while not self.check(TokenKind.RPAREN) {
         # Handle bare * (keyword-only separator) or / (positional-only separator)
         if self.check(TokenKind.STAR_MUL)
-        and (
-            self.peek().kind == TokenKind.COMMA or self.peek().kind == TokenKind.RPAREN
-        ) {
+        and (self.check_peek(TokenKind.COMMA) or self.check_peek(TokenKind.RPAREN)) {
             star_tok = self.advance();
             star_uni = self.make_uni_token(star_tok);
             kid.append(star_uni);
@@ -5633,9 +5704,7 @@ impl Parser.parse_func_params(kid: list) -> list {
             }
             kid.append(self.make_uni_token(self.previous()));
         } elif self.check(TokenKind.DIV)
-        and (
-            self.peek().kind == TokenKind.COMMA or self.peek().kind == TokenKind.RPAREN
-        ) {
+        and (self.check_peek(TokenKind.COMMA) or self.check_peek(TokenKind.RPAREN)) {
             div_tok = self.advance();
             div_uni = self.make_uni_token(div_tok);
             kid.append(div_uni);
@@ -5859,8 +5928,9 @@ impl Parser.parse_enum_member -> Assignment {
 }
 
 impl Parser.parse_test -> Test {
+    import re;
     test_kw_uni = self.consume_uni(TokenKind.KW_TEST);
-    # When no explicit name, create a placeholder empty name token at current position
+    # When no explicit description, create a placeholder empty name token
     cur = self.current();
     name: Name | UniToken = UniToken(
         orig_src=self.get_source(),
@@ -5873,23 +5943,41 @@ impl Parser.parse_test -> Test {
         pos_start=cur.loc.pos_start,
         pos_end=cur.loc.pos_end
     );
-    has_explicit_name = False;
-    if self.check(TokenKind.NAME) {
-        name_tok = self.advance();
-        name = self.make_name(name_tok);
-        has_explicit_name = True;
+    has_description = False;
+    description: String | None = None;
+    if self.check(TokenKind.STRING) {
+        str_tok = self.advance();
+        description = self.make_string(str_tok);
+        # Derive a valid identifier from the string description
+        desc_text = description.lit_value;
+        ident = re.sub(r'[^a-zA-Z0-9]+', '_', desc_text).strip('_').lower();
+        if not ident {
+            ident = f"_jac_gen_{Test.TEST_COUNT + 1}";
+        }
+        name = Name(
+            orig_src=self.get_source(),
+            name=Tok.NAME.value,
+            value=ident,
+            line=str_tok.loc.line,
+            end_line=str_tok.loc.end_line,
+            col_start=str_tok.loc.col_start,
+            col_end=str_tok.loc.col_end,
+            pos_start=str_tok.loc.pos_start,
+            pos_end=str_tok.loc.pos_end
+        );
+        has_description = True;
     }
     test_lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     test_rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [test_kw_uni];
-    if has_explicit_name {
-        kid.append(name);
+    if has_description {
+        kid.append(description);
     }
     kid.append(test_lb_uni);
     kid.extend(body);
     kid.append(test_rb_uni);
-    return Test(name=name, body=body, kid=kid, doc=None);
+    return Test(name=name, body=body, kid=kid, doc=None, description=description);
 }
 
 impl Parser.parse_switch_stmt -> SwitchStmt {
@@ -6126,13 +6214,11 @@ impl Parser.parse_impl_def -> ImplDef {
         # Key distinction: enum-style uses commas, regular uses semicolons
         is_enum_style = False;
         # Bare name followed by comma is enum-style: impl Enum { Bar, Baz }
-        if self.check_name() and self.peek().kind == TokenKind.COMMA {
+        if self.check_name() and self.check_peek(TokenKind.COMMA) {
             is_enum_style = True;
         }
         # NAME: type = value followed by comma is enum-style
-        if not is_enum_style
-        and self.check_name()
-        and self.peek().kind == TokenKind.COLON {
+        if not is_enum_style and self.check_name() and self.check_peek(TokenKind.COLON) {
             save_pos = self.pos;
             self.advance();  # consume NAME
             self.advance();  # consume COLON
@@ -6195,7 +6281,7 @@ impl Parser.parse_impl_def -> ImplDef {
             self.pos = save_pos;
         }
         # NAME = value followed by comma is enum-style
-        if not is_enum_style and self.check_name() and self.peek().kind == TokenKind.EQ {
+        if not is_enum_style and self.check_name() and self.check_peek(TokenKind.EQ) {
             # Look further ahead to find COMMA or SEMI after the value
             save_pos = self.pos;
             self.advance();  # consume NAME

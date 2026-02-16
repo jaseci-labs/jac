@@ -767,13 +767,6 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
 """Process function call."""
 impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     import from jaclang.compiler.type_system { types as jtypes }
-    target_is_type = False;
-    if isinstance(nd.target, (uni.Name, uni.BuiltinType)) {
-        target_name = getattr(nd.target, 'sym_name', None);
-        if (target_name == 'type') {
-            target_is_type = True;
-        }
-    }
     args: list[(es.Expression | es.SpreadElement)] = [];
     props: list[(es.Property | es.SpreadElement)] = [];
     for param in nd.params {
@@ -807,14 +800,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         if param.gen.es_ast {
             args.append(cast(es.Expression, param.gen.es_ast));
         }
-    }
-    if (target_is_type and (len(args) == 1) and isinstance(args[0], es.Expression)) {
-        typeof_expr = self.sync_loc(
-            es.UnaryExpression(operator='typeof', prefix=True, argument=args[0]),
-            jac_node=nd
-        );
-        nd.gen.es_ast = typeof_expr;
-        return;
     }
     # Check for server function call from client context - transform to __jacCallFunction
     if (nd.in_client_context() and isinstance(nd.target, uni.Name)) {
@@ -913,30 +898,98 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     callee = nd.target.gen.es_ast
     or self.sync_loc(es.Identifier(name='func'), jac_node=nd.target);
+    # --- Primitive emitter dispatch for method calls ---
     if (
         isinstance(callee, es.MemberExpression)
         and isinstance(callee.property, es.Identifier)
+        and isinstance(nd.target, uni.AtomTrailer)
     ) {
-        method_map = {
-            'lower': 'toLowerCase',
-            'upper': 'toUpperCase',
-            'startswith': 'startsWith',
-            'endswith': 'endsWith'
-        };
-        replacement = method_map.get(callee.property.name);
-        if replacement {
-            callee = self.sync_loc(
-                es.MemberExpression(
-                    object=callee.object,
-                    property=self.sync_loc(
-                        es.Identifier(name=replacement), jac_node=nd
-                    ),
-                    computed=callee.computed
-                ),
-                jac_node=nd
-            );
+        import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+        _obj_type = None;
+        try {
+            _te = self.prog.get_type_evaluator();
+            if _te {
+                _obj_type = _te.get_type_of_expression(nd.target.target);
+            }
+        } except Exception {
+            _obj_type = None;
+        }
+        if (
+            isinstance(_obj_type, jtypes.ClassType)
+            and _obj_type.shared
+            and _obj_type.shared.class_name in self._primitive_type_names
+        ) {
+            # Lazily initialize emitters on first use (classes as namespaces, not instances)
+            if self._primitive_emitters is None {
+                _pes = __import__(
+                    "jaclang.compiler.passes.ecmascript.primitives_es",
+                    fromlist=["ESIntEmitter"]
+                );
+                self._primitive_emitters = {
+                    "int": _pes.ESIntEmitter,
+                    "float": _pes.ESFloatEmitter,
+                    "complex": _pes.ESComplexEmitter,
+                    "str": _pes.ESStrEmitter,
+                    "bytes": _pes.ESBytesEmitter,
+                    "list": _pes.ESListEmitter,
+                    "dict": _pes.ESDictEmitter,
+                    "set": _pes.ESSetEmitter,
+                    "frozenset": _pes.ESFrozensetEmitter,
+                    "tuple": _pes.ESTupleEmitter,
+                    "range": _pes.ESRangeEmitter
+                };
+            }
+            _type_name = _obj_type.shared.class_name;
+            # bool delegates to int emitter
+            if _type_name == "bool" {
+                _type_name = "int";
+            }
+            _emitter = self._primitive_emitters.get(_type_name);
+            _method_name = callee.property.name;
+            _emit_fn_name = "emit_" + _method_name;
+            _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
+            if _emit_fn {
+                _unparser = JSCodeGenerator();
+                _target_str = _unparser.generate(callee.object);
+                _args_strs: list[str] = [];
+                for _a in args {
+                    _args_strs.append(_unparser.generate(_a));
+                }
+                _result = _emit_fn(_target_str, _args_strs);
+                nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
+                return;
+            }
         }
     }
+    # --- Primitive emitter dispatch for builtin function calls ---
+    if (
+        isinstance(nd.target, uni.Name)
+        and nd.target.sym_name in self._emitter_builtins
+    ) {
+        import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+        # Lazily initialize builtin emitter on first use (class as namespace, not instance)
+        if self._builtin_emitter is None {
+            _pes = __import__(
+                "jaclang.compiler.passes.ecmascript.primitives_es",
+                fromlist=["ESBuiltinEmitter"]
+            );
+            self._builtin_emitter = _pes.ESBuiltinEmitter;
+        }
+        _builtin_name = nd.target.sym_name;
+        _emit_fn_name = "emit_" + _builtin_name;
+        _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
+        if _emit_fn {
+            _unparser = JSCodeGenerator();
+            _args_strs: list[str] = [];
+            for _a in args {
+                _args_strs.append(_unparser.generate(_a));
+            }
+            _result = _emit_fn(_args_strs);
+            nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
+            return;
+        }
+    }
+    # --- Default codegen (non-primitive or fallback) ---
     if isinstance(nd.target, uni.Name) {
         callee_type = self.prog.get_type_evaluator().get_type_of_expression(nd.target);
     } else {
@@ -3019,4 +3072,9 @@ impl EsastGenPass.before_pass -> None {
     self.has_injected_jac_call_function: bool = False;
     # Track if useEffect import has been auto-injected to avoid duplicates
     self.has_injected_useeffect: bool = False;
+    # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
+    self._primitive_emitters: dict[str, object] | None = None;
+    self._builtin_emitter: object | None = None;
+    self._primitive_type_names: set[str] = {"int","float","complex","str","bytes","list","dict","set","frozenset","tuple","range","bool"};
+    self._emitter_builtins: set[str] = {"print","input","len","abs","round","min","max","sum","sorted","reversed","enumerate","zip","map","filter","any","all","isinstance","issubclass","type","id","hash","repr","chr","ord","hex","oct","bin","pow","divmod","iter","next","callable","getattr","setattr","hasattr","delattr","vars","dir","open","format","ascii","str","int","float","bool","list","dict","set","tuple","frozenset","bytes","complex"};
 }

@@ -13,13 +13,13 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     reactChildren = [];
     for child in childrenArray {
         if child != None {
-            reactChildren.push(child);
+            reactChildren.append(child);
         }
     }
-    if reactChildren.length > 0 {
+    if len(reactChildren) > 0 {
         args = [tag, props];
         for child in reactChildren {
-            args.push(child);
+            args.append(child);
         }
         return React.createElement.apply(React, args);
     } else {

@@ -273,7 +273,7 @@ glob llm = MockLLM(
 """Translate text."""
 def translate(text: str) -> str by llm();
 
-test test_translate {
+test "translate" {
     result = translate("Hello");
     assert result == "Mocked response 1";
 }

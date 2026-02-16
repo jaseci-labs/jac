@@ -1289,16 +1289,21 @@ system,
     }
 
     """Create a test."""
-    static def jac_test(test_fun: Callable) -> Callable {
+    static def jac_test(description: str = "") -> Callable {
         import from jaclang.runtimelib.test { JacTestCheck }
-        file_path = getfile(test_fun);
-        func_name = test_fun.__name__;
-        def test_deco -> None {
-            test_fun(JacTestCheck());
+        def decorator(test_fun: Callable) -> Callable {
+            file_path = getfile(test_fun);
+            func_name = test_fun.__name__;
+            def test_deco -> None {
+                test_fun(JacTestCheck());
+            }
+            test_deco.__name__ = test_fun.__name__;
+            JacTestCheck.add_test(
+                file_path, func_name, test_deco, display_name=description
+            );
+            return test_deco;
         }
-        test_deco.__name__ = test_fun.__name__;
-        JacTestCheck.add_test(file_path, func_name, test_deco);
-        return test_deco;
+        return decorator;
     }
 
     """JSX interface for creating elements.
