@@ -360,9 +360,7 @@ def _handle_build_target(ctx: HookContext) -> None {
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 0);
     } except NotImplementedError as e {
-        console.error(
-            f"Target '{target_name}' is not yet implemented."
-        );
+        console.error(f"Target '{target_name}' is not yet implemented.");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     } except Exception as e {
@@ -452,13 +450,14 @@ def _handle_start_target(ctx: HookContext) -> None {
         if target.requires_setup {
             tauri_dir = project_dir / "src-tauri";
             if not tauri_dir.exists() {
-                console.error(f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first.");
+                console.error(
+                    f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+                );
                 ctx.set_data("cancel_execution", True);
                 ctx.set_data("cancel_return_code", 1);
                 return;
             }
         }
-
         try {
             if dev_mode {
                 # Use target's dev() method (polymorphic dispatch)
@@ -478,7 +477,6 @@ def _handle_start_target(ctx: HookContext) -> None {
         }
         return;
     }
-
     # Web target: let existing core jac start command handle it
     # (no cancellation - falls through to default behavior with HMR support)
 }

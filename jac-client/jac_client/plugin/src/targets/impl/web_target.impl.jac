@@ -18,7 +18,9 @@ For web target, this delegates to the core jac start --dev behavior.
 The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
+impl WebTarget.dev(
+    self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+) -> None {
     import from jaclang.cli.console { console }
     # Web dev mode is handled by core jac start --dev
     # When called directly (e.g., from PWATarget.dev() -> super().dev()),
@@ -29,10 +31,11 @@ impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path, api_por
     if not (client_dir / 'configs' / 'package.json').exists() {
         bundler.create_package_json();
     }
-
     console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
     console.print("  Press Ctrl+C to stop\n", style="muted");
-    process = bundler.start_dev_server(port=VITE_DEV_SERVER_PORT, suppress_initial_output=False);
+    process = bundler.start_dev_server(
+        port=VITE_DEV_SERVER_PORT, suppress_initial_output=False
+    );
     if process {
         try {
             process.wait();
@@ -54,29 +57,25 @@ impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path, api_por
 For web target, this builds the bundle and serves it.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.start(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
+impl WebTarget.start(
+    self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+) -> None {
     import from jaclang.cli.console { console }
     import http.server;
     import socketserver;
-
     bundler = ViteBundler(project_dir=project_dir);
     console.print("\n🌐 Building web bundle for production preview...", style="bold");
     self.build(entry_file, project_dir, None);
-
     # Serve the dist directory (use bundler.output_dir to avoid path duplication)
     dist_dir = bundler.output_dir;
     if not dist_dir.exists() {
-        raise RuntimeError(f"Build output not found: {dist_dir}");
+        raise RuntimeError(f"Build output not found: {dist_dir}") ;
     }
-
     import os;
     os.chdir(dist_dir);
-
     handler = http.server.SimpleHTTPRequestHandler;
-
     console.print(f"\n🚀 Serving at http://localhost:{api_port}/", style="bold green");
     console.print("  Press Ctrl+C to stop\n", style="muted");
-
     with socketserver.TCPServer(("", api_port), handler) as httpd {
         try {
             httpd.serve_forever();

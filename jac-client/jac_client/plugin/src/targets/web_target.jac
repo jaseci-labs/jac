@@ -28,8 +28,12 @@ class WebTarget(ClientTarget) {
     ) -> Path;
 
     """Start web dev server."""
-    override def dev(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None;
+    override def dev(
+        self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None;
 
     """Start web target (production preview mode)."""
-    override def start(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None;
+    override def start(
+        self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None;
 }
