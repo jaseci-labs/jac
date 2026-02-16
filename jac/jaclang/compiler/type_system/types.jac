@@ -12,19 +12,18 @@ with entry {
 }
 
 """Enumeration of type categories."""
-class TypeCategory(IntEnum) {
-    with entry {
-        Unbound = auto();
-        Unknown = auto();
-        Never = auto();
-        Any = auto();
-        Module = auto();
-        TypeVar = auto();
-        Class = auto();
-        Function = auto();
-        Overload = auto();
-        Union = auto();
-    }
+enum TypeCategory ( IntEnum ) {
+    Unbound,
+    Unknown,
+    Never,
+    Any,
+    Module,
+    TypeVar,
+    Class,
+    Function,
+    Overload,
+    Union,
+    EnumMember
 }
 
 """
@@ -166,7 +165,9 @@ Holds the shared details of class type.
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
-            is_enum_class: bool = False;
+            is_enum_class: bool = False,
+            enum_value_type: (TypeBase | None) = None,
+            enum_members: (dict[str, EnumMemberInfo] | None) = None;
 
         def postinit -> None;
     }
@@ -177,7 +178,12 @@ Holds the private details of class type.
         The private details of classes will be unique to each class instance.
     """
     obj ClassDetailsPrivate {
-        has type_args: (list[TypeBase] | None) = None;
+        has type_args: (list[TypeBase] | None) = None,
+            # Alias name for special forms (e.g., "Callable", "Union").
+            # Similar to Pyright's classType.priv.aliasName.
+            # This is set when loading special forms from typing module
+            # to distinguish between different _SpecialForm instances.
+            alias_name: (str | None) = None;
 
         def postinit -> None;
     }
@@ -197,6 +203,8 @@ Holds the private details of class type.
     def is_enum_class -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;
+    # Check if this is a special form with the given alias name (like Pyright's isSpecialBuiltIn)
+    def is_special_form(name: (str | None) = None) -> bool;
 }
 
 """Enumeration of parameter kinds."""
@@ -210,6 +218,26 @@ class ParamKind(IntEnum) {
     }
 }
 
+"""
+Based on Pyright's FunctionTypeFlags. These flags control how the
+function type behaves during type checking.
+"""
+enum FunctionTypeFlags ( IntEnum ) {
+    Null = 0,
+    # The *args and **kwargs parameters do not need to be present for this
+    # function to be compatible. This is used for Callable[..., x] (gradual typing).
+    # When set, the function accepts any arguments.
+    # Note: In Jac, all function parameters are typed (Any if unknown), so
+    # GradualCallableForm can only come from Callable[..., T] annotations.
+    GradualCallableForm = 1 << 0,
+    # Function is decorated with @staticmethod
+    StaticMethod = 1 << 1,
+    # Function is decorated with @classmethod
+    ClassMethod = 1 << 2,
+    # Function is a synthesized method (e.g., dataclass __init__)
+    SynthesizedMethod = 1 << 3,
+}
+
 """Represents a function parameter."""
 obj Parameter {
     has name: str,
@@ -221,11 +249,19 @@ obj Parameter {
         param_kind: ParamKind = ParamKind.NORMAL;
 }
 
-"""Represents a function type."""
+"""
+This Type is used for both actual function definitions and for
+Callable type annotations.
+Callable annotations are distinguished by having an empty `func_name`.
+    - `Callable[[int, str], bool]` creates a FunctionType with empty func_name.
+    - `Callable[..., bool]` creates a FunctionType with GradualCallableForm flag.
+"""
 obj FunctionType(TypeBase) {
     has func_name: str = "",
         return_type: (TypeBase | None) = None,
-        parameters: (list[Parameter] | None) = None;
+        parameters: (list[Parameter] | None) = None,
+        # Using int for bitwise flag operations (FunctionTypeFlags values combined)
+        function_flags: int = 0;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -235,6 +271,50 @@ obj FunctionType(TypeBase) {
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
     def _index_of_type_param(class_type: ClassType, type_var: TypeVarType) -> int;
+    # --- Flag checking methods (following Pyright's pattern) ---
+    """Check if this is a gradual callable form (Callable[..., T])."""
+    def is_gradual_callable_form -> bool;
+
+    """Check if this function type was created from a Callable annotation."""
+    def is_from_callable_annotation -> bool;
+}
+
+"""
+This is a factory function for creating FunctionType instances that
+represent Callable type annotations. The resulting FunctionType has
+an empty func_name to distinguish it from actual function definitions.
+"""
+def create_callable_type(
+    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
+) -> FunctionType {
+    parameters: list[Parameter] = [];
+
+    # Create positional-only parameters with synthesized names
+    for (idx, param_type) in enumerate(param_types) {
+        parameters.append(
+            Parameter(
+                name=f"__p{idx}",
+                category=ParameterCategory.Positional,
+                param_type=param_type,
+                default_value=None,
+                is_self=False,
+                is_cls=False,
+                param_kind=ParamKind.POSONLY
+            )
+        );
+    }
+
+    # Set GradualCallableForm flag only for Callable[..., T] form
+    flags: int = FunctionTypeFlags.GradualCallableForm
+    if is_gradual
+    else FunctionTypeFlags.Null;
+
+    return FunctionType(
+        func_name="",
+        return_type=return_type,
+        parameters=parameters,
+        function_flags=flags
+    );
 }
 
 """Represents an overloaded type."""
@@ -259,4 +339,25 @@ obj UnionType(TypeBase) {
 
     def postinit -> None;
     def __str__ -> str;
+}
+
+"""Information about a specific enum member."""
+obj EnumMemberInfo {
+    has member_name: str,
+        value_type: (TypeBase | None) = None,
+        literal_value: (int | str | None) = None;
+}
+
+"""Represents a specific enum member type (e.g., Color.RED)."""
+obj EnumMemberType(TypeBase) {
+    has enum_class: (ClassType | None) = None,
+        member_info: (EnumMemberInfo | None) = None;
+
+    with entry {
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.EnumMember;
+    }
+
+    def __str__ -> str;
+    def get_value_type -> TypeBase;
+    def get_name_as_str -> str;
 }
