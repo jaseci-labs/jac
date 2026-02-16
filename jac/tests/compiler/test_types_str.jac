@@ -67,7 +67,7 @@ test "all type str methods" {
 
     # FunctionType - anonymous
     func4 = types.FunctionType();
-    assert str(func4) == "<function <anonymous>()>";
+    assert str(func4) == "Callable[[], Unknown]";
 
     # OverloadedType - no overloads
     overload1 = types.OverloadedType();
