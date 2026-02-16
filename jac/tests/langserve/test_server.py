@@ -631,7 +631,7 @@ def test_go_to_definition_nested_impl_symbols(
     fixture_path: Callable[[str], str],
 ) -> None:
     """Test go-to-definition for symbols in nested structures inside ImplDef.
-    
+
     This tests the fix for symbol resolution in nested control flow structures
     (if/while/for) inside .impl.jac files, where symbols should be resolved by
     traversing up to find the parent ImplDef and using its decl_link to search
@@ -639,9 +639,7 @@ def test_go_to_definition_nested_impl_symbols(
     """
     lsp = create_server(None, fixture_path)
     try:
-        impl_file = uris.from_fs_path(
-            fixture_path("nested_impl_resolution.impl.jac")
-        )
+        impl_file = uris.from_fs_path(fixture_path("nested_impl_resolution.impl.jac"))
         lsp.type_check_file(impl_file)
 
         # fmt: off
