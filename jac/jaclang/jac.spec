@@ -388,8 +388,9 @@ jsx_child ::=
     )?
 
 element_stmt ::=
-    SEMI* (
-        KW_CLIENT (LBRACE client_block | element_stmt)?
+    (
+        SEMI
+        | KW_CLIENT (LBRACE client_block | element_stmt)?
         | KW_SERVER (LBRACE server_block | element_stmt)?
         | KW_NATIVE (LBRACE native_block | element_stmt)?
         | (KW_IMPORT | KW_INCLUDE) import_stmt
@@ -425,7 +426,7 @@ module_code ::=
 
 code_block_stmts ::= (statement SEMI?)*
 
-ctrl_stmt ::= ((KW_BREAK | KW_CONTINUE | KW_SKIP) SEMI? | KW_DISENGAGE SEMI?)?
+ctrl_stmt ::= ((KW_BREAK | KW_CONTINUE | KW_SKIP) SEMI | KW_DISENGAGE SEMI)?
 
 statement ::=
     SEMI
@@ -440,7 +441,7 @@ statement ::=
     | KW_MATCH match_stmt
     | KW_SWITCH switch_stmt
     | KW_RETURN return_stmt
-    | KW_YIELD yield_stmt SEMI?
+    | KW_YIELD yield_stmt SEMI
     | (KW_BREAK | KW_CONTINUE | KW_SKIP) ctrl_stmt
     | KW_RAISE raise_stmt
     | KW_ASSERT assert_stmt
@@ -457,6 +458,11 @@ statement ::=
     | KW_IMPL impl_def
     | KW_HAS has_stmt
     | PYNLINE
+    | KW_ELIF
+    | KW_ELSE
+    | KW_EXCEPT
+    | KW_FINALLY
+    | KW_CASE
     | RETURN_HINT expression LBRACE code_block_stmts RBRACE
     | expression (
           (
@@ -589,19 +595,19 @@ literal_for_mapping ::=
 
 class_pattern_args ::= LPAREN ((EQ EQ pattern | pattern) COMMA?)* RPAREN
 
-return_stmt ::= KW_RETURN expression? SEMI?
+return_stmt ::= KW_RETURN expression? SEMI
 
 yield_stmt ::= KW_YIELD KW_FROM? expression?
 
-raise_stmt ::= KW_RAISE expression? (KW_FROM expression)? SEMI?
+raise_stmt ::= KW_RAISE expression? (KW_FROM expression)? SEMI
 
-assert_stmt ::= KW_ASSERT expression (COMMA expression)? SEMI?
+assert_stmt ::= KW_ASSERT expression (COMMA expression)? SEMI
 
-delete_stmt ::= KW_DELETE expression SEMI?
+delete_stmt ::= KW_DELETE expression SEMI
 
-global_stmt ::= KW_GLOBAL_REF NAME (COMMA NAME)* SEMI?
+global_stmt ::= KW_GLOBAL_REF NAME (COMMA NAME)* SEMI
 
-nonlocal_stmt ::= KW_NONLOCAL NAME (COMMA NAME)* SEMI?
+nonlocal_stmt ::= KW_NONLOCAL NAME (COMMA NAME)* SEMI
 
 assignment_with_target ::=
     (COLON pipe)? (
@@ -627,12 +633,12 @@ import_stmt ::=
     (KW_FROM ((DOT | ELLIPSIS) ELLIPSIS?*)? (STRING | (DOT NAME)*)?)? (
         LBRACE ((STAR_MUL | KW_DEFAULT | NAME) (KW_AS NAME)?)* RBRACE
         | (STRING | (DOT NAME)*)? (KW_AS NAME)?
-    ) SEMI?
+    ) SEMI
 
 archetype ::=
     (DECOR_OP atomic_chain)* KW_ASYNC? KW_ABSTRACT? access_tag NAME
     (LPAREN (atomic_chain (COMMA atomic_chain)*)? RPAREN)?
-    (LBRACE archetype_member* RBRACE | SEMI?)
+    (LBRACE archetype_member* RBRACE | SEMI)
 
 archetype_member ::=
     SEMI* STRING? (

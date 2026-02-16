@@ -3237,8 +3237,10 @@ impl Parser.parse_jsx_child -> Expr {
 }
 
 impl Parser.parse_element_stmt{
-    while self.match_tok(TokenKind.SEMI) {
-        continue;
+    if self.check(TokenKind.SEMI) {
+        self.error("Unexpected semicolon at module level");
+        self.advance();
+        return None;
     }
     if self.at_end() {
         return None;
@@ -3706,18 +3708,16 @@ impl Parser.parse_ctrl_stmt{
         self.advance();
         ctrl_uni = self.make_uni_token(self.previous());
         kid: list = [ctrl_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
         return CtrlStmt(ctrl=ctrl_uni, kid=kid);
     }
     if self.check(TokenKind.KW_DISENGAGE) {
         self.advance();
         dis_uni = self.make_uni_token(self.previous());
         kid: list = [dis_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
         return DisengageStmt(kid=kid);
     }
     return None;
@@ -3769,14 +3769,13 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_YIELD) {
         yield_expr = self.parse_yield_stmt();
         es_kid: list = [yield_expr];
-        if self.match_tok(TokenKind.SEMI) {
-            if yield_expr.expr is None {
-                # Bare yield: Semi goes inside YieldExpr
-                yield_expr.add_kids_right([self.make_semi()]);
-            } else {
-                # Yield with expression: Semi goes at ExprStmt level
-                es_kid.append(self.make_semi());
-            }
+        self.expect(TokenKind.SEMI);
+        if yield_expr.expr is None {
+            # Bare yield: Semi goes inside YieldExpr
+            yield_expr.add_kids_right([self.make_semi()]);
+        } else {
+            # Yield with expression: Semi goes at ExprStmt level
+            es_kid.append(self.make_semi());
         }
         return ExprStmt(expr=yield_expr, in_fstring=False, kid=es_kid);
     }
@@ -3847,6 +3846,20 @@ impl Parser.parse_statement{
         py_tok = self.advance();
         py_code = self.make_uni_token(py_tok);
         return PyInlineCode(code=py_code, kid=[py_code]);
+    }
+    # Reject orphaned control-flow clauses
+    if self.check_any(
+        TokenKind.KW_ELIF,
+        TokenKind.KW_ELSE,
+        TokenKind.KW_EXCEPT,
+        TokenKind.KW_FINALLY,
+        TokenKind.KW_CASE
+    ) {
+        self.error(
+            "Unexpected '" + self.current().value + "' — " + "must follow its parent statement (if/try/match/switch)"
+        );
+        self.advance();
+        return None;
     }
     # Handle typed context block: -> Type { ... }
     if self.check(TokenKind.RETURN_HINT) and not self.check_peek(TokenKind.SEMI) {
@@ -4115,6 +4128,9 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
     }
+    if len(excepts) == 0 and finally_body is None {
+        self.error("try statement requires at least one except or finally block");
+    }
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
     kid.append(rb_uni);
@@ -4224,6 +4240,9 @@ impl Parser.parse_match_stmt -> MatchStmt {
     cases: list = [];
     while self.check(TokenKind.KW_CASE) {
         cases.append(self.parse_match_case());
+    }
+    if len(cases) == 0 {
+        self.error("match statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [match_uni, expr, lb_uni];
@@ -4715,9 +4734,8 @@ impl Parser.parse_return_stmt -> ReturnStmt {
     if expr {
         kid.append(expr);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return ReturnStmt(expr=expr, kid=kid);
 }
 
@@ -4763,9 +4781,8 @@ impl Parser.parse_raise_stmt -> RaiseStmt {
         kid.append(from_kw_uni);
         kid.append(from_target);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return RaiseStmt(cause=expr, from_target=from_target, kid=kid);
 }
 
@@ -4783,9 +4800,8 @@ impl Parser.parse_assert_stmt -> AssertStmt {
         kid.append(comma_uni);
         kid.append(msg);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return AssertStmt(condition=test, error_msg=msg, kid=kid);
 }
 
@@ -4793,9 +4809,8 @@ impl Parser.parse_delete_stmt -> DeleteStmt {
     del_uni = self.consume_uni(TokenKind.KW_DELETE);
     target = self.parse_expression();
     kid: list = [del_uni, target];
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return DeleteStmt(target=target, kid=kid);
 }
 
@@ -4815,9 +4830,8 @@ impl Parser.parse_global_stmt -> GlobalStmt {
         targets.append(name);
         kid.append(name);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return GlobalStmt(target=targets, kid=kid);
 }
 
@@ -4837,9 +4851,8 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
         targets.append(name);
         kid.append(name);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return NonLocalStmt(target=targets, kid=kid);
 }
 
@@ -5041,6 +5054,9 @@ impl Parser.parse_import_stmt -> Import {
             }
             kid.append(self.make_uni_token(self.previous()));
         }
+        if len(items) == 0 {
+            self.error("import statement must specify at least one item");
+        }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
         kid.append(rbrace_uni);
     } elif from_loc is None {
@@ -5092,7 +5108,8 @@ impl Parser.parse_import_stmt -> Import {
             kid.append(self.make_uni_token(self.previous()));
         }
     }
-    if from_loc is None and self.match_tok(TokenKind.SEMI) {
+    if from_loc is None {
+        self.expect(TokenKind.SEMI);
         kid.append(self.make_semi());
     }
     return Import(
@@ -5165,7 +5182,7 @@ impl Parser.parse_archetype -> Archetype {
         }
         body_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
-        self.match_tok(TokenKind.SEMI);
+        self.expect(TokenKind.SEMI);
     }
     kid: list = [];
     if is_async {
@@ -5921,6 +5938,9 @@ impl Parser.parse_enum -> Enum {
                 break;
             }
         }
+        if len(body) == 0 {
+            self.error("enum body must contain at least one member");
+        }
         enum_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
         self.expect(TokenKind.SEMI);
@@ -6048,6 +6068,9 @@ impl Parser.parse_switch_stmt -> SwitchStmt {
     cases: list = [];
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
         cases.append(self.parse_switch_case());
+    }
+    if len(cases) == 0 {
+        self.error("switch statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [switch_uni, target, lb_uni];

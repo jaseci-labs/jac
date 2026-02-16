@@ -190,30 +190,6 @@ _MUST_REJECT = {
     "glob_without_assign": "glob;",
     "visit_missing_expr": "with entry { visit; }",
     "spawn_as_statement": "with entry { spawn; }",
-}
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    list(_MUST_REJECT.values()),
-    ids=list(_MUST_REJECT.keys()),
-)
-def test_rd_parser_strictness(snippet: str) -> None:
-    """RD parser must reject invalid constructs."""
-    rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac")
-    assert rd_ast is None, f"RD parser must reject: {snippet!r}"
-
-
-# =============================================================================
-# RD parser strictness tests — known gaps (xfail)
-#
-# These snippets are invalid per the jac.lark grammar but the RD parser
-# currently accepts them.  Each xfail documents a concrete tightening
-# opportunity.  When the parser is fixed to reject a snippet, remove the
-# xfail marker and move it to _MUST_REJECT above.
-# =============================================================================
-
-_SHOULD_REJECT = {
     # --- Missing required semicolons (lark requires SEMI) ---
     "import_missing_semi": "import foo",
     "include_missing_semi": "include foo",
@@ -234,7 +210,7 @@ _SHOULD_REJECT = {
     # --- Empty required blocks ---
     "empty_match_body": "with entry { match x { } }",
     "empty_switch_body": "with entry { switch x { } }",
-    # --- try without except or finally (lark: except_list? else_stmt? finally_stmt? but must have at least except or finally) ---
+    # --- try without except or finally ---
     "try_no_except_no_finally": "with entry { try { } }",
     # --- Control statements with spurious values ---
     "break_with_value": "with entry { break 5; }",
@@ -243,24 +219,19 @@ _SHOULD_REJECT = {
     "double_else_on_if": "with entry { if true { } else { } else { } }",
     # --- from-import with empty items ---
     "from_import_empty_items": "import from foo { };",
-    # --- Bare semi at module level (not a valid element_stmt) ---
+    # --- Bare semi at module level ---
     "bare_semi_at_module_level": ";",
-    # --- enum with empty body (lark requires assignment_list) ---
+    # --- enum with empty body ---
     "enum_empty_body": "enum Color { }",
 }
 
 
 @pytest.mark.parametrize(
     "snippet",
-    list(_SHOULD_REJECT.values()),
-    ids=list(_SHOULD_REJECT.keys()),
+    list(_MUST_REJECT.values()),
+    ids=list(_MUST_REJECT.keys()),
 )
-@pytest.mark.xfail(reason="Parser too permissive — should reject per jac.lark")
-def test_rd_parser_future_strictness(snippet: str) -> None:
-    """RD parser should reject these but currently doesn't.
-
-    Each passing xfail here is a tightening opportunity. When the parser
-    is fixed, move the snippet to _MUST_REJECT and remove the xfail.
-    """
+def test_rd_parser_strictness(snippet: str) -> None:
+    """RD parser must reject invalid constructs."""
     rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac")
-    assert rd_ast is None, f"RD parser should reject: {snippet!r}"
+    assert rd_ast is None, f"RD parser must reject: {snippet!r}"
