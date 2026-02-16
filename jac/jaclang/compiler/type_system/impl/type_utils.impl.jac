@@ -29,14 +29,11 @@ impl lookup_symtab(
     result = symtable.lookup(name, deep=True, incl_inner_scope=True);
     # If not found, traverse up the parent chain to find an ImplDef
     if (result is None) {
-        impl_def: (uni.ImplDef | None) = None;
-        # Check if symtable itself is an ImplDef
-        if isinstance(symtable, uni.ImplDef) {
-            impl_def = symtable;
-        } else {
-            # Traverse up the parent chain to find an ImplDef
-            impl_def = symtable.find_parent_of_type(uni.ImplDef);
-        }
+        impl_def: uni.ImplDef | None = (
+            symtable
+            if isinstance(symtable, uni.ImplDef)
+            else symtable.find_parent_of_type(uni.ImplDef)
+        );
         # If we found an ImplDef with a decl_link, search in the declaration's symbol table
         if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
             result = impl_def.decl_link.sym_tab.lookup(
