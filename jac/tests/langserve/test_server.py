@@ -416,13 +416,7 @@ def test_go_to_def_import_star(
 
 
 def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> None:
-    """Test hover and go-to-definition on method stubs and impl files.
-
-    This tests:
-    1. Hover on type annotations (self: MyServer) in method stubs works
-    2. Hover on type annotations in impl files works
-    3. Go-to-definition on method stubs (init, process) navigates to impl file
-    """
+    """Test hover and go-to-definition on method stubs and impl files."""
     lsp = create_server(None, fixture_path)
     try:
         test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
@@ -504,12 +498,6 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
             f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
         )
 
-        # ================================================================
-        # Test hover and go-to-definition for Python type methods in impl bodies
-        # This tests the fix for type resolution in impl bodies where
-        # Python type methods (like Thread.start) should be properly resolved.
-        # ================================================================
-
         # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
         # Line 23 (0-indexed: 22): `    self.worker.start();`
         # 'start' starts at column 17 (0-indexed: 16)
@@ -543,12 +531,7 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
 def test_go_to_definition_impl_body_self_attr(
     passes_main_fixture_abs_path: Callable[[str], str],
 ) -> None:
-    """Test go-to-definition for self.attr in impl bodies navigates to has declaration.
-
-    This tests the fix for symbol resolution in .impl.jac files, where clicking on
-    'self.count' in an impl body should navigate to the 'has count' declaration
-    in the base .jac file.
-    """
+    """Test go-to-definition for self.attr in impl bodies navigates to has declaration."""
     lsp = create_server(None, lambda x: "")
     try:
         impl_file = uris.from_fs_path(
@@ -556,23 +539,12 @@ def test_go_to_definition_impl_body_self_attr(
         )
         lsp.type_check_file(impl_file)
 
-        # fmt: off
-        # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
-        # Line 5: `    return self.count;`
-        #         - 'count' starts at column 17
-        # Line 9: `    return f"{self.name}: {self.count}";`
-        #         - 'name' is at column 21, 'count' is at column 34
-        #
-        # Expected targets in impl_symbol_resolution.jac (0-indexed in LSP output):
-        # Line 3 (0-indexed): `    has count: int = 0,` -> count at 3:8-3:13
-        # Line 4 (0-indexed): `        name: str = "default";` -> name at 4:8-4:12
         positions = [
             # (impl_line, impl_char, expected_target)
             (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
             (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
             (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
         ]
-        # fmt: on
 
         for line, char, expected in positions:
             result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
@@ -596,9 +568,6 @@ def test_go_to_definition_directory_import(
         import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"))
         lsp.type_check_file(import_file)
 
-        # fmt: off
-        # Line 1: import from mypkg_ns.my_mod { add }
-        # Line 2: import from mypkg_reg.my_mod { sub }
         positions = [
             # Regular package: clicking 'mypkg_reg' -> points to __init__.jac
             (2, 18, "local_imports/mypkg_reg/__init__.jac:0:0-0:0"),
@@ -611,7 +580,6 @@ def test_go_to_definition_directory_import(
             # resolution inside the namespace package 'my_mod' -> should point to the my_mod.jac
             (1, 28, "local_imports/mypkg_ns/my_mod.jac:0:0-0:0"),
         ]
-        # fmt: on
 
         for line, char, expected in positions:
             # We use try-except to detect if get_definition crashes (though it shouldn't usually raise)
@@ -630,29 +598,12 @@ def test_go_to_definition_directory_import(
 def test_go_to_definition_nested_impl_symbols(
     fixture_path: Callable[[str], str],
 ) -> None:
-    """Test go-to-definition for symbols in nested structures inside ImplDef.
 
-    This tests the fix for symbol resolution in nested control flow structures
-    (if/while/for) inside .impl.jac files, where symbols should be resolved by
-    traversing up to find the parent ImplDef and using its decl_link to search
-    in the declaration's symbol table.
-    """
     lsp = create_server(None, fixture_path)
     try:
         impl_file = uris.from_fs_path(fixture_path("nested_impl_resolution.impl.jac"))
         lsp.type_check_file(impl_file)
 
-        # fmt: off
-        # Test positions in nested_impl_resolution.impl.jac (1-indexed for test input):
-        # Line 2: `    uni.Module;` - direct reference (baseline)
-        # Line 3: `    if uni.Module {` - inside if condition
-        # Line 4: `        mod: uni.Module;` - inside if body
-        # Line 6: `    while uni.Module {` - inside while condition
-        # Line 7: `        x: uni.Module;` - inside while body
-        # Line 9: `    for item in [uni.Module] {` - inside for expression
-        # Line 10: `        y: uni.Module;` - inside for body
-        #
-        # Expected: All should resolve to unitree.jac (imported as `uni`)
         positions = [
             # (line, char_pos, expected_target_substring)
             (2, 5, "unitree.jac"),   # uni in direct reference
@@ -663,7 +614,6 @@ def test_go_to_definition_nested_impl_symbols(
             (9, 22, "unitree.jac"),  # uni in for expression
             (10, 15, "unitree.jac"), # uni in for body variable type
         ]
-        # fmt: on
 
         for line, char, expected in positions:
             result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
