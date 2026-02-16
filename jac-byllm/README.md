@@ -1,17 +1,17 @@
 <div align="center">
     <img src="https://byllm.jaseci.org/logo.png" height="150">
 
-  [About byLLM] | [Get started] | [Usage docs] | [Research Paper]
+  [About byLLM] | [Quick Start & Tutorials] | [Full Reference] | [Research Paper]
 </div>
 
-[About byLLM]: https://www.jac-lang.org/learn/jac-byllm/with_llm/
-[Get started]: https://www.jac-lang.org/learn/jac-byllm/quickstart/
-[Usage docs]: https://www.jac-lang.org/learn/jac-byllm/usage/
-[Research Paper]: https://arxiv.org/abs/2405.08965
+[About byLLM]: https://www.byllm.ai
+[Quick Start & Tutorials]: https://docs.jaseci.org/tutorials/ai/quickstart/
+[Full Reference]: https://docs.jaseci.org/reference/plugins/byllm/
+[Research Paper]: https://dl.acm.org/doi/10.1145/3763092
 
 # byLLM : Prompt Less, Smile More!
 
-[![PyPI version](https://img.shields.io/pypi/v/byllm.svg)](https://pypi.org/project/byllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml) [![Discord](https://img.shields.io/badge/Discord-Join%20Server-blue?logo=discord)](https://discord.gg/6j3QNdtcN6)
+[![PyPI version](https://img.shields.io/pypi/v/byllm.svg)](https://pypi.org/project/byllm/) [![PyPI downloads](https://img.shields.io/pypi/dm/byllm.svg)](https://pypi.org/project/byllm/) [![tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg?branch=main)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml) [![Discord](https://img.shields.io/badge/Discord-Join%20Server-blue?logo=discord)](https://discord.gg/6j3QNdtcN6)
 
 byLLM is an innovative AI integration framework built for the Jaseci ecosystem, implementing the cutting-edge Meaning Typed Programming (MTP) paradigm. MTP revolutionizes AI integration by embedding prompt engineering directly into code semantics, making AI interactions more natural and maintainable. While primarily designed to complement the Jac programming language, byLLM also provides a powerful Python library interface.
 
@@ -132,13 +132,9 @@ byLLM is built using the underline priciple of Meaning Typed Programming and we 
 
 **Full Documentation**: [Jac byLLM Documentation](https://www.jac-lang.org/learn/jac-byllm/with_llm/)
 
-**Complete Examples**:
+**Complete Examples**: [Jac Examples Gallery](https://docs.jaseci.org/tutorials/examples/)
 
-- [Fantasy Trading Game](https://www.jac-lang.org/learn/examples/mtp_examples/fantasy_trading_game/) - Interactive RPG with AI-generated characters
-- [RPG Level Generator](https://www.jac-lang.org/learn/examples/mtp_examples/rpg_game/) - AI-powered game level creation
-- [RAG Chatbot Tutorial](https://www.jac-lang.org/learn/examples/rag_chatbot/Overview/) - Building chatbots with document retrieval
-
-**Research**: The research journey of MTP is available on [Arxiv](https://arxiv.org/abs/2405.08965) and accepted for OOPSLA 2025.
+**Research**: The research journey of MTP is available on [ACM Digital Library](https://dl.acm.org/doi/10.1145/3763092) and published at OOPSLA 2025.
 
 ## Quick Links
 
@@ -180,7 +176,7 @@ byLLM integrates with various LLM providers (OpenAI, Anthropic, Google, etc.) th
 > Jayanaka L. Dantanarayana, Yiping Kang, Kugesan Sivasothynathan, Christopher Clarke, Baichuan Li, Savini
 Kashmira, Krisztian Flautner, Lingjia Tang, and Jason Mars. 2025. MTP: A Meaning-Typed Language Ab-
 straction for AI-Integrated Programming. Proc. ACM Program. Lang. 9, OOPSLA2, Article 314 (October 2025),
-29 pages. https://doi.org/10.1145/3763092
+29 pages. [https://doi.org/10.1145/3763092](https://dl.acm.org/doi/10.1145/3763092)
 
 ## Jaseci Contributors
 
