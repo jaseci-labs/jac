@@ -4,13 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.10 (Unreleased)
 
-- **SSO Frontend Callback URL**: Added configurable `frontend_callback_url` option for SSO authentication. When configured in `jac.toml`, the SSO callback endpoint redirects to the specified frontend URL with token or error parameters instead of returning JSON. This enables seamless browser-based OAuth flows while maintaining backwards compatibility (JSON response when not configured).
-
-  ```bash
-  [plugins.scale.sso]
-  host = "http://localhost:8000/sso"
-  frontend_callback_url = "http://localhost:8000/auth/callback"  # Optional
-  ```
+- **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `frontend_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
 
 ## jac-scale 0.1.6 (Latest Release)
 
@@ -39,7 +33,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
-- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (``(`?Type)``) with `(?:Type)` across all docs, tests, examples, and README.
 
 ## jac-scale 0.1.6
 

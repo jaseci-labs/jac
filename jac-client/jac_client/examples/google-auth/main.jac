@@ -16,7 +16,6 @@ cl import from '.pages.sample' { Sample }
 cl import from "@jac/runtime" { Router, Routes, Route, Link }
 cl import ".styles.css";
 
-
 # Client-side component
 cl {
     def NavigationMenu -> JsxElement {
