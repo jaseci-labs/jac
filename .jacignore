@@ -207,6 +207,7 @@ test_failing_kwonly.jac
 test_failing_posonly.jac
 test_failing_varargs.jac
 testing.impl.jac
+test_syntax_err.jac
 text_to_type.jac
 tool.impl.jac
 tool_function.jac
