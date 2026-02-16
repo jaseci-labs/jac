@@ -14,71 +14,11 @@ import importlib.util
 import logging
 import marshal
 import os
-import shutil
 import sys
 import types
 from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
-
-
-def _handle_early_purge() -> None:
-    """Handle 'jac purge -f' before any Jac initialization.
-
-    This allows cache cleanup even when cache is corrupted.
-    Requires -f flag to prevent accidental triggering.
-    """
-    if not (
-        len(sys.argv) >= 3
-        and os.path.basename(sys.argv[0]) == "jac"
-        and sys.argv[1] == "purge"
-        and sys.argv[2] == "-f"
-    ):
-        return
-
-    def _get_cache_dir() -> Path:
-        if sys.platform == "win32":
-            base = Path(
-                os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
-            )
-            return base / "jac" / "cache" / "bytecode"
-        elif sys.platform == "darwin":
-            return Path.home() / "Library" / "Caches" / "jac" / "bytecode"
-        else:
-            xdg = os.environ.get("XDG_CACHE_HOME")
-            base = Path(xdg) if xdg else (Path.home() / ".cache")
-            return base / "jac" / "bytecode"
-
-    cache_dir = _get_cache_dir()
-    # Bootstrap cache is a sibling directory
-    bootstrap_dir = cache_dir.parent / "bootstrap"
-
-    total_files = 0
-    total_size = 0
-    removed_dirs: list[str] = []
-    for d in [cache_dir, bootstrap_dir]:
-        if d.exists():
-            total_files += sum(1 for f in d.iterdir() if f.is_file())
-            total_size += sum(f.stat().st_size for f in d.iterdir() if f.is_file())
-            try:
-                shutil.rmtree(d)
-                removed_dirs.append(str(d))
-            except OSError as e:
-                print(f"Error purging {d}: {e}", file=sys.stderr)  # noqa: T201
-
-    if not removed_dirs:
-        print(f"Cache directory does not exist: {cache_dir}")  # noqa: T201
-        sys.stdout.flush()
-        os._exit(0)
-
-    print(f"Purged {total_files} cached files ({total_size / 1024:.1f} KB)")  # noqa: T201
-    for rd in removed_dirs:
-        print(f"Removed: {rd}")  # noqa: T201
-    sys.stdout.flush()
-    os._exit(0)
-
-
-_handle_early_purge()
 
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402

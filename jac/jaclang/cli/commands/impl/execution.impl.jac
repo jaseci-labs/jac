@@ -125,8 +125,14 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             );
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }
@@ -221,15 +227,21 @@ impl start(
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
             for error in Jac.program.errors_had {
-                console.error(f"Error: {error}");
+                console.error(error.pretty_print(colors=True));
             }
             mach.close();
             return 1;
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(f"Error loading {filename}: {e}");
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(f"Error loading {filename}: {e}");
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }

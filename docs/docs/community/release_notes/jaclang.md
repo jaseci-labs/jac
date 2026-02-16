@@ -4,6 +4,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.3 (Unreleased)
 
+- **Fix: Display detailed syntax error messages**: Display detailed syntax error messages in `jac run` and `jac start` commands instead of generic import errors.
+- **Fix: LSP features in nested impl blocks**: Go-to-definition, hover, and syntax highlighting now work correctly for symbols inside if/while/for statements within impl blocks.
+
 ## jaclang 0.10.2 (Latest Release)
 
 - **Unified Primitive Codegen Interface**: Added abstract emitter contracts (`primitives.jac`) for all Jac primitive type methods and builtin functions. Each compilation backend (Python, ECMAScript, Native) must implement these interfaces, ensuring consistent primitive support across all code generation pathways. Python, JS, and Native backend implementations provided.
@@ -14,6 +17,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `jac grammar` Command Broken Path**: Fixed the `jac grammar` CLI command.
 - **Grammar Extraction Pass Improvements & Spec Snapshot Test**: Improved `jac grammar` extraction accuracy for negated-check loops, optional dispatch branches, `while True` parse-and-break patterns, and standalone `match_tok` calls. Added a golden-file snapshot test (`jac.spec`) that validates extracted grammar rules against a checked-in spec, catching unintended grammar drift on every CI run.
 - **Black-style Grammar Formatting**: Replaced alignment-based `jac grammar` formatting with Black-style fixed 4-space indentation, blank lines between rules, and 88-char line width. Uses a recursive tree-based formatter instead of the previous string-based wrapping.
+- **RD Parser Spec Convergence**: Improved strictness of jac parser and specification.
 - 4 Minor refactors/changes.
 
 ## jaclang 0.10.1
