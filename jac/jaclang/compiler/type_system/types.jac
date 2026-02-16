@@ -6,8 +6,8 @@ import from typing { TYPE_CHECKING, ClassVar }
 
 with entry {
     if TYPE_CHECKING {
-        import from jaclang.pycore.unitree { Expr, Symbol }
-        import from jaclang.pycore.unitree { UniScopeNode as SymbolTable }
+        import from jaclang.jac0core.unitree { Expr, Symbol }
+        import from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
     }
 }
 

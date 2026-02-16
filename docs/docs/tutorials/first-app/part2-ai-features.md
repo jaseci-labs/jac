@@ -256,7 +256,7 @@ Add one line to `styles.css`:
         return {};
     }
 
-    cl def:pub app -> any {
+    cl def:pub app -> JsxElement {
         has items: list = [],
             text: str = "";
 

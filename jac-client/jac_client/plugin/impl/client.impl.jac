@@ -99,23 +99,25 @@ impl JacClient.render_page(
     if (function_name not in available_exports) {
         raise ValueError(f"Client function '{function_name}' not found") ;
     }
-    bundle_hash = introspector.ensure_bundle();
     import from jaclang.project.config { find_project_root, get_config }
-    # Find project root by looking for jac.toml (base_path_dir might be src/ for entry files)
     base_path_dir = Path(Jac.base_path_dir);
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;
     } else {
-        # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
-    # Get client directory from config or use default
     config = get_config();
     if config is not None {
         dist_dir = config.get_client_dir() / 'dist';
     } else {
         dist_dir = base_path / '.jac' / 'client' / 'dist';
+    }
+    is_pwa = (dist_dir / 'manifest.json').exists();
+    if is_pwa {
+        bundle_hash = introspector._bundle.hash if introspector._bundle else "pwa";
+    } else {
+        bundle_hash = introspector.ensure_bundle();
     }
     css_link = '';
     css_file = dist_dir / 'styles.css';
@@ -123,7 +125,6 @@ impl JacClient.render_page(
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
         css_link = f'<link rel="stylesheet" href="/static/styles.css?hash={css_hash}"/>';
     }
-    # Get meta data from config
     client_cfg = config.get_plugin_config("client") if config else None;
     meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
     head_builder = HeaderBuilder(meta_data, function_name);
@@ -131,12 +132,68 @@ impl JacClient.render_page(
     if css_link {
         head_content += f"\n            {css_link}";
     }
-    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}</head><body><div id="root"></div><script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
+    pwa_head = '';
+    pwa_body = '';
+    if is_pwa {
+        pwa_cfg = client_cfg.get("pwa", {}) if client_cfg else {};
+        pwa_theme_color = pwa_cfg.get("theme_color", "#000000");
+        pwa_head = f'''
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="{pwa_theme_color}">
+    <link rel="apple-touch-icon" href="/static/pwa-192x192.png">''';
+        pwa_body = '''
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/static/sw.js')
+            .then((reg) => console.log('SW registered:', reg.scope))
+            .catch((err) => console.log('SW registration failed:', err));
+        });
+      }
+    </script>''';
+    }
+    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{pwa_body}<script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
     return {
         'html': page,
         'bundle_hash': bundle_hash,
-        'bundle_code': introspector._bundle.code
+        'bundle_code': introspector._bundle.code if introspector._bundle else ""
     };
+}
+
+"""Get client JavaScript bundle code.
+
+For PWA builds (when manifest.json exists), returns the Vite-bundled JS.
+Otherwise returns the introspector bundle.
+"""
+impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
+    import from jaclang.project.config { find_project_root, get_config }
+    # Find project root
+    base_path_dir = Path(Jac.base_path_dir);
+    project_root_result = find_project_root(base_path_dir);
+    if project_root_result {
+        (base_path, _) = project_root_result;
+    } else {
+        base_path = base_path_dir;
+    }
+    # Get client directory from config
+    config = get_config();
+    if config is not None {
+        dist_dir = config.get_client_dir() / 'dist';
+    } else {
+        dist_dir = base_path / '.jac' / 'client' / 'dist';
+    }
+    # Check if this is a PWA build (has manifest.json)
+    is_pwa = dist_dir.exists() and (dist_dir / 'manifest.json').exists();
+    if is_pwa {
+        # Vite outputs client.{hash}.js - find and return it
+        for client_js in dist_dir.glob('client.*.js') {
+            return client_js.read_text(encoding='utf-8');
+        }
+    }
+    # Fall back to introspector bundle
+    introspector.load();
+    introspector.ensure_bundle();
+    return introspector._bundle.code;
 }
 
 """Build complete HTML head."""
@@ -231,4 +288,14 @@ impl HeaderBuilder._build_special_tags -> list[str] {
 """Get value with fallback to defaults."""
 impl HeaderBuilder._get_value(key: str) -> str {
     return self.meta_data.get(key) or self.DEFAULTS.get(key);
+}
+
+"""Format a build error with rich diagnostics."""
+impl JacClient.format_build_error(
+    error_output: str, project_dir: Path, config: object = None
+) -> str {
+    import from jac_client.plugin.src.diagnostics { format_build_error }
+    return format_build_error(
+        error_output=error_output, project_dir=project_dir, config=config
+    );
 }

@@ -630,7 +630,7 @@ document.addEventListener('DOMContentLoaded', function () {
 const tabsData = [
     {
         tagline: "Jac Supersets Python",
-        summary: `Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It maintains full interoperability with the Python ecosystem, introducing new features to minimize complexity and accelerate AI application development. We also provide library mode.`,
+        summary: `Jac supersets Python and JavaScript, much like TypeScript supersets JavaScript or C++ supersets C. It maintains full interoperability with the Python ecosystem, introducing new features to minimize complexity and accelerate AI application development. We also provide library mode.`,
         filename: "distance_calculator.jac",
         code: `
 import math;

@@ -436,7 +436,7 @@ def:pub FeaturesTest -> JsxElement {
                                                 "color": "#6b7280"
                                             }}
                                         >
-                                            Count: {item.count}| Created: {item.created_at}
+                                            Count:{item.count}| Created:{item.created_at}
                                         </div>
                                     </div>
                                     <div style={{"display": "flex", "gap": "8px"}}>
@@ -521,7 +521,7 @@ def:pub FeaturesTest -> JsxElement {
                             />
                         </div>
                         {stringResult
-                        and <ResultDisplay data={stringResult} label="Walker Result" />}
+                        and <ResultDisplay data={stringResult} label="Walker Result"/>}
                     </div>
                 </div>
             </TestCard>
@@ -560,19 +560,30 @@ def:pub FeaturesTest -> JsxElement {
                     />}
                 </div>
             </TestCard>
-            # # Section 4: TypeScript Component Integration
-            # <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
-            #     <div>
-            #         <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
-            #             Imported TypeScript React component with data from JAC.
-            #         </p>
-            #         # <PieChart data={chart_data} title="Feature Test Distribution" />
-            #         <p style={{"marginTop": "10px", "color": "#6b7280", "fontSize": "14px"}}>
-            #             Total tests: {total_tests} (calculated using JS helper: sumBy)
-            #         </p>
-            #     </div>
-            # </TestCard>
-
+            # # Section 4: TypeScript Component Integration #
+            <TestCard title="4. TypeScript Component (PieChart.tsx)" color="#ccfbf1">
+                #
+                <div>
+                    #
+                    <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
+                        #             Imported TypeScript React component with data from JAC. #
+                    </p>
+                    #         #
+                    <PieChart data={chart_data} title="Feature Test Distribution"/>
+                    #
+                    <p
+                        style={{
+                            "marginTop": "10px",
+                            "color": "#6b7280",
+                            "fontSize": "14px"
+                        }}
+                    >
+                        #             Total tests:{total_tests}(calculated using JS helper: sumBy) #
+                    </p>
+                    #
+                </div>
+                #
+            </TestCard>
             # # Section 5: Import Demonstrations
             <TestCard title="5. Import Demonstrations" color="#fed7aa">
                 <div>
@@ -592,7 +603,13 @@ def:pub FeaturesTest -> JsxElement {
                             </strong>
                             Hooks (useState, useEffect)
                         </li>
-                        # <li><strong>TypeScript:</strong> PieChart component from .tsx file</li>
+                        #
+                        <li>
+                            <strong>
+                                TypeScript:
+                            </strong>
+                            PieChart component from .tsx file
+                        </li>
                         <li>
                             <strong>
                                 JavaScript:
@@ -603,8 +620,7 @@ def:pub FeaturesTest -> JsxElement {
                             <strong>
                                 JAC Files:
                             </strong>
-                            for
-                            matCurrency from utils/formatters.jac
+                            for matCurrency from utils/formatters.jac
                         </li>
                     </ul>
                     <div
@@ -626,20 +642,128 @@ def:pub FeaturesTest -> JsxElement {
                             }}
                         >
                             <div>
-                                Generated ID: {generateId()}
+                                Generated ID:{generateId()}
                             </div>
                             <div>
-                                Formatted Currency: {formatCurrency(1234.56)}
+                                Formatted Currency:{formatCurrency(1234.56)}
                             </div>
                             <div>
-                                Percentage Calc: {calculatePercentage(75, 100)}%
+                                Percentage Calc:{calculatePercentage(75, 100)}%
                             </div>
                         </div>
                     </div>
                 </div>
             </TestCard>
-            # # Section 6: Complex Data Processing
-            <TestCard title="6. Complex Data Processing" color="#e0e7ff">
+            # Section 6: Environment Variables Demo
+            <TestCard title="6. Environment Variables" color="#fef9c3">
+                <div>
+                    <p style={{"color": "#4b5563", "marginBottom": "15px"}}>
+                        Demonstrates two ways to access configuration values in Jac client code.
+                    </p>
+                    # Method 1: import.meta.env (from .env file)
+                    <div style={{"marginBottom": "20px"}}>
+                        <strong style={{"color": "#374151"}}>
+                            Method 1: Vite Environment Variables (import.meta.env)
+                        </strong>
+                        <div
+                            style={{
+                                "backgroundColor": "#fef3c7",
+                                "padding": "15px",
+                                "borderRadius": "6px",
+                                "marginTop": "8px",
+                                "fontFamily": "monospace",
+                                "fontSize": "13px"
+                            }}
+                        >
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_APP_NAME:
+                                </span>
+                                {import.meta.env.VITE_APP_NAME or "(not set)"}
+                            </div>
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_APP_VERSION:
+                                </span>
+                                {import.meta.env.VITE_APP_VERSION or "(not set)"}
+                            </div>
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#92400e"}}>
+                                    VITE_API_ENDPOINT:
+                                </span>
+                                {import.meta.env.VITE_API_ENDPOINT or "(not set)"}
+                            </div>
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#92400e"}}>
+                                    MODE:
+                                </span>
+                                {import.meta.env.MODE or "(not set)"}
+                            </div>
+                            <div>
+                                <span style={{"color": "#92400e"}}>
+                                    DEV:
+                                </span>
+                                {"true" if import.meta.env.DEV else "false"}
+                            </div>
+                        </div>
+                        <p
+                            style={{
+                                "fontSize": "12px",
+                                "color": "#6b7280",
+                                "marginTop": "8px"
+                            }}
+                        >
+                            Source: .env file in project root (requires VITE_ prefix)
+                        </p>
+                    </div>
+                    # Method 2: globalThis (from jac.toml define)
+                    <div>
+                        <strong style={{"color": "#374151"}}>
+                            Method 2: Build-time Constants (globalThis)
+                        </strong>
+                        <div
+                            style={{
+                                "backgroundColor": "#d1fae5",
+                                "padding": "15px",
+                                "borderRadius": "6px",
+                                "marginTop": "8px",
+                                "fontFamily": "monospace",
+                                "fontSize": "13px"
+                            }}
+                        >
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#065f46"}}>
+                                    APP_BUILD_TIME:
+                                </span>
+                                {globalThis.APP_BUILD_TIME or "(not set)"}
+                            </div>
+                            <div style={{"marginBottom": "5px"}}>
+                                <span style={{"color": "#065f46"}}>
+                                    FEATURE_ENABLED:
+                                </span>
+                                {"true" if globalThis.FEATURE_ENABLED else "false"}
+                            </div>
+                            <div>
+                                <span style={{"color": "#065f46"}}>
+                                    __JAC_API_BASE_URL__:
+                                </span>
+                                {globalThis.__JAC_API_BASE_URL__ or "(same-origin)"}
+                            </div>
+                        </div>
+                        <p
+                            style={{
+                                "fontSize": "12px",
+                                "color": "#6b7280",
+                                "marginTop": "8px"
+                            }}
+                        >
+                            Source: [plugins.client.vite.define] in jac.toml
+                        </p>
+                    </div>
+                </div>
+            </TestCard>
+            # Section 7: Complex Data Processing
+            <TestCard title="7. Complex Data Processing" color="#e0e7ff">
                 <div>
                     <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
                         Process complex nested data structures with walkers.
@@ -668,7 +792,7 @@ def:pub FeaturesTest -> JsxElement {
                 }}
             >
                 <p style={{"margin": "0"}}>
-                    ✅ All features tested: Props, Exports, CL Files, TypeScript, JavaScript, JAC Imports, String Methods, Walker Spawning
+                    All features tested: Props, Exports, CL Files, TypeScript, JavaScript, JAC Imports, String Methods, Walker Spawning, Environment Variables
                 </p>
             </div>
         </div>;

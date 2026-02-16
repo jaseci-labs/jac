@@ -10,22 +10,22 @@ The CFG provides a foundation for data flow analysis, optimization, and understa
 The pass also includes functionality to coalesce basic blocks and generate visual representations of the CFG.
 """
 import from collections.abc { Sequence }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.passes { UniPass }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.passes { UniPass }
 """Jac Symbol table build pass."""
 obj CFGBuildPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def before_pass -> None;
     def push_loop_stack(loop_header: uni.UniCFGNode) -> None;
-    def pop_loop_stack(`node: uni.UniCFGNode) -> None;
-    def get_parent_bb_stmt(`node: uni.UniCFGNode) -> (uni.UniCFGNode | None);
+    def pop_loop_stack(nd: uni.UniCFGNode) -> None;
+    def get_parent_bb_stmt(nd: uni.UniCFGNode) -> (uni.UniCFGNode | None);
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
     def get_code_block_sequence(
-        `node: (uni.UniNode | None)
+        nd: (uni.UniNode | None)
     ) -> (list[uni.UniCFGNode] | None);
 
-    def enter_node(`node: uni.UniNode) -> None;
-    def exit_node(`node: uni.UniNode) -> None;
+    def enter_node(nd: uni.UniNode) -> None;
+    def exit_node(nd: uni.UniNode) -> None;
     def after_pass -> None;
 }
 
@@ -33,8 +33,8 @@ obj CFGBuildPass(UniPass) {
 obj CoalesceBBPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def before_pass -> None;
-    def get_bb(`node: uni.UniCFGNode) -> list[uni.UniCFGNode];
-    def enter_node(`node: uni.UniNode) -> None;
+    def get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode];
+    def enter_node(nd: uni.UniNode) -> None;
     def printgraph_cfg -> str;
 }
 

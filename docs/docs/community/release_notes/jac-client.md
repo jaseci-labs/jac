@@ -2,13 +2,26 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.17 (Unreleased)
+## jac-client 0.2.18 (Unreleased)
 
+- 2 Minor internal refactors
+
+## jac-client 0.2.17 (Latest Release)
+
+- **Structured Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes (JAC_CLIENT_XXX), source code snippets pointing to the error location, actionable hints, and quick fix commands. The diagnostic engine maps Vite/npm errors back to original `.jac` files, hiding internal JavaScript paths from developers. Detectors identify common issues: missing npm dependencies (JAC_CLIENT_001), syntax errors (JAC_CLIENT_003), and unresolved imports (JAC_CLIENT_004). Enable `debug = true` under `[plugins.client]` in `jac.toml` or set `JAC_DEBUG=1` to see raw error output alongside formatted diagnostics.
+
+- Various refactors
+- **Improved `jac start` Output Ordering**: Fixed misleading output timing where "Server ready" and localhost URLs appeared before compilation completed. The Vite dev server now captures its initial output and waits for the ready signal before displaying status messages, ensuring users see compilation progress first and server URLs only when the server is actually ready to accept connections.
+- **PWA Target Support**: Added a new `pwa` target for creating Progressive Web Apps. Run `jac setup pwa` to configure your project with PWA support-this copies default icons to `pwa_icons/` and adds the `[plugins.client.pwa]` config section to `jac.toml`. Then use `jac build --client pwa` to build or `jac start --client pwa` to build and serve. The build generates a web bundle with `manifest.json`, a service worker (`sw.js`) for offline caching, and automatic HTML injection. The service worker implements cache-first for static assets and network-first for API calls (`/api/*`). Configure `theme_color`, `background_color`, `cache_name`, and custom `manifest` overrides in `[plugins.client.pwa]`.
 - **Code refactors**: Backtick escape, etc.
+- **Environment Variable Support**: Fixed `.env` file loading by configuring Vite's `envDir` to point to the project root instead of the build directory. Variables prefixed with `VITE_` in `.env` files are now properly loaded and available via `import.meta.env` in client code. Added `.env.example` template to the all-in-one example demonstrating standard environment variable patterns.
+- **Build-time Constants via jac.toml**: Added support for custom build-time constants through the `[plugins.client.vite.define]` configuration section. Define global variables that are replaced at build time, useful for feature flags, build timestamps, or configuration values. Example: `"globalThis.FEATURE_ENABLED" = true` in `jac.toml` makes `globalThis.FEATURE_ENABLED` available in client code. String values are automatically JSON-escaped to handle special characters safely.
+- Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
+- Docs update: return type `any` -> `JsxElement`
 
-## jac-client 0.2.16 (Latest Release)
+## jac-client 0.2.16
 
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
 

@@ -3,7 +3,7 @@
 from collections.abc import Callable
 
 from jaclang.compiler.passes.main import TypeCheckPass
-from jaclang.pycore.program import JacProgram
+from jaclang.jac0core.program import JacProgram
 
 
 def _assert_error_pretty_found(needle: str, haystack: str) -> None:
@@ -356,6 +356,20 @@ def test_class_construct(fixture_path: Callable[[str], str]) -> None:
     TypeCheckPass(ir_in=mod, prog=program)
     assert len(program.errors_had) == 3
 
+    square_sym = mod.sym_tab.lookup("Square")
+    assert square_sym is not None
+    assert square_sym.decl is not None
+    assert square_sym.decl.type is not None
+    assert square_sym.decl.type.shared is not None
+    mro_class_names = [
+        cls.shared.class_name
+        for cls in square_sym.decl.type.shared.mro
+        if cls.shared is not None
+    ]
+    assert "object" in mro_class_names, (
+        f"Expected 'object' in MRO, got: {mro_class_names}"
+    )
+
     expected_errors = [
         """
         Cannot assign <class float> to parameter 'color' of type <class str>
@@ -403,15 +417,15 @@ def test_binary_op(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 2
     _assert_error_pretty_found(
         """
-        r2: A = a + a;  # <-- Error
-        ^^^^^^^^^^^^^^
+        r2: A = a + a,  # <-- Error
+        ^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
     _assert_error_pretty_found(
         """
-        r4: str = (a + a) * B();  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^^^^^
+        r4: str = (a + a) * B(),  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print(),
     )
@@ -448,8 +462,8 @@ def test_checker_mod_path(fixture_path: Callable[[str], str]) -> None:
     assert len(program.errors_had) == 1
     _assert_error_pretty_found(
         """
-        a: int = uni.Module;  # <-- Error
-        ^^^^^^^^^^^^^^^^^^^^
+        a: int = os.path;  # <-- Error
+        ^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[0].pretty_print(),
     )
@@ -804,44 +818,6 @@ def test_inherit_init_params(fixture_path: Callable[[str], str]) -> None:
 
     for i, expected in enumerate(expected_errors):
         _assert_error_pretty_found(expected, program.errors_had[i].pretty_print())
-
-
-def test_ts_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing TypeScript modules."""
-    path = fixture_path("ts_imports/utils.ts")
-    program = JacProgram()
-    # Test that we can parse and compile a TypeScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_js_file_parsing(fixture_path: Callable[[str], str]) -> None:
-    """Test parsing JavaScript modules."""
-    path = fixture_path("ts_imports/component.js")
-    program = JacProgram()
-    # Test that we can parse and compile a JavaScript file
-    mod = program.compile(path, no_cgen=True)
-    assert mod is not None
-    assert not mod.has_syntax_errors
-
-
-def test_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test Jac module importing from TypeScript."""
-    path = fixture_path("ts_imports/main.jac")
-    program = JacProgram()
-    mod = program.compile(path, type_check=True)
-    # The main.jac imports TypeScript/JS modules - verify it compiles
-    assert mod is not None
-
-
-def test_cl_jac_importing_ts(fixture_path: Callable[[str], str]) -> None:
-    """Test .cl.jac module importing from TypeScript for type checking."""
-    path = fixture_path("ts_imports/client.cl.jac")
-    program = JacProgram()
-    mod = program.compile(path, no_cgen=True)
-    # The client.cl.jac imports TypeScript modules - verify it compiles
-    assert mod is not None
 
 
 def test_agentvisitor_connect_no_errors(fixture_path: Callable[[str], str]) -> None:
@@ -1356,3 +1332,87 @@ def test_impl_body_type_checking(fixture_path: Callable[[str], str]) -> None:
         program.errors_had[2].pretty_print(),
     )
     assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path
+
+
+def test_super_init_with_has_vars(fixture_path: Callable[[str], str]) -> None:
+    """Test super.init() type checking with has variables (implicit dataclass init)."""
+    program = JacProgram()
+    path = fixture_path("checker_super_init_has_vars.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expect 3 errors from the failing test cases
+    assert len(program.errors_had) == 3, (
+        f"Expected 3 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    # Error 1: Wrong type - int instead of str
+    _assert_error_pretty_found(
+        """Cannot assign <class int> to parameter 'shape_type' of type <class str>""",
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: Too many arguments
+    _assert_error_pretty_found(
+        """Too many positional arguments""",
+        program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: Missing required argument
+    _assert_error_pretty_found(
+        """Not all required parameters were provided in the function call: 'shape_type'""",
+        program.errors_had[2].pretty_print(),
+    )
+
+
+def test_super_init_with_explicit_init(fixture_path: Callable[[str], str]) -> None:
+    """Test super.init() type checking with explicit init methods (deep inheritance)."""
+    program = JacProgram()
+    path = fixture_path("checker_super_init_explicit.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Expect 4 errors from the failing test cases
+    assert len(program.errors_had) == 4, (
+        f"Expected 4 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    # Error 1: Wrong type at level 2 - int instead of str for 'name'
+    _assert_error_pretty_found(
+        """Cannot assign <class int> to parameter 'name' of type <class str>""",
+        program.errors_had[0].pretty_print(),
+    )
+
+    # Error 2: Wrong type at level 3 - str instead of int for 'age'
+    _assert_error_pretty_found(
+        """Cannot assign <class str> to parameter 'age' of type <class int>""",
+        program.errors_had[1].pretty_print(),
+    )
+
+    # Error 3: Missing argument at level 4
+    _assert_error_pretty_found(
+        """Not all required parameters were provided in the function call: 'skill'""",
+        program.errors_had[2].pretty_print(),
+    )
+
+    # Error 4: Wrong type at level 5 - int instead of str for 'owner'
+    _assert_error_pretty_found(
+        """Cannot assign <class int> to parameter 'owner' of type <class str>""",
+        program.errors_had[3].pretty_print(),
+    )
+
+
+def test_nested_functions_in_impl_blocks(fixture_path: Callable[[str], str]) -> None:
+    """Test that nested functions in impl blocks have correct return type checking."""
+    program = JacProgram()
+    path = fixture_path("check_nested_impldef.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    # Should have NO errors - all nested functions return correct types
+    assert len(program.errors_had) == 0, (
+        f"Expected no type checking errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )

@@ -2,7 +2,7 @@
 import from typing { List, Optional, Tuple }
 import logging;
 
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.langserve.utils {
     find_surrounding_tokens,
@@ -30,7 +30,6 @@ obj SemTokManager {
         static_sem_tokens: List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
 
     def postinit -> None;
-    def resolve_symbol(nd: uni.NameAtom) -> None;
     def collect_resolved_nodes(ir: uni.Module) -> list;
     def gen_sem_tokens(ir: uni.Module) -> list[int];
     def gen_sem_tok_node(

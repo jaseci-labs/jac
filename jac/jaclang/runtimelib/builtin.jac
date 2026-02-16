@@ -14,7 +14,7 @@ enum APIProtocol ( StrEnum ) {
 with entry {
     if TYPE_CHECKING {
         import from enum { IntEnum }
-        import from jaclang.pycore.constructs { AccessLevel, NodeArchetype }
+        import from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
         import from jaclang { JacRuntimeInterface }
         jid: Callable[(..., Any)];
         jobj: Callable[(..., Any)];
@@ -54,7 +54,7 @@ def _get_store -> Callable[..., Any];
 def __getattr__(name: str) -> object;
 
 def printgraph(
-    `node: (NodeArchetype | None) = None,
+    nd: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,

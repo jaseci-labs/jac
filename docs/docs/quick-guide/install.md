@@ -142,6 +142,24 @@ Expected output:
 
 ---
 
+## Upgrading Jac
+
+When upgrading to a new version of Jaseci packages, clear the bytecode cache to avoid compatibility issues:
+
+```bash
+# Upgrade packages
+pip install --upgrade jaseci
+
+# Clear the global bytecode cache
+jac purge
+```
+
+> **⚠️ Important:** After upgrading, always run `jac purge` to clear stale bytecode. Skipping this step can cause errors like "No module named 'jaclang.pycore'", "NodeAnchor is not a valid reference", or the setup hanging during compilation.
+
+If you encounter issues during first-time setup or after upgrading, `jac purge` is your first troubleshooting step.
+
+---
+
 ## For Contributors
 
 See the [Contributing Guide](../community/contributing.md) for development setup.

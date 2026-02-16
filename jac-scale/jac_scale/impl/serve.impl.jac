@@ -57,37 +57,51 @@ def _transport_response_to_json_response(
     );
 }
 
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[], None] | None = None
+) -> None {
     self.introspector.load();
-    # Eagerly build client bundle if there are client exports (skip in dev or no_client mode)
+    # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             import time;
             import sys;
-            start_time = time.time();
-            try {
-                with console.status(
-                    "[cyan]Building client bundle...[/cyan]", spinner="dots"
-                ) as status {
-                    self.introspector.ensure_bundle();
+            import from jaclang.project.config { get_config }
+            config = get_config();
+            dist_dir = config.get_client_dir() / 'dist' if config else None;
+            is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+            if is_pwa {
+                console.print("  ✔ PWA bundle already built", style="success");
+            } else {
+                start_time = time.time();
+                try {
+                    with console.status(
+                        "[cyan]Building client bundle...[/cyan]", spinner="dots"
+                    ) as status {
+                        self.introspector.ensure_bundle();
+                    }
+                    elapsed = time.time() - start_time;
+                    console.print(
+                        f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                    );
+                } except Exception as e {
+                    console.warning(f"Failed to build client bundle: {e}");
+                    console.print(
+                        "\n  Client pages will not be available until this is fixed.\n",
+                        style="muted",
+                        file=sys.stderr
+                    );
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
+                    console.info(
+                        f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                        emoji=True
+                    );
                 }
-                elapsed = time.time() - start_time;
-                console.print(
-                    f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
-                );
-            } except Exception as e {
-                console.warning(f"Failed to build client bundle: {e}");
-                console.print(
-                    "\n  Client pages will not be available until this is fixed.\n",
-                    style="muted",
-                    file=sys.stderr
-                );
-                console.info('Try again after running: jac clean --all', emoji=True);
-                console.info(
-                    f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
-                    emoji=True
-                );
             }
         }
     }
@@ -117,6 +131,10 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
     self.register_root_asset_endpoint();
     self._configure_openapi_security();
     self.user_manager.create_user('__guest__', '__no_password__');
+    # Call the ready callback (e.g., to print startup banner)
+    if on_ready {
+        on_ready();
+    }
     self.server.run_server(port=self.port);
 }
 
@@ -407,10 +425,8 @@ impl JacAPIServer.register_client_js_endpoint -> None {
 impl JacAPIServer.serve_client_js_callback -> Callable[..., Response] {
     def callback -> Response {
         try {
-            self.introspector.load();
-            self.introspector.ensure_bundle();
             return Response(
-                content=self.introspector._bundle.code,
+                content=Jac.get_client_js(self.introspector),
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {
@@ -654,7 +670,7 @@ impl JacAPIServer.register_walkers_endpoints -> None {
         self.server.add_endpoint(
             JEndPoint(
                 method=spec_method,
-                path=f"{spec_path}/{{node}}",
+                path=f"{spec_path}/{{nd}}",
                 callback=self.create_walker_callback(walker_name, has_node_param=True),
                 parameters=self.create_walker_parameters(
                     walker_name, invoke_on_root=False, method=spec_method
@@ -740,7 +756,7 @@ impl JacAPIServer.create_walker_callback(
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
     async def callback(
-        node: (str | None) = None, **kwargs: JsonValue
+        nd: (str | None) = None, **kwargs: JsonValue
     ) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
@@ -762,8 +778,8 @@ impl JacAPIServer.create_walker_callback(
                 );
             }
         }
-        if node {
-            kwargs['_jac_spawn_node'] = node;
+        if nd {
+            kwargs['_jac_spawn_node'] = nd;
         }
         result = await self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], kwargs, (username or '__guest__')
@@ -1189,6 +1205,64 @@ impl JacAPIServer.postinit -> None {
         }
         self.server.app.add_middleware(CustomHeadersMiddleware);
     }
+    # Initialize Prometheus metrics if enabled
+    import from jac_scale.factories.utility_factory { UtilityFactory }
+    import time;
+    metrics_config = get_scale_config().get_metrics_config();
+    self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
+    if self._metrics.is_enabled() {
+        metrics_collector = self._metrics;
+        metrics_endpoint = metrics_config.get('endpoint', '/metrics');
+        # Add metrics middleware to track request timing
+        class MetricsMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: MetricsMiddleware, request: Any, call_next: Any
+            ) -> Any {
+                # Skip metrics endpoint itself
+                if request.url.path == metrics_endpoint {
+                    return await call_next(request);
+                }
+
+                metrics_collector.request_started();
+                start_time = time.perf_counter();
+
+                try {
+                    response = await call_next(request);
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method,
+                        request.url.path,
+                        response.status_code,
+                        duration
+                    );
+                    return response;
+                } except Exception as e {
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method, request.url.path, 500, duration
+                    );
+                    raise ;
+                } finally {
+                    metrics_collector.request_finished();
+                }
+            }
+        }
+        self.server.app.add_middleware(MetricsMiddleware);
+        # Register /metrics endpoint
+        self.server.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path=metrics_endpoint,
+                callback=self._metrics.get_endpoint_handler(),
+                parameters=[],
+                response_model=None,
+                tags=['Monitoring'],
+                summary='Prometheus metrics',
+                description='Exposes application metrics in Prometheus format for scraping'
+            )
+        );
+        logger.info(f"Prometheus metrics enabled at {metrics_endpoint}");
+    }
 }
 
 impl JacAPIServer.register_sso_endpoints -> None {
@@ -1281,7 +1355,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
     async def dynamic_walker_handler(
         request: Request,
         walker_name: str,
-        node: str | None = None,
+        nd: str | None = None,
         Authorization: str | None = None
     ) -> TransportResponse {
         # Parse request body or query params to get walker fields
@@ -1347,8 +1421,8 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
         }
 
         # Add node to kwargs if provided
-        if node {
-            kwargs['_jac_spawn_node'] = node;
+        if nd {
+            kwargs['_jac_spawn_node'] = nd;
         }
 
         result = await self.execution_manager.spawn_walker(

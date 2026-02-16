@@ -487,15 +487,27 @@ impl add(
             pkg_success = installer.install_package([install_spec]);
         }
         if pkg_success {
+            # If no version was specified, detect the installed version from venv
             if not version {
-                # No version specified: query installed version and use compatible release
                 installed_version = installer.get_installed_version(name);
                 if installed_version {
                     version_str = f"~={_major_minor(installed_version)}";
+                    if verbose {
+                        console.print(
+                            f"Detected version: {installed_version}", style="muted"
+                        );
+                    }
                 } else {
+                    # Fall back to >=0.0.0 if version detection fails
                     version_str = ">=0.0.0";
+                    if verbose {
+                        console.warning(
+                            f"Could not detect version for {name}, using >=0.0.0"
+                        );
+                    }
                 }
             } else {
+                # Use the explicitly specified version
                 version_str = version;
             }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");

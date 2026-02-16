@@ -7,6 +7,7 @@ native machine code, and produce correct results when executed via ctypes.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -14,7 +15,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def compile_native(fixture: str) -> tuple[object, object]:
     """Compile a .na.jac fixture and return the JIT engine."""
-    from jaclang.pycore.program import JacProgram
+    from jaclang.jac0core.program import JacProgram
 
     prog = JacProgram()
     ir = prog.compile(file_path=str(FIXTURES / fixture))
@@ -119,7 +120,7 @@ class TestNativeContextIsolation:
     """Verify na code is excluded from Python/JS codegen and vice versa."""
 
     def test_native_excluded_from_python(self):
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "mixed_contexts.jac"))
@@ -1073,7 +1074,7 @@ class TestNativePyInterop:
 
     def test_interop_module_compiles(self):
         """Module with na block, Python functions, and entry compiles."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1088,7 +1089,7 @@ class TestNativePyInterop:
 
     def test_py_function_not_defined_in_native_ir(self):
         """py_double should be declared (external) but NOT defined in LLVM IR."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1101,7 +1102,7 @@ class TestNativePyInterop:
 
     def test_py_functions_in_python_codegen(self):
         """py_double and call_native should appear in Python codegen output."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1115,7 +1116,7 @@ class TestNativePyInterop:
         The native function body (py_double(x) + 1) should NOT appear,
         but a ctypes bridge stub should be generated for Python → native calls.
         """
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1131,7 +1132,7 @@ class TestNativePyInterop:
 
     def test_interop_manifest_built(self):
         """InteropAnalysisPass should detect cross-boundary calls."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1152,7 +1153,7 @@ class TestNativePyInterop:
         native_add_one_to_doubled(x) calls py_double(x) then adds 1.
         py_double(5) = 10, so native_add_one_to_doubled(5) = 11.
         """
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1181,7 +1182,7 @@ class TestNativePyInterop:
         import contextlib
         import io
 
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop.jac"))
@@ -1211,7 +1212,7 @@ class TestNativeMultiModuleInterop:
 
     def test_na_module_compiles(self):
         """A standalone .na.jac module compiles to LLVM IR."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_math_utils.na.jac"))
@@ -1223,7 +1224,7 @@ class TestNativeMultiModuleInterop:
 
     def test_module_level_na_import(self):
         """Module-level import of .na.jac file is recognized."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
@@ -1237,7 +1238,7 @@ class TestNativeMultiModuleInterop:
 
     def test_na_scoped_import(self):
         """Import inside na {} block is recognized."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
@@ -1250,7 +1251,7 @@ class TestNativeMultiModuleInterop:
 
     def test_native_module_linking(self):
         """Functions from imported .na.jac modules are callable."""
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
@@ -1273,7 +1274,7 @@ class TestNativeMultiModuleInterop:
         import contextlib
         import io
 
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "na_py_interop_multi.jac"))
@@ -1292,11 +1293,51 @@ class TestNativeMultiModuleInterop:
         assert output == "35"
 
 
+class TestNativeCacheMarker:
+    """Verify LLVM IR cache stores empty string for non-native files."""
+
+    def test_non_native_file_caches_empty_llvmir(self):
+        """Compiling a file without na blocks stores '' for llvm_ir in cache."""
+        import tempfile
+
+        from jaclang.jac0core.bccache import CacheKey, DiskBytecodeCache
+        from jaclang.jac0core.compiler import JacCompiler
+        from jaclang.jac0core.program import JacProgram
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+            tmp.write("glob x = 1;\n")
+            tmp.flush()
+            jac_file = tmp.name
+
+        # Set source mtime slightly in the past so cache files are strictly newer
+        import time
+
+        past = time.time() - 2
+        os.utime(jac_file, (past, past))
+
+        try:
+            cache = DiskBytecodeCache()
+            cache._cache_dir = Path(tempfile.mkdtemp())
+            compiler = JacCompiler(bytecode_cache=cache)
+            compiler.get_bytecode(jac_file, JacProgram())
+
+            key = CacheKey.for_source(jac_file)
+            cached_ir = cache.get_llvmir(key)
+            assert cached_ir == "", (
+                f"Non-native file should cache empty llvm_ir, got {cached_ir!r}"
+            )
+        finally:
+            os.unlink(jac_file)
+            import shutil
+
+            shutil.rmtree(str(cache._cache_dir), ignore_errors=True)
+
+
 class TestNativeLLVMIR:
     """Verify LLVM IR output structure."""
 
     def test_ir_has_function_definitions(self):
-        from jaclang.pycore.program import JacProgram
+        from jaclang.jac0core.program import JacProgram
 
         prog = JacProgram()
         ir = prog.compile(str(FIXTURES / "arithmetic.na.jac"))

@@ -1,6 +1,6 @@
 [project]
 name = "jaclang"
-version = "0.10.0"
+version = "0.10.1"
 description = "Jac programming language - a superset of both Python and TypeScript/JavaScript with novel constructs for AI-integrated programming."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -27,7 +27,10 @@ Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
 
 [project.scripts]
-jac = "jaclang.cli.cli:start_cli"
+jac = "jaclang.jac0core.cli_boot:start_cli"
+
+[project.entry-points.pytest11]
+jaclang = "jaclang.pytest_plugin"
 
 [project.optional-dependencies]
 dev = [

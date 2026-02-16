@@ -67,4 +67,12 @@ class JacClient {
         args: dict[(str, Any)],
         username: str
     ) -> dict[str, Any];
+
+    @hookimpl
+    static def get_client_js(introspector: ModuleIntrospector) -> str;
+
+    @hookimpl
+    static def format_build_error(
+        error_output: str, project_dir: Path, config: object = None
+    ) -> str;
 }

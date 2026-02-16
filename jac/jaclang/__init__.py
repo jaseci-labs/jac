@@ -8,13 +8,13 @@ from jaclang.meta_importer import JacMetaImporter
 if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
     sys.meta_path.insert(0, JacMetaImporter())
 
-# Import compiler first to ensure generated parsers exist before pycore.parser is loaded
+# Import compiler first to ensure generated parsers exist before jac0core.parser is loaded
 # Backwards-compatible import path for older plugins/tests.
-# Prefer `jaclang.pycore.runtime` going forward.
-import jaclang.pycore.runtime as _runtime_mod
+# Prefer `jaclang.jac0core.runtime` going forward.
+import jaclang.jac0core.runtime as _runtime_mod
 from jaclang import compiler as _compiler  # noqa: F401
-from jaclang.pycore.helpers import get_disabled_plugins, load_plugins_with_disabling
-from jaclang.pycore.runtime import (
+from jaclang.jac0core.helpers import get_disabled_plugins, load_plugins_with_disabling
+from jaclang.jac0core.runtime import (
     JacRuntime,
     JacRuntimeImpl,
     JacRuntimeInterface,

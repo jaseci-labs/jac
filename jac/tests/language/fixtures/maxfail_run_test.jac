@@ -1,18 +1,18 @@
 glob x = 5,
      y = 2;
 
-test a {
+test "a" {
     assert almostEqual(5, x);
 }
 
-test b {
+test "b" {
     assert "l" in "llm";
 }
 
-test c {
+test "c" {
     assert x - y == 3;
 }
 
-test d {
+test "d" {
     assert 1 == 2;
 }

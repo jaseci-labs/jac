@@ -3,7 +3,7 @@ import from jaclang.cli.banners { JAC_DISCORD_URL }
 
 """Serialize objects to JSON-compatible format."""
 impl JacSerializer.serialize(`obj: object) -> JsonValue {
-    import from jaclang.pycore.constructs { Archetype }
+    import from jaclang.jac0core.constructs { Archetype }
     if ((`obj is None) or isinstance(`obj, (str, int, float, bool))) {
         return `obj;
     }
@@ -32,7 +32,7 @@ impl JacSerializer.serialize(`obj: object) -> JsonValue {
 
 """Serialize Archetype instances."""
 impl JacSerializer._serialize_archetype(arch: Archetype) -> dict[str, JsonValue] {
-    import from jaclang.pycore.constructs { NodeArchetype, WalkerArchetype }
+    import from jaclang.jac0core.constructs { NodeArchetype, WalkerArchetype }
     result: dict[(str, JsonValue)] = {
         '_jac_type': type(arch).__name__,
         '_jac_id': arch.__jac__.id.hex,
@@ -86,7 +86,7 @@ impl UserManager._ensure_connection -> None {
 
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
-    import from jaclang.pycore.constructs { Root }
+    import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
     # Check if user already exists
     cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
@@ -288,7 +288,7 @@ impl ExecutionManager.execute_function(
 impl ExecutionManager.spawn_walker(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    import from jaclang.pycore.constructs { NodeArchetype }
+    import from jaclang.jac0core.constructs { NodeArchetype }
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
@@ -405,9 +405,9 @@ impl ModuleIntrospector._extract_access_levels -> None {
     if not self._module {
         return;
     }
-    import jaclang.pycore.unitree as uni;
-    import from jaclang.pycore.constructs { WalkerArchetype }
-    import from jaclang.pycore.constant { Tokens as Tok }
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constructs { WalkerArchetype }
+    import from jaclang.jac0core.constant { Tokens as Tok }
     self._function_access = {};
     self._walker_access = {};
     # Helper to check if an archetype AST node is explicitly public
@@ -521,7 +521,7 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
 
 """Collect walker classes from module."""
 impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
-    import from jaclang.pycore.constructs { WalkerArchetype }
+    import from jaclang.jac0core.constructs { WalkerArchetype }
     if not self._module {
         return {};
     }
@@ -540,7 +540,7 @@ impl ModuleIntrospector._collect_walkers -> dict[str, type[WalkerArchetype]] {
 
 """Check if the module has been reloaded (e.g., by HMR) and refresh if needed."""
 impl ModuleIntrospector._check_module_freshness -> None {
-    import from jaclang.pycore.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
     if not self._module {
         return;
     }
@@ -1190,9 +1190,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             path = parsed_path.path;
             if (path == '/static/client.js') {
                 try {
-                    server.introspector.load();
-                    server.introspector.ensure_bundle();
-                    Jac.send_javascript(self, server.introspector._bundle.code);
+                    Jac.send_javascript(self, Jac.get_client_js(server.introspector));
                 } except RuntimeError as exc {
                     Jac.send_json(self, 500, {'error': str(exc)});
                 }
@@ -1220,7 +1218,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 and (
                     Path(path).suffix in (
                         custom_asset_extensions
-                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css'}
+                        or {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json'}
                     )
                 )
             );
@@ -1610,7 +1608,12 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[], None] | None = None
+) -> None {
+    import from pathlib { Path }
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
     bundle_error = None;
@@ -1618,11 +1621,21 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
             try {
-                # ViteBundler.build() handles its own progress messages
-                self.introspector.ensure_bundle();
-                console.print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
-                );
+                config = get_config();
+                # Try config path first, then fallback to base_path
+                if config {
+                    dist_dir = config.get_client_dir() / 'dist';
+                } else {
+                    dist_dir = Path(self.base_path) / '.jac' / 'client' / 'dist';
+                }
+                # Skip building if bundle already exists on disk (PWA or web build already ran)
+                bundle_exists = dist_dir.exists() and any(dist_dir.glob('client.*.js'));
+                if bundle_exists {
+                    console.print("  ✔ Client bundle already built", style="success");
+                } else {
+                    self.introspector.ensure_bundle();
+                }
+                # Callback will handle startup message if provided
             } except Exception as e {
                 bundle_error = str(e);
             }
@@ -1658,22 +1671,27 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         # Display bundle error after endpoints if one occurred
         if bundle_error {
             import sys;
-            console.print('\n' + '=' * 70, file=sys.stderr);
-            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
-            console.print('=' * 70, file=sys.stderr);
+            formatted_error = Jac.format_build_error(
+                error_output=bundle_error,
+                project_dir=Path(self.base_path),
+                config=config
+            );
             console.print(file=sys.stderr);
-            console.print(bundle_error, file=sys.stderr);
+            console.print(formatted_error, file=sys.stderr);
             console.print(file=sys.stderr);
             console.warning(
                 'Client pages will not be available until this is fixed.', emoji=True
             );
             console.print(file=sys.stderr);
-            console.info('Try again after running: jac clean --all', emoji=True);
             console.info(
                 f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                 emoji=True
             );
-            console.print('=' * 70 + '\n', file=sys.stderr);
+            console.print(file=sys.stderr);
+        }
+        # Call the ready callback (e.g., to print startup banner)
+        if on_ready {
+            on_ready();
         }
         try {
             httpd.serve_forever();

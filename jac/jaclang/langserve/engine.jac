@@ -10,10 +10,10 @@ import from collections { deque }
 import from concurrent.futures { Future }
 import from typing { Callable, Optional }
 
-import jaclang.pycore.unitree as uni;
+import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntimeInterface as Jac }
-import from jaclang.pycore.constant { SymbolType }
-import from jaclang.pycore.program { JacProgram }
+import from jaclang.jac0core.constant { SymbolType }
+import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.type_system.type_utils { get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
@@ -22,7 +22,7 @@ import from jaclang.compiler.type_system.types {
     ModuleType,
     TypeBase
 }
-import from jaclang.pycore.unitree { UniScopeNode }
+import from jaclang.jac0core.unitree { UniScopeNode }
 import from .sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
@@ -90,7 +90,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
         file_path: str, line: int, col: int
     ) -> Optional[uni.AstNode];
 
-    def get_completion_of_node(node: uni.AstNode) -> lspt.CompletionList;
+    def get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList;
     def get_node_type(n: uni.AstNode) -> Optional[TypeBase];
     def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
     def rename_module(old_path: str, new_path: str) -> None;

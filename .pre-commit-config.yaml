@@ -4,8 +4,6 @@ ci:
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
-        ^jac/jaclang/pycore/lark_jac_parser\.py$|
-        ^jac/jaclang/pycore/lark_ts_parser\.py$|
         ^$
     )
 
@@ -41,7 +39,7 @@ repos:
           - --config-file=mypy.ini
           - --explicit-package-bases
         additional_dependencies: [types-PyYAML, types-requests]
-        exclude: (/fixtures/|lark_jac_parser\.py|lark_ts_parser\.py|/vendor/|/scripts/|jac/examples/reference)
+        exclude: (/fixtures/|/vendor/|/scripts/|jac/examples/reference)
   - repo: local
     hooks:
       - id: check-no-binary-files

@@ -2,12 +2,29 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.8 (Unreleased)
+## jac-scale 0.1.9 (Unreleased)
 
+- 1 Minor refactors/changes.
+
+## jac-scale 0.1.8 (Latest Release)
+
+- Internal: K8s integration tests now install jac plugins from fork PRs instead of always using main
+- **.jac folder is excluded when creating the zip folder that is uploaded into jaseci deployment pods.Fasten up deployment**
+- **Fix: `jac start` Startup Banner**: Server now displays the startup banner (URLs, network IPs, mode info) correctly via `on_ready` callback, consistent with stdlib server behavior.
+- Various refactors
+- **PWA Build Detection**: Server startup now detects existing PWA builds (via `manifest.json`) and skips redundant client bundling. The `/static/client.js` endpoint serves Vite-hashed files (`client.*.js`) in PWA mode.
+- **Prometheus Metrics Integration**: Added `/metrics` endpoint with HTTP request metrics, configurable via `[plugins.scale.metrics]` in `jac.toml`.
+- Update jaseci scale k8s pipeline to support parellel test cases.
+- **early exit from k8s deployment if container restarted**
 - **Direct Database Access (`kvstore`)**: Added `kvstore()` function for direct MongoDB and Redis operations without graph layer. Supports database-specific methods (MongoDB: `find_one`, `insert_one`, `update_one`; Redis: `set_with_ttl`, `incr`, `scan_keys`) with common methods (`get`, `set`, `delete`, `exists`) working across both. Import from `jac_scale.lib` with URI-based connection pooling and configuration fallback (explicit URI → env vars → jac.toml).
 - **Code refactors**: Backtick escape, etc.
+- **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
+- **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
+- **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
+- Docs update: return type `any` -> `JsxElement`
+- **1 Small Refactors**
 
-## jac-scale 0.1.7 (Latest Release)
+## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 - **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.
@@ -100,12 +117,13 @@ First release of **Jac-Scale** - a scalable runtime framework for distributed Ja
 
 ### Key Features
 
-- Distributed runtime with load balancing and service discovery
-- Intelligent walker scheduling across multiple nodes
-- Auto-partitioned graph storage
-- Performance monitoring and auto-scaling
-- YAML-based configuration
-- Username-based user management for authentication
+- Conversion of walker to fastapi endpoints
+- Multi memory hierachy implementation
+- Support for Mongodb (persistance storage) and Redis (cache storage) in k8s
+- Deployment of app code directly to k8s cluster
+- k8s support for local deployment and aws k8s deployment
+- SSO support for google
+
 - **Custom Response Headers**: Configure custom HTTP response headers via `[environments.response.headers]` in `jac.toml`. Useful for security headers like COOP/COEP (required for `SharedArrayBuffer` support in libraries like monaco-editor).
 
 ### Installation

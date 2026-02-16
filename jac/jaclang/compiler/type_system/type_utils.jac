@@ -4,9 +4,9 @@ Functions that operate on Type objects.
 PyrightReference: packages/pyright-internal/src/analyzer/typeUtils.ts
 """
 import from enum { Enum }
-import jaclang.pycore.unitree as uni;
-import from jaclang.pycore.constant { Tokens as Tok }
-import from jaclang.pycore.unitree { Symbol }
+import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.unitree { Symbol }
 import from . { types }
 """Represents a member of a class."""
 obj ClassMember {

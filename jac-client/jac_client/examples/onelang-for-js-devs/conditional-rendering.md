@@ -13,7 +13,7 @@ The most basic conditional rendering pattern. Return different JSX based on a co
 === "JAC-Client"
 
     ```jac
-    def IfElseExample(props: dict) -> any {
+    def IfElseExample(props: dict) -> JsxElement {
         isLoggedIn = props.isLoggedIn;
         if isLoggedIn {
             return <div>Welcome back, User!</div>;
@@ -50,7 +50,7 @@ Inline conditional rendering using Python's ternary syntax.
 
     ```jac
     # JAC uses Python-style: (value_if_true) if condition else (value_if_false)
-    def TernaryExample(props: dict) -> any {
+    def TernaryExample(props: dict) -> JsxElement {
         isOnline = props.isOnline;
         return (
             <div>
@@ -99,7 +99,7 @@ For multiple conditions, chain ternary operators.
 === "JAC-Client"
 
     ```jac
-    def ComplexTernaryExample(props: dict) -> any {
+    def ComplexTernaryExample(props: dict) -> JsxElement {
         condition1 = props.condition1;
         condition2 = props.condition2;
         return (
@@ -138,7 +138,7 @@ Show something only when a condition is true.
 
     ```jac
     # JAC uses 'not' instead of '!'
-    def LogicalAndExample(props: dict) -> any {
+    def LogicalAndExample(props: dict) -> JsxElement {
         hasNotifications = props.hasNotifications;
         count = props.count;
         return (
@@ -182,7 +182,7 @@ Provide fallback/default values when a value is falsy.
 === "JAC-Client"
 
     ```jac
-    def LogicalOrExample(props: dict) -> any {
+    def LogicalOrExample(props: dict) -> JsxElement {
         username = props.username;
         return (
             <div>
@@ -241,7 +241,7 @@ function SwitchExample({ status }) {
 #### Option 1: Use If-Elif-Else Chain
 
 ```jac
-def SwitchWorkaround1(props: dict) -> any {
+def SwitchWorkaround1(props: dict) -> JsxElement {
     status = props.status;
 
     if status == "success" {
@@ -260,7 +260,7 @@ def SwitchWorkaround1(props: dict) -> any {
 #### Option 2: Use Object Lookup (Recommended)
 
 ```jac
-def SwitchWorkaround2(props: dict) -> any {
+def SwitchWorkaround2(props: dict) -> JsxElement {
     status = props.status;
 
     statusConfig = {
@@ -286,7 +286,7 @@ A powerful alternative to switch statements - map keys to values/components.
 ### JAC Syntax:
 
 ```jac
-def ObjectLookupExample(props: dict) -> any {
+def ObjectLookupExample(props: dict) -> JsxElement {
     theme = props.theme;
     themes = {
         "light": { "bg": "#ffffff", "text": "#000000", "name": "Light" },
@@ -324,7 +324,7 @@ For complex branching logic, use helper functions.
 ### JAC Syntax:
 
 ```jac
-def MultipleConditionsIfElse(props: dict) -> any {
+def MultipleConditionsIfElse(props: dict) -> JsxElement {
     user = props.user;
 
     # Helper function for complex logic
@@ -365,7 +365,7 @@ Return an empty fragment to render nothing.
 === "JAC-Client"
 
     ```jac
-    def RenderNothingExample(props: dict) -> any {
+    def RenderNothingExample(props: dict) -> JsxElement {
         shouldShow = props.shouldShow;
         if not shouldShow {
             return <></>;  # Empty fragment - renders nothing
@@ -400,7 +400,7 @@ Build class strings dynamically.
 ### JAC Syntax:
 
 ```jac
-def ConditionalClassesExample(props: dict) -> any {
+def ConditionalClassesExample(props: dict) -> JsxElement {
     isActive = props.isActive;
     isPrimary = props.isPrimary;
 
@@ -430,7 +430,7 @@ Apply attributes conditionally.
 ### JAC Syntax:
 
 ```jac
-def ConditionalAttributesExample(props: dict) -> any {
+def ConditionalAttributesExample(props: dict) -> JsxElement {
     isDisabled = props.isDisabled;
     isRequired = props.isRequired;
 
@@ -462,7 +462,7 @@ Handle empty lists gracefully.
 ### JAC Syntax:
 
 ```jac
-def ListConditionalExample(props: dict) -> any {
+def ListConditionalExample(props: dict) -> JsxElement {
     items = props.items;
 
     # Check for empty list
@@ -502,7 +502,7 @@ Use fragments (`<>...</>`) to group elements without extra DOM nodes.
 ### JAC Syntax:
 
 ```jac
-def FragmentsExample(props: dict) -> any {
+def FragmentsExample(props: dict) -> JsxElement {
     user = props.user;
     showDetails = props.showDetails;
 
@@ -533,7 +533,7 @@ Handle loading, error, and data states.
 ### JAC Syntax:
 
 ```jac
-def MultipleConditionsExample(props: dict) -> any {
+def MultipleConditionsExample(props: dict) -> JsxElement {
     isLoading = props.isLoading;
     error = props.error;
     data = props.data;
@@ -560,7 +560,7 @@ Use `useState` for interactive components.
 ```jac
 cl import from react {useState}
 
-def InteractiveExample(props: dict) -> any {
+def InteractiveExample(props: dict) -> JsxElement {
     (isVisible, setIsVisible) = useState(False);
     (count, setCount) = useState(0);
 
@@ -603,7 +603,7 @@ Map page/state names to content configurations.
 ### JAC Syntax:
 
 ```jac
-def EnumBasedExample(props: dict) -> any {
+def EnumBasedExample(props: dict) -> JsxElement {
     currentPage = props.currentPage;
 
     pageContent = {
