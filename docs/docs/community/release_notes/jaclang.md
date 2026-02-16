@@ -12,8 +12,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `jac grammar` Command Broken Path**: Fixed the `jac grammar` CLI command.
 - **Grammar Extraction Pass Improvements & Spec Snapshot Test**: Improved `jac grammar` extraction accuracy for negated-check loops, optional dispatch branches, `while True` parse-and-break patterns, and standalone `match_tok` calls. Added a golden-file snapshot test (`jac.spec`) that validates extracted grammar rules against a checked-in spec, catching unintended grammar drift on every CI run.
 - **Black-style Grammar Formatting**: Replaced alignment-based `jac grammar` formatting with Black-style fixed 4-space indentation, blank lines between rules, and 88-char line width. Uses a recursive tree-based formatter instead of the previous string-based wrapping.
-- **RD Parser Spec Convergence**: Extracted `parse_atom_literal`, `parse_multistring`, `parse_builtin_type`, `parse_special_ref`, and `parse_ctrl_stmt` as named sub-methods from monolithic parser methods, enabling the grammar extractor to produce rules that converge toward the original `jac.lark` structure (109 rules, 92 matched).
-- **Expanded Parser Strictness Tests**: Grew the negative test suite from 9 to 46 must-reject snippets and added 23 xfail cases documenting known parser permissiveness gaps as a tightening roadmap.
+- **RD Parser Spec Convergence**: Improved strictness of jac parser and specification.
 - 4 Minor refactors/changes.
 
 ## jaclang 0.10.1 (Latest Release)
