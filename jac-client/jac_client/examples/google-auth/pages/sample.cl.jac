@@ -1,4 +1,4 @@
-def:pub Sample -> any {
+def:pub Sample -> JsxElement {
     return
         <div>
             <h1>

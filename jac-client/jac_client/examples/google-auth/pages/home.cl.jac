@@ -1,6 +1,6 @@
 import from "@jac/runtime" { Link }
 
-def:pub Home -> any {
+def:pub Home -> JsxElement {
     return
         <p>
             Welcome!

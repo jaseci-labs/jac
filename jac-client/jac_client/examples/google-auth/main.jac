@@ -14,10 +14,12 @@ cl import from '.pages.home' { Home }
 cl import from '.pages.dashboard' { Dashboard }
 cl import from '.pages.sample' { Sample }
 cl import from "@jac/runtime" { Router, Routes, Route, Link }
+cl import ".styles.css";
+
 
 # Client-side component
 cl {
-    def NavigationMenu -> any {
+    def NavigationMenu -> JsxElement {
         return
             <nav style={{"display": "flex", "gap": "10px", "marginBottom": "20px"}}>
                 <button>

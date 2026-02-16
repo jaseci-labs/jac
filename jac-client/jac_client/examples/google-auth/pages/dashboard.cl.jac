@@ -1,7 +1,7 @@
 import from react { useContext }
 import from '..lib.auth' { AuthContext }
 
-def:pub Dashboard -> any {
+def:pub Dashboard -> JsxElement {
     ctx = useContext(AuthContext);
     console.log("DASHBOARD CTX:", ctx);
 

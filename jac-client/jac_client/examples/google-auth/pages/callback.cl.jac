@@ -2,7 +2,7 @@ import from react { useEffect, useContext }
 import from "@jac/runtime" { useNavigate, useLocation }
 import from '..lib.auth' { AuthContext }
 
-def:pub OAuthCallback -> any {
+def:pub OAuthCallback -> JsxElement {
     navigate = useNavigate();
     location = useLocation();
     console.log("OAuth Callback Location:", location);
