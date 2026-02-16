@@ -2178,41 +2178,6 @@ impl Parser.parse_atom -> Expr {
     if self.match_tok(TokenKind.LBRACE) {
         return self.parse_dict_or_set();
     }
-    # F-string parsing (including raw f-strings rf"...")
-    if self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        # Handle implicit string concatenation starting with f-string
-        strings: list = [];
-        strings.append(self.parse_fstring());
-        # Check for consecutive strings (implicit concatenation)
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                tok = self.advance();
-                strings.append(self.make_string(tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        return MultiString(strings=strings, kid=strings);
-    }
     # JSX element: <Tag>...</Tag> or <>...</>
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
         return self.parse_jsx_element();
@@ -2556,6 +2521,8 @@ impl Parser.parse_edge_ref_chain -> Expr {
                 TokenKind.TYP_TYPE
             ) {
                 f_type = self.parse_atom();
+            }
+            if f_type is not None {
                 fcompr_kid.append(f_type);
             }
             # Parse optional filter conditions: :field==val,field2==val2
@@ -4355,44 +4322,9 @@ impl Parser.parse_single_pattern{
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
-    if self.check(TokenKind.STRING)
-    or self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        strings: list = [];
-        if self.check(TokenKind.STRING) {
-            tok = self.advance();
-            strings.append(self.make_string(tok));
-        } else {
-            strings.append(self.parse_fstring());
-        }
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                next_tok = self.advance();
-                strings.append(self.make_string(next_tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        val = MultiString(strings=strings, kid=strings);
-        return MatchValue(value=val, kid=[val]);
+    ms = self.parse_multistring();
+    if ms is not None {
+        return MatchValue(value=ms, kid=[ms]);
     }
     # Check for unary minus (negative literal)
     if self.check(TokenKind.MINUS) {
@@ -4601,43 +4533,8 @@ impl Parser.parse_literal_for_mapping{
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
-    if self.check(TokenKind.STRING)
-    or self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        strings: list = [];
-        if self.check(TokenKind.STRING) {
-            tok = self.advance();
-            strings.append(self.make_string(tok));
-        } else {
-            strings.append(self.parse_fstring());
-        }
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                next_tok = self.advance();
-                strings.append(self.make_string(next_tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        ms = MultiString(strings=strings, kid=strings);
+    ms = self.parse_multistring();
+    if ms is not None {
         return MatchValue(value=ms, kid=[ms]);
     }
     if self.check(TokenKind.MINUS) {
@@ -4952,9 +4849,13 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
 }
 
 impl Parser.parse_import_stmt -> Import {
-    is_include = self.check(TokenKind.KW_INCLUDE);
-    hint_tok = self.advance();
-    kid: list = [self.make_uni_token(hint_tok)];
+    is_include = False;
+    if self.match_tok(TokenKind.KW_INCLUDE) {
+        is_include = True;
+    } else {
+        self.expect(TokenKind.KW_IMPORT);
+    }
+    kid: list = [self.make_uni_token(self.previous())];
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     if self.match_tok(TokenKind.KW_FROM) {

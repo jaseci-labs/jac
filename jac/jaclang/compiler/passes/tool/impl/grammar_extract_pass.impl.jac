@@ -774,7 +774,24 @@ impl GrammarExtractPass.collect_elif_chain(stmt: uni.IfStmt) -> list {
                     tok_expr = GTok(name=tokens[0]);
                 }
                 if tok_expr is not None and branch_body is not None {
-                    branches.append(GSeq(items=[tok_expr, branch_body]));
+                    # check/check_any are lookahead-only (they don't consume
+                    # tokens). When the body is a *pure* delegation — a single
+                    # `return self.parse_X()` — the guard tokens are redundant
+                    # because the sub-rule defines them internally.  Emitting
+                    # both produces duplicated token lists in the grammar (e.g.
+                    # "(TYP_STRING|…) builtin_type" instead of "builtin_type").
+                    #
+                    # We only suppress when len(body) == 1 to avoid stripping
+                    # guard tokens from branches that also call advance() or
+                    # build AST nodes inline (e.g. parse_factor's unary-op
+                    # branch has advance + parse_factor + return, so the guard
+                    # tokens are the only grammar representation of the
+                    # consumed operator).
+                    if isinstance(branch_body, GRef) and len(list(cur.body)) == 1 {
+                        branches.append(branch_body);
+                    } else {
+                        branches.append(GSeq(items=[tok_expr, branch_body]));
+                    }
                 } elif tok_expr is not None {
                     # check/check_any doesn't consume token - only include
                     # the bare token if the body does something non-trivial
