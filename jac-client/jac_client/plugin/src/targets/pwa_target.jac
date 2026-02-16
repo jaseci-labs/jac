@@ -34,7 +34,7 @@ class PWATarget(WebTarget) {
     ) -> Path;
 
     """Start PWA dev server."""
-    override def dev(self: PWATarget, entry_file: Path, project_dir: Path) -> None;
+    override def dev(self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None;
 
     """Start PWA server - build PWA bundle and serve with HTTP server."""
     override def start(

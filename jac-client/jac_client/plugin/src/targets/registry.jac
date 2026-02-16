@@ -55,10 +55,10 @@ class ClientTarget {
     ) -> Path abs;
 
     """Start dev server for the target."""
-    def dev(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
+    def dev(self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None abs;
 
     """Start the target (production mode - build and run)."""
-    def start(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
+    def start(self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None abs;
 }
 
 """Central registry for build targets.

@@ -17,7 +17,7 @@ For web target, this delegates to the core jac start --dev behavior.
 The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path) -> None {
+impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
     import from jaclang.cli.console { console }
     # Web dev mode is handled by core jac start --dev
     # When called directly (e.g., from PWATarget.dev() -> super().dev()),
@@ -26,7 +26,7 @@ impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path) -> None
 
     # Create dev config
     client_dir = bundler._get_client_dir();
-    bundler.create_vite_config(entry_file, is_dev=True, api_port=8000);
+    bundler.create_vite_config(entry_file, is_dev=True, api_port=api_port);
 
     # Ensure package.json exists
     if not (client_dir / 'configs' / 'package.json').exists() {
@@ -54,7 +54,7 @@ impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path) -> None
 For web target, this builds the bundle and serves it.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.start(self: WebTarget, entry_file: Path, project_dir: Path) -> None {
+impl WebTarget.start(self: WebTarget, entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
     import from jaclang.cli.console { console }
     import http.server;
     import socketserver;
@@ -72,7 +72,8 @@ impl WebTarget.start(self: WebTarget, entry_file: Path, project_dir: Path) -> No
     import os;
     os.chdir(dist_dir);
 
-    port = 8080;
+    # Use provided port (default 8000, but CLI can override via -p flag)
+    port = api_port;
     handler = http.server.SimpleHTTPRequestHandler;
 
     console.print(f"\n🚀 Serving at http://localhost:{port}/", style="bold green");
