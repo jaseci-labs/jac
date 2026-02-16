@@ -319,3 +319,57 @@ def test_compiler_separates_internal_from_user_modules() -> None:
 
     finally:
         os.unlink(user_file)
+
+
+def test_get_bytecode_returns_cache_when_llvmir_missing() -> None:
+    """get_bytecode should return cached bytecode even when LLVM IR cache is missing.
+
+    Regression test: previously, get_bytecode would fall through to a full
+    recompilation when the LLVM IR cache was absent, even though valid
+    bytecode existed in the cache.
+    """
+    import marshal
+    import tempfile
+
+    from jaclang.jac0core.bccache import CacheKey, DiskBytecodeCache
+    from jaclang.jac0core.compiler import JacCompiler
+
+    # Create a simple valid .jac file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tmp:
+        tmp.write("glob x = 1;\n")
+        tmp.flush()
+        jac_file = tmp.name
+
+    # Set source mtime slightly in the past so cache files are strictly newer
+    import time
+
+    past = time.time() - 2
+    os.utime(jac_file, (past, past))
+
+    try:
+        cache = DiskBytecodeCache()
+        cache._cache_dir = Path(tempfile.mkdtemp())
+        compiler = JacCompiler(bytecode_cache=cache)
+
+        # First call: compiles and caches bytecode + "" for llvm_ir
+        code1 = compiler.get_bytecode(jac_file, JacProgram())
+        assert code1 is not None, "First compilation should succeed"
+
+        # Verify both caches were populated
+        key = CacheKey.for_source(jac_file)
+        assert cache.get(key) is not None, "Bytecode should be cached"
+        assert cache.get_llvmir(key) == "", "LLVM IR should be cached as empty string"
+
+        # Delete the LLVM IR cache file to simulate missing IR
+        cache._get_llvmir_cache_path(key).unlink()
+        assert cache.get_llvmir(key) is None, "LLVM IR cache should be gone"
+
+        # Second call: should return cached bytecode, NOT recompile
+        code2 = compiler.get_bytecode(jac_file, JacProgram())
+        assert code2 is not None, "Should return cached bytecode"
+        assert marshal.dumps(code1) == marshal.dumps(code2)
+    finally:
+        os.unlink(jac_file)
+        import shutil
+
+        shutil.rmtree(str(cache._cache_dir), ignore_errors=True)

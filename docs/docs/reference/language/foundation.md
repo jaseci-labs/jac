@@ -16,7 +16,7 @@
 
 ### 1 What is Jac?
 
-Jac is an AI-native full-stack programming language and superset of both Python and TypeScript/JavaScript. It introduces Object-Spatial Programming (OSP) and novel constructs for AI-integrated programming (such as `by llm()`), providing a unified language for backend, frontend, and AI development with full access to the PyPI and npm ecosystems.
+Jac is an AI-native full-stack programming language that supersets Python and JavaScript with native compilation support. It introduces Object-Spatial Programming (OSP) and novel constructs for AI-integrated programming (such as `by llm()`), providing a unified language for backend, frontend, and AI development with full access to the PyPI and npm ecosystems.
 
 ```jac
 with entry {
@@ -218,11 +218,11 @@ Jac keywords are reserved and cannot be used as identifiers:
 
 Valid identifiers start with a letter or underscore, followed by letters, digits, or underscores.
 
-To use a reserved keyword as an identifier, escape it with angle brackets:
+To use a reserved keyword as an identifier, escape it with a backtick prefix:
 
 ```jac
 obj Example {
-    has class_name: str;  # Field name (use <class> syntax for reserved words)
+    has `class: str;  # Backtick-escaped keyword used as identifier
 }
 ```
 

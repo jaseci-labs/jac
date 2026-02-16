@@ -6,7 +6,9 @@ impl JacTestCheck.__getattr__(name: str) -> object {
 }
 
 """Create a new test."""
-impl JacTestCheck.add_test(filepath: str, func_name: str, test_func: Callable) -> None {
+impl JacTestCheck.add_test(
+    filepath: str, func_name: str, test_func: Callable, display_name: str = ""
+) -> None {
     if (filepath and filepath.endswith('.test.jac')) {
         filepath = filepath[:-9];
     } elif (filepath and filepath.endswith('.jac')) {
@@ -17,7 +19,11 @@ impl JacTestCheck.add_test(filepath: str, func_name: str, test_func: Callable) -
     }
     test_case = unittest.FunctionTestCase(test_func);
     JacTestCheck.test_suite_path[filepath].append(
-        JacTestCheck.TestSuite(test_case=test_case, func_name=func_name)
+        JacTestCheck.TestSuite(
+            test_case=test_case,
+            func_name=func_name,
+            display_name=display_name or func_name
+        )
     );
     JacTestCheck.test_suite.addTest(test_case);
 }

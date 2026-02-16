@@ -460,7 +460,6 @@ JACLANG_PYTHON_FILES: list[str] = [
     "jaclang/compiler/type_system/__init__.py",
     "jaclang/meta_importer.py",
     "jaclang/jac0core/__init__.py",
-    "jaclang/jac0core/jac_parser.py",
     "jaclang/jac0core/passes/__init__.py",
     "jaclang/jac0core/passes/ast_gen/__init__.py",
     "jaclang/utils/__init__.py",

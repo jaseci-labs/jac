@@ -10,12 +10,10 @@ from pathlib import Path
 
 import pytest
 
-import jaclang.jac0core.lark_jac_parser as jl
 import jaclang.jac0core.unitree as uni
-from jaclang.jac0core.constant import CodeContext, Tokens
-from jaclang.jac0core.jac_parser import JacParser
+from jaclang.jac0core.constant import CodeContext
+from jaclang.jac0core.parser import parse as rd_parse
 from jaclang.jac0core.program import JacProgram
-from jaclang.jac0core.unitree import Source
 from jaclang.runtimelib.utils import read_file_with_encoding
 from tests.fixtures_list import MICRO_JAC_FILES
 
@@ -82,91 +80,34 @@ def lang_fixture_abs_path() -> Callable[[str], str]:
 
 def test_fstring_escape_brace() -> None:
     """Test fstring escape brace."""
-    source = Source('glob a=f"{{}}", not_b=4;', mod_path="")
-    prse = JacParser(root_ir=source, prog=JacProgram())
-    assert not prse.errors_had
+    module, parse_errors, lex_errors = rd_parse('glob a=f"{{}}", not_b=4;', "")
+    assert not parse_errors and not lex_errors
 
 
 def test_parser_fam(load_fixture: Callable[[str], str]) -> None:
     """Parse micro jac file."""
-    prse = JacParser(
-        root_ir=Source(load_fixture("fam.jac"), mod_path=""),
-        prog=JacProgram(),
-    )
-    assert not prse.errors_had
+    module, parse_errors, lex_errors = rd_parse(load_fixture("fam.jac"), "")
+    assert not parse_errors and not lex_errors
 
 
 def test_staticmethod_checks_out(load_fixture: Callable[[str], str]) -> None:
     """Parse micro jac file."""
-    prse = JacParser(
-        root_ir=Source(
-            load_fixture("staticcheck.jac"),
-            mod_path="",
-        ),
-        prog=JacProgram(),
-    )
-    out = prse.ir_out.pp()
-    assert not prse.errors_had
+    module, parse_errors, lex_errors = rd_parse(load_fixture("staticcheck.jac"), "")
+    out = module.pp()
+    assert not parse_errors and not lex_errors
     assert "staticmethod" not in out
 
 
 def test_parser_kwesc(load_fixture: Callable[[str], str]) -> None:
     """Parse micro jac file."""
-    prse = JacParser(
-        root_ir=Source(load_fixture("kwesc.jac"), mod_path=""),
-        prog=JacProgram(),
-    )
-    assert not prse.errors_had
+    module, parse_errors, lex_errors = rd_parse(load_fixture("kwesc.jac"), "")
+    assert not parse_errors and not lex_errors
 
 
 def test_parser_mod_doc_test(load_fixture: Callable[[str], str]) -> None:
     """Parse micro jac file."""
-    prse = JacParser(
-        root_ir=Source(load_fixture("mod_doc_test.jac"), mod_path=""),
-        prog=JacProgram(),
-    )
-    assert not prse.errors_had
-
-
-def test_enum_matches_lark_toks() -> None:
-    """Test that enum stays synced with lexer."""
-    tokens = [x.name for x in jl.Lark_StandAlone().parser.lexer_conf.terminals]
-    for token in tokens:
-        assert token in Tokens.__members__
-    for token in Tokens:
-        assert token.name in tokens
-    for token in Tokens:
-        assert token.value in tokens
-
-
-def test_parser_impl_all_rules() -> None:
-    """Test that enum stays synced with lexer."""
-    rules = {
-        x.origin.name
-        for x in jl.Lark_StandAlone().parser.parser_conf.rules
-        if not x.origin.name.startswith("_")
-    }
-    parse_funcs = []
-    for name, value in inspect.getmembers(JacParser.TreeToAST):
-        if inspect.isfunction(value) and not getattr(
-            JacParser.TreeToAST.__base__, value.__name__, False
-        ):
-            parse_funcs.append(name)
-    for rule in rules:
-        assert rule in parse_funcs
-    for fn in parse_funcs:
-        if fn.startswith("_") or fn in [
-            "ice",
-            "match",
-            "consume",
-            "match_token",
-            "consume_token",
-            "match_many",
-            "consume_many",
-            "extract_from_list",
-        ]:
-            continue
-        assert fn in rules
+    module, parse_errors, lex_errors = rd_parse(load_fixture("mod_doc_test.jac"), "")
+    assert not parse_errors and not lex_errors
 
 
 def test_all_ast_has_normalize() -> None:
@@ -305,7 +246,7 @@ def test_multiple_syntax_errors(fixture_path: Callable[[str], str]) -> None:
         assert expected in pretty
 
 
-def _load_combined_jsx_fixture() -> tuple[str, JacParser]:
+def _load_combined_jsx_fixture() -> tuple[str, uni.Module]:
     """Parse the consolidated JSX fixture once for downstream assertions."""
     fixture_path = (
         Path(__file__).resolve().parent
@@ -315,20 +256,17 @@ def _load_combined_jsx_fixture() -> tuple[str, JacParser]:
         / "client_jsx.jac"
     )
     source_text = fixture_path.read_text(encoding="utf-8")
-    prse = JacParser(
-        root_ir=Source(source_text, mod_path=str(fixture_path)),
-        prog=JacProgram(),
+    module, parse_errors, lex_errors = rd_parse(source_text, str(fixture_path))
+    assert not parse_errors and not lex_errors, (
+        f"Parser reported errors for JSX fixture: {[str(e) for e in parse_errors + lex_errors]}"
     )
-    assert not prse.errors_had, (
-        f"Parser reported errors for JSX fixture: {[str(e) for e in prse.errors_had]}"
-    )
-    return source_text, prse
+    return source_text, module
 
 
 def test_jsx_comprehensive_fixture() -> None:
     """Ensure the consolidated JSX fixture exercises varied grammar shapes."""
-    source_text, prse = _load_combined_jsx_fixture()
-    tree_repr = prse.ir_out.pp()
+    source_text, module = _load_combined_jsx_fixture()
+    tree_repr = module.pp()
 
     expected_snippets = {
         "self_closing": "<div />",
@@ -643,16 +581,14 @@ cl import from "@jac/runtime" {
 # Micro suite test generation
 def _micro_suite_test(filename: str, file_to_str: Callable[[str], str]) -> None:
     """Parse micro jac file."""
-    prse = JacParser(
-        root_ir=Source(file_to_str(filename), mod_path=filename),
-        prog=JacProgram(),
-    )
+    source = file_to_str(filename)
+    module, parse_errors, lex_errors = rd_parse(source, filename)
     # A list of files where the errors are expected.
     files_expected_errors = [
         "uninitialized_hasvars.jac",
     ]
     if os.path.basename(filename) not in files_expected_errors:
-        assert not prse.errors_had
+        assert not parse_errors and not lex_errors
 
 
 # Dynamically generate micro suite tests

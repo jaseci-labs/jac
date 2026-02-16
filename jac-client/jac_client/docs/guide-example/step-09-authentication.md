@@ -34,7 +34,7 @@ cl {
 Add this component:
 
 ```jac
-def LoginPage() -> any {
+def LoginPage() -> JsxElement {
     [username, setUsername] = useState("");
     [password, setPassword] = useState("");
     [error, setError] = useState("");
@@ -153,7 +153,7 @@ def LoginPage() -> any {
 Add this component:
 
 ```jac
-def SignupPage() -> any {
+def SignupPage() -> JsxElement {
     [username, setUsername] = useState("");
     [password, setPassword] = useState("");
     [error, setError] = useState("");
@@ -272,7 +272,7 @@ def SignupPage() -> any {
 For now, update your `app()` function to show the login page:
 
 ```jac
-def:pub app() -> any {
+def:pub app() -> JsxElement {
     return <LoginPage />;
 }
 ```
@@ -282,7 +282,7 @@ def:pub app() -> any {
 Change it to show signup:
 
 ```jac
-def:pub app() -> any {
+def:pub app() -> JsxElement {
     return <SignupPage />;
 }
 ```
@@ -295,7 +295,7 @@ Now let's make the todo page require login. Rename your current `app` function t
 
 ```jac
 # Rename app to TodosPage
-def TodosPage() -> any {
+def TodosPage() -> JsxElement {
     # Check if user is logged in
     if not jacIsLoggedIn() {
         return <div style={{"padding": "20px"}}>
@@ -465,7 +465,7 @@ setError("");
 ### Conditional Rendering for Auth
 
 ```jac
-def TodosPage() -> any {
+def TodosPage() -> JsxElement {
     if not jacIsLoggedIn() {
         return <div>Please login</div>;
     }
@@ -572,7 +572,7 @@ await jacLogin("alice", "password123");
 Try adding a "Remember me" message:
 
 ```jac
-def LoginPage() -> any {
+def LoginPage() -> JsxElement {
     [username, setUsername] = useState("");
     [password, setPassword] = useState("");
 

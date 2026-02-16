@@ -2,7 +2,7 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.8 (Unreleased)
+## jac-scale 0.1.10 (Unreleased)
 
 - **SSO Frontend Callback URL**: Added configurable `frontend_callback_url` option for SSO authentication. When configured in `jac.toml`, the SSO callback endpoint redirects to the specified frontend URL with token or error parameters instead of returning JSON. This enables seamless browser-based OAuth flows while maintaining backwards compatibility (JSON response when not configured).
 
@@ -14,6 +14,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.6 (Latest Release)
 
+## jac-scale 0.1.9 (Latest Release)
+
+- 1 Minor refactors/changes.
+
+## jac-scale 0.1.8
+
+- Internal: K8s integration tests now install jac plugins from fork PRs instead of always using main
+- **.jac folder is excluded when creating the zip folder that is uploaded into jaseci deployment pods.Fasten up deployment**
+- **Fix: `jac start` Startup Banner**: Server now displays the startup banner (URLs, network IPs, mode info) correctly via `on_ready` callback, consistent with stdlib server behavior.
 - Various refactors
 - **PWA Build Detection**: Server startup now detects existing PWA builds (via `manifest.json`) and skips redundant client bundling. The `/static/client.js` endpoint serves Vite-hashed files (`client.*.js`) in PWA mode.
 - **Prometheus Metrics Integration**: Added `/metrics` endpoint with HTTP request metrics, configurable via `[plugins.scale.metrics]` in `jac.toml`.
@@ -23,8 +32,11 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Code refactors**: Backtick escape, etc.
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
+- **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
+- Docs update: return type `any` -> `JsxElement`
+- **1 Small Refactors**
 
-## jac-scale 0.1.7 (Latest Release)
+## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 - **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.

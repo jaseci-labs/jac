@@ -148,7 +148,7 @@ def summarize(text: str) -> str by llm(
 );
 
 def creative_story(prompt: str) -> str by llm(
-    model_name="claude-3-opus",
+    model_name="claude-3-opus-20240229",
     temperature=1.0
 );
 ```
@@ -247,7 +247,7 @@ def classify(text: str) -> str by llm(
     config={"outputs": ["positive", "negative", "neutral"]}
 );
 
-test classification_test {
+test "classification" {
     result = classify("Great product!");
     assert result in ["positive", "negative", "neutral"];
 }

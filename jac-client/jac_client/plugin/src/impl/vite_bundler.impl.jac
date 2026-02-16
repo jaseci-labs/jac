@@ -787,10 +787,75 @@ def _toml_config_to_js(config_name: str, config_data: dict) -> str {
     return f"module.exports = {json.dumps(config_data, indent=2)};\n";
 }
 
+"""Build the Vite dev server command."""
+def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
+    return ['bun', 'x', 'vite', '--config', str(config_rel), '--port', str(port)];
+}
+
+"""Check if a line indicates Vite server is ready."""
+def _is_vite_ready_line(line: str) -> bool {
+    line_lower = line.lower();
+    for pattern in VITE_READY_PATTERNS {
+        if pattern in line_lower {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Check if a line contains Vite URL output that should be filtered."""
+def _is_vite_url_line(line: str) -> bool {
+    for pattern in VITE_URL_PATTERNS {
+        if pattern in line {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""Forward Vite output to stdout, filtering URL lines after ready.
+
+This runs in a separate thread to avoid blocking the main thread.
+Buffers output before ready so errors can be shown if startup fails.
+"""
+def _forward_vite_output(
+    proc: Any,
+    ready_event: "threading.Event",
+    sys_module: Any,
+    output_buffer: list[str]
+) -> None {
+    try {
+        for line in iter(proc.stdout.readline, '') {
+            if not line {
+                break;
+            }
+            # Signal ready when Vite prints its "ready" message
+            if _is_vite_ready_line(line) {
+                ready_event.set();
+            }
+            if ready_event.is_set() {
+                # After ready, forward non-URL output to console
+                if not _is_vite_url_line(line) {
+                    sys_module.stdout.write(line);
+                    sys_module.stdout.flush();
+                }
+            } else {
+                # Buffer output before ready so we can show errors on failure
+                output_buffer.append(line);
+            }
+        }
+    } except Exception {
+        ;  # Process terminated, exit gracefully
+    }
+}
+
 """Start Vite dev server as a subprocess."""
-impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
+impl ViteBundler.start_dev_server(
+    self: ViteBundler, port: int = 3000, suppress_initial_output: bool = False
+) -> Any {
     import sys;
     import time;
+    import threading;
     import from jac_client.plugin.utils { ensure_bun_available }
     # Ensure bun is available before starting dev server
     if not ensure_bun_available() {
@@ -799,8 +864,33 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
         ) from None ;
     }
     build_dir = self._get_client_dir();
-    node_modules = build_dir / 'node_modules';
-    # Create/update index.html for dev server (load from compiled/ for HMR)
+    self._ensure_dev_index_html(build_dir);
+    self._ensure_dev_dependencies(build_dir);
+    # Find the dev config
+    dev_config = build_dir / 'configs' / 'vite.dev.config.js';
+    if not dev_config.exists() {
+        raise ClientBundleError(
+            "Dev config not found. Call create_vite_config(is_dev=True) first."
+        ) ;
+    }
+    try {
+        config_rel = dev_config.relative_to(build_dir);
+    } except ValueError {
+        # Config is outside build_dir, use absolute path
+        config_rel = dev_config;
+    }
+    command = _build_vite_dev_command(config_rel, port);
+    logger.debug(f"Starting Vite dev server on port {port}");
+    if suppress_initial_output {
+        process = self._start_vite_with_output_capture(command, build_dir, sys);
+    } else {
+        process = subprocess.Popen(command, cwd=build_dir);
+    }
+    return process;
+}
+
+"""Create index.html for dev server."""
+impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None {
     index_html = build_dir / 'index.html';
     index_content = '''<!DOCTYPE html>
 <html lang="en">
@@ -816,49 +906,87 @@ impl ViteBundler.start_dev_server(self: ViteBundler, port: int = 3000) -> Any {
 </html>
 ''';
     index_html.write_text(index_content, encoding='utf-8');
-    # Ensure dependencies are installed
-    if not node_modules.exists() {
-        generated_package_json = build_dir / 'configs' / 'package.json';
-        if not generated_package_json.exists() {
-            self.create_package_json();
+}
+
+"""Ensure dev dependencies are installed."""
+impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
+    import time;
+    node_modules = build_dir / 'node_modules';
+    if node_modules.exists() {
+        return;
+    }
+    generated_package_json = build_dir / 'configs' / 'package.json';
+    if not generated_package_json.exists() {
+        self.create_package_json();
+    }
+    # Temporarily copy package.json for bun install
+    build_package_json = build_dir / 'package.json';
+    if not build_package_json.exists() {
+        shutil.copy2(generated_package_json, build_package_json);
+    }
+    try {
+        console.print("\n  ⏳ Installing dependencies...\n");
+        start_time = time.time();
+        result = subprocess.run(
+            ['bun', 'install'], cwd=build_dir, check=False, text=True
+        );
+        elapsed = time.time() - start_time;
+
+        if result.returncode != 0 {
+            console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
+            raise ClientBundleError("Failed to install dependencies") ;
         }
-        # Temporarily copy package.json for bun install
-        build_package_json = build_dir / 'package.json';
-        if not build_package_json.exists() {
-            shutil.copy2(generated_package_json, build_package_json);
-        }
-        try {
-            console.print("\n  ⏳ Installing dependencies...\n");
-            start_time = time.time();
-            result = subprocess.run(
-                ['bun', 'install'], cwd=build_dir, check=False, text=True
-            );
-            elapsed = time.time() - start_time;
-            if result.returncode != 0 {
-                console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
-                raise ClientBundleError("Failed to install dependencies") ;
-            }
-            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
-        } finally {
-            # Clean up temp package.json
-            if build_package_json.exists() {
-                build_package_json.unlink();
-            }
+        console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
+    } finally {
+        # Clean up temp package.json
+        if build_package_json.exists() {
+            build_package_json.unlink();
         }
     }
-    # Find the dev config
-    dev_config = build_dir / 'configs' / 'vite.dev.config.js';
-    if not dev_config.exists() {
-        raise ClientBundleError(
-            "Dev config not found. Call create_vite_config first(is_dev = True)."
-        ) ;
-    }
-    config_rel = dev_config.relative_to(build_dir);
-    logger.debug(f"Starting Vite dev server on port {port}");
-    # Start Vite in dev mode (let output go to terminal for HMR visibility)
+}
+
+"""Start Vite with output capture for clean startup messaging."""
+impl ViteBundler._start_vite_with_output_capture(
+    self: ViteBundler, command: list[str], build_dir: Path, sys_module: Any
+) -> Any {
+    import threading;
     process = subprocess.Popen(
-        ['bun', 'x', 'vite', '--config', str(config_rel), '--port', str(port)],
-        cwd=build_dir
+        command,
+        cwd=build_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
     );
+    ready_event = threading.Event();
+    output_buffer: list[str] = [];
+    output_thread = threading.Thread(
+        target=_forward_vite_output,
+        args=(process, ready_event, sys_module, output_buffer),
+        daemon=True
+    );
+    output_thread.start();
+    # Wait for Vite to be ready
+    is_ready = ready_event.wait(timeout=VITE_READY_TIMEOUT_SECONDS);
+    if is_ready {
+        console.print("  ✔ Vite dev server ready", style="success");
+    } else {
+        # Check if process exited (crashed) or just timed out
+        exit_code = process.poll();
+        if exit_code is not None {
+            # Process crashed - show buffered output for debugging
+            console.error("  ✖ Vite dev server failed to start");
+            if output_buffer {
+                console.print("\n  Vite output:");
+                for line in output_buffer {
+                    sys_module.stdout.write(f"    {line}");
+                }
+                sys_module.stdout.flush();
+            }
+        } else {
+            console.warning(
+                f"  ⚠ Vite server may not be ready (timeout after {VITE_READY_TIMEOUT_SECONDS}s)"
+            );
+        }
+    }
     return process;
 }

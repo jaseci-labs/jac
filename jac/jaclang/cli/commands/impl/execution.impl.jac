@@ -125,8 +125,14 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             );
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }
@@ -141,7 +147,7 @@ impl enter(
     args: list = [],
     main: bool = True,
     `root: str = '',
-    `node: str = ''
+    nd: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -170,7 +176,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(`node);
+            mach.set_entry_node(nd);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)
@@ -216,19 +222,26 @@ impl start(
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
+    # Load the Jac module (actual compilation/bundling happens in server.start())
     try {
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
             for error in Jac.program.errors_had {
-                console.error(f"Error: {error}");
+                console.error(error.pretty_print(colors=True));
             }
             mach.close();
             return 1;
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(f"Error loading {filename}: {e}");
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(f"Error loading {filename}: {e}");
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }
@@ -307,10 +320,14 @@ impl start(
             vite_process = _start_vite_dev_server(base, vite_port, actual_api_port);
         }
     }
-    # Print startup message
-    _print_startup_message(dev, no_client, port, actual_api_port, base);
+    # Pass startup banner callback so it's printed AFTER compilation/bundling completes
     try {
-        server.start(dev=dev, no_client=no_client);
+        server.start(
+            dev=dev,
+            no_client=no_client,
+            on_ready=lambda :
+                _print_startup_message(dev, no_client, port, actual_api_port, base)
+        );
         return 0;
     } except KeyboardInterrupt {
         console.print('\nShutting down...');
@@ -512,8 +529,8 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any
             bundler.create_package_json();
         }
 
-        # Start the dev server
-        return bundler.start_dev_server(vite_port);
+        # Start the dev server (messages handled by bundler)
+        return bundler.start_dev_server(vite_port, suppress_initial_output=True);
     } except ImportError as e {
         console.error(
             f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}"

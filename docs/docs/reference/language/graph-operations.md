@@ -187,8 +187,9 @@ with entry {
 ```jac
 can delete_if_done with Todo entry {
     if here.completed {
+        node_id = here.id;  # Capture ID before deletion
         del here;  # Remove this node from the graph
-        report {"deleted": here.id};
+        report {"deleted": node_id};
     }
 }
 ```

@@ -176,7 +176,7 @@ cl {
         };
     }
 
-    def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> any {
+    def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> JsxElement {
         if filteredTodos.length == 0 {
             return <div
                 style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
@@ -198,7 +198,7 @@ cl {
         </div>;
     }
 
-    def PropTodoList(props: any) -> any {
+    def PropTodoList(props: any) -> JsxElement {
         if props.filteredTodos.length == 0 {
             return <div
                 style={{"padding": "20px", "textAlign": "center", "color": "#999"}}

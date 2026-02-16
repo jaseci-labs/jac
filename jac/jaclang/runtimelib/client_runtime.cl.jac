@@ -11,9 +11,9 @@ def __jacJsx(
     tag: any, props: dict = {}, children: list = []
 ) -> JsxElement;
 # DOM rendering function
-def renderJsxTree(node: JsxElement, container: any) -> None;
+def renderJsxTree(nd: JsxElement, container: any) -> None;
 # Internal: Build DOM from JSX tree
-def __buildDom(node: any) -> any;
+def __buildDom(nd: any) -> any;
 # Internal: Apply property to DOM element
 def __applyProp(
     element: any, key: str, value: any
@@ -92,7 +92,7 @@ def createRouter(
 # Route config factory
 def Route(path: str, component: any, guard: any = None) -> dict;
 # Link component for declarative navigation
-def Link(props: dict) -> any;
+def Link(props: dict) -> JsxElement;
 # Navigate programmatically
 def navigate(path: str) -> None;
 # Hook to access router in components
@@ -142,7 +142,7 @@ def __jacSafeCallTarget(
 # Runtime support helpers for client module registration / hydration
 def __jacGlobalScope -> any;
 def __jacEnsureRegistry -> dict;
-def __jacApplyRender(renderer: any, container: any, node: any) -> None;
+def __jacApplyRender(renderer: any, container: any, nd: any) -> None;
 
 def __jacHydrateFromDom(defaultModuleName: str) -> None;
 def __jacExecuteHydration -> None;

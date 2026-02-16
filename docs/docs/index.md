@@ -2,7 +2,7 @@
 
 **One Language for AI-Native Full-Stack Development**
 
-Jac is a programming language and superset of both Python and TypeScript/JavaScript, with novel constructs for AI-integrated programming. Access the entire PyPI and npm ecosystems while using features like `by llm()` to seamlessly weave AI into your code. Write backend logic, frontend interfaces, and AI integrations in a single unified language.
+Jac is a programming language that supersets Python and JavaScript with native compilation support, adding novel constructs for AI-integrated programming. Access the entire PyPI and npm ecosystems while using features like `by llm()` to seamlessly weave AI into your code. Write backend logic, frontend interfaces, and AI integrations in a single unified language.
 
 ---
 
