@@ -4,6 +4,89 @@ import from pathlib { Path }
 import from typing { Optional }
 import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
+"""Setup web target (no-op - web works out of the box)."""
+impl WebTarget.setup(self: WebTarget, project_dir: Path) -> None {
+    # Web target requires no setup - it works out of the box
+    # This is a no-op implementation
+    pass;
+}
+
+"""Start web dev server with HMR.
+
+For web target, this delegates to the core jac start --dev behavior.
+The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
+This method is called when using non-default targets that inherit from WebTarget.
+"""
+impl WebTarget.dev(self: WebTarget, entry_file: Path, project_dir: Path) -> None {
+    import from jaclang.cli.console { console }
+    # Web dev mode is handled by core jac start --dev
+    # When called directly (e.g., from PWATarget.dev() -> super().dev()),
+    # we start the Vite dev server
+    bundler = ViteBundler(project_dir=project_dir);
+
+    # Create dev config
+    client_dir = bundler._get_client_dir();
+    bundler.create_vite_config(entry_file, is_dev=True, api_port=8000);
+
+    # Ensure package.json exists
+    if not (client_dir / 'configs' / 'package.json').exists() {
+        bundler.create_package_json();
+    }
+
+    console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
+    console.print("  Press Ctrl+C to stop\n", style="muted");
+
+    # Start Vite dev server (blocking)
+    process = bundler.start_dev_server(port=5173, suppress_initial_output=False);
+    if process {
+        try {
+            process.wait();
+        } except KeyboardInterrupt {
+            console.print("\n  Stopping dev server...", style="muted");
+            process.terminate();
+            process.wait(timeout=5);
+        }
+    }
+}
+
+"""Start web target in production preview mode.
+
+For web target, this builds the bundle and serves it.
+This method is called when using non-default targets that inherit from WebTarget.
+"""
+impl WebTarget.start(self: WebTarget, entry_file: Path, project_dir: Path) -> None {
+    import from jaclang.cli.console { console }
+    import http.server;
+    import socketserver;
+
+    # Build the bundle first
+    console.print("\n🌐 Building web bundle for production preview...", style="bold");
+    bundle_path = self.build(entry_file, project_dir, None);
+
+    # Serve the dist directory
+    dist_dir = project_dir / ".jac" / "client" / "dist";
+    if not dist_dir.exists() {
+        raise RuntimeError(f"Build output not found: {dist_dir}");
+    }
+
+    import os;
+    os.chdir(dist_dir);
+
+    port = 8080;
+    handler = http.server.SimpleHTTPRequestHandler;
+
+    console.print(f"\n🚀 Serving at http://localhost:{port}/", style="bold green");
+    console.print("  Press Ctrl+C to stop\n", style="muted");
+
+    with socketserver.TCPServer(("", port), handler) as httpd {
+        try {
+            httpd.serve_forever();
+        } except KeyboardInterrupt {
+            console.print("\n  Stopping server...", style="muted");
+        }
+    }
+}
+
 """Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
     self: WebTarget,
