@@ -23,51 +23,19 @@ class Alert {
     """Initialize alert."""
     def init(
         self: Alert, msg: str, loc: CodeLocInfo, from_pass: type[Transform]
-    ) -> None {
-        self.msg = msg;
-        self.loc: CodeLocInfo = loc;
-        self.from_pass: type[Transform] = from_pass;
-    }
+    ) -> None;
 
     """Return string representation of alert."""
-    def __str__(self: Alert) -> str {
-        return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}";
-    }
+    def __str__(self: Alert) -> str;
 
     """Return string representation of alert."""
-    def __repr__(self: Alert) -> str {
-        return self.as_log();
-    }
+    def __repr__(self: Alert) -> str;
 
     """Return the alert as a single line log as opposed to the pretty print."""
-    def as_log(self: Alert, *, colors: bool = False) -> str {
-        import from jaclang.jac0core.helpers { ANSIColors }
-        file_path: str = self.loc.mod_path;
-        if (file_path == '') {
-            return self.msg;
-        }
-        line: int = self.loc.first_line;
-        column: int = self.loc.col_start;
-        msg = self.msg if not colors else f"{ANSIColors.RED}{self.msg}{ANSIColors.END}";
-        return f"{file_path}:{line}:{column} {msg}";
-    }
+    def as_log(self: Alert, *, colors: bool = False) -> str;
 
     """Pretty prints the Alert to show the alert with source location."""
-    def pretty_print(self: Alert, *, colors: bool = False) -> str {
-        import from jaclang.jac0core.helpers { pretty_print_source_location }
-        pretty_dump = pretty_print_source_location(
-            self.loc.mod_path,
-            self.loc.orig_src.code,
-            self.loc.first_line,
-            self.loc.pos_start,
-            self.loc.pos_end,
-            colors=colors
-        );
-        if (pretty_dump != '') {
-            pretty_dump = '\n' + pretty_dump;
-        }
-        return (self.as_log(colors=colors) + pretty_dump);
-    }
+    def pretty_print(self: Alert, *, colors: bool = False) -> str;
 }
 
 """Base abstract class for all transforms (no UniNode constraint).
@@ -82,52 +50,26 @@ class BaseTransform(ABC, Generic[(T_in, T_out)]) {
         ir_in: T_in,
         prog: JacProgram,
         cancel_token: (Event | None) = None
-    ) -> None {
-        self.logger = logging.getLogger(self.__class__.__name__);
-        self.errors_had: list[Alert] = [];
-        self.warnings_had: list[Alert] = [];
-        self.prog = prog;
-        self.time_taken = 0.0;
-        self.ir_in: T_in = ir_in;
-        self.cancel_token = cancel_token;
-        self.pre_transform();
-        self.ir_out: T_out = self.timed_transform(ir_in=ir_in);
-        self.post_transform();
-    }
+    ) -> None;
 
     """Transform with time tracking."""
-    def timed_transform(self: BaseTransform, ir_in: T_in) -> T_out {
-        start_time = time.time();
-        ir_out = self.transform(ir_in=ir_in);
-        self.time_taken = time.time() - start_time;
-        return ir_out;
-    }
+    def timed_transform(self: BaseTransform, ir_in: T_in) -> T_out;
 
     """Pre-transform hook."""
-    def pre_transform(self: BaseTransform) -> None {
-        ;
-    }
+    def pre_transform(self: BaseTransform) -> None;
 
     """Post-transform hook."""
-    def post_transform(self: BaseTransform) -> None {
-        ;
-    }
+    def post_transform(self: BaseTransform) -> None;
 
     """Transform interface."""
     @abstractmethod
-    def transform(self: BaseTransform, ir_in: T_in) -> T_out {
-        ;
-    }
+    def transform(self: BaseTransform, ir_in: T_in) -> T_out;
 
     """Log info."""
-    def log_info(self: BaseTransform, msg: str) -> None {
-        self.logger.info(msg);
-    }
+    def log_info(self: BaseTransform, msg: str) -> None;
 
     """Check if the pass has been canceled."""
-    def is_canceled(self: BaseTransform) -> bool {
-        return ((self.cancel_token is not None) and self.cancel_token.is_set());
-    }
+    def is_canceled(self: BaseTransform) -> bool;
 }
 
 """Abstract class for IR passes that operate on AST nodes.
@@ -142,44 +84,20 @@ class Transform(BaseTransform[(T, R)]) {
         ir_in: T,
         prog: JacProgram,
         cancel_token: (Event | None) = None
-    ) -> None {
-        self.cur_node: UniNode = ir_in;
-        super.init(ir_in, prog, cancel_token);
-    }
+    ) -> None;
 
     """Pass Error."""
     def log_error(
         self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None {
-        alrt = Alert(
-            msg,
-            self.cur_node.loc if not node_override else node_override.loc,
-            self.__class__
-        );
-        self.errors_had.append(alrt);
-        self.prog.errors_had.append(alrt);
-    }
+    ) -> None;
 
     """Pass Error."""
     def log_warning(
         self: Transform, msg: str, node_override: (UniNode | None) = None
-    ) -> None {
-        alrt = Alert(
-            msg,
-            self.cur_node.loc if not node_override else node_override.loc,
-            self.__class__
-        );
-        self.warnings_had.append(alrt);
-        self.prog.warnings_had.append(alrt);
-    }
+    ) -> None;
 
     """Pass Error."""
     def ice(
         self: Transform, msg: str = 'Something went horribly wrong!'
-    ) -> RuntimeError {
-        self.log_error(f"ICE: Pass {self.__class__.__name__} - {msg}");
-        return RuntimeError(
-            f"Internal Compiler Error: Pass {self.__class__.__name__} - {msg}"
-        );
-    }
+    ) -> RuntimeError;
 }

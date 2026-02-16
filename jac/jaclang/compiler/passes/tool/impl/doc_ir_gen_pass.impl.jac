@@ -596,6 +596,9 @@ impl DocIRGenPass.exit_test(nd: uni.Test) -> None {
         if (i == nd.doc) {
             parts.append(i.gen.doc_ir);
             parts.append(self.hard_line());
+        } elif (nd.description is not None and i == nd.description) {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } elif ((i == nd.name) and isinstance(i, uni.Name)) {
             if not i.value.startswith('_jac_gen_') {
                 parts.append(i.gen.doc_ir);

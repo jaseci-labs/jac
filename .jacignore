@@ -207,6 +207,7 @@ test_failing_kwonly.jac
 test_failing_posonly.jac
 test_failing_varargs.jac
 testing.impl.jac
+test_syntax_err.jac
 text_to_type.jac
 tool.impl.jac
 tool_function.jac
@@ -233,3 +234,10 @@ with_llm_method.jac
 yield_in_assignment.jac
 init_as_call.jac
 impl_match_confused.impl.jac
+archetype.impl.jac
+pyast_gen_pass.impl.jac
+executor.impl.jac
+help.impl.jac
+mtir.impl.jac
+test_compilation.jac
+test_import_pass.jac

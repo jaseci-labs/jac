@@ -144,7 +144,11 @@ impl UnparsePass.exit_test(nd: uni.Test) -> None {
         parts.append(nd.doc.gen.jac);
     }
     parts.append("test");
-    parts.append(nd.name.gen.jac);
+    if nd.description {
+        parts.append(nd.description.gen.jac);
+    } elif nd.name.value and not nd.name.value.startswith('_jac_gen_') {
+        parts.append(nd.name.gen.jac);
+    }
     body = " ".join([s.gen.jac for s in nd.body]);
     parts.append("{ " + body + " }");
     nd.gen.jac = " ".join(parts);

@@ -236,7 +236,7 @@ Open `http://localhost:5173` in your browser.
 ```jac
 import from datetime { datetime }
 
-test test_create_tweet {
+test "create tweet" {
     # Setup
     profile = root ++> Profile(username="testuser");
 
@@ -249,7 +249,7 @@ test test_create_tweet {
     assert tweets[0].content == "Hello, World!";
 }
 
-test test_follow_user {
+test "follow user" {
     # Setup
     alice = root ++> Profile(username="alice");
     bob = root ++> Profile(username="bob");

@@ -22,7 +22,7 @@ impl __buildDom(nd: any) -> any {
         return fragment;
     }
     if not __isObject(nd) {
-        return document.createTextNode(String(nd));
+        return document.createTextNode(str(nd));
     }
     # Handle component functions
     tag = nd.tag;
@@ -30,7 +30,7 @@ impl __buildDom(nd: any) -> any {
         props = nd.props;
         children = nd.children;
         # Merge children into props for component
-        if children and children.length > 0 {
+        if children and len(children) > 0 {
             props["children"] = children;
         }
         return __buildDom(tag(props));
@@ -71,19 +71,19 @@ impl __applyProp(element: any, key: str, value: any) -> None {
     or key == "readonly"
     or key == "selected" {
         # Boolean attributes - use property instead of attribute
-        element[key] = Boolean(value);
+        element[key] = bool(value);
     } elif key == "value" {
         # Value property for form elements
         element.value = value;
     } elif key != "children" {
-        element.setAttribute(key, String(value));
+        element.setAttribute(key, str(value));
     }
 }
 
 impl createSignal(initialValue: any) -> list {
-    signalId = __jacReactiveContext.signals.length;
+    signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
-    __jacReactiveContext.signals.push(signalData);
+    __jacReactiveContext.signals.append(signalData);
     def getter -> any {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
@@ -98,9 +98,9 @@ impl createSignal(initialValue: any) -> list {
 }
 
 impl createState(initialState: dict) -> list {
-    signalId = __jacReactiveContext.signals.length;
+    signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialState, "subscribers": []};
-    __jacReactiveContext.signals.push(signalData);
+    __jacReactiveContext.signals.append(signalData);
     def getter -> dict {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
@@ -161,7 +161,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
             }
         }
         if not alreadySubscribed {
-            subscribers.push(currentEffect);
+            subscribers.append(currentEffect);
         }
     }
     currentComponent = __jacReactiveContext.currentComponent;
@@ -173,7 +173,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
             }
         }
         if not alreadySubscribed {
-            subscribers.push(currentComponent);
+            subscribers.append(currentComponent);
         }
     }
 }
@@ -211,7 +211,7 @@ impl __jacScheduleRerender(componentId: any) -> None {
         }
     }
     if not alreadyScheduled {
-        pending.push(componentId);
+        pending.append(componentId);
         __jacScheduleFlush();
     }
 }
@@ -580,7 +580,7 @@ impl __jacBuildOrderedArgs(order: list, argsDict: dict) -> list {
     }
     values = argsDict if __isObject(argsDict) else {};
     for name in order {
-        result.push(values.get(name));
+        result.append(values.get(name));
     }
     return result;
 }
@@ -814,14 +814,14 @@ impl __jacRegisterClientModule(
             moduleFunctions[funcName] = funcRef;
             registry.functions[funcName] = funcRef;
             scope[funcName] = funcRef;
-            registeredFunctions.push(funcName);
+            registeredFunctions.append(funcName);
         }
     }
     moduleGlobals = {};
     globalNames = [];
     globalsMap = clientGlobals or {};
     for gName in __objectKeys(globalsMap) {
-        globalNames.push(gName);
+        globalNames.append(gName);
         defaultValue = globalsMap[gName];
         existing = scope[gName];
         if existing == None {
@@ -863,7 +863,7 @@ impl useState(initialValue: any) -> list {
     hookIndex = __jacReactiveContext.hookIndex;
     hooks = __jacReactiveContext.hooks;
     # Check if this hook already exists (re-render) or needs to be created (first render)
-    if hookIndex < hooks.length {
+    if hookIndex < len(hooks) {
         # Re-render: return existing state
         hookData = hooks[hookIndex];
         __jacReactiveContext.hookIndex = hookIndex + 1;
@@ -881,7 +881,7 @@ impl useState(initialValue: any) -> list {
     }
     # Store in hooks array for subsequent renders
     signalData["setter"] = setter;
-    hooks.push(signalData);
+    hooks.append(signalData);
     __jacReactiveContext.hookIndex = hookIndex + 1;
     # Return current value and setter
     return [signalData.value, setter];

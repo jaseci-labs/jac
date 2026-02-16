@@ -340,11 +340,7 @@ class SymbolTree {
         node_name: str,
         parent: (SymbolTree | None) = None,
         children: (list[SymbolTree] | None) = None
-    ) -> None {
-        self.parent = parent;
-        self.kid = children if (children is not None) else [];
-        self.name = node_name;
-    }
+    ) -> None;
 
     """Get parent node."""
     @property

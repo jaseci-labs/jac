@@ -1,21 +1,14 @@
-#!/usr/bin/env python3
 """jac0 - Bootstrap Jac-to-Python transpiler.
 
-A single-file compiler that reads the Jac subset produced by py2jac
-and emits equivalent Python source code. This closes the bootstrap loop
-for Jac self-hosting.
-
-Usage:
-    python jac0.py file.jac [-o output.py]
-    python jac0.py file1.jac file2.jac --outdir build/
+A single-file compiler that reads the Jac subset used in jac0core
+and emits equivalent Python source code. Called in-memory by
+meta_importer._exec_bootstrap() at import time — no disk I/O needed.
 """
 
 from __future__ import annotations
 
-import argparse
 import enum
 import os
-import sys
 from dataclasses import dataclass, field
 
 # =============================================================================
@@ -120,6 +113,7 @@ class Lexer:
 
     def __init__(self, source: str, filename: str = "<unknown>") -> None:
         self.source = source
+        self._source_len = len(source)
         self.filename = filename
         self.pos = 0
         self.line = 1
@@ -128,11 +122,11 @@ class Lexer:
         self._tokenize()
 
     def _ch(self) -> str:
-        return self.source[self.pos] if self.pos < len(self.source) else ""
+        return self.source[self.pos] if self.pos < self._source_len else ""
 
     def _peek(self, offset: int = 0) -> str:
         p = self.pos + offset
-        return self.source[p] if p < len(self.source) else ""
+        return self.source[p] if p < self._source_len else ""
 
     def _advance(self, n: int = 1) -> str:
         result = self.source[self.pos : self.pos + n]
@@ -149,7 +143,7 @@ class Lexer:
         self.tokens.append(Token(tt, value, line, col))
 
     def _skip_ws_and_comments(self) -> None:
-        while self.pos < len(self.source):
+        while self.pos < self._source_len:
             c = self._ch()
             if c in " \t\r\n":
                 self._advance()
@@ -157,14 +151,14 @@ class Lexer:
                 if self._peek(1) == "*":
                     # Block comment #* ... *#
                     self._advance(2)
-                    while self.pos < len(self.source):
+                    while self.pos < self._source_len:
                         if self._ch() == "*" and self._peek(1) == "#":
                             self._advance(2)
                             break
                         self._advance()
                 else:
                     # Line comment
-                    while self.pos < len(self.source) and self._ch() != "\n":
+                    while self.pos < self._source_len and self._ch() != "\n":
                         self._advance()
             else:
                 break
@@ -172,9 +166,9 @@ class Lexer:
     def _is_string_prefix(self) -> bool:
         """Check if current position starts a string (with optional prefix)."""
         save = self.pos
-        while self.pos < len(self.source) and self.source[self.pos] in "fFrRbBuU":
+        while self.pos < self._source_len and self.source[self.pos] in "fFrRbBuU":
             self.pos += 1
-        result = self.pos < len(self.source) and self.source[self.pos] in "\"'"
+        result = self.pos < self._source_len and self.source[self.pos] in "\"'"
         self.pos = save
         return result
 
@@ -182,7 +176,7 @@ class Lexer:
         line, col = self.line, self.col
         start = self.pos
         # Read prefix
-        while self.pos < len(self.source) and self.source[self.pos] in "fFrRbBuU":
+        while self.pos < self._source_len and self.source[self.pos] in "fFrRbBuU":
             self._advance()
         # Read quote
         q = self._ch()
@@ -193,7 +187,7 @@ class Lexer:
             triple = True
             self._advance(2)
         # Read body
-        while self.pos < len(self.source):
+        while self.pos < self._source_len:
             c = self._ch()
             if c == "\\":
                 self._advance(2)
@@ -223,18 +217,18 @@ class Lexer:
         start = self.pos
         if self._ch() == "0" and self._peek(1) in "xXoObB":
             self._advance(2)
-            while self.pos < len(self.source) and (
+            while self.pos < self._source_len and (
                 self._ch().isalnum() or self._ch() == "_"
             ):
                 self._advance()
         else:
-            while self.pos < len(self.source) and (
+            while self.pos < self._source_len and (
                 self._ch().isdigit() or self._ch() == "_"
             ):
                 self._advance()
             if self._ch() == "." and self._peek(1) != ".":
                 self._advance()
-                while self.pos < len(self.source) and (
+                while self.pos < self._source_len and (
                     self._ch().isdigit() or self._ch() == "_"
                 ):
                     self._advance()
@@ -242,7 +236,7 @@ class Lexer:
                 self._advance()
                 if self._ch() in "+-":
                     self._advance()
-                while self.pos < len(self.source) and (
+                while self.pos < self._source_len and (
                     self._ch().isdigit() or self._ch() == "_"
                 ):
                     self._advance()
@@ -253,7 +247,7 @@ class Lexer:
     def _read_name(self) -> None:
         line, col = self.line, self.col
         start = self.pos
-        while self.pos < len(self.source) and (
+        while self.pos < self._source_len and (
             self._ch().isalnum() or self._ch() == "_"
         ):
             self._advance()
@@ -264,7 +258,7 @@ class Lexer:
         line, col = self.line, self.col
         self._advance()  # skip backtick
         start = self.pos
-        while self.pos < len(self.source) and (
+        while self.pos < self._source_len and (
             self._ch().isalnum() or self._ch() == "_"
         ):
             self._advance()
@@ -296,7 +290,7 @@ class Lexer:
 
         while True:
             self._skip_ws_and_comments()
-            if self.pos >= len(self.source):
+            if self.pos >= self._source_len:
                 break
             line, col = self.line, self.col
             c = self._ch()
@@ -879,13 +873,14 @@ class Parser:
         self, tokens: list[Token], source: str = "", filename: str = ""
     ) -> None:
         self.tokens = tokens
+        self._tokens_len = len(tokens)
         self.pos = 0
         self.source = source
         self.filename = filename
 
     def _peek(self, offset: int = 0) -> Token:
         p = self.pos + offset
-        if p < len(self.tokens):
+        if p < self._tokens_len:
             return self.tokens[p]
         return self.tokens[-1]  # EOF
 
@@ -1213,6 +1208,9 @@ class Parser:
                     continue
                 if v == "has":
                     body.append(self._parse_has())
+                    continue
+                if v == "with" and self._peek(1).value == "entry":
+                    body.append(self._parse_with_entry())
                     continue
             if self._at(TT.AT):
                 decs = self._parse_decorators()
@@ -2036,46 +2034,3 @@ def compile_jac(
                     codegen.impl_registry.setdefault(cls, []).append(node)
 
     return codegen.generate(module)
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(
-        description="jac0 - Bootstrap Jac-to-Python transpiler"
-    )
-    ap.add_argument("files", nargs="+", help="Jac source files to compile")
-    ap.add_argument("-o", "--output", help="Output file (default: stdout)")
-    ap.add_argument(
-        "--outdir", help="Output directory (writes <name>.py for each input)"
-    )
-    ap.add_argument("--no-impls", action="store_true", help="Skip impl file discovery")
-    args = ap.parse_args()
-
-    for jac_file in args.files:
-        with open(jac_file, encoding="utf-8") as f:
-            source = f.read()
-
-        impl_sources: list[tuple[str, str]] = []
-        if not args.no_impls:
-            for impl_path in discover_impl_files(jac_file):
-                with open(impl_path, encoding="utf-8") as f:
-                    impl_sources.append((f.read(), impl_path))
-
-        py_source = compile_jac(source, jac_file, impl_sources)
-
-        if args.outdir:
-            os.makedirs(args.outdir, exist_ok=True)
-            base = os.path.basename(jac_file)
-            out_name = base.replace(".jac", ".py")
-            out_path = os.path.join(args.outdir, out_name)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(py_source)
-            sys.stderr.write(f"  {jac_file} -> {out_path}\n")
-        elif args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(py_source)
-        else:
-            sys.stdout.write(py_source)
-
-
-if __name__ == "__main__":
-    main()

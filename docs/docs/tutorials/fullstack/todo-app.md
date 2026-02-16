@@ -317,7 +317,7 @@ def:pub app -> JsxElement {
 
     # Add a new todo
     async def addTodo -> None {
-        if not newTodoText.trim() { return; }
+        if not newTodoText.strip() { return; }
 
         response = root spawn AddTodo(title=newTodoText);
         newTodo = response.reports[0];
@@ -517,7 +517,7 @@ def:pub app -> JsxElement {
     # ... other state ...
 
     async def generateMealIngredients -> None {
-        if not mealDescription.trim() { return; }
+        if not mealDescription.strip() { return; }
         mealLoading = True;
 
         try {
@@ -526,16 +526,16 @@ def:pub app -> JsxElement {
             # MealToIngredients has multiple reports:
             # reports[0] = ListTodos output (from nested spawn)
             # reports[1] = Summary object with ingredients_added
-            if response.reports and response.reports.length > 1 {
+            if response.reports and len(response.reports) > 1 {
                 result = response.reports[1];
                 added = result["ingredients_added"];
 
-                if added and added.length > 0 {
+                if added and len(added) > 0 {
                     todos = todos.concat(added);
                 }
             }
         } except Exception as e {
-            console.error("Error generating ingredients:", e);
+            print("Error generating ingredients:", e);
         }
 
         mealDescription = "";
