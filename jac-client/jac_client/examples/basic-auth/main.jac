@@ -7,7 +7,7 @@ cl import from '@jac/runtime' {
 }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has isLoggedIn: bool = False,
             isSignup: bool = False,
             username: str = "",
@@ -23,7 +23,7 @@ cl {
         # Handle login
         async def handleLogin -> None {
             error = "";
-            if not username.trim() or not password {
+            if not username.strip() or not password {
                 error = "Please fill in all fields";
                 return;
             }
@@ -42,11 +42,11 @@ cl {
         # Handle signup
         async def handleSignup -> None {
             error = "";
-            if not username.trim() or not password {
+            if not username.strip() or not password {
                 error = "Please fill in all fields";
                 return;
             }
-            if password.length < 6 {
+            if len(password) < 6 {
                 error = "Password must be at least 6 characters";
                 return;
             }

@@ -142,7 +142,7 @@ def test_core_fixture_emits_expected_constructs(
         assert pattern in js_code
 
     # Support strings within jsx
-    assert '"\\"Authentication\\" App"' in js_code
+    assert '"Authentication" App' in js_code
 
     assert_balanced_syntax(js_code, core_fixture)
     assert_no_jac_keywords(js_code, core_fixture)
@@ -712,8 +712,8 @@ def test_keyword_variables(fixture_path: Callable[[str], str]) -> None:
 
     assert "function def(from, class) {" in js_code
     for pattern in [
-        'print("From is:", from);',
-        'print("Class is:", class);',
+        'console.log("From is:", from);',
+        'console.log("Class is:", class);',
     ]:
         assert pattern in js_code
 
@@ -729,7 +729,7 @@ def test_separated_files(fixture_path: Callable[[str], str]) -> None:
 
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code
-    assert '__jacSpawn("create_todo", "", {"text": input.trim()});' in js_code
+    assert '__jacSpawn("create_todo", "", {"text": input.strip()});' in js_code
 
 
 def test_convert_to_js_import_path_preserves_js_format() -> None:

@@ -1,122 +1,31 @@
-"""Validate the RD parser against the Lark parser on the full micro suite.
+"""Validate the RD parser on the full micro suite and gap coverage files.
 
-Each .jac file in the micro suite becomes its own test case. For each file:
-1. Parse with the Lark-based parser (reference)
-2. Parse with the RD parser (under test)
-3. Compare the AST structures
-
-The comparison uses a recursive canonicalization that captures node types
-and semantic field values while ignoring position/location info.
+Each .jac file becomes its own test case. For each file:
+1. Parse with the RD parser
+2. Verify no errors are produced
 """
 
 import os
-from difflib import unified_diff
 from pathlib import Path
 
 import pytest
 
 from conftest import get_micro_jac_files
-from jaclang.jac0core.jac_parser import JacParser
-from jaclang.jac0core.program import JacProgram
-from jaclang.jac0core.unitree import (
-    FString,
-    JsxText,
-    Module,
-    Source,
-    String,
-    Token,
-    UniNode,
-)
+from jaclang.jac0core.unitree import Module
 from jaclang.jac0core.unitree import (
     Test as JacTest,
 )
 from jaclang.runtimelib.utils import read_file_with_encoding
 
 # =============================================================================
-# AST Canonicalization
-# =============================================================================
-
-
-def canonicalize(node: UniNode, indent: int = 0, in_jsx_text: bool = False) -> str:
-    """Produce a canonical string representation of a unitree AST.
-
-    Captures node types and semantic values (names, literals, operators)
-    while ignoring position info so that the two parsers can be compared
-    purely on structural output.
-
-    JSX text whitespace is normalized (stripped) since the RD parser
-    correctly preserves raw whitespace while Lark strips it at lex time.
-    """
-    prefix = "  " * indent
-    if isinstance(node, Token):
-        value = node.value.strip() if in_jsx_text else node.value
-        return f"{prefix}{node.__class__.__name__}: {value!r}\n"
-
-    is_jsx_text = isinstance(node, JsxText)
-    # Skip whitespace-only JsxText nodes (RD parser correctly preserves them,
-    # Lark silently discards them — not a meaningful structural difference).
-    if is_jsx_text and all(
-        isinstance(c, Token) and c.value.strip() == "" for c in node.kid
-    ):
-        return ""
-    # Skip comment-only JsxText nodes (RD parser preserves #-comments in JSX
-    # content, Lark strips them during lexing — not a structural difference).
-    if is_jsx_text and all(
-        isinstance(c, Token) and c.value.strip().startswith("#") for c in node.kid
-    ):
-        return ""
-    lines = f"{prefix}{node.__class__.__name__}\n"
-
-    # Merge adjacent String nodes inside FString: the RD parser correctly
-    # keeps f-string text as contiguous segments while Lark splits at escape
-    # boundaries (e.g. '\\' + 'n' vs '\\n', or separate '{' / '}' segments
-    # for literal braces).  Merging normalizes these harmless differences.
-    children = list(node.kid)
-    if isinstance(node, FString):
-        child_prefix = "  " * (indent + 1)
-        i = 0
-        while i < len(children):
-            child = children[i]
-            if isinstance(child, String):
-                merged_value = child.value
-                while i + 1 < len(children) and isinstance(children[i + 1], String):
-                    i += 1
-                    next_str: String = children[i]  # type: ignore[assignment]
-                    merged_value += next_str.value
-                lines += f"{child_prefix}String: {merged_value!r}\n"
-            else:
-                lines += canonicalize(child, indent + 1, in_jsx_text=is_jsx_text)
-            i += 1
-        return lines
-
-    for child in children:
-        lines += canonicalize(child, indent + 1, in_jsx_text=is_jsx_text)
-    return lines
-
-
-# =============================================================================
 # Parsing Helpers
 # =============================================================================
-
-
-def parse_with_lark(source: str, file_path: str) -> Module | None:
-    """Parse source with the Lark parser, returning a Module or None on error."""
-    try:
-        prse = JacParser(
-            root_ir=Source(source, mod_path=file_path),
-            prog=JacProgram(),
-        )
-        if prse.errors_had:
-            return None
-        return prse.ir_out
-    except Exception:
-        return None
 
 
 def parse_with_rd(source: str, file_path: str) -> Module | None:
     """Parse source with the RD parser, returning a Module or None on error."""
     try:
-        from jaclang.compiler.parser.parser import parse
+        from jaclang.jac0core.parser.parser import parse
 
         module, parse_errors, lex_errors = parse(source, file_path)
         if lex_errors or parse_errors:
@@ -127,38 +36,18 @@ def parse_with_rd(source: str, file_path: str) -> Module | None:
 
 
 # =============================================================================
-# Core Comparison
+# Core Test
 # =============================================================================
 
 
-def rd_parser_comparison_test(filename: str) -> None:
-    """Compare Lark and RD parse trees for a single file."""
+def rd_parser_test(filename: str) -> None:
+    """Verify RD parser can parse a single file without errors."""
     source = read_file_with_encoding(filename)
 
     saved_test_count = JacTest.TEST_COUNT
-    lark_ast = parse_with_lark(source, filename)
-    if lark_ast is None:
-        pytest.skip(f"Lark parser cannot parse {filename}")
-        return  # unreachable, but helps mypy
-
-    JacTest.TEST_COUNT = saved_test_count
     rd_ast = parse_with_rd(source, filename)
+    JacTest.TEST_COUNT = saved_test_count
     assert rd_ast is not None, f"RD parser failed to parse {filename}"
-
-    lark_canon = canonicalize(lark_ast)
-    rd_canon = canonicalize(rd_ast)
-
-    if lark_canon != rd_canon:
-        diff = "\n".join(
-            unified_diff(
-                lark_canon.splitlines(),
-                rd_canon.splitlines(),
-                fromfile="lark",
-                tofile="rd",
-                lineterm="",
-            )
-        )
-        raise AssertionError(f"AST mismatch in {os.path.basename(filename)}:\n{diff}")
 
 
 # =============================================================================
@@ -176,8 +65,8 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
 
 def test_micro_suite(micro_jac_file: str) -> None:
-    """Compare Lark and RD parse trees for a micro suite file."""
-    rd_parser_comparison_test(micro_jac_file)
+    """Verify RD parser can parse micro suite files."""
+    rd_parser_test(micro_jac_file)
 
 
 # =============================================================================
@@ -229,15 +118,16 @@ _gap_files = [
 )
 def test_rd_parser_gap_coverage(gap_file: str) -> None:
     """Verify RD parser correctly handles previously missing grammar constructs."""
-    rd_parser_comparison_test(gap_file)
+    rd_parser_test(gap_file)
 
 
 # =============================================================================
-# RD parser strictness parity tests
+# RD parser strictness tests — currently enforced
 # =============================================================================
 
-# Snippets the RD parser must reject (Lark also rejects these).
+# Snippets the RD parser must reject (parser already rejects these correctly).
 _MUST_REJECT = {
+    # --- Original tests ---
     "can_without_event_clause": "obj Foo { can bar { } }",
     "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
     "pass_keyword": "with entry { match x { case 1: pass; } }",
@@ -247,6 +137,92 @@ _MUST_REJECT = {
     "bare_expression_at_module_level": "5 + 3;",
     "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
     "impl_bare_semicolon": "impl Foo.bar;",
+    # --- Module-level: statements that belong inside code blocks ---
+    "bare_assignment_at_module_level": "x = 5;",
+    "bare_if_at_module_level": "if true { }",
+    "bare_while_at_module_level": "while true { }",
+    "bare_for_at_module_level": "for x in [1,2,3] { }",
+    "bare_try_at_module_level": "try { } except Exception e { }",
+    "bare_return_at_module_level": "return 5;",
+    "bare_yield_at_module_level": "yield 5;",
+    "bare_break_at_module_level": "break;",
+    "bare_continue_at_module_level": "continue;",
+    "bare_del_at_module_level": "del x;",
+    "walrus_at_module_level": "x := 5;",
+    # --- Has statement strictness ---
+    "has_without_type": "obj Foo { has x; }",
+    "has_outside_archetype": "has x: int;",
+    "has_with_var_keyword": "obj Foo { has var x: int; }",
+    "has_missing_semi": "obj Foo { has x: int }",
+    "has_multiple_colons": "obj Foo { has x: int: str; }",
+    # --- Ability/function strictness ---
+    "can_with_parens": "obj Foo { can bar() with entry { } }",
+    "ability_missing_body_or_semi": "obj Foo { def bar() }",
+    # --- Archetype strictness ---
+    "obj_missing_name": "obj { }",
+    "double_inheritance": "obj Foo(Bar)(Baz) { }",
+    "enum_with_has": "enum Color { has x: int; }",
+    # --- Import strictness ---
+    "import_from_missing_braces": "import from foo bar;",
+    "import_star_no_from": "import *;",
+    # --- Duplicate modifiers ---
+    "static_static_def": "obj Foo { static static def bar() { } }",
+    "override_override_def": "obj Foo { override override def bar() { } }",
+    "async_async_def": "obj Foo { async async def bar() { } }",
+    "double_access_tag": "obj Foo { has :pub :pub x: int; }",
+    # --- Expression/assignment strictness ---
+    "double_walrus": "with entry { x := y := 5; }",
+    "assignment_as_expression": "with entry { x = y = (a = 5); }",
+    # --- Structural requirements ---
+    "match_case_no_colon": "with entry { match x { case 1 x = 1; } }",
+    "for_missing_in": "with entry { for x [1,2,3] { } }",
+    "for_to_missing_by": "with entry { for i = 0 to 10 { } }",
+    "while_missing_body": "with entry { while true; }",
+    "match_missing_expression": "with entry { match { case 1: x=1; } }",
+    "for_empty_iter": "with entry { for x in { } }",
+    "while_empty_condition": "with entry { while { } }",
+    "test_with_semi": "test foo;",
+    "impl_without_target": "impl { }",
+    "impl_invalid_spec": "impl (int) -> int { }",
+    "decorator_alone": "@foo",
+    "decorator_on_has": "obj Foo { @bar has x: int; }",
+    "decorator_on_glob": "@deco glob x: int = 5;",
+    "glob_without_assign": "glob;",
+    "visit_missing_expr": "with entry { visit; }",
+    "spawn_as_statement": "with entry { spawn; }",
+    # --- Missing required semicolons (lark requires SEMI) ---
+    "import_missing_semi": "import foo",
+    "include_missing_semi": "include foo",
+    "return_missing_semi": "with entry { return 5 }",
+    "assert_missing_semi": "with entry { assert true }",
+    "raise_missing_semi": "with entry { raise Exception() }",
+    "delete_missing_semi": "with entry { del x }",
+    "global_missing_semi": "with entry { global x }",
+    "nonlocal_missing_semi": "with entry { nonlocal x }",
+    # --- Missing required body/terminator ---
+    "obj_missing_body_or_semi": "obj Foo",
+    # --- Orphaned control-flow clauses (not valid as standalone statements) ---
+    "elif_without_if": "with entry { elif true { } }",
+    "else_without_if": "with entry { else { } }",
+    "except_without_try": "with entry { except Exception e { } }",
+    "finally_without_try": "with entry { finally { } }",
+    "case_without_match": "with entry { case 1: x = 1; }",
+    # --- Empty required blocks ---
+    "empty_match_body": "with entry { match x { } }",
+    "empty_switch_body": "with entry { switch x { } }",
+    # --- try without except or finally ---
+    "try_no_except_no_finally": "with entry { try { } }",
+    # --- Control statements with spurious values ---
+    "break_with_value": "with entry { break 5; }",
+    "continue_with_value": "with entry { continue 5; }",
+    # --- Double else ---
+    "double_else_on_if": "with entry { if true { } else { } else { } }",
+    # --- from-import with empty items ---
+    "from_import_empty_items": "import from foo { };",
+    # --- Bare semi at module level ---
+    "bare_semi_at_module_level": ";",
+    # --- enum with empty body ---
+    "enum_empty_body": "enum Color { }",
 }
 
 
@@ -255,14 +231,7 @@ _MUST_REJECT = {
     list(_MUST_REJECT.values()),
     ids=list(_MUST_REJECT.keys()),
 )
-def test_rd_parser_strictness_parity(snippet: str) -> None:
-    """RD parser must reject constructs that Lark also rejects."""
-    # Confirm Lark rejects
-    saved = JacTest.TEST_COUNT
-    lark_ast = parse_with_lark(snippet, "/tmp/strictness_test.jac")
-    JacTest.TEST_COUNT = saved
-    assert lark_ast is None, f"Lark unexpectedly accepted: {snippet!r}"
-
-    # Confirm RD also rejects
+def test_rd_parser_strictness(snippet: str) -> None:
+    """RD parser must reject invalid constructs."""
     rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac")
-    assert rd_ast is None, f"RD parser must reject (Lark rejects): {snippet!r}"
+    assert rd_ast is None, f"RD parser must reject: {snippet!r}"

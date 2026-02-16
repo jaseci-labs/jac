@@ -125,8 +125,14 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             );
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }
@@ -141,7 +147,7 @@ impl enter(
     args: list = [],
     main: bool = True,
     `root: str = '',
-    `node: str = ''
+    nd: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -170,7 +176,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(`node);
+            mach.set_entry_node(nd);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)
@@ -221,15 +227,21 @@ impl start(
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
             for error in Jac.program.errors_had {
-                console.error(f"Error: {error}");
+                console.error(error.pretty_print(colors=True));
             }
             mach.close();
             return 1;
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(f"Error loading {filename}: {e}");
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(f"Error loading {filename}: {e}");
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }

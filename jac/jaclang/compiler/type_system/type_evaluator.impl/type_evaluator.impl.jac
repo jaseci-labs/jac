@@ -65,7 +65,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     if sym := type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module
                     ) {
-                        return self._set_symbol_to_expr(expr.right, sym);
+                        # Get the symbol's type first
+                        sym_type = self.get_type_of_symbol(sym);
+                        # Return prefetched special form type if both name and type match
+                        if special_form := self._get_special_form_type(
+                            sym.sym_name, sym_type
+                        ) {
+                            sym.add_use(expr.right);
+                            expr.right.type = special_form;
+                            return special_form;
+                        }
+                        # Not a special form, return the resolved type
+                        sym.add_use(expr.right);
+                        expr.right.type = sym_type;
+                        return sym_type;
                     }
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
@@ -234,9 +247,29 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                 return base_type;
             } else {  # <expr>[<expr>]
 
+                # --- Handle Callable special form ---
+                # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
+                # Similar to Pyright's handling in createSpecializedClassType() which checks
+                # classType.priv.aliasName === 'Callable'.
+                #
+                # We check is_special_form("Callable") which looks at the alias_name stored
+                # in the ClassType's private details. The alias_name is set when resolving
+                # Name expressions that refer to typing module special forms.
+                if (
+                    isinstance(base_type, types.ClassType)
+                    and base_type.is_special_form("Callable")
+                ) {
+                    # Extract type arguments for Callable
+                    type_args_expr: uni.Expr | None = None;
+                    if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
+                        type_args_expr = expr.right.slices[0].start;
+                    }
+                    return self._create_callable_type(type_args_expr, expr);
+                }
                 # if <expr> is a class type, the atom trailer will be the type params.
                 if isinstance(base_type, types.ClassType)
                 and base_type.is_instantiable_class() {
+                    # --- Handle other generic types ---
                     # Collect the type arguments.
                     type_args: list[types.TypeBase] = [];
                     if isinstance(expr.right, uni.IndexSlice) and expr.right.slices {
@@ -395,6 +428,16 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # Check for function overloads
                     symbol_type = self.get_type_of_symbol(symbol);
+                    # --- Handle special forms from typing module ---
+                    # When a Name refers to a special form (e.g., Callable), return
+                    # the prefetched type which has alias_name set. This avoids creating
+                    # new ClassType instances for every usage.
+                    # Similar to Pyright's classType.priv.aliasName pattern.
+                    if special_form := self._get_special_form_type(
+                        symbol.sym_name, symbol_type
+                    ) {
+                        symbol_type = special_form;
+                    }
                     # Consult CFG-based narrowing for flow-sensitive type.
                     # Narrowed types represent variable values, so ensure
                     # they are instance types (not instantiable class types).
@@ -608,6 +651,100 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     return types.UnknownType();
 }
 
+"""
+Assign a source function type to a destination callable type.
+
+This handles Callable assignment compatibility following Python's typing rules:
+- Callable[..., T] (gradual form) accepts any callable
+- Parameter types are contravariant (dest params must be assignable to src params)
+- Return types are covariant (src return must be assignable to dest return)
+- Extra src params beyond dest count must have defaults (Pyright behavior)
+
+Future work:
+    - TypeVar handling for generic callables
+    - ParamSpec support
+"""
+impl TypeEvaluator._assign_callable(
+    src_func: types.FunctionType, dest_func: types.FunctionType
+) -> bool {
+    # If destination is gradual callable form (Callable[..., T]), any callable is compatible
+    if dest_func.is_gradual_callable_form() {
+        # Only need to check return type compatibility
+        if dest_func.return_type and src_func.return_type {
+            return self.assign_type(src_func.return_type, dest_func.return_type);
+        }
+        return True;
+    }
+    # If source is gradual callable form but dest is not, it's not assignable
+    # (we can't guarantee the source accepts the required parameters)
+    if src_func.is_gradual_callable_form() {
+        return False;
+    }
+    # Get non-self/cls parameters for comparison
+    src_params = [
+        p
+        for p in (src_func.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+    dest_params = [
+        p
+        for p in (dest_func.parameters or [])
+        if not p.is_self and not p.is_cls
+    ];
+    # Count required dest parameters (those without default values)
+    dest_required = len(
+        [
+            p
+            for p in dest_params
+            if p.default_value is None
+        ]
+    );
+    # Source must have at least as many params as dest requires
+    if len(src_params) < dest_required {
+        return False;
+    }
+    # Check parameter compatibility (contravariant)
+    for (i, dest_param) in enumerate(dest_params) {
+        if i >= len(src_params) {
+            # Dest has more params than src - extra dest params must have defaults
+            if dest_param.default_value is None {
+                return False;
+            }
+            continue;
+        }
+
+        src_param = src_params[i];
+
+        # Skip type checking if either parameter has no type annotation
+        if dest_param.param_type is None or src_param.param_type is None {
+            continue;
+        }
+
+        # Contravariance: dest param type should be assignable to src param type
+        if not self.assign_type(dest_param.param_type, src_param.param_type) {
+            return False;
+        }
+    }
+    # Check extra src params beyond dest count - they must have defaults
+    # (Following Pyright: caller will only pass dest's param count, extras need defaults)
+    if len(src_params) > len(dest_params) {
+        for i in range(len(dest_params), len(src_params)) {
+            src_param = src_params[i];
+            if src_param.default_value is None {
+                # Extra src param without default - incompatible
+                return False;
+            }
+        }
+    }
+    # Check return type compatibility (covariant)
+    if dest_func.return_type and src_func.return_type {
+        if not self.assign_type(src_func.return_type, dest_func.return_type) {
+            return False;
+        }
+    }
+    return True;
+}
+
 """Assign the source class type to the destination class type."""
 impl TypeEvaluator._assign_class(
     src_type: types.ClassType, dest_type: types.ClassType
@@ -771,6 +908,43 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
+    # --- Callable/FunctionType assignment compatibility ---
+    # Handle assignment of functions to Callable types and vice versa.
+    if isinstance(dest_type, types.FunctionType) {
+        if isinstance(src_type, types.FunctionType) {
+            return self._assign_callable(src_type, dest_type);
+        }
+        # OverloadedType can be assigned to Callable if any overload matches
+        if isinstance(src_type, types.OverloadedType) and src_type.overloads {
+            for overload in src_type.overloads {
+                if self._assign_callable(overload, dest_type) {
+                    return True;
+                }
+            }
+            return False;
+        }
+        # Class with __call__ method can be assigned to Callable
+        if isinstance(src_type, types.ClassType) and src_type.is_class_instance() {
+            if call_member := self._lookup_object_member(src_type, "__call__") {
+                call_type = self.get_type_of_symbol(call_member.symbol);
+                if isinstance(call_type, types.FunctionType) {
+                    return self._assign_callable(call_type, dest_type);
+                }
+            }
+        }
+    }
+    # Source is FunctionType assigned to a different type
+    if isinstance(src_type, types.FunctionType) {
+        # Check if dest_type is a class with __call__ method (callable object)
+        if isinstance(dest_type, types.ClassType) and dest_type.is_class_instance() {
+            if call_member := self._lookup_object_member(dest_type, "__call__") {
+                call_type = self.get_type_of_symbol(call_member.symbol);
+                if isinstance(call_type, types.FunctionType) {
+                    return self._assign_callable(src_type, call_type);
+                }
+            }
+        }
+    }
     # Everything is assignable to object, Any, Unknown, or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
         return True;
@@ -901,6 +1075,13 @@ impl TypeEvaluator._prefetch_types{
     # self.prefetch.template_class =
     self.prefetch.protocol_class = get_typing_type("Protocol");
     self.prefetch.any_class = get_typing_type("Any");
+    # Prefetch Callable and set alias_name. This single instance is reused
+    # for all Callable references, avoiding repeated ClassType creation.
+    # Similar to Pyright's classType.priv.aliasName pattern.
+    self.prefetch.callable_class = get_typing_type("Callable");
+    if isinstance(self.prefetch.callable_class, types.ClassType) {
+        self.prefetch.callable_class.private.alias_name = "Callable";
+    }
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;

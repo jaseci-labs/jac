@@ -64,7 +64,7 @@ For detailed guides and tutorials, see the **[docs folder](jac_client/docs/)**:
 cl import from react { useEffect }
 
 cl {
-    def Counter() -> any {
+    def Counter() -> JsxElement {
         # useState is automatically available - no import needed!
         [count, setCount] = useState(0);
 
@@ -82,7 +82,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return Counter();
     }
 }
@@ -119,7 +119,7 @@ walker read_todos {
 
 # Frontend: React component
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         # useState is automatically available - no import needed!
         [todos, setTodos] = useState([]);
 

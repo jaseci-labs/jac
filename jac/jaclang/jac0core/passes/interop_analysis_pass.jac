@@ -16,37 +16,15 @@ import from jaclang.jac0core.passes.uni_pass { UniPass }
     """
 class InteropAnalysisPass(UniPass) {
     """Initialize function definition tracking."""
-    def before_pass(self: InteropAnalysisPass) -> None {
-        self._func_defs: dict[(str, tuple[(InteropContext, uni.Ability)])] = {};
-        self._imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {};
-    }
+    def before_pass(self: InteropAnalysisPass) -> None;
 
     """Determine the codespace context of a node."""
-    def _get_context(self: InteropAnalysisPass, `node: uni.UniNode) -> InteropContext {
-        if `node.in_native_context() {
-            return InteropContext.NATIVE;
-        }
-        if `node.in_client_context() {
-            return InteropContext.CLIENT;
-        }
-        return InteropContext.SERVER;
-    }
+    def _get_context(self: InteropAnalysisPass, nd: uni.UniNode) -> InteropContext;
 
     """Extract a type name string from a type annotation expression."""
     def _extract_type_name(
         self: InteropAnalysisPass, expr: (uni.UniNode | None)
-    ) -> str {
-        if (expr is None) {
-            return 'int';
-        }
-        if isinstance(expr, uni.Name) {
-            return expr.value;
-        }
-        if isinstance(expr, uni.Token) {
-            return expr.value;
-        }
-        return 'int';
-    }
+    ) -> str;
 
     """Check if a module name refers to a .na.jac file and return the path
 suffix.
@@ -59,123 +37,14 @@ linking
         """
     def _resolve_native_module(
         self: InteropAnalysisPass, module_name: str
-    ) -> (str | None) {
-        import os;
-        base_dir = '.';
-        if (self.ir_in and self.ir_in.loc) {
-            base_dir = os.path.dirname(self.ir_in.loc.mod_path);
-        }
-        na_jac_path = os.path.join(base_dir, f"{module_name}.na.jac");
-        if os.path.exists(na_jac_path) {
-            return f"{module_name}.na";
-        }
-        return None;
-    }
+    ) -> (str | None);
 
     """Track imports from .na.jac modules."""
-    def enter_import(self: InteropAnalysisPass, `node: uni.Import) -> None {
-        import_context = self._get_context(`node);
-        if (`node.from_loc and isinstance(`node.from_loc, uni.ModulePath)) {
-            module_name = getattr(`node.from_loc, 'dot_path_str', None);
-            if (not module_name and `node.from_loc?.path and `node.from_loc.path) {
-                module_name = '.'.join(
-                    getattr(p, 'value', str(p)) for p in `node.from_loc.path
-                );
-            }
-            if module_name {
-                native_path = self._resolve_native_module(module_name);
-                if (native_path and `node.items) {
-                    for item in `node.items {
-                        if isinstance(item, uni.ModuleItem) {
-                            func_name = getattr(item.name, 'value', str(item.name));
-                            self._imported_native_funcs[func_name] = (
-                                native_path,
-                                import_context
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
+    def enter_import(self: InteropAnalysisPass, nd: uni.Import) -> None;
 
     """Record function definition and its context."""
-    def enter_ability(self: InteropAnalysisPass, `node: uni.Ability) -> None {
-        if (`node.sym_name and isinstance(`node.signature, uni.FuncSignature)) {
-            ctx = self._get_context(`node);
-            self._func_defs[`node.sym_name] = (ctx, `node);
-        }
-    }
+    def enter_ability(self: InteropAnalysisPass, nd: uni.Ability) -> None;
 
     """Check if a function call crosses context boundaries."""
-    def enter_func_call(self: InteropAnalysisPass, `node: uni.FuncCall) -> None {
-        func_name = None;
-        if isinstance(`node.target, uni.Name) {
-            func_name = `node.target.value;
-        } elif isinstance(`node.target, uni.NameAtom) {
-            func_name = `node.target.sym_name;
-        }
-        if not func_name {
-            return;
-        }
-        caller_ctx = self._get_context(`node);
-        manifest = self.ir_in.gen.interop_manifest;
-        if (func_name in self._imported_native_funcs) {
-            (source_module, import_ctx) = self._imported_native_funcs[func_name];
-            if (caller_ctx == InteropContext.NATIVE) {
-                if (func_name not in manifest.bindings) {
-                    binding = InteropBinding(
-                        name=func_name,
-                        source_context=InteropContext.NATIVE,
-                        callers={InteropContext.NATIVE},
-                        ret_type='int',
-                        param_types=[],
-                        param_names=[],
-                        ast_node=None,
-                        route=[InteropContext.NATIVE, InteropContext.NATIVE],
-                        source_module=source_module
-                    );
-                    manifest.bindings[func_name] = binding;
-                } else {
-                    manifest.bindings[func_name].callers.add(InteropContext.NATIVE);
-                }
-            }
-            return;
-        }
-        if (func_name not in self._func_defs) {
-            return;
-        }
-        (callee_ctx, callee_node) = self._func_defs[func_name];
-        if (caller_ctx == callee_ctx) {
-            return;
-        }
-        if (func_name in manifest.bindings) {
-            manifest.bindings[func_name].callers.add(caller_ctx);
-        } else {
-            sig = callee_node.signature;
-            assert isinstance(sig, uni.FuncSignature);
-            ret_type = self._extract_type_name(sig.return_type);
-            param_types: list = [];
-            param_names: list = [];
-            for p in sig.params {
-                param_names.append(p.sym_name);
-                if p.type_tag {
-                    param_types.append(self._extract_type_name(p.type_tag.tag));
-                } else {
-                    param_types.append('int');
-                }
-            }
-            binding = InteropBinding(
-                name=func_name,
-                source_context=callee_ctx,
-                callers={caller_ctx},
-                ret_type=ret_type,
-                param_types=param_types,
-                param_names=param_names,
-                ast_node=callee_node,
-                route=[caller_ctx, callee_ctx]
-            );
-            manifest.bindings[func_name] = binding;
-        }
-    }
+    def enter_func_call(self: InteropAnalysisPass, nd: uni.FuncCall) -> None;
 }

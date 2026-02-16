@@ -251,10 +251,10 @@ impl JacLangServer.rename_symbol(
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
         changes: dict[(str, list[lspt.TextEdit])] = {};
-        for node in [*node_selected.sym.uses, node_selected.sym.defn[0]] {
-            key = uris.from_fs_path(node.loc.mod_path);
+        for nd in [*node_selected.sym.uses, node_selected.sym.defn[0]] {
+            key = uris.from_fs_path(nd.loc.mod_path);
             new_edit = lspt.TextEdit(
-                range=utils.create_range(node.loc), new_text=new_name
+                range=utils.create_range(nd.loc), new_text=new_name
             );
             utils.add_unique_text_edit(changes, key, new_edit);
         }
@@ -487,15 +487,15 @@ impl JacLangServer.get_node_type(n: uni.AstNode) -> Optional[TypeBase] {
     return None;
 }
 
-impl JacLangServer.get_completion_of_node(node: uni.AstNode) -> lspt.CompletionList {
-    if (node_type := self.get_node_type(node)) {
+impl JacLangServer.get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList {
+    if (node_type := self.get_node_type(nd)) {
         self.debug("found type " + str(node_type));
         return self.get_completion_items_of(node_type);
-    } elif isinstance(node, UniScopeNode) {
-        self.debug("found scope node " + str(node));
-        return self.get_completion_items_of(node);
+    } elif isinstance(nd, UniScopeNode) {
+        self.debug("found scope node " + str(nd));
+        return self.get_completion_items_of(nd);
     }
-    self.debug("no type found for node " + str(node));
+    self.debug("no type found for node " + str(nd));
     return lspt.CompletionList(is_incomplete=False, items=[]);
 }
 
@@ -533,8 +533,20 @@ impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
         }
     }
     self._do_type_check(file_uri);
-    # Wait for dispatcher to become idle
-    self._idle_event.wait();
+    # Wait for dispatcher to become idle and re-check queue state after wake to avoid races with stale work events.
+    while True {
+        self._idle_event.wait();
+        with self._state_lock {
+            has_pending_work = bool(
+                self.pipe or self.dirty_files or self._debounce_timer
+            );
+        }
+        if not has_pending_work {
+            break;
+        }
+        self._idle_event.clear();
+        self._work_event.set();
+    }
     self.debug("Server is now idle");
 }
 

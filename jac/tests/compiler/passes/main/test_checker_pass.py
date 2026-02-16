@@ -1416,3 +1416,73 @@ def test_nested_functions_in_impl_blocks(fixture_path: Callable[[str], str]) -> 
         f"Expected no type checking errors, but got {len(program.errors_had)}: "
         + "\n".join([err.pretty_print() for err in program.errors_had])
     )
+
+
+def test_callable_type_annotation(fixture_path: Callable[[str], str]) -> None:
+    """Test Callable type annotation support."""
+    program = JacProgram()
+    path = fixture_path("checker_callable.jac")
+    mod = program.compile(path)
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    assert len(program.errors_had) == 8, (
+        f"Expected 8 type errors, but got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    _assert_error_pretty_found(
+        """
+        e1: Callable[[int], str] = str_to_str;  # Error: expects int, got str
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e2: int = takes_callback(int_to_str);  # Error: returns str, not int
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e3: Callable[[int, int], int] = wrong_order;  # Error: [str,int] vs [int,int]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[2].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e4: Callable[[int, int], str] = add_two;  # Error: returns int, not str
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[3].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e5: Callable[[int], str] = calc.double;  # Error: returns int, not str
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[4].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e6: Callable[[str], int] = Calculator.class_double;  # Error: expects int
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[5].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e7: Callable[[Animal], str] = handle_dog;  # Error: Dog doesn't accept Cat
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[6].pretty_print(),
+    )
+    _assert_error_pretty_found(
+        """
+        e8: Callable[[int, int], int] = without_default;  # Error: c has no default
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[7].pretty_print(),
+    )

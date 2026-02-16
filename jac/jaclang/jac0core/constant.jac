@@ -1,36 +1,36 @@
 """Constants across the project."""
 import from enum { Enum, IntEnum, IntFlag, StrEnum }
-"""Symbol types."""
-class SymbolType(Enum) {
-    with entry {
-        MODULE = 'module';
-        MOD_VAR = 'mod_var';
-        VAR = 'variable';
-        IMM_VAR = 'immutable';
-        ABILITY = 'ability';
-        OBJECT_ARCH = 'object';
-        NODE_ARCH = 'node';
-        EDGE_ARCH = 'edge';
-        WALKER_ARCH = 'walker';
-        ENUM_ARCH = 'enum';
-        TEST = 'test';
-        TYPE = 'type';
-        IMPL = 'impl';
-        SEM = 'sem';
-        HAS_VAR = 'field';
-        METHOD = 'method';
-        CONSTRUCTOR = 'constructor';
-        ENUM_MEMBER = 'enum_member';
-        NUMBER = 'number';
-        STRING = 'string';
-        BOOL = 'bool';
-        SEQUENCE = 'sequence';
-        NULL = 'null';
-        UNKNOWN = 'unknown';
-    }
 
-    def __str__(self: SymbolType) -> str {
-        return self.value;
+"""Symbol types."""
+enum SymbolType {
+    MODULE = 'module',
+    MOD_VAR = 'mod_var',
+    VAR = 'variable',
+    IMM_VAR = 'immutable',
+    ABILITY = 'ability',
+    OBJECT_ARCH = 'object',
+    NODE_ARCH = 'node',
+    EDGE_ARCH = 'edge',
+    WALKER_ARCH = 'walker',
+    ENUM_ARCH = 'enum',
+    TEST = 'test',
+    TYPE = 'type',
+    IMPL = 'impl',
+    SEM = 'sem',
+    HAS_VAR = 'field',
+    METHOD = 'method',
+    CONSTRUCTOR = 'constructor',
+    ENUM_MEMBER = 'enum_member',
+    NUMBER = 'number',
+    STRING = 'string',
+    BOOL = 'bool',
+    SEQUENCE = 'sequence',
+    NULL = 'null',
+    UNKNOWN = 'unknown',
+    with entry {
+        def __str__(self: SymbolType) -> str {
+            return self.value;
+        }
     }
 }
 
@@ -112,57 +112,48 @@ class Constants(StrEnum) {
 }
 
 """Code execution context for client/server/native separation."""
-class CodeContext(Enum) {
+enum CodeContext {
+    SERVER = 'server',
+    CLIENT = 'client',
+    NATIVE = 'native',
     with entry {
-        SERVER = 'server';
-        CLIENT = 'client';
-        NATIVE = 'native';
-    }
+        def __str__(self: CodeContext) -> str {
+            return self.value;
+        }
 
-    """Return the string representation of the context."""
-    def __str__(self: CodeContext) -> str {
-        return self.value;
-    }
+        @property
+        def is_server(self: CodeContext) -> bool {
+            return (self == CodeContext.SERVER);
+        }
 
-    """Check if this is server context."""
-    @property
-    def is_server(self: CodeContext) -> bool {
-        return (self == CodeContext.SERVER);
-    }
+        @property
+        def is_client(self: CodeContext) -> bool {
+            return (self == CodeContext.CLIENT);
+        }
 
-    """Check if this is client context."""
-    @property
-    def is_client(self: CodeContext) -> bool {
-        return (self == CodeContext.CLIENT);
-    }
-
-    """Check if this is native context."""
-    @property
-    def is_native(self: CodeContext) -> bool {
-        return (self == CodeContext.NATIVE);
+        @property
+        def is_native(self: CodeContext) -> bool {
+            return (self == CodeContext.NATIVE);
+        }
     }
 }
 
 """Edge direction indicator."""
-class EdgeDir(Enum) {
-    with entry {
-        IN = 1;
-        OUT = 2;
-        ANY = 3;
-    }
+enum EdgeDir {
+    IN = 1,
+    OUT = 2,
+    ANY = 3
 }
 
-"""Symbol types."""
-class SymbolAccess(Enum) {
+"""Symbol access levels."""
+enum SymbolAccess {
+    PRIVATE = 'private',
+    PUBLIC = 'public',
+    PROTECTED = 'protected',
     with entry {
-        PRIVATE = 'private';
-        PUBLIC = 'public';
-        PROTECTED = 'protected';
-    }
-
-    """Stringify."""
-    def __str__(self: SymbolAccess) -> str {
-        return self.value;
+        def __str__(self: SymbolAccess) -> str {
+            return self.value;
+        }
     }
 }
 
@@ -377,7 +368,218 @@ class Tokens(str, Enum) {
     }
 }
 
-glob DELIM_MAP = {
+"""Token name to string value mapping."""
+glob TOKEN_MAP: dict[str, str] = {
+         'ABILITY_OP': ':can:',
+         'ADD_EQ': '+=',
+         'ARROW_BI': '<-->',
+         'ARROW_L': '<--',
+         'ARROW_L_P1': '<-:',
+         'ARROW_L_P2': ':<-',
+         'ARROW_R': '-->',
+         'ARROW_R_P1': '->:',
+         'ARROW_R_P2': ':->',
+         'A_PIPE_BKWD': '<:',
+         'A_PIPE_FWD': ':>',
+         'BIN': '0b',
+         'BOOL': 'True',
+         'BW_AND': '&',
+         'BW_AND_EQ': '&=',
+         'BW_NOT': '~',
+         'BW_NOT_EQ': '~=',
+         'BW_OR': '|',
+         'BW_OR_EQ': '|=',
+         'BW_XOR': '^',
+         'BW_XOR_EQ': '^=',
+         'CARROW_BI': '<++>',
+         'CARROW_L': '<++',
+         'CARROW_L_P1': '<+:',
+         'CARROW_L_P2': ':<+',
+         'CARROW_R': '++>',
+         'CARROW_R_P1': '+>:',
+         'CARROW_R_P2': ':+>',
+         'CLASS_OP': ':class:',
+         'COLON': ':',
+         'COMMA': ',',
+         'COMMENT': '#',
+         'CONV': '!',
+         'DECOR_OP': '@',
+         'DIV': '/',
+         'DIV_EQ': '/=',
+         'DOT': '.',
+         'DOT_BKWD': '<.',
+         'DOT_FWD': '.>',
+         'D_LBRACE': '{{',
+         'D_RBRACE': '}}',
+         'EDGE_OP': ':edge:',
+         'EE': '==',
+         'ELLIPSIS': '...',
+         'EQ': '=',
+         'FLOAT': '0.0',
+         'FLOOR_DIV': '//',
+         'FLOOR_DIV_EQ': '//=',
+         'F_DQ_END': '"',
+         'F_DQ_START': 'f"',
+         'F_FORMAT_TEXT': '',
+         'F_SQ_END': "'",
+         'F_SQ_START': "f'",
+         'F_TDQ_END': '"""',
+         'F_TDQ_START': 'f"""',
+         'F_TEXT_DQ': '',
+         'F_TEXT_SQ': '',
+         'F_TEXT_TDQ': '',
+         'F_TEXT_TSQ': '',
+         'F_TSQ_END': "'''",
+         'F_TSQ_START': "f'''",
+         'GLOBAL_OP': 'global',
+         'GT': '>',
+         'GTE': '>=',
+         'HEX': '0x',
+         'INT': '0',
+         'JSX_CLOSE_START': '</',
+         'JSX_FRAG_CLOSE': '</>',
+         'JSX_FRAG_OPEN': '<>',
+         'JSX_NAME': '',
+         'JSX_OPEN_START': '<',
+         'JSX_SELF_CLOSE': '/>',
+         'JSX_TAG_END': '>',
+         'JSX_TEXT': '',
+         'KWESC_NAME': '`',
+         'KW_ABSTRACT': 'abs',
+         'KW_AND': 'and',
+         'KW_AS': 'as',
+         'KW_ASSERT': 'assert',
+         'KW_ASYNC': 'async',
+         'KW_AWAIT': 'await',
+         'KW_BREAK': 'break',
+         'KW_BY': 'by',
+         'KW_CAN': 'can',
+         'KW_CASE': 'case',
+         'KW_CLASS': 'class',
+         'KW_CLIENT': 'cl',
+         'KW_CONTINUE': 'continue',
+         'KW_DEF': 'def',
+         'KW_DEFAULT': 'default',
+         'KW_DELETE': 'del',
+         'KW_DISENGAGE': 'disengage',
+         'KW_EDGE': 'edge',
+         'KW_ELIF': 'elif',
+         'KW_ELSE': 'else',
+         'KW_ENTRY': 'entry',
+         'KW_ENUM': 'enum',
+         'KW_EXCEPT': 'except',
+         'KW_EXIT': 'exit',
+         'KW_FINALLY': 'finally',
+         'KW_FLOW': 'flow',
+         'KW_FOR': 'for',
+         'KW_FROM': 'from',
+         'KW_GLOBAL': 'glob',
+         'KW_HAS': 'has',
+         'KW_HERE': 'here',
+         'KW_IF': 'if',
+         'KW_IMPL': 'impl',
+         'KW_IMPORT': 'import',
+         'KW_IN': 'in',
+         'KW_INCLUDE': 'include',
+         'KW_INIT': 'init',
+         'KW_IS': 'is',
+         'KW_ISN': 'is not',
+         'KW_LAMBDA': 'lambda',
+         'KW_MATCH': 'match',
+         'KW_NATIVE': 'na',
+         'KW_NIN': 'not in',
+         'KW_NODE': 'node',
+         'KW_OBJECT': 'obj',
+         'KW_OR': '|',
+         'KW_OVERRIDE': 'override',
+         'KW_POST_INIT': 'postinit',
+         'KW_PRIV': 'priv',
+         'KW_PROPS': 'props',
+         'KW_PROT': 'protect',
+         'KW_PUB': 'pub',
+         'KW_RAISE': 'raise',
+         'KW_REPORT': 'report',
+         'KW_RETURN': 'return',
+         'KW_ROOT': 'root',
+         'KW_SELF': 'self',
+         'KW_SEM': 'sem',
+         'KW_SERVER': 'sv',
+         'KW_SKIP': 'skip',
+         'KW_SPAWN': 'spawn',
+         'KW_STATIC': 'static',
+         'KW_SUPER': 'super',
+         'KW_SWITCH': 'switch',
+         'KW_TEST': 'test',
+         'KW_TO': 'to',
+         'KW_TRY': 'try',
+         'KW_VISIT': 'visit',
+         'KW_VISITOR': 'visitor',
+         'KW_WAIT': 'wait',
+         'KW_WALKER': 'walker',
+         'KW_WHILE': 'while',
+         'KW_WITH': 'with',
+         'KW_YIELD': 'yield',
+         'LBRACE': '{',
+         'LPAREN': '(',
+         'LSHIFT': '<<',
+         'LSHIFT_EQ': '<<=',
+         'LSQUARE': '[',
+         'LT': '<',
+         'LTE': '<=',
+         'MATMUL_EQ': '@=',
+         'MINUS': '-',
+         'MOD': '%',
+         'MOD_EQ': '%=',
+         'MUL_EQ': '*=',
+         'NAME': '',
+         'NE': '!=',
+         'NODE_OP': ':node:',
+         'NONLOCAL_OP': 'nonlocal',
+         'NOT': 'not',
+         'NULL': 'None',
+         'NULL_OK': '?',
+         'OBJECT_OP': ':obj:',
+         'OCT': '0o',
+         'PIPE_BKWD': '<|',
+         'PIPE_FWD': '|>',
+         'PLUS': '+',
+         'PYNLINE': '::py::',
+         'RBRACE': '}',
+         'RETURN_HINT': '->',
+         'RF_DQ_START': 'rf"',
+         'RF_SQ_START': "rf'",
+         'RF_TDQ_START': 'rf"""',
+         'RF_TEXT_DQ': '',
+         'RF_TEXT_SQ': '',
+         'RF_TEXT_TDQ': '',
+         'RF_TEXT_TSQ': '',
+         'RF_TSQ_START': "rf'''",
+         'RPAREN': ')',
+         'RSHIFT': '>>',
+         'RSHIFT_EQ': '>>=',
+         'RSQUARE': ']',
+         'SEMI': ';',
+         'STAR_MUL': '*',
+         'STAR_POW': '**',
+         'STAR_POW_EQ': '**=',
+         'STRING': '',
+         'SUB_EQ': '-=',
+         'TYP_ANY': 'any',
+         'TYP_BOOL': 'bool',
+         'TYP_BYTES': 'bytes',
+         'TYP_DICT': 'dict',
+         'TYP_FLOAT': 'float',
+         'TYP_INT': 'int',
+         'TYP_LIST': 'list',
+         'TYP_SET': 'set',
+         'TYP_STRING': 'str',
+         'TYP_TUPLE': 'tuple',
+         'TYP_TYPE': 'type',
+         'WALKER_OP': ':walker:',
+         'WALRUS_EQ': ':=',
+         'WS': ' '
+     },
+     DELIM_MAP = {
          Tokens.COMMA: ',',
          Tokens.EQ: '=',
          Tokens.DECOR_OP: '@',

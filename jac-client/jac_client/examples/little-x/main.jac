@@ -223,7 +223,9 @@ cl obj ClientProfile {
 }
 
 # UI Components - Render a single tweet card
-cl def TweetCard(tweet: ClientTweet) -> any {
+cl def TweetCard(
+    tweet: ClientTweet
+) -> JsxElement {
     return
         <div
             class="tweet-card"
@@ -248,10 +250,10 @@ cl def TweetCard(tweet: ClientTweet) -> any {
                     onclick={like_tweet_action(tweet.id)}
                     style={{"padding": "5px 10px", "cursor": "pointer"}}
                 >
-                    Like ({tweet.likes.length})
+                    Like ({len(tweet.likes)})
                 </button>
                 <button style={{"padding": "5px 10px"}}>
-                    Comment ({tweet.comments.length})
+                    Comment ({len(tweet.comments)})
                 </button>
             </div>
         </div>;
@@ -273,7 +275,7 @@ cl async def like_tweet_action(
 }
 
 # Render the main feed view
-cl def FeedView(tweets: list) -> any {
+cl def FeedView(tweets: list) -> JsxElement {
     return
         <div
             class="feed-container"
@@ -298,7 +300,7 @@ cl def FeedView(tweets: list) -> any {
 }
 
 # Render login form
-cl def LoginForm -> any {
+cl def LoginForm -> JsxElement {
     suggestions = ['good luck', 'have fun', 'enjoy the ride'];
     randomSuggestion = _.sample(suggestions);
     result = "Good luck with your journey!";
@@ -307,7 +309,7 @@ cl def LoginForm -> any {
             title="Login to LittleX"
             style={{"maxWidth": "400px", "margin": "50px auto"}}
         >
-            <Card.Meta title={randomSuggestion} description={result} />
+            <Card.Meta title={randomSuggestion} description={result}/>
             <form onSubmit={handle_login}>
                 <div style={{"marginBottom": "15px"}}>
                     <label style={{"display": "block", "marginBottom": "5px"}}>
@@ -386,7 +388,7 @@ cl async def handle_login(event: any) -> None {
 }
 
 # Render signup form
-cl def SignupForm -> any {
+cl def SignupForm -> JsxElement {
     return
         <div
             class="signup-container"
@@ -484,11 +486,11 @@ cl async def handle_signup(event: any) -> None {
         alert("Passwords do not match!");
         return;
     }
-    if username.length < 3 {
+    if len(username) < 3 {
         alert("Username must be at least 3 characters long.");
         return;
     }
-    if password.length < 6 {
+    if len(password) < 6 {
         alert("Password must be at least 6 characters long.");
         return;
     }
@@ -509,7 +511,7 @@ cl def logout_action -> None {
 }
 
 # Main App component with declarative router
-cl def:pub App -> any {
+cl def:pub App -> JsxElement {
     # Create routes array manually (workaround for JS compiler bug with named args)
     login_route = {
         "path": "/login",
@@ -551,7 +553,7 @@ cl def:pub App -> any {
 }
 
 # Helper to build navigation bar
-cl def build_nav_bar(route: str) -> any {
+cl def build_nav_bar(route: str) -> JsxElement {
     if not jacIsLoggedIn() or route == "/login" or route == "/signup" {
         return None;
     }
@@ -614,7 +616,7 @@ cl def build_nav_bar(route: str) -> any {
 }
 
 # Home view - simplified for testing reactive routing
-cl def HomeView -> any {
+cl def HomeView -> JsxElement {
     if not jacIsLoggedIn() {
         navigate("/login");
         return
@@ -642,7 +644,7 @@ cl def HomeView -> any {
 }
 
 # Profile view
-cl def ProfileView -> any {
+cl def ProfileView -> JsxElement {
     if not jacIsLoggedIn() {
         navigate("/login");
         return
@@ -676,6 +678,6 @@ cl def ProfileView -> any {
 }
 
 # Main SPA entry point - simplified with reactive routing
-cl def:pub jac_app -> any {
+cl def:pub jac_app -> JsxElement {
     return App();
 }

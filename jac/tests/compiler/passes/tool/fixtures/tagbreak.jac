@@ -373,7 +373,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard(tweet: ClientTweet) -> any {
+    def TweetCard(tweet: ClientTweet) -> JsxElement {
         return
             <div
                 class="tweet-card"
@@ -409,7 +409,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard2(tweet: ClientTweet) -> any {
+    def TweetCard2(tweet: ClientTweet) -> JsxElement {
         return
             <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                 <button style={{"padding": "5px 10px"}}>
@@ -419,7 +419,7 @@ cl {
     }
 
     # UI Components - Render a single tweet card
-    def TweetCard3(tweet: ClientTweet) -> any {
+    def TweetCard3(tweet: ClientTweet) -> JsxElement {
         return (
             <div class="tweet-actions" style={{"display": "flex", "gap": "15px"}}>
                 <button style={{"padding": "5px 10px"}}>

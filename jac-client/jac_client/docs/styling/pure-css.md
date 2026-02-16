@@ -61,7 +61,7 @@ cl import ".styles.css";
 cl {
     has count: int = 0;  # Automatically creates React state
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <div className="container">
             <div className="card">
                 <h1 className="title">Counter Application</h1>

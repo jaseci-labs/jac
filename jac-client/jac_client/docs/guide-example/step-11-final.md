@@ -67,7 +67,7 @@ walker toggle_todo {
 # Frontend Components
 cl {
     # Navigation
-    def Navigation()  -> any {
+    def Navigation()  -> JsxElement {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
@@ -152,7 +152,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage()  -> any {
+    def LoginPage()  -> JsxElement {
         [username, setUsername] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -278,7 +278,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage()  -> any {
+    def SignupPage()  -> JsxElement {
         [username, setUsername] = useState("");
         [password, setPassword] = useState("");
         [error, setError] = useState("");
@@ -404,7 +404,7 @@ cl {
     }
 
     # Todos Page (Protected)
-    def TodosPage()  -> any {
+    def TodosPage()  -> JsxElement {
         # Check if user is logged in, redirect if not
         if not jacIsLoggedIn() {
             return <Navigate to="/login" />;
@@ -649,7 +649,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect
-    def HomePage()  -> any {
+    def HomePage()  -> JsxElement {
         if jacIsLoggedIn() {
             return <Navigate to="/todos" />;
         }
@@ -657,7 +657,7 @@ cl {
     }
 
     # Main App with React Router
-    def:pub app()  -> any {
+    def:pub app()  -> JsxElement {
         return <Router>
             <div
                 style={{"fontFamily": "system-ui, sans-serif"}}

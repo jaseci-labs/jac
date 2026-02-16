@@ -16,7 +16,7 @@ Let's make the input field track what you type:
 # No useState import needed - it's auto-injected!
 
 cl {
-    def TodoInput(props: any) -> any {
+    def TodoInput(props: any) -> JsxElement {
         return <div style={{
             "display": "flex",
             "gap": "8px",
@@ -49,7 +49,7 @@ cl {
         </div>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         [input, setInput] = useState("");
 
         return <div style={{
@@ -75,7 +75,7 @@ Now let's make the "Add" button work:
 # No useState import needed - it's auto-injected!
 
 cl {
-    def TodoInput(props: any) -> any {
+    def TodoInput(props: any) -> JsxElement {
         return <div style={{
             "display": "flex",
             "gap": "8px",
@@ -113,7 +113,7 @@ cl {
         </div>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
 
@@ -167,7 +167,7 @@ Let's add the ability to press Enter to add a todo:
 # No useState import needed - it's auto-injected!
 
 cl {
-    def TodoInput(props: any) -> any {
+    def TodoInput(props: any) -> JsxElement {
         return <div style={{
             "display": "flex",
             "gap": "8px",
@@ -226,7 +226,7 @@ Let's add the complete functionality:
 cl {
     # ... (keep TodoInput and TodoFilters)
 
-    def TodoItem(props: any) -> any {
+    def TodoItem(props: any) -> JsxElement {
         return <div style={{
             "display": "flex",
             "alignItems": "center",
@@ -268,7 +268,7 @@ cl {
         </div>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
 
@@ -352,7 +352,7 @@ Final step - make the filter buttons work:
 # No useState import needed - it's auto-injected!
 
 cl {
-    def TodoFilters(props: any) -> any {
+    def TodoFilters(props: any) -> JsxElement {
         return <div style={{
             "display": "flex",
             "gap": "8px",
@@ -406,7 +406,7 @@ cl {
         </div>;
     }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         [todos, setTodos] = useState([]);
         [input, setInput] = useState("");
         [filter, setFilter] = useState("all");
@@ -517,7 +517,7 @@ onChange={lambda e: any -> None {
 You can pass functions down to child components:
 
 ```jac
-def Parent() -> any {
+def Parent() -> JsxElement {
     def handleClick() -> None {
         console.log("Clicked!");
     }
@@ -526,7 +526,7 @@ def Parent() -> any {
     return <Child onClick={handleClick} />;
 }
 
-def Child(props: any) -> any {
+def Child(props: any) -> JsxElement {
     # Call parent's function
     return <button onClick={props.onClick}>
         Click me
@@ -539,7 +539,7 @@ This lets children trigger parent behavior!
 ### Updating State in Event Handlers
 
 ```jac
-def:pub app() -> any {
+def:pub app() -> JsxElement {
     [count, setCount] = useState(0);
 
     def increment() -> None {
