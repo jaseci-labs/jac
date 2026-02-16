@@ -1,6 +1,11 @@
 """Initialize the JacAutoLintPass."""
 
 impl JacAutoLintPass.init(ir_in: uni.Module, prog: Any) -> None {
+    self.lint_enabled: bool = True;
+    self.main_module: uni.Module | None = None;
+    self._enabled_rules: set[LintRule] = set();
+    self._exclude_patterns: list[str] = [];
+    self._project_root: str = "";
     self._load_lint_config();
     super.init(ir_in, prog);
 }
