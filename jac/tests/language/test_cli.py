@@ -57,6 +57,11 @@ def test_jac_cli_run_python_file(
     assert "10" in stdout_value
 
 
+def _assert_error_pretty_found(needle: str, haystack: str) -> None:
+    for line in [line.strip() for line in needle.splitlines() if line.strip()]:
+        assert line in haystack, f"Expected line '{line}' not found in:\n{haystack}"
+
+
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
@@ -1278,4 +1283,28 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
     )
     assert ":7" in stderr or "line 7" in stderr, (
         "stderr should indicate line number 7 where the error occurred"
+    )
+
+
+def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
+    """Test that syntax errors are pretty printed correctly."""
+    from jaclang.jac0core.program import JacProgram
+
+    program = JacProgram()
+    program.compile(fixture_path("test_syntax_err.jac"))
+    assert len(program.errors_had) == 1, (
+        f"Expected 1 error with improved error reporting, got {len(program.errors_had)}"
+    )
+    # The new error reporting gives a single, clear error message
+    # pointing to exactly where the problem is
+    _assert_error_pretty_found(
+        """
+        2 |
+        3 | walker w {
+        4 |     can foo {
+          |             ^
+        5 |         print "Missing semicolon"
+        6 |     }
+    """,
+        program.errors_had[0].pretty_print(),
     )
