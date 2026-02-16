@@ -42,14 +42,12 @@ impl TargetRegistry.set_default(name: str) -> None {
     if name not in self._targets {
         raise ValueError(f"ClientTarget '{name}' is not registered") ;
     }
-    # Unset previous default
     if self._default_target {
         prev_target = self._targets.get(self._default_target);
         if prev_target {
             prev_target.default = False;
         }
     }
-    # Set new default
     self._default_target = name;
     target = self._targets.get(name);
     if target {
@@ -63,36 +61,28 @@ impl TargetRegistry.clear -> None {
     self._default_target = None;
 }
 
-# ============================================================================
-# TargetFactory Implementation
-# ============================================================================
-
 """Create a target by name string with lazy loading for non-web targets."""
 impl TargetFactory.create(name: str, project_dir: Path) -> ClientTarget {
     # Import inside function to avoid circular import
     import from jac_client.plugin.src.targets.registry { get_target_type }
-    # Convert string to enum and delegate
     target_type = get_target_type(name);
     return self.create_by_type(target_type, project_dir);
 }
 
 """Create a target by TargetType enum (preferred method)."""
-impl TargetFactory.create_by_type(target_type: TargetType, project_dir: Path) -> ClientTarget {
+impl TargetFactory.create_by_type(
+    target_type: TargetType, project_dir: Path
+) -> ClientTarget {
     # Import inside function to avoid circular import
     import from jac_client.plugin.src.targets.registry { TargetType }
-
     # Fast path: web target (default, always loaded)
     if target_type == TargetType.WEB {
         return self.get_default(project_dir);
     }
-
-    # Check cache first
     cache_key = f"{target_type.value}:{project_dir}";
     if cache_key in self._cached_targets {
         return self._cached_targets[cache_key];
     }
-
-    # Lazy load non-web targets
     target: ClientTarget;
     if target_type == TargetType.DESKTOP {
         import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
@@ -104,10 +94,8 @@ impl TargetFactory.create_by_type(target_type: TargetType, project_dir: Path) ->
         target.project_dir = project_dir;
     } else {
         # This shouldn't happen if TargetType enum is exhaustive
-        raise ValueError(f"Unhandled target type: {target_type}");
+        raise ValueError(f"Unhandled target type: {target_type}") ;
     }
-
-    # Cache for reuse
     self._cached_targets[cache_key] = target;
     return target;
 }
