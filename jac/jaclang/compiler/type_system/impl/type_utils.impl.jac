@@ -27,13 +27,24 @@ impl lookup_symtab(
         mod.parent_scope = builtins_to_inject;
     }
     result = symtable.lookup(name, deep=True, incl_inner_scope=True);
-    # If not found and we're in an ImplDef try on ability's declaration
-    if (result is None and isinstance(symtable, uni.ImplDef) and symtable.decl_link) {
-        result = symtable.decl_link.sym_tab.lookup(
-            name, deep=True, incl_inner_scope=True
-        )
-        if symtable.decl_link.sym_tab
-        else None;
+    # If not found, traverse up the parent chain to find an ImplDef
+    if (result is None) {
+        impl_def: (uni.ImplDef | None) = None;
+        
+        # Check if symtable itself is an ImplDef
+        if isinstance(symtable, uni.ImplDef) {
+            impl_def = symtable;
+        } else {
+            # Traverse up the parent chain to find an ImplDef
+            impl_def = symtable.find_parent_of_type(uni.ImplDef);
+        }
+        
+        # If we found an ImplDef with a decl_link, search in the declaration's symbol table
+        if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
+            result = impl_def.decl_link.sym_tab.lookup(
+                name, deep=True, incl_inner_scope=True
+            );
+        }
     }
     return result;
 }

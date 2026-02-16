@@ -625,3 +625,56 @@ def test_go_to_definition_directory_import(
             )
     finally:
         lsp.shutdown()
+
+
+def test_go_to_definition_nested_impl_symbols(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """Test go-to-definition for symbols in nested structures inside ImplDef.
+    
+    This tests the fix for symbol resolution in nested control flow structures
+    (if/while/for) inside .impl.jac files, where symbols should be resolved by
+    traversing up to find the parent ImplDef and using its decl_link to search
+    in the declaration's symbol table.
+    """
+    lsp = create_server(None, fixture_path)
+    try:
+        impl_file = uris.from_fs_path(
+            fixture_path("nested_impl_resolution.impl.jac")
+        )
+        lsp.type_check_file(impl_file)
+
+        # fmt: off
+        # Test positions in nested_impl_resolution.impl.jac (1-indexed for test input):
+        # Line 2: `    uni.Module;` - direct reference (baseline)
+        # Line 3: `    if uni.Module {` - inside if condition
+        # Line 4: `        mod: uni.Module;` - inside if body
+        # Line 6: `    while uni.Module {` - inside while condition
+        # Line 7: `        x: uni.Module;` - inside while body
+        # Line 9: `    for item in [uni.Module] {` - inside for expression
+        # Line 10: `        y: uni.Module;` - inside for body
+        #
+        # Expected: All should resolve to unitree.jac (imported as `uni`)
+        positions = [
+            # (line, char_pos, expected_target_substring)
+            (2, 5, "unitree.jac"),   # uni in direct reference
+            (3, 8, "unitree.jac"),   # uni in if condition
+            (4, 18, "unitree.jac"),  # uni in if body variable type
+            (6, 11, "unitree.jac"),  # uni in while condition
+            (7, 15, "unitree.jac"),  # uni in while body variable type
+            (9, 22, "unitree.jac"),  # uni in for expression
+            (10, 15, "unitree.jac"), # uni in for body variable type
+        ]
+        # fmt: on
+
+        for line, char, expected in positions:
+            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
+            assert result is not None, (
+                f"Expected definition at line {line}, char {char}, got None"
+            )
+            assert expected in str(result), (
+                f"Expected '{expected}' in definition for line {line}, char {char}, "
+                f"got: {result}"
+            )
+    finally:
+        lsp.shutdown()
