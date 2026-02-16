@@ -112,18 +112,27 @@ filter_compr_inner ::=
 
 assign_compr_inner ::= EQ (NAME EQ expression (COMMA NAME EQ expression)*)? RPAREN
 
-atom ::=
+atom_literal ::= (INT | HEX | BIN | OCT | FLOAT | BOOL | NULL | ELLIPSIS)?
+
+multistring ::=
     (
-        INT
-        | HEX
-        | BIN
-        | OCT
-        | FLOAT
-        | STRING (NAME | STRING | fstring)*
-        | BOOL
-        | NULL
-        | ELLIPSIS
-        | TYP_STRING
+        NAME
+        | STRING
+        | (
+              F_DQ_START
+              | F_SQ_START
+              | F_TDQ_START
+              | F_TSQ_START
+              | RF_DQ_START
+              | RF_SQ_START
+              | RF_TDQ_START
+              | RF_TSQ_START
+          ) fstring
+    ) (NAME | STRING | fstring)*
+
+builtin_type ::=
+    (
+        TYP_STRING
         | TYP_INT
         | TYP_FLOAT
         | TYP_LIST
@@ -134,7 +143,11 @@ atom ::=
         | TYP_BYTES
         | TYP_ANY
         | TYP_TYPE
-        | KW_SELF
+    )?
+
+special_ref ::=
+    (
+        KW_SELF
         | KW_SUPER
         | KW_HERE
         | KW_ROOT
@@ -148,7 +161,51 @@ atom ::=
         | KW_OBJECT
         | KW_CLASS
         | KW_ENUM
-        | NAME (NAME | STRING | fstring)*
+    )?
+
+atom ::=
+    (
+        (INT | HEX | BIN | OCT | FLOAT | BOOL | NULL | ELLIPSIS) atom_literal
+        | (
+              STRING
+              | F_DQ_START
+              | F_SQ_START
+              | F_TDQ_START
+              | F_TSQ_START
+              | RF_DQ_START
+              | RF_SQ_START
+              | RF_TDQ_START
+              | RF_TSQ_START
+          ) multistring
+        | (
+              TYP_STRING
+              | TYP_INT
+              | TYP_FLOAT
+              | TYP_LIST
+              | TYP_TUPLE
+              | TYP_SET
+              | TYP_DICT
+              | TYP_BOOL
+              | TYP_BYTES
+              | TYP_ANY
+              | TYP_TYPE
+          ) builtin_type
+        | (
+              KW_SELF
+              | KW_SUPER
+              | KW_HERE
+              | KW_ROOT
+              | KW_VISITOR
+              | KW_PROPS
+              | KW_INIT
+              | KW_POST_INIT
+              | KW_NODE
+              | KW_EDGE
+              | KW_WALKER
+              | KW_OBJECT
+              | KW_CLASS
+              | KW_ENUM
+          ) special_ref
         | (NAME | KWESC_NAME) NAME?
         | STAR_MUL expression
         | STAR_POW expression
@@ -368,6 +425,8 @@ module_code ::=
 
 code_block_stmts ::= (statement SEMI?)*
 
+ctrl_stmt ::= ((KW_BREAK | KW_CONTINUE | KW_SKIP) SEMI? | KW_DISENGAGE SEMI?)?
+
 statement ::=
     SEMI
     | (KW_IMPORT | KW_INCLUDE) import_stmt
@@ -382,16 +441,14 @@ statement ::=
     | KW_SWITCH switch_stmt
     | KW_RETURN return_stmt
     | KW_YIELD yield_stmt SEMI?
-    | KW_BREAK SEMI?
-    | KW_CONTINUE SEMI?
-    | KW_SKIP SEMI?
+    | (KW_BREAK | KW_CONTINUE | KW_SKIP) ctrl_stmt
     | KW_RAISE raise_stmt
     | KW_ASSERT assert_stmt
     | KW_DELETE delete_stmt
     | KW_GLOBAL_REF global_stmt
     | KW_NONLOCAL nonlocal_stmt
     | KW_VISIT visit_stmt
-    | KW_DISENGAGE SEMI?
+    | KW_DISENGAGE ctrl_stmt
     | KW_REPORT report_stmt
     | (KW_DEF | KW_CAN | KW_ASYNC) ability
     | DECOR_OP ability
