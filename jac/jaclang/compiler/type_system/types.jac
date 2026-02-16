@@ -175,7 +175,12 @@ Holds the private details of class type.
         The private details of classes will be unique to each class instance.
     """
     obj ClassDetailsPrivate {
-        has type_args: (list[TypeBase] | None) = None;
+        has type_args: (list[TypeBase] | None) = None,
+            # Alias name for special forms (e.g., "Callable", "Union").
+            # Similar to Pyright's classType.priv.aliasName.
+            # This is set when loading special forms from typing module
+            # to distinguish between different _SpecialForm instances.
+            alias_name: (str | None) = None;
 
         def postinit -> None;
     }
@@ -195,6 +200,8 @@ Holds the private details of class type.
     def is_enum_class -> bool;
     def is_edge_type -> bool;
     def is_node_type -> bool;
+    # Check if this is a special form with the given alias name (like Pyright's isSpecialBuiltIn)
+    def is_special_form(name: (str | None) = None) -> bool;
 }
 
 """Enumeration of parameter kinds."""

@@ -65,7 +65,20 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     if sym := type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module
                     ) {
-                        return self._set_symbol_to_expr(expr.right, sym);
+                        # Get the symbol's type first
+                        sym_type = self.get_type_of_symbol(sym);
+                        # Return prefetched special form type if both name and type match
+                        if special_form := self._get_special_form_type(
+                            sym.sym_name, sym_type
+                        ) {
+                            sym.add_use(expr.right);
+                            expr.right.type = special_form;
+                            return special_form;
+                        }
+                        # Not a special form, return the resolved type
+                        sym.add_use(expr.right);
+                        expr.right.type = sym_type;
+                        return sym_type;
                     }
                     return types.UnknownType();
                 } elif base_type.is_instantiable_class() {
@@ -236,14 +249,15 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 
                 # --- Handle Callable special form ---
                 # Callable[[ArgTypes], ReturnType] creates a FunctionType, not a specialized class.
-                # Note: Callable in Python's typing module is a _SpecialForm instance,
-                # so we check before the is_instantiable_class() check.
+                # Similar to Pyright's handling in createSpecializedClassType() which checks
+                # classType.priv.aliasName === 'Callable'.
+                #
+                # We check is_special_form("Callable") which looks at the alias_name stored
+                # in the ClassType's private details. The alias_name is set when resolving
+                # Name expressions that refer to typing module special forms.
                 if (
                     isinstance(base_type, types.ClassType)
-                    and self.prefetch
-                    and self.prefetch.callable_class
-                    and isinstance(self.prefetch.callable_class, types.ClassType)
-                    and base_type.shared == self.prefetch.callable_class.shared
+                    and base_type.is_special_form("Callable")
                 ) {
                     # Extract type arguments for Callable
                     type_args_expr: uni.Expr | None = None;
@@ -414,6 +428,16 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     }
                     # Check for function overloads
                     symbol_type = self.get_type_of_symbol(symbol);
+                    # --- Handle special forms from typing module ---
+                    # When a Name refers to a special form (e.g., Callable), return
+                    # the prefetched type which has alias_name set. This avoids creating
+                    # new ClassType instances for every usage.
+                    # Similar to Pyright's classType.priv.aliasName pattern.
+                    if special_form := self._get_special_form_type(
+                        symbol.sym_name, symbol_type
+                    ) {
+                        symbol_type = special_form;
+                    }
                     # Consult CFG-based narrowing for flow-sensitive type.
                     # Narrowed types represent variable values, so ensure
                     # they are instance types (not instantiable class types).
@@ -1051,7 +1075,13 @@ impl TypeEvaluator._prefetch_types{
     # self.prefetch.template_class =
     self.prefetch.protocol_class = get_typing_type("Protocol");
     self.prefetch.any_class = get_typing_type("Any");
+    # Prefetch Callable and set alias_name. This single instance is reused
+    # for all Callable references, avoiding repeated ClassType creation.
+    # Similar to Pyright's classType.priv.aliasName pattern.
     self.prefetch.callable_class = get_typing_type("Callable");
+    if isinstance(self.prefetch.callable_class, types.ClassType) {
+        self.prefetch.callable_class.private.alias_name = "Callable";
+    }
     # Prefetched Jaclang builtin types
     self.prefetch.root_class = get_jac_builtin_type("Root");
     self.prefetch.root_class.shared.is_root_class = True;

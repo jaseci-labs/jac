@@ -362,3 +362,36 @@ impl TypeEvaluator._create_callable_type(
     }
     return types.create_callable_type(param_types, return_type, is_gradual=is_gradual);
 }
+
+"""
+Returns the prefetched ClassType for special forms like Callable, Union, etc.
+This centralizes the special form lookup logic to avoid hardcoded string checks.
+"""
+impl TypeEvaluator._get_special_form_type(
+    name: str, symbol_type: types.TypeBase
+) -> types.ClassType | None {
+    if not self.prefetch {
+        return None;
+    }
+    # TODO: handle _SpecialForm types semantically.
+    # Verify symbol_type is _SpecialForm (same shared as our prefetched callable_class)
+    if not (
+        isinstance(symbol_type, types.ClassType)
+        and self.prefetch.callable_class
+        and isinstance(self.prefetch.callable_class, types.ClassType)
+        and symbol_type.shared == self.prefetch.callable_class.shared
+    ) {
+        return None;
+    }
+    # Map special form names to their prefetched types
+    match name {
+        case "Callable":
+            return self.prefetch.callable_class;
+
+        # Future special forms:
+        # case "Union": return self.prefetch.union_class;
+        # case "Optional": return self.prefetch.optional_class;
+
+    }
+    return None;
+}

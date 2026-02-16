@@ -230,7 +230,9 @@ impl ClassType.get_class_symbol -> Symbol {
 
 """Return a new class type specialized with the given type arguments."""
 impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
-    new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
+    new_private = ClassType.ClassDetailsPrivate(
+        type_args=type_args, alias_name=self.private.alias_name  # Preserve alias_name
+    );
     return ClassType(shared=self.shared, private=new_private, flags=self.flags);
 }
 
@@ -238,7 +240,10 @@ impl ClassType.clone_as_class -> ClassType {
     if not self.is_instance() {
         return self;
     }
-    private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
+    private = ClassType.ClassDetailsPrivate(
+        type_args=self.private.type_args[:],
+        alias_name=self.private.alias_name  # Preserve alias_name
+    );
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
     new_flags = TypeFlags((new_flag | TypeFlags.Instantiable));
@@ -251,13 +256,34 @@ impl ClassType.clone_as_instance -> ClassType {
     if self.is_instance() {
         return self;
     }
-    private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
+    private = ClassType.ClassDetailsPrivate(
+        type_args=self.private.type_args[:],
+        alias_name=self.private.alias_name  # Preserve alias_name
+    );
     new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
     new_flags = TypeFlags((new_flag | TypeFlags.Instance));
     new_instance.flags = new_flags;
     return new_instance;
+}
+
+"""
+Check if this class type is a special form with the given alias name.
+
+Similar to Pyright's ClassType.isSpecialBuiltIn(). Special forms like
+Callable, Union, Optional are all _SpecialForm in typing.pyi but have
+different alias_names to distinguish them.
+"""
+impl ClassType.is_special_form(name: str | None = None) -> bool {
+    if self.private is None or self.private.alias_name is None {
+        return False;
+    }
+    if name is None {
+        return True;  # Any special form
+
+    }
+    return self.private.alias_name == name;
 }
 
 """Return a string representation of the class type."""

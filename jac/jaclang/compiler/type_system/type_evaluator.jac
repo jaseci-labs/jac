@@ -182,6 +182,13 @@ obj TypeEvaluator {
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    # --- Special form handling (Callable, Union, etc.) ---
+    # Returns the prefetched special form type if the name AND type match.
+    # Verifies both name and that type is _SpecialForm to avoid conflicts
+    # with user-defined classes named "Callable".
+    def _get_special_form_type(
+        name: str, symbol_type: types.TypeBase
+    ) -> types.ClassType | None;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
     def _create_callable_type(
         type_args_expr: uni.Expr | None, error_node: uni.Expr
