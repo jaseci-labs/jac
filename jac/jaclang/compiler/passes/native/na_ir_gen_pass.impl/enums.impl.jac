@@ -1,14 +1,14 @@
 """Enum type codegen."""
 """Register an enum type — store each member as an i64 constant."""
-impl NaIRGenPass._codegen_enum(`node: uni.Enum) -> None {
-    enum_name = (`node).name.value if (`node).name else "unknown_enum";
+impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
+    enum_name = (nd).name.value if (nd).name else "unknown_enum";
     self.enum_types[enum_name] = ir.IntType(64);
     self.type_map[enum_name] = ir.IntType(64);
     self.has_native_code = True;
-    if (`node).body is None {
+    if (nd).body is None {
         return;
     }
-    for stmt in (`node).body {
+    for stmt in (nd).body {
         if isinstance(stmt, uni.Assignment) {
             targets = stmt.target
             if isinstance(stmt.target, (list, tuple))

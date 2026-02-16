@@ -7,22 +7,91 @@ integrate Jac modules into Python's import system.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.abc
 import importlib.machinery
 import importlib.util
 import logging
+import marshal
 import os
 import sys
 import types
 from collections.abc import Sequence
-from functools import cache
 from pathlib import Path
 from types import ModuleType
 
-from jaclang.jac0 import compile_jac as _jac0_compile
+from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
+from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
 
 # Inline logging config (previously in jaclang.jac0core.log)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap bytecode cache
+#
+# jac0core .jac files are transpiled by jac0 on every invocation.  Caching
+# the resulting bytecode avoids ~200 ms of repeated work when the sources
+# haven't changed.  The cache lives next to the regular bytecode cache
+# (e.g. ~/.cache/jac/bootstrap/) and is keyed on a SHA-256 digest of all
+# source inputs plus the Python version.
+# ---------------------------------------------------------------------------
+
+
+def _get_bootstrap_cache_dir() -> Path:
+    """Return the platform-appropriate bootstrap cache directory."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return base / "jac" / "cache" / "bootstrap"
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "jac" / "bootstrap"
+    else:
+        xdg = os.environ.get("XDG_CACHE_HOME")
+        base = Path(xdg) if xdg else (Path.home() / ".cache")
+        return base / "jac" / "bootstrap"
+
+
+def _bootstrap_compile(
+    file_path: str,
+    jac_source: str,
+    impl_sources: list[tuple[str, str]] | None = None,
+) -> types.CodeType:
+    """Compile a bootstrap .jac file, using a disk cache when possible."""
+    # Build the hash key from all source inputs + Python version
+    h = hashlib.sha256()
+    h.update(sys.version.encode())
+    h.update(jac_source.encode())
+    if impl_sources:
+        for src, path in impl_sources:
+            h.update(path.encode())
+            h.update(src.encode())
+    digest = h.hexdigest()[:16]
+
+    # Derive a human-readable cache filename
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    cache_file = _get_bootstrap_cache_dir() / f"{base_name}.{digest}.bc"
+
+    # Try loading from cache
+    if cache_file.is_file():
+        try:
+            data = cache_file.read_bytes()
+            return marshal.loads(data)  # noqa: S302
+        except Exception:
+            cache_file.unlink(missing_ok=True)
+
+    # Cache miss — transpile with jac0 and compile
+    py_source = _jac0_compile(jac_source, file_path, impl_sources=impl_sources)
+    code = compile(py_source, file_path, "exec")
+
+    # Write to cache (best-effort)
+    try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_bytes(marshal.dumps(code))
+    except OSError:
+        pass
+
+    return code
+
 
 # Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
 # This module must be available for find_spec()/get_code(), but normal
@@ -30,30 +99,13 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
 with open(_modresolver_jac, encoding="utf-8") as _f:
-    _py_src = _jac0_compile(_f.read(), _modresolver_jac)
+    _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
 _modresolver.__file__ = _modresolver_jac
 _modresolver.__package__ = "jaclang.jac0core"
-exec(compile(_py_src, _modresolver_jac, "exec"), _modresolver.__dict__)  # noqa: S102
+exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
 sys.modules["jaclang.jac0core.modresolver"] = _modresolver
 get_jac_search_paths = _modresolver.get_jac_search_paths
-
-
-@cache
-def _discover_minimal_compile_modules() -> frozenset[str]:
-    """Auto-discover .jac compiler passes that need minimal compilation."""
-    jaclang_dir = Path(__file__).parent
-    passes_dir = jaclang_dir / "compiler" / "passes"
-    modules = set()
-
-    for subdir in ["main", "ecmascript", "native"]:
-        for jac_file in (passes_dir / subdir).rglob("*.jac"):
-            if jac_file.name.endswith(".impl.jac"):
-                continue
-            module_path = jac_file.relative_to(jaclang_dir).with_suffix("")
-            modules.add(f"jaclang.{module_path.as_posix().replace('/', '.')}")
-
-    return frozenset(modules)
 
 
 class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
@@ -61,11 +113,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
     # Directory containing the jaclang package (for bootstrap detection)
     _jaclang_dir: str = str(Path(__file__).parent)
-
-    @property
-    def MINIMAL_COMPILE_MODULES(self) -> frozenset[str]:  # noqa: N802
-        """Compiler passes written in Jac that need minimal compilation."""
-        return _discover_minimal_compile_modules()
 
     # Directory containing bootstrap .jac files (jac0core infrastructure)
     _bootstrap_dir: str = str(Path(__file__).parent / "jac0core")
@@ -157,19 +204,21 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         return None  # use default machinery
 
     def _exec_bootstrap(self, module: ModuleType, file_path: str) -> None:
-        """Execute a bootstrap .jac module using jac0 (in-memory, no disk I/O).
+        """Execute a bootstrap .jac module using jac0 with bytecode caching.
 
         Bootstrap modules are part of the jaclang compiler infrastructure.
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
         """
-        from jaclang.jac0 import compile_jac
-
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
 
-        py_source = compile_jac(jac_source, file_path)
-        code = compile(py_source, file_path, "exec")
+        impl_sources: list[tuple[str, str]] = []
+        for impl_path in _jac0_discover_impls(file_path):
+            with open(impl_path, encoding="utf-8") as f:
+                impl_sources.append((f.read(), impl_path))
+
+        code = _bootstrap_compile(file_path, jac_source, impl_sources or None)
         exec(code, module.__dict__)
 
     def exec_module(self, module: ModuleType) -> None:
@@ -199,16 +248,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         if not module.__name__.startswith("jaclang."):
             Jac.load_module(module.__name__, module)
 
-        # Use minimal compilation for compiler passes to avoid circular imports
-        use_minimal = module.__name__ in self.MINIMAL_COMPILE_MODULES
-
         # Get and execute bytecode using the compiler singleton
         compiler = Jac.get_compiler()
         program = Jac.get_program()
         codeobj = compiler.get_bytecode(
             full_target=file_path,
             target_program=program,
-            minimal=use_minimal,
         )
         if not codeobj:
             if is_pkg:
@@ -242,9 +287,6 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         paths_to_search = get_jac_search_paths()
         module_path_parts = fullname.split(".")
 
-        # Use minimal compilation for compiler passes to avoid circular imports
-        use_minimal = fullname in self.MINIMAL_COMPILE_MODULES
-
         compiler = Jac.get_compiler()
         program = Jac.get_program()
 
@@ -257,14 +299,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     return compiler.get_bytecode(
                         full_target=init_file,
                         target_program=program,
-                        minimal=use_minimal,
                     )
                 init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
                 if os.path.isfile(init_cl_file):
                     return compiler.get_bytecode(
                         full_target=init_cl_file,
                         target_program=program,
-                        minimal=use_minimal,
                     )
             # Check for .jac file
             jac_file = candidate_path + ".jac"
@@ -272,14 +312,12 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 return compiler.get_bytecode(
                     full_target=jac_file,
                     target_program=program,
-                    minimal=use_minimal,
                 )
             cl_jac_file = candidate_path + ".cl.jac"
             if os.path.isfile(cl_jac_file):
                 return compiler.get_bytecode(
                     full_target=cl_jac_file,
                     target_program=program,
-                    minimal=use_minimal,
                 )
 
         return None

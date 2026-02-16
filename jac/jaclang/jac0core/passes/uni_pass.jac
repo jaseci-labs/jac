@@ -19,59 +19,43 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
         ir_in: uni.Module,
         prog: JacProgram,
         cancel_token: (Event | None) = None
-    ) -> None {
-        self.term_signal = False;
-        self.prune_signal = False;
-        Transform.init(self, ir_in, prog, cancel_token=cancel_token);
-    }
+    ) -> None;
 
     """Run once before pass."""
-    def before_pass(self: UniPass) -> None { }
+    def before_pass(self: UniPass) -> None;
 
     """Run once after pass."""
-    def after_pass(self: UniPass) -> None { }
+    def after_pass(self: UniPass) -> None;
 
     """Run on entering node."""
-    def enter_node(self: UniPass, `node: uni.UniNode) -> None {
-        import from jaclang.jac0core.helpers { pascal_to_snake }
-        if hasattr(self, f"enter_{pascal_to_snake(type(node).__name__)}") {
-            getattr(self, f"enter_{pascal_to_snake(type(node).__name__)}")(`node);
-        }
-    }
+    def enter_node(self: UniPass, nd: uni.UniNode) -> None;
 
     """Run on exiting node."""
-    def exit_node(self: UniPass, `node: uni.UniNode) -> None {
-        import from jaclang.jac0core.helpers { pascal_to_snake }
-        if hasattr(self, f"exit_{pascal_to_snake(type(node).__name__)}") {
-            getattr(self, f"exit_{pascal_to_snake(type(node).__name__)}")(`node);
-        }
-    }
+    def exit_node(self: UniPass, nd: uni.UniNode) -> None;
 
     """Prune traversal."""
-    def prune(self: UniPass) -> None {
-        self.prune_signal = True;
-    }
+    def prune(self: UniPass) -> None;
 
     """Get all sub nodes of type."""
     static def get_all_sub_nodes(
-        `node: uni.UniNode, typ: type[T], brute_force: bool = False
+        nd: uni.UniNode, typ: type[T], brute_force: bool = False
     ) -> list[T] {
         result: list[T] = [];
-        if not `node {
+        if not nd {
             return result;
-        } elif len(`node._sub_node_tab) {
-            if (typ in `node._sub_node_tab) {
-                for i in `node._sub_node_tab[typ] {
+        } elif len(nd._sub_node_tab) {
+            if (typ in nd._sub_node_tab) {
+                for i in nd._sub_node_tab[typ] {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
                 }
             }
-        } elif len(`node.kid) {
+        } elif len(nd.kid) {
             if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(`node)) ;
+                raise ValueError("Node has no sub_node_tab. " + str(nd)) ;
             } else {
-                for i in `node.kid {
+                for i in nd.kid {
                     if isinstance(i, typ) {
                         result.append(i);
                     }
@@ -83,76 +67,33 @@ class UniPass(Transform[(uni.Module, uni.Module)]) {
     }
 
     """Check if node has parent of type."""
-    static def find_parent_of_type(`node: uni.UniNode, typ: type[T]) -> (T | None) {
-        while `node.parent {
-            if isinstance(`node.parent, typ) {
-                return `node.parent;
+    static def find_parent_of_type(nd: uni.UniNode, typ: type[T]) -> (T | None) {
+        while nd.parent {
+            if isinstance(nd.parent, typ) {
+                return nd.parent;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return None;
     }
 
     """Check if node has parent of type."""
-    static def has_parent_of_node(`node: uni.UniNode, parent: uni.UniNode) -> bool {
-        while `node.parent {
-            if (`node.parent == parent) {
+    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
+        while nd.parent {
+            if (nd.parent == parent) {
                 return True;
             }
-            `node = `node.parent;
+            nd = nd.parent;
         }
         return False;
     }
 
     """Recalculate parents."""
-    def recalculate_parents(self: UniPass, `node: uni.UniNode) -> None {
-        if not `node {
-            return;
-        }
-        for i in `node.kid {
-            if i {
-                i.parent = `node;
-                self.recalculate_parents(i);
-            }
-        }
-    }
+    def recalculate_parents(self: UniPass, nd: uni.UniNode) -> None;
 
     """Run pass."""
-    def transform(self: UniPass, ir_in: uni.Module) -> uni.Module {
-        self.ir_out = ir_in;
-        if not isinstance(ir_in, uni.UniNode) {
-            return ir_in;
-        }
-        self.before_pass();
-        if not isinstance(ir_in, uni.UniNode) {
-            raise ValueError('Current node is not an UniNode.') ;
-        }
-        self.traverse(ir_in);
-        self.after_pass();
-        return self.ir_in;
-    }
+    def transform(self: UniPass, ir_in: uni.Module) -> uni.Module;
 
     """Traverse tree."""
-    def traverse(self: UniPass, `node: uni.UniNode) -> uni.UniNode {
-        if self.is_canceled() {
-            return `node;
-        }
-        self.cur_node = `node;
-        self.enter_node(`node);
-        if not self.prune_signal {
-            for i in `node.kid {
-                if i {
-                    self.traverse(i);
-                }
-            }
-        } else {
-            self.prune_signal = False;
-        }
-        self.cur_node = `node;
-        if self.is_canceled() {
-            return `node;
-        }
-        self.exit_node(`node);
-        return `node;
-    }
+    def traverse(self: UniPass, nd: uni.UniNode) -> uni.UniNode;
 }

@@ -25,7 +25,7 @@ def collect_node_connections(
 ) -> None;
 
 def traverse_graph(
-    `node: NodeArchetype,
+    nd: NodeArchetype,
     cur_depth: int,
     depth: int,
     edge_type: list[str],
@@ -40,7 +40,7 @@ def traverse_graph(
     edge_limit: int
 ) -> None;
 
-def extract_type(`node: uni.UniNode) -> list[str];
+def extract_type(nd: uni.UniNode) -> list[str];
 
 def extract_params(
     body: uni.FuncCall

@@ -98,7 +98,7 @@ Before starting tutorials, ensure you have:
 
 **Assumed knowledge:**
 
-- **Python familiarity required** -- Jac is a Python superset; you should be comfortable with functions, classes, and type annotations
+- **Python familiarity required** -- Jac supersets Python; you should be comfortable with functions, classes, and type annotations
 - **React/JSX familiarity helpful** -- for full-stack tutorials, basic component and hook knowledge helps
 - **Web development basics helpful** -- HTTP, REST, frontend/backend separation
 

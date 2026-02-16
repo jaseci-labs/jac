@@ -35,7 +35,7 @@ Jac uses React hooks for all state management. The most common hooks are:
 cl import from react { useState, useEffect }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
         [loading, setLoading] = useState(False);
@@ -53,7 +53,7 @@ cl {
         return <div>{/* your UI */}</div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -71,7 +71,7 @@ Instead of putting everything in one state object, split state into multiple var
 cl import from react { useState, useEffect }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         # Separate state variables for different concerns
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
@@ -104,7 +104,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -125,7 +125,7 @@ Sometimes an object makes sense for closely related data:
 cl import from react { useState }
 
 cl {
-    def UserProfile() -> any {
+    def UserProfile() -> JsxElement {
         # Good: Related data in one object
         [user, setUser] = useState({
             "name": "",
@@ -158,7 +158,7 @@ Organize state by feature or domain using multiple `useState` calls:
 cl import from react { useState, useEffect }
 
 cl {
-    def App() -> any {
+    def App() -> JsxElement {
         # User state
         [user, setUser] = useState(None);
         [isLoggedIn, setIsLoggedIn] = useState(False);
@@ -191,7 +191,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <App />;
     }
 }
@@ -208,7 +208,7 @@ cl {
     # Create context for global state
     AppContext = createContext(None);
 
-    def App() -> any {
+    def App() -> JsxElement {
         # Global state
         [currentUser, setCurrentUser] = useState(None);
         [theme, setTheme] = useState("light");
@@ -227,7 +227,7 @@ cl {
     }
 
     # Component with local state
-    def TodoForm() -> any {
+    def TodoForm() -> JsxElement {
         # Access global context
         app = useContext(AppContext);
 
@@ -252,7 +252,7 @@ cl {
         </form>;
     }
 
-    def TodoList() -> any {
+    def TodoList() -> JsxElement {
         # Local list state
         [sortBy, setSortBy] = useState("date");
         [order, setOrder] = useState("asc");
@@ -265,7 +265,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <App />;
     }
 }
@@ -362,7 +362,7 @@ cl {
     }
 
     # Using custom hooks in components
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         userData = useUser();
         todoData = useTodos();
 
@@ -379,7 +379,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -397,7 +397,7 @@ Use `useMemo` to memoize expensive computations:
 cl import from react { useState, useMemo }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
 
@@ -434,7 +434,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -448,7 +448,7 @@ For simple computations, you don't need `useMemo`:
 cl import from react { useState }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
 
@@ -473,7 +473,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -487,7 +487,7 @@ Use `useEffect` to sync derived state or perform side effects:
 cl import from react { useState, useEffect }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [stats, setStats] = useState({
             "total": 0,
@@ -519,7 +519,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -569,7 +569,7 @@ cl {
         return state;
     }
 
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         # Initial state
         initialState = {
             "todos": [],
@@ -613,7 +613,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -631,7 +631,7 @@ cl {
     TodoContext = createContext(None);
 
     # Provider component
-    def TodoProvider(props: dict) -> any {
+    def TodoProvider(props: dict) -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
 
@@ -670,7 +670,7 @@ cl {
     }
 
     # Components using the context
-    def TodoList() -> any {
+    def TodoList() -> JsxElement {
         ctx = useTodoContext();
 
         filteredTodos = ctx.todos.filter(lambda todo: any -> bool {
@@ -690,7 +690,7 @@ cl {
         </div>;
     }
 
-    def FilterButtons() -> any {
+    def FilterButtons() -> JsxElement {
         ctx = useTodoContext();
 
         return <div>
@@ -701,14 +701,14 @@ cl {
     }
 
     # App with provider
-    def MainApp() -> any {
+    def MainApp() -> JsxElement {
         return <TodoProvider>
             <FilterButtons />
             <TodoList />
         </TodoProvider>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <MainApp />;
     }
 }
@@ -722,7 +722,7 @@ Prevent unnecessary re-renders by memoizing callbacks:
 cl import from react { useState, useCallback }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
 
         # Memoized callback - only recreated if todos changes
@@ -746,7 +746,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -764,7 +764,7 @@ Encapsulate state logic in reusable action functions:
 cl import from react { useState }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
 
@@ -803,7 +803,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -817,7 +817,7 @@ Create memoized selector functions for derived data:
 cl import from react { useState, useMemo }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
 
@@ -848,7 +848,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -866,7 +866,7 @@ cl {
     AppContext = createContext(None);
 
     # Main app with combined hooks
-    def App() -> any {
+    def App() -> JsxElement {
         # User state with useState
         [user, setUser] = useState(None);
 
@@ -915,7 +915,7 @@ cl {
         </AppContext.Provider>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <App />;
     }
 }
@@ -931,7 +931,7 @@ Here's a complete example combining multiple React hooks and patterns:
 cl import from react { useState, useEffect, useMemo, useCallback }
 
 cl {
-    def TodoApp() -> any {
+    def TodoApp() -> JsxElement {
         # State management
         [todos, setTodos] = useState([]);
         [filter, setFilter] = useState("all");
@@ -1079,7 +1079,7 @@ cl {
         </div>;
     }
 
-    def app() -> any {
+    def app() -> JsxElement {
         return <TodoApp />;
     }
 }
@@ -1095,7 +1095,7 @@ cl {
 cl import from react { useState }
 
 #  Good: Separate state variables
-def App() -> any {
+def App() -> JsxElement {
     [user, setUser] = useState(None);
     [todos, setTodos] = useState([]);
     [sidebarOpen, setSidebarOpen] = useState(False);
@@ -1103,7 +1103,7 @@ def App() -> any {
 }
 
 #  Avoid: One giant state object for unrelated data
-def App() -> any {
+def App() -> JsxElement {
     [appState, setAppState] = useState({
         "user": None,
         "todos": [],
@@ -1119,7 +1119,7 @@ def App() -> any {
 cl import from react { useState, useMemo }
 
 #  Good: Memoize expensive calculations
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     activeTodos = useMemo(lambda -> list {
@@ -1128,7 +1128,7 @@ def TodoApp() -> any {
 }
 
 #  Avoid: Computing on every render
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     # This runs on every render, even if todos hasn't changed
@@ -1142,13 +1142,13 @@ def TodoApp() -> any {
 cl import from react { useState }
 
 #  Good: Calculate derived values
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
     activeCount = todos.filter(lambda t: any -> bool { return not t.done; }).length;
 }
 
 #  Avoid: Storing derived values in state
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
     [activeCount, setActiveCount] = useState(0);  # Redundant!
 }
@@ -1160,7 +1160,7 @@ def TodoApp() -> any {
 cl import from react { useReducer }
 
 #  Good: useReducer for complex interdependent state
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     def reducer(state: dict, action: dict) -> dict {
         if action.type == "ADD" {
             return {...state, "todos": state.todos.concat([action.payload]), "count": state.count + 1};
@@ -1172,7 +1172,7 @@ def TodoApp() -> any {
 }
 
 #  Avoid: Multiple useState for interdependent state
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
     [count, setCount] = useState(0);
     # Risk of inconsistency - need to update both together
@@ -1185,7 +1185,7 @@ def TodoApp() -> any {
 cl import from react { useState, useEffect }
 
 #  Good: Comprehensive state management
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
     [loading, setLoading] = useState(False);
     [error, setError] = useState(None);
@@ -1218,7 +1218,7 @@ def TodoApp() -> any {
 cl import from react { useState, useCallback }
 
 #  Good: Memoized callbacks prevent unnecessary re-renders
-def TodoApp() -> any {
+def TodoApp() -> JsxElement {
     [todos, setTodos] = useState([]);
 
     handleToggle = useCallback(lambda id: str -> None {
@@ -1240,14 +1240,14 @@ cl import from react { useState, useContext, createContext }
 #  Good: Context avoids prop drilling
 ThemeContext = createContext("light");
 
-def App() -> any {
+def App() -> JsxElement {
     [theme, setTheme] = useState("light");
     return <ThemeContext.Provider value={theme}>
         <DeeplyNestedComponent />
     </ThemeContext.Provider>;
 }
 
-def DeeplyNestedComponent() -> any {
+def DeeplyNestedComponent() -> JsxElement {
     theme = useContext(ThemeContext);
     return <div style={{"background": theme}}></div>;
 }

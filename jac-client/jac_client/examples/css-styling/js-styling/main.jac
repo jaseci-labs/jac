@@ -2,11 +2,11 @@
 cl import from .styles { default as styles }
 
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
-            console.log("Count changed: ", count);
+            print("Count changed: ", count);
         }
 
         handleIncrement = lambda e: any  -> None { count = count + 1;};

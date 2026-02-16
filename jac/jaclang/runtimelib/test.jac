@@ -33,6 +33,7 @@ obj JacTestCheck {
         with entry {
             test_case: unittest.FunctionTestCase;
             func_name: str;
+            display_name: str;
         }
     }
 
@@ -51,6 +52,9 @@ obj JacTestCheck {
         func_name: (str | None)
     ) -> None;
 
-    static def add_test(filepath: str, func_name: str, test_func: Callable) -> None;
+    static def add_test(
+        filepath: str, func_name: str, test_func: Callable, display_name: str = ""
+    ) -> None;
+
     def __getattr__(name: str) -> object;
 }

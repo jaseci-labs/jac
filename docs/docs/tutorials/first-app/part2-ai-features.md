@@ -256,7 +256,7 @@ Add one line to `styles.css`:
         return {};
     }
 
-    cl def:pub app -> any {
+    cl def:pub app -> JsxElement {
         has items: list = [],
             text: str = "";
 
@@ -265,8 +265,8 @@ Add one line to `styles.css`:
         }
 
         async def add -> None {
-            if text.trim() {
-                todo = await add_todo(text.trim());
+            if text.strip() {
+                todo = await add_todo(text.strip());
                 items = items.concat([todo]);
                 text = "";
             }
@@ -290,7 +290,7 @@ Add one line to `styles.css`:
             items = items.filter(lambda t: any -> bool { return t.id != id; });
         }
 
-        remaining = items.filter(lambda t: any -> bool { return not t.done; }).length;
+        remaining = len(items.filter(lambda t: any -> bool { return not t.done; }));
 
         return
             <div class="container">

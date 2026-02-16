@@ -20,8 +20,8 @@ impl NaIRGenPass._register_globals(module: uni.Module) -> None {
 }
 
 """Codegen global variable declarations."""
-impl NaIRGenPass._codegen_global_vars(node: uni.GlobalVars) -> None {
-    for assign in node.assignments {
+impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
+    for assign in nd.assignments {
         targets = assign.target
         if isinstance(assign.target, (list, tuple))
         else [(assign.target)];
@@ -65,28 +65,28 @@ impl NaIRGenPass._codegen_global_vars(node: uni.GlobalVars) -> None {
 
 """Evaluate a constant expression for global variable initialization."""
 impl NaIRGenPass._codegen_const_expr(
-    node: uni.UniNode, target_type: ir.Type
+    nd: uni.UniNode, target_type: ir.Type
 ) -> (ir.Constant | None) {
-    if isinstance(node, uni.Int) {
-        tok_name = node?.name;
+    if isinstance(nd, uni.Int) {
+        tok_name = nd?.name;
         if tok_name == Tok.HEX {
-            return ir.Constant(target_type, int(node.value, 16));
+            return ir.Constant(target_type, int(nd.value, 16));
         } elif tok_name == Tok.OCT {
-            return ir.Constant(target_type, int(node.value, 8));
+            return ir.Constant(target_type, int(nd.value, 8));
         } elif tok_name == Tok.BIN {
-            return ir.Constant(target_type, int(node.value, 2));
+            return ir.Constant(target_type, int(nd.value, 2));
         } else {
-            return ir.Constant(target_type, int(node.value));
+            return ir.Constant(target_type, int(nd.value));
         }
     }
-    if isinstance(node, uni.Float) {
-        return ir.Constant(target_type, float(node.value));
+    if isinstance(nd, uni.Float) {
+        return ir.Constant(target_type, float(nd.value));
     }
-    if isinstance(node, uni.Bool) {
-        val = 1 if node.value.lower() in ("true", "1") else 0;
+    if isinstance(nd, uni.Bool) {
+        val = 1 if nd.value.lower() in ("true", "1") else 0;
         return ir.Constant(target_type, val);
     }
-    if isinstance(node, uni.String) or isinstance(node, uni.MultiString) {
+    if isinstance(nd, uni.String) or isinstance(nd, uni.MultiString) {
         # String constants - create global string
         return None;  # Complex initialization handled at runtime
 

@@ -6,7 +6,7 @@
 - [Plugin System](#plugin-system) - Installing and managing plugins
 - [Project Configuration](#project-configuration) - jac.toml settings
 - [Python Interoperability](#python-interoperability) - Using Python from Jac
-- [JavaScript/TypeScript Interoperability](#javascripttypescript-interoperability) - Using JS from Jac
+- [JavaScript/npm Interoperability](#javascriptnpm-interoperability) - Using JS from Jac
 
 ---
 
@@ -51,6 +51,7 @@ The `jac` command is your primary interface to the Jac toolchain. It handles exe
 | `jac remove <pkg>` | Remove dependency |
 | `jac update [pkg]` | Update dependencies to latest compatible versions |
 | `jac clean` | Clean build artifacts |
+| `jac purge` | Purge global bytecode cache |
 | `jac script <name>` | Run project script |
 
 ### 5 Tool Commands
@@ -213,8 +214,8 @@ cache = false
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
-| `REDIS_HOST`, `REDIS_PORT` | Redis connection |
-| `MONGO_URI`, `MONGO_DB` | MongoDB connection |
+| `REDIS_URL` | Redis connection URL |
+| `MONGODB_URI` | MongoDB connection URI |
 | `JWT_SECRET` | JWT signing secret |
 
 **Client-side (Vite):**
@@ -228,7 +229,7 @@ VITE_API_URL=https://api.example.com
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         api_url = import.meta.env.VITE_API_URL;
         return <div>{api_url}</div>;
     }
@@ -320,7 +321,7 @@ instance = my_module.MyClass()
 
 ---
 
-## JavaScript/TypeScript Interoperability
+## JavaScript/npm Interoperability
 
 ### 1 npm Packages
 
@@ -333,20 +334,22 @@ cl {
 }
 ```
 
-### 2 TypeScript Support
+### 2 TypeScript Configuration
 
-Enable in `jac.toml`:
+TypeScript is supported through the jac-client Vite toolchain for client-side code. Configure in `jac.toml`:
 
 ```toml
 [plugins.client]
 typescript = true
 ```
 
+> **Note:** Jac does not parse TypeScript files directly. TypeScript support is provided through Vite's built-in TypeScript handling in client-side (`cl {}`) code.
+
 ### 3 Browser APIs
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         # Window
         width = window.innerWidth;
 

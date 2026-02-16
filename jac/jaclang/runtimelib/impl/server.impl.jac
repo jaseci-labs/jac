@@ -1608,7 +1608,11 @@ impl JacAPIServer.print_endpoint_docs -> None {
 }
 
 """Start the HTTP server."""
-impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
+impl JacAPIServer.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[[], None] | None = None
+) -> None {
     import from pathlib { Path }
     self.introspector.load();
     # Eagerly build client bundle if there are client exports (skip in dev mode or no_client mode)
@@ -1631,9 +1635,7 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
                 } else {
                     self.introspector.ensure_bundle();
                 }
-                console.print(
-                    f"\n  🚀 Your app is ready at http://localhost:{self.port}/\n"
-                );
+                # Callback will handle startup message if provided
             } except Exception as e {
                 bundle_error = str(e);
             }
@@ -1669,22 +1671,27 @@ impl JacAPIServer.start(dev: bool = False, no_client: bool = False) -> None {
         # Display bundle error after endpoints if one occurred
         if bundle_error {
             import sys;
-            console.print('\n' + '=' * 70, file=sys.stderr);
-            console.error('CLIENT BUNDLE BUILD FAILED', emoji=True);
-            console.print('=' * 70, file=sys.stderr);
+            formatted_error = Jac.format_build_error(
+                error_output=bundle_error,
+                project_dir=Path(self.base_path),
+                config=config
+            );
             console.print(file=sys.stderr);
-            console.print(bundle_error, file=sys.stderr);
+            console.print(formatted_error, file=sys.stderr);
             console.print(file=sys.stderr);
             console.warning(
                 'Client pages will not be available until this is fixed.', emoji=True
             );
             console.print(file=sys.stderr);
-            console.info('Try again after running: jac clean --all', emoji=True);
             console.info(
                 f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                 emoji=True
             );
-            console.print('=' * 70 + '\n', file=sys.stderr);
+            console.print(file=sys.stderr);
+        }
+        # Call the ready callback (e.g., to print startup banner)
+        if on_ready {
+            on_ready();
         }
         try {
             httpd.serve_forever();

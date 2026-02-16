@@ -7,7 +7,7 @@ cl import from ..constants.categories { CATEGORIES, CATEGORY_LABELS }
 cl import from ..constants.clients { CLIENTS }
 
 cl {
-    def:pub TransactionForm -> any {
+    def:pub TransactionForm -> JsxElement {
         [description, setDescription] = useState("");
         [amount, setAmount] = useState("");
         [category, setCategory] = useState("OTHER");
@@ -20,7 +20,7 @@ cl {
             e.preventDefault();
 
             # Validate inputs
-            trimmedDesc = description.trim();
+            trimmedDesc = description.strip();
             if trimmedDesc == "" or amount == "" {
                 return;
             }
@@ -179,7 +179,7 @@ cl {
                             Action
                         </label>
                         <button type="submit" className="submit-btn">
-                            Add {(txType[0].toUpperCase() + txType.slice(1))}
+                            Add{(txType[0].upper() + txType[1:])}
                         </button>
                     </div>
                 </div>

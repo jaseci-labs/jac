@@ -164,8 +164,8 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
 }
 
 """Generate code for a list literal [a, b, c, ...]."""
-impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
-    if not node.values {
+impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
+    if not nd.values {
         # Empty list: infer type from context
         elem_type_name = "i64";
         # 1. Check the type hint set by assignment/field context
@@ -199,7 +199,7 @@ impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
         return None;
     }
     # Codegen first element to determine type
-    first_val = self._codegen_expr(node.values[0]);
+    first_val = self._codegen_expr(nd.values[0]);
     if first_val is None {
         return None;
     }
@@ -223,8 +223,8 @@ impl NaIRGenPass._codegen_list_val(node: uni.ListVal) -> (ir.Value | None) {
     }
     self.builder.call(helpers["append"], [list_val, append_val]);
     # Append remaining elements
-    for i in range(1, len(node.values)) {
-        val = self._codegen_expr(node.values[i]);
+    for i in range(1, len(nd.values)) {
+        val = self._codegen_expr(nd.values[i]);
         if val is not None {
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
