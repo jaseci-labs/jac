@@ -216,8 +216,6 @@ class ParamKind(IntEnum) {
 }
 
 """
-Flags for function types.
-
 Based on Pyright's FunctionTypeFlags. These flags control how the
 function type behaves during type checking.
 """
@@ -249,13 +247,9 @@ obj Parameter {
 }
 
 """
-Represents a function type.
-
-This type is used both for actual function definitions and for
-Callable type annotations. Callable annotations are distinguished by
-having an empty `func_name`.
-
-For Callable types:
+This Type is used for both actual function definitions and for
+Callable type annotations.
+Callable annotations are distinguished by having an empty `func_name`.
     - `Callable[[int, str], bool]` creates a FunctionType with empty func_name.
     - `Callable[..., bool]` creates a FunctionType with GradualCallableForm flag.
 """
@@ -283,19 +277,9 @@ obj FunctionType(TypeBase) {
 }
 
 """
-Create a callable type from parameter types and return type.
-
 This is a factory function for creating FunctionType instances that
 represent Callable type annotations. The resulting FunctionType has
 an empty func_name to distinguish it from actual function definitions.
-
-Args:
-    param_types: List of parameter types (e.g., [int, str] for Callable[[int, str], ...])
-    return_type: The return type of the callable
-    is_gradual: If True, creates a gradual callable form (Callable[..., T])
-
-Returns:
-    A FunctionType with empty func_name (and GradualCallableForm flag if gradual).
 """
 def create_callable_type(
     param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False

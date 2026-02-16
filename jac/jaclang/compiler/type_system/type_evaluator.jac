@@ -242,11 +242,3 @@ obj TypeEvaluator {
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }
-# FIXME: This class implementation is modified from pyright to make it
-# simple and work for now, however this needs to be revisited and
-# implemented properly.
-
-# NOTE: This is done in the binder pass of pyright, however I'm doing this
-# here, cause this will be the entry point of the type checker and we're not
-# relying on the binder pass at the moment and we can go back to binder pass
-# in the future if we needed it.
