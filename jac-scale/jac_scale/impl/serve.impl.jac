@@ -1267,7 +1267,7 @@ impl JacAPIServer.postinit -> None {
 
 """Create a wrapper around sso_callback that optionally redirects to frontend.
 
-If frontend_callback_url is configured in jac.toml [plugins.scale.sso],
+If client_auth_callback_url is configured in jac.toml [plugins.scale.sso],
 the wrapper redirects to that URL with token (success) or error params (failure).
 If not configured, returns JSON response (backwards compatible).
 """
@@ -1284,7 +1284,7 @@ impl JacAPIServer._create_sso_callback_wrapper -> Callable[
 
         # Check if frontend redirect URL is configured
         sso_config = get_scale_config().get_sso_config();
-        frontend_url = sso_config.get('frontend_callback_url', '');
+        frontend_url = sso_config.get('client_auth_callback_url', '');
 
         if not frontend_url {
             # No redirect configured, return TransportResponse as JSON (current behavior)
@@ -1364,7 +1364,7 @@ impl JacAPIServer.register_sso_endpoints -> None {
             response_model=None,
             tags=['SSO APIs'],
             summary='SSO callback endpoint',
-            description='Handles the callback from SSO provider after authentication. If frontend_callback_url is configured, redirects with token/error params.'
+            description='Handles the callback from SSO provider after authentication. If client_auth_callback_url is configured, redirects with token/error params.'
         )
     );
 }

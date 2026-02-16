@@ -25,7 +25,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
         },
         'sso': {
             'host': 'http://localhost:8000/sso',
-            'frontend_callback_url': '',  # If set, redirects to this URL with token/error
+            'client_auth_callback_url': '',  # If set, redirects to this URL with token/error
             'google': {'client_id': '', 'client_secret': ''}
         },
         'database': {
@@ -105,7 +105,7 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
     google_config = sso_config.get('google', {});
     return {
         'host': sso_config.get('host', 'http://localhost:8000/sso'),
-        'frontend_callback_url': sso_config.get('frontend_callback_url', ''),
+        'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
             'client_secret': google_config.get('client_secret', '')
