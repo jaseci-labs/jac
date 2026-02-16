@@ -20,7 +20,7 @@ cl {
             e.preventDefault();
 
             # Validate inputs
-            trimmedDesc = description.trim();
+            trimmedDesc = description.strip();
             if trimmedDesc == "" or amount == "" {
                 return;
             }
@@ -179,7 +179,7 @@ cl {
                             Action
                         </label>
                         <button type="submit" className="submit-btn">
-                            Add{(txType[0].toUpperCase() + txType.slice(1))}
+                            Add{(txType[0].upper() + txType[1:])}
                         </button>
                     </div>
                 </div>

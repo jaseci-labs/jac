@@ -609,10 +609,29 @@ impl PyastGenPass.exit_test(self: PyastGenPass, nd: uni.Test) -> None {
                 cast(ast3.stmt, stmt)
                 for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
             ],
-            decorator_list=[self.jaclib_obj('jac_test')],
+            decorator_list=[],
             returns=self.sync(ast3.Constant(value=None)),
             type_comment=None,
             type_params=[]
+        )
+    );
+    # Build jac_test decorator, passing description if available
+    jac_test_keywords: list = [];
+    if nd.description {
+        jac_test_keywords.append(
+            self.sync(
+                ast3.keyword(
+                    arg='description',
+                    value=self.sync(ast3.Constant(value=nd.description.lit_value))
+                )
+            )
+        );
+    }
+    func.decorator_list.append(
+        self.sync(
+            ast3.Call(
+                func=self.jaclib_obj('jac_test'), args=[], keywords=jac_test_keywords
+            )
         )
     );
     if nd.loc.mod_path.endswith('.test.jac') {
@@ -2766,6 +2785,15 @@ impl PyastGenPass.exit_func_call(self: PyastGenPass, nd: uni.FuncCall) -> None {
     if nd.genai_call {
         self.ice('Type(by llm()) call feature is temporarily disabled.');
     } else {
+        # TODO: Primitive emitter dispatch hook.
+        # When type information is available, primitive method calls
+        # (e.g., mylist.append(x), s.upper()) and builtin function calls
+        # (e.g., len(x), print(x)) can be routed through the emitter
+        # infrastructure at jaclang.jac0core.passes.primitives_py.
+        # For the Python backend this is a pass-through (no behavior change),
+        # but wiring it in validates the dispatch mechanism.
+        # Integration point: check if nd.target is an AtomTrailer on a
+        # primitive type, then call PyListEmitter/PyStrEmitter/etc.
         func = nd.target.gen.py_ast[0];
         (args, keywords) = self.gen_call_args(nd);
         nd.gen.py_ast = [

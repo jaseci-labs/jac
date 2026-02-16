@@ -56,7 +56,11 @@ impl NormalizePass.enter_test(nd: uni.Test) -> None {
         new_kid.append(client_tok or nd.gen_token(Tok.KW_CLIENT));
     }
     new_kid.append(nd.gen_token(Tok.KW_TEST));
-    new_kid.append(nd.name);
+    if nd.description {
+        new_kid.append(nd.description);
+    } else {
+        new_kid.append(nd.name);
+    }
     new_kid.append(nd.gen_token(Tok.LBRACE));
     for stmt in nd.body {
         new_kid.append(stmt);

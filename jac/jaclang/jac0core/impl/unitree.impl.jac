@@ -955,8 +955,10 @@ impl Test.init(
     name: (Name | Token),
     body: Sequence[CodeBlockStmt],
     kid: Sequence[UniNode],
-    doc: (String | None) = None
+    doc: (String | None) = None,
+    description: (String | None) = None
 ) -> None {
+    self.description: (String | None) = description;
     Test.TEST_COUNT += 1 if isinstance(name, Token) else 0;
     self.name: Name = name
     if isinstance(name, Name)
@@ -977,7 +979,9 @@ impl Test.init(
     else self.name.value;
     self.body: list[CodeBlockStmt] = `list(body);
     UniNode.init(self, kid=kid);
-    if (self.name not in self.kid) {
+    # Only insert synthetic name into kids if no description string present
+    # (the description String is already in the kid list from the parser)
+    if (self.description is None and self.name not in self.kid) {
         self.insert_kids_at_pos([self.name], pos=1, pos_update=False);
     }
     AstSymbolNode.init(

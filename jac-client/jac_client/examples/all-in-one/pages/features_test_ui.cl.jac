@@ -165,7 +165,7 @@ def:pub FeaturesTest -> JsxElement {
             result = root spawn read_test_data();
             testData = result.reports if result.reports[0] else [];
         } except Exception as e {
-            console.log("Error loading data:", e);
+            print("Error loading data:", e);
         }
     }
 
@@ -175,14 +175,14 @@ def:pub FeaturesTest -> JsxElement {
 
     # Create test data
     async def handleCreate -> None {
-        if not testMessage.trim() {
+        if not testMessage.strip() {
             alert("Please enter a message");
             return;
         }
 
         loading = true;
         try {
-            response = root spawn create_test_data(message=testMessage.trim());
+            response = root spawn create_test_data(message=testMessage.strip());
             new_item = response.reports[0][0];
             testData = testData.concat([new_item]);
             testMessage = "";
@@ -256,7 +256,7 @@ def:pub FeaturesTest -> JsxElement {
         try {
             # Parse number list
             numbers = numberList.split(",").map(
-                lambda x: str  -> int { return parseInt(x.trim()); }
+                lambda x: str  -> int { return parseInt(x.strip()); }
             ).filter(
                 lambda x: any  -> bool { return not isNaN(x); }
             );
@@ -298,9 +298,9 @@ def:pub FeaturesTest -> JsxElement {
     demo_text = "JAC Language Features";
     string_demos = {
         "Original": demo_text,
-        "Uppercase": demo_text.toUpperCase(),
-        "Lowercase": demo_text.toLowerCase(),
-        "Length": demo_text.length.toString(),
+        "Uppercase": demo_text.upper(),
+        "Lowercase": demo_text.lower(),
+        "Length": str(len(demo_text)),
         "Split by space": demo_text.split(" ").join(", ")
     };
 
@@ -401,9 +401,9 @@ def:pub FeaturesTest -> JsxElement {
                     </div>
                     <div style={{"marginTop": "20px"}}>
                         <strong style={{"color": "#374151"}}>
-                            Stored Data ({testData.length}items):
+                            Stored Data ({len(testData)}items):
                         </strong>
-                        {testData.length == 0
+                        {len(testData) == 0
                         and <p style={{"color": "#9ca3af", "fontStyle": "italic"}}>
                             No data yet. Create some!
                         </p>}

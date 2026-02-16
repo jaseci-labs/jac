@@ -498,7 +498,7 @@ def test_caching_issue(fixture_path: Callable[[str], str]) -> None:
         with open(test_file, "w") as f:
             f.write(
                 f"""
-            test mytest{{
+            test "mytest" {{
                 assert 10 == {x};
             }}
             """

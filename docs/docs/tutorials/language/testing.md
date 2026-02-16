@@ -18,14 +18,14 @@ def add(a: int, b: int) -> int {
     return a + b;
 }
 
-test test_add {
+test "add" {
     assert add(2, 3) == 5;
     assert add(-1, 1) == 0;
     assert add(0, 0) == 0;
 }
 ```
 
-**Note:** Test names are identifiers (not strings like in Python's pytest).
+**Note:** Test names are string descriptions, giving you readable names with spaces and punctuation.
 
 ---
 
@@ -67,7 +67,7 @@ OK
 ### Basic Assertions
 
 ```jac
-test test_assertions {
+test "assertions" {
     # Equality
     assert 1 + 1 == 2;
     assert "hello" == "hello";
@@ -94,7 +94,7 @@ test test_assertions {
 ### Assertions with Messages
 
 ```jac
-test test_with_messages {
+test "with messages" {
     result = calculate_something();
     assert result > 0, f"Expected positive, got {result}";
 }
@@ -118,14 +118,14 @@ obj Calculator {
     }
 }
 
-test test_calculator_add {
+test "calculator add" {
     calc = Calculator();
     assert calc.add(5) == 5;
     assert calc.add(3) == 8;
     assert calc.value == 8;
 }
 
-test test_calculator_reset {
+test "calculator reset" {
     calc = Calculator();
     calc.add(10);
     calc.reset();
@@ -154,7 +154,7 @@ walker Incrementer {
     }
 }
 
-test test_walker_increments_counter {
+test "walker increments counter" {
     # Create graph
     counter = root ++> Counter();
 
@@ -165,7 +165,7 @@ test test_walker_increments_counter {
     assert counter[0].count == 1;
 }
 
-test test_walker_with_custom_amount {
+test "walker with custom amount" {
     counter = root ++> Counter();
 
     root spawn Incrementer(amount=5);
@@ -194,7 +194,7 @@ walker FindAdults {
     }
 }
 
-test test_find_adults {
+test "find adults" {
     root ++> Person(name="Alice", age=30);
     root ++> Person(name="Bob", age=15);
     root ++> Person(name="Carol", age=25);
@@ -221,7 +221,7 @@ node Room {
 
 edge Door {}
 
-test test_graph_connections {
+test "graph connections" {
     kitchen = Room(name="Kitchen");
     living = Room(name="Living Room");
     bedroom = Room(name="Bedroom");
@@ -281,17 +281,17 @@ obj User {
 }
 
 # Tests at bottom of file
-test test_user_valid {
+test "user valid" {
     user = User(name="Alice", email="alice@example.com");
     assert user.is_valid();
 }
 
-test test_user_invalid_email {
+test "user invalid email" {
     user = User(name="Alice", email="invalid");
     assert not user.is_valid();
 }
 
-test test_user_empty_name {
+test "user empty name" {
     user = User(name="", email="alice@example.com");
     assert not user.is_valid();
 }
@@ -338,29 +338,29 @@ max_failures = 10
 ### 1. Descriptive Test Names
 
 ```jac
-# Good
-test test_user_creation_with_valid_email { }
-test test_walker_visits_all_connected_nodes { }
+# Good - readable descriptions
+test "user creation with valid email" { }
+test "walker visits all connected nodes" { }
 
-# Avoid
-test test1 { }
-test my_test { }
+# Avoid - vague or cryptic
+test "t1" { }
+test "thing" { }
 ```
 
 ### 2. One Assertion Focus
 
 ```jac
 # Good - focused tests
-test test_add_positive_numbers {
+test "add positive numbers" {
     assert add(2, 3) == 5;
 }
 
-test test_add_negative_numbers {
+test "add negative numbers" {
     assert add(-2, -3) == -5;
 }
 
 # Avoid - too many unrelated assertions
-test test_add {
+test "all math operations" {
     assert add(2, 3) == 5;
     assert subtract(5, 3) == 2;
     assert multiply(2, 3) == 6;
@@ -371,14 +371,14 @@ test test_add {
 
 ```jac
 # Good - creates fresh state
-test test_counter_increment {
+test "counter increment" {
     counter = root ++> Counter();
     root spawn Incrementer();
     assert counter[0].count == 1;
 }
 
 # Each test should be independent
-test test_counter_starts_at_zero {
+test "counter starts at zero" {
     counter = Counter();
     assert counter.count == 0;
 }
@@ -387,11 +387,11 @@ test test_counter_starts_at_zero {
 ### 4. Test Edge Cases
 
 ```jac
-test test_divide_normal {
+test "divide normal" {
     assert divide(10, 2) == 5;
 }
 
-test test_divide_by_zero {
+test "divide by zero" {
     try {
         divide(10, 0);
         assert False, "Should have raised error";
@@ -400,7 +400,7 @@ test test_divide_by_zero {
     }
 }
 
-test test_divide_negative {
+test "divide negative" {
     assert divide(-10, 2) == -5;
 }
 ```

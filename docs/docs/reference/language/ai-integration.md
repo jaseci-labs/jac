@@ -247,7 +247,7 @@ def classify(text: str) -> str by llm(
     config={"outputs": ["positive", "negative", "neutral"]}
 );
 
-test classification_test {
+test "classification" {
     result = classify("Great product!");
     assert result in ["positive", "negative", "neutral"];
 }

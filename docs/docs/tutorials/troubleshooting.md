@@ -388,8 +388,8 @@ cl {
         result = useWalker(my_walker, {});
 
         # Check the full response
-        console.log("Result:", result);
-        console.log("Reports:", result?.reports);
+        print("Result:", result);
+        print("Reports:", result?.reports);
 
         # Access reports array
         if result and result.reports {

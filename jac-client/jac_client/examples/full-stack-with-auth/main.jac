@@ -528,7 +528,7 @@ cl {
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
 
-        if filteredTodos.length == 0 {
+        if len(filteredTodos) == 0 {
             return
                 <div
                     style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
@@ -574,10 +574,10 @@ cl {
 
         # Add todo
         async def addTodo -> None {
-            if not input.trim() {
+            if not input.strip() {
                 return;
             }
-            result = root spawn create_todo(text=input.trim());
+            result = root spawn create_todo(text=input.strip());
             setTodos(todos.concat([result.reports[0][0]]));
             setInput("");
         }
@@ -619,7 +619,9 @@ cl {
         }
 
         filteredTodos = getFilteredTodos();
-        activeCount = todos.filter(lambda todo: any  -> bool { return not todo.done; }).length;
+        activeCount = len(
+            todos.filter(lambda todo: any  -> bool { return not todo.done; })
+        );
 
         return
             <div
@@ -656,7 +658,7 @@ cl {
                         {activeCount}{"item" if activeCount == 1 else "items"}left
                     </div>
                 )
-                if todos.length > 0
+                if len(todos) > 0
                 else None}
             </div>;
     }

@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.4.20 (Unreleased)
+## byllm 0.4.21 (Unreleased)
+
+## byllm 0.4.20 (Latest Release)
 
 - Minor internal refactors
 
-## byllm 0.4.19 (Latest Release)
+## byllm 0.4.19
 
 - Various refactors
 - **Fix: `api_key` parameter no longer silently ignored**: The `api_key` passed via constructor, instance config, or global config (`jac.toml`) was being overwritten with `None` before every LLM call. The key is now properly resolved with a clear priority chain (constructor > instance config > global config > environment variables) and passed to LiteLLM, OpenAI client, and HTTP calls. API keys are also masked in verbose logs, showing only the last 4 characters.
