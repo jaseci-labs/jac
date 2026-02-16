@@ -262,3 +262,6 @@ player.impl.jac
 enemy.impl.jac
 attack.impl.jac
 basellm.impl.jac
+types.jac
+vite_bundler.impl.jac
+utils.jac
