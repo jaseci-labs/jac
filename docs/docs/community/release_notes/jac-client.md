@@ -2,12 +2,14 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.18 (Unreleased)
+## jac-client 0.2.19 (Unreleased)
+
+## jac-client 0.2.18 (Latest Release)
 
 - 2 Minor internal refactors
 - **Standardize Jac idioms in examples and runtime**: Replaced JS-style method calls with Jac-idiomatic equivalents across all examples, test fixtures, and the client runtime plugin (`.trim()` → `.strip()`, `.push()` → `.append()`, `.length` → `len()`, `.toUpperCase()/.toLowerCase()` → `.upper()/.lower()`, `console.log()` → `print()`, etc.). These are now translated to the correct JS equivalents at compile time via the primitive emitter infrastructure.
 
-## jac-client 0.2.17 (Latest Release)
+## jac-client 0.2.17
 
 - **Structured Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes (JAC_CLIENT_XXX), source code snippets pointing to the error location, actionable hints, and quick fix commands. The diagnostic engine maps Vite/npm errors back to original `.jac` files, hiding internal JavaScript paths from developers. Detectors identify common issues: missing npm dependencies (JAC_CLIENT_001), syntax errors (JAC_CLIENT_003), and unresolved imports (JAC_CLIENT_004). Enable `debug = true` under `[plugins.client]` in `jac.toml` or set `JAC_DEBUG=1` to see raw error output alongside formatted diagnostics.
 

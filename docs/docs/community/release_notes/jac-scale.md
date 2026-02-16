@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.9 (Unreleased)
+## jac-scale 0.1.10 (Unreleased)
+
+## jac-scale 0.1.9 (Latest Release)
 
 - 1 Minor refactors/changes.
 
-## jac-scale 0.1.8 (Latest Release)
+## jac-scale 0.1.8
 
 - Internal: K8s integration tests now install jac plugins from fork PRs instead of always using main
 - **.jac folder is excluded when creating the zip folder that is uploaded into jaseci deployment pods.Fasten up deployment**
