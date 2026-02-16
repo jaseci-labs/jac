@@ -541,9 +541,13 @@ def test_go_to_definition_impl_body_self_attr(
 
         positions = [
             # (impl_line, impl_char, expected_target)
-            (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
-            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
-            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
+            (
+                5,
+                17,
+                "impl_symbol_resolution.jac:3:8-3:13",
+            ),  # count in `return self.count`
+            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),  # name in f-string
+            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),  # count in f-string
         ]
 
         for line, char, expected in positions:
@@ -571,12 +575,10 @@ def test_go_to_definition_directory_import(
         positions = [
             # Regular package: clicking 'mypkg_reg' -> points to __init__.jac
             (2, 18, "local_imports/mypkg_reg/__init__.jac:0:0-0:0"),
-             # Regular package: clicking 'my_mod' -> points to my_mod.jac
+            # Regular package: clicking 'my_mod' -> points to my_mod.jac
             (2, 28, "local_imports/mypkg_reg/my_mod.jac:0:0-0:0"),
-
             # Namespace package: clicking 'mypkg_ns'
             # This should not resolve to anything as it is a directory
-
             # resolution inside the namespace package 'my_mod' -> should point to the my_mod.jac
             (1, 28, "local_imports/mypkg_ns/my_mod.jac:0:0-0:0"),
         ]
@@ -598,7 +600,6 @@ def test_go_to_definition_directory_import(
 def test_go_to_definition_nested_impl_symbols(
     fixture_path: Callable[[str], str],
 ) -> None:
-
     lsp = create_server(None, fixture_path)
     try:
         impl_file = uris.from_fs_path(fixture_path("nested_impl_resolution.impl.jac"))
@@ -606,13 +607,13 @@ def test_go_to_definition_nested_impl_symbols(
 
         positions = [
             # (line, char_pos, expected_target_substring)
-            (2, 5, "unitree.jac"),   # uni in direct reference
-            (3, 8, "unitree.jac"),   # uni in if condition
+            (2, 5, "unitree.jac"),  # uni in direct reference
+            (3, 8, "unitree.jac"),  # uni in if condition
             (4, 18, "unitree.jac"),  # uni in if body variable type
             (6, 11, "unitree.jac"),  # uni in while condition
             (7, 15, "unitree.jac"),  # uni in while body variable type
             (9, 22, "unitree.jac"),  # uni in for expression
-            (10, 15, "unitree.jac"), # uni in for body variable type
+            (10, 15, "unitree.jac"),  # uni in for body variable type
         ]
 
         for line, char, expected in positions:
