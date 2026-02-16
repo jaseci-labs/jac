@@ -8,7 +8,7 @@ glob VITE_DEV_SERVER_PORT = 5173,
      DEFAULT_FUNCTION_NAME = "app";
 
 """Setup web target (no-op - web works out of the box)."""
-impl WebTarget.setup(self: WebTarget, project_dir: Path) -> None {}
+impl WebTarget.setup(self: WebTarget, project_dir: Path) -> None { }
 
 """Start web dev server with HMR.
 
