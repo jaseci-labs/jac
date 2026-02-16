@@ -177,11 +177,15 @@ creating a peaceful and cheerful atmosphere.
 Lower `fps` values extract fewer frames, reducing token usage. Higher values provide more temporal detail.
 
 ```jac
-# Extract 1 frame per second (good for most cases)
-video = Video(path="video.mp4", fps=1);
+import from byllm.lib { Video }
 
-# Extract 2 frames per second (more detail)
-video = Video(path="video.mp4", fps=2);
+with entry {
+    # Extract 1 frame per second (good for most cases)
+    video = Video(path="video.mp4", fps=1);
+
+    # Extract 2 frames per second (more detail)
+    video = Video(path="video.mp4", fps=2);
+}
 ```
 
 ---
