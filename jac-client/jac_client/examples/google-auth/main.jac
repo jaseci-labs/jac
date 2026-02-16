@@ -47,21 +47,21 @@ cl {
         return
             <AuthProvider>
                 <Router>
-                    <NavigationMenu />
+                    <NavigationMenu/>
                     <Routes>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/auth/callback" element={<OAuthCallback />} />
+                        <Route path="/" element={<Home/>}/>
+                        <Route path="/login" element={<Login/>}/>
+                        <Route path="/auth/callback" element={<OAuthCallback/>}/>
                         <Route
                             path="/sample"
                             element={<Protected>
-                                <Sample />
+                                <Sample/>
                             </Protected>}
                         />
                         <Route
                             path="/dashboard"
                             element={<Protected>
-                                <Dashboard />
+                                <Dashboard/>
                             </Protected>}
                         />
                     </Routes>

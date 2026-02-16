@@ -10,7 +10,7 @@ cl def:pub Login -> any {
     # If already logged in, redirect to dashboard
     if auth.user {
         return
-            <Navigate to="/dashboard" replace />;
+            <Navigate to="/dashboard" replace/>;
     }
 
     # Handle Google login - redirects to backend
@@ -46,7 +46,7 @@ cl def:pub Login -> any {
                     backgroundColor: '#f9f9f9'
                 }}
             >
-                <Button onClick={handleGoogleLogin} label="Sign in with Google" />
+                <Button onClick={handleGoogleLogin} label="Sign in with Google"/>
                 <div style={{textAlign: 'center', marginTop: '1rem'}}>
                     <p>
                         Don't have an account?

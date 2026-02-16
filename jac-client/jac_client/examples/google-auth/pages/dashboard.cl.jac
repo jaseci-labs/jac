@@ -11,10 +11,10 @@ def:pub Dashboard -> any {
                 Dashboard
             </h1>
             <p>
-                Hello, {ctx.user.name}!
+                Hello,{ctx.user.name}!
             </p>
             <p>
-                Email: {ctx.user.email}
+                Email:{ctx.user.email}
             </p>
             <button
                 onClick={ctx.handleLogout}
