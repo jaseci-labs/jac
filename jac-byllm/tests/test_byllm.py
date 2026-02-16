@@ -11,6 +11,7 @@ import pytest
 import yaml
 from fixtures import python_lib_mode
 
+import byllm.llm as _byllm_llm_mod
 from byllm.lib import Model
 from jaclang import JacRuntimeInterface as Jac
 
@@ -416,7 +417,9 @@ class TestApiKeyResolution:
 
     def test_api_key_from_global_config(self) -> None:
         """Global _model_config api_key should be used as last resort."""
-        with patch("byllm.llm._model_config", {"api_key": "sk-global-key"}):
+        with patch.dict(
+            _byllm_llm_mod._model_config, {"api_key": "sk-global-key"}, clear=True
+        ):
             model = Model(model_name="gpt-4o-mini")
             assert model.api_key == "sk-global-key"
 
@@ -431,7 +434,9 @@ class TestApiKeyResolution:
 
     def test_api_key_instance_config_over_global(self) -> None:
         """Instance config api_key should win over global config."""
-        with patch("byllm.llm._model_config", {"api_key": "sk-global-key"}):
+        with patch.dict(
+            _byllm_llm_mod._model_config, {"api_key": "sk-global-key"}, clear=True
+        ):
             model = Model(
                 model_name="gpt-4o-mini",
                 config={"api_key": "sk-config-key"},
@@ -440,7 +445,7 @@ class TestApiKeyResolution:
 
     def test_api_key_empty_when_none_provided(self) -> None:
         """api_key should remain empty when no source provides one."""
-        with patch("byllm.llm._model_config", {"api_key": ""}):
+        with patch.dict(_byllm_llm_mod._model_config, {"api_key": ""}, clear=True):
             model = Model(model_name="gpt-4o-mini")
             assert model.api_key == ""
 

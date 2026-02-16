@@ -47,6 +47,6 @@ def myfunc -> None { }  # define a function
 
 # module level freestyle code
 """A test of my functionality"""
-test mytest {
+test "mytest" {
 # test code here
 }

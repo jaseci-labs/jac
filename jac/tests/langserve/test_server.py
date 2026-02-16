@@ -231,7 +231,7 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (10, 34, "jac/jaclang/__init__.py:19:3-19:22"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
-            (11, 47, "jaclang/jac0core/constant.jac:3:6-3:16"),
+            (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
             (18, 5, "compiler/type_system/types.jac:67:4-67:12"),  # TypeBase now on line 18

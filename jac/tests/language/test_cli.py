@@ -374,7 +374,7 @@ def test_graph_coverage() -> None:
     graph_params = set(inspect.signature(tools.dot).parameters.keys())
     printgraph_params = set(inspect.signature(printgraph).parameters.keys())
     printgraph_params = printgraph_params - {
-        "node",
+        "nd",
         "file",
         "edge_type",
     }
@@ -498,7 +498,7 @@ def test_caching_issue(fixture_path: Callable[[str], str]) -> None:
         with open(test_file, "w") as f:
             f.write(
                 f"""
-            test mytest{{
+            test "mytest" {{
                 assert 10 == {x};
             }}
             """
@@ -965,6 +965,33 @@ def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int:
 
     match = re.search(r"Checked (\d+)", stdout + stderr)
     return int(match.group(1)) if match else 0
+
+
+def test_jac_grammar(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that jac grammar command extracts grammar rules."""
+    with capture_stdout() as output:
+        result = analysis.grammar()
+
+    stdout_value = output.getvalue()
+    assert result == 0, "grammar command should exit with code 0"
+    # Should contain grammar rule definitions (::= for EBNF)
+    assert "::=" in stdout_value, "EBNF output should contain rule definitions"
+    # Should contain well-known rule names from the parser
+    assert "module" in stdout_value, "Grammar should contain 'module' rule"
+
+
+def test_jac_grammar_lark(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that jac grammar --lark outputs Lark format."""
+    with capture_stdout() as output:
+        result = analysis.grammar(lark=True)
+
+    stdout_value = output.getvalue()
+    assert result == 0, "grammar --lark command should exit with code 0"
+    assert len(stdout_value) > 0, "Lark output should not be empty"
 
 
 def test_jac_cli_check_ignore_patterns(fixture_path: Callable[[str], str]) -> None:

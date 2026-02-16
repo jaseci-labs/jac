@@ -261,8 +261,8 @@ impl GrammarExtractPass.after_pass -> None {
 # Visitor: enter_impl_def
 # -------------------------------------------------------------------------
 """Check if this impl targets a parse method and extract its rule."""
-impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
-    names = self.get_impl_target_names(node);
+impl GrammarExtractPass.enter_impl_def(nd: uni.ImplDef) -> None {
+    names = self.get_impl_target_names(nd);
     if len(names) < 2 {
         return;
     }
@@ -275,7 +275,7 @@ impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
         return;
     }
     rule_name = method_name[6:];  # strip "parse_"
-    body = node.body;
+    body = nd.body;
     if not isinstance(body, list) and not isinstance(body, tuple) {
         return;
     }
@@ -290,9 +290,9 @@ impl GrammarExtractPass.enter_impl_def(`node: uni.ImplDef) -> None {
 # get_impl_target_names
 # -------------------------------------------------------------------------
 """Extract class and method names from an ImplDef target."""
-impl GrammarExtractPass.get_impl_target_names(node: uni.ImplDef) -> list {
+impl GrammarExtractPass.get_impl_target_names(nd: uni.ImplDef) -> list {
     names: list = [];
-    for name_atom in node.target {
+    for name_atom in nd.target {
         if isinstance(name_atom, uni.Name) {
             names.append(name_atom.value);
         } elif name_atom?.sym_name {
@@ -324,37 +324,73 @@ impl GrammarExtractPass.extract_from_stmts(stmts: list) -> GExpr | None {
                 i += 1;
                 continue;
             }
+            # Local-variable dispatch: condition not recognizable but branch
+            # returns early (e.g., if is_ability { return parse_ability(); })
+            if cond_info is None
+            and self.has_early_return(list(stmt.body))
+            and stmt.else_body is None {
+                body_expr = self.extract_from_stmts(list(stmt.body));
+                if body_expr is not None {
+                    alt_branches.append(body_expr);
+                }
+                i += 1;
+                continue;
+            }
         }
 
         # If we hit a return after dispatch branches, it's the fallback
         if isinstance(stmt, uni.ReturnStmt) and len(alt_branches) > 0 {
+            has_fallback = False;
             if stmt.expr is not None {
                 call = self.get_call_from_expr(stmt.expr);
                 if call is not None {
                     fallback = self.analyze_func_call(call);
                     if fallback is not None {
                         alt_branches.append(fallback);
+                        has_fallback = True;
                     }
                 }
             }
+            branch_expr: GExpr;
             if len(alt_branches) == 1 {
-                parts.append(alt_branches[0]);
-            } elif len(alt_branches) > 1 {
-                parts.append(GAlt(choices=alt_branches));
+                branch_expr = alt_branches[0];
+            } else {
+                branch_expr = GAlt(choices=alt_branches);
+            }
+            # If the return doesn't produce a grammar element (e.g. return local var
+            # or return None), the dispatch branches are optional
+            if has_fallback {
+                parts.append(branch_expr);
+            } else {
+                parts.append(GOpt(inner=branch_expr));
             }
             alt_branches = [];
             i += 1;
             continue;
         }
 
-        # Flush any pending alternatives
+        # Flush any pending dispatch alternatives
+        # Since dispatch branches return early, remaining code only runs
+        # when no dispatch matched → remaining is an alternative
         if len(alt_branches) > 0 {
-            if len(alt_branches) == 1 {
-                parts.append(GOpt(inner=alt_branches[0]));
+            remaining = stmts[i:];
+            remaining_expr = self.extract_from_stmts(remaining);
+            if remaining_expr is not None {
+                alt_branches.append(remaining_expr);
+                if len(alt_branches) == 1 {
+                    parts.append(alt_branches[0]);
+                } else {
+                    parts.append(GAlt(choices=alt_branches));
+                }
             } else {
-                parts.append(GOpt(inner=GAlt(choices=alt_branches)));
+                if len(alt_branches) == 1 {
+                    parts.append(GOpt(inner=alt_branches[0]));
+                } else {
+                    parts.append(GOpt(inner=GAlt(choices=alt_branches)));
+                }
             }
             alt_branches = [];
+            break;
         }
 
         # Normal statement
@@ -381,12 +417,104 @@ impl GrammarExtractPass.extract_from_stmts(stmts: list) -> GExpr | None {
     return GSeq(items=parts);
 }
 
-"""Check if a statement list contains a return statement."""
+"""Check if a statement list contains a return statement (searches nested ifs)."""
 impl GrammarExtractPass.has_early_return(stmts: list) -> bool {
     for stmt in stmts {
         if isinstance(stmt, uni.ReturnStmt) {
             return True;
         }
+        # Check nested if/elif/else bodies for returns
+        if isinstance(stmt, (uni.IfStmt, uni.ElseIf)) {
+            if self.has_early_return(list(stmt.body)) {
+                return True;
+            }
+            if stmt.else_body is not None {
+                if isinstance(stmt.else_body, uni.ElseStmt) {
+                    if self.has_early_return(list(stmt.else_body.body)) {
+                        return True;
+                    }
+                } elif isinstance(stmt.else_body, (uni.ElseIf, uni.IfStmt)) {
+                    if self.has_early_return([stmt.else_body]) {
+                        return True;
+                    }
+                }
+            }
+        }
+    }
+    return False;
+}
+
+"""Check if condition is a negated check pattern (e.g. not check(X), not check(X) and not at_end())."""
+impl GrammarExtractPass.is_negated_check_condition(cond: uni.Expr) -> bool {
+    # Single negation: not self.check(X) or not self.at_end()
+    if isinstance(cond, uni.UnaryExpr) {
+        if cond.op is not None and cond.op?.value and cond.op.value == "not" {
+            if isinstance(cond.operand, uni.FuncCall) {
+                method = self.get_self_method(cond.operand.target);
+                if method in (
+                    "check",
+                    "check_any",
+                    "check_peek",
+                    "check_peek_any",
+                    "at_end"
+                ) {
+                    return True;
+                }
+            }
+        }
+        return False;
+    }
+    # BoolExpr AND of negations: not check(X) and not check(Y)
+    if isinstance(cond, uni.BoolExpr) {
+        if not (cond.op and cond.op?.value and cond.op.value == "and") {
+            return False;
+        }
+        if not cond.values or len(cond.values) == 0 {
+            return False;
+        }
+        for val in cond.values {
+            if not self.is_negated_check_condition(val) {
+                return False;
+            }
+        }
+        return True;
+    }
+    # BinaryExpr AND of negations
+    if isinstance(cond, uni.BinaryExpr) {
+        if cond.op and cond.op?.value and cond.op.value in ("and", "&&") {
+            return (
+                self.is_negated_check_condition(cond.left)
+                and self.is_negated_check_condition(cond.right)
+            );
+        }
+    }
+    return False;
+}
+
+"""Check if a grammar expression contains a specific token name."""
+impl GrammarExtractPass.expr_contains_tok(expr: GExpr, tok_name: str) -> bool {
+    if isinstance(expr, GTok) {
+        return expr.name == tok_name;
+    }
+    if isinstance(expr, GSeq) {
+        for item in expr.items {
+            if self.expr_contains_tok(item, tok_name) {
+                return True;
+            }
+        }
+    }
+    if isinstance(expr, GAlt) {
+        for c in expr.choices {
+            if self.expr_contains_tok(c, tok_name) {
+                return True;
+            }
+        }
+    }
+    if isinstance(expr, GOpt) {
+        return self.expr_contains_tok(expr.inner, tok_name);
+    }
+    if isinstance(expr, GStar) {
+        return self.expr_contains_tok(expr.inner, tok_name);
     }
     return False;
 }
@@ -408,6 +536,18 @@ impl GrammarExtractPass.extract_from_stmt(stmt: uni.UniNode) -> GExpr | None {
             call = self.get_call_from_expr(stmt.value);
             if call is not None {
                 return self.analyze_func_call(call);
+            }
+            # Handle list initialization: x = [self.parse_X()]
+            if isinstance(stmt.value, uni.ListVal) and hasattr(stmt.value, 'values') {
+                for elem in stmt.value.values {
+                    inner_call = self.get_call_from_expr(elem);
+                    if inner_call is not None {
+                        result = self.analyze_func_call(inner_call);
+                        if result is not None {
+                            return result;
+                        }
+                    }
+                }
             }
         }
         return None;
@@ -437,7 +577,7 @@ impl GrammarExtractPass.extract_from_stmt(stmt: uni.UniNode) -> GExpr | None {
 impl GrammarExtractPass.analyze_func_call(call: uni.FuncCall) -> GExpr | None {
     method = self.get_self_method(call.target);
     if method is not None {
-        if method == "expect" {
+        if method == "expect" or method == "consume_uni" {
             tokens = self.get_token_args(call);
             if len(tokens) > 0 {
                 return GTok(name=tokens[0]);
@@ -449,6 +589,12 @@ impl GrammarExtractPass.analyze_func_call(call: uni.FuncCall) -> GExpr | None {
         }
         if method == "expect_name" {
             return GTok(name="NAME");
+        }
+        if method == "match_tok" {
+            tokens = self.get_token_args(call);
+            if len(tokens) > 0 {
+                return GOpt(inner=GTok(name=tokens[0]));
+            }
         }
         return None;
     }
@@ -473,7 +619,57 @@ impl GrammarExtractPass.analyze_func_call(call: uni.FuncCall) -> GExpr | None {
 impl GrammarExtractPass.analyze_if_stmt(stmt: uni.IfStmt) -> GExpr | None {
     cond_info = self.analyze_condition(stmt.condition);
     if cond_info is None {
+        # Negated guard: if not check(SEMI) and not check(RBRACE) { body } → GOpt(body)
+        if self.is_negated_check_condition(stmt.condition) and stmt.else_body is None {
+            opt_body = self.extract_from_stmts(list(stmt.body));
+            if opt_body is not None {
+                return GOpt(inner=opt_body);
+            }
+            return None;
+        }
         body_expr = self.extract_from_stmts(list(stmt.body));
+        # If the if-body returns early and there are elif/else branches,
+        # branches are alternatives (local-variable dispatch pattern)
+        if self.has_early_return(list(stmt.body)) and stmt.else_body is not None {
+            alt_list: list = [];
+            if body_expr is not None {
+                alt_list.append(body_expr);
+            }
+            cur_alt = stmt.else_body;
+            while cur_alt is not None {
+                if isinstance(cur_alt, (uni.ElseIf, uni.IfStmt)) {
+                    eb = self.extract_from_stmts(list(cur_alt.body));
+                    if eb is not None {
+                        alt_list.append(eb);
+                    }
+                    cur_alt = cur_alt?.else_body;
+                } elif isinstance(cur_alt, uni.ElseStmt) {
+                    eb = self.extract_from_stmts(list(cur_alt.body));
+                    if eb is not None {
+                        alt_list.append(eb);
+                    }
+                    cur_alt = None;
+                } else {
+                    cur_alt = None;
+                }
+            }
+            # Deduplicate alternatives
+            unique_alts: list = [];
+            seen_reprs: set = set();
+            for a in alt_list {
+                r = repr(a);
+                if r not in seen_reprs {
+                    unique_alts.append(a);
+                    seen_reprs.add(r);
+                }
+            }
+            if len(unique_alts) > 1 {
+                return GAlt(choices=unique_alts);
+            } elif len(unique_alts) == 1 {
+                return unique_alts[0];
+            }
+            return body_expr;
+        }
         else_expr: GExpr | None = None;
         if stmt.else_body is not None {
             if isinstance(stmt.else_body, (uni.ElseIf, uni.IfStmt)) {
@@ -523,7 +719,7 @@ impl GrammarExtractPass.analyze_if_stmt(stmt: uni.IfStmt) -> GExpr | None {
         return GOpt(inner=inner);
     }
     # if self.check(X) / check_any(X,Y) { body } [elif ...] -> optional/alt
-    if method in ("check", "check_any") {
+    if method in ("check", "check_any", "check_peek", "check_peek_any") {
         branches = self.collect_elif_chain(stmt);
         if len(branches) == 0 {
             return None;
@@ -570,7 +766,7 @@ impl GrammarExtractPass.collect_elif_chain(stmt: uni.IfStmt) -> list {
         if cond_info is not None {
             method = cond_info[0];
             tokens: list = cond_info[1];
-            if method in ("check", "check_any") {
+            if method in ("check", "check_any", "check_peek", "check_peek_any") {
                 tok_expr: GExpr | None = None;
                 if len(tokens) > 1 {
                     tok_expr = GAlt(choices=[GTok(name=t) for t in tokens]);
@@ -580,7 +776,23 @@ impl GrammarExtractPass.collect_elif_chain(stmt: uni.IfStmt) -> list {
                 if tok_expr is not None and branch_body is not None {
                     branches.append(GSeq(items=[tok_expr, branch_body]));
                 } elif tok_expr is not None {
-                    branches.append(tok_expr);
+                    # check/check_any doesn't consume token - only include
+                    # the bare token if the body does something non-trivial
+                    # (skip guard clauses like: if check(RBRACE) { return None; })
+                    is_guard = True;
+                    for s in list(cur.body) {
+                        if not isinstance(s, uni.ReturnStmt)
+                        and not (
+                            isinstance(s, uni.CtrlStmt)
+                            and s.ctrl is not None
+                            and s.ctrl.value == "break"
+                        ) {
+                            is_guard = False;
+                        }
+                    }
+                    if not is_guard {
+                        branches.append(tok_expr);
+                    }
                 } elif branch_body is not None {
                     branches.append(branch_body);
                 }
@@ -657,6 +869,29 @@ impl GrammarExtractPass.analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None 
                 else inner_parts[0];
                 return GStar(inner=inner);
             }
+            # Handle: while True { x = parse_X(); if x is None { break; } body }
+            none_check_info = self.find_break_none_check(list(stmt.body));
+            if none_check_info is not None {
+                ref_name: str = none_check_info[0];
+                remaining_stmts: list = none_check_info[1];
+                remaining_expr = self.extract_from_stmts(remaining_stmts);
+                inner_parts2: list = [GRef(name=ref_name)];
+                if remaining_expr is not None {
+                    inner_parts2.append(remaining_expr);
+                }
+                inner2: GExpr = GSeq(items=inner_parts2)
+                if len(inner_parts2) > 1
+                else inner_parts2[0];
+                return GStar(inner=inner2);
+            }
+        }
+        # Handle: while not self.check(X) { body } → body*
+        if self.is_negated_check_condition(stmt.condition) {
+            body_expr = self.extract_from_stmts(list(stmt.body));
+            if body_expr is not None {
+                return GStar(inner=body_expr);
+            }
+            return None;
         }
         return self.extract_from_stmts(list(stmt.body));
     }
@@ -673,8 +908,27 @@ impl GrammarExtractPass.analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None 
         else inner_parts[0];
         return GStar(inner=inner);
     }
-    if method in ("check", "check_any") and len(tokens) > 0 {
+    if method in ("check", "check_any", "check_peek", "check_peek_any")
+    and len(tokens) > 0 {
         body_expr = self.extract_from_stmts(list(stmt.body));
+        # If body already contains condition tokens (via consume_uni/expect),
+        # skip adding them to avoid duplication. Otherwise include them
+        # (body uses advance() which isn't grammar-recognized).
+        body_has_cond_tok = False;
+        if body_expr is not None {
+            for t in tokens {
+                if self.expr_contains_tok(body_expr, t) {
+                    body_has_cond_tok = True;
+                    break;
+                }
+            }
+        }
+        if body_has_cond_tok {
+            if body_expr is not None {
+                return GStar(inner=body_expr);
+            }
+            return None;
+        }
         tok_expr: GExpr | None = None;
         if len(tokens) > 1 {
             tok_expr = GAlt(choices=[GTok(name=t) for t in tokens]);
@@ -741,26 +995,167 @@ impl GrammarExtractPass.find_break_match_tok(stmts: list) -> tuple | None {
 }
 
 # -------------------------------------------------------------------------
+# Find break-none-check in while True bodies
+# -------------------------------------------------------------------------
+"""Find `x = self.parse_X(); if x is None { break; }` at start of while True body.
+
+Returns (rule_name, remaining_body_stmts) or None."""
+impl GrammarExtractPass.find_break_none_check(stmts: list) -> tuple | None {
+    if len(stmts) < 2 {
+        return None;
+    }
+    # First stmt: x = self.parse_X()
+    first = stmts[0];
+    if not isinstance(first, uni.Assignment) {
+        return None;
+    }
+    if first.value is None {
+        return None;
+    }
+    call = self.get_call_from_expr(first.value);
+    if call is None {
+        return None;
+    }
+    method = self.get_self_method(call.target);
+    if method is None or not method.startswith("parse_") {
+        return None;
+    }
+    rule_name = method[6:];
+    # Second stmt: if x is None { break; }
+    second = stmts[1];
+    if not isinstance(second, uni.IfStmt) {
+        return None;
+    }
+    # Check condition is `x is None` (CompareExpr with 'is' and Null)
+    cond = second.condition;
+    if not isinstance(cond, uni.CompareExpr) {
+        return None;
+    }
+    is_none_check = False;
+    if cond.ops is not None and len(cond.ops) > 0 {
+        for op in cond.ops {
+            if op.value == "is" {
+                is_none_check = True;
+            }
+        }
+    }
+    if not is_none_check {
+        return None;
+    }
+    # Check body contains break
+    has_break = False;
+    for s in second.body {
+        if isinstance(s, uni.CtrlStmt) {
+            if s.ctrl is not None and s.ctrl.value == "break" {
+                has_break = True;
+            }
+        }
+    }
+    if not has_break {
+        return None;
+    }
+    remaining = stmts[2:];
+    return (rule_name, remaining);
+}
+
+# -------------------------------------------------------------------------
 # Condition analysis
 # -------------------------------------------------------------------------
 """Analyze condition. Returns (method_name, [token_names]) or None."""
 impl GrammarExtractPass.analyze_condition(cond: uni.Expr) -> tuple | None {
     if isinstance(cond, uni.FuncCall) {
         method = self.get_self_method(cond.target);
-        if method in ("check", "check_any", "match_tok") {
+        if method in (
+            "check",
+            "check_any",
+            "check_peek",
+            "check_peek_any",
+            "match_tok"
+        ) {
             tokens = self.get_token_args(cond);
             return (method, tokens);
         }
     }
-    # Boolean AND: self.check(X) and something_else
+    # Handle peek().kind == TokenKind.X or peek().kind in [...] comparisons
+    if isinstance(cond, uni.CompareExpr) {
+        if cond.ops is not None
+        and len(cond.ops) > 0
+        and cond.rights is not None
+        and len(cond.rights) > 0 {
+            op_val = "";
+            if hasattr(cond.ops[0], 'value') {
+                op_val = cond.ops[0].value;
+            }
+            if op_val == "==" {
+                right = cond.rights[0];
+                tok_name = self.extract_token_kind(right);
+                if tok_name is not None {
+                    return ("check", [tok_name]);
+                }
+            } elif op_val == "in" {
+                right = cond.rights[0];
+                if isinstance(right, uni.ListVal) {
+                    tok_names: list = [];
+                    for item in right.values {
+                        tn = self.extract_token_kind(item);
+                        if tn is not None {
+                            tok_names.append(tn);
+                        }
+                    }
+                    if len(tok_names) > 0 {
+                        return ("check", tok_names);
+                    }
+                }
+            }
+        }
+    }
+    # Boolean expressions: BoolExpr for and/or
     if isinstance(cond, uni.BoolExpr) {
+        is_or = cond?.op and cond.op?.value and cond.op.value == "or";
+        if is_or {
+            # For OR: collect all check/match_tok tokens from all values
+            all_toks: list = [];
+            found_method: str | None = None;
+            if cond?.values {
+                for val in cond.values {
+                    if isinstance(val, uni.FuncCall) {
+                        m = self.get_self_method(val.target);
+                        if m in (
+                            "check",
+                            "check_any",
+                            "check_peek",
+                            "check_peek_any",
+                            "match_tok"
+                        ) {
+                            tks = self.get_token_args(val);
+                            all_toks.extend(tks);
+                            if found_method is None {
+                                found_method = m;
+                            }
+                        }
+                    }
+                }
+            }
+            if found_method is not None and len(all_toks) > 0 {
+                return (found_method, all_toks);
+            }
+            return None;
+        }
+        # For AND: find the first check/match_tok call in any position
         if cond?.values and len(cond.values) > 0 {
-            first = cond.values[0];
-            if isinstance(first, uni.FuncCall) {
-                method = self.get_self_method(first.target);
-                if method in ("check", "check_any", "match_tok") {
-                    tokens = self.get_token_args(first);
-                    return (method, tokens);
+            for val in cond.values {
+                if isinstance(val, uni.FuncCall) {
+                    method = self.get_self_method(val.target);
+                    if method in (
+                        "check",
+                        "check_any",
+                        "check_peek",
+                        "check_peek_any",
+                        "match_tok"
+                    ) {
+                        tokens = self.get_token_args(val);
+                        return (method, tokens);
+                    }
                 }
             }
         }
@@ -771,7 +1166,13 @@ impl GrammarExtractPass.analyze_condition(cond: uni.Expr) -> tuple | None {
                 left = cond.left;
                 if isinstance(left, uni.FuncCall) {
                     method = self.get_self_method(left.target);
-                    if method in ("check", "check_any", "match_tok") {
+                    if method in (
+                        "check",
+                        "check_any",
+                        "check_peek",
+                        "check_peek_any",
+                        "match_tok"
+                    ) {
                         tokens = self.get_token_args(left);
                         return (method, tokens);
                     }
@@ -785,11 +1186,23 @@ impl GrammarExtractPass.analyze_condition(cond: uni.Expr) -> tuple | None {
 # -------------------------------------------------------------------------
 # AST helpers
 # -------------------------------------------------------------------------
+"""Extract token name from a TokenKind.X expression, or None."""
+impl GrammarExtractPass.extract_token_kind(expr: uni.Expr) -> str | None {
+    if isinstance(expr, uni.AtomTrailer) and expr.is_attr {
+        if isinstance(expr.target, uni.Name) and expr.target.value == "TokenKind" {
+            if isinstance(expr.right, uni.Name) {
+                return expr.right.value;
+            }
+        }
+    }
+    return None;
+}
+
 """Extract method name from self.method access."""
-impl GrammarExtractPass.get_self_method(node: uni.Expr) -> str | None {
-    if isinstance(node, uni.AtomTrailer) and node.is_attr {
-        target = node.target;
-        right = node.right;
+impl GrammarExtractPass.get_self_method(nd: uni.Expr) -> str | None {
+    if isinstance(nd, uni.AtomTrailer) and nd.is_attr {
+        target = nd.target;
+        right = nd.right;
         is_self = False;
         if isinstance(target, uni.SpecialVarRef) {
             is_self = target.value == "self";
@@ -836,20 +1249,182 @@ impl GrammarExtractPass.get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | Non
 # -------------------------------------------------------------------------
 # Output
 # -------------------------------------------------------------------------
+"""Format a rule with Black-style line-breaking.
+
+Short rules stay on one line. Long rules break after ::= with
+4-space indented body. Uses recursive tree-based formatting.
+"""
+impl GrammarExtractPass.format_rule_pretty(
+    rule: GrammarRule, sep: str = "::=", max_line: int = 88
+) -> str {
+    body = GrammarExtractPass.format_ebnf(self, rule.body);
+    prefix = f"{rule.name} {sep} ";
+    if len(prefix + body) <= max_line {
+        return prefix + body;
+    }
+    return f"{rule.name} {sep}\n" + self.format_expr_pretty(rule.body, 4, max_line);
+}
+
+"""Format a grammar expression with Black-style indentation.
+
+Tries flat rendering first. If it doesn't fit, expands based on
+expression type with fixed 4-space indent increments.
+"""
+impl GrammarExtractPass.format_expr_pretty(
+    expr: GExpr, indent: int, max_line: int
+) -> str {
+    pad = " " * indent;
+    flat = GrammarExtractPass.format_ebnf(self, expr);
+    if len(pad) + len(flat) <= max_line {
+        return pad + flat;
+    }
+    if isinstance(expr, GAlt) {
+        return self.format_alt_pretty(expr.choices, indent, max_line);
+    }
+    if isinstance(expr, GSeq) {
+        return self.format_seq_pretty(expr.items, indent, max_line);
+    }
+    if isinstance(expr, GOpt) {
+        return self.format_group_pretty(expr.inner, indent, max_line, "?");
+    }
+    if isinstance(expr, GStar) {
+        return self.format_group_pretty(expr.inner, indent, max_line, "*");
+    }
+    return pad + flat;
+}
+
+"""Format alternatives, one per line with | prefix for 2nd+."""
+impl GrammarExtractPass.format_alt_pretty(
+    choices: list, indent: int, max_line: int
+) -> str {
+    lines: list = [];
+    for (i, choice) in enumerate(choices) {
+        if i == 0 {
+            prefix = " " * indent;
+        } else {
+            prefix = " " * indent + "| ";
+        }
+        choice_flat = GrammarExtractPass.format_ebnf(self, choice);
+        if len(prefix) + len(choice_flat) <= max_line {
+            lines.append(prefix + choice_flat);
+        } else {
+            expanded = self.format_expr_pretty(choice, len(prefix), max_line);
+            exp_lines = expanded.split("\n");
+            lines.append(prefix + exp_lines[0].lstrip());
+            for el in exp_lines[1:] {
+                lines.append(el);
+            }
+        }
+    }
+    return "\n".join(lines);
+}
+
+"""Format a sequence by greedily packing items onto lines.
+
+When an item (GOpt/GStar with complex inner, or GAlt) needs multi-line
+expansion, opens ( on the current line, formats inner at indent+4,
+and closes ) at indent.
+"""
+impl GrammarExtractPass.format_seq_pretty(
+    items: list, indent: int, max_line: int
+) -> str {
+    pad = " " * indent;
+    lines: list = [];
+    cur = pad;
+    for item in items {
+        item_flat = GrammarExtractPass.format_ebnf(self, item);
+        if isinstance(item, GAlt) and len(item.choices) > 1 {
+            item_flat = f"({item_flat})";
+        }
+        # Try to append to current line
+        if cur == pad {
+            candidate = cur + item_flat;
+        } else {
+            candidate = cur + " " + item_flat;
+        }
+        if len(candidate) <= max_line {
+            cur = candidate;
+            continue;
+        }
+        # Doesn't fit. Try starting on a new line.
+        if len(pad + item_flat) <= max_line {
+            if cur != pad {
+                lines.append(cur);
+            }
+            cur = pad + item_flat;
+            continue;
+        }
+        # Item needs multi-line expansion
+        group_inner: GExpr | None = None;
+        suffix = "";
+        if isinstance(item, GOpt) and isinstance(item.inner, (GAlt, GSeq)) {
+            group_inner = item.inner;
+            suffix = "?";
+        } elif isinstance(item, GStar) and isinstance(item.inner, (GAlt, GSeq)) {
+            group_inner = item.inner;
+            suffix = "*";
+        } elif isinstance(item, GAlt) and len(item.choices) > 1 {
+            group_inner = item;
+            suffix = "";
+        }
+        if group_inner is not None {
+            # Put ( on current line
+            if cur != pad {
+                lines.append(cur + " (");
+            } else {
+                lines.append(pad + "(");
+            }
+            # Format inner at indent + 4
+            inner_str = self.format_expr_pretty(group_inner, indent + 4, max_line);
+            lines.append(inner_str);
+            cur = pad + ")" + suffix;
+        } else {
+            if cur != pad {
+                lines.append(cur);
+            }
+            expanded = self.format_expr_pretty(item, indent, max_line);
+            lines.append(expanded);
+            cur = pad;
+        }
+    }
+    if cur != pad {
+        lines.append(cur);
+    }
+    return "\n".join(lines);
+}
+
+"""Format GOpt/GStar: try inline (inner)suffix, else expand."""
+impl GrammarExtractPass.format_group_pretty(
+    inner: GExpr, indent: int, max_line: int, suffix: str
+) -> str {
+    pad = " " * indent;
+    inner_flat = GrammarExtractPass.format_ebnf(self, inner);
+    needs_parens = isinstance(inner, (GAlt, GSeq));
+    if not needs_parens {
+        return pad + inner_flat + suffix;
+    }
+    inline = f"({inner_flat}){suffix}";
+    if len(pad) + len(inline) <= max_line {
+        return pad + inline;
+    }
+    inner_str = self.format_expr_pretty(inner, indent + 4, max_line);
+    return f"{pad}(\n{inner_str}\n{pad}){suffix}";
+}
+
 """Emit all extracted rules in EBNF format."""
 impl GrammarExtractPass.emit_ebnf -> str {
     lines: list = [];
     for rule in self.rules {
-        lines.append(rule.to_ebnf());
+        lines.append(self.format_rule_pretty(rule, "::=", 88));
     }
-    return "\n".join(lines);
+    return "\n\n".join(lines);
 }
 
 """Emit all extracted rules in Lark format."""
 impl GrammarExtractPass.emit_lark -> str {
     lines: list = [];
     for rule in self.rules {
-        lines.append(rule.to_lark());
+        lines.append(self.format_rule_pretty(rule, ":", 88));
     }
-    return "\n".join(lines);
+    return "\n\n".join(lines);
 }

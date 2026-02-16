@@ -101,7 +101,10 @@ The `@restspec` decorator customizes how walkers and functions are exposed as RE
 |--------|------|---------|-------------|
 | `method` | `HTTPMethod` | `POST` | HTTP method for the endpoint |
 | `path` | `str` | `""` (auto-generated) | Custom URL path for the endpoint |
-| `webhook` | `bool` | `False` | Expose as a webhook endpoint instead of a regular walker endpoint |
+| `protocol` | `APIProtocol` | `APIProtocol.HTTP` | Protocol for the endpoint (`HTTP`, `WEBHOOK`, or `WEBSOCKET`) |
+| `broadcast` | `bool` | `False` | Broadcast responses to all connected WebSocket clients (only valid with `WEBSOCKET` protocol) |
+
+> **Note:** `APIProtocol` and `restspec` are builtins and do not require an import statement. `HTTPMethod` must be imported with `import from http { HTTPMethod }`.
 
 ### Custom HTTP Method
 
@@ -997,6 +1000,99 @@ When server is running:
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
+
+---
+
+## Prometheus Metrics
+
+jac-scale provides built-in Prometheus metrics collection for monitoring HTTP requests and walker execution. When enabled, a `/metrics` endpoint is automatically registered for Prometheus to scrape.
+
+### Configuration
+
+Configure metrics in `jac.toml`:
+
+```toml
+[plugins.scale.metrics]
+enabled = true                  # Enable metrics collection and /metrics endpoint
+endpoint = "/metrics"           # Prometheus scrape endpoint path
+namespace = "myapp"             # Metrics namespace prefix
+walker_metrics = true           # Enable per-walker execution timing
+histogram_buckets = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 10.0]
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable Prometheus metrics collection and `/metrics` endpoint |
+| `endpoint` | string | `"/metrics"` | Path for the Prometheus scrape endpoint |
+| `namespace` | string | `"jac_scale"` | Metrics namespace prefix |
+| `walker_metrics` | bool | `false` | Enable walker execution timing metrics |
+| `histogram_buckets` | list | `[0.005, ..., 10.0]` | Histogram bucket boundaries in seconds |
+
+> **Note:** If `namespace` is not set, it is derived from the Kubernetes namespace config (sanitized) or defaults to `"jac_scale"`.
+
+### Exposed Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `{namespace}_http_requests_total` | Counter | `method`, `path`, `status_code` | Total HTTP requests processed |
+| `{namespace}_http_request_duration_seconds` | Histogram | `method`, `path` | HTTP request latency in seconds |
+| `{namespace}_http_requests_in_progress` | Gauge | -- | Concurrent HTTP requests |
+| `{namespace}_walker_duration_seconds` | Histogram | `walker_name`, `success` | Walker execution duration (only when `walker_metrics=true`) |
+
+### Usage
+
+```bash
+# Scrape metrics
+curl http://localhost:8000/metrics
+```
+
+The metrics endpoint is auto-registered as a GET route with OpenAPI tag "Monitoring". Requests to the metrics endpoint itself are excluded from tracking.
+
+---
+
+## Kubernetes Secrets
+
+Manage sensitive environment variables securely in Kubernetes deployments using the `[plugins.scale.secrets]` section.
+
+### Configuration
+
+```toml
+[plugins.scale.secrets]
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+DATABASE_PASSWORD = "${DB_PASS}"
+STATIC_VALUE = "hardcoded-value"
+```
+
+Values using `${ENV_VAR}` syntax are resolved from the local environment at deploy time. The resolved key-value pairs are created as a proper Kubernetes Secret (`{app_name}-secrets`) and injected into pods via `envFrom.secretRef`.
+
+### How It Works
+
+1. At `jac start --scale`, environment variable references (`${...}`) are resolved
+2. A Kubernetes `Opaque` Secret named `{app_name}-secrets` is created (or updated if it already exists)
+3. The Secret is attached to the deployment pod spec via `envFrom.secretRef`
+4. All keys become environment variables inside the container
+5. On `jac destroy`, the Secret is automatically cleaned up
+
+### Example
+
+```toml
+# jac.toml
+[plugins.scale.secrets]
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+MONGO_PASSWORD = "${MONGO_PASSWORD}"
+JWT_SECRET = "${JWT_SECRET}"
+```
+
+```bash
+# Set local env vars, then deploy
+export OPENAI_API_KEY="sk-..."
+export MONGO_PASSWORD="secret123"
+export JWT_SECRET="my-jwt-key"
+
+jac start app.jac --scale --build
+```
+
+This eliminates the need for manual `kubectl create secret` commands after deployment.
 
 ---
 

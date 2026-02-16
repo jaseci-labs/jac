@@ -46,6 +46,7 @@ impl SemTokManager.gen_sem_tok_node(
     } except Exception as e {
         logger.error(f"Error generating semantic token nodes: {e}");
     }
+    tokens.sort(key=lambda x: Any : (x[0].line, x[0].character));
     return tokens;
 }
 

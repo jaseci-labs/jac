@@ -85,12 +85,12 @@ def example() {
 ### 1 Test Blocks
 
 ```jac
-test addition_works {
+test "addition works" {
     result = add(2, 3);
     assert result == 5;
 }
 
-test string_operations {
+test "string operations" {
     s = "hello";
     assert len(s) == 5;
     assert "ell" in s;
@@ -101,7 +101,7 @@ test string_operations {
 ### 2 Testing Walkers
 
 ```jac
-test walker_collects_data {
+test "walker collects data" {
     # Setup graph
     root ++> DataNode(value=1);
     root ++> DataNode(value=2);
@@ -119,7 +119,7 @@ test walker_collects_data {
 ### 3 Float Comparison
 
 ```jac
-test float_comparison {
+test "float comparison" {
     result = 0.1 + 0.2;
     assert almostEqual(result, 0.3, places=10);
 }
@@ -132,7 +132,7 @@ For API testing without starting a server:
 ```jac
 import from jaclang.testing { JacTestClient }
 
-test api_endpoints {
+test "api endpoints" {
     client = JacTestClient.from_file("main.jac");
 
     # Register and login

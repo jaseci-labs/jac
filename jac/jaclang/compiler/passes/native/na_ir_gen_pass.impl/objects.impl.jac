@@ -121,8 +121,8 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 }
 
 """Register a struct type — define its field layout from has declarations."""
-impl NaIRGenPass._codegen_archetype(`node: uni.Archetype) -> None {
-    arch_name = (`node).name.value if (`node).name else "unknown";
+impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
+    arch_name = (nd).name.value if (nd).name else "unknown";
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
         return;
@@ -161,8 +161,8 @@ impl NaIRGenPass._codegen_archetype(`node: uni.Archetype) -> None {
         }
     }
     # Add own fields from ArchHas nodes
-    if (`node).body is not None {
-        for stmt in (`node).body {
+    if (nd).body is not None {
+        for stmt in (nd).body {
             if isinstance(stmt, uni.ArchHas) {
                 for var in stmt.vars {
                     fname = var.name.value if var.name else "field";
@@ -324,8 +324,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""
-impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None) {
-    type_name = self._get_name(node.target);
+impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
+    type_name = self._get_name(nd.target);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -364,7 +364,7 @@ impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None)
     field_defaults = self.struct_field_defaults.get(type_name, {});
     # Track which fields were explicitly set
     set_fields: set[str] = set();
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
@@ -433,9 +433,17 @@ impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None)
     return obj_ptr;
 }
 
-"""Generate method call: obj.method(args)."""
-impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
-    trailer = node.target;
+"""Generate method call: obj.method(args).
+
+TODO: Wire in the primitive emitter dispatch from
+jaclang.compiler.passes.native.primitives_native. The current
+implementation uses type-specific helper dicts (list_helpers,
+dict_helpers, set_helpers) with LLVM IR values. The string-based
+emitter interface would need to be adapted to return IR builder
+calls or function references instead of source text strings.
+"""
+impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
@@ -453,7 +461,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
             if list_val is None {
                 return None;
             }
-            params = node.params or [];
+            params = nd.params or [];
             if params {
                 val = self._codegen_expr(params[0]);
                 if val is not None {
@@ -474,7 +482,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
             if set_val is None {
                 return None;
             }
-            params = node.params or [];
+            params = nd.params or [];
             if params {
                 val = self._codegen_expr(params[0]);
                 if val is not None {
@@ -494,7 +502,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
                 return self._codegen_str_strip(str_val);
             }
             if method_name == "split" {
-                params = node.params or [];
+                params = nd.params or [];
                 if params {
                     sep_val = self._codegen_expr(params[0]);
                     if sep_val is not None {
@@ -521,7 +529,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
                 if elem_type_name is not None and method_name == "append" {
                     helpers = self.list_helpers.get(elem_type_name);
                     if helpers is not None {
-                        params = node.params or [];
+                        params = nd.params or [];
                         if params {
                             val = self._codegen_expr(params[0]);
                             if val is not None {
@@ -572,7 +580,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Build args: [self_ptr, arg1, arg2, ...]
     args: list[ir.Value] = [obj_val];
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         val = self._codegen_expr(param);
         if val is not None {

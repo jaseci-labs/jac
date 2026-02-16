@@ -232,7 +232,7 @@ impl NaIRGenPass._emit_file_helpers -> None {
 
 # ─── open() Builtin ─────────────────────────────────────────
 """Emit code for open(path, mode) builtin: allocate File struct, call fopen."""
-impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
+impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
@@ -243,7 +243,7 @@ impl NaIRGenPass._emit_open(node: uni.FuncCall) -> (ir.Value | None) {
     self._emit_file_helpers();
     file_ptr_type = file_struct.as_pointer();
     # Get arguments: path (required), mode (optional, default "r")
-    params = node.params or [];
+    params = nd.params or [];
     if not params {
         return None;
     }

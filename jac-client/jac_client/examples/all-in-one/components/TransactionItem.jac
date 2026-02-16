@@ -33,7 +33,7 @@ cl {
                         <span className="tx-description">
                             {description}{(clientName != None and isIncome)
                             and <span className="tx-client">
-                                • {clientName}
+                                •{clientName}
                             </span>}
                         </span>
                         <span className="tx-date">

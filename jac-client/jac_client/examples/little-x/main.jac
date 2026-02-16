@@ -250,10 +250,10 @@ cl def TweetCard(
                     onclick={like_tweet_action(tweet.id)}
                     style={{"padding": "5px 10px", "cursor": "pointer"}}
                 >
-                    Like ({tweet.likes.length})
+                    Like ({len(tweet.likes)})
                 </button>
                 <button style={{"padding": "5px 10px"}}>
-                    Comment ({tweet.comments.length})
+                    Comment ({len(tweet.comments)})
                 </button>
             </div>
         </div>;
@@ -309,7 +309,7 @@ cl def LoginForm -> JsxElement {
             title="Login to LittleX"
             style={{"maxWidth": "400px", "margin": "50px auto"}}
         >
-            <Card.Meta title={randomSuggestion} description={result} />
+            <Card.Meta title={randomSuggestion} description={result}/>
             <form onSubmit={handle_login}>
                 <div style={{"marginBottom": "15px"}}>
                     <label style={{"display": "block", "marginBottom": "5px"}}>
@@ -486,11 +486,11 @@ cl async def handle_signup(event: any) -> None {
         alert("Passwords do not match!");
         return;
     }
-    if username.length < 3 {
+    if len(username) < 3 {
         alert("Username must be at least 3 characters long.");
         return;
     }
-    if password.length < 6 {
+    if len(password) < 6 {
         alert("Password must be at least 6 characters long.");
         return;
     }
