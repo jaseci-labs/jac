@@ -37,8 +37,11 @@ a diagnostic and sets argumentErrors to true.
 """
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
+    is_unbound_call = self._is_unbound_method_call(expr);
     if isinstance(caller_type, types.FunctionType) {
-        arg_param_match = self.match_args_to_params(expr.params, expr, caller_type);
+        arg_param_match = self.match_args_to_params(
+            expr.params, expr, caller_type, is_unbound_call=is_unbound_call
+        );
         if not arg_param_match.argument_errors {
             self.validate_arg_types(arg_param_match);
         }
@@ -47,7 +50,11 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     if isinstance(caller_type, types.OverloadedType) {
         for overload in caller_type.overloads {
             arg_param_match = self.match_args_to_params(
-                expr.params, expr, overload, checking_overload=True
+                expr.params,
+                expr,
+                overload,
+                checking_overload=True,
+                is_unbound_call=is_unbound_call
             );
 
             if not arg_param_match.argument_errors {
@@ -132,15 +139,37 @@ impl TypeEvaluator.match_args_to_params(
     node_for_error: uni.Expr | None,
     func_type: types.FunctionType,
     checking_overload: bool = False,
+    is_unbound_call: bool = False
 ) -> MatchArgsToParamsResult {
     arg_params: dict[uni.Expr | uni.KWPair, types.Parameter | None] = {};
     argument_errors = False;
     params_to_match = func_type.parameters.copy();
-    if (
-        len(func_type.parameters) >= 1
-        and (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
-    ) {
-        params_to_match.pop(0);
+    if is_unbound_call {
+        # Unbound call: caller provides self explicitly
+        # For obj types without explicit self param, inject synthetic self
+        if (
+            len(func_type.parameters) == 0
+            or not (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
+        ) {
+            # Inject synthetic self parameter for matching
+            synthetic_self = types.Parameter(
+                name="self",
+                category=types.ParameterCategory.Positional,
+                param_type=None,
+                is_self=True,
+                param_kind=types.ParamKind.NORMAL,
+            );
+            params_to_match.insert(0, synthetic_self);
+        }
+        # For class types with explicit self, keep it in params_to_match (don't pop)
+    } else {
+        # Bound call: pop self/cls as usual
+        if (
+            len(func_type.parameters) >= 1
+            and (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
+        ) {
+            params_to_match.pop(0);
+        }
     }
     param_tracker = type_utils.ParamAssignmentTracker(params_to_match);
     for arg in arg_nodes {
