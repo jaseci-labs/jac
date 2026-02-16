@@ -2,8 +2,7 @@ access_tag ::= (COLON (KW_PUB | KW_PRIV | KW_PROT)?)?
 
 module ::= STRING? element_stmt*
 
-expression ::=
-    KW_LAMBDA lambda_expr | concurrent_expr (KW_IF expression KW_ELSE expression)?
+expression ::= lambda_expr | concurrent_expr (KW_IF expression KW_ELSE expression)?
 
 concurrent_expr ::= (KW_FLOW | KW_WAIT) walrus_assign | walrus_assign
 
@@ -112,18 +111,13 @@ filter_compr_inner ::=
 
 assign_compr_inner ::= EQ (NAME EQ expression (COMMA NAME EQ expression)*)? RPAREN
 
-atom ::=
+atom_literal ::= (INT | HEX | BIN | OCT | FLOAT | BOOL | NULL | ELLIPSIS)?
+
+multistring ::= (NAME | STRING | fstring) (NAME | STRING | fstring)*
+
+builtin_type ::=
     (
-        INT
-        | HEX
-        | BIN
-        | OCT
-        | FLOAT
-        | STRING (NAME | STRING | fstring)*
-        | BOOL
-        | NULL
-        | ELLIPSIS
-        | TYP_STRING
+        TYP_STRING
         | TYP_INT
         | TYP_FLOAT
         | TYP_LIST
@@ -134,7 +128,11 @@ atom ::=
         | TYP_BYTES
         | TYP_ANY
         | TYP_TYPE
-        | KW_SELF
+    )?
+
+special_ref ::=
+    (
+        KW_SELF
         | KW_SUPER
         | KW_HERE
         | KW_ROOT
@@ -148,7 +146,14 @@ atom ::=
         | KW_OBJECT
         | KW_CLASS
         | KW_ENUM
-        | NAME (NAME | STRING | fstring)*
+    )?
+
+atom ::=
+    (
+        atom_literal
+        | multistring
+        | builtin_type
+        | special_ref
         | (NAME | KWESC_NAME) NAME?
         | STAR_MUL expression
         | STAR_POW expression
@@ -195,17 +200,7 @@ atom ::=
                 )?
           )? (edge_ref_chain | list_or_compr)
         | LBRACE dict_or_set
-        | (
-              F_DQ_START
-              | F_SQ_START
-              | F_TDQ_START
-              | F_TSQ_START
-              | RF_DQ_START
-              | RF_SQ_START
-              | RF_TDQ_START
-              | RF_TSQ_START
-          ) fstring (STRING | fstring)*
-        | (JSX_OPEN_START | JSX_FRAG_OPEN) jsx_element
+        | jsx_element
     )?
 
 fstring ::=
@@ -241,21 +236,7 @@ edge_ref_chain ::=
         ) atomic_chain
     )? (
         (ARROW_R | ARROW_L | ARROW_BI) (ARROW_L | ARROW_BI)?
-        | RETURN_HINT (
-              (
-                  TYP_STRING
-                  | TYP_INT
-                  | TYP_FLOAT
-                  | TYP_LIST
-                  | TYP_TUPLE
-                  | TYP_SET
-                  | TYP_DICT
-                  | TYP_BOOL
-                  | TYP_BYTES
-                  | TYP_ANY
-                  | TYP_TYPE
-              ) atom
-          )? (COLON (compare (COMMA compare)*)?)? ARROW_R_P2
+        | RETURN_HINT atom? (COLON (compare (COMMA compare)*)?)? ARROW_R_P2
         | ARROW_L_P1 atom (COLON (compare (COMMA compare)*)?)? ARROW_L_P2
         | ARROW_R_P1 atom ARROW_R_P2
     ) (
@@ -265,7 +246,7 @@ edge_ref_chain ::=
 
 dict_or_set ::=
     RBRACE
-    | STAR_POW dict_with_spread
+    | dict_with_spread
     | expression (
           COLON expression (
               KW_FOR comprehension_clauses RBRACE
@@ -323,35 +304,31 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::=
-    (
-        JSX_TEXT jsx_child?
-        | LBRACE expression RBRACE
-        | (JSX_OPEN_START | JSX_FRAG_OPEN) jsx_element
-    )?
+jsx_child ::= (JSX_TEXT jsx_child? | LBRACE expression RBRACE | jsx_element)?
 
 element_stmt ::=
-    SEMI* (
-        KW_CLIENT (LBRACE client_block | element_stmt)?
-        | KW_SERVER (LBRACE server_block | element_stmt)?
-        | KW_NATIVE (LBRACE native_block | element_stmt)?
-        | (KW_IMPORT | KW_INCLUDE) import_stmt
-        | (KW_OBJECT | KW_NODE | KW_EDGE | KW_WALKER | KW_CLASS) archetype
-        | KW_ENUM enum
+    (
+        SEMI
+        | KW_CLIENT (client_block | element_stmt)?
+        | KW_SERVER (server_block | element_stmt)?
+        | KW_NATIVE (native_block | element_stmt)?
+        | import_stmt
+        | archetype
+        | enum
         | STRING test
-        | KW_TEST test
+        | test
         | STRING (DECOR_OP atomic_chain)* KW_ASYNC* KW_ABSTRACT?
           (archetype | enum | impl_def | ability)
         | STRING enum
-        | (KW_DEF | KW_CAN) ability
+        | ability
         | STRING global_var
-        | KW_GLOBAL global_var
+        | global_var
         | STRING impl_def
-        | KW_IMPL impl_def
-        | KW_SEM sem_def
+        | impl_def
+        | sem_def
         | PYNLINE
         | STRING module_code
-        | KW_WITH module_code
+        | module_code
         | DECOR_OP (DECOR_OP atomic_chain)* KW_ASYNC*
           (ability | enum | impl_def | archetype)
         | KW_ASYNC KW_ASYNC* (ability | archetype)
@@ -368,92 +345,60 @@ module_code ::=
 
 code_block_stmts ::= (statement SEMI?)*
 
+ctrl_stmt ::= ((KW_BREAK | KW_CONTINUE | KW_SKIP) SEMI | KW_DISENGAGE SEMI)?
+
 statement ::=
     SEMI
-    | (KW_IMPORT | KW_INCLUDE) import_stmt
-    | KW_IF if_stmt
-    | KW_WHILE while_stmt
-    | KW_ASYNC for_stmt
-    | KW_ASYNC with_stmt
-    | KW_FOR for_stmt
-    | KW_TRY try_stmt
-    | KW_WITH with_stmt
-    | KW_MATCH match_stmt
-    | KW_SWITCH switch_stmt
-    | KW_RETURN return_stmt
-    | KW_YIELD yield_stmt SEMI?
-    | KW_BREAK SEMI?
-    | KW_CONTINUE SEMI?
-    | KW_SKIP SEMI?
-    | KW_RAISE raise_stmt
-    | KW_ASSERT assert_stmt
-    | KW_DELETE delete_stmt
-    | KW_GLOBAL_REF global_stmt
-    | KW_NONLOCAL nonlocal_stmt
-    | KW_VISIT visit_stmt
-    | KW_DISENGAGE SEMI?
-    | KW_REPORT report_stmt
-    | (KW_DEF | KW_CAN | KW_ASYNC) ability
-    | DECOR_OP ability
-    | (KW_OBJECT | KW_NODE | KW_EDGE | KW_WALKER | KW_CLASS) archetype
-    | KW_ENUM enum
-    | KW_IMPL impl_def
-    | KW_HAS has_stmt
+    | import_stmt
+    | if_stmt
+    | while_stmt
+    | for_stmt
+    | with_stmt
+    | try_stmt
+    | match_stmt
+    | switch_stmt
+    | return_stmt
+    | KW_YIELD yield_stmt SEMI
+    | ctrl_stmt
+    | raise_stmt
+    | assert_stmt
+    | delete_stmt
+    | global_stmt
+    | nonlocal_stmt
+    | visit_stmt
+    | report_stmt
+    | ability
+    | archetype
+    | enum
+    | impl_def
+    | has_stmt
     | PYNLINE
+    | KW_ELIF
+    | KW_ELSE
+    | KW_EXCEPT
+    | KW_FINALLY
+    | KW_CASE
     | RETURN_HINT expression LBRACE code_block_stmts RBRACE
-    | expression (
-          (
-              EQ
-              | COLON
-              | ADD_EQ
-              | SUB_EQ
-              | MUL_EQ
-              | DIV_EQ
-              | FLOOR_DIV_EQ
-              | MOD_EQ
-              | STAR_POW_EQ
-              | MATMUL_EQ
-              | BW_AND_EQ
-              | BW_OR_EQ
-              | BW_XOR_EQ
-              | LSHIFT_EQ
-              | RSHIFT_EQ
-          ) assignment_with_target
-          | SEMI?
-      )
+    | expression (assignment_with_target | SEMI?)
 
-if_stmt ::=
-    KW_IF expression LBRACE code_block_stmts RBRACE
-    (KW_ELIF elif_stmt | KW_ELSE else_stmt)?
+if_stmt ::= KW_IF expression LBRACE code_block_stmts RBRACE (elif_stmt | else_stmt)?
 
-elif_stmt ::=
-    KW_ELIF expression LBRACE code_block_stmts RBRACE
-    (KW_ELIF elif_stmt | KW_ELSE else_stmt)?
+elif_stmt ::= KW_ELIF expression LBRACE code_block_stmts RBRACE (elif_stmt | else_stmt)?
 
 else_stmt ::= KW_ELSE LBRACE code_block_stmts RBRACE
 
-while_stmt ::= KW_WHILE expression LBRACE code_block_stmts RBRACE (KW_ELSE else_stmt)?
+while_stmt ::= KW_WHILE expression LBRACE code_block_stmts RBRACE else_stmt?
 
 for_stmt ::=
     KW_ASYNC? KW_FOR atomic_chain (
-        EQ expression KW_TO pipe KW_BY atomic_chain (
-            (
-                ADD_EQ
-                | SUB_EQ
-                | MUL_EQ
-                | DIV_EQ
-                | FLOOR_DIV_EQ
-                | MOD_EQ
-                | STAR_POW_EQ
-                | MATMUL_EQ
-            ) assignment_with_target
-        )? LBRACE code_block_stmts RBRACE (KW_ELSE else_stmt)?
-        | KW_IN expression LBRACE code_block_stmts RBRACE (KW_ELSE else_stmt)?
+        EQ expression KW_TO pipe KW_BY atomic_chain assignment_with_target? LBRACE
+        code_block_stmts RBRACE else_stmt?
+        | KW_IN expression LBRACE code_block_stmts RBRACE else_stmt?
     )
 
 try_stmt ::=
-    KW_TRY LBRACE code_block_stmts RBRACE (KW_EXCEPT except_handler)*
-    (KW_ELSE else_stmt)? (KW_FINALLY LBRACE code_block_stmts RBRACE)?
+    KW_TRY LBRACE code_block_stmts RBRACE (KW_EXCEPT except_handler)* else_stmt?
+    (KW_FINALLY LBRACE code_block_stmts RBRACE)?
 
 except_handler ::= KW_EXCEPT expression (KW_AS NAME)? LBRACE code_block_stmts RBRACE
 
@@ -470,40 +415,31 @@ pattern ::= or_pattern (KW_AS NAME)?
 or_pattern ::= single_pattern (BW_OR single_pattern)*
 
 single_pattern ::=
-    LSQUARE sequence_pattern
-    | LPAREN tuple_sequence_pattern
-    | LBRACE mapping_pattern
+    sequence_pattern
+    | tuple_sequence_pattern
+    | mapping_pattern
     | BOOL
     | NULL
     | INT
     | FLOAT
-    | (
-          STRING
-          | F_DQ_START
-          | F_SQ_START
-          | F_TDQ_START
-          | F_TSQ_START
-          | RF_DQ_START
-          | RF_SQ_START
-          | RF_TDQ_START
-          | RF_TSQ_START
-      ) (STRING | fstring) (STRING | fstring)*
-    | MINUS (INT | FLOAT)?
-    | (DOT (DOT NAME)* (LPAREN class_pattern_args)? | LPAREN class_pattern_args)?
-    | (
-          TYP_STRING
-          | TYP_INT
-          | TYP_FLOAT
-          | TYP_LIST
-          | TYP_TUPLE
-          | TYP_SET
-          | TYP_DICT
-          | TYP_BOOL
-          | TYP_BYTES
-          | TYP_ANY
-          | TYP_TYPE
-      ) (LPAREN class_pattern_args)?
-    | expression
+    | multistring (
+          MINUS (INT | FLOAT)?
+          | (DOT (DOT NAME)* class_pattern_args? | class_pattern_args)?
+          | (
+                TYP_STRING
+                | TYP_INT
+                | TYP_FLOAT
+                | TYP_LIST
+                | TYP_TUPLE
+                | TYP_SET
+                | TYP_DICT
+                | TYP_BOOL
+                | TYP_BYTES
+                | TYP_ANY
+                | TYP_TYPE
+            ) class_pattern_args?
+          | expression
+      )
 
 sequence_pattern ::= LSQUARE ((STAR_MUL NAME | pattern) COMMA?)* RSQUARE
 
@@ -512,39 +448,23 @@ tuple_sequence_pattern ::= LPAREN ((STAR_MUL NAME | pattern) COMMA?)* RPAREN
 mapping_pattern ::=
     LBRACE ((STAR_POW NAME | literal_for_mapping COLON pattern) COMMA?)* RBRACE
 
-literal_for_mapping ::=
-    (
-        INT
-        | FLOAT
-        | (
-              STRING
-              | F_DQ_START
-              | F_SQ_START
-              | F_TDQ_START
-              | F_TSQ_START
-              | RF_DQ_START
-              | RF_SQ_START
-              | RF_TDQ_START
-              | RF_TSQ_START
-          ) (STRING | fstring) (STRING | fstring)*
-        | MINUS (INT | FLOAT)?
-    )?
+literal_for_mapping ::= INT | FLOAT | multistring (MINUS (INT | FLOAT)?)?
 
 class_pattern_args ::= LPAREN ((EQ EQ pattern | pattern) COMMA?)* RPAREN
 
-return_stmt ::= KW_RETURN expression? SEMI?
+return_stmt ::= KW_RETURN expression? SEMI
 
 yield_stmt ::= KW_YIELD KW_FROM? expression?
 
-raise_stmt ::= KW_RAISE expression? (KW_FROM expression)? SEMI?
+raise_stmt ::= KW_RAISE expression? (KW_FROM expression)? SEMI
 
-assert_stmt ::= KW_ASSERT expression (COMMA expression)? SEMI?
+assert_stmt ::= KW_ASSERT expression (COMMA expression)? SEMI
 
-delete_stmt ::= KW_DELETE expression SEMI?
+delete_stmt ::= KW_DELETE expression SEMI
 
-global_stmt ::= KW_GLOBAL_REF NAME (COMMA NAME)* SEMI?
+global_stmt ::= KW_GLOBAL_REF NAME (COMMA NAME)* SEMI
 
-nonlocal_stmt ::= KW_NONLOCAL NAME (COMMA NAME)* SEMI?
+nonlocal_stmt ::= KW_NONLOCAL NAME (COMMA NAME)* SEMI
 
 assignment_with_target ::=
     (COLON pipe)? (
@@ -567,15 +487,16 @@ assignment_with_target ::=
     ) SEMI?
 
 import_stmt ::=
+    (KW_INCLUDE | KW_IMPORT)
     (KW_FROM ((DOT | ELLIPSIS) ELLIPSIS?*)? (STRING | (DOT NAME)*)?)? (
         LBRACE ((STAR_MUL | KW_DEFAULT | NAME) (KW_AS NAME)?)* RBRACE
         | (STRING | (DOT NAME)*)? (KW_AS NAME)?
-    ) SEMI?
+    ) SEMI
 
 archetype ::=
     (DECOR_OP atomic_chain)* KW_ASYNC? KW_ABSTRACT? access_tag NAME
     (LPAREN (atomic_chain (COMMA atomic_chain)*)? RPAREN)?
-    (LBRACE archetype_member* RBRACE | SEMI?)
+    (LBRACE archetype_member* RBRACE | SEMI)
 
 archetype_member ::=
     SEMI* STRING? (
@@ -646,7 +567,7 @@ impl_def ::=
         LPAREN (KW_SELF | RPAREN)? func_signature (atomic_chain (COMMA atomic_chain)*)?
         RPAREN
         | KW_WITH
-        | RETURN_HINT func_signature
+        | func_signature
     )? (
         LBRACE COMMA? (
             COLON (LPAREN | LBRACE | LSQUARE | RPAREN | RBRACE | RSQUARE)? (
@@ -667,6 +588,6 @@ sem_def ::= KW_SEM impl_target_name (DOT impl_target_name)* (EQ | KW_IS) STRING 
 
 dotted_name ::= NAME (DOT NAME)*
 
-visit_stmt ::= KW_VISIT (COLON expression COLON)? expression (KW_ELSE else_stmt | SEMI)?
+visit_stmt ::= KW_VISIT (COLON expression COLON)? expression (else_stmt | SEMI)?
 
 report_stmt ::= KW_REPORT expression SEMI?
