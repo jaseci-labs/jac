@@ -116,7 +116,7 @@ jobs:
           git commit -m "${{ steps.release.outputs.pr_title }}"
           git push origin ${{ steps.release.outputs.branch_name }}
 
-      - name: Create PR and enable auto-merge
+      - name: Create PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -127,4 +127,3 @@ jobs:
             --base main \
             --head "${{ steps.release.outputs.branch_name }}")
           echo "Created PR: $PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
