@@ -87,6 +87,7 @@ core_language_features.jac
 corelib_fmt.jac
 custom_access_validation.jac
 data_spatial_types.jac
+db.impl.jac
 decorator_stack.jac
 def_impl_match_pass.jac
 defn_decl_mismatch.jac
@@ -94,6 +95,7 @@ dep_registry.impl.jac
 dependencies.impl.jac
 desktop_config.impl.jac
 desktop_target.impl.jac
+diagnostics.impl.jac
 dicts.impl.jac
 doc_ir_gen_pass.impl.jac
 dynamic_archetype.jac
@@ -120,6 +122,7 @@ guess_game3.jac
 guess_game6.jac
 hash_init_check.jac
 helpers.jac
+hmr.impl.jac
 iife_functions.jac
 image_types.jac
 impl_grab.impl.jac

@@ -1240,43 +1240,43 @@ test "type_narrowing" {
 
     expected_errors = [
         """
-        fail: Dog = animal;            # <-- Error (Dog | Cat cannot assign to Dog)
+        fail: Dog = animal;  # <-- Error (Dog | Cat cannot assign to Dog)
         ^^^^^^^^^^^^^^^^^^^
         """,
         """
-        c: Cat = animal;           # <-- Error: Dog cannot be assigned to Cat
+        c: Cat = animal;  # <-- Error: Dog cannot be assigned to Cat
         ^^^^^^^^^^^^^^^^
         """,
         """
-        wrong: Dog = animal;           # <-- Error: Dog | Cat cannot assign to Dog
+        wrong: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^^^^^
         """,
         """
-        d: Dog = animal;               # <-- Error: Cat cannot assign to Dog
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^
         """,
         """
-        d: Dog = animal;           # <-- Error: Cat cannot assign to Dog
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^
         """,
         """
-        s: str = val;              # <-- Error: str | int cannot assign to str
+        s: str = val;  # <-- Error: str | int cannot assign to str
         ^^^^^^^^^^^^^
         """,
         """
-        d: Dog = animal;           # <-- Error: Dog | Cat cannot assign to Dog
+        d: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^
         """,
         """
-        d: Dog = animal;           # <-- Error: Dog | Cat cannot assign to Dog
+        d: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^
         """,
         """
-        d: Dog = animal;           # <-- Error: Cat cannot assign to Dog
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
         ^^^^^^^^^^^^^^^^
         """,
         """
-        r: Reptile = creature;     # <-- Error: Lion cannot assign to Reptile
+        r: Reptile = creature;  # <-- Error: Lion cannot assign to Reptile
         ^^^^^^^^^^^^^^^^^^^^^^
         """
     ];
