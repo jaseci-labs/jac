@@ -286,3 +286,4 @@ test_jac_auto_lint_pass.jac
 test_jac_format_pass.jac
 test_native_gen_pass.jac
 test_esast_gen_pass.jac
+test_pyfile_parse.jac
