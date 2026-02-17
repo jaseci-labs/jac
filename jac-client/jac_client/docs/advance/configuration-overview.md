@@ -162,6 +162,7 @@ debug = true      # Enable/disable debug mode (default: true)
 | `debug` | bool | `true` | When enabled, raw error output is displayed for easier debugging. Set to `false` for cleaner production error messages. |
 
 Debug mode can also be controlled via environment variable:
+
 - `JAC_DEBUG=1` or `JAC_DEBUG=true` enables debug mode regardless of config
 
 ## Configuration Loading
