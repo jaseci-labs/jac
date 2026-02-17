@@ -177,6 +177,10 @@ impl TypeEvaluator._is_unbound_method_call(expr: uni.FuncCall) -> bool {
                 if member {
                     member_type = self.get_type_of_symbol(member.symbol);
                     if isinstance(member_type, types.FunctionType) {
+                        # Static methods don't have self, so can't be unbound calls
+                        if member_type.function_flags & types.FunctionTypeFlags.StaticMethod {
+                            return False;
+                        }
                         return True;
                     }
                 }

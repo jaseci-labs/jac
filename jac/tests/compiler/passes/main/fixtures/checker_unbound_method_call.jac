@@ -56,6 +56,29 @@ obj Bird(Animal) {
 
 }
 
+# Valid: static method should NOT be treated as unbound method call
+obj Factory {
+    static def create(data: str) -> Factory;
+
+    @property
+    def runtime -> Factory {
+        return Factory.create("test");  # Valid: static method call
+    }
+}
+
+# Valid: static method with self passed as regular argument (not unbound call)
+obj Container {
+    has value: str;
+
+    static def from_container(c: Container) -> str {
+        return c.value;
+    }
+
+    def get_value -> str {
+        return Container.from_container(self);  # Valid: self is just an argument
+    }
+}
+
 with entry {
     print(Dog(name="Buddy").name);
 }
