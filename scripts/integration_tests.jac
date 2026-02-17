@@ -79,7 +79,7 @@ obj IntegrationTestRunner {
     }
 
     """Print test summary and return exit code."""
-    def summary() -> int {
+    def summary -> int {
         print(f"\n{'=' * 60}");
         print("INTEGRATION TEST SUMMARY");
         print("=" * 60);
