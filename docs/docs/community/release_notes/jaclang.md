@@ -15,6 +15,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
 - **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
 - **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
+- **Generic Primitive Emitter Interface**: Refactored the primitive codegen emitter contracts (`primitives.jac`) to use `Generic[(V, C)]` parameterization, where `V` is the backend value type and `C` is the emission context type. ES backend binds `V=str, C=ESEmitCtx`; Native backend binds `V=ir.Value, C=NativeEmitCtx`. Emitters are now stateless singletons with per-call context, and dispatch uses typed instance methods instead of static class-as-namespace calls. Added lazy emitter initialization and dispatch infrastructure to both ES and Native codegen passes.
 - 1 Minor refactors/changes.
 
 ## jaclang 0.10.2 (Latest Release)

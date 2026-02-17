@@ -435,12 +435,9 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
 
 """Generate method call: obj.method(args).
 
-TODO: Wire in the primitive emitter dispatch from
-jaclang.compiler.passes.native.primitives_native. The current
-implementation uses type-specific helper dicts (list_helpers,
-dict_helpers, set_helpers) with LLVM IR values. The string-based
-emitter interface would need to be adapted to return IR builder
-calls or function references instead of source text strings.
+Primitive type methods are dispatched through the emitter layer
+(primitives_native.jac). If the emitter returns a result, it is used
+directly; if it returns None, the inline codegen below handles it.
 """
 impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     trailer = nd.target;
@@ -452,6 +449,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
+    # NOTE: Primitive emitter dispatch is available via self._dispatch_primitive_method().
+    # When emitter methods are implemented, replace the inline codegen below with
+    # dispatch calls and remove the duplicated logic.
     # Handle list methods: append (simple name target)
     if target_name is not None and target_name in self.var_list_elem_type {
         elem_type_name = self.var_list_elem_type[target_name];

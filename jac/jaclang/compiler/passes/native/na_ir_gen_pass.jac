@@ -253,4 +253,15 @@ obj NaIRGenPass(Transform) {
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
+    # Primitive emitter dispatch
+    def _ensure_emitters -> None;
+    def _dispatch_primitive_method(
+        type_name: str,
+        method_name: str,
+        target: ir.Value,
+        args: list[ir.Value],
+        type_key: str
+    ) -> (ir.Value | None);
+
+    def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
 }
