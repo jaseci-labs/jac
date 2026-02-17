@@ -1,13 +1,12 @@
-"""Pip-style editable installer for Jac projects.
+"""Editable installer for Jac projects.
 
-This module provides functionality to install Jac projects in editable mode,
-similar to 'pip install -e .'. It reads jac.toml configuration and performs:
-- Installation of Python dependencies
-- Registration of package entry points
-- Setting up editable install via .pth files or pip editable
+This module provides functionality to install Jac projects in editable mode.
+It reads jac.toml configuration and performs:
+- Installation of Python dependencies into the project venv
+- Making the project importable via a .pth file in site-packages
+- Registering Jac plugin entry points via a .dist-info directory
 """
 
-import subprocess;
 import sys;
 import from pathlib { Path }
 import from typing { Any, TYPE_CHECKING }
@@ -29,10 +28,9 @@ obj JacPipInstaller {
     ) -> bool;
 
     def _setup_editable_install -> bool;
+    def _create_pth_file(site_packages: Path) -> None;
+    def _create_dist_info(site_packages: Path) -> None;
 }
-
-"""Generate a minimal pyproject.toml from jac.toml for pip editable install."""
-def generate_pyproject_from_jac_toml(config: "JacConfig") -> str;
 
 """Check if a package is installed in the current environment."""
 def is_package_installed(name: str) -> bool;

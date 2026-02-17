@@ -525,6 +525,15 @@ impl JacConfig.save -> None {
     } elif "dev-dependencies" in doc {
         doc["dev-dependencies"] = {};
     }
+    # Replace optional-dependencies
+    if self.optional_dependencies {
+        doc["optional-dependencies"] = {};
+        for (group, deps) in self.optional_dependencies.items() {
+            doc["optional-dependencies"][group] = dict(deps);
+        }
+    } elif "optional-dependencies" in doc {
+        del doc["optional-dependencies"];
+    }
     # Update plugin dependencies (npm, etc.)
     # Replace the entire plugin dep section to handle removals
     for (dep_type, deps) in self.plugin_dependencies.items() {
@@ -754,6 +763,7 @@ impl _parse_toml_data(
             readme=proj.get("readme", "README.md"),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),
+            keywords=proj.get("keywords", []),
             urls=proj.get("urls", {})
         );
     }
@@ -784,6 +794,19 @@ impl _parse_toml_data(
                     config.plugin_dependencies[key] = {};
                 }
                 config.plugin_dependencies[key]["dev"] = value;
+            }
+        }
+    }
+    if "optional-dependencies" in data {
+        opt_deps = data["optional-dependencies"];
+        for (group_name, group_deps) in opt_deps.items() {
+            if isinstance(group_deps, dict) {
+                config.optional_dependencies[group_name] = {};
+                for (pkg_name, pkg_version) in group_deps.items() {
+                    if isinstance(pkg_version, str) {
+                        config.optional_dependencies[group_name][pkg_name] = pkg_version;
+                    }
+                }
             }
         }
     }

@@ -21,6 +21,7 @@ obj ProjectConfig {
         readme: str = "README.md",
         jac_version: str = "",
         entry_point: str = "main.jac",
+        keywords: list[str] = [],
         urls: dict[str, str] = {};
 }
 
@@ -181,6 +182,7 @@ obj JacConfig {
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},
+        optional_dependencies: dict[str, dict[str, str]] = {},
         git_dependencies: dict[str, dict[str, str]] = {},
         plugin_dependencies: dict[str, dict[str, Any]] = {},
         scripts: dict[str, str] = {},

@@ -67,7 +67,9 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
-impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
+impl DependencyInstaller._run_pip(
+    args: list[str], cwd: Path | None = None, verbose: bool = False
+) -> tuple[int, str, str] {
     import subprocess;
     import sys;
     # Use the venv's own Python to run pip
@@ -77,21 +79,18 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
     cmd = [venv_python, "-m", "pip"] + args;
-    if self.verbose {
+    should_log = self.verbose or verbose;
+    if should_log {
         console.print(f"Running: {' '.join(cmd)}");
+        if cwd {
+            console.print(f"  in directory: {cwd}");
+        }
     }
     try {
-        if stream_output {
-            # Stream output live to terminal (like native pip install)
-            result = subprocess.run(cmd, cwd=str(cwd) if cwd else None);
-            return (result.returncode, "", "");
-        } else {
-            # Capture output for programmatic use
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, cwd=str(cwd) if cwd else None
-            );
-            return (result.returncode, result.stdout, result.stderr);
-        }
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=str(cwd) if cwd else None
+        );
+        return (result.returncode, result.stdout, result.stderr);
     } except Exception as e {
         return (1, "", str(e));
     }
@@ -175,6 +174,42 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
+}
+
+"""Install all dependencies (pip, git, and optionally dev/extras)."""
+impl DependencyInstaller.install_all(
+    deps: bool = True, include_dev: bool = False, extras: list[str] = []
+) -> bool {
+    self.ensure_venv();
+    all_specs: list[str] = [];
+    if deps {
+        all_specs.extend(self.get_pip_package_specs(include_dev=include_dev));
+        all_specs.extend(self.get_git_package_specs());
+    } elif include_dev {
+        # Only dev dependencies
+        for (name, version) in self.config.dev_dependencies.items() {
+            all_specs.append(self._make_pip_spec(name, version));
+        }
+    }
+    # Handle extras (optional dependency groups)
+    if extras and self.config.optional_dependencies {
+        for group in extras {
+            if group in self.config.optional_dependencies {
+                for (name, version) in self.config.optional_dependencies[group].items() {
+                    all_specs.append(self._make_pip_spec(name, version));
+                }
+            } else {
+                console.print(
+                    f"  Warning: Unknown extras group '{group}'", style="warning"
+                );
+            }
+        }
+    }
+    if not all_specs {
+        console.info("No dependencies to install.");
+        return True;
+    }
+    return self.install_package(all_specs);
 }
 
 impl DependencyInstaller.uninstall_package(name: str) -> bool {
