@@ -397,6 +397,15 @@ impl UniScopeNode.lookup(
             }
         }
     }
+    # If not found and we're in/under an ImplDef, check the declaration's symbol table
+    impl_def: ImplDef | None = (
+        self if isinstance(self, ImplDef) else self.find_parent_of_type(ImplDef)
+    );
+    if (impl_def and impl_def.decl_link and impl_def.decl_link.sym_tab) {
+        return impl_def.decl_link.sym_tab.lookup(
+            name, deep=True, incl_inner_scope=True
+        );
+    }
     return None;
 }
 

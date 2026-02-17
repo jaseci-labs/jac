@@ -72,7 +72,7 @@ def test_all_type_str_methods() -> None:
 
     # Test FunctionType - anonymous function
     func4 = types.FunctionType()
-    assert str(func4) == "<function <anonymous>()>"
+    assert str(func4) == "Callable[[], Unknown]"
 
     # Test OverloadedType - with no overloads
     overload1 = types.OverloadedType()

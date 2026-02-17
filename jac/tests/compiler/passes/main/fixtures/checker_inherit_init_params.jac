@@ -12,3 +12,17 @@ with entry {
     c2 = Child("Bob");  # <-- Error: missing age
     c3 = Child(age=25);  # <-- Error: missing name
 }
+
+
+obj Foo {
+    has val: int;
+}
+
+obj Bar(Foo) {
+    has val: int = 1;
+}
+
+with entry {
+    b1 = Bar();
+    b2 = Bar(val=10);
+}

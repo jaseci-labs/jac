@@ -24,11 +24,19 @@ with entry {
     }
 }
 
-import from jaclang.compiler.type_system { operations }
+# FIXME: Conver the bellow to dot import (from . import ...)
+# Currently its not possible with jac+python hybrid repos.
+import from jaclang.compiler.type_system {
+    operations
+}
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
-glob DiagnosticCallback = Callable[[uni.UniNode, str, bool], None];
+# The callback type definition for the diagnostic messages.
+glob DiagnosticCallback = Callable[
+         [uni.UniNode, str, bool],
+         None
+     ];
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
@@ -54,20 +62,29 @@ obj PrefetchedTypes {
         template_class: TypeBase | None = None,
         type_var_class: TypeBase | None = None,
         classmethod_class: TypeBase | None = None,
+        # Prefetch from typing.pyi file
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
+        callable_class: TypeBase | None = None,
+        # Prefetched from jac_builtins.pyi file
         final_class: TypeBase | None = None,
         literal_string_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,
-        jsx_element_class: TypeBase | None = None;
+        jsx_element_class: TypeBase | None = None,
+        # Prefetched enum base class
+        enum_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
 obj SymbolResolutionStackEntry {
     has symbol: uni.Symbol,
+        # Initially true, it's set to false if a recursion
+        # is detected.
         is_result_valid: bool = True,
+        # Some limited forms of recursion are allowed. In these
+        # cases, a partially-constructed type can be registered.
         partial_type: TypeBase | None = None;
 }
 
@@ -96,19 +113,33 @@ obj TypeEvaluator {
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
+    # Pyright equivalent function name = getEffectiveTypeOfSymbol.
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # NOTE: This function doesn't exists in pyright, however it exists as a helper function
+    # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
+    def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
+    # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    # Comments from pyright:
+    # // Determines if the source type can be assigned to the dest type.
+    # // If constraint are provided, type variables within the destType are
+    # // matched against existing type variables in the map. If a type variable
+    # // in the dest type is not in the type map already, it is assigned a type
+    # // and added to the map.
+    #
+    # dest_type = src_type;
     def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
+    # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
         method_name: str,
@@ -117,11 +148,28 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
+    # --- Callable assignment compatibility ---
+    def _assign_callable(
+        src_func: types.FunctionType, dest_func: types.FunctionType
+    ) -> bool;
+
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
     def _is_symbol_property(symbol: uni.Symbol) -> bool;
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
+    # This function is a combination of the bellow pyright functions.
+    #  - getDeclaredTypeOfSymbol
+    #  - getTypeForDeclaration
+    #
+    # Implementation Note:
+    # Pyright is actually have some duplicate logic for handling declared
+    # type and inferred type, we're going to unify them (if it's required
+    # in the future, we can refactor this).
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Pyright equivalent function name = getTypeOfExpressionCore();
     def _get_type_of_expression_core(expr: uni.Expr) -> TypeBase;
+    # -----------------------------------------------------------------------------
+    # Helper functions
+    # -----------------------------------------------------------------------------
     def _set_module_item_symbol_and_type(
         node_: uni.ModuleItem, sym: uni.Symbol
     ) -> TypeBase;
@@ -137,6 +185,18 @@ obj TypeEvaluator {
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    # --- Special form handling (Callable, Union, etc.) ---
+    # Returns the prefetched special form type if the name AND type match.
+    # Verifies both name and that type is _SpecialForm to avoid conflicts
+    # with user-defined classes named "Callable".
+    def _get_special_form_type(
+        name: str, symbol_type: types.TypeBase
+    ) -> types.ClassType | None;
+    # --- Callable type handling (similar to Pyright's createCallableType) ---
+    def _create_callable_type(
+        type_args_expr: uni.Expr | None, error_node: uni.Expr
+    ) -> types.FunctionType;
+
     def _lookup_class_member(
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
@@ -162,6 +222,9 @@ obj TypeEvaluator {
     ) -> types.FunctionType;
 
     def _validate_constructor_method(expr: uni.FuncCall, method_type: TypeBase) -> bool;
+    # -------------------------------------------------------------------------
+    # Type narrowing support (CFG-based, flow-sensitive)
+    # -------------------------------------------------------------------------
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
     def _compute_narrowed_at(
         symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
