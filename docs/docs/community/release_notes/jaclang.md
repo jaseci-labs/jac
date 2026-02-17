@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.3 (Unreleased)
 
+- **Fix: Type Narrowing in Loops**: Fixed type narrowing loss in loops and improved CFG accuracy.
 - **Fix: Config Discovery from Target File Path**: Fixed `jac start` commands to discover `jac.toml` from the target file's directory instead of the current working directory when using absolute/relative paths.
 - **Fix: Unbound Method Call Type Checking**: Fixed "Parameter already matched" error when calling parent class methods with explicit `self` in inheritance patterns (e.g., `ParentClass.init(self, name=name)`). The type checker now correctly handles unbound method calls on `obj`/`node`/`walker`/`edge` types where `self` is implicit.
 - **Enhanced Type Narrowing**: Extended CFG-based type narrowing to support additional patterns: parenthesized isinstance `(isinstance(x, T))`, NOT expressions `not isinstance(x, T)`, compound AND/OR conditions, isinstance with tuple of types `isinstance(x, (A, B))`, truthiness narrowing `if x:` (excludes None), literal equality `x == "lit"`, and inheritance-aware isinstance that correctly narrows to subclasses in unions.
