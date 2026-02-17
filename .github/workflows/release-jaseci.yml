@@ -1,0 +1,33 @@
+name: Release jaseci to PYPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-jaseci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jaseci-package
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish package to PyPI
+        run: |
+          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

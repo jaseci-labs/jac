@@ -1,0 +1,32 @@
+name: Create Releases from Specific Subdirectories
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-github-releases:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Create Releases for Specific Subdirectories
+      run: |
+        # List of subdirectories for which releases need to be created
+        subdirs=("jac" "jac-byllm")
+
+        for dir in "${subdirs[@]}"; do
+          # Extract the directory name as the release name
+          release_name=$(basename "$dir")
+
+          # Get the latest commit hash for this subdirectory
+          release_version=$(git log -n 1 --format=%h -- "$dir")
+
+          # Create a release for the subdirectory with the release version (commit hash)
+          gh release create "$release_name-$release_version" "$dir/*" --title "$release_name" --notes "Release for $release_name version $release_version"
+        done
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
