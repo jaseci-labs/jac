@@ -37,6 +37,11 @@ def _discover_config_from_file(filename: str) -> None {
     file_path = Path(filename).resolve();
     file_dir = file_path.parent;
 
+    # Preserve the active profile from any previously loaded config so that
+    # re-discovery does not lose the --profile overlay applied by _apply_profile.
+    existing_config = get_config();
+    active_profile = existing_config.active_profile if existing_config else None;
+
     # Use get_config with start_path to discover from the file's directory.
     # This ensures we don't accidentally discover config from cwd first.
     # If a config was already loaded, force_discover ensures we re-discover
@@ -50,6 +55,10 @@ def _discover_config_from_file(filename: str) -> None {
         return;
     }
     if config is not None {
+        # Re-apply the profile overlay that was set before re-discovery.
+        if active_profile {
+            config.apply_profile_overlay(active_profile);
+        }
         add_venv_to_path(config);
     }
 }
