@@ -13,7 +13,9 @@ import sys;
 import tempfile;
 import shutil;
 import importlib;
+import pytest;
 import from pathlib { Path }
+import from unittest.mock { patch }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang { JacRuntime as Jac }
@@ -328,24 +330,27 @@ test "deep outer imports from loc" {
     );
 }
 
-# SKIP: xfail - TODO: Support symtable for inheritance
-# test "inherit baseclass sym" {
-#     mypass = JacProgram().compile(os.path.join(EXAMPLES, "guess_game", "guess_game3.jac"));
-#     table = None;
-#     for i in mypass.sym_tab.kid_scope {
-#         if i.scope_name == "GuessTheNumberGame" {
-#             for j in i.kid_scope {
-#                 if j.scope_name == "play" {
-#                     table = j;
-#                     break;
-#                 }
-#             }
-#             break;
-#         }
-#     }
-#     assert table is not None;
-#     assert table.lookup("attempts") is not None;
-# }
+test "inherit baseclass sym" {
+    pytest.xfail("TODO: Support symtable for inheritance");
+    mypass = JacProgram().compile(
+        os.path.join(EXAMPLES, "guess_game", "guess_game3.jac")
+    );
+    table = None;
+    for i in mypass.sym_tab.kid_scope {
+        if i.scope_name == "GuessTheNumberGame" {
+            for j in i.kid_scope {
+                if j.scope_name == "play" {
+                    table = j;
+                    break;
+                }
+            }
+            break;
+        }
+    }
+    assert table is not None;
+    assert table.lookup("attempts") is not None;
+}
+
 test "list methods" {
     Jac.set_base_path(FIXTURES);
     Jac.attach_program(JacProgram());
@@ -436,38 +441,35 @@ test "walker dynamic update" {
     }
 }
 
-# SKIP: requires unittest.mock.patch
-# test "import from site packages" {
-#     with tempfile.TemporaryDirectory() as tmpdir {
-#         # Simulate site-packages directory structure
-#         mock_site_dir = os.path.join(tmpdir, "site-packages");
-#         os.makedirs(mock_site_dir);
-#
-#         # Create a module within the simulated site-packages
-#         site_mod_content = 'with entry { "Site package module loaded!" |> print; }';
-#         create_temp_jac_file(site_mod_content, mock_site_dir, "site_pkg_mod.jac");
-#
-#         # Create the importing script in the main temp directory
-#         importer_content = "import site_pkg_mod;";
-#         _ = create_temp_jac_file(importer_content, tmpdir, "importer_site.jac");
-#         # Requires unittest.mock.patch("site.getsitepackages", ...)
-#         captured = io.StringIO();
-#         old_stdout = sys.stdout;
-#         sys.stdout = captured;
-#         try {
-#             original_cwd = os.getcwd();
-#             try {
-#                 Jac.jac_import("importer_site", base_path=tmpdir);
-#             } finally {
-#                 os.chdir(original_cwd);
-#             }
-#         } finally {
-#             sys.stdout = old_stdout;
-#         }
-#         stdout_value = captured.getvalue();
-#         assert "Site package module loaded!" in stdout_value;
-#     }
-# }
+test "import from site packages" {
+    Jac.attach_program(JacProgram());
+    with tempfile.TemporaryDirectory() as tmpdir {
+        # Simulate site-packages directory structure
+        mock_site_dir = os.path.join(tmpdir, "site-packages");
+        os.makedirs(mock_site_dir);
+        # Create a module within the simulated site-packages
+        site_mod_content = 'with entry { "Site package module loaded!" |> print; }';
+        create_temp_jac_file(site_mod_content, mock_site_dir, "site_pkg_mod.jac");
+        # Create the importing script in the main temp directory
+        importer_content = "import site_pkg_mod;";
+        _ = create_temp_jac_file(importer_content, tmpdir, "importer_site.jac");
+        with patch("site.getsitepackages", return_value=[mock_site_dir]) {
+            captured = io.StringIO();
+            old_stdout = sys.stdout;
+            sys.stdout = captured;
+            original_cwd = os.getcwd();
+            try {
+                Jac.jac_import("importer_site", base_path=tmpdir);
+            } finally {
+                os.chdir(original_cwd);
+                sys.stdout = old_stdout;
+            }
+            stdout_value = captured.getvalue();
+            assert "Site package module loaded!" in stdout_value;
+        }
+    }
+}
+
 test "import from jacpath" {
     Jac.attach_program(JacProgram());
     with tempfile.TemporaryDirectory() as tmpdir {
