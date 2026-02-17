@@ -674,7 +674,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect
-    def HomePage -> any {
+    def HomePage -> JsxElement {
         has isLoggedIn: bool = False;
 
         async can with entry {
