@@ -195,6 +195,23 @@ def test_with_llm_method(fixture_path: Callable[[str], str]) -> None:
     assert "Personality.INTROVERT" in stdout_value
 
 
+def test_deprecated_method_param(fixture_path: Callable[[str], str]) -> None:
+    """Test that using method= parameter emits a DeprecationWarning."""
+    import warnings
+
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        jac_import("with_llm_deprecated_method", base_path=fixture_path("./"))
+    sys.stdout = sys.__stdout__
+    stdout_value = captured_output.getvalue()
+    assert "test output" in stdout_value
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert len(deprecation_warnings) >= 1
+    assert "'method' parameter is deprecated" in str(deprecation_warnings[0].message)
+
+
 def test_with_llm_lower(fixture_path: Callable[[str], str]) -> None:
     """Parse micro jac file."""
     captured_output = io.StringIO()
