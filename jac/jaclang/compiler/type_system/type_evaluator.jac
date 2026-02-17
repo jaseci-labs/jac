@@ -242,6 +242,11 @@ obj TypeEvaluator {
         symbol: uni.Symbol
     ) -> TypeBase | None;
 
+    def _filter_union_for_isinstance(
+        base_type: TypeBase, target_type: TypeBase
+    ) -> TypeBase | None;
+
+    def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }
