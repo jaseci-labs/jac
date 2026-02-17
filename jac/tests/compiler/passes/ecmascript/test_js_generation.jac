@@ -128,8 +128,8 @@ test "core fixture emits expected constructs" {
         assert pattern in js_code;
     }
 
-    # Support strings within jsx
-    assert "\"Authentication\" App" in js_code;
+    # Support strings within jsx (quotes in JSX text must be escaped)
+    assert "\\\"Authentication\\\" App" in js_code;
 
     assert_balanced_syntax(js_code, core_fixture);
     assert_no_jac_keywords(js_code, core_fixture);
@@ -658,6 +658,47 @@ test "separated files" {
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code;
     assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.strip()});" in js_code;
+}
+
+test "lexer does not treat comparison lt as jsx tag" {
+    # BUG: `i<points` in a for-loop causes the lexer to enter JSX_TAG
+    # mode because `<` followed by an alpha char is always treated as a
+    # JSX opening tag.  This corrupts the mode state machine, causing
+    # the compiler to hang in an infinite loop.
+    fixture = "jsx_lt_comparison_bug.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The for-loop comparison must compile to JS `<` operator, NOT a JSX tag.
+    assert "for " in js_code , "for-loop should be present in output";
+    assert "i < points.length" in js_code or "(i < points.length)" in js_code , (
+        "Comparison `i<points.length` must emit as `<` operator, not JSX"
+    );
+    assert "filter_points" in js_code;
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "jsx text with quotes does not produce double-double quotes" {
+    # BUG: JSX text content containing quote characters (e.g. "text")
+    # is wrapped in an extra pair of quotes by gen_literal, producing
+    # ""text"" which is invalid JavaScript.
+    fixture = "jsx_text_quotes_bug.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The generated JS must NOT contain unescaped double-double quotes.
+    # Valid:   "\"Try: show all to reset\""  (escaped inner quotes)
+    # Invalid: ""Try: show all to reset""    (raw double-double quotes)
+    import re;
+    unescaped_double_quotes = re.findall(r'(?<!\\)""', js_code);
+    assert len(unescaped_double_quotes) == 0 , (
+        f"Unescaped double-double quotes found in generated JS — "
+        f"quote characters in JSX text are being double-wrapped:\n{js_code}"
+    );
+
+    # The text content should appear in the output with escaped quotes.
+    assert "Try: show all to reset" in js_code , (
+        "JSX text content with quotes should appear in output"
+    );
+    assert_balanced_syntax(js_code, fixture);
 }
 
 test "convert to js import path preserves js format" {
