@@ -1234,7 +1234,8 @@ test "type_narrowing" {
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 10 , f"Expected exactly 10 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 type error (join-point widening in test 5; "
+        + "test 7 for-loop narrowing must produce 0 errors), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
