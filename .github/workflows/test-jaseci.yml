@@ -236,5 +236,5 @@ jobs:
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker_type_ref.jac
-        pytest jac-client/jac_client/tests/test_cli.jac::test_create_jac_app
+        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac

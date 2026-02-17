@@ -5,16 +5,8 @@ import from pathlib { Path }
 
 """Retrieve all Markdown files in the docs directory."""
 def get_md_files -> list[str] {
-    docs_dir = os.path.join(os.path.dirname(__file__), "..", "docs");
-    md_files: list[str] = [];
-    for (root, _, files) in os.walk(docs_dir) {
-        for file in files {
-            if file.endswith(".md") {
-                md_files.append(os.path.join(root, file));
-            }
-        }
-    }
-    return md_files;
+    docs_dir = Path(os.path.dirname(__file__)).parent / "docs";
+    return [str(f) for f in sorted(docs_dir.rglob("*.md"))];
 }
 
 test "all markdown files are valid" {
