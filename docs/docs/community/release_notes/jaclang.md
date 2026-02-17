@@ -16,6 +16,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
 - **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
 - **Human-Readable Tokens in Errors and Grammar Spec**: Parser error messages and `jac grammar` output now display actual token text (`"{"`, `"if"`, `";"`) instead of internal names (`LBRACE`, `KW_IF`, `SEMI`), making syntax errors and the grammar specification much more readable.
+- **Support Bare `type` Parameter Assignment**: Functions with `type` parameter annotations now correctly accept class types as arguments (e.g., `process(cls: type)` can be called with `process(MyClass)`).
 - 1 Minor refactors/changes.
 
 ## jaclang 0.10.2 (Latest Release)
