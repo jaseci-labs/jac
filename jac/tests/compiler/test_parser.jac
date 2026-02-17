@@ -174,7 +174,7 @@ test "multiple syntax errors" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
-    prog.compile(os.path.join(FIXTURES, "multiple_syntax_errors.jac"));
+    prog.compile(os.path.join(FIXTURES, "multiple_syntax_err.jac"));
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 3;
     expected_substrings = ["Missing ')'", "Missing ','", "Unexpected token", ];
