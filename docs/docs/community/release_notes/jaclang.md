@@ -4,8 +4,13 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.3 (Unreleased)
 
+- **Type Inference for Tuple Unpacking**: The type evaluator now infers element types for variables in tuple/list unpacking assignments (e.g., `(row, col) = pos;` where `pos: tuple[int, int]`), eliminating the need for explicit pre-declarations before unpacking. Types that cannot be inferred still require explicit annotations.
 - **Fix: Display detailed syntax error messages**: Display detailed syntax error messages in `jac run` and `jac start` commands instead of generic import errors.
+- **Enum Type Checking**: Enums now have proper type checking. Accessing `.name` returns `str`, `.value` returns the correct type based on your enum values (int or str). Passing wrong types to functions expecting enums now shows type errors.
 - **Fix: LSP features in nested impl blocks**: Go-to-definition, hover, and syntax highlighting now work correctly for symbols inside if/while/for statements within impl blocks.
+- **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
+- **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
+- **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
 
 ## jaclang 0.10.2 (Latest Release)
 
@@ -37,6 +42,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`jac --version` Shows Installed Plugins**: The version banner now lists all installed Jac plugins with their versions, making it easy to see the full environment at a glance.
 - **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
 - **Type Checker Improvements**:
+  - **Callable Type Annotation Support**: Added full support for `Callable[[ParamTypes], ReturnType]` type annotations. Includes gradual callable form (`Callable[..., T]`), parameter contravariance, return type covariance, automatic self/cls filtering for methods and classmethods, and validation that extra source parameters have defaults.
   - **Fix: Type Checker Crashes**: Fixed crashes when type-checking default/star imports (`import from mod { default as X }`) and walker entry/exit handlers.
   - **Fix: LiteralString Type Support**: Added `LiteralString` class to the type checker, improving binary operator chain handling and ensuring type compatibility between `LiteralString` and `str` types.
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.

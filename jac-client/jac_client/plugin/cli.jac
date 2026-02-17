@@ -285,25 +285,38 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --client flag for build command."""
+"""Pre-hook to handle --client flag for build command.
+
+Uses TargetFactory for lazy loading and polymorphic dispatch.
+"""
 def _handle_build_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    import from jac_client.plugin.src.targets.registry { get_target_factory }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
 
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
 
-    registry = get_target_registry();
-    target = registry.get(target_name);
+    # Get config and project_dir first (needed for factory)
+    config = get_config();
+    if not config {
+        console.error("No jac.toml found. Run 'jac create' to create a project.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
 
-    if not target {
-        console.error(f"Unknown client  target: {target_name}");
+    project_dir = config.project_root or Path.cwd();
+
+    # Use factory to create target (lazy loading for non-web targets)
+    factory = get_target_factory();
+    try {
+        target = factory.create(target_name, project_dir);
+    } except ValueError as e {
+        console.error(str(e));
         console.print(
-            f"Available client targets: {', '.join(
-                [t.name for t in registry.get_all()]
-            )}",
+            f"Available targets: {', '.join(factory.get_available_target_names())}",
             style="muted"
         );
         ctx.set_data("cancel_execution", True);
@@ -318,20 +331,12 @@ def _handle_build_target(ctx: HookContext) -> None {
     # If target requires setup, warn user
     if target.requires_setup {
         console.warning(
-            f"Client target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
+            f"Target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
         );
     }
 
-    # Build using target's build method
+    # Build using target's build method (polymorphic dispatch)
     try {
-        config = get_config();
-        if not config {
-            console.error("No jac.toml found. Run 'jac create' to create a project.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
             entry_file = config.entry_point;
@@ -344,19 +349,18 @@ def _handle_build_target(ctx: HookContext) -> None {
         }
 
         entry_path = Path(entry_file);
-        project_dir = config.project_root or Path.cwd();
         if not entry_path.is_absolute() {
             entry_path = project_dir / entry_path;
         }
+
+        # Polymorphic call - each target handles its own build logic
         bundle_path = target.build(entry_path, project_dir, platform);
 
         console.success(f"Build complete: {bundle_path}");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 0);
     } except NotImplementedError as e {
-        console.error(
-            f"Target '{target_name}' is not yet implemented. Coming in Phase 2!"
-        );
+        console.error(f"Target '{target_name}' is not yet implemented.");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     } except Exception as e {
@@ -400,22 +404,33 @@ def _get_start_context(ctx: HookContext) -> tuple | None {
     return (config, entry_path, project_dir);
 }
 
-"""Pre-hook to handle --client flag for start command."""
+"""Pre-hook to handle --client flag for start command.
+
+Uses TargetFactory for lazy loading and polymorphic dispatch.
+Web target falls through to core jac start, others use target.dev()/start().
+"""
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    import from jac_client.plugin.src.targets.registry { get_target_factory }
+    import from pathlib { Path }
 
     target_name = ctx.get_arg("client", "web");
 
-    registry = get_target_registry();
-    target = registry.get(target_name);
+    # Get context for all targets (need project_dir for factory)
+    start_ctx = _get_start_context(ctx);
+    if not start_ctx {
+        return;
+    }
+    (config, entry_path, project_dir) = start_ctx;
 
-    if not target {
-        console.error(f"Unknown client target:  {target_name}");
+    # Use factory to create target (lazy loading for non-web targets)
+    factory = get_target_factory();
+    try {
+        target = factory.create(target_name, project_dir);
+    } except ValueError as e {
+        console.error(str(e));
         console.print(
-            f"Available client targets: {', '.join(
-                [t.name for t in registry.get_all()]
-            )}",
+            f"Available targets: {', '.join(factory.get_available_target_names())}",
             style="muted"
         );
         ctx.set_data("cancel_execution", True);
@@ -426,99 +441,63 @@ def _handle_start_target(ctx: HookContext) -> None {
     # Store target info in context
     ctx.set_data("start_client_target", target);
 
-    # Handle desktop target
-    if target_name == "desktop" {
-        import from pathlib { Path }
-        start_ctx = _get_start_context(ctx);
-        if not start_ctx {
-            return;
+    dev_mode = ctx.get_arg("dev", False);
+    api_port = ctx.get_arg("port", 8000);
+
+    # Handle non-web targets (desktop, pwa) - they override dev/start behavior
+    if target_name != "web" {
+        # Check if target requires setup
+        if target.requires_setup {
+            tauri_dir = project_dir / "src-tauri";
+            if not tauri_dir.exists() {
+                console.error(
+                    f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+                );
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
         }
-        (config, entry_path, project_dir) = start_ctx;
-        # Check if setup has been run
-        tauri_dir = project_dir / "src-tauri";
-        if not tauri_dir.exists() {
-            console.error("Desktop target not set up. Run 'jac setup desktop' first.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-        dev_mode = ctx.get_arg("dev", False);
-        api_port = ctx.get_arg("port", 8000);
         try {
             if dev_mode {
-                # Desktop target with --dev: launch Tauri dev mode (hot reload)
+                # Use target's dev() method (polymorphic dispatch)
                 target.dev(entry_path, project_dir, api_port=api_port);
             } else {
-                # Desktop target without --dev: build web bundle and launch Tauri with built bundle
+                # Use target's start() method (polymorphic dispatch)
                 target.start(entry_path, project_dir, api_port=api_port);
             }
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 0);
         } except Exception as e {
             import traceback;
-            console.error(f"Desktop start failed: {e}");
+            console.error(f"Target '{target_name}' failed: {e}");
             console.print(traceback.format_exc(), style="muted");
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 1);
         }
         return;
     }
-
-    # Handle PWA target - build PWA files, then let normal jac start serve them
-    if target_name == "pwa" {
-        start_ctx = _get_start_context(ctx);
-        if not start_ctx {
-            return;
-        }
-        (config, entry_path, project_dir) = start_ctx;
-        dev_mode = ctx.get_arg("dev", False);
-        try {
-            if dev_mode {
-                target.dev(entry_path, project_dir);
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 0);
-            } else {
-                # Build PWA bundle, then let server serve with no_client (skip rebuild)
-                target.build(entry_path, project_dir, None);
-                # Tell server to skip client building - we already built it
-                ctx.args['no_client'] = True;
-            }
-        } except Exception as e {
-            import traceback;
-            console.error(f"PWA target failed: {e}");
-            console.print(traceback.format_exc(), style="muted");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-        }
-        return;
-    }
-    # Web target: let existing start command handle it
-    # (no cancellation, let it run normally)
+    # Web target: let existing core jac start command handle it
+    # (no cancellation - falls through to default behavior with HMR support)
 }
 
-"""Pre-hook to handle setup command."""
+"""Pre-hook to handle setup command.
+
+Uses TargetFactory for lazy loading and polymorphic dispatch.
+"""
 def _handle_setup_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
-    import from jac_client.plugin.src.targets.registry { get_target_registry }
+    import from jac_client.plugin.src.targets.registry { get_target_factory }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
+
+    factory = get_target_factory();
 
     target_name = ctx.get_arg("target", None);
     if not target_name {
         console.error("No target specified. Use: jac setup <target>");
-        console.print("Available targets: desktop", style="muted");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
-    registry = get_target_registry();
-    target = registry.get(target_name);
-
-    if not target {
-        console.error(f"Unknown client target: {target_name}");
         console.print(
-            f"Available targets: {', '.join([t.name for t in registry.get_all()])}",
+            f"Available targets: {', '.join(factory.get_available_target_names())}",
             style="muted"
         );
         ctx.set_data("cancel_execution", True);
@@ -526,17 +505,33 @@ def _handle_setup_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Setup using target's setup method
-    try {
-        config = get_config();
-        if not config {
-            console.error("No jac.toml found. Run 'jac create' to create a project.");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
+    # Get config and project_dir first
+    config = get_config();
+    if not config {
+        console.error("No jac.toml found. Run 'jac create' to create a project.");
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
 
-        project_dir = config.project_root or Path.cwd();
+    project_dir = config.project_root or Path.cwd();
+
+    # Use factory to create target (lazy loading)
+    try {
+        target = factory.create(target_name, project_dir);
+    } except ValueError as e {
+        console.error(str(e));
+        console.print(
+            f"Available targets: {', '.join(factory.get_available_target_names())}",
+            style="muted"
+        );
+        ctx.set_data("cancel_execution", True);
+        ctx.set_data("cancel_return_code", 1);
+        return;
+    }
+
+    # Setup using target's setup method (polymorphic dispatch)
+    try {
         console.print(
             f"Setting up target '{target_name}' in: {project_dir}", style="muted"
         );

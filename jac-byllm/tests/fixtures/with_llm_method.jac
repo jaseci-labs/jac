@@ -21,7 +21,6 @@ obj outer {
         has diary_entries: list[str];
 
         def get_personality(person: list[Person]) -> Personality by llm(
-            method="Reason",
             incl_info={
                 "personality_examples": personality_examples,
                 "diary_entries": self.diary_entries,
