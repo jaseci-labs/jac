@@ -308,6 +308,15 @@ test "reactive state in cl jac file" {
     assert "setName(" in js_code , "Assignment to name should use setName";
 }
 
+test "reactive state scoping across functions" {
+    es_ast = compile_to_esast(fixture_path("reactive_state_scoping.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "const [cart, setCart] = useState([])" in js_code;
+    assert "setCart(useCart())" not in js_code;
+    assert "let cart = useCart()" in js_code;
+}
+
 # SKIP: Jac-in-Jac compilation produces different import output (e.g.
 # `import "lodash"` instead of `import { debounce } from "lodash"`).
 # test "equivalent context patterns" { ... }

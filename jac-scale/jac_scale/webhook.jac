@@ -17,13 +17,15 @@ import from typing { Any }
 import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.db { Db, get_mongo_client }
+import from jac_scale.factories.database_factory { DatabaseType }
 
 # Load webhook configuration
 glob _webhook_config = get_scale_config().get_webhook_config(),
-     WEBHOOK_SECRET = _webhook_config['secret'],
-     WEBHOOK_SIGNATURE_HEADER = _webhook_config['signature_header'],
-     WEBHOOK_VERIFY_SIGNATURE = _webhook_config['verify_signature'],
-     WEBHOOK_API_KEY_EXPIRY_DAYS = _webhook_config['api_key_expiry_days'];
+     WEBHOOK_API_KEY_EXPIRY_DAYS = _webhook_config['api_key_expiry_days'],
+     _jwt_config = get_scale_config().get_jwt_config(),
+     JWT_SECRET = _jwt_config['secret'],
+     JWT_ALGORITHM = _jwt_config['algorithm'];
 
 """Pydantic model for API key creation request."""
 class CreateApiKeyRequest(BaseModel) {
@@ -69,10 +71,22 @@ obj WebhookUtils {
     static def extract_signature(header_value: str) -> str;
 }
 
+"""Create database connection for API key storage, or None if MongoDB not configured."""
+def _create_api_key_db -> Db | None {
+    db_config = get_scale_config().get_database_config();
+    if db_config.get('mongodb_uri') is not None {
+        return Db(
+            client=get_mongo_client(), db_name='jac_db', db_type=DatabaseType.MONGODB
+        );
+    }
+    return None;
+}
+
 """Manager for API keys associated with users."""
 obj ApiKeyManager {
-    has _api_keys: dict[str, dict[str, Any]] = {},  # api_key_id -> key info
-        _user_keys: dict[str, list[str]] = {};  # username -> list of api_key_ids
+    has _db: Db | None = _create_api_key_db(),
+        _inmemory_store: dict = {},
+        _collection: str = 'webhook_api_keys';
 
     """Create a new API key for a user."""
     def create_api_key(
