@@ -56,6 +56,7 @@ checker_super_init_explicit.jac
 checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
+checker_type_param.jac
 checker_unbound_method_call.ja
 checker_union_reassignment.jac
 checker_union_type_annotation.jac
@@ -158,13 +159,13 @@ model.impl.jac
 modresolver.jac
 mtest.impl.jac
 mtir_gen_pass.impl.jac
-multiple_syntax_errors.jac
+multiple_syntax_err.jac
 multistatement_lambda_client.jac
 na_compile_pass.impl.jac
 nested_class_sig.impl.jac
 nested_class_sig.jac
 nested_impls.jac
-new_keyword_errors.jac
+new_keyword_err.jac
 normalize_pass.impl.jac
 objects.impl.jac
 one.jac
@@ -172,7 +173,7 @@ other_root_access.jac
 param_syntax_err.jac
 parameter_type_check.impl.jac
 parser.impl.jac
-pass_keyword_errors.jac
+pass_keyword_err.jac
 plugin.jac
 plugin_config.impl.jac
 plugin_config.jac

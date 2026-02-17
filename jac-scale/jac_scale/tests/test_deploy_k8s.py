@@ -277,7 +277,7 @@ def test_deploy_all_in_one():
     result = deployment_target.deploy(app_config)
     result = deployment_target.deploy(app_config)
     details = result.details
-    assert len(details) == 8
+    assert len(details) == 9
     assert result.success is True
     print(f"✓ Deployment successful: {result.message}")
 
@@ -320,6 +320,21 @@ def test_deploy_all_in_one():
     )
     assert redis_service.spec.ports[0].port == 6379
 
+    # Validate code-server Deployment and Service
+    code_server_deploy = apps_v1.read_namespaced_deployment(
+        name=f"{app_name}-code-server", namespace=namespace
+    )
+    assert code_server_deploy.metadata.name == f"{app_name}-code-server"
+    assert code_server_deploy.spec.replicas == 1
+    print(f"✓ Code-server deployment verified: {app_name}-code-server")
+
+    code_server_service = core_v1.read_namespaced_service(
+        name=f"{app_name}-code-server", namespace=namespace
+    )
+    assert code_server_service.spec.type == "ClusterIP"
+    assert code_server_service.spec.ports[0].port == 8080
+    print("✓ Code-server service verified: ClusterIP on port 8080")
+
     # Validate K8s Secret was created with correct data
     secret = core_v1.read_namespaced_secret(
         name=f"{app_name}-secrets", namespace=namespace
@@ -346,6 +361,19 @@ def test_deploy_all_in_one():
     assert status.replicas >= 0
     print(
         f"✓ Deployment status: {status.status.value}, replicas: {status.replicas}/{status.ready_replicas}"
+    )
+
+    # Validate HPA was created with correct configuration
+    autoscaling_v2 = client.AutoscalingV2Api()
+    hpa = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+        name=f"{app_name}-hpa", namespace=namespace
+    )
+    assert hpa.metadata.name == f"{app_name}-hpa"
+    assert hpa.spec.min_replicas == 1
+    assert hpa.spec.max_replicas == 3
+    assert hpa.spec.metrics[0].resource.target.average_utilization == 50
+    print(
+        f"✓ HPA verified: min_replicas={hpa.spec.min_replicas}, max_replicas={hpa.spec.max_replicas}, cpu_target=50%"
     )
 
     # Send POST request to create a todo (with retry for 503)
@@ -379,6 +407,15 @@ def test_deploy_all_in_one():
         assert e.status == 404, f"Expected 404, got {e.status}"
 
     try:
+        autoscaling_v2 = client.AutoscalingV2Api()
+        autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+            name=f"{app_name}-hpa", namespace=namespace
+        )
+        raise AssertionError("HPA should have been deleted")
+    except ApiException as e:
+        assert e.status == 404, f"Expected 404, got {e.status}"
+
+    try:
         apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace)
         raise AssertionError("MongoDB StatefulSet should have been deleted")
     except ApiException as e:
@@ -403,6 +440,21 @@ def test_deploy_all_in_one():
             f"{app_name}-redis-service", namespace=namespace
         )
         raise AssertionError("Redis Service should have been deleted")
+    except ApiException as e:
+        assert e.status == 404, f"Expected 404, got {e.status}"
+
+    # Verify code-server cleanup
+    try:
+        apps_v1.read_namespaced_deployment(
+            f"{app_name}-code-server", namespace=namespace
+        )
+        raise AssertionError("Code-server Deployment should have been deleted")
+    except ApiException as e:
+        assert e.status == 404, f"Expected 404, got {e.status}"
+
+    try:
+        core_v1.read_namespaced_service(f"{app_name}-code-server", namespace=namespace)
+        raise AssertionError("Code-server Service should have been deleted")
     except ApiException as e:
         assert e.status == 404, f"Expected 404, got {e.status}"
 
@@ -472,7 +524,7 @@ def test_early_exit():
     details = result.details
     print(f"Deployment result: {details}")
     assert "health_check_of_deployment" not in details
-    assert len(details) == 7
+    assert len(details) == 8
     assert result.success is False
 
 

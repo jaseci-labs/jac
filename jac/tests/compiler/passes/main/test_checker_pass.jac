@@ -1510,3 +1510,21 @@ test "unbound_method_call" {
         program.errors_had[1].pretty_print()
     );
 }
+
+"""Test bare `type` parameter accepts classes but rejects instances."""
+test "type_param_assignment" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_type_param.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have 1 error for the instance case (e1)
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    assert_error_pretty_found(
+        """Cannot assign <class Animal> to parameter 'cls' of type <class type>""",
+        program.errors_had[0].pretty_print()
+    );
+}
