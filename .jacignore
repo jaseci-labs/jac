@@ -288,3 +288,6 @@ test_jac_format_pass.jac
 test_native_gen_pass.jac
 test_esast_gen_pass.jac
 test_pyfile_parse.jac
+test_py_infra.jac
+test_importer.jac
+test_jaseci.jac
