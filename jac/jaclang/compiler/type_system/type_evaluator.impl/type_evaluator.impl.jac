@@ -1265,7 +1265,6 @@ impl TypeEvaluator.init(program: "JacProgram") -> None {
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
 ) -> TypeBase | None {
-    import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
     # Find the enclosing CodeBlockStmt (CFG node) for this Name node.
     stmt: uni.CodeBlockStmt | None = None;
     if isinstance(at_node, uni.CodeBlockStmt) {
@@ -1283,7 +1282,6 @@ impl TypeEvaluator.get_narrowed_type(
 impl TypeEvaluator._compute_narrowed_at(
     symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
 ) -> TypeBase | None {
-    import from jaclang.compiler.type_system.type_evaluator { NarrowingPredicate }
     cache_key = (id(stmt), symbol.sym_name);
     if cache_key in self._narrowing_cache {
         return self._narrowing_cache[cache_key];
@@ -1422,51 +1420,48 @@ impl TypeEvaluator._find_predicate_for(
         }
         return None;
     }
-    # Pattern 2: Compound AND (BoolExpr with KW_AND)
-    # Handles: isinstance(x, A) and isinstance(x, B)
-    # Returns the first matching predicate for the symbol
-    if (
-        isinstance(condition, uni.BoolExpr)
-        and isinstance(condition.op, uni.Token)
-        and condition.op.name == Tok.KW_AND
-    ) {
-        for val in condition.values {
-            pred = self._find_predicate_for(symbol, val);
-            if pred is not None {
-                return pred;
-            }
-        }
-        return None;
-    }
-    # Pattern 3: Compound OR (BoolExpr with KW_OR)
-    # Handles: isinstance(x, A) | isinstance(x, B) -> narrows to A | B
-    # Note: In Jac, boolean OR is expressed with '|' (KW_OR), not 'or'
-    # Only works when all branches are positive isinstance checks
-    if (
-        isinstance(condition, uni.BoolExpr)
-        and isinstance(condition.op, uni.Token)
-        and condition.op.name == Tok.KW_OR
-    ) {
-        narrowed_types: list[types.TypeBase] = [];
-        for val in condition.values {
-            pred = self._find_predicate_for(symbol, val);
-            if pred is None or pred.is_inverted {
-                # Can't narrow OR if any branch is negative or unknown
+    # Patterns 2-3: Handle AND, OR via match statement
+    if isinstance(condition, uni.BoolExpr) {
+        match condition.op.name {
+            # Pattern 2: Compound AND (BoolExpr with KW_AND)
+            # Handles: isinstance(x, A) and isinstance(x, B)
+            # Returns the first matching predicate for the symbol
+            case Tok.KW_AND:
+                for val in condition.values {
+                    pred = self._find_predicate_for(symbol, val);
+                    if pred is not None {
+                        return pred;
+                    }
+                }
                 return None;
-            }
-            narrowed_types.append(pred.narrow_type);
+
+            # Pattern 3: Compound OR (BoolExpr with KW_OR)
+            # Handles: isinstance(x, A) | isinstance(x, B) -> narrows to A | B
+            # Note: In Jac, boolean OR is expressed with '|' (KW_OR), not 'or'
+            # Only works when all branches are positive isinstance checks
+            case Tok.KW_OR:
+                narrowed_types: list[types.TypeBase] = [];
+                for val in condition.values {
+                    pred = self._find_predicate_for(symbol, val);
+                    if pred is None or pred.is_inverted {
+                        # Can't narrow OR if any branch is negative or unknown
+                        return None;
+                    }
+                    narrowed_types.append(pred.narrow_type);
+                }
+                if len(narrowed_types) > 0 {
+                    if len(narrowed_types) == 1 {
+                        union_type = narrowed_types[0];
+                    } else {
+                        union_type = types.UnionType(types=narrowed_types);
+                    }
+                    return NarrowingPredicate(
+                        sym_name=sym_name, narrow_type=union_type, is_inverted=False
+                    );
+                }
+                return None;
+
         }
-        if len(narrowed_types) > 0 {
-            if len(narrowed_types) == 1 {
-                union_type = narrowed_types[0];
-            } else {
-                union_type = types.UnionType(types=narrowed_types);
-            }
-            return NarrowingPredicate(
-                sym_name=sym_name, narrow_type=union_type, is_inverted=False
-            );
-        }
-        return None;
     }
     # Pattern 4: isinstance(x, T) or isinstance(x, (A, B, C))
     if (
