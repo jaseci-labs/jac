@@ -291,3 +291,4 @@ test_pyfile_parse.jac
 test_py_infra.jac
 test_importer.jac
 test_jaseci.jac
+test_cli.jac
