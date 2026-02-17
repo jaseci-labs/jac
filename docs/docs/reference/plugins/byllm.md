@@ -372,19 +372,6 @@ obj Calculator {
 }
 ```
 
-### ReAct Method
-
-For complex multi-step reasoning:
-
-```jac
-def research(question: str) -> str by llm(
-    method="ReAct",
-    tools=[search_web, calculate, get_date]
-);
-
-sem research = "Research and answer complex questions.";
-```
-
 ---
 
 ## Streaming
