@@ -53,7 +53,7 @@ walker toggle_todo {
 # Frontend Components
 cl {
     # Navigation
-    def Navigation -> any {
+    def Navigation -> JsxElement {
         has isLoggedIn: bool = False;
         location = useLocation();
         navigate = useNavigate();
@@ -137,7 +137,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage -> any {
+    def LoginPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -261,7 +261,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage -> any {
+    def SignupPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -385,7 +385,7 @@ cl {
     }
 
     # TodoInput Component
-    def TodoInput(props: any) -> any {
+    def TodoInput(props: any) -> JsxElement {
         input = props.input;
         setInput = props.setInput;
         addTodo = props.addTodo;
@@ -425,7 +425,7 @@ cl {
     }
 
     # TodoFilters Component
-    def TodoFilters(props: any) -> any {
+    def TodoFilters(props: any) -> JsxElement {
         filter = props.filter;
         setFilter = props.setFilter;
 
@@ -479,7 +479,7 @@ cl {
     }
 
     # TodoItem Component
-    def TodoItem(props: any) -> any {
+    def TodoItem(props: any) -> JsxElement {
         todo = props.todo;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
@@ -528,12 +528,12 @@ cl {
     }
 
     # TodoList Component
-    def TodoList(props: any) -> any {
+    def TodoList(props: any) -> JsxElement {
         filteredTodos = props.filteredTodos;
         toggleTodo = props.toggleTodo;
         deleteTodo = props.deleteTodo;
 
-        if filteredTodos.length == 0 {
+        if len(filteredTodos) == 0 {
             return
                 <div
                     style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
@@ -557,7 +557,7 @@ cl {
     }
 
     # Todos Page (Protected)
-    def TodosPage -> any {
+    def TodosPage -> JsxElement {
         has isLoggedIn: bool = False;
 
         async can with entry {
@@ -566,7 +566,7 @@ cl {
 
         if not isLoggedIn {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         [todos, setTodos] = useState([]);
@@ -584,10 +584,10 @@ cl {
 
         # Add todo
         async def addTodo -> None {
-            if not input.trim() {
+            if not input.strip() {
                 return;
             }
-            result = root spawn create_todo(text=input.trim());
+            result = root spawn create_todo(text=input.strip());
             setTodos(todos.concat([result.reports[0][0]]));
             setInput("");
         }
@@ -629,7 +629,9 @@ cl {
         }
 
         filteredTodos = getFilteredTodos();
-        activeCount = todos.filter(lambda todo: any  -> bool { return not todo.done; }).length;
+        activeCount = len(
+            todos.filter(lambda todo: any  -> bool { return not todo.done; })
+        );
 
         return
             <div
@@ -645,8 +647,8 @@ cl {
                 <h1 style={{"marginBottom": "20px"}}>
                     My Todos
                 </h1>
-                <TodoInput input={input} setInput={setInput} addTodo={addTodo} />
-                <TodoFilters filter={filter} setFilter={setFilter} />
+                <TodoInput input={input} setInput={setInput} addTodo={addTodo}/>
+                <TodoFilters filter={filter} setFilter={setFilter}/>
                 <TodoList
                     filteredTodos={filteredTodos}
                     toggleTodo={toggleTodo}
@@ -666,7 +668,7 @@ cl {
                         {activeCount}{"item" if activeCount == 1 else "items"}left
                     </div>
                 )
-                if todos.length > 0
+                if len(todos) > 0
                 else None}
             </div>;
     }
@@ -681,23 +683,23 @@ cl {
 
         if isLoggedIn {
             return
-                <Navigate to="/todos" />;
+                <Navigate to="/todos"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div style={{"fontFamily": "system-ui, sans-serif"}}>
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/todos" element={<TodosPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/todos" element={<TodosPage/>}/>
                     </Routes>
                 </div>
             </Router>;

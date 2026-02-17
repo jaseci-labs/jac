@@ -1,4 +1,4 @@
-cl def:pub SubmitButton -> any {
+cl def:pub SubmitButton -> JsxElement {
     return
         <button
             type="submit"

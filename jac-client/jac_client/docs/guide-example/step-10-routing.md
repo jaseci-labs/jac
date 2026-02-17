@@ -113,7 +113,7 @@ async def handleSignup(e: any) -> None {
 Add this component to show navigation at the top:
 
 ```jac
-def Navigation() -> any {
+def Navigation() -> JsxElement {
     isLoggedIn = jacIsLoggedIn();
 
     if isLoggedIn {
@@ -184,7 +184,7 @@ def Navigation() -> any {
 Update your `TodosPage`:
 
 ```jac
-def TodosPage() -> any {
+def TodosPage() -> JsxElement {
     # Redirect to login if not logged in
     if not jacIsLoggedIn() {
         return <Navigate to="/login" />;
@@ -199,7 +199,7 @@ def TodosPage() -> any {
 Add this simple home page:
 
 ```jac
-def HomePage() -> any {
+def HomePage() -> JsxElement {
     if jacIsLoggedIn() {
         return <Navigate to="/todos" />;
     }
@@ -212,7 +212,7 @@ def HomePage() -> any {
 Now, update your `app` function to use the router:
 
 ```jac
-def:pub app() -> any {
+def:pub app() -> JsxElement {
     return <Router>
         <div style={{"fontFamily": "system-ui, sans-serif"}}>
             <Navigation />
@@ -336,7 +336,7 @@ def login():
 ### Navigate Component
 
 ```jac
-def TodosPage() -> any {
+def TodosPage() -> JsxElement {
     if not jacIsLoggedIn() {
         return <Navigate to="/login" />;
     }
@@ -381,7 +381,7 @@ http://localhost:8000/cl/app#/todos
 ### Protected Routes Pattern
 
 ```jac
-def ProtectedPage() -> any {
+def ProtectedPage() -> JsxElement {
     if not jacIsLoggedIn() {
         return <Navigate to="/login" />;
     }
@@ -400,7 +400,7 @@ This pattern:
 ### Conditional Navigation
 
 ```jac
-def Navigation() -> any {
+def Navigation() -> JsxElement {
     isLoggedIn = jacIsLoggedIn();
 
     if isLoggedIn {
@@ -441,7 +441,7 @@ Routes are matched **in order**:
 **Pattern 1: Auto-redirect based on auth**
 
 ```jac
-def HomePage() -> any {
+def HomePage() -> JsxElement {
     if jacIsLoggedIn() {
         return <Navigate to="/todos" />;
     }
@@ -526,7 +526,7 @@ def handleLogout() -> None {
 Try adding a 404 page for unknown routes:
 
 ```jac
-def NotFoundPage() -> any {
+def NotFoundPage() -> JsxElement {
     return <div style={{
         "textAlign": "center",
         "padding": "50px"

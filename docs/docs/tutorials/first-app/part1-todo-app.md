@@ -111,7 +111,7 @@ root ---> Todo("Buy groceries")
 ## Build the Frontend
 
 ```jac
-cl def:pub app -> any {
+cl def:pub app -> JsxElement {
     has items: list = [],
         text: str = "";
 
@@ -120,8 +120,8 @@ cl def:pub app -> any {
     }
 
     async def add -> None {
-        if text.trim() {
-            todo = await add_todo(text.trim());
+        if text.strip() {
+            todo = await add_todo(text.strip());
             items = items.concat([todo]);
             text = "";
         }
@@ -142,7 +142,7 @@ cl def:pub app -> any {
         items = items.filter(lambda t: any -> bool { return t.id != id; });
     }
 
-    remaining = items.filter(lambda t: any -> bool { return not t.done; }).length;
+    remaining = len(items.filter(lambda t: any -> bool { return not t.done; }));
 
     return
         <div class="container">
@@ -241,7 +241,7 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
         return {};
     }
 
-    cl def:pub app -> any {
+    cl def:pub app -> JsxElement {
         has items: list = [],
             text: str = "";
 
@@ -250,8 +250,8 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
         }
 
         async def add -> None {
-            if text.trim() {
-                todo = await add_todo(text.trim());
+            if text.strip() {
+                todo = await add_todo(text.strip());
                 items = items.concat([todo]);
                 text = "";
             }
@@ -272,7 +272,7 @@ The rest is JSX-like syntax: `{[... for t in items]}` renders a list, `lambda` h
             items = items.filter(lambda t: any -> bool { return t.id != id; });
         }
 
-        remaining = items.filter(lambda t: any -> bool { return not t.done; }).length;
+        remaining = len(items.filter(lambda t: any -> bool { return not t.done; }));
 
         return
             <div class="container">

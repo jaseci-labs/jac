@@ -55,10 +55,10 @@ cl {
                         onclick={like_tweet_action(tweet.id)}
                         style={{"padding": "5px 10px", "cursor": "pointer"}}
                     >
-                        Like ({tweet.likes.length})
+                        Like ({len(tweet.likes)})
                     </button>
                     <button style={{"padding": "5px 10px"}}>
-                        Comment ({tweet.comments.length})
+                        Comment ({len(tweet.comments)})
                     </button>
                 </div>
             </div>;
@@ -281,11 +281,11 @@ cl {
             alert("Passwords do not match!");
             return;
         }
-        if username.length < 3 {
+        if len(username) < 3 {
             alert("Username must be at least 3 characters long.");
             return;
         }
-        if password.length < 6 {
+        if len(password) < 6 {
             alert("Password must be at least 6 characters long.");
             return;
         }

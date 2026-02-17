@@ -1677,3 +1677,238 @@ def test_pwa_build_generates_manifest_and_service_worker() -> None:
             print(f"[DEBUG] Restoring working directory to {original_cwd}")
             os.chdir(original_cwd)
             gc.collect()
+
+
+def test_diagnostics_syntax_error_in_console() -> None:
+    """Test that syntax errors show formatted diagnostics in console.
+
+    This is a real end-to-end test that:
+    1. Sets up all-in-one project
+    2. Introduces a syntax error in a client .jac file
+    3. Enables debug=true in jac.toml
+    4. Starts the server and captures console output
+    5. Verifies diagnostic formatting appears in the output
+    """
+
+    print("[DEBUG] Starting test_diagnostics_syntax_error_in_console")
+
+    app_name = "e2e-diagnostics-test"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"[DEBUG] Created temporary directory at {temp_dir}")
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # 1. Set up the all-in-one project
+            project_path = _setup_all_in_one_project(temp_dir, app_name)
+            print(f"[DEBUG] Project set up at {project_path}")
+
+            # 2. Add debug=true to jac.toml
+            jac_toml_path = os.path.join(project_path, "jac.toml")
+            with open(jac_toml_path) as f:
+                toml_content = f.read()
+
+            if "[plugins.client]" in toml_content:
+                if "debug = true" not in toml_content:
+                    toml_content = toml_content.replace(
+                        "[plugins.client]",
+                        "[plugins.client]\ndebug = true",
+                    )
+            else:
+                toml_content += "\n[plugins.client]\ndebug = true\n"
+
+            with open(jac_toml_path, "w") as f:
+                f.write(toml_content)
+
+            print("[DEBUG] Updated jac.toml with debug=true")
+
+            # 3. Introduce a syntax error in login.jac
+            login_jac_path = os.path.join(
+                project_path, "pages", "(public)", "login.jac"
+            )
+            if os.path.isfile(login_jac_path):
+                with open(login_jac_path) as f:
+                    login_content = f.read()
+
+                # Corrupt the file by breaking the cl { block syntax
+                # This will cause a Jac compilation error
+                corrupted_content = login_content.replace(
+                    "cl {",
+                    "cl {{{{",  # Invalid syntax
+                    1,
+                )
+
+                with open(login_jac_path, "w") as f:
+                    f.write(corrupted_content)
+
+                print(
+                    "[DEBUG] Introduced syntax error in login.jac (corrupted cl block)"
+                )
+
+            # 4. Start the server and capture output
+            server: Popen[bytes] | None = None
+            server_port = get_free_port()
+            jac_cmd = get_jac_command()
+            env = get_env_with_npm()
+
+            try:
+                print(
+                    f"[DEBUG] Starting server with "
+                    f"'jac start main.jac -p {server_port}'"
+                )
+                server = Popen(
+                    [*jac_cmd, "start", "main.jac", "-p", str(server_port)],
+                    cwd=project_path,
+                    stdout=PIPE,
+                    stderr=STDOUT,
+                    env=env,
+                )
+
+                # Wait for server to start or fail, then capture output
+                print("[DEBUG] Waiting for server output...")
+                time.sleep(10)  # Give it time to attempt build
+
+                # Read available output (non-blocking)
+                import fcntl
+                import os as os_module
+
+                captured_output = ""
+                if server.stdout:
+                    fd = server.stdout.fileno()
+                    fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+                    fcntl.fcntl(fd, fcntl.F_SETFL, fl | os_module.O_NONBLOCK)
+                    try:
+                        raw = server.stdout.read()
+                        if raw:
+                            captured_output = (
+                                raw.decode("utf-8", errors="ignore")
+                                if isinstance(raw, bytes)
+                                else raw
+                            )
+                    except (OSError, BlockingIOError):
+                        pass
+
+                print(f"[DEBUG] Captured output:\n{captured_output}")
+
+                # 5. Try to access an endpoint to trigger build error
+                try:
+                    wait_for_port("127.0.0.1", server_port, timeout=30.0)
+                    print("[DEBUG] Server port is open, requesting /cl/app")
+
+                    try:
+                        _wait_for_endpoint(
+                            f"http://127.0.0.1:{server_port}/cl/app",
+                            timeout=60.0,
+                            poll_interval=2.0,
+                            request_timeout=30.0,
+                        )
+                        # If we get here, the build somehow succeeded
+                        print(
+                            "[DEBUG] Warning: Build succeeded unexpectedly, "
+                            "dependency might still be cached"
+                        )
+                    except HTTPError as http_err:
+                        # Expected - build should fail with 500
+                        print(f"[DEBUG] Got expected HTTP error: {http_err.code}")
+                        if http_err.code == 500:
+                            error_body = http_err.read().decode(
+                                "utf-8", errors="ignore"
+                            )
+                            print(f"[DEBUG] Error response body:\n{error_body[:1000]}")
+                            captured_output += "\n" + error_body
+                        http_err.close()
+                    except TimeoutError:
+                        print("[DEBUG] Endpoint timed out (expected if build failed)")
+
+                except TimeoutError:
+                    print("[DEBUG] Server port never opened (build failed early)")
+
+                # Read any additional output after the request
+                if server.stdout:
+                    try:
+                        raw = server.stdout.read()
+                        if raw:
+                            additional = (
+                                raw.decode("utf-8", errors="ignore")
+                                if isinstance(raw, bytes)
+                                else raw
+                            )
+                            captured_output += additional
+                            print(f"[DEBUG] Additional output:\n{additional}")
+                    except (OSError, BlockingIOError):
+                        pass
+
+                # 6. Verify diagnostic formatting in output
+                print("[DEBUG] Verifying diagnostic output...")
+                print(f"[DEBUG] Full captured output:\n{captured_output}")
+
+                # Check for diagnostic box formatting
+                has_box_top = "┌" in captured_output
+                has_box_bottom = "┘" in captured_output
+                has_box_sides = "│" in captured_output
+
+                # Check for error code (JAC_CLIENT_XXX format)
+                has_error_code = "JAC_CLIENT_" in captured_output
+
+                # Check for quick fix suggestion
+                has_quick_fix = "Quick fix:" in captured_output
+
+                # Check for source snippet (arrow pointing to error line)
+                has_source_snippet = "->" in captured_output and "|" in captured_output
+
+                # Check for debug mode raw error output
+                has_debug_output = "--- Raw Error (debug=true) ---" in captured_output
+
+                print(f"[DEBUG] Has box top: {has_box_top}")
+                print(f"[DEBUG] Has box bottom: {has_box_bottom}")
+                print(f"[DEBUG] Has box sides: {has_box_sides}")
+                print(f"[DEBUG] Has error code: {has_error_code}")
+                print(f"[DEBUG] Has quick fix: {has_quick_fix}")
+                print(f"[DEBUG] Has source snippet: {has_source_snippet}")
+                print(f"[DEBUG] Has debug output: {has_debug_output}")
+
+                # Verify diagnostic box structure
+                assert has_box_top and has_box_bottom and has_box_sides, (
+                    f"Expected diagnostic box formatting (┌, ┘, │), got:\n{captured_output}"
+                )
+
+                # Verify error code is present
+                assert has_error_code, (
+                    f"Expected JAC_CLIENT_XXX error code in output, got:\n{captured_output}"
+                )
+
+                # Verify quick fix suggestion
+                assert has_quick_fix, (
+                    f"Expected 'Quick fix:' in output, got:\n{captured_output}"
+                )
+
+                # Source snippet is optional for some error types
+                if has_source_snippet:
+                    print("[DEBUG] Source snippet present (optional)")
+
+                # Debug output is optional - only shown if debug=true was properly applied
+                if has_debug_output:
+                    print("[DEBUG] Debug output present")
+
+                print("[DEBUG] All diagnostic formatting assertions passed!")
+
+            finally:
+                if server is not None:
+                    print("[DEBUG] Terminating server process")
+                    if server.stdout:
+                        server.stdout.close()
+                    server.terminate()
+                    try:
+                        server.wait(timeout=15)
+                        print("[DEBUG] Server terminated cleanly")
+                    except Exception:
+                        print("[DEBUG] Server did not terminate cleanly, killing")
+                        server.kill()
+                        server.wait(timeout=5)
+                    time.sleep(1)
+                    gc.collect()
+
+        finally:
+            os.chdir(original_cwd)
+            gc.collect()

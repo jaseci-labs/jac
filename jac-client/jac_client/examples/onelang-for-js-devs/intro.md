@@ -94,7 +94,7 @@ Before diving into specific topics, here is a quick overview of the main syntax 
 === "JAC-Client"
 
     ```jac
-    def Greeting(props: dict) -> any {
+    def Greeting(props: dict) -> JsxElement {
         name = props.name;
         return <div>Hello, {name}!</div>;
     }

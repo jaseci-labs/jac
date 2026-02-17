@@ -2,8 +2,39 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.10.1 (Unreleased)
+## jaclang 0.10.3 (Unreleased)
 
+- **Fix: Config Discovery from Target File Path**: Fixed `jac start` commands to discover `jac.toml` from the target file's directory instead of the current working directory when using absolute/relative paths.
+- **Fix: Unbound Method Call Type Checking**: Fixed "Parameter already matched" error when calling parent class methods with explicit `self` in inheritance patterns (e.g., `ParentClass.init(self, name=name)`). The type checker now correctly handles unbound method calls on `obj`/`node`/`walker`/`edge` types where `self` is implicit.
+- **Enhanced Type Narrowing**: Extended CFG-based type narrowing to support additional patterns: parenthesized isinstance `(isinstance(x, T))`, NOT expressions `not isinstance(x, T)`, compound AND/OR conditions, isinstance with tuple of types `isinstance(x, (A, B))`, truthiness narrowing `if x:` (excludes None), literal equality `x == "lit"`, and inheritance-aware isinstance that correctly narrows to subclasses in unions.
+- **Fix: Bare Callable Type Annotation**: Using `Callable` without type parameters (e.g., `fn: Callable`) no longer causes type errors.
+- **Type Inference for Tuple Unpacking**: The type evaluator now infers element types for variables in tuple/list unpacking assignments (e.g., `(row, col) = pos;` where `pos: tuple[int, int]`), eliminating the need for explicit pre-declarations before unpacking. Types that cannot be inferred still require explicit annotations.
+- **Fix: Display detailed syntax error messages**: Display detailed syntax error messages in `jac run` and `jac start` commands instead of generic import errors.
+- **Enum Type Checking**: Enums now have proper type checking. Accessing `.name` returns `str`, `.value` returns the correct type based on your enum values (int or str). Passing wrong types to functions expecting enums now shows type errors.
+- **Fix: LSP features in nested impl blocks**: Go-to-definition, hover, and syntax highlighting now work correctly for symbols inside if/while/for statements within impl blocks.
+- **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
+- **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
+- **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
+- 1 Minor refactors/changes.
+
+## jaclang 0.10.2 (Latest Release)
+
+- **Unified Primitive Codegen Interface**: Added abstract emitter contracts (`primitives.jac`) for all Jac primitive type methods and builtin functions. Each compilation backend (Python, ECMAScript, Native) must implement these interfaces, ensuring consistent primitive support across all code generation pathways. Python, JS, and Native backend implementations provided.
+- **Pytest Plugin for Native Jac Tests**: Added a `pytest11` entry-point plugin (`jaclang.pytest_plugin`) that discovers and runs `test` blocks in `.jac` files alongside Python tests with zero configuration. Migrated ~79 language integration tests and 8 compilation tests from Python to native Jac `test` keyword.
+- **Perf: Bootstrap Bytecode Cache**: Cache the jac0-transpiled bytecode for jac0core modules on disk, eliminating ~200ms of repeated transpilation on every invocation. `jac purge -f` clears both caches.
+- **Perf: Cache `len()` in Lexer/Parser Hot Paths**: Cached source and token list lengths in the jac0 bootstrap transpiler and the RD parser/lexer, eliminating ~1.8M redundant `len()` calls per startup.
+- 3 Minor refactors/changes.
+- **Fix: `jac grammar` Command Broken Path**: Fixed the `jac grammar` CLI command.
+- **Grammar Extraction Pass Improvements & Spec Snapshot Test**: Improved `jac grammar` extraction accuracy for negated-check loops, optional dispatch branches, `while True` parse-and-break patterns, and standalone `match_tok` calls. Added a golden-file snapshot test (`jac.spec`) that validates extracted grammar rules against a checked-in spec, catching unintended grammar drift on every CI run.
+- **Black-style Grammar Formatting**: Replaced alignment-based `jac grammar` formatting with Black-style fixed 4-space indentation, blank lines between rules, and 88-char line width. Uses a recursive tree-based formatter instead of the previous string-based wrapping.
+- **RD Parser Spec Convergence**: Improved strictness of jac parser and specification.
+- 4 Minor refactors/changes.
+
+## jaclang 0.10.1
+
+- **`jac purge` Command**: Added `jac purge` to clear the bytecode cache. Works even when the cache is corrupted.
+- **`format_build_error` Plugin Hook**: Added `format_build_error(error_output, project_dir, config)` hook to `JacMachineInterface`, allowing plugins to provide custom error formatting for client bundle build failures. The default implementation returns raw error output; plugins like `jac-client` can override to display structured diagnostics.
+- **Fix: MTIR scope key uses file stem for portability**: Fixed MTIR scope key generation to use only the file stem (filename without extension) instead of path-relative module names. This ensures consistent scope keys across different execution environments (local vs Docker) and enables compiled bytecode to be portable across different directory structures.
 - **Fix: False Type Errors in Nested Functions**: Fixed incorrect type checking errors when using nested functions inside `impl` blocks. Nested functions now correctly validate their return statements against their own return type instead of the outer function's return type.
 - **Fix: `jac start` Output Ordering**: Server startup messages now appear after compilation completes instead of before, ensuring users see build progress first and "Server ready" only when the server is actually accepting connections. Added `on_ready` callback parameter to `JacAPIServer.start()` for consistent startup message handling across stdlib and jac-scale servers.
 - **`jac format --check` Mode**: Added a `--check` flag to validate formatting without modifying files. Exits with status 1 if files need formatting or have syntax errors.
@@ -16,13 +47,19 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **`jac --version` Shows Installed Plugins**: The version banner now lists all installed Jac plugins with their versions, making it easy to see the full environment at a glance.
 - **Support Go to Definition for Inherited Members**: "Go to Definition" now works correctly for inherited methods and attributes on classes without an explicit parent class.
 - **Type Checker Improvements**:
+  - **Callable Type Annotation Support**: Added full support for `Callable[[ParamTypes], ReturnType]` type annotations. Includes gradual callable form (`Callable[..., T]`), parameter contravariance, return type covariance, automatic self/cls filtering for methods and classmethods, and validation that extra source parameters have defaults.
   - **Fix: Type Checker Crashes**: Fixed crashes when type-checking default/star imports (`import from mod { default as X }`) and walker entry/exit handlers.
   - **Fix: LiteralString Type Support**: Added `LiteralString` class to the type checker, improving binary operator chain handling and ensuring type compatibility between `LiteralString` and `str` types.
   - **Type Checking for `super.init()` Calls**: Added validation for `super.init()` calls, catching argument errors against parent class initializers with proper MRO resolution.
 - **Fix: Native Code Cache False Positive**: Fixed a bug where "Setting up Jac for first use" appeared on every run instead of only the first time.
+- **Fix: LiteralString String type Compatibility**: LiteralStrings and Strings are now type compatible with type checker.
+- **Lark Parser Removal**: Replaced the Lark-based parser with a hand-written recursive descent parser as the default. Deleted `jac_parser.py`, `jac.lark`, `lark_jac_parser.py`, and the vendored `lark/` directory. All 110 language tests, 438 format tests, and 15 LSP server tests pass with the new parser.
 - **1 Small Refactors**
+- Docs update: return type `any` -> `JsxElement`
+- **Fix:** Spurious Write Access Warning on System Root During Sync
+- **3 Small Refactors**
 
-## jaclang 0.10.0 (Latest Release)
+## jaclang 0.10.0
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Keyword-escaped names now use a backtick prefix (`` `node ``) instead of the angle-bracket prefix (`<>node`). All `.jac` source files, the lexer, parser, unparse/DocIR passes, and auto-lint rules have been updated accordingly.
 - **Remove Backtick Type Operator**: Removed the backtick (`` ` ``) `TYPE_OP` token and `TypeRef` AST node from the language. The `Root` type is now referenced directly by name (e.g., `with Root entry` instead of `` with `root entry ``). Filter comprehension syntax changed from `` (`?Type:field==val) `` to `(?:Type, field==val)`. `Root` is automatically imported from `jaclib` when used in walker event signatures.

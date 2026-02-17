@@ -2,7 +2,7 @@
 
 **One Language for AI-Native Full-Stack Development**
 
-Jac is a programming language and superset of both Python and TypeScript/JavaScript, with novel constructs for AI-integrated programming. Access the entire PyPI and npm ecosystems while using features like `by llm()` to seamlessly weave AI into your code. Write backend logic, frontend interfaces, and AI integrations in a single unified language.
+Jac is a programming language that supersets Python and JavaScript with native compilation support, adding novel constructs for AI-integrated programming. Access the entire PyPI and npm ecosystems while using features like `by llm()` to seamlessly weave AI into your code. Write backend logic, frontend interfaces, and AI integrations in a single unified language.
 
 ---
 
@@ -102,7 +102,7 @@ Jac is built on six key principles:
 
 2. **Full-Stack in One Language** - Write React components alongside server code. No context switching.
 
-3. **Python & JavaScript Superset** - Use `numpy`, `pandas`, `react`, `tailwind` directly. Your existing knowledge applies.
+3. **Supersets Python & JavaScript** - Use `numpy`, `pandas`, `react`, `tailwind` directly. Your existing knowledge applies.
 
 4. **Object-Spatial Programming** - Model domains as graphs. Deploy walkers to traverse and transform data.
 
@@ -126,7 +126,7 @@ Jac is designed for developers who want to build AI-powered applications without
 | **Student/Learner** | Modern language designed for clarity and simplicity |
 
 !!! note "What You Should Know"
-    Jac is a Python superset, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
+    Jac supersets Python, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
 
 ---
 

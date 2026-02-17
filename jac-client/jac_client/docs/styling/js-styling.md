@@ -87,7 +87,7 @@ cl import from .styles { default as styles }
 # Note: useState is auto-injected when using `has` variables
 
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         return <div style={styles.container}>
             <div style={styles.card}>
                 <h1 style={styles.title}>Counter Application</h1>

@@ -17,8 +17,8 @@ Choose a learning path based on your goals and background.
 **Key concept:** The `by llm()` syntax lets you delegate function bodies to AI models. The compiler generates prompts from function names, parameter names, and type signatures. Use `sem` for additional semantic context.
 
 ```jac
-sem summarize = "Summarize the article in 2-3 sentences.";
 def summarize(text: str) -> str by llm();
+sem summarize = "Summarize the article in 2-3 sentences.";
 ```
 
 ---
@@ -46,7 +46,7 @@ walker get_data {
 
 # Frontend
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         data = root spawn get_data();
         return <div>{data}</div>;
     }
@@ -63,7 +63,7 @@ cl {
 2. [Object-Spatial Programming](../tutorials/language/osp.md) - Nodes, edges, walkers
 3. [Testing](../tutorials/language/testing.md) - Write and run tests
 
-**Key concept:** Jac is a superset of Python and TypeScript/JavaScript, adding graphs as first-class citizens and walkers for graph traversal.
+**Key concept:** Jac supersets Python and JavaScript, adding graphs as first-class citizens and walkers for graph traversal.
 
 ```jac
 node Person { has name: str; }
@@ -102,7 +102,7 @@ jac start app.jac --scale
 
 ### Coming from Python
 
-You'll feel at home. Jac is a Python superset.
+You'll feel at home. Jac supersets Python.
 
 **What's different:**
 

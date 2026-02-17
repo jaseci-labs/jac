@@ -19,9 +19,8 @@ cl import from "@jac/runtime" {
 
 cl {
     # Navigation Component
-    def Navigation -> any {
-        has isLoggedIn: bool = False;
-        location = useLocation();
+    def Navigation -> JsxElement {
+        isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
         async can with location entry {
@@ -115,7 +114,7 @@ cl {
     }
 
     # Login Page
-    def LoginPage -> any {
+    def LoginPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -239,7 +238,7 @@ cl {
     }
 
     # Signup Page
-    def SignupPage -> any {
+    def SignupPage -> JsxElement {
         has username: str = "",
             password: str = "",
             error: str = "";
@@ -363,7 +362,7 @@ cl {
     }
 
     # Dashboard Page (Protected Route)
-    def DashboardPage -> any {
+    def DashboardPage -> JsxElement {
         has isLoggedIn: bool = False;
 
         async can with entry {
@@ -372,7 +371,7 @@ cl {
 
         if not isLoggedIn {
             return
-                <Navigate to="/login" />;
+                <Navigate to="/login"/>;
         }
 
         return
@@ -429,7 +428,7 @@ cl {
     }
 
     # Home/Landing Page - auto-redirect based on auth status
-    def HomePage -> any {
+    def HomePage -> JsxElement {
         has isLoggedIn: bool = False;
 
         async can with entry {
@@ -438,14 +437,14 @@ cl {
 
         if isLoggedIn {
             return
-                <Navigate to="/dashboard" />;
+                <Navigate to="/dashboard"/>;
         }
         return
-            <Navigate to="/login" />;
+            <Navigate to="/login"/>;
     }
 
     # Main App with React Router
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <Router>
                 <div
@@ -454,12 +453,12 @@ cl {
                         "minHeight": "100vh"
                     }}
                 >
-                    <Navigation />
+                    <Navigation/>
                     <Routes>
-                        <Route path="/" element={<HomePage />} />
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/signup" element={<SignupPage />} />
-                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/" element={<HomePage/>}/>
+                        <Route path="/login" element={<LoginPage/>}/>
+                        <Route path="/signup" element={<SignupPage/>}/>
+                        <Route path="/dashboard" element={<DashboardPage/>}/>
                     </Routes>
                 </div>
             </Router>;

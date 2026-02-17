@@ -1,14 +1,16 @@
 """Desktop target implementation.
 
-This target will be implemented in Phase 2.
+Extends WebTarget to add Tauri desktop app capabilities.
+Desktop builds use web bundle as foundation, then wrap with Tauri + sidecar.
 """
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.targets.registry { ClientTarget }
+import from jac_client.plugin.src.targets.web_target { WebTarget }
 
-"""Desktop build target (placeholder for Phase 2)."""
-class DesktopTarget(ClientTarget) {
+"""Desktop build target - extends WebTarget with Tauri wrapping."""
+class DesktopTarget(WebTarget) {
     def init(self: DesktopTarget) {
+        super.init();
         self.name = "desktop";
         self.default = False;
         self.requires_setup = True;

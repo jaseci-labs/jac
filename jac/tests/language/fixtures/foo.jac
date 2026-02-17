@@ -20,8 +20,8 @@ def test_run {
     nodes = JacRuntime.list_nodes(mod_name);
     if nodes {
         f"Nodes in {mod_name}:" |> print;
-        for node in nodes {
-            f"  - Node: {node}" |> print;
+        for nd in nodes {
+            f"  - Node: {nd}" |> print;
         }
     }
     # Print edges

@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.8 (Unreleased)
+## jac-scale 0.1.10 (Unreleased)
+
+## jac-scale 0.1.9 (Latest Release)
+
+- 1 Minor refactors/changes.
+
+## jac-scale 0.1.8
 
 - Internal: K8s integration tests now install jac plugins from fork PRs instead of always using main
 - **.jac folder is excluded when creating the zip folder that is uploaded into jaseci deployment pods.Fasten up deployment**
@@ -14,13 +20,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **early exit from k8s deployment if container restarted**
 - **Direct Database Access (`kvstore`)**: Added `kvstore()` function for direct MongoDB and Redis operations without graph layer. Supports database-specific methods (MongoDB: `find_one`, `insert_one`, `update_one`; Redis: `set_with_ttl`, `incr`, `scan_keys`) with common methods (`get`, `set`, `delete`, `exists`) working across both. Import from `jac_scale.lib` with URI-based connection pooling and configuration fallback (explicit URI → env vars → jac.toml).
 - **Code refactors**: Backtick escape, etc.
+- **Persistent Webhook API Keys**: Webhook API key metadata is now stored in MongoDB (`webhook_api_keys` collection) instead of in-memory dictionaries. API keys now survive server restarts.
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 - **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
+- Docs update: return type `any` -> `JsxElement`
 - **1 Small Refactors**
 - **fix**: `refresh_jwt_token` now verifies the user still exists before issuing a new token.
 
-## jac-scale 0.1.7 (Latest Release)
+## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 - **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.

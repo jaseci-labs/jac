@@ -140,35 +140,35 @@ def printgraph_ast_tree(`root: UniNode, dot_lines: (list[str] | None) = None) ->
         dot_lines = [];
     }
     """Generate number for each nodes.""";
-    def gen_node_id(`node: uni.UniNode) -> int {
+    def gen_node_id(nd: uni.UniNode) -> int {
         global id_used;
-        if (id(`node) not in id_bag) {
-            id_bag[id(`node)] = id_used;
+        if (id(nd) not in id_bag) {
+            id_bag[id(nd)] = id_used;
             id_used += 1;
         }
-        return id_bag[id(`node)];
+        return id_bag[id(nd)];
     }
-    def gen_node_parameters(`node: uni.UniNode) -> str {
+    def gen_node_parameters(nd: uni.UniNode) -> str {
         shape = '';
         fillcolor = '';
         style = '';
-        _class__ = str(`node.__class__)[33:-2];
+        _class__ = str(nd.__class__)[33:-2];
         if (_class__ in CLASS_COLOR_MAP) {
             shape = 'shape="oval"';
             style = 'style="filled"';
             fillcolor = f'fillcolor="{CLASS_COLOR_MAP[_class__]}"';
         }
         info1: list[tuple[(str, str, str)]] = [];
-        if isinstance(`node, uni.Token) {
+        if isinstance(nd, uni.Token) {
             ' "Only tokens and some declared types are box(others are oval )';
             shape = 'shape="box"';
-            info1.append(('name', '=', `node.name));
-            info1.append(('value', '=', html.escape(`node.value)));
+            info1.append(('name', '=', nd.name));
+            info1.append(('value', '=', html.escape(nd.value)));
         }
         if (len(info1) == 0) {
-            label = f'"{node.__class__.__name__}"';
+            label = f'"{nd.__class__.__name__}"';
         } else {
-            label = f"<{node.__class__.__name__}";
+            label = f"<{nd.__class__.__name__}";
             for i in info1 {
                 label += f"<BR/> {i[0]}{i[1]}{i[2]}";
             }
@@ -198,88 +198,79 @@ def print_ast_tree(
 ) -> str {
     import from jaclang.jac0core.unitree { AstSymbolNode, Token }
     print_py_raise: bool = False;
-    def __node_repr_in_tree(`node: UniNode) -> str {
-        access = f"Access: {node.access.tag.value} ,"
-        if (isinstance(`node, uni.AstAccessNode) and (`node.access is not None))
+    def __node_repr_in_tree(nd: UniNode) -> str {
+        access = f"Access: {nd.access.tag.value} ,"
+        if (isinstance(nd, uni.AstAccessNode) and (nd.access is not None))
         else '';
-        sym_table_link = f"SymbolTable: {node.type_sym_tab.scope_name}"
-        if (isinstance(`node, AstSymbolNode) and `node.type_sym_tab)
-        else 'SymbolTable: None' if isinstance(`node, AstSymbolNode) else '';
-        if (isinstance(`node, Token) and isinstance(`node, AstSymbolNode)) {
-            out = f"{node.__class__.__name__} - {node.value} - Type: {node.expr_type}, {access} {sym_table_link}";
+        sym_table_link = f"SymbolTable: {nd.type_sym_tab.scope_name}"
+        if (isinstance(nd, AstSymbolNode) and nd.type_sym_tab)
+        else 'SymbolTable: None' if isinstance(nd, AstSymbolNode) else '';
+        if (isinstance(nd, Token) and isinstance(nd, AstSymbolNode)) {
+            out = f"{nd.__class__.__name__} - {nd.value} - Type: {nd.expr_type}, {access} {sym_table_link}";
             return out;
-        } elif isinstance(`node, Token) {
-            return f"{node.__class__.__name__} - {node.value}, {access}";
+        } elif isinstance(nd, Token) {
+            return f"{nd.__class__.__name__} - {nd.value}, {access}";
         } elif (
-            isinstance(`node, uni.Module)
-            and `node.is_raised_from_py
-            and not print_py_raise
+            isinstance(nd, uni.Module) and nd.is_raised_from_py and not print_py_raise
         ) {
-            return f"{node.__class__.__name__} - PythonModuleRaised: {node.name}";
-        } elif isinstance(`node, uni.ModuleItem) {
-            name_str = `node.name.sym_name
-            if isinstance(`node.name, uni.Name)
-            else `node.name.value;
-            out = f"{node.__class__.__name__} - {name_str} - abs_path: {node.abs_path}";
+            return f"{nd.__class__.__name__} - PythonModuleRaised: {nd.name}";
+        } elif isinstance(nd, uni.ModuleItem) {
+            name_str = nd.name.sym_name
+            if isinstance(nd.name, uni.Name)
+            else nd.name.value;
+            out = f"{nd.__class__.__name__} - {name_str} - abs_path: {nd.abs_path}";
             return out;
-        } elif isinstance(`node, uni.ModulePath) {
-            out = f"{node.__class__.__name__} - {'.'.join(
-                [n.value for n in node.path] if node.path else []
-            )} - abs_path: {node.abs_path}";
+        } elif isinstance(nd, uni.ModulePath) {
+            out = f"{nd.__class__.__name__} - {'.'.join(
+                [n.value for n in nd.path] if nd.path else []
+            )} - abs_path: {nd.abs_path}";
             return out;
-        } elif isinstance(`node, AstSymbolNode) {
-            out = f"{node.__class__.__name__} - {node.sym_name} - Type: {node.expr_type}, {access} {sym_table_link}";
+        } elif isinstance(nd, AstSymbolNode) {
+            out = f"{nd.__class__.__name__} - {nd.sym_name} - Type: {nd.expr_type}, {access} {sym_table_link}";
             return out;
-        } elif isinstance(`node, uni.Expr) {
-            return f"{node.__class__.__name__} - Type: {node.expr_type}";
+        } elif isinstance(nd, uni.Expr) {
+            return f"{nd.__class__.__name__} - Type: {nd.expr_type}";
         } else {
-            return f"{node.__class__.__name__}, {access}";
+            return f"{nd.__class__.__name__}, {access}";
         }
     }
-    def __node_repr_in_py_tree(`node: ast3.AST) -> str {
-        if isinstance(`node, ast3.Constant) {
-            return f"{node.__class__.__name__} - {node.value!r}";
-        } elif isinstance(`node, ast3.Name) {
-            return f"{node.__class__.__name__} - {node.id}";
-        } elif isinstance(
-            `node, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef
-        ) {
-            return f"{node.__class__.__name__} - {node.name}";
-        } elif isinstance(`node, ast3.Import) {
-            return f"{node.__class__.__name__} - {', '.join(
-                alias.name for alias in node.names
+    def __node_repr_in_py_tree(nd: ast3.AST) -> str {
+        if isinstance(nd, ast3.Constant) {
+            return f"{nd.__class__.__name__} - {nd.value!r}";
+        } elif isinstance(nd, ast3.Name) {
+            return f"{nd.__class__.__name__} - {nd.id}";
+        } elif isinstance(nd, ast3.FunctionDef | ast3.ClassDef | ast3.AsyncFunctionDef) {
+            return f"{nd.__class__.__name__} - {nd.name}";
+        } elif isinstance(nd, ast3.Import) {
+            return f"{nd.__class__.__name__} - {', '.join(
+                alias.name for alias in nd.names
             )}";
-        } elif isinstance(`node, ast3.ImportFrom) {
-            return f"{node.__class__.__name__} - {node.module} : {', '.join(
-                alias.name for alias in node.names
+        } elif isinstance(nd, ast3.ImportFrom) {
+            return f"{nd.__class__.__name__} - {nd.module} : {', '.join(
+                alias.name for alias in nd.names
             )}";
-        } elif isinstance(`node, ast3.alias) {
-            return f"{node.__class__.__name__} - {node.name}";
-        } elif isinstance(`node, ast3.Attribute) {
-            return f"{node.__class__.__name__} - {node.attr}";
-        } elif isinstance(`node, ast3.Call) {
-            if isinstance(`node.func, ast3.Name) {
-                return f"{node.__class__.__name__} - {node.func.id}";
-            } elif isinstance(`node.func, ast3.Attribute) {
-                return f"{node.__class__.__name__} - {node.func.attr}";
+        } elif isinstance(nd, ast3.alias) {
+            return f"{nd.__class__.__name__} - {nd.name}";
+        } elif isinstance(nd, ast3.Attribute) {
+            return f"{nd.__class__.__name__} - {nd.attr}";
+        } elif isinstance(nd, ast3.Call) {
+            if isinstance(nd.func, ast3.Name) {
+                return f"{nd.__class__.__name__} - {nd.func.id}";
+            } elif isinstance(nd.func, ast3.Attribute) {
+                return f"{nd.__class__.__name__} - {nd.func.attr}";
             } else {
-                return f"{node.__class__.__name__}";
+                return f"{nd.__class__.__name__}";
             }
         } else {
-            return f"{node.__class__.__name__}";
+            return f"{nd.__class__.__name__}";
         }
     }
-    def get_location_info(`node: ast3.AST) -> str {
-        if (
-            `node?.lineno
-            and `node?.col_offset
-            and `node?.end_lineno
-            and `node?.end_col_offset
-        ) {
-            start_pos = f"{node.lineno}:{(node.col_offset + 1)}";
-            end_pos = f"{node.end_lineno}:{(node.end_col_offset + 1)
-            if node.end_col_offset
-            else node.col_offset}";
+    def get_location_info(nd: ast3.AST) -> str {
+        if (nd?.lineno and nd?.col_offset and nd?.end_lineno and nd?.end_col_offset) {
+            start_pos = f"{nd.lineno}:{(nd.col_offset + 1)}";
+            end_pos = f"{nd.end_lineno}:{(nd.end_col_offset + 1)
+            if nd.end_col_offset
+            else nd.col_offset}";
             prefix = f"{start_pos} - {end_pos}";
             return prefix;
         }
@@ -349,11 +340,7 @@ class SymbolTree {
         node_name: str,
         parent: (SymbolTree | None) = None,
         children: (list[SymbolTree] | None) = None
-    ) -> None {
-        self.parent = parent;
-        self.kid = children if (children is not None) else [];
-        self.name = node_name;
-    }
+    ) -> None;
 
     """Get parent node."""
     @property
@@ -372,15 +359,15 @@ class SymbolTree {
 }
 
 def _build_symbol_tree_common(
-    `node: UniScopeNode, parent_node: (SymbolTree | None) = None
+    nd: UniScopeNode, parent_node: (SymbolTree | None) = None
 ) -> SymbolTree {
     `root = SymbolTree(
-        node_name=f"SymTable::{node.__class__.__name__}({node.scope_name})",
+        node_name=f"SymTable::{nd.__class__.__name__}({nd.scope_name})",
         parent=parent_node
     );
     symbols = SymbolTree(node_name='Symbols', parent=`root);
     children = SymbolTree(node_name='Sub Tables', parent=`root);
-    syms_to_iterate = `set(`node.names_in_scope.values());
+    syms_to_iterate = `set(nd.names_in_scope.values());
     for sym in syms_to_iterate {
         symbol_node = SymbolTree(node_name=f"{sym.sym_name}", parent=symbols);
         SymbolTree(node_name=f"{sym.access} {sym.sym_type}", parent=symbol_node);
@@ -405,7 +392,7 @@ def _build_symbol_tree_common(
             ];
         }
     }
-    for k in `node.kid_scope {
+    for k in nd.kid_scope {
         if (k.scope_name == 'builtins') {
             continue;
         }
@@ -469,39 +456,39 @@ def get_symtab_tree_str(
 }
 
 """Generate DOT graph representation of a symbol table tree."""
-def printgraph_symtab_tree(`node: UniScopeNode) -> str {
+def printgraph_symtab_tree(nd: UniScopeNode) -> str {
     dot_lines = [];
     id_map = {};
     last_id_used = 0;
-    def gen_node_id(`node: SymbolTree) -> int {
+    def gen_node_id(nd: SymbolTree) -> int {
         nonlocal last_id_used ;
-        if (id(`node) not in id_map) {
-            id_map[id(`node)] = last_id_used;
+        if (id(nd) not in id_map) {
+            id_map[id(nd)] = last_id_used;
             last_id_used += 1;
         }
-        return id_map[id(`node)];
+        return id_map[id(nd)];
     }
-    def gen_node_parameters(`node: SymbolTree) -> str {
+    def gen_node_parameters(nd: SymbolTree) -> str {
         shape = '';
         fillcolor = '';
         style = '';
-        label = f'"{node.name}"';
+        label = f'"{nd.name}"';
         label = f"{label} {shape} {style} {fillcolor}".strip();
         return f"[label={label}]";
     }
-    def gen_dot_graph(`node: SymbolTree) -> None {
-        dot_lines.append(f"{gen_node_id(node)} {gen_node_parameters(node)};");
-        for kid_node in `node.kid {
+    def gen_dot_graph(nd: SymbolTree) -> None {
+        dot_lines.append(f"{gen_node_id(nd)} {gen_node_parameters(nd)};");
+        for kid_node in nd.kid {
             if kid_node {
                 if (kid_node.name in dir(builtins)) {
                     continue;
                 }
-                dot_lines.append(f"{gen_node_id(node)}  -> {gen_node_id(kid_node)};");
+                dot_lines.append(f"{gen_node_id(nd)}  -> {gen_node_id(kid_node)};");
                 gen_dot_graph(kid_node);
             }
         }
     }
-    gen_dot_graph(_build_symbol_tree_common(`node));
+    gen_dot_graph(_build_symbol_tree_common(nd));
     dot_str = 'digraph graph1 {\n' + '\n'.join(dot_lines) + '\n}';
     return dot_str;
 }

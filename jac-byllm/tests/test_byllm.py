@@ -11,6 +11,7 @@ import pytest
 import yaml
 from fixtures import python_lib_mode
 
+import byllm.llm as _byllm_llm_mod
 from byllm.lib import Model
 from jaclang import JacRuntimeInterface as Jac
 
@@ -192,6 +193,23 @@ def test_with_llm_method(fixture_path: Callable[[str], str]) -> None:
     # sent to some callbacks (or other means) to the user.
     # assert "[Reasoning] <Reason>" in stdout_value
     assert "Personality.INTROVERT" in stdout_value
+
+
+def test_deprecated_method_param(fixture_path: Callable[[str], str]) -> None:
+    """Test that using method= parameter emits a DeprecationWarning."""
+    import warnings
+
+    captured_output = io.StringIO()
+    sys.stdout = captured_output
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        jac_import("with_llm_deprecated_method", base_path=fixture_path("./"))
+    sys.stdout = sys.__stdout__
+    stdout_value = captured_output.getvalue()
+    assert "test output" in stdout_value
+    deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+    assert len(deprecation_warnings) >= 1
+    assert "'method' parameter is deprecated" in str(deprecation_warnings[0].message)
 
 
 def test_with_llm_lower(fixture_path: Callable[[str], str]) -> None:
@@ -416,7 +434,9 @@ class TestApiKeyResolution:
 
     def test_api_key_from_global_config(self) -> None:
         """Global _model_config api_key should be used as last resort."""
-        with patch("byllm.llm._model_config", {"api_key": "sk-global-key"}):
+        with patch.dict(
+            _byllm_llm_mod._model_config, {"api_key": "sk-global-key"}, clear=True
+        ):
             model = Model(model_name="gpt-4o-mini")
             assert model.api_key == "sk-global-key"
 
@@ -431,7 +451,9 @@ class TestApiKeyResolution:
 
     def test_api_key_instance_config_over_global(self) -> None:
         """Instance config api_key should win over global config."""
-        with patch("byllm.llm._model_config", {"api_key": "sk-global-key"}):
+        with patch.dict(
+            _byllm_llm_mod._model_config, {"api_key": "sk-global-key"}, clear=True
+        ):
             model = Model(
                 model_name="gpt-4o-mini",
                 config={"api_key": "sk-config-key"},
@@ -440,7 +462,7 @@ class TestApiKeyResolution:
 
     def test_api_key_empty_when_none_provided(self) -> None:
         """api_key should remain empty when no source provides one."""
-        with patch("byllm.llm._model_config", {"api_key": ""}):
+        with patch.dict(_byllm_llm_mod._model_config, {"api_key": ""}, clear=True):
             model = Model(model_name="gpt-4o-mini")
             assert model.api_key == ""
 

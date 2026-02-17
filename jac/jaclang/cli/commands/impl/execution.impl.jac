@@ -22,7 +22,7 @@ def _ensure_jac_runtime -> None {
     }
 }
 
-"""Re-discover jac.toml from the file's directory when an absolute/relative path is given.
+"""Discover jac.toml from the file's directory when an absolute/relative path is given.
 
 This ensures that when running `jac start /path/to/project/main.jac` from any directory,
 the jac.toml in /path/to/project/ is found and used for plugin configuration.
@@ -37,15 +37,17 @@ def _discover_config_from_file(filename: str) -> None {
     file_path = Path(filename).resolve();
     file_dir = file_path.parent;
 
-    # Capture active profile from current config before re-discovery
-    old_config = get_config();
-    active_profile = old_config.active_profile if old_config else "";
+    # Preserve the active profile from any previously loaded config so that
+    # re-discovery does not lose the --profile overlay applied by _apply_profile.
+    existing_config = get_config();
+    active_profile = existing_config.active_profile if existing_config else None;
 
-    # Re-discover config with profile applied in one step
+    # Use get_config with start_path to discover from the file's directory.
+    # This ensures we don't accidentally discover config from cwd first.
+    # If a config was already loaded, force_discover ensures we re-discover
+    # from the correct location.
     try {
-        config = JacConfig.discover(
-            start_path=file_dir, profile=active_profile or None
-        );
+        config = get_config(start_path=file_dir, force_discover=True);
     } except (OSError, KeyError, ValueError) as e {
         console.print(
             f"Warning: Failed to discover config from {file_dir}: {e}", style="warning"
@@ -53,7 +55,10 @@ def _discover_config_from_file(filename: str) -> None {
         return;
     }
     if config is not None {
-        set_config(config);
+        # Re-apply the profile overlay that was set before re-discovery.
+        if active_profile {
+            config.apply_profile_overlay(active_profile);
+        }
         add_venv_to_path(config);
     }
 }
@@ -125,8 +130,14 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             );
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }
@@ -141,7 +152,7 @@ impl enter(
     args: list = [],
     main: bool = True,
     `root: str = '',
-    `node: str = ''
+    nd: str = ''
 ) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -170,7 +181,7 @@ impl enter(
             return 1;
         } else {
             archetype = getattr(loaded_mod, entrypoint)(*args);
-            mach.set_entry_node(`node);
+            mach.set_entry_node(nd);
             if (
                 isinstance(archetype, WalkerArchetype)
                 and Jac.check_read_access(mach.entry_node)
@@ -221,15 +232,21 @@ impl start(
         Jac.jac_import(target=mod, base_path=base, lng=lng);
         if Jac.program.errors_had {
             for error in Jac.program.errors_had {
-                console.error(f"Error: {error}");
+                console.error(error.pretty_print(colors=True));
             }
             mach.close();
             return 1;
         }
     } except Exception as e {
-        import from jaclang.jac0core.helpers { dump_traceback }
-        console.error(f"Error loading {filename}: {e}");
-        console.error(dump_traceback(e));
+        if Jac.program.errors_had {
+            for error in Jac.program.errors_had {
+                console.error(error.pretty_print(colors=True));
+            }
+        } else {
+            import from jaclang.jac0core.helpers { dump_traceback }
+            console.error(f"Error loading {filename}: {e}");
+            console.error(dump_traceback(e));
+        }
         mach.close();
         return 1;
     }

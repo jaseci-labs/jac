@@ -22,16 +22,16 @@ import from jaclang.jac0core.passes { UniPass }
 obj PyJacAstLinkPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def link_jac_py_nodes(jac_node: uni.UniNode, py_nodes: list[ast3.AST]) -> None;
-    def exit_module_path(`node: uni.ModulePath) -> None;
-    def exit_archetype(`node: uni.Archetype) -> None;
-    def exit_enum(`node: uni.Enum) -> None;
-    def exit_ability(`node: uni.Ability) -> None;
-    def exit_impl_def(`node: uni.ImplDef) -> None;
-    def exit_param_var(`node: uni.ParamVar) -> None;
-    def exit_except(`node: uni.Except) -> None;
-    def exit_expr_as_item(`node: uni.ExprAsItem) -> None;
-    def exit_global_stmt(`node: uni.GlobalStmt) -> None;
-    def exit_non_local_stmt(`node: uni.NonLocalStmt) -> None;
-    def exit_k_w_pair(`node: uni.KWPair) -> None;
-    def exit_atom_trailer(`node: uni.AtomTrailer) -> None;
+    def exit_module_path(nd: uni.ModulePath) -> None;
+    def exit_archetype(nd: uni.Archetype) -> None;
+    def exit_enum(nd: uni.Enum) -> None;
+    def exit_ability(nd: uni.Ability) -> None;
+    def exit_impl_def(nd: uni.ImplDef) -> None;
+    def exit_param_var(nd: uni.ParamVar) -> None;
+    def exit_except(nd: uni.Except) -> None;
+    def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
+    def exit_global_stmt(nd: uni.GlobalStmt) -> None;
+    def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
+    def exit_k_w_pair(nd: uni.KWPair) -> None;
+    def exit_atom_trailer(nd: uni.AtomTrailer) -> None;
 }

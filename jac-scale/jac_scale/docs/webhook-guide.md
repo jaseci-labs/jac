@@ -19,7 +19,6 @@ Webhook configuration is managed via the `jac.toml` file in your project root.
 
 ```toml
 [plugins.scale.webhook]
-secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
@@ -29,18 +28,9 @@ api_key_expiry_days = 365
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `secret` | string | `"webhook-secret-key"` | Secret key for HMAC signature verification. Can also be set via `WEBHOOK_SECRET` environment variable. |
 | `signature_header` | string | `"X-Webhook-Signature"` | HTTP header name containing the HMAC signature. |
 | `verify_signature` | boolean | `true` | Whether to verify HMAC signatures on incoming requests. |
 | `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. Set to `0` for permanent keys. |
-
-### Environment Variables
-
-For production deployments, use environment variables for sensitive values:
-
-```bash
-export WEBHOOK_SECRET="your-secure-random-secret"
-```
 
 ## 2. Creating Webhook Walkers
 

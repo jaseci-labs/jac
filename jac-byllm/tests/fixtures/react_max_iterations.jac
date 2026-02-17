@@ -15,7 +15,6 @@ def get_speed_unit() -> str {
 }
 
 def get_wind_speed_report(city: str) -> str by llm(
-    method="ReAct",
     tools=[get_live_wind_speed, get_speed_unit],
     max_react_iterations=2
 );

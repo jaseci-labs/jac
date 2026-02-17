@@ -1,10 +1,10 @@
 # Pages
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has count: int = 0;
 
         can with count entry {
-            console.log("Count: ", count);
+            print("Count: ", count);
         }
 
         return
@@ -13,7 +13,7 @@ cl {
                     Hello, World!
                 </h1>
                 <p>
-                    Count: {count}
+                    Count:{count}
                 </p>
                 <button onClick={lambda e: any  -> None { count = count + 1;}}>
                     Increment

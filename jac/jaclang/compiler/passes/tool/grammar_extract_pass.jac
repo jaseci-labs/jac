@@ -93,7 +93,7 @@ obj GrammarExtractPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     # UniPass hooks
     def before_pass -> None;
-    def enter_impl_def(`node: uni.ImplDef) -> None;
+    def enter_impl_def(nd: uni.ImplDef) -> None;
     def after_pass -> None;
     # Formatting (static-like helpers, called with self)
     def format_ebnf(expr: GExpr) -> str;
@@ -106,15 +106,30 @@ obj GrammarExtractPass(UniPass) {
     def analyze_if_stmt(stmt: uni.IfStmt) -> GExpr | None;
     def analyze_while_stmt(stmt: uni.WhileStmt) -> GExpr | None;
     def find_break_match_tok(stmts: list) -> tuple | None;
+    def find_break_none_check(stmts: list) -> tuple | None;
     def analyze_condition(cond: uni.Expr) -> tuple | None;
     def collect_elif_chain(stmt: uni.IfStmt) -> list;
     def has_early_return(stmts: list) -> bool;
+    def is_negated_check_condition(cond: uni.Expr) -> bool;
+    def expr_contains_tok(expr: GExpr, tok_name: str) -> bool;
     # AST helpers
-    def get_self_method(node: uni.Expr) -> str | None;
+    def extract_token_kind(expr: uni.Expr) -> str | None;
+    def get_self_method(nd: uni.Expr) -> str | None;
     def get_token_args(call: uni.FuncCall) -> list;
     def get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | None;
-    def get_impl_target_names(node: uni.ImplDef) -> list;
+    def get_impl_target_names(nd: uni.ImplDef) -> list;
     # Output
+    def format_rule_pretty(
+        rule: GrammarRule, sep: str = "::=", max_line: int = 88
+    ) -> str;
+
+    def format_expr_pretty(expr: GExpr, indent: int, max_line: int) -> str;
+    def format_alt_pretty(choices: list, indent: int, max_line: int) -> str;
+    def format_seq_pretty(items: list, indent: int, max_line: int) -> str;
+    def format_group_pretty(
+        inner: GExpr, indent: int, max_line: int, suffix: str
+    ) -> str;
+
     def emit_ebnf -> str;
     def emit_lark -> str;
 }

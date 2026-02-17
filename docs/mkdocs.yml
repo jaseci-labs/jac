@@ -35,6 +35,7 @@ nav:
           - byLLM Quickstart: "tutorials/ai/quickstart.md"
           - Structured Outputs: "tutorials/ai/structured-outputs.md"
           - Agentic AI & Tools: "tutorials/ai/agentic.md"
+          - Multimodal (Images & Video): "tutorials/ai/multimodal.md"
           - Using AI Tools with Jac: "tutorials/ai/ai-tools.md"
       - Full-Stack Apps:
           - Project Setup: "tutorials/fullstack/setup.md"

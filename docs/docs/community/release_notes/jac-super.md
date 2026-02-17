@@ -2,11 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.2 (Unreleased)
+## jac-super 0.1.4 (Unreleased)
+
+## jac-super 0.1.3 (Latest Release)
+
+## jac-super 0.1.2
 
 - Various refactors
 
-## jac-super 0.1.1 (Latest Release)
+## jac-super 0.1.1
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
 

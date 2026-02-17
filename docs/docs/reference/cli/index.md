@@ -15,6 +15,7 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac test` | Run tests |
 | `jac format` | Format code |
 | `jac clean` | Clean project build artifacts |
+| `jac purge` | Purge global bytecode cache (works even if corrupted) |
 | `jac enter` | Run specific entrypoint |
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
@@ -26,7 +27,8 @@ The Jac CLI provides commands for running, building, testing, and deploying Jac 
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac jacpack` | Manage project templates (.jacpack files) |
-| `jac get_object` | Retrieve object by ID |
+| `jac grammar` | Extract and print the Jac grammar |
+| `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
 | `jac tool` | Language tools (IR, AST) |
@@ -82,8 +84,8 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `-m, --main` | Treat as `__main__` | `True` |
 | `-f, --faux` | Print docs only (no server) | `False` |
 | `-d, --dev` | Enable HMR (Hot Module Replacement) mode | `False` |
-| `-a, --api_port` | Separate API port for HMR mode (0=same as port) | `0` |
-| `-n, --no_client` | Skip client bundling/serving (API only) | `False` |
+| `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
+| `--no_client` | Skip client bundling/serving (API only) | `False` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -168,15 +170,17 @@ jac create
 Type check Jac code for errors.
 
 ```bash
-jac check [-h] [-p] [-np] [-w] [-nw] [--ignore PATTERNS] paths [paths ...]
+jac check [-h] [-e] [-w] [--ignore PATTERNS] [-p] [--nowarn] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to check | Required |
-| `-p, --print_errs` | Print errors | `True` |
-| `-w, --warnonly` | Warnings only (no errors) | `False` |
+| `-e, --print_errs` | Print detailed error messages | `True` |
+| `-w, --warnonly` | Treat errors as warnings | `False` |
 | `--ignore` | Comma-separated list of files/folders to ignore | None |
+| `-p, --parse_only` | Only check syntax (skip type checking) | `False` |
+| `--nowarn` | Suppress warning output | `False` |
 
 **Examples:**
 
@@ -243,13 +247,14 @@ jac test main.jac -v
 Format Jac code according to style guidelines. For auto-linting (code corrections like combining consecutive `has` statements, converting `@staticmethod` to `static`), use `jac lint --fix` instead.
 
 ```bash
-jac format [-h] [-t] paths [paths ...]
+jac format [-h] [-s] [-l] paths [paths ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `paths` | Files/directories to format | Required |
-| `-t, --to_screen` | Print to screen (don't write) | `False` |
+| `-s, --to_screen` | Print to stdout instead of writing | `False` |
+| `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
 
 **Examples:**
 
@@ -307,29 +312,29 @@ jac lint . --ignore fixtures
 Run a specific entrypoint in a Jac file.
 
 ```bash
-jac enter [-h] -e ENTRYPOINT [-s SESSION] [-m] [-r ROOT] [-n NODE] filename [args ...]
+jac enter [-h] [-m] [-r ROOT] [-n NODE] filename entrypoint [args ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Jac file | Required |
-| `-e, --entrypoint` | Entrypoint function/walker | Required |
+| `entrypoint` | Function/walker to invoke (positional) | Required |
 | `args` | Arguments to pass | None |
-| `-s, --session` | Session name | None |
-| `-r, --root` | Root node ID | None |
-| `-n, --node` | Target node ID | None |
+| `-m, --main` | Treat as `__main__` | `True` |
+| `-r, --root` | Root executor ID | None |
+| `-n, --node` | Starting node ID | None |
 
 **Examples:**
 
 ```bash
 # Run specific entrypoint
-jac enter main.jac -e my_walker
+jac enter main.jac my_walker
 
 # With arguments
-jac enter main.jac -e process_data arg1 arg2
+jac enter main.jac process_data arg1 arg2
 
-# With session
-jac enter main.jac -e my_walker -s my_session
+# With root and node
+jac enter main.jac my_walker -r root_id -n node_id
 ```
 
 ---
@@ -341,21 +346,22 @@ jac enter main.jac -e my_walker -s my_session
 Generate DOT graph visualization.
 
 ```bash
-jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-sa SAVETO] [-to] [-f FORMAT] filename [connection ...]
+jac dot [-h] [-s SESSION] [-i INITIAL] [-d DEPTH] [-t] [-b] [-e EDGE_LIMIT] [-n NODE_LIMIT] [-o SAVETO] [-p] [-f FORMAT] filename [connection ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Jac file | Required |
-| `-s, --session` | Session name | None |
-| `-i, --initial` | Initial node | None |
-| `-d, --depth` | Traversal depth | `-1` (unlimited) |
-| `-t, --traverse` | Traverse connections | `False` |
+| `-s, --session` | Session identifier | None |
+| `-i, --initial` | Initial node ID | None |
+| `-d, --depth` | Max traversal depth | `-1` (unlimited) |
+| `-t, --traverse` | Enable traversal mode | `False` |
+| `-c, --connection` | Connection filters | None |
 | `-b, --bfs` | Use BFS traversal | `False` |
 | `-e, --edge_limit` | Max edges | `512` |
 | `-n, --node_limit` | Max nodes | `512` |
-| `-sa, --saveto` | Output file path | None |
-| `-to, --to_screen` | Print to screen | `False` |
+| `-o, --saveto` | Output file path | None |
+| `-p, --to_screen` | Print to stdout | `False` |
 | `-f, --format` | Output format | `dot` |
 
 **Examples:**
@@ -409,10 +415,10 @@ jac plugins [-h] [-v] [action] [names ...]
 | Action | Description |
 |--------|-------------|
 | `list` | List installed plugins (default) |
-| `install` | Install plugins |
-| `uninstall` | Remove plugins |
+| `info` | Show plugin information |
 | `enable` | Enable plugins |
 | `disable` | Disable plugins |
+| `disabled` | List disabled plugins |
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -427,16 +433,21 @@ jac plugins
 # Explicitly list plugins
 jac plugins list
 
-# Install a plugin
-jac plugins install jac-scale
+# Show info about a plugin
+jac plugins info byllm
 
-# Install jac-super for enhanced console output
-jac plugins install jac-super
+# Disable a plugin
+jac plugins disable byllm
 
-# Uninstall
-jac plugins uninstall byllm
+# Enable a plugin
+jac plugins enable byllm
+
+# List disabled plugins
+jac plugins disabled
 ```
 
+> **Note:** To install or uninstall plugins, use `pip install` / `pip uninstall` directly. The `jac plugins` command manages enabled/disabled state for already-installed plugins.
+>
 > **💡 Popular Plugins**:
 >
 > - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
@@ -452,7 +463,7 @@ jac plugins uninstall byllm
 View and modify project configuration settings in `jac.toml`.
 
 ```bash
-jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
+jac config [action] [key] [value] [-g GROUP] [-o FORMAT]
 ```
 
 | Action | Description |
@@ -461,14 +472,14 @@ jac config [action] [-k KEY] [-v VALUE] [-g GROUP] [-o FORMAT]
 | `list` | Display all settings including defaults |
 | `get` | Get a specific setting value |
 | `set` | Set a configuration value |
-| `unset` | Remove a configuration value |
+| `unset` | Remove a configuration value (revert to default) |
 | `path` | Show path to config file |
 | `groups` | List available configuration groups |
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-k, --key` | Configuration key (e.g., `project.name`) | None |
-| `-v, --value` | Value to set | None |
+| `key` | Configuration key (positional, e.g., `project.name`) | None |
+| `value` | Value to set (positional) | None |
 | `-g, --group` | Filter by configuration group | None |
 | `-o, --output` | Output format (`table`, `json`, `toml`) | `table` |
 
@@ -499,13 +510,13 @@ jac config list
 jac config show -g project
 
 # Get a specific value
-jac config get -k project.name
+jac config get project.name
 
 # Set a value
-jac config set -k project.version -v "2.0.0"
+jac config set project.version "2.0.0"
 
 # Remove a value (revert to default)
-jac config unset -k run.cache
+jac config unset run.cache
 
 # Show config file path
 jac config path
@@ -709,7 +720,7 @@ jac clean [-h] [-a] [-d] [-c] [-p] [-f]
 | `-a, --all` | Clean all `.jac` artifacts (data, cache, packages, client) | `False` |
 | `-d, --data` | Clean data directory (`.jac/data`) | `False` |
 | `-c, --cache` | Clean cache directory (`.jac/cache`) | `False` |
-| `-p, --packages` | Clean packages directory (`.jac/packages`) | `False` |
+| `-p, --packages` | Clean virtual environment (`.jac/venv`) | `False` |
 | `-f, --force` | Force clean without confirmation prompt | `False` |
 
 By default (no flags), `jac clean` removes only the data directory (`.jac/data`).
@@ -733,7 +744,28 @@ jac clean --data --cache
 jac clean --all --force
 ```
 
-> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the cache with `jac clean --cache` or `rm -rf .jac`. Stale bytecode can cause issues when source files change.
+> **💡 Troubleshooting Tip:** If you encounter unexpected syntax errors, "NodeAnchor is not a valid reference" errors, or other strange behavior after modifying your code, try clearing the cache with `jac clean --cache` (`rm -rf .jac`) or `jac purge`. Stale bytecode can cause issues when source files change.
+
+---
+
+### jac purge
+
+Purge the global bytecode cache. Works even when the cache is corrupted.
+
+```bash
+jac purge
+```
+
+**When to use:**
+
+- After upgrading Jaseci packages
+- When encountering cache-related errors (`jaclang.pycore`, `NodeAnchor`, etc.)
+- When setup stalls during first-time compilation
+
+| Command | Scope |
+|---------|-------|
+| `jac clean --cache` | Local project (`.jac/cache/`) |
+| `jac purge` | Global system cache |
 
 ---
 
@@ -843,25 +875,58 @@ jac js app.jac
 
 ## Utility Commands
 
-### jac get_object
+### jac grammar
 
-Retrieve an object by ID from a session.
+Extract and print the Jac grammar.
 
 ```bash
-jac get_object [-h] -i ID [-s SESSION] filename
+jac grammar [-h] [--lark] [-o OUTPUT]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Jac file | Required |
-| `-i, --id` | Object ID | Required |
-| `-s, --session` | Session name | None |
+| `--lark` | Output in Lark format instead of EBNF | `False` |
+| `-o, --output` | Write output to file instead of stdout | None |
 
 **Examples:**
 
 ```bash
-jac get_object main.jac -i "node_123" -s my_session
+# Print grammar in EBNF format
+jac grammar
+
+# Print in Lark format
+jac grammar --lark
+
+# Save to file
+jac grammar -o grammar.ebnf
 ```
+
+---
+
+### jac script
+
+Run custom scripts defined in the `[scripts]` section of `jac.toml`.
+
+```bash
+jac script [-h] [-l] [name]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `name` | Script name to run | None |
+| `-l, --list_scripts` | List available scripts | `False` |
+
+**Examples:**
+
+```bash
+# Run a script
+jac script dev
+
+# List available scripts
+jac script --list
+```
+
+See [Configuration: Scripts](../config/index.md#scripts) for defining scripts in `jac.toml`.
 
 ---
 

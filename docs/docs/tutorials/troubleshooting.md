@@ -202,6 +202,28 @@ obj Example {
 
 ---
 
+## Cache & Setup Issues
+
+### Bytecode Cache Problems
+
+**Common symptoms:**
+
+- `No module named 'jaclang.pycore'`
+- Setup stalling during first-time compilation
+- Strange errors after upgrading packages
+
+**Solution:**
+
+```bash
+jac purge
+```
+
+This clears the global bytecode cache. Works even when the cache is corrupted.
+
+> **💡 Tip:** Always run `jac purge` after upgrading Jaseci packages.
+
+---
+
 ## Runtime Errors
 
 ### Walker reports are empty
@@ -366,8 +388,8 @@ cl {
         result = useWalker(my_walker, {});
 
         # Check the full response
-        console.log("Result:", result);
-        console.log("Reports:", result?.reports);
+        print("Result:", result);
+        print("Reports:", result?.reports);
 
         # Access reports array
         if result and result.reports {
@@ -494,6 +516,7 @@ jac check myfile.jac
 
 | Error | Quick Fix |
 |-------|-----------|
+| Cache/setup errors (`jaclang.pycore`, `NodeAnchor`, stalling) | Run `jac purge` |
 | Walker doesn't run | Add `can start with Root entry { visit [-->]; }` |
 | Missing glob keyword | Use `glob var = value;` in `cl {}` blocks |
 | Enumerate unpacking | Use `for (i, x) in enumerate(...)` |

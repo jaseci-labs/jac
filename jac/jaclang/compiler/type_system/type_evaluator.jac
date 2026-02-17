@@ -11,7 +11,7 @@ import os;
 import from pathlib { Path }
 import from typing { Callable, TYPE_CHECKING, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.jac_parser { TOKEN_MAP }
+import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
@@ -65,13 +65,16 @@ obj PrefetchedTypes {
         # Prefetch from typing.pyi file
         protocol_class: TypeBase | None = None,
         any_class: TypeBase | None = None,
+        callable_class: TypeBase | None = None,
         # Prefetched from jac_builtins.pyi file
         final_class: TypeBase | None = None,
         literal_string_class: TypeBase | None = None,
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,
-        jsx_element_class: TypeBase | None = None;
+        jsx_element_class: TypeBase | None = None,
+        # Prefetched enum base class
+        enum_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -106,10 +109,7 @@ obj TypeEvaluator {
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
     def get_none_type -> TypeBase;
-    def add_diagnostic(node: uni.UniNode, message: str, warning: bool = False) -> None;
-    # -------------------------------------------------------------------------
-    # Symbol resolution stack
-    # -------------------------------------------------------------------------
+    def add_diagnostic(nd: uni.UniNode, message: str, warning: bool = False) -> None;
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
@@ -122,11 +122,11 @@ obj TypeEvaluator {
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
+    def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
-    def get_type_of_string(node: uni.String | uni.MultiString) -> TypeBase;
-    def get_type_of_int(node: uni.Int) -> TypeBase;
-    def get_type_of_float(node: uni.Float) -> TypeBase;
-    # Pyright equivalent function name = getTypeOfExpression();
+    def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
+    def get_type_of_int(nd: uni.Int) -> TypeBase;
+    def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(node_: uni.Expr) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
@@ -148,6 +148,11 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
+    # --- Callable assignment compatibility ---
+    def _assign_callable(
+        src_func: types.FunctionType, dest_func: types.FunctionType
+    ) -> bool;
+
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
     def _is_symbol_property(symbol: uni.Symbol) -> bool;
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
@@ -173,13 +178,25 @@ obj TypeEvaluator {
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
-    def _get_enclosing_function(node: uni.UniNode) -> uni.Ability | None;
-    def _get_enclosing_method(node: uni.UniNode) -> uni.Ability | None;
-    def _get_enclosing_class(node: uni.UniNode) -> uni.Archetype | None;
+    def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
+    def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    # --- Special form handling (Callable, Union, etc.) ---
+    # Returns the prefetched special form type if the name AND type match.
+    # Verifies both name and that type is _SpecialForm to avoid conflicts
+    # with user-defined classes named "Callable".
+    def _get_special_form_type(
+        name: str, symbol_type: types.TypeBase
+    ) -> types.ClassType | None;
+    # --- Callable type handling (similar to Pyright's createCallableType) ---
+    def _create_callable_type(
+        type_args_expr: uni.Expr | None, error_node: uni.Expr
+    ) -> types.FunctionType;
+
     def _lookup_class_member(
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
@@ -192,9 +209,11 @@ obj TypeEvaluator {
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
-        checking_overload: bool = False
+        checking_overload: bool = False,
+        is_unbound_call: bool = False
     ) -> MatchArgsToParamsResult;
 
+    def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
@@ -225,14 +244,11 @@ obj TypeEvaluator {
         symbol: uni.Symbol
     ) -> TypeBase | None;
 
+    def _filter_union_for_isinstance(
+        base_type: TypeBase, target_type: TypeBase
+    ) -> TypeBase | None;
+
+    def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }
-# FIXME: This class implementation is modified from pyright to make it
-# simple and work for now, however this needs to be revisited and
-# implemented properly.
-
-# NOTE: This is done in the binder pass of pyright, however I'm doing this
-# here, cause this will be the entry point of the type checker and we're not
-# relying on the binder pass at the moment and we can go back to binder pass
-# in the future if we needed it.
