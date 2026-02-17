@@ -1,12 +1,4 @@
-"""Tests for MRO-based protocol checking with built-in types.
-
-This fixture verifies that protocol conformance checking correctly uses
-Method Resolution Order (MRO) to look up members, and provides helpful
-error messages explaining which protocol members are missing.
-"""
-
 obj HasLength {
-    """A class that implements the Sized protocol via __len__."""
     has items: list[int] = [];
 
     def __len__()  -> int {
@@ -15,7 +7,6 @@ obj HasLength {
 }
 
 obj MissingLen {
-    """A class that does NOT implement __len__."""
     has value: int = 0;
 }
 
