@@ -592,6 +592,35 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 }
             }
 
+            # ---- Handle tuple/list unpacking targets ----
+            # When a Name is inside a TupleVal/ListVal that is the target
+            # of an Assignment, infer its type from the RHS tuple element.
+            if isinstance(node_.parent, (uni.TupleVal, uni.ListVal)) {
+                unpack_container = node_.parent;
+                unpack_assignment = unpack_container.parent;
+                if (
+                    isinstance(unpack_assignment, uni.Assignment)
+                    and unpack_assignment.value is not None
+                ) {
+                    rhs_type = self.get_type_of_expression(unpack_assignment.value);
+                    if isinstance(rhs_type, types.ClassType)
+                    and rhs_type.private.type_args {
+                        idx = -1;
+                        for (vi, v) in enumerate(unpack_container.values) {
+                            if v is node_ {
+                                idx = vi;
+                                break;
+                            }
+                        }
+                        if idx >= 0 and idx < len(rhs_type.private.type_args) {
+                            return self._convert_to_instance(
+                                rhs_type.private.type_args[idx]
+                            );
+                        }
+                    }
+                }
+            }
+
             # ---- Handle simple assignment: var = <expr> ----
             if isinstance(node_.parent, uni.Assignment) {
                 if node_.parent.type_tag is not None {
