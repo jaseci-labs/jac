@@ -14,6 +14,7 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { PyastGenPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -270,73 +271,44 @@ test "string literal import works with cl" {
     );
 }
 
-test "micro suite pyast gen" {
-    failures: list[str] = [];
-    for rel_path in MICRO_JAC_FILES {
-        filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
-        if not os.path.exists(filename) {
-            continue;
-        }
-        code_gen = JacProgram().compile(filename);
-        if code_gen is None or code_gen.gen.py_ast is None {
-            failures.append(f"Compilation failed for {filename}");
-            continue;
-        }
-        from_jac_str = ast3.dump(code_gen.gen.py_ast[0], indent=2);
-        from_jac = code_gen.gen.py_ast[0];
-        if not isinstance(from_jac, ast3.Module) {
-            failures.append(f"Not a module for {filename}");
-            continue;
-        }
-        try {
-            compile(from_jac, filename="<ast>", mode="exec");
-        } except Exception as e {
-            failures.append(f"Compile failed for {filename}: {e}");
-            continue;
-        }
-        jac_link_missing = False;
-        for i in ast3.walk(from_jac) {
-            if not isinstance(i, (ast3.Load, ast3.Store, ast3.Del)) {
-                if not hasattr(i, "jac_link") {
-                    failures.append(f"Missing jac_link in {filename}: {ast3.dump(i)}");
-                    jac_link_missing = True;
-                    break;
-                }
-            }
-        }
-        if jac_link_missing {
-            continue;
-        }
-        if not parent_scrub(code_gen) {
-            failures.append(f"Parent scrub failed for {filename}");
-            continue;
-        }
-        if len(from_jac_str) <= 10 {
-            failures.append(f"AST dump too short for {filename}");
+def pyast_gen_test(rel_path: str) -> None {
+    filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
+    if not os.path.exists(filename) {
+        return;
+    }
+    code_gen = JacProgram().compile(filename);
+    assert code_gen is not None and code_gen.gen.py_ast is not None , f"Compilation failed for {filename}";
+    from_jac_str = ast3.dump(code_gen.gen.py_ast[0], indent=2);
+    from_jac = code_gen.gen.py_ast[0];
+    assert isinstance(from_jac, ast3.Module) , f"Not a module for {filename}";
+    compile(from_jac, filename="<ast>", mode="exec");
+    for i in ast3.walk(from_jac) {
+        if not isinstance(i, (ast3.Load, ast3.Store, ast3.Del)) {
+            assert hasattr(i, "jac_link") , f"Missing jac_link in {filename}: {ast3.dump(
+                i
+            )}";
         }
     }
-    assert len(failures) == 0 , (
-        f"{len(failures)} file(s) failed:\n" + "\n".join(failures)
-    );
+    assert parent_scrub(code_gen) , f"Parent scrub failed for {filename}";
+    assert len(from_jac_str) > 10 , f"AST dump too short for {filename}";
 }
 
-test "validate tree parent micro suite" {
-    failures: list[str] = [];
-    for rel_path in MICRO_JAC_FILES {
-        filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
-        if not os.path.exists(filename) {
-            continue;
-        }
-        code_gen = JacProgram().compile(filename);
-        if not parent_scrub(code_gen) {
-            failures.append(f"Parent scrub failed (pass 1) for {filename}");
-        }
-        code_gen = JacProgram().compile(filename);
-        if not parent_scrub(code_gen) {
-            failures.append(f"Parent scrub failed (pass 2) for {filename}");
-        }
+def tree_parent_test(rel_path: str) -> None {
+    filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
+    if not os.path.exists(filename) {
+        return;
     }
-    assert len(failures) == 0 , (
-        f"{len(failures)} file(s) failed:\n" + "\n".join(failures)
+    code_gen = JacProgram().compile(filename);
+    assert parent_scrub(code_gen) , f"Parent scrub failed (pass 1) for {filename}";
+    code_gen = JacProgram().compile(filename);
+    assert parent_scrub(code_gen) , f"Parent scrub failed (pass 2) for {filename}";
+}
+
+with entry {
+    parametrize(
+        "pyast gen", MICRO_JAC_FILES, pyast_gen_test, id_fn=lambda f : Path(f).stem
+    );
+    parametrize(
+        "tree parent", MICRO_JAC_FILES, tree_parent_test, id_fn=lambda f : Path(f).stem
     );
 }

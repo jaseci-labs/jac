@@ -12,6 +12,7 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.helpers { add_line_numbers }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -220,20 +221,14 @@ test "jsx hash text preserved" {
     assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
 }
 
-test "micro suite format" {
-    failures: list[str] = [];
-    for rel_path in MICRO_JAC_FILES {
-        filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
-        if not os.path.exists(filename) {
-            continue;
-        }
-        try {
-            micro_suite_test(filename);
-        } except Exception as e {
-            failures.append(f"{filename}: {e}");
-        }
+def format_test(rel_path: str) -> None {
+    filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
+    if not os.path.exists(filename) {
+        return;
     }
-    assert len(failures) == 0 , (
-        f"{len(failures)} file(s) failed formatting:\n" + "\n".join(failures)
-    );
+    micro_suite_test(filename);
+}
+
+with entry {
+    parametrize("format", MICRO_JAC_FILES, format_test, id_fn=lambda f : Path(f).stem);
 }

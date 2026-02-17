@@ -17,6 +17,7 @@ import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -481,27 +482,24 @@ cl import from "@jac/runtime" {
     assert "renderJsxTree" in item_names;
 }
 
-test "micro suite parser" {
-    failures: list[str] = [];
-    files_expected_errors = ["uninitialized_hasvars.jac", ];
-    for rel_path in MICRO_JAC_FILES {
-        filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
-        if not os.path.exists(filename) {
-            continue;
-        }
-        source = file_to_str(filename);
-        (module, parse_errors, lex_errors) = rd_parse(source, filename);
-        if os.path.basename(filename) not in files_expected_errors {
-            if parse_errors or lex_errors {
-                failures.append(
-                    f"{filename}: parse_errors={len(parse_errors)}, lex_errors={len(
-                        lex_errors
-                    )}"
-                );
-            }
-        }
+glob FILES_EXPECTED_ERRORS = ["uninitialized_hasvars.jac"];
+
+def parser_file_test(rel_path: str) -> None {
+    filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
+    if not os.path.exists(filename) {
+        return;
     }
-    assert len(failures) == 0 , (
-        f"{len(failures)} file(s) failed parsing:\n" + "\n".join(failures)
+    source = file_to_str(filename);
+    (module, parse_errors, lex_errors) = rd_parse(source, filename);
+    if os.path.basename(filename) not in FILES_EXPECTED_ERRORS {
+        assert not parse_errors and not lex_errors , (
+            f"{filename}: parse_errors={len(parse_errors)}, lex_errors={len(lex_errors)}"
+        );
+    }
+}
+
+with entry {
+    parametrize(
+        "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
     );
 }
