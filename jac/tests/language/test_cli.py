@@ -57,6 +57,11 @@ def test_jac_cli_run_python_file(
     assert "10" in stdout_value
 
 
+def _assert_error_pretty_found(needle: str, haystack: str) -> None:
+    for line in [line.strip() for line in needle.splitlines() if line.strip()]:
+        assert line in haystack, f"Expected line '{line}' not found in:\n{haystack}"
+
+
 def test_jac_run_py_fstr(
     fixture_path: Callable[[str], str],
     capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
@@ -374,7 +379,7 @@ def test_graph_coverage() -> None:
     graph_params = set(inspect.signature(tools.dot).parameters.keys())
     printgraph_params = set(inspect.signature(printgraph).parameters.keys())
     printgraph_params = printgraph_params - {
-        "node",
+        "nd",
         "file",
         "edge_type",
     }
@@ -498,7 +503,7 @@ def test_caching_issue(fixture_path: Callable[[str], str]) -> None:
         with open(test_file, "w") as f:
             f.write(
                 f"""
-            test mytest{{
+            test "mytest" {{
                 assert 10 == {x};
             }}
             """
@@ -967,6 +972,33 @@ def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int:
     return int(match.group(1)) if match else 0
 
 
+def test_jac_grammar(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that jac grammar command extracts grammar rules."""
+    with capture_stdout() as output:
+        result = analysis.grammar()
+
+    stdout_value = output.getvalue()
+    assert result == 0, "grammar command should exit with code 0"
+    # Should contain grammar rule definitions (::= for EBNF)
+    assert "::=" in stdout_value, "EBNF output should contain rule definitions"
+    # Should contain well-known rule names from the parser
+    assert "module" in stdout_value, "Grammar should contain 'module' rule"
+
+
+def test_jac_grammar_lark(
+    capture_stdout: Callable[[], AbstractContextManager[io.StringIO]],
+) -> None:
+    """Test that jac grammar --lark outputs Lark format."""
+    with capture_stdout() as output:
+        result = analysis.grammar(lark=True)
+
+    stdout_value = output.getvalue()
+    assert result == 0, "grammar --lark command should exit with code 0"
+    assert len(stdout_value) > 0, "Lark output should not be empty"
+
+
 def test_jac_cli_check_ignore_patterns(fixture_path: Callable[[str], str]) -> None:
     """Test --ignore flag with exact pattern matching (combined patterns)."""
     test_dir = fixture_path("deep")
@@ -1251,4 +1283,28 @@ def test_error_traceback_shows_source_code(fixture_path: Callable[[str], str]) -
     )
     assert ":7" in stderr or "line 7" in stderr, (
         "stderr should indicate line number 7 where the error occurred"
+    )
+
+
+def test_syntax_error_pretty_print(fixture_path: Callable[[str], str]) -> None:
+    """Test that syntax errors are pretty printed correctly."""
+    from jaclang.jac0core.program import JacProgram
+
+    program = JacProgram()
+    program.compile(fixture_path("test_syntax_err.jac"))
+    assert len(program.errors_had) == 1, (
+        f"Expected 1 error with improved error reporting, got {len(program.errors_had)}"
+    )
+    # The new error reporting gives a single, clear error message
+    # pointing to exactly where the problem is
+    _assert_error_pretty_found(
+        """
+        2 |
+        3 | walker w {
+        4 |     can foo {
+          |             ^
+        5 |         print "Missing semicolon"
+        6 |     }
+    """,
+        program.errors_had[0].pretty_print(),
     )

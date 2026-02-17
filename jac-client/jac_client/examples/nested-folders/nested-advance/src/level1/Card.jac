@@ -5,7 +5,7 @@ cl import from ..ButtonRoot {
 }
 cl import from .level2.ButtonThirdL { ButtonThirdL }
 
-cl def:pub Card -> any {
+cl def:pub Card -> JsxElement {
     return
         <div
             style={{
@@ -31,10 +31,10 @@ cl def:pub Card -> any {
                 </li>
             </ul>
             <div style={{marginTop: "15px"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
             <div style={{marginTop: "10px"}}>
-                <ButtonThirdL />
+                <ButtonThirdL/>
             </div>
         </div>;
 }

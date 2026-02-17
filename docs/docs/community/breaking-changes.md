@@ -6,6 +6,57 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 MTLLM library is now deprecated and replaced by the byLLM package. In all place where `mtllm` was used before can be replaced with `byllm`.
 
+### Test Syntax Changed from Identifiers to String Descriptions
+
+The `test` keyword now requires a **string description** instead of an identifier name. This gives tests more readable, natural-language names with spaces, punctuation, and proper casing.
+
+**Before:**
+
+```jac
+test my_calculator_add {
+    calc = Calculator();
+    assert calc.add(5) == 5;
+}
+
+test walker_visits_all_nodes {
+    root spawn MyWalker();
+    assert visited_count == 3;
+}
+```
+
+**After:**
+
+```jac
+test "my calculator add" {
+    calc = Calculator();
+    assert calc.add(5) == 5;
+}
+
+test "walker visits all nodes" {
+    root spawn MyWalker();
+    assert visited_count == 3;
+}
+```
+
+**Key Changes:**
+
+- Test names must be quoted strings: `test "description" { ... }` instead of `test name { ... }`
+- Spaces, punctuation, and mixed case are now allowed in test names
+- The string description is displayed as-is in test output (pytest, `jac test`)
+- A valid Python identifier is derived automatically for internal use (lowercased, non-alphanumeric replaced with `_`)
+
+**Migration:** Replace `test identifier_name {` with `test "identifier name" {` in all `.jac` files (convert underscores to spaces).
+
+### CLI Dependency Commands Redesigned (0.10.0)
+
+The `jac add`, `jac install`, `jac remove`, and `jac update` commands were redesigned. Key behavioral changes:
+
+- `jac add` now **requires** at least one package argument (previously, calling `jac add` with no args silently fell through to install)
+- `jac add` without a version spec now queries the installed version and records `~=X.Y` (previously recorded `>=0.0.0`)
+- `jac install` now syncs all dependency types (pip, git, and plugin-provided like npm)
+- New `jac update` command for updating dependencies to latest compatible versions
+- Virtual environment is now at `.jac/venv/` instead of `.jac/packages/`
+
 ### KWESC_NAME Syntax Changed from `<>` to Backtick
 
 Keyword-escaped names now use a backtick (`` ` ``) prefix instead of the angle-bracket (`<>`) prefix. This affects any identifier that uses a Jac keyword as a variable, field, or parameter name.
@@ -215,7 +266,7 @@ walker AddTodo { has title: str; }
 ```jac
 # main.cl.jac - auto-annexed to main.jac (no explicit import needed)
 cl {
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <div>Hello World</div>;
     }
 }
@@ -233,7 +284,7 @@ walker AddTodo { has title: str; }
 cl {
     import from .frontend { app as ClientApp }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return <ClientApp />;
     }
 }
@@ -241,7 +292,7 @@ cl {
 
 ```jac
 # frontend.cl.jac - standalone client module (renamed from main.cl.jac)
-def:pub app -> any {
+def:pub app -> JsxElement {
     return <div>Hello World</div>;
 }
 ```
@@ -262,7 +313,7 @@ def:pub app -> any {
    cl {
        import from .frontend { app as ClientApp }
 
-       def:pub app -> any {
+       def:pub app -> JsxElement {
            return <ClientApp />;
        }
    }
@@ -275,7 +326,7 @@ def:pub app -> any {
    walker AddTodo { has title: str; }  # Stub for RPC calls
    walker ListTodos {}
 
-   def:pub app -> any { ... }
+   def:pub app -> JsxElement { ... }
    ```
 
 **Note:** `.cl.jac` files can still have their own `.impl.jac` annexes for separating declarations from implementations.
@@ -540,22 +591,22 @@ The `check` keyword has been removed from Jaclang. All testing functionality is 
 glob a: int = 5;
 glob b: int = 2;
 
-test test_equality {
+test "equality" {
     check a == 5;
     check b == 2;
 }
 
-test test_comparison {
+test "comparison" {
     check a > b;
     check a - b == 3;
 }
 
-test test_membership {
+test "membership" {
     check "a" in "abc";
     check "d" not in "abc";
 }
 
-test test_function_result {
+test "function result" {
     check almostEqual(a + b, 7);
 }
 ```
@@ -566,22 +617,22 @@ test test_function_result {
 glob a: int = 5;
 glob b: int = 2;
 
-test test_equality {
+test "equality" {
     assert a == 5;
     assert b == 2;
 }
 
-test test_comparison {
+test "comparison" {
     assert a > b;
     assert a - b == 3;
 }
 
-test test_membership {
+test "membership" {
     assert "a" in "abc";
     assert "d" not in "abc";
 }
 
-test test_function_result {
+test "function result" {
     assert almostEqual(a + b, 7);
 }
 ```

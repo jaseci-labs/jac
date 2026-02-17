@@ -90,7 +90,7 @@ obj JacLangServer(JacProgram, LanguageServer) {
         file_path: str, line: int, col: int
     ) -> Optional[uni.AstNode];
 
-    def get_completion_of_node(node: uni.AstNode) -> lspt.CompletionList;
+    def get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList;
     def get_node_type(n: uni.AstNode) -> Optional[TypeBase];
     def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
     def rename_module(old_path: str, new_path: str) -> None;

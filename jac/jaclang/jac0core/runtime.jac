@@ -247,8 +247,8 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[EdgeArchetype] {
         edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
-        for `node in origin {
-            nanch = `node.__jac__;
+        for nd in origin {
+            nanch = nd.__jac__;
             for anchor in nanch.edges {
                 if (
                     (source := anchor.source)
@@ -286,8 +286,8 @@ class JacNode {
         from_visit: bool = False
     ) -> list[(EdgeArchetype | NodeArchetype)] {
         loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
-        for `node in origin {
-            nanch = `node.__jac__;
+        for nd in origin {
+            nanch = nd.__jac__;
             for anchor in nanch.edges {
                 if (
                     (source := anchor.source)
@@ -325,8 +325,8 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype] {
         nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
-        for `node in origin {
-            nanch = `node.__jac__;
+        for nd in origin {
+            nanch = nd.__jac__;
             for anchor in nanch.edges {
                 if (
                     (source := anchor.source)
@@ -358,10 +358,10 @@ class JacNode {
     }
 
     """Remove reference without checking sync status."""
-    static def remove_edge(`node: NodeAnchor, `edge: EdgeAnchor) -> None {
-        for (idx, ed) in enumerate(`node.edges) {
+    static def remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
+        for (idx, ed) in enumerate(nd.edges) {
             if (ed.id == `edge.id) {
-                `node.edges.pop(idx);
+                nd.edges.pop(idx);
                 break;
             }
         }
@@ -372,8 +372,8 @@ class JacNode {
 class JacEdge {
     """Detach edge from nodes."""
     static def detach(`edge: EdgeAnchor) -> None {
-        JacRuntimeInterface.remove_edge(`node=`edge.source, `edge=`edge);
-        JacRuntimeInterface.remove_edge(`node=`edge.target, `edge=`edge);
+        JacRuntimeInterface.remove_edge(nd=`edge.source, `edge=`edge);
+        JacRuntimeInterface.remove_edge(nd=`edge.target, `edge=`edge);
     }
 }
 
@@ -557,11 +557,11 @@ class JacWalker {
         after all descendants are visited (post-order/LIFO).
         """
     static def spawn_call(
-        `walker: WalkerAnchor, `node: (NodeAnchor | EdgeAnchor)
+        `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype {
         warch = `walker.archetype;
         `walker.path = [];
-        current_loc = `node.archetype;
+        current_loc = nd.archetype;
         ctx = JacRuntimeInterface.get_context();
         call_state = ctx.call_state.get(None);
         for i in warch._jac_entry_funcs_ {
@@ -607,7 +607,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_execute_entries(
+    static async def _async_execute_entries(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         current_loc: (NodeArchetype | EdgeArchetype)
@@ -664,7 +664,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_execute_exits(
+    static async def _async_execute_exits(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         current_loc: (NodeArchetype | EdgeArchetype)
@@ -725,7 +725,7 @@ class JacWalker {
 
         Returns True if walker should continue, False if disengaged.
         """
-    async static def _async_visit_node_recursive(
+    static async def _async_visit_node_recursive(
         warch: WalkerArchetype,
         `walker: WalkerAnchor,
         anchor: (NodeAnchor | EdgeAnchor)
@@ -757,12 +757,12 @@ class JacWalker {
         Entry abilities execute when entering a node, exit abilities execute
         after all descendants are visited (post-order/LIFO).
         """
-    async static def async_spawn_call(
-        `walker: WalkerAnchor, `node: (NodeAnchor | EdgeAnchor)
+    static async def async_spawn_call(
+        `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype {
         warch = `walker.archetype;
         `walker.path = [];
-        current_loc = `node.archetype;
+        current_loc = nd.archetype;
         ctx = JacRuntimeInterface.get_context();
         call_state = ctx.call_state.get(None);
         for i in warch._jac_entry_funcs_ {
@@ -834,9 +834,9 @@ class JacWalker {
             `walker: WalkerAnchor, t: (Archetype | list[Archetype])
         ) -> (NodeAnchor | EdgeAnchor) {
             if isinstance(t, NodeArchetype) {
-                `node = t.__jac__;
-                `walker.next = [`node];
-                return `node;
+                nd = t.__jac__;
+                `walker.next = [nd];
+                return nd;
             } elif isinstance(t, EdgeArchetype) {
                 `edge = t.__jac__;
                 `walker.next = [`edge, `edge.target];
@@ -860,9 +860,9 @@ class JacWalker {
         `walker: WalkerAnchor = warch.__jac__;
         loc: (NodeAnchor | EdgeAnchor) = assign(`walker, targ);
         if warch.__jac_async__ {
-            return JacRuntimeInterface.async_spawn_call(`walker=`walker, `node=loc);
+            return JacRuntimeInterface.async_spawn_call(`walker=`walker, nd=loc);
         }
-        return JacRuntimeInterface.spawn_call(`walker=`walker, `node=loc);
+        return JacRuntimeInterface.spawn_call(`walker=`walker, nd=loc);
     }
 
     """Jac's disengage stmt feature."""
@@ -892,7 +892,7 @@ class JacClassReferences {
 class JacBuiltin {
     """Generate graph for visualizing nodes and edges."""
     static def printgraph(
-        `node: NodeArchetype,
+        nd: NodeArchetype,
         depth: int,
         traverse: bool,
         edge_type: (list[str] | None),
@@ -905,15 +905,15 @@ class JacBuiltin {
         import from jaclang.runtimelib.utils { traverse_graph }
         edge_type = edge_type or [];
         visited_nodes: list[NodeArchetype] = [];
-        node_depths: dict[(NodeArchetype, int)] = {`node: 0};
-        queue: list = [[`node, 0]];
+        node_depths: dict[(NodeArchetype, int)] = {nd: 0};
+        queue: list = [[nd, 0]];
         connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
         """Depth first search.""";
-        def dfs(`node: NodeArchetype, cur_depth: int) -> None {
-            if (`node not in visited_nodes) {
-                visited_nodes.append(`node);
+        def dfs(nd: NodeArchetype, cur_depth: int) -> None {
+            if (nd not in visited_nodes) {
+                visited_nodes.append(nd);
                 traverse_graph(
-                    `node,
+                    nd,
                     cur_depth,
                     depth,
                     edge_type,
@@ -953,7 +953,7 @@ class JacBuiltin {
                 }
             }
         } else {
-            dfs(`node, cur_depth=0);
+            dfs(nd, cur_depth=0);
         }
         dot_content = 'digraph {\nnode [style="filled", shape="ellipse", fillcolor="invis", fontcolor="black"];\n';
         mermaid_content = 'flowchart LR\n';
@@ -1289,16 +1289,21 @@ system,
     }
 
     """Create a test."""
-    static def jac_test(test_fun: Callable) -> Callable {
+    static def jac_test(description: str = "") -> Callable {
         import from jaclang.runtimelib.test { JacTestCheck }
-        file_path = getfile(test_fun);
-        func_name = test_fun.__name__;
-        def test_deco -> None {
-            test_fun(JacTestCheck());
+        def decorator(test_fun: Callable) -> Callable {
+            file_path = getfile(test_fun);
+            func_name = test_fun.__name__;
+            def test_deco -> None {
+                test_fun(JacTestCheck());
+            }
+            test_deco.__name__ = test_fun.__name__;
+            JacTestCheck.add_test(
+                file_path, func_name, test_deco, display_name=description
+            );
+            return test_deco;
         }
-        test_deco.__name__ = test_fun.__name__;
-        JacTestCheck.add_test(file_path, func_name, test_deco);
-        return test_deco;
+        return decorator;
     }
 
     """JSX interface for creating elements.
@@ -1452,7 +1457,7 @@ system,
     }
 
     """Jac's apply_dir stmt feature."""
-    async static def arefs(
+    static async def arefs(
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
     ) -> None {
         ;
@@ -1514,8 +1519,8 @@ system,
         left = [left] if isinstance(left, NodeArchetype) else left;
         right = [right] if isinstance(right, NodeArchetype) else right;
         for i in left {
-            `node = i.__jac__;
-            for anchor in `set(`node.edges) {
+            nd = i.__jac__;
+            for anchor in `set(nd.edges) {
                 if (
                     (source := anchor.source)
                     and (target := anchor.target)
@@ -1525,7 +1530,7 @@ system,
                 ) {
                     if (
                         (dir in [EdgeDir.OUT, EdgeDir.ANY])
-                        and (`node == source)
+                        and (nd == source)
                         and (target.archetype in right)
                         and JacRuntimeInterface.check_connect_access(target)
                     ) {
@@ -1536,7 +1541,7 @@ system,
                     }
                     if (
                         (dir in [EdgeDir.IN, EdgeDir.ANY])
-                        and (`node == target)
+                        and (nd == target)
                         and (source.archetype in right)
                         and JacRuntimeInterface.check_connect_access(source)
                     ) {
@@ -1711,6 +1716,17 @@ class JacClientBundle {
     ) -> ClientBundle {
         builder = JacRuntimeInterface.get_client_bundle_builder();
         return builder.build(module, force=force);
+    }
+
+    """Format a build error for display.
+
+        Plugins can override this hook to provide rich error formatting.
+        Default implementation returns the raw error output.
+        """
+    static def format_build_error(
+        error_output: str, project_dir: Path, config: object = None
+    ) -> str {
+        return error_output;
     }
 }
 
@@ -1933,7 +1949,7 @@ allowed
 
             Returns an empty list if no nodes are deemed visitable.
             """;
-        @JacByLLM.by(model=model)
+        @JacByLLM.by (model=model)
         def _filter_visitable_by(
             connected_nodes: list[NodeArchetype], descriptions: str = ''
         ) -> list[int] {

@@ -10,10 +10,10 @@ cl def:pub ButtonThirdL -> JsxElement {
                 Third Level Button (imports from root and second level)
             </Button>
             <div style={{marginTop: "10px"}}>
-                <ButtonRoot />
+                <ButtonRoot/>
             </div>
             <div style={{marginTop: "10px"}}>
-                <ButtonSecondL />
+                <ButtonSecondL/>
             </div>
         </div>;
 }

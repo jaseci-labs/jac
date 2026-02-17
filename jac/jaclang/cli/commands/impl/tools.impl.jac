@@ -83,9 +83,9 @@ impl dot(
         module = Jac.loaded_modules.get('__main__');
         mod_ns = vars(module) if module else {};
         try {
-            `node = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
+            nd = mod_ns.get(initial, eval(initial, mod_ns)) if initial else None;
             graph = printgraph(
-                `node=`node,
+                nd=nd,
                 depth=depth,
                 traverse=traverse,
                 edge_type=connection,

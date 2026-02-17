@@ -227,3 +227,6 @@ def isolate_jac_context(tmp_path: Path) -> Generator[Path, None, None]:
     # Restore original state
     Jac.set_base_path(original_base_path)
     Jac.exec_ctx = original_exec_ctx
+    if Jac.program:
+        Jac.program.errors_had.clear()
+        Jac.program.warnings_had.clear()
