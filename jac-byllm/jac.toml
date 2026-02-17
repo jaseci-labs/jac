@@ -1,11 +1,11 @@
 [project]
 name = "byllm"
-version = "0.4.13"
+version = "0.4.18"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 entry-point = "byllm/plugin.jac"
 readme = "README.md"
 license = "MIT"
-jac-version = ">=0.9.8"
+jac-version = ">=0.10.0"
 authors = ["Jason Mars <jason@mars.ninja>"]
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 
@@ -19,7 +19,7 @@ byllm = "byllm.plugin:JacRuntime"
 byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
 
 [dependencies]
-jaclang = ">=0.9.8"
+jaclang = ">=0.10.0"
 litellm = ">=1.75.5.post1,<1.80.0"
 loguru = ">=0.7.2,<0.8.0"
 pillow = ">=10.4.0,<10.5.0"
