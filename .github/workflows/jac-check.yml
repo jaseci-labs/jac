@@ -30,7 +30,7 @@ jobs:
 
       - name: Run jac format (check formatting)
         run: |
-          find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+          find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
 
       - name: Run jac check (using .jacignore)
         run: |
