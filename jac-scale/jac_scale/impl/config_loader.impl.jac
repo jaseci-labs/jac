@@ -152,8 +152,6 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     webhook_config = config.get('webhook', {});
     return {
-        'secret': os.environ.get('WEBHOOK_SECRET')
-        or webhook_config.get('secret', 'webhook-secret-key'),
         'signature_header': webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         ),

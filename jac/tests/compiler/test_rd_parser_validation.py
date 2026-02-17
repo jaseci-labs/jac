@@ -122,11 +122,12 @@ def test_rd_parser_gap_coverage(gap_file: str) -> None:
 
 
 # =============================================================================
-# RD parser strictness tests
+# RD parser strictness tests — currently enforced
 # =============================================================================
 
-# Snippets the RD parser must reject.
+# Snippets the RD parser must reject (parser already rejects these correctly).
 _MUST_REJECT = {
+    # --- Original tests ---
     "can_without_event_clause": "obj Foo { can bar { } }",
     "per_variable_access_tag": "obj Foo { has :pub x: int, :priv y: str; }",
     "pass_keyword": "with entry { match x { case 1: pass; } }",
@@ -136,6 +137,92 @@ _MUST_REJECT = {
     "bare_expression_at_module_level": "5 + 3;",
     "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
     "impl_bare_semicolon": "impl Foo.bar;",
+    # --- Module-level: statements that belong inside code blocks ---
+    "bare_assignment_at_module_level": "x = 5;",
+    "bare_if_at_module_level": "if true { }",
+    "bare_while_at_module_level": "while true { }",
+    "bare_for_at_module_level": "for x in [1,2,3] { }",
+    "bare_try_at_module_level": "try { } except Exception e { }",
+    "bare_return_at_module_level": "return 5;",
+    "bare_yield_at_module_level": "yield 5;",
+    "bare_break_at_module_level": "break;",
+    "bare_continue_at_module_level": "continue;",
+    "bare_del_at_module_level": "del x;",
+    "walrus_at_module_level": "x := 5;",
+    # --- Has statement strictness ---
+    "has_without_type": "obj Foo { has x; }",
+    "has_outside_archetype": "has x: int;",
+    "has_with_var_keyword": "obj Foo { has var x: int; }",
+    "has_missing_semi": "obj Foo { has x: int }",
+    "has_multiple_colons": "obj Foo { has x: int: str; }",
+    # --- Ability/function strictness ---
+    "can_with_parens": "obj Foo { can bar() with entry { } }",
+    "ability_missing_body_or_semi": "obj Foo { def bar() }",
+    # --- Archetype strictness ---
+    "obj_missing_name": "obj { }",
+    "double_inheritance": "obj Foo(Bar)(Baz) { }",
+    "enum_with_has": "enum Color { has x: int; }",
+    # --- Import strictness ---
+    "import_from_missing_braces": "import from foo bar;",
+    "import_star_no_from": "import *;",
+    # --- Duplicate modifiers ---
+    "static_static_def": "obj Foo { static static def bar() { } }",
+    "override_override_def": "obj Foo { override override def bar() { } }",
+    "async_async_def": "obj Foo { async async def bar() { } }",
+    "double_access_tag": "obj Foo { has :pub :pub x: int; }",
+    # --- Expression/assignment strictness ---
+    "double_walrus": "with entry { x := y := 5; }",
+    "assignment_as_expression": "with entry { x = y = (a = 5); }",
+    # --- Structural requirements ---
+    "match_case_no_colon": "with entry { match x { case 1 x = 1; } }",
+    "for_missing_in": "with entry { for x [1,2,3] { } }",
+    "for_to_missing_by": "with entry { for i = 0 to 10 { } }",
+    "while_missing_body": "with entry { while true; }",
+    "match_missing_expression": "with entry { match { case 1: x=1; } }",
+    "for_empty_iter": "with entry { for x in { } }",
+    "while_empty_condition": "with entry { while { } }",
+    "test_with_semi": "test foo;",
+    "impl_without_target": "impl { }",
+    "impl_invalid_spec": "impl (int) -> int { }",
+    "decorator_alone": "@foo",
+    "decorator_on_has": "obj Foo { @bar has x: int; }",
+    "decorator_on_glob": "@deco glob x: int = 5;",
+    "glob_without_assign": "glob;",
+    "visit_missing_expr": "with entry { visit; }",
+    "spawn_as_statement": "with entry { spawn; }",
+    # --- Missing required semicolons (lark requires SEMI) ---
+    "import_missing_semi": "import foo",
+    "include_missing_semi": "include foo",
+    "return_missing_semi": "with entry { return 5 }",
+    "assert_missing_semi": "with entry { assert true }",
+    "raise_missing_semi": "with entry { raise Exception() }",
+    "delete_missing_semi": "with entry { del x }",
+    "global_missing_semi": "with entry { global x }",
+    "nonlocal_missing_semi": "with entry { nonlocal x }",
+    # --- Missing required body/terminator ---
+    "obj_missing_body_or_semi": "obj Foo",
+    # --- Orphaned control-flow clauses (not valid as standalone statements) ---
+    "elif_without_if": "with entry { elif true { } }",
+    "else_without_if": "with entry { else { } }",
+    "except_without_try": "with entry { except Exception e { } }",
+    "finally_without_try": "with entry { finally { } }",
+    "case_without_match": "with entry { case 1: x = 1; }",
+    # --- Empty required blocks ---
+    "empty_match_body": "with entry { match x { } }",
+    "empty_switch_body": "with entry { switch x { } }",
+    # --- try without except or finally ---
+    "try_no_except_no_finally": "with entry { try { } }",
+    # --- Control statements with spurious values ---
+    "break_with_value": "with entry { break 5; }",
+    "continue_with_value": "with entry { continue 5; }",
+    # --- Double else ---
+    "double_else_on_if": "with entry { if true { } else { } else { } }",
+    # --- from-import with empty items ---
+    "from_import_empty_items": "import from foo { };",
+    # --- Bare semi at module level ---
+    "bare_semi_at_module_level": ";",
+    # --- enum with empty body ---
+    "enum_empty_body": "enum Color { }",
 }
 
 

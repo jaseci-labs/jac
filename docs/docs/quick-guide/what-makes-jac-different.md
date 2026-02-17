@@ -162,9 +162,9 @@ obj Ingredient {
 sem Ingredient.cost = "Estimated cost in USD";
 sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-sem plan_shopping = "Generate a shopping list for the given recipe.";
 def plan_shopping(recipe: str) -> list[Ingredient]
     by llm();
+sem plan_shopping = "Generate a shopping list for the given recipe.";
 ```
 
 Without `sem`, the LLM has only the names `cost` and `carby` to work with. With it, the compiler includes "Estimated cost in USD" and "True if this ingredient is high in carbohydrates" in the prompt, producing more accurate structured output. The `sem` on `plan_shopping` itself provides the function-level instruction.

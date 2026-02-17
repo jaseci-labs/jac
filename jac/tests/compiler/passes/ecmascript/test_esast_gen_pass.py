@@ -310,6 +310,18 @@ def test_reactive_state_in_cl_jac_file(
     assert "setName(" in js_code, "Assignment to name should use setName"
 
 
+def test_reactive_state_scoping_across_functions(
+    fixture_path: Callable[[str], str],
+) -> None:
+    """has-var useState should not leak across sibling functions."""
+    es_ast = compile_to_esast(fixture_path("reactive_state_scoping.jac"))
+    js_code = es_to_js(es_ast)
+
+    assert "const [cart, setCart] = useState([])" in js_code
+    assert "setCart(useCart())" not in js_code
+    assert "let cart = useCart()" in js_code
+
+
 def test_equivalent_context_patterns(fixture_path: Callable[[str], str]) -> None:
     """Three files with same code but different cl/sv patterns should produce identical output.
 
