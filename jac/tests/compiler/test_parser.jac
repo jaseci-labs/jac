@@ -136,7 +136,7 @@ test "new keyword errors" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
-    prog.compile(os.path.join(FIXTURES, "new_keyword_errors.jac"));
+    prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 4;
     expected_substrings = [
@@ -156,7 +156,7 @@ test "pass keyword errors" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
-    prog.compile(os.path.join(FIXTURES, "pass_keyword_errors.jac"));
+    prog.compile(os.path.join(FIXTURES, "pass_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 34;
     expected_substrings = 17 * [
