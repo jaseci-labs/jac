@@ -29,7 +29,6 @@ obj IntegrationTestRunner {
 
     """Run a command and verify output contains/excludes expected strings."""
     def run(
-        self,
         cmd: list[str],
         check_contains: list[str] | None = None,
         check_not_contains: list[str] | None = None,
@@ -80,7 +79,7 @@ obj IntegrationTestRunner {
     }
 
     """Print test summary and return exit code."""
-    def summary(self) -> int {
+    def summary() -> int {
         print(f"\n{'=' * 60}");
         print("INTEGRATION TEST SUMMARY");
         print("=" * 60);

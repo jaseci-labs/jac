@@ -10,6 +10,7 @@ import subprocess;
 import sys;
 import time;
 import uuid;
+import warnings;
 import shutil;
 import requests;
 import pytest;
@@ -18,6 +19,11 @@ import jwt as pyjwt;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from typing { Any, cast }
+
+# Suppress ResourceWarning for unclosed subprocess pipes
+with entry {
+    warnings.filterwarnings("ignore", category=ResourceWarning);
+}
 
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {

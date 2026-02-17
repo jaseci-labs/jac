@@ -21,6 +21,7 @@ import types;
 import pytest;
 import from pathlib { Path }
 import unittest.mock;
+import from .test_helpers { get_env_with_bun, get_jac_command }
 
 # =============================================================================
 # Shared path constants (avoid repeating long path constructions)
@@ -168,8 +169,6 @@ test "sidecar port marker format" {
 # =============================================================================
 test "setup generates main rs with sidecar support" {
     print("[DEBUG] Starting test_setup_generates_main_rs_with_sidecar_support");
-
-    import from .test_helpers { get_env_with_bun, get_jac_command }
 
     # Check if jac setup is available
     jac_cmd = get_jac_command();

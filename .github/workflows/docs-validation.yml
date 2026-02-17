@@ -55,7 +55,7 @@ jobs:
           pip install -e docs
 
       - name: Validate Jac code block syntax
-        run: jac run docs/scripts/validate_docs_code.jac -- --docs-dir docs/docs
+        run: jac run docs/scripts/validate_docs_code.jac
 
       - name: Build documentation and check links
         working-directory: docs
