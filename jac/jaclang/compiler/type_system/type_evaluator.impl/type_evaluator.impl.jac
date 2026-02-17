@@ -982,6 +982,18 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     }
     # --- Callable/FunctionType assignment compatibility ---
     # Handle assignment of functions to Callable types and vice versa.
+    #
+    # Handle bare Callable (special form without type args) - treat as gradual callable.
+    # Bare `Callable` is equivalent to `Callable[..., Any]` in Python's typing system,
+    # meaning any function/callable is assignable to it.
+    # TODO : this is ad-hoc for now
+    if (
+        isinstance(dest_type, types.ClassType)
+        and dest_type.is_special_form("Callable")
+        and isinstance(src_type, types.FunctionType)
+    ) {
+        return True;
+    }
     if isinstance(dest_type, types.FunctionType) {
         if isinstance(src_type, types.FunctionType) {
             return self._assign_callable(src_type, dest_type);
