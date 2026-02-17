@@ -161,8 +161,7 @@ def creative_story(prompt: str) -> str by llm(
 | `temperature` | float | Creativity (0.0-2.0) |
 | `max_tokens` | int | Maximum response tokens |
 | `stream` | bool | Enable streaming output |
-| `tools` | list | Functions for tool calling |
-| `method` | str | ReAct, Reason, Chain-of-Thoughts |
+| `tools` | list | Functions for tool calling (enables ReAct loop) |
 | `context` | list[str] | Additional system instructions |
 
 ### 4 Tool Calling (ReAct)
@@ -188,8 +187,7 @@ def search_web(query: str) -> list[str] {
 }
 
 def answer_question(question: str) -> str by llm(
-    tools=[get_weather, search_web],
-    method="ReAct"
+    tools=[get_weather, search_web]
 );
 
 # The LLM can now call these tools to answer questions
@@ -226,20 +224,7 @@ with entry {
 }
 ```
 
-### 7 Reasoning Methods
-
-| Method | Description |
-|--------|-------------|
-| `Chain-of-Thoughts` | Step-by-step reasoning before answer |
-| `Reason` | Explicit reasoning output |
-| `ReAct` | Reasoning + Acting with tools |
-
-```jac
-def solve_math(problem: str) -> str by llm(method="Chain-of-Thoughts");
-def complex_task(query: str) -> str by llm(method="ReAct", tools=[...]);
-```
-
-### 8 Testing with MockLLM
+### 7 Testing with MockLLM
 
 ```jac
 def classify(text: str) -> str by llm(
@@ -318,8 +303,7 @@ walker ResearchAgent {
     }
 
     can research with Root entry by llm(
-        tools=[self.search, self.read_page],
-        method="ReAct"
+        tools=[self.search, self.read_page]
     );
 }
 ```
