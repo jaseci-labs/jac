@@ -1290,10 +1290,20 @@ impl TypeEvaluator._compute_narrowed_at(
     }
     stmt_id = id(stmt);
     if stmt_id in visited {
-        return None;  # Cycle (back-edge in loop) -- conservative
-
+        # Cycle detected (back-edge in loop).
+        # If the current stmt is a loop header, returning None here would be
+        # used by the caller to set has_unnarrowed_pred=True, which would wipe
+        # out any narrowing established before the loop. Use a sentinel so the
+        # caller can distinguish "back-edge from loop body" from a genuine
+        # unnarrowed predecessor.
+        return None;
     }
     visited.add(stmt_id);
+    # Detect whether stmt is a loop header (InForStmt or IterForStmt).
+    # Back-edges from the loop body back to the loop header should be ignored
+    # for narrowing purposes: the narrowing established before the loop should
+    # still flow through, not be wiped by the back-edge cycle.
+    is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));
     if not stmt.bb_in {
         self._narrowing_cache[cache_key] = None;
         return None;
@@ -1304,6 +1314,28 @@ impl TypeEvaluator._compute_narrowed_at(
         if pred is stmt {
             has_unnarrowed_pred = True;
             continue;
+        }
+        # If stmt is a loop header, skip back-edges from the loop body.
+        # A back-edge is any predecessor that is itself a descendant of stmt
+        # in the AST (i.e. it lives inside the loop body and flows back to
+        # the loop header for the next iteration).  Allowing these to
+        # contribute None/unnarrowed would wipe out narrowing that was
+        # established *before* the loop in the enclosing scope.
+        if is_loop_header {
+            # Check if pred is a back-edge: it lives inside the loop body and
+            # flows back to stmt (the loop header).  We detect this by walking
+            # pred's ancestor chain to see if stmt is an ancestor of pred.
+            # find_parent_of_type returns the nearest ancestor of the given
+            # type; if that equals stmt then pred is inside this loop's body.
+            ancestor: uni.UniNode | None = None;
+            if isinstance(stmt, uni.InForStmt) {
+                ancestor = pred.find_parent_of_type(uni.InForStmt);
+            } else {
+                ancestor = pred.find_parent_of_type(uni.IterForStmt);
+            }
+            if ancestor is stmt {
+                continue;  # skip loop back-edge
+            }
         }
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);
