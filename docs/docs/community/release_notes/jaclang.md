@@ -11,6 +11,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
 - **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
 - **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
+- 1 Minor refactors/changes.
 
 ## jaclang 0.10.2 (Latest Release)
 

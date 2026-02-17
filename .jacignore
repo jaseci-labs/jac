@@ -292,5 +292,4 @@ test_py_infra.jac
 test_importer.jac
 test_jaseci.jac
 test_cli.jac
-test_server.jac
 test_lang_serve.jac
