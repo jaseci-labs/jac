@@ -877,6 +877,7 @@ test "protocol" {
     mod = program.compile(os.path.join(FIXTURES, "checker_protocol.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 2;
+    # Verify improved error message shows missing protocol members
     assert_error_pretty_found(
         """
         len(Foo());  # <-- Error
@@ -884,6 +885,7 @@ test "protocol" {
     """,
         program.errors_had[0].pretty_print()
     );
+    assert "missing required protocol member(s): __len__" in program.errors_had[0].pretty_print();
     assert_error_pretty_found(
         """
         run(Foo());  # <-- Error
@@ -891,6 +893,39 @@ test "protocol" {
     """,
         program.errors_had[1].pretty_print()
     );
+    assert "missing required protocol member(s): run" in program.errors_had[1].pretty_print();
+}
+
+test "protocol_mro_checking" {
+    """Test MRO-based protocol checking with built-in types and custom classes."""
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_protocol_mro.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Expect 2 errors: len(int) and len(MissingLen)
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    # Verify error for built-in int type
+    assert_error_pretty_found(
+        """
+        len(i);  # <-- Error: int is missing __len__
+            ^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+    assert "missing required protocol member(s): __len__" in program.errors_had[0].pretty_print();
+
+    # Verify error for custom class without __len__
+    assert_error_pretty_found(
+        """
+        len(missing);  # <-- Error: MissingLen is missing __len__
+            ^^^^^^^
+    """,
+        program.errors_had[1].pretty_print()
+    );
+    assert "missing required protocol member(s): __len__" in program.errors_had[1].pretty_print();
 }
 
 test "classmethod" {

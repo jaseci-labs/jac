@@ -1,16 +1,119 @@
 """Determine if a class implements a protocol.
 
-This is a placeholder function and should be implemented based on
-the specific requirements for protocol conformance checking.
+This checks if the source class has all the members required by the protocol.
+Following Pyright's approach, we iterate through the protocol's MRO and check
+if each required member exists in the source class (also through MRO lookup).
+
+PyrightReference:
+    packages/pyright-internal/src/analyzer/protocols.ts - assignToProtocolInternal()
 """
 impl class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool {
-    cls_ast: uni.Archetype = cls.shared.symbol_table;
-    proto_ast: uni.Archetype = proto.shared.symbol_table;
-    # FIXME: For now I'm only checking if method names are equal
-    # However we need to check the full signature compatibility.
-    cls_method_names = {method.sym_name for method in cls_ast.get_methods()};
-    proto_method_names = {method.sym_name for method in proto_ast.get_methods()};
-    return proto_method_names.issubset(cls_method_names);
+    # Ensure MRO is computed for the source class.
+    if not cls.shared.mro {
+        compute_mro_linearization(cls);
+    }
+
+    # Collect all member names from the source class through its MRO.
+    # This includes both methods and attributes from the class and all its bases.
+    cls_member_names: set[str] = set();
+    for mro_cls in cls.shared.mro {
+        for name in mro_cls.shared.symbol_table.names_in_scope.keys() {
+            cls_member_names.add(name);
+        }
+    }
+
+    # Ensure MRO is computed for the protocol.
+    if not proto.shared.mro {
+        compute_mro_linearization(proto);
+    }
+
+    # Check if all required protocol members exist in the source class.
+    # Following Pyright, we iterate through the protocol's MRO.
+    for mro_proto in proto.shared.mro {
+        # Skip base protocol/special classes in the MRO.
+        # These include: Protocol, _SpecialForm, object, Generic, etc.
+        # Protocol members only come from the concrete protocol definition.
+        class_name = mro_proto.shared.class_name;
+        if class_name in ("Protocol", "_SpecialForm", "object", "Generic", "ABCMeta", "_Final") {
+            continue;
+        }
+
+        for (name, sym) in mro_proto.shared.symbol_table.names_in_scope.items() {
+            # Skip dunder methods that shouldn't be part of protocol matching.
+            # Following Pyright's convention for __class_getitem__ and __slots__.
+            if name in ("__class_getitem__", "__slots__") {
+                continue;
+            }
+            # Skip private attributes (single underscore prefix but not dunder).
+            if name.startswith("_") and not name.startswith("__") {
+                continue;
+            }
+            # Check if the member exists in the source class.
+            if name not in cls_member_names {
+                return False;
+            }
+        }
+    }
+
+    # TODO: For full Pyright-style checking, we should also validate:
+    # 1. Type compatibility of each member (not just existence)
+    # 2. Read-only vs writable attribute compatibility
+    # 3. ClassVar matching
+    # For now, we only check member existence through MRO.
+    return True;
+}
+
+"""Get the list of missing protocol members that a class needs to implement.
+
+Returns a list of member names that are required by the protocol but not
+present in the source class. Useful for generating helpful error messages.
+"""
+impl get_missing_protocol_members(cls: types.ClassType, proto: types.ClassType) -> list[str] {
+    missing: list[str] = [];
+
+    # Ensure MRO is computed for the source class.
+    if not cls.shared.mro {
+        compute_mro_linearization(cls);
+    }
+
+    # Collect all member names from the source class through its MRO.
+    cls_member_names: set[str] = set();
+    for mro_cls in cls.shared.mro {
+        for name in mro_cls.shared.symbol_table.names_in_scope.keys() {
+            cls_member_names.add(name);
+        }
+    }
+
+    # Ensure MRO is computed for the protocol.
+    if not proto.shared.mro {
+        compute_mro_linearization(proto);
+    }
+
+    # Find all protocol members that are missing from the source class.
+    for mro_proto in proto.shared.mro {
+        # Skip base protocol/special classes in the MRO.
+        class_name = mro_proto.shared.class_name;
+        if class_name in ("Protocol", "_SpecialForm", "object", "Generic", "ABCMeta", "_Final") {
+            continue;
+        }
+
+        for (name, sym) in mro_proto.shared.symbol_table.names_in_scope.items() {
+            # Skip dunder methods that shouldn't be part of protocol matching.
+            if name in ("__class_getitem__", "__slots__") {
+                continue;
+            }
+            # Skip private attributes (single underscore prefix but not dunder).
+            if name.startswith("_") and not name.startswith("__") {
+                continue;
+            }
+            # Check if the member is missing.
+            if name not in cls_member_names and name not in missing {
+                missing.append(name);
+            }
+        }
+    }
+
+    return missing;
 }
 
 """Lookup a symbol in the symbol table."""
