@@ -1404,6 +1404,33 @@ def test_super_init_with_explicit_init(fixture_path: Callable[[str], str]) -> No
     )
 
 
+def test_enum_type_checking(fixture_path: Callable[[str], str]) -> None:
+    """Test enum type checking."""
+    program = JacProgram()
+    mod = program.compile(fixture_path("checker_enum.jac"))
+    TypeCheckPass(ir_in=mod, prog=program)
+
+    expected_errors = [
+        "Cannot assign <class str> to enum member 'B' of type <class int>",
+        "name_err: int = Color.RED.name",
+        "value_err: str = Color.BLUE.value",
+        "value_status_val_err: int = Status.ACTIVE.value",
+        "auto_val_err: str = AutoValueTest.THIRD.value",
+        "impl_shape_name_err: int = ShapeType.SQUARE.name",
+        'func_wrong_type: str = process_color("not a color")',
+    ]
+
+    assert len(program.errors_had) == len(expected_errors), (
+        f"Expected {len(expected_errors)} errors, got {len(program.errors_had)}: "
+        + "\n".join([err.pretty_print() for err in program.errors_had])
+    )
+
+    for i, expected_pattern in enumerate(expected_errors):
+        _assert_error_pretty_found(
+            expected_pattern, program.errors_had[i].pretty_print()
+        )
+
+
 def test_nested_functions_in_impl_blocks(fixture_path: Callable[[str], str]) -> None:
     """Test that nested functions in impl blocks have correct return type checking."""
     program = JacProgram()

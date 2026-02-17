@@ -72,7 +72,9 @@ obj PrefetchedTypes {
         root_class: TypeBase | None = None,
         node_class: TypeBase | None = None,
         walker_class: TypeBase | None = None,
-        jsx_element_class: TypeBase | None = None;
+        jsx_element_class: TypeBase | None = None,
+        # Prefetched enum base class
+        enum_class: TypeBase | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -120,6 +122,7 @@ obj TypeEvaluator {
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
+    def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
     def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;

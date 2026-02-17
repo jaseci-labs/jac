@@ -85,9 +85,24 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                     assert isinstance(base_type, types.ClassType);
                     if member := self._lookup_class_member(base_type, expr.right.value) {
                         value = self._set_symbol_to_expr(expr.right, member.symbol);
+                        # Handle direct enum member access (e.g., Color.RED)
                         if base_type.is_enum_class() {
-                            # Because enum values are instances of the enum class,
-                            # we need to return the enum class as an instance type.
+                            member_name = expr.right.value;
+                            # Return EnumMemberType for recognized enum members
+                            if (
+                                base_type.shared.enum_members
+                                and member_name in base_type.shared.enum_members
+                            ) {
+                                member_info = base_type.shared.enum_members[
+                                    member_name
+                                ];
+                                return types.EnumMemberType(
+                                    enum_class=base_type,
+                                    member_info=member_info,
+                                    flags=types.TypeFlags.Instance
+                                );
+                            }
+                            # Fallback for unrecognized enum members
                             return base_type.clone_as_instance();
                         }
                         return value;
@@ -197,6 +212,31 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
                         expr.right.type = implicit_init_type;
                         return implicit_init_type;
                     }
+                    return types.UnknownType();
+                } elif isinstance(base_type, types.EnumMemberType) {
+                    # Handle member access on enum member instances (e.g., Color.RED.name, Color.RED.value)
+                    member_name = expr.right.value;
+                    enum_cls = base_type.enum_class;
+                    # Access to .name or ._name_ returns string
+                    if member_name in ('name', '_name_') {
+                        return self._convert_to_instance(self.prefetch.str_class);
+                    }
+                    # Access to .value or ._value_ returns the member's value type
+                    if member_name in ('value', '_value_') {
+                        return self._convert_to_instance(base_type.get_value_type());
+                    }
+                    # Access to another enum member (e.g., Color.RED.BLUE)
+                    if (
+                        enum_cls.shared.enum_members
+                        and member_name in enum_cls.shared.enum_members
+                    ) {
+                        return types.EnumMemberType(
+                            enum_class=enum_cls,
+                            member_info=enum_cls.shared.enum_members[member_name],
+                            flags=types.TypeFlags.Instance
+                        );
+                    }
+                    # Unknown member access
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
@@ -501,7 +541,10 @@ impl TypeEvaluator._get_type_of_expression_core(expr: uni.Expr) -> TypeBase {
 impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     node_ = symbol.decl.name_of;
     match node_ {
-        case uni.Archetype() | uni.Enum():
+        case uni.Enum():
+            return self.get_type_of_enum(node_);
+
+        case uni.Archetype():
             return self.get_type_of_class(node_);
 
         case uni.Ability():
@@ -545,6 +588,35 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         case "LiteralString":
                             return self.prefetch.literal_string_class;
 
+                    }
+                }
+            }
+
+            # ---- Handle tuple/list unpacking targets ----
+            # When a Name is inside a TupleVal/ListVal that is the target
+            # of an Assignment, infer its type from the RHS tuple element.
+            if isinstance(node_.parent, (uni.TupleVal, uni.ListVal)) {
+                unpack_container = node_.parent;
+                unpack_assignment = unpack_container.parent;
+                if (
+                    isinstance(unpack_assignment, uni.Assignment)
+                    and unpack_assignment.value is not None
+                ) {
+                    rhs_type = self.get_type_of_expression(unpack_assignment.value);
+                    if isinstance(rhs_type, types.ClassType)
+                    and rhs_type.private.type_args {
+                        idx = -1;
+                        for (vi, v) in enumerate(unpack_container.values) {
+                            if v is node_ {
+                                idx = vi;
+                                break;
+                            }
+                        }
+                        if idx >= 0 and idx < len(rhs_type.private.type_args) {
+                            return self._convert_to_instance(
+                                rhs_type.private.type_args[idx]
+                            );
+                        }
                     }
                 }
             }
@@ -980,6 +1052,21 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
+    # Enum member assignment compatibility
+    if isinstance(src_type, types.EnumMemberType) {
+        # Enum member can assign to its enum class (Color.RED -> Color)
+        if isinstance(dest_type, types.ClassType) and dest_type.is_enum_class() {
+            if src_type.enum_class.shared == dest_type.shared {
+                return True;
+            }
+        }
+        # Enum members of same enum can assign to each other (Color.RED -> Color.BLUE)
+        if isinstance(dest_type, types.EnumMemberType) {
+            if src_type.enum_class.shared == dest_type.enum_class.shared {
+                return True;
+            }
+        }
+    }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);
         assert isinstance(src_type, types.ClassType);
@@ -1067,12 +1154,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.str_class = get_builtin_type("str");
     self.prefetch.dict_class = get_builtin_type("dict");
     self.prefetch.list_class = get_builtin_type("list");
-    # self.prefetch.module_type_class =
-    # self.prefetch.typed_dict_class =
-    # self.prefetch.typed_dict_private_class =
-    # self.prefetch.supports_keys_and_get_item_class =
-    # self.prefetch.mapping_class =
-    # self.prefetch.template_class =
+    self.prefetch.enum_class = get_builtin_type("Enum");
     self.prefetch.protocol_class = get_typing_type("Protocol");
     self.prefetch.any_class = get_typing_type("Any");
     # Prefetch Callable and set alias_name. This single instance is reused

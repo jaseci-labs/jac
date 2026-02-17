@@ -351,6 +351,23 @@ impl TypeBase.is_any_type -> bool {
     return False;
 }
 
+"""Return string representation of enum member (e.g., <Color.RED>)."""
+impl EnumMemberType.__str__ -> str {
+    return f"<{self.enum_class.shared.class_name}.{self.member_info.member_name}>";
+}
+
+"""Return the member name as a string (e.g., "RED", "BLUE")."""
+impl EnumMemberType.get_name_as_str -> str {
+    return self.member_info.member_name;
+}
+
+"""Get value type: check member's explicit type first, then enum's inherited type requirement."""
+impl EnumMemberType.get_value_type -> TypeBase {
+    return self.member_info.value_type
+    or self.enum_class.shared.enum_value_type
+    or UnknownType();
+}
+
 # --- FunctionType Callable support methods ---
 """
 Check if this is a gradual callable form (Callable[..., T]).

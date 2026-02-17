@@ -1,7 +1,7 @@
 impl TypeEvaluator._create_dataclass_init_method(
     class_type: types.ClassType
 ) -> types.FunctionType {
-    parameters: list[types.Parameter] = [];
+    param_map: dict[str, types.Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
         # Iterate over the has vars and create parameters.
         for has_var in cls.shared.symbol_table.get_has_vars() {
@@ -17,19 +17,18 @@ impl TypeEvaluator._create_dataclass_init_method(
                 param_type = self._convert_to_instance(type_cls);
             }
 
-            # Create parameter.
-            parameters.append(
-                types.Parameter(
-                    name=has_var.name.value,
-                    category=types.ParameterCategory.Positional,
-                    param_type=param_type,
-                    default_value=has_var.value,
-                    is_self=False,
-                    param_kind=types.ParamKind.NORMAL,
-                )
+            # Use dict to deduplicate by name so child class fields override parent fields.
+            param_map[has_var.name.value] = types.Parameter(
+                name=has_var.name.value,
+                category=types.ParameterCategory.Positional,
+                param_type=param_type,
+                default_value=has_var.value,
+                is_self=False,
+                param_kind=types.ParamKind.NORMAL,
             );
         }
     }
+    parameters = list(param_map.values());
     # Create and return the __init__ method type.
     return types.FunctionType(
         func_name="__init__", return_type=types.UnknownType(), parameters=parameters,
