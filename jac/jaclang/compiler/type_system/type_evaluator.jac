@@ -209,9 +209,11 @@ obj TypeEvaluator {
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
-        checking_overload: bool = False
+        checking_overload: bool = False,
+        is_unbound_call: bool = False
     ) -> MatchArgsToParamsResult;
 
+    def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False

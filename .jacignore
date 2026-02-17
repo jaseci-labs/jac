@@ -56,6 +56,7 @@ checker_super_init_explicit.jac
 checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
+checker_unbound_method_call.ja
 checker_union_reassignment.jac
 checker_union_type_annotation.jac
 checker_varargs_type.jac
