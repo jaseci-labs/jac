@@ -164,10 +164,16 @@ class JacFile(pytest.File):
                     )
                 )
 
-        # Remove Jac-imported modules from sys.modules to avoid collisions
-        # with Python test files that share the same basename.
+        # Remove the test module itself from sys.modules to avoid collisions
+        # with Python test files that share the same basename (e.g.
+        # test_server.py vs test_server.jac).  We intentionally keep other
+        # modules (vendored libs, compiler internals) so that class identity
+        # (isinstance checks) and forward-reference resolution remain intact.
+        test_mod_name = Path(self.path).stem
         for name in list(sys.modules.keys()):
-            if name not in modules_before:
+            if name not in modules_before and (
+                name == test_mod_name or name.endswith(f".{test_mod_name}")
+            ):
                 sys.modules.pop(name, None)
 
         return items
