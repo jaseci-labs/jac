@@ -919,25 +919,26 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             and _obj_type.shared
             and _obj_type.shared.class_name in self._primitive_type_names
         ) {
-            # Lazily initialize emitters on first use (classes as namespaces, not instances)
+            # Lazily initialize emitter singletons on first use
             if self._primitive_emitters is None {
                 _pes = __import__(
                     "jaclang.compiler.passes.ecmascript.primitives_es",
                     fromlist=["ESIntEmitter"]
                 );
                 self._primitive_emitters = {
-                    "int": _pes.ESIntEmitter,
-                    "float": _pes.ESFloatEmitter,
-                    "complex": _pes.ESComplexEmitter,
-                    "str": _pes.ESStrEmitter,
-                    "bytes": _pes.ESBytesEmitter,
-                    "list": _pes.ESListEmitter,
-                    "dict": _pes.ESDictEmitter,
-                    "set": _pes.ESSetEmitter,
-                    "frozenset": _pes.ESFrozensetEmitter,
-                    "tuple": _pes.ESTupleEmitter,
-                    "range": _pes.ESRangeEmitter
+                    "int": _pes.ESIntEmitter(),
+                    "float": _pes.ESFloatEmitter(),
+                    "complex": _pes.ESComplexEmitter(),
+                    "str": _pes.ESStrEmitter(),
+                    "bytes": _pes.ESBytesEmitter(),
+                    "list": _pes.ESListEmitter(),
+                    "dict": _pes.ESDictEmitter(),
+                    "set": _pes.ESSetEmitter(),
+                    "frozenset": _pes.ESFrozensetEmitter(),
+                    "tuple": _pes.ESTupleEmitter(),
+                    "range": _pes.ESRangeEmitter()
                 };
+                self._es_emit_ctx_class = _pes.ESEmitCtx;
             }
             _type_name = _obj_type.shared.class_name;
             # bool delegates to int emitter
@@ -950,12 +951,13 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
             if _emit_fn {
                 _unparser = JSCodeGenerator();
+                _ctx = self._es_emit_ctx_class(unparser=_unparser);
                 _target_str = _unparser.generate(callee.object);
                 _args_strs: list[str] = [];
                 for _a in args {
                     _args_strs.append(_unparser.generate(_a));
                 }
-                _result = _emit_fn(_target_str, _args_strs);
+                _result = _emit_fn(_ctx, _target_str, _args_strs);
                 nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
                 return;
             }
@@ -967,24 +969,28 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         and nd.target.sym_name in self._emitter_builtins
     ) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
-        # Lazily initialize builtin emitter on first use (class as namespace, not instance)
+        # Lazily initialize builtin emitter singleton on first use
         if self._builtin_emitter is None {
             _pes = __import__(
                 "jaclang.compiler.passes.ecmascript.primitives_es",
                 fromlist=["ESBuiltinEmitter"]
             );
-            self._builtin_emitter = _pes.ESBuiltinEmitter;
+            self._builtin_emitter = _pes.ESBuiltinEmitter();
+            if not hasattr(self, '_es_emit_ctx_class') {
+                self._es_emit_ctx_class = _pes.ESEmitCtx;
+            }
         }
         _builtin_name = nd.target.sym_name;
         _emit_fn_name = "emit_" + _builtin_name;
         _emit_fn = getattr(self._builtin_emitter, _emit_fn_name, None);
         if _emit_fn {
             _unparser = JSCodeGenerator();
+            _ctx = self._es_emit_ctx_class(unparser=_unparser);
             _args_strs: list[str] = [];
             for _a in args {
                 _args_strs.append(_unparser.generate(_a));
             }
-            _result = _emit_fn(_args_strs);
+            _result = _emit_fn(_ctx, _args_strs);
             nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
             return;
         }

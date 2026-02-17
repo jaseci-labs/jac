@@ -206,19 +206,17 @@ impl Parser.expect(kind: TokenKind) -> Token {
     if self.check(kind) {
         return self.advance();
     }
-    # Generate user-friendly error messages for common missing tokens
-    if kind == TokenKind.RPAREN {
-        self.error("Missing RPAREN");
-    } elif kind == TokenKind.RBRACE {
-        self.error("Missing RBRACE");
-    } elif kind == TokenKind.RSQUARE {
-        self.error("Missing RSQUARE");
-    } elif kind == TokenKind.SEMI {
-        self.error("Missing SEMI");
-    } elif kind == TokenKind.COMMA {
-        self.error("Missing COMMA");
+    # Generate user-friendly error messages for missing/unexpected tokens
+    if kind in (
+        TokenKind.RPAREN,
+        TokenKind.RBRACE,
+        TokenKind.RSQUARE,
+        TokenKind.SEMI,
+        TokenKind.COMMA
+    ) {
+        self.error(f"Missing '{kind.value}'");
     } else {
-        self.error(f"Expected {kind}, got {self.current().kind}");
+        self.error(f"Expected '{kind.value}', got '{self.current().kind.value}'");
         # Advance past the unexpected token to guarantee forward progress
         return self.advance();
     }
@@ -398,7 +396,7 @@ impl Parser.expect_name -> Token {
     if self.check_name() {
         return self.advance();
     }
-    self.error(f"Expected identifier, got {self.current().kind}");
+    self.error(f"Expected identifier, got '{self.current().kind.value}'");
     return self.current();
 }
 
@@ -1577,7 +1575,7 @@ impl Parser.parse_call_args(kid: list) -> list {
         return args;
     }
     # If current token clearly cannot start an argument, return empty
-    # so that the caller's expect(RPAREN) generates "Missing RPAREN"
+    # so that the caller's expect(RPAREN) generates "Missing ')'"
     if self.check(TokenKind.SEMI) or self.check(TokenKind.RBRACE) {
         return args;
     }
@@ -1595,7 +1593,7 @@ impl Parser.parse_call_args(kid: list) -> list {
     }
     # Check for missing comma between arguments
     if not self.check(TokenKind.RPAREN) and not self.at_end() {
-        self.error("Missing COMMA");
+        self.error("Missing ','");
         self.error("Unexpected token");
         # Skip to RPAREN or end to recover
         while not self.check(TokenKind.RPAREN) and not self.at_end() {
@@ -2182,7 +2180,7 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
         return self.parse_jsx_element();
     }
-    self.error(f"Unexpected token in expression: {self.current().kind}");
+    self.error(f"Unexpected token in expression: '{self.current().kind.value}'");
     return self.make_name(self.advance());
 }
 
