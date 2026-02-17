@@ -59,6 +59,24 @@ with entry {
     # Contravariance: wider param type assignable to narrower expected
     v1: Callable[[Dog], str] = handle_animal;  # Ok (Animal accepts Dog)
 
+    # --- Bare Callable (no type parameters) ---
+    # Bare Callable is equivalent to Callable[..., Any] - accepts any function
+    b1: Callable = int_to_str;       # Ok (any function assignable to bare Callable)
+    b2: Callable = add_two;          # Ok (multi-param function)
+    b3: Callable = handle_animal;    # Ok
+    b4: Callable = calc.double;      # Ok (method)
+    b5: Callable = Calculator.class_double;  # Ok (classmethod)
+
+    # Higher-order function returning bare Callable
+    def make_decorator(desc: str) -> Callable {
+        def decorator(fn: Callable) -> Callable {
+            def wrapper -> None {}
+            return wrapper;
+        }
+        return decorator;
+    }
+    dec: Callable = make_decorator("test");  # Ok
+
     # --- Type errors ---
 
     # Wrong parameter type

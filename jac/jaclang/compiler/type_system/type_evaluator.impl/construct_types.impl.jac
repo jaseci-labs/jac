@@ -80,10 +80,15 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         return node_.name_spec.type;
     }
     if not isinstance(node_.signature, uni.FuncSignature) {
+        flags = types.FunctionTypeFlags.Null;
+        if node_.is_static {
+            flags = flags | types.FunctionTypeFlags.StaticMethod;
+        }
         func_type = types.FunctionType(
             func_name=node_.name_spec.sym_name,
             return_type=types.UnknownType(),
             parameters=None,
+            function_flags=flags,
         );
         node_.name_spec.type = func_type;
         return node_.name_spec.type;
@@ -173,10 +178,19 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             )
         );
     }
+    # Set function flags for static/class methods
+    flags = types.FunctionTypeFlags.Null;
+    if node_.is_static {
+        flags = flags | types.FunctionTypeFlags.StaticMethod;
+    }
+    if self._is_ability_classmethod(node_) {
+        flags = flags | types.FunctionTypeFlags.ClassMethod;
+    }
     func_type = types.FunctionType(
         func_name=node_.name_spec.sym_name,
         return_type=return_type,
         parameters=parameters,
+        function_flags=flags,
     );
     node_.name_spec.type = func_type;
     return func_type;
