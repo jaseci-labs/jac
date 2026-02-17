@@ -1489,3 +1489,24 @@ test "callable_type_annotation" {
         program.errors_had[7].pretty_print()
     );
 }
+
+"""Test unbound method call type checking (ParentClass.init(self, ...))."""
+test "unbound_method_call" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_unbound_method_call.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    assert_error_pretty_found(
+        """Cannot assign <class int> to parameter 'name' of type <class str>""",
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """Not all required parameters were provided in the function call: 'name'""",
+        program.errors_had[1].pretty_print()
+    );
+}

@@ -56,6 +56,7 @@ checker_super_init_explicit.jac
 checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
+checker_unbound_method_call.ja
 checker_union_reassignment.jac
 checker_union_type_annotation.jac
 checker_varargs_type.jac
@@ -291,3 +292,8 @@ test_jac_format_pass.jac
 test_native_gen_pass.jac
 test_esast_gen_pass.jac
 test_pyfile_parse.jac
+test_py_infra.jac
+test_importer.jac
+test_jaseci.jac
+test_cli.jac
+test_lang_serve.jac

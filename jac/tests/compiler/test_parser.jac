@@ -177,7 +177,7 @@ test "multiple syntax errors" {
     prog.compile(os.path.join(FIXTURES, "multiple_syntax_errors.jac"));
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 3;
-    expected_substrings = ["Missing RPAREN", "Missing COMMA", "Unexpected token", ];
+    expected_substrings = ["Missing ')'", "Missing ','", "Unexpected token", ];
     for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
         pretty = alrt.pretty_print();
         assert expected in pretty;
