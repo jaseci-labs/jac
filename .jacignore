@@ -228,3 +228,6 @@ web_target.impl.jac
 with_context.jac
 with_llm_method.jac
 yield_in_assignment.jac
+template_loader.impl.jac
+analysis.impl.jac
+semantic_analysis_pass.impl.jac

@@ -142,14 +142,7 @@ impl CFGBuildPass.after_pass -> None {
             if isinstance(nd, uni.UniCFGNode) {
                 parent_bb = self.get_parent_bb_stmt(nd);
                 if parent_bb {
-                    # Do NOT link parent_bb -> nd when nd is a statement
-                    # inside parent_bb's own body.  Such nodes are interior
-                    # to the enclosing construct, not successors of it.
-                    # Creating this edge makes the parent appear as a spurious
-                    # predecessor of its own interior statements, which
-                    # poisons flow-sensitive narrowing (the edge is classified
-                    # as "unconditional" by _classify_edge, contributing
-                    # has_unnarrowed_pred=True and wiping the narrowed type).
+                    # Avoid spurious edges from parent to interior statements.
                     body_seq = self.get_code_block_sequence(parent_bb);
                     if body_seq and nd in body_seq {
                         continue;
