@@ -120,6 +120,8 @@ interop_analysis_pass.impl.jac
 jac_auto_lint_pass.impl.jac
 jac_formatter_pass.impl.jac
 jfast_api.impl.jac
+jsx_lt_comparison_bug.cl.jac
+jsx_text_quotes_bug.cl.jac
 lang_tools.impl.jac
 level_genarator.jac
 level.impl.jac
