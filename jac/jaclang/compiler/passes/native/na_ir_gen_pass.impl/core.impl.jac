@@ -71,6 +71,9 @@ impl NaIRGenPass.init(
     # File I/O support (Phase 15)
     self._file_struct_type: (object | None) = None;  # File struct type
     self._file_helpers_emitted: bool = False;
+    # Primitive emitter singletons (lazily initialized)
+    self._native_emitters: (dict[str, object] | None) = None;
+    self._native_builtin_emitter: (object | None) = None;
     super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
 }
 
@@ -124,4 +127,65 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         self.ir_in.gen.llvm_ir = self.llvm_module;
     }
     return self.ir_in;
+}
+
+# ─── Primitive Emitter Dispatch ────────────────────────────────
+"""Lazily initialize primitive emitter singletons."""
+impl NaIRGenPass._ensure_emitters -> None {
+    if self._native_emitters is not None {
+        return;
+    }
+    _pn = __import__(
+        "jaclang.compiler.passes.native.primitives_native",
+        fromlist=["NativeListEmitter"]
+    );
+    self._native_emitters = {
+        "int": _pn.NativeIntEmitter(),
+        "float": _pn.NativeFloatEmitter(),
+        "complex": _pn.NativeComplexEmitter(),
+        "str": _pn.NativeStrEmitter(),
+        "bytes": _pn.NativeBytesEmitter(),
+        "list": _pn.NativeListEmitter(),
+        "dict": _pn.NativeDictEmitter(),
+        "set": _pn.NativeSetEmitter(),
+        "frozenset": _pn.NativeFrozensetEmitter(),
+        "tuple": _pn.NativeTupleEmitter(),
+        "range": _pn.NativeRangeEmitter()
+    };
+    self._native_builtin_emitter = _pn.NativeBuiltinEmitter();
+    self._native_emit_ctx_class = _pn.NativeEmitCtx;
+}
+
+"""Dispatch a primitive type method call through the emitter layer."""
+impl NaIRGenPass._dispatch_primitive_method(
+    type_name: str,
+    method_name: str,
+    target: ir.Value,
+    args: list[ir.Value],
+    type_key: str
+) -> (ir.Value | None) {
+    self._ensure_emitters();
+    _emitter = self._native_emitters.get(type_name);
+    if _emitter is None {
+        return None;
+    }
+    _emit_fn = getattr(_emitter, "emit_" + method_name, None);
+    if _emit_fn is None {
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=type_key);
+    return _emit_fn(_ctx, target, args);
+}
+
+"""Dispatch a builtin function call through the emitter layer."""
+impl NaIRGenPass._dispatch_builtin(
+    func_name: str, args: list[ir.Value]
+) -> (ir.Value | None) {
+    self._ensure_emitters();
+    _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
+    if _emit_fn is None {
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+    return _emit_fn(_ctx, args);
 }

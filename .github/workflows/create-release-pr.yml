@@ -1,0 +1,129 @@
+name: Create Release PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      jaclang:
+        description: "jaclang version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-byllm:
+        description: "jac-byllm version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-client:
+        description: "jac-client version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-scale:
+        description: "jac-scale version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jac-super:
+        description: "jac-super version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+      jaseci:
+        description: "jaseci (meta package) version bump"
+        required: true
+        type: choice
+        default: skip
+        options:
+          - skip
+          - patch
+          - minor
+          - major
+
+# Deny all permissions by default; grant only at job level.
+permissions: {}
+
+jobs:
+  create-release-pr:
+    if: github.repository == 'Jaseci-Labs/jaseci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tomlkit==0.14.0
+
+      - name: Run release script
+        id: release
+        run: |
+          python scripts/release.py \
+            --jaclang ${{ inputs.jaclang }} \
+            --jac-byllm ${{ inputs['jac-byllm'] }} \
+            --jac-client ${{ inputs['jac-client'] }} \
+            --jac-scale ${{ inputs['jac-scale'] }} \
+            --jac-super ${{ inputs['jac-super'] }} \
+            --jaseci ${{ inputs.jaseci }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch and commit
+        run: |
+          git checkout -b ${{ steps.release.outputs.branch_name }}
+          git add ${{ steps.release.outputs.modified_files }}
+          git commit -m "${{ steps.release.outputs.pr_title }}"
+          git push origin ${{ steps.release.outputs.branch_name }}
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_URL=$(gh pr create \
+            --title "${{ steps.release.outputs.pr_title }}" \
+            --body "${{ steps.release.outputs.pr_body }}" \
+            --label "release" \
+            --base main \
+            --head "${{ steps.release.outputs.branch_name }}")
+          echo "Created PR: $PR_URL"
