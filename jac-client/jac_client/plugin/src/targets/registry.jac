@@ -6,12 +6,37 @@ Each target is a class that inherits from the base ClientTarget class.
 import from typing { Optional }
 import from pathlib { Path }
 
+"""Enum for supported client target types."""
+enum TargetType {
+    WEB = "web",
+    DESKTOP = "desktop",
+    PWA = "pwa"
+}
+
+"""Get TargetType from string name."""
+def get_target_type(name: str) -> TargetType {
+    name_lower = name.lower().strip();
+    if name_lower == "" or name_lower == "web" {
+        return TargetType.WEB;
+    }
+    if name_lower == "desktop" {
+        return TargetType.DESKTOP;
+    }
+    if name_lower == "pwa" {
+        return TargetType.PWA;
+    }
+    raise ValueError(
+        f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"
+    ) ;
+}
+
 """Base class for all build targets.
 
 All targets must inherit from this class and implement the required methods.
 """
 class ClientTarget {
     has name: str,
+        project_dir: Optional[Path] = None,
         default: bool = False,
         requires_setup: bool = False,
         config_section: str = "",
@@ -30,10 +55,14 @@ class ClientTarget {
     ) -> Path abs;
 
     """Start dev server for the target."""
-    def dev(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
+    def dev(
+        self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None abs;
 
     """Start the target (production mode - build and run)."""
-    def start(self: ClientTarget, entry_file: Path, project_dir: Path) -> None abs;
+    def start(
+        self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None abs;
 }
 
 """Central registry for build targets.
@@ -67,8 +96,37 @@ obj TargetRegistry {
     def clear -> None;
 }
 
-# Global singleton instance
-glob _registry: TargetRegistry | None = None;
+"""Factory for creating target instances with lazy loading.
+
+This singleton factory creates target instances on demand.
+WebTarget is always available (default), Desktop/PWA are lazy-loaded.
+"""
+obj TargetFactory {
+    has _web_target: Optional[ClientTarget] = None,
+        _cached_targets: dict[str, ClientTarget] = {};
+
+    """Create a target by name string (lazy loading for non-web targets)."""
+    def create(name: str, project_dir: Path) -> ClientTarget;
+
+    """Create a target by TargetType enum (preferred)."""
+    def create_by_type(target_type: TargetType, project_dir: Path) -> ClientTarget;
+
+    """Get the default (web) target, cached for fast access."""
+    def get_default(project_dir: Path) -> ClientTarget;
+
+    """Get list of available target types."""
+    def get_available_targets -> list[TargetType];
+
+    """Get list of available target names as strings."""
+    def get_available_target_names -> list[str];
+
+    """Clear cached targets (for testing)."""
+    def clear_cache -> None;
+}
+
+# Global singleton instances
+glob _registry: TargetRegistry | None = None,
+     _factory: TargetFactory | None = None;
 
 """Get or create the global target registry."""
 def get_target_registry -> TargetRegistry {
@@ -79,9 +137,13 @@ def get_target_registry -> TargetRegistry {
     }
     return _registry;
 }
-# Target name: "web", "desktop", "android", "ios"
-# Is this the default target?
-# Does this target need setup?
-# Section in jac.toml (e.g., "desktop")
-# Required npm/system dependencies
-# Where build outputs go
+
+"""Get or create the global target factory."""
+def get_target_factory -> TargetFactory {
+    import from jac_client.plugin.src.targets.registry { TargetFactory }
+    global _factory;
+    if _factory is None {
+        _factory = TargetFactory();
+    }
+    return _factory;
+}
