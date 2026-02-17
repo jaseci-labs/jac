@@ -26,7 +26,6 @@ node TaskHandling {
     }
 
     def route_and_run(utterance: str) -> str by llm(
-        method="ReAct",
         tools=([self.add_task, self.get_current_time, self.summarize_tasks])
     );
 
@@ -45,7 +44,7 @@ node TaskHandling {
 node EmailHandling {
     def write_email_content(utterance: str) -> str by llm();
     def route_and_run(utterance: str) -> str by llm(
-        method="ReAct", tools=([self.write_email_content])
+        tools=([self.write_email_content])
     );
 
     can execute with task_manager entry {
