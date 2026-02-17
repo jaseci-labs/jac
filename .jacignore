@@ -56,6 +56,8 @@ checker_super_init_explicit.jac
 checker_super_init_has_vars.jac
 checker_sym_inherit.jac
 checker_type_narrowing.jac
+checker_type_param.jac
+checker_unbound_method_call.ja
 checker_union_reassignment.jac
 checker_union_type_annotation.jac
 checker_varargs_type.jac
@@ -87,6 +89,7 @@ core_language_features.jac
 corelib_fmt.jac
 custom_access_validation.jac
 data_spatial_types.jac
+db.impl.jac
 decorator_stack.jac
 def_impl_match_pass.jac
 defn_decl_mismatch.jac
@@ -94,6 +97,7 @@ dep_registry.impl.jac
 dependencies.impl.jac
 desktop_config.impl.jac
 desktop_target.impl.jac
+diagnostics.impl.jac
 dicts.impl.jac
 doc_ir_gen_pass.impl.jac
 dynamic_archetype.jac
@@ -120,6 +124,7 @@ guess_game3.jac
 guess_game6.jac
 hash_init_check.jac
 helpers.jac
+hmr.impl.jac
 iife_functions.jac
 image_types.jac
 impl_grab.impl.jac
@@ -154,13 +159,13 @@ model.impl.jac
 modresolver.jac
 mtest.impl.jac
 mtir_gen_pass.impl.jac
-multiple_syntax_errors.jac
+multiple_syntax_err.jac
 multistatement_lambda_client.jac
 na_compile_pass.impl.jac
 nested_class_sig.impl.jac
 nested_class_sig.jac
 nested_impls.jac
-new_keyword_errors.jac
+new_keyword_err.jac
 normalize_pass.impl.jac
 objects.impl.jac
 one.jac
@@ -168,7 +173,7 @@ other_root_access.jac
 param_syntax_err.jac
 parameter_type_check.impl.jac
 parser.impl.jac
-pass_keyword_errors.jac
+pass_keyword_err.jac
 plugin.jac
 plugin_config.impl.jac
 plugin_config.jac
@@ -288,3 +293,8 @@ test_jac_format_pass.jac
 test_native_gen_pass.jac
 test_esast_gen_pass.jac
 test_pyfile_parse.jac
+test_py_infra.jac
+test_importer.jac
+test_jaseci.jac
+test_cli.jac
+test_lang_serve.jac

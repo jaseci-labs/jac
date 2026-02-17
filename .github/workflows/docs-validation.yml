@@ -14,6 +14,7 @@ on:
       - 'jac-byllm/byllm/**'
       - 'jac-super/jac_super/**'
       - 'docs/docs/community/release_notes/**'
+      - '!**/tests/**'
   push:
     branches:
       - main

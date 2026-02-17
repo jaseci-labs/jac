@@ -152,6 +152,12 @@ impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
         return f"{inner}*";
     }
     if isinstance(expr, GTok) {
+        # Show human-readable token text: LBRACE → "{", KW_IF → "if"
+        # Category tokens (NAME, INT, STRING, etc.) stay as-is
+        kind = getattr(TokenKind, expr.name, None);
+        if kind is not None and kind.value != expr.name {
+            return f'"{kind.value}"';
+        }
         return expr.name;
     }
     if isinstance(expr, GRef) {
