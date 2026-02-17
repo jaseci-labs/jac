@@ -383,6 +383,22 @@ test "assignment inside globvar js" {
     }
 }
 
+test "operator primitive dispatch" {
+    fixture = "operator_primitives.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # list + list should use spread, not raw +
+    assert "[...a, ...[3]]" in js_code , "list concat should use spread operator";
+
+    # str * n should use .repeat()
+    assert ".repeat(3)" in js_code , "str repeat should use .repeat()";
+
+    # x in list should use .includes()
+    assert ".includes(" in js_code , "list membership should use .includes()";
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "hyphenated package imports generate correct js" {
     fixture_file_path = os.path.join(FIXTURES, "hyphenated_imports.jac");
     js_code = compile_fixture_to_js(fixture_file_path);
