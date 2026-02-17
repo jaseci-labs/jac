@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.4.21 (Unreleased)
 
+- **Deprecated `method` parameter**: The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) in `by llm()` is now deprecated and emits a `DeprecationWarning`. It was never functional; the ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of using `method="ReAct"`.
+
 ## byllm 0.4.20 (Latest Release)
 
 - Minor internal refactors

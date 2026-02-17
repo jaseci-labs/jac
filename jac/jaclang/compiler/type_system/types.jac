@@ -23,6 +23,7 @@ enum TypeCategory ( IntEnum ) {
     Function,
     Overload,
     Union,
+    EnumMember
 }
 
 """
@@ -164,7 +165,9 @@ Holds the shared details of class type.
             is_builtin_class: bool = False,
             is_data_class: bool = False,
             is_root_class: bool = False,
-            is_enum_class: bool = False;
+            is_enum_class: bool = False,
+            enum_value_type: (TypeBase | None) = None,
+            enum_members: (dict[str, EnumMemberInfo] | None) = None;
 
         def postinit -> None;
     }
@@ -336,4 +339,25 @@ obj UnionType(TypeBase) {
 
     def postinit -> None;
     def __str__ -> str;
+}
+
+"""Information about a specific enum member."""
+obj EnumMemberInfo {
+    has member_name: str,
+        value_type: (TypeBase | None) = None,
+        literal_value: (int | str | None) = None;
+}
+
+"""Represents a specific enum member type (e.g., Color.RED)."""
+obj EnumMemberType(TypeBase) {
+    has enum_class: (ClassType | None) = None,
+        member_info: (EnumMemberInfo | None) = None;
+
+    with entry {
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.EnumMember;
+    }
+
+    def __str__ -> str;
+    def get_value_type -> TypeBase;
+    def get_name_as_str -> str;
 }

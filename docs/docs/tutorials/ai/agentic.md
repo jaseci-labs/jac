@@ -164,7 +164,6 @@ def get_date() -> str {
 }
 
 def research(question: str) -> str by llm(
-    method="ReAct",
     tools=[search_web, calculate, get_date]
 );
 sem research = "Answer complex questions using reasoning and tools.";
@@ -399,7 +398,6 @@ def place_order(product: str, quantity: int) -> str {
 }
 
 def sales_agent(request: str) -> str by llm(
-    method="ReAct",
     tools=[list_products, get_price, check_inventory, place_order]
 );
 
@@ -425,9 +423,8 @@ with entry {
 
 | Concept | Usage |
 |---------|-------|
-| Basic tools | `by llm(tools=[func1, func2])` |
-| ReAct reasoning | `by llm(method="ReAct", tools=[...])` |
-| Object methods | `by llm(tools=[self.method])` |
+| Tools (ReAct reasoning) | `by llm(tools=[func1, func2])` |
+| Object methods as tools | `by llm(tools=[self.method])` |
 | Context injection | `by llm(incl_info={"key": value})` |
 | `sem` on tools | Help LLM understand when to use tools |
 

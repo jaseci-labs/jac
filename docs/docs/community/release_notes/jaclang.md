@@ -5,8 +5,15 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.3 (Unreleased)
 
 - **Fix: Unbound Method Call Type Checking**: Fixed "Parameter already matched" error when calling parent class methods with explicit `self` in inheritance patterns (e.g., `ParentClass.init(self, name=name)`). The type checker now correctly handles unbound method calls on `obj`/`node`/`walker`/`edge` types where `self` is implicit.
+- **Enhanced Type Narrowing**: Extended CFG-based type narrowing to support additional patterns: parenthesized isinstance `(isinstance(x, T))`, NOT expressions `not isinstance(x, T)`, compound AND/OR conditions, isinstance with tuple of types `isinstance(x, (A, B))`, truthiness narrowing `if x:` (excludes None), literal equality `x == "lit"`, and inheritance-aware isinstance that correctly narrows to subclasses in unions.
+- **Fix: Bare Callable Type Annotation**: Using `Callable` without type parameters (e.g., `fn: Callable`) no longer causes type errors.
+- **Type Inference for Tuple Unpacking**: The type evaluator now infers element types for variables in tuple/list unpacking assignments (e.g., `(row, col) = pos;` where `pos: tuple[int, int]`), eliminating the need for explicit pre-declarations before unpacking. Types that cannot be inferred still require explicit annotations.
 - **Fix: Display detailed syntax error messages**: Display detailed syntax error messages in `jac run` and `jac start` commands instead of generic import errors.
+- **Enum Type Checking**: Enums now have proper type checking. Accessing `.name` returns `str`, `.value` returns the correct type based on your enum values (int or str). Passing wrong types to functions expecting enums now shows type errors.
 - **Fix: LSP features in nested impl blocks**: Go-to-definition, hover, and syntax highlighting now work correctly for symbols inside if/while/for statements within impl blocks.
+- **Fix: JS useState scope bug**: Fixed `has` vars incorrectly triggering `setState()` in sibling functions with same variable name.
+- **Fix: Inherited field default override**: Fixed false "missing required parameter" error when a child class provides a default for a parent's required field.
+- **`parametrize()` Test Helper**: Added a `parametrize(base_name, params, test_func, id_fn=None)` runtime helper that registers one test per parameter via `JacTestCheck.add_test()`.
 
 ## jaclang 0.10.2 (Latest Release)
 

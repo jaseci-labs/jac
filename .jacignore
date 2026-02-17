@@ -31,6 +31,7 @@ checker_connect_filter.jac
 checker_connect_typed.jac
 checker_dict_pop.jac
 checker_expr_call.jac
+checker_enum.jac
 checker_final.jac
 checker_float.jac
 checker_function_overload.jac
@@ -86,6 +87,7 @@ core_language_features.jac
 corelib_fmt.jac
 custom_access_validation.jac
 data_spatial_types.jac
+db.impl.jac
 decorator_stack.jac
 def_impl_match_pass.jac
 defn_decl_mismatch.jac
@@ -93,6 +95,7 @@ dep_registry.impl.jac
 dependencies.impl.jac
 desktop_config.impl.jac
 desktop_target.impl.jac
+diagnostics.impl.jac
 dicts.impl.jac
 doc_ir_gen_pass.impl.jac
 dynamic_archetype.jac
@@ -119,6 +122,7 @@ guess_game3.jac
 guess_game6.jac
 hash_init_check.jac
 helpers.jac
+hmr.impl.jac
 iife_functions.jac
 image_types.jac
 impl_grab.impl.jac
@@ -233,6 +237,7 @@ watcher.impl.jac
 with_context.jac
 with_llm_method.jac
 yield_in_assignment.jac
+webhook.impl.jac
 init_as_call.jac
 impl_match_confused.impl.jac
 archetype.impl.jac
@@ -242,6 +247,7 @@ help.impl.jac
 mtir.impl.jac
 test_compilation.jac
 test_import_pass.jac
+web_target.impl.jac
 attack.impl.jac
 basellm.impl.jac
 def_impl_match_pass.impl.jac
@@ -265,3 +271,23 @@ basellm.impl.jac
 types.jac
 vite_bundler.impl.jac
 utils.jac
+test_parser.jac
+test_rd_parser_validation.jac
+test_types_str.jac
+test_dependencies.jac
+test_template.jac
+test_config.jac
+test_sem_tokens.jac
+test_features.jac
+test_serve.jac
+test_hmr.jac
+test_storage.jac
+test_man_code.jac
+test_decl_impl_match_pass.jac
+test_grammar_extract_pass.jac
+test_unparse_validate.jac
+test_jac_auto_lint_pass.jac
+test_jac_format_pass.jac
+test_native_gen_pass.jac
+test_esast_gen_pass.jac
+test_pyfile_parse.jac

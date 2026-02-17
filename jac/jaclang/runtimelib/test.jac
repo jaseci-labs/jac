@@ -1,6 +1,6 @@
 """Core constructs for Jac Language."""
 import unittest;
-import from collections.abc { Callable }
+import from collections.abc { Callable, Iterable }
 import from typing { ClassVar }
 """Jac test result class."""
 obj JacTestResult(unittest.TextTestResult) {
@@ -58,3 +58,11 @@ obj JacTestCheck {
 
     def __getattr__(name: str) -> object;
 }
+
+"""Register one test per parameter (like pytest.mark.parametrize)."""
+def parametrize(
+    base_name: str,
+    params: Iterable,
+    test_func: Callable,
+    id_fn: (Callable | None) = None
+) -> None;

@@ -82,7 +82,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         other_target = os.path.join(base_dir, target);
     }
     if (os.path.exists(other_target) and os.path.isfile(other_target)) {
-        return (other_target, 'other');
+        return (os.path.normpath(other_target), 'other');
     }
     if not target.startswith('.') {
         try {
@@ -91,7 +91,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
             spec = None;
         }
         if (spec and spec.origin and (spec.origin not in {'built-in','frozen'})) {
-            origin = spec.origin;
+            origin = os.path.normpath(spec.origin);
             ext = os.path.splitext(origin)[1].lower();
             if (ext in {'.jac','.pyi','.py','.js','.ts','.jsx','.tsx'}) {
                 if (ext == '.jac') {
