@@ -27,5 +27,5 @@ class DesktopConfig {
     def get_features_config(self: DesktopConfig) -> dict[str, Any];
     def validate(self: DesktopConfig) -> None;
     def get_default_config(self: DesktopConfig) -> dict[str, Any];
-    # def _get_jac_config(self: DesktopConfig) -> JacConfig;
+    def _get_jac_config(self: DesktopConfig) -> JacConfig;
 }

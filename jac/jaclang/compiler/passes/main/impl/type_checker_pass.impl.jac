@@ -179,8 +179,9 @@ impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> Non
     }
 }
 
-"""Exit an enum node - traverse ImplDef body if present."""
+"""Exit an enum node - build enum type eagerly and traverse ImplDef body if present."""
 impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
+    self.evaluator.get_type_of_enum(nd);
     if isinstance(nd.body, uni.ImplDef) {
         self.traverse(nd.body);
     }

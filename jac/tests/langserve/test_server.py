@@ -234,7 +234,7 @@ def test_go_to_definition_md_path(fixture_path: Callable[[str], str]) -> None:
             (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:67:4-67:12"),  # TypeBase now on line 18
+            (18, 5, "compiler/type_system/types.jac:66:4-66:12"),  # TypeBase now on line 18
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),              # UniScopeNode now on line 20
             # (20, 48, "compiler/unitree.py:335:0-566:11"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),  # RAD now on line 22, fixture line changed too
@@ -416,13 +416,7 @@ def test_go_to_def_import_star(
 
 
 def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> None:
-    """Test hover and go-to-definition on method stubs and impl files.
-
-    This tests:
-    1. Hover on type annotations (self: MyServer) in method stubs works
-    2. Hover on type annotations in impl files works
-    3. Go-to-definition on method stubs (init, process) navigates to impl file
-    """
+    """Test hover and go-to-definition on method stubs and impl files."""
     lsp = create_server(None, fixture_path)
     try:
         test_file = uris.from_fs_path(fixture_path("stub_hover.jac"))
@@ -504,12 +498,6 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
             f"Definition should be at line 10 (0-indexed: 9), got: {defn3.range.start.line}"
         )
 
-        # ================================================================
-        # Test hover and go-to-definition for Python type methods in impl bodies
-        # This tests the fix for type resolution in impl bodies where
-        # Python type methods (like Thread.start) should be properly resolved.
-        # ================================================================
-
         # Hover on 'start' in 'self.worker.start()' (line 23, col 17)
         # Line 23 (0-indexed: 22): `    self.worker.start();`
         # 'start' starts at column 17 (0-indexed: 16)
@@ -543,12 +531,7 @@ def test_stub_impl_hover_and_goto_def(fixture_path: Callable[[str], str]) -> Non
 def test_go_to_definition_impl_body_self_attr(
     passes_main_fixture_abs_path: Callable[[str], str],
 ) -> None:
-    """Test go-to-definition for self.attr in impl bodies navigates to has declaration.
-
-    This tests the fix for symbol resolution in .impl.jac files, where clicking on
-    'self.count' in an impl body should navigate to the 'has count' declaration
-    in the base .jac file.
-    """
+    """Test go-to-definition for self.attr in impl bodies navigates to has declaration."""
     lsp = create_server(None, lambda x: "")
     try:
         impl_file = uris.from_fs_path(
@@ -556,23 +539,16 @@ def test_go_to_definition_impl_body_self_attr(
         )
         lsp.type_check_file(impl_file)
 
-        # fmt: off
-        # Test positions in impl_symbol_resolution.impl.jac (1-indexed for test input):
-        # Line 5: `    return self.count;`
-        #         - 'count' starts at column 17
-        # Line 9: `    return f"{self.name}: {self.count}";`
-        #         - 'name' is at column 21, 'count' is at column 34
-        #
-        # Expected targets in impl_symbol_resolution.jac (0-indexed in LSP output):
-        # Line 3 (0-indexed): `    has count: int = 0,` -> count at 3:8-3:13
-        # Line 4 (0-indexed): `        name: str = "default";` -> name at 4:8-4:12
         positions = [
             # (impl_line, impl_char, expected_target)
-            (5, 17, "impl_symbol_resolution.jac:3:8-3:13"),   # count in `return self.count`
-            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),   # name in f-string
-            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),   # count in f-string
+            (
+                5,
+                17,
+                "impl_symbol_resolution.jac:3:8-3:13",
+            ),  # count in `return self.count`
+            (9, 21, "impl_symbol_resolution.jac:4:8-4:12"),  # name in f-string
+            (9, 34, "impl_symbol_resolution.jac:3:8-3:13"),  # count in f-string
         ]
-        # fmt: on
 
         for line, char, expected in positions:
             result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
@@ -596,22 +572,16 @@ def test_go_to_definition_directory_import(
         import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"))
         lsp.type_check_file(import_file)
 
-        # fmt: off
-        # Line 1: import from mypkg_ns.my_mod { add }
-        # Line 2: import from mypkg_reg.my_mod { sub }
         positions = [
             # Regular package: clicking 'mypkg_reg' -> points to __init__.jac
             (2, 18, "local_imports/mypkg_reg/__init__.jac:0:0-0:0"),
-             # Regular package: clicking 'my_mod' -> points to my_mod.jac
+            # Regular package: clicking 'my_mod' -> points to my_mod.jac
             (2, 28, "local_imports/mypkg_reg/my_mod.jac:0:0-0:0"),
-
             # Namespace package: clicking 'mypkg_ns'
             # This should not resolve to anything as it is a directory
-
             # resolution inside the namespace package 'my_mod' -> should point to the my_mod.jac
             (1, 28, "local_imports/mypkg_ns/my_mod.jac:0:0-0:0"),
         ]
-        # fmt: on
 
         for line, char, expected in positions:
             # We use try-except to detect if get_definition crashes (though it shouldn't usually raise)
@@ -622,6 +592,38 @@ def test_go_to_definition_directory_import(
             assert expected in str(def_loc), (
                 f"Expected '{expected}' in definition for line {line}, char {char}, "
                 f"got: {def_loc}"
+            )
+    finally:
+        lsp.shutdown()
+
+
+def test_go_to_definition_nested_impl_symbols(
+    fixture_path: Callable[[str], str],
+) -> None:
+    lsp = create_server(None, fixture_path)
+    try:
+        impl_file = uris.from_fs_path(fixture_path("nested_impl_resolution.impl.jac"))
+        lsp.type_check_file(impl_file)
+
+        positions = [
+            # (line, char_pos, expected_target_substring)
+            (2, 5, "unitree.jac"),  # uni in direct reference
+            (3, 8, "unitree.jac"),  # uni in if condition
+            (4, 18, "unitree.jac"),  # uni in if body variable type
+            (6, 11, "unitree.jac"),  # uni in while condition
+            (7, 15, "unitree.jac"),  # uni in while body variable type
+            (9, 22, "unitree.jac"),  # uni in for expression
+            (10, 15, "unitree.jac"),  # uni in for body variable type
+        ]
+
+        for line, char, expected in positions:
+            result = lsp.get_definition(impl_file, lspt.Position(line - 1, char - 1))
+            assert result is not None, (
+                f"Expected definition at line {line}, char {char}, got None"
+            )
+            assert expected in str(result), (
+                f"Expected '{expected}' in definition for line {line}, char {char}, "
+                f"got: {result}"
             )
     finally:
         lsp.shutdown()

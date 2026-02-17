@@ -52,11 +52,9 @@ def pos_to_tuple(row: int, col: int) -> tuple[int, int] {
 }
 
 def tuple_to_algebraic(pos: tuple[int, int]) -> str {
-    row: int;
-    col: int;
     (row, col) = pos;  # Tuple unpacking
-    col_char: str = chr(ord("a") + col);
-    rank: int = 8 - row;
+    col_char = chr(ord("a") + col);
+    rank = 8 - row;
     return rf"{col_char}{rank}";  # Raw f-string
 }
 
@@ -132,11 +130,9 @@ obj Piece {
     def slide_moves(board: Board, directions: list[tuple[int, int]]) -> list[Move] {
         moves: list[Move] = [];
         for d in directions {
-            dr: int;
-            dc: int;
             (dr, dc) = d;  # Tuple unpacking
-            r: int = self.get_row() + dr;
-            c: int = self.get_col() + dc;
+            r = self.get_row() + dr;
+            c = self.get_col() + dc;
             while board.is_valid_pos(r, c) {
                 target: Piece | None = board.get_piece(r, c);
                 if target is None {
@@ -163,18 +159,18 @@ obj Piece {
 obj Pawn(Piece) {
     def get_raw_moves(board: Board) -> list[Move] {
         moves: list[Move] = [];
-        direction: int = -1 if self.color == Color.WHITE else 1;
-        start_row: int = 6 if self.color == Color.WHITE else 1;
-        promo_row: int = 0 if self.color == Color.WHITE else 7;
+        direction = -1 if self.color == Color.WHITE else 1;
+        start_row = 6 if self.color == Color.WHITE else 1;
+        promo_row = 0 if self.color == Color.WHITE else 7;
 
-        row: int = self.get_row();
-        col: int = self.get_col();
+        row = self.get_row();
+        col = self.get_col();
 
         # Forward one
-        new_row: int = row + direction;
+        new_row = row + direction;
         if board.is_valid_pos(new_row, col)
         and board.get_piece(new_row, col) is None {
-            is_promo: bool = new_row == promo_row;
+            is_promo = new_row == promo_row;
             moves.append(
                 Move(
                     from_pos=self.pos,
@@ -184,7 +180,7 @@ obj Pawn(Piece) {
             );
             # Forward two from start
             if row == start_row {
-                two_row: int = row + 2 * direction;
+                two_row = row + 2 * direction;
                 if board.get_piece(two_row, col) is None {
                     moves.append(
                         Move(
@@ -200,11 +196,11 @@ obj Pawn(Piece) {
         # Diagonal captures using set of offsets
         capture_offsets: set[int] = {-1, 1};  # Set value
         for dc in capture_offsets {
-            nc: int = col + dc;
+            nc = col + dc;
             if board.is_valid_pos(new_row, nc) {
                 target: Piece | None = board.get_piece(new_row, nc);
                 if target is not None and target.color != self.color {
-                    is_promo: bool = new_row == promo_row;
+                    is_promo = new_row == promo_row;
                     moves.append(
                         Move(
                             from_pos=self.pos,
@@ -214,8 +210,6 @@ obj Pawn(Piece) {
                     );
                 }
                 # En passant
-                ep_row: int;
-                ep_col: int;
                 (ep_row, ep_col) = board.ep_pos;
                 if new_row == ep_row and nc == ep_col {
                     moves.append(
@@ -242,14 +236,14 @@ obj Knight(Piece) {
             (1, -2), (1, 2), (2, -1), (2, 1)
         ];
 
-        row: int = self.get_row();
-        col: int = self.get_col();
+        row = self.get_row();
+        col = self.get_col();
 
         # Build valid positions list
         valid_positions: list[tuple[int, int]] = [];
         for offset in offsets {
-            dr: int = offset[0];
-            dc: int = offset[1];
+            dr = offset[0];
+            dc = offset[1];
             if board.is_valid_pos(row + dr, col + dc) {
                 valid_positions.append((row + dr, col + dc));
             }
@@ -258,8 +252,6 @@ obj Knight(Piece) {
         # List comprehension for filtering moves by target square
         moves: list[Move] = [];
         for pos in valid_positions {
-            r: int;
-            c: int;
             (r, c) = pos;
             target: Piece | None = board.get_piece(r, c);
             if target is None or target.color != self.color {
@@ -304,8 +296,8 @@ obj Queen(Piece) {
 obj King(Piece) {
     def get_raw_moves(board: Board) -> list[Move] {
         moves: list[Move] = [];
-        row: int = self.get_row();
-        col: int = self.get_col();
+        row = self.get_row();
+        col = self.get_col();
 
         # Generate all adjacent positions using list comprehension
         adjacent: list[tuple[int, int]] = [
@@ -316,8 +308,6 @@ obj King(Piece) {
         ];
 
         for pos in adjacent {
-            r: int;
-            c: int;
             (r, c) = pos;
             if board.is_valid_pos(r, c) {
                 target: Piece | None = board.get_piece(r, c);
@@ -358,7 +348,7 @@ def count_pieces_by_kind(pieces: list[Piece]) -> dict[PieceKind, int] {
         PieceKind.ROOK, PieceKind.QUEEN, PieceKind.KING
     ];
     for kind in all_kinds {
-        count: int = 0;
+        count = 0;
         for p in pieces {
             if p.kind == kind {
                 count += 1;
@@ -376,7 +366,7 @@ def merge_piece_info(white_pawns: int, black_pawns: int) -> dict[str, int] {
 }
 
 def create_piece(kind: PieceKind, color: Color, row: int, col: int) -> Piece {
-    pos: tuple[int, int] = (row, col);
+    pos = (row, col);
     if kind == PieceKind.PAWN {
         return Pawn(color=color, kind=kind, pos=pos);
     } elif kind == PieceKind.KNIGHT {
@@ -485,10 +475,10 @@ obj Board {
     }
 
     def make_move(move: Move) -> None {
-        from_row: int = move.get_from_row();
-        from_col: int = move.get_from_col();
-        to_row: int = move.get_to_row();
-        to_col: int = move.get_to_col();
+        from_row = move.get_from_row();
+        from_col = move.get_from_col();
+        to_row = move.get_to_row();
+        to_col = move.get_to_col();
 
         # Save board state for undo
         move.prev_ep_pos = self.ep_pos;
@@ -502,7 +492,7 @@ obj Board {
 
         # Handle en passant capture
         if move.is_en_passant {
-            ep_pawn_row: int = from_row;
+            ep_pawn_row = from_row;
             move.captured_piece = self.get_piece(ep_pawn_row, to_col);
             self.set_piece(ep_pawn_row, to_col, None);
         } else {
@@ -560,7 +550,7 @@ obj Board {
 
         # Update en passant target
         if move.is_double_push {
-            ep_dir: int = -1 if piece.color == Color.WHITE else 1;
+            ep_dir = -1 if piece.color == Color.WHITE else 1;
             self.ep_pos = (from_row + ep_dir, from_col);
         } else {
             self.ep_pos = (-1, -1);
@@ -568,10 +558,10 @@ obj Board {
     }
 
     def undo_move(move: Move) -> None {
-        from_row: int = move.get_from_row();
-        from_col: int = move.get_from_col();
-        to_row: int = move.get_to_row();
-        to_col: int = move.get_to_col();
+        from_row = move.get_from_row();
+        from_col = move.get_from_col();
+        to_row = move.get_to_row();
+        to_col = move.get_to_col();
 
         # Determine the piece to restore
         piece: Piece | None = None;
@@ -592,7 +582,7 @@ obj Board {
 
         # Restore captured piece
         if move.is_en_passant {
-            ep_pawn_row: int = from_row;
+            ep_pawn_row = from_row;
             self.set_piece(ep_pawn_row, to_col, move.captured_piece);
             if move.captured_piece is not None {
                 move.captured_piece.set_pos(ep_pawn_row, to_col);
@@ -631,34 +621,34 @@ obj Board {
             PieceKind.KING: 20000
         };
 
-        score: int = 0;
-        material_score: int = 0;
-        positional_score: int = 0;
-        mobility_factor: int = 1;
+        score = 0;
+        material_score = 0;
+        positional_score = 0;
+        mobility_factor = 1;
 
         for r in range(BOARD_SIZE) {
             for c in range(BOARD_SIZE) {
                 piece: Piece | None = self.squares[r][c];
                 if piece is not None {
-                    base_value: int = piece_values[piece.kind];
+                    base_value = piece_values[piece.kind];
 
                     # Center control bonus using bitwise check
-                    center_bonus: int = 0;
+                    center_bonus = 0;
                     # Use bitwise AND to check if column is in center (files c-f)
-                    col_mask: int = 1 << c;  # Left shift to create column bit
+                    col_mask = 1 << c;  # Left shift to create column bit
                     if (col_mask & CENTER_MASK) != 0 and 2 <= r and r <= 5 {
                         center_bonus = base_value // 10;  # Floor division
                     }
 
                     # Piece development bonus (power operation)
-                    dev_bonus: int = 0;
+                    dev_bonus = 0;
                     if piece.has_moved and piece.kind != PieceKind.KING {
                         # Small exponential bonus for development
                         dev_bonus = 2 ** 3;  # Power operator
                     }
 
                     # Accumulate scores using augmented assignment
-                    piece_total: int = base_value;
+                    piece_total = base_value;
                     piece_total += center_bonus;  # +=
                     piece_total += dev_bonus;
 
@@ -683,32 +673,32 @@ obj Board {
         mobility_factor //= 2;  # //= floor division assignment (back to 1)
 
         # Use modulo to add small factor based on position hash
-        position_hash: int = material_score % 7;  # Modulo operator
+        position_hash = material_score % 7;  # Modulo operator
         position_hash %= 5;  # %= modulo assignment
         score += position_hash;
 
         # Demonstrate XOR for position uniqueness check
-        xor_factor: int = 0;
+        xor_factor = 0;
         xor_factor ^= material_score & 0xFF;  # ^= and & operators
         xor_factor ^= positional_score & 0xFF;
 
         # Shift operations
-        shift_val: int = 16;
+        shift_val = 16;
         shift_val <<= 1;  # <<= left shift assignment (now 32)
         shift_val >>= 2;  # >>= right shift assignment (now 8)
 
         # Right shift to scale down large values
-        scaled_xor: int = xor_factor >> 4;  # Right shift
+        scaled_xor = xor_factor >> 4;  # Right shift
         score += scaled_xor;
         score += shift_val;
 
         # Power assignment demonstration
-        power_bonus: int = 2;
+        power_bonus = 2;
         power_bonus **= 2;  # **= power assignment (now 4)
         score += power_bonus;
 
         # Division assignment (using temp to avoid float issues)
-        div_temp: int = 100;
+        div_temp = 100;
         div_temp //= 10;  # //= floor division (now 10)
         score += div_temp;
 
@@ -719,7 +709,7 @@ obj Board {
         output: str = "\n   a  b  c  d  e  f  g  h\n";  # Will use augmented assignment
 
         for r in range(BOARD_SIZE) {
-            rank: int = BOARD_SIZE - r;
+            rank = BOARD_SIZE - r;
             output += f"{rank} ";  # Augmented assignment
             for c in range(BOARD_SIZE) {
                 piece: Piece | None = self.squares[r][c];
@@ -739,7 +729,7 @@ obj Board {
         # Build FEN string with augmented assignment
         fen: str = "";
         for r in range(BOARD_SIZE) {
-            empty_count: int = 0;
+            empty_count = 0;
             for c in range(BOARD_SIZE) {
                 piece: Piece | None = self.squares[r][c];
                 if piece is None {
@@ -797,8 +787,6 @@ obj Game {
         if king is None {
             return False;
         }
-        king_row: int;
-        king_col: int;
         (king_row, king_col) = king.pos;  # Tuple unpacking
         return self.is_square_attacked(king_row, king_col, opposite_color(color));
     }
@@ -825,11 +813,11 @@ obj Game {
         # Add castling moves - check rights using bitwise AND
         king: Piece | None = self.find_king(color);
         if king is not None and not king.has_moved {
-            back_rank: int = 7 if color == Color.WHITE else 0;
+            back_rank = 7 if color == Color.WHITE else 0;
             opp: Color = opposite_color(color);
 
             # King-side castling
-            ks_right: int = CASTLE_WK if color == Color.WHITE else CASTLE_BK;
+            ks_right = CASTLE_WK if color == Color.WHITE else CASTLE_BK;
             if (self.board.castling_rights & ks_right) != 0 {
                 rook_ks: Piece | None = self.board.get_piece(back_rank, 7);
                 if (rook_ks is not None and rook_ks.kind == PieceKind.ROOK
@@ -853,7 +841,7 @@ obj Game {
             }
 
             # Queen-side castling
-            qs_right: int = CASTLE_WQ if color == Color.WHITE else CASTLE_BQ;
+            qs_right = CASTLE_WQ if color == Color.WHITE else CASTLE_BQ;
             if (self.board.castling_rights & qs_right) != 0 {
                 rook_qs: Piece | None = self.board.get_piece(back_rank, 0);
                 if (rook_qs is not None and rook_qs.kind == PieceKind.ROOK
@@ -895,15 +883,15 @@ obj Game {
         if len(parts) != 2 {
             return None;
         }
-        from_sq: str = parts[0];
-        to_sq: str = parts[1];
+        from_sq = parts[0];
+        to_sq = parts[1];
         if len(from_sq) != 2 or len(to_sq) != 2 {
             return None;
         }
-        from_col: int = ord(from_sq[0]) - ord("a");
-        from_row: int = BOARD_SIZE - int(from_sq[1]);
-        to_col: int = ord(to_sq[0]) - ord("a");
-        to_row: int = BOARD_SIZE - int(to_sq[1]);
+        from_col = ord(from_sq[0]) - ord("a");
+        from_row = BOARD_SIZE - int(from_sq[1]);
+        to_col = ord(to_sq[0]) - ord("a");
+        to_row = BOARD_SIZE - int(to_sq[1]);
         if (not self.board.is_valid_pos(from_row, from_col)
             or not self.board.is_valid_pos(to_row, to_col)) {
             return None;
@@ -913,18 +901,18 @@ obj Game {
 
     def get_move_history_summary() -> str {
         # Use modulo and floor division for move numbering
-        full_moves: int = self.move_count // 2;  # Floor division
-        half_move: int = self.move_count % 2;    # Modulo
+        full_moves = self.move_count // 2;  # Floor division
+        half_move = self.move_count % 2;    # Modulo
         return f"Move {full_moves + 1}" + ("..." if half_move == 1 else "");
     }
 
     def play() -> None {
         while not self.is_over {
             self.board.display();
-            color_name: str = "White" if self.current_turn == Color.WHITE else "Black";
+            color_name = "White" if self.current_turn == Color.WHITE else "Black";
 
             # Show position evaluation
-            eval_score: int = self.board.evaluate_position(Color.WHITE);
+            eval_score = self.board.evaluate_position(Color.WHITE);
             print(f"Position eval: {eval_score} (positive = White advantage)");
 
             # Show piece counts using generator comprehension helper
@@ -946,7 +934,7 @@ obj Game {
                 print(f"{color_name} is in CHECK!");
             }
 
-            move_str: str = input(f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): ");
+            move_str = input(f"{color_name}'s turn (e.g. e2 e4, or press Enter for random): ");
 
             if move_str == "quit" {
                 print("Game ended.");
@@ -965,11 +953,11 @@ obj Game {
                     print("No legal moves available!");
                     continue;
                 }
-                idx: int = random_int(len(legal_moves));
+                idx = random_int(len(legal_moves));
                 found = legal_moves[idx];
                 # Show what move was chosen
-                from_alg: str = tuple_to_algebraic(found.from_pos);
-                to_alg: str = tuple_to_algebraic(found.to_pos);
+                from_alg = tuple_to_algebraic(found.from_pos);
+                to_alg = tuple_to_algebraic(found.to_pos);
                 print(f"Random move: {from_alg} {to_alg}");
             } else {
                 coords: tuple[int, int, int, int] | None = self.parse_input(move_str);
@@ -978,10 +966,6 @@ obj Game {
                     continue;
                 }
 
-                from_row: int;
-                from_col: int;
-                to_row: int;
-                to_col: int;
                 (from_row, from_col, to_row, to_col) = coords;  # Tuple unpacking
 
                 # Check that selected piece belongs to current player
@@ -1015,7 +999,7 @@ obj Game {
             # Check end conditions
             if self.is_checkmate(self.current_turn) {
                 self.board.display();
-                winner: str = "White" if self.current_turn == Color.BLACK else "Black";
+                winner = "White" if self.current_turn == Color.BLACK else "Black";
                 print(f"Checkmate! {winner} wins!");
                 self.is_over = True;
             } elif self.is_stalemate(self.current_turn) {

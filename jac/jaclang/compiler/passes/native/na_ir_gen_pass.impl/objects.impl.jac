@@ -433,7 +433,15 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     return obj_ptr;
 }
 
-"""Generate method call: obj.method(args)."""
+"""Generate method call: obj.method(args).
+
+TODO: Wire in the primitive emitter dispatch from
+jaclang.compiler.passes.native.primitives_native. The current
+implementation uses type-specific helper dicts (list_helpers,
+dict_helpers, set_helpers) with LLVM IR values. The string-based
+emitter interface would need to be adapted to return IR builder
+calls or function references instead of source text strings.
+"""
 impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {

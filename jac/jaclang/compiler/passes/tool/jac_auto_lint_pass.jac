@@ -28,13 +28,8 @@ import from jaclang.project.config { LintRule }
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     """Initialize the pass with linting options."""
-    has lint_enabled: bool = True,
-        main_module: uni.Module | None = None,
-        _enabled_rules: set[LintRule] = set(),
-        _exclude_patterns: list[str] = [],
-        _project_root: str = "";
-
     def init(ir_in: uni.Module, prog: Any) -> None;
+
     def _load_lint_config -> None;
     def is_rule_enabled(rule: LintRule) -> bool;
     def _is_file_excluded(file_path: str) -> bool;

@@ -431,6 +431,10 @@ obj Parser {
     def parse_call_arg -> Expr | KWPair;
     def parse_filter_compr_inner -> FilterCompr;
     def parse_assign_compr_inner -> AssignCompr;
+    def parse_atom_literal -> Expr;
+    def parse_multistring -> Expr;
+    def parse_builtin_type -> Expr;
+    def parse_special_ref -> Expr;
     def parse_atom -> Expr;
     def parse_fstring -> FString;
     def parse_list_or_compr -> Expr;
@@ -453,6 +457,7 @@ obj Parser {
     def parse_native_block -> NativeBlock;
     def parse_module_code -> ModuleCode;
     def parse_code_block_stmts -> list;
+    def parse_ctrl_stmt;
     def parse_statement;
     def parse_if_stmt -> IfStmt;
     def parse_elif_stmt -> ElseIf;
