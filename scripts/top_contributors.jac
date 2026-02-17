@@ -199,7 +199,7 @@ with entry {
     );
 }
 
-glob args = parser.parse_args(),
+glob args = parser.parse_known_args()[0],
      periods: list[int] = [];
 
 with entry {

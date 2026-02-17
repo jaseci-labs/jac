@@ -392,7 +392,7 @@ with entry {
     );
 }
 
-glob args = parser.parse_args();
+glob args = parser.parse_known_args()[0];
 
 with entry {
     if not check_gh_cli() {
