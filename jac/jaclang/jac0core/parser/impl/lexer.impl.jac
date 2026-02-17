@@ -858,9 +858,7 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();
         self.advance();
         self.jsx_depth -= 1;
-        if self.jsx_depth == 0 {
-            self.pop_mode();
-        }
+        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
@@ -891,6 +889,7 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();
         self.advance();
         self.jsx_depth += 1;
+        self.push_mode(LexerMode.JSX_CONTENT);  # Fragment content mode (popped by </>)
         return self.make_token(
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
@@ -1149,6 +1148,8 @@ impl Lexer.scan_operator -> Token {
         );
     }
     if self.match_string("</>") {
+        self.jsx_depth -= 1;
+        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
