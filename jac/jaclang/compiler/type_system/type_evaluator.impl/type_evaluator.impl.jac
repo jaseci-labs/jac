@@ -986,6 +986,7 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     # Handle bare Callable (special form without type args) - treat as gradual callable.
     # Bare `Callable` is equivalent to `Callable[..., Any]` in Python's typing system,
     # meaning any function/callable is assignable to it.
+    # TODO : this is ad-hoc for now
     if (
         isinstance(dest_type, types.ClassType)
         and dest_type.is_special_form("Callable")
