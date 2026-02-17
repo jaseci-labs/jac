@@ -1685,9 +1685,8 @@ def test_diagnostics_syntax_error_in_console() -> None:
     This is a real end-to-end test that:
     1. Sets up all-in-one project
     2. Introduces a syntax error in a client .jac file
-    3. Enables debug=true in jac.toml
-    4. Starts the server and captures console output
-    5. Verifies diagnostic formatting appears in the output
+    3. Starts the server and captures console output (debug=true by default)
+    4. Verifies diagnostic formatting appears in the output
     """
 
     print("[DEBUG] Starting test_diagnostics_syntax_error_in_console")
@@ -1704,26 +1703,9 @@ def test_diagnostics_syntax_error_in_console() -> None:
             project_path = _setup_all_in_one_project(temp_dir, app_name)
             print(f"[DEBUG] Project set up at {project_path}")
 
-            # 2. Add debug=true to jac.toml
-            jac_toml_path = os.path.join(project_path, "jac.toml")
-            with open(jac_toml_path) as f:
-                toml_content = f.read()
+            # Note: debug=true is now the default, no need to add it to jac.toml
 
-            if "[plugins.client]" in toml_content:
-                if "debug = true" not in toml_content:
-                    toml_content = toml_content.replace(
-                        "[plugins.client]",
-                        "[plugins.client]\ndebug = true",
-                    )
-            else:
-                toml_content += "\n[plugins.client]\ndebug = true\n"
-
-            with open(jac_toml_path, "w") as f:
-                f.write(toml_content)
-
-            print("[DEBUG] Updated jac.toml with debug=true")
-
-            # 3. Introduce a syntax error in login.jac
+            # 2. Introduce a syntax error in login.jac
             login_jac_path = os.path.join(
                 project_path, "pages", "(public)", "login.jac"
             )
@@ -1887,9 +1869,10 @@ def test_diagnostics_syntax_error_in_console() -> None:
                 if has_source_snippet:
                     print("[DEBUG] Source snippet present (optional)")
 
-                # Debug output is optional - only shown if debug=true was properly applied
-                if has_debug_output:
-                    print("[DEBUG] Debug output present")
+                # Debug output should be present since debug=true is the default
+                assert has_debug_output, (
+                    f"Expected debug output (debug=true is default), got:\n{captured_output}"
+                )
 
                 print("[DEBUG] All diagnostic formatting assertions passed!")
 

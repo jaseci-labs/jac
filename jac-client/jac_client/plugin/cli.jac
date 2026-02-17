@@ -412,6 +412,7 @@ Web target falls through to core jac start, others use target.dev()/start().
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jac_client.plugin.src.targets.registry { get_target_factory }
+    import from jac_client.plugin.src.diagnostics { is_debug_mode }
     import from pathlib { Path }
 
     target_name = ctx.get_arg("client", "web");
@@ -422,6 +423,14 @@ def _handle_start_target(ctx: HookContext) -> None {
         return;
     }
     (config, entry_path, project_dir) = start_ctx;
+
+    # Warn about debug mode in production
+    dev_mode = ctx.get_arg("dev", False);
+    if not dev_mode and is_debug_mode(config) {
+        console.warning(
+            "Debug mode is enabled. For production, consider setting debug=false in [plugins.client] section of jac.toml"
+        );
+    }
 
     # Use factory to create target (lazy loading for non-web targets)
     factory = get_target_factory();
@@ -441,7 +450,6 @@ def _handle_start_target(ctx: HookContext) -> None {
     # Store target info in context
     ctx.set_data("start_client_target", target);
 
-    dev_mode = ctx.get_arg("dev", False);
     api_port = ctx.get_arg("port", 8000);
 
     # Handle non-web targets (desktop, pwa) - they override dev/start behavior
