@@ -7,6 +7,7 @@ import sys;
 import warnings;
 import unittest.mock;
 
+import pytest;
 import yaml;
 import from fixtures { python_lib_mode }
 
@@ -210,12 +211,7 @@ test "with llm type" {
 }
 
 test "with llm image" {
-    try {
-        import PIL;
-    } except ImportError {
-        print("SKIP: This test requires Pillow to be installed.");
-        return;
-    }
+    pytest.importorskip("PIL", reason="This test requires Pillow to be installed");
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("with_llm_image", base_path=FIXTURE_DIR + "/");
@@ -237,12 +233,7 @@ test "webp image support" {
 }
 
 test "with llm video" {
-    try {
-        import cv2;
-    } except ImportError {
-        print("SKIP: This test requires OpenCV to be installed.");
-        return;
-    }
+    pytest.importorskip("cv2", reason="This test requires OpenCV to be installed");
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     jac_import("with_llm_video", base_path=FIXTURE_DIR + "/");

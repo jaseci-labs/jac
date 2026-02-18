@@ -13,7 +13,6 @@ import uuid;
 import shutil;
 import requests;
 import pytest;
-import websockets;
 import jwt as pyjwt;
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
@@ -1573,6 +1572,7 @@ test "websocket endpoint not in openapi" {
 }
 
 test "websocket connect and echo" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1597,6 +1597,7 @@ test "websocket connect and echo" {
 }
 
 test "websocket minimal walker" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1620,6 +1621,7 @@ test "websocket minimal walker" {
 }
 
 test "websocket multiple messages" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1663,6 +1665,7 @@ test "websocket not accessible via walker endpoint" {
 }
 
 test "websocket nonexistent walker" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1701,6 +1704,7 @@ test "http walker not accessible via ws" {
 }
 
 test "private websocket requires auth" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1719,6 +1723,7 @@ test "private websocket requires auth" {
 }
 
 test "private websocket with valid token" {
+    import websockets;
     sp = setup_serve_server();
     try {
         username = f"ws_test_user_{uuid.uuid4().hex[:8]}";
@@ -1763,6 +1768,7 @@ test "private websocket with valid token" {
 }
 
 test "private websocket with query token" {
+    import websockets;
     sp = setup_serve_server();
     try {
         username = f"ws_query_user_{uuid.uuid4().hex[:8]}";
@@ -1805,6 +1811,7 @@ test "private websocket with query token" {
 }
 
 test "broadcast websocket all clients receive" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1848,6 +1855,7 @@ test "broadcast websocket all clients receive" {
 }
 
 test "private broadcast requires auth" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
@@ -1865,6 +1873,7 @@ test "private broadcast requires auth" {
 }
 
 test "private broadcast with auth" {
+    import websockets;
     sp = setup_serve_server();
     try {
         users = [];
