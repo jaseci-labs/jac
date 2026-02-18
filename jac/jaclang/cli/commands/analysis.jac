@@ -34,7 +34,7 @@ glob registry = get_registry();
             "ignore",
             kind=ArgKind.MULTI,
             default=[],
-            help="Directories or files to ignore (can be specified multiple times)"
+            help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
             "parse_only",
@@ -90,7 +90,7 @@ def check(
             "ignore",
             kind=ArgKind.MULTI,
             default=[],
-            help="Directories or files to ignore (can be specified multiple times)"
+            help="Directories or files to ignore (space separated)"
         ),
 
     ],

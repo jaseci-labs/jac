@@ -7,38 +7,6 @@ import from pathlib { Path }
 import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
 
-"""Normalize ignore patterns by stripping whitespace and trailing slashes."""
-def _normalize_ignore_patterns(ignore: list) -> list {
-    normalized = [];
-    for p in (ignore or []) {
-        stripped = p.strip();
-        if stripped {
-            normalized.append(stripped.rstrip('/'));
-        }
-    }
-    return normalized;
-}
-
-"""Check if a file path should be ignored based on patterns.
-Supports both exact matches and wildcard patterns (e.g., 'jac-*').
-"""
-def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
-    if not ignore_patterns {
-        return False;
-    }
-    path_parts = Path(file_path).parts;
-    # Patterns are already normalized in ignore_list
-    for pattern in ignore_patterns {
-        # fnmatch handles both exact and wildcard matches
-        for part in path_parts {
-            if fnmatch(part, pattern) {
-                return True;
-            }
-        }
-    }
-    return False;
-}
-
 """Run type checker for specified .jac files."""
 impl check(
     paths: list,
@@ -75,7 +43,7 @@ impl check(
                     if not (
                         i.loc
                         and i.loc.mod_path
-                        and any(p in Path(i.loc.mod_path).parts for p in ignore_list)
+                        and _should_ignore(i.loc.mod_path, ignore_list)
                     )
                 ];
             }
@@ -537,4 +505,36 @@ impl grammar(lark: bool = False, output: str = "") -> int {
         console.print(text);
     }
     return 0;
+}
+
+"""Normalize ignore patterns by stripping whitespace and trailing slashes."""
+def _normalize_ignore_patterns(ignore: list) -> list {
+    normalized = [];
+    for p in (ignore or []) {
+        stripped = p.strip();
+        if stripped {
+            normalized.append(stripped.rstrip('/'));
+        }
+    }
+    return normalized;
+}
+
+"""Check if a file path should be ignored based on patterns.
+Supports both exact matches and wildcard patterns (e.g., 'jac-*').
+"""
+def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
+    if not ignore_patterns {
+        return False;
+    }
+    path_parts = Path(file_path).parts;
+    # Patterns are already normalized in ignore_list
+    for pattern in ignore_patterns {
+        # fnmatch handles both exact and wildcard matches
+        for part in path_parts {
+            if fnmatch(part, pattern) {
+                return True;
+            }
+        }
+    }
+    return False;
 }
