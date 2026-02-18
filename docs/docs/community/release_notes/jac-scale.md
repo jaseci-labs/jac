@@ -30,6 +30,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
 - Docs update: return type `any` -> `JsxElement`
 - **1 Small Refactors**
+- **promethius and grafana deployment**: Jac-scale automatically deploys promethius and grafana and connect with metrics endpoint.
 
 ## jac-scale 0.1.7
 

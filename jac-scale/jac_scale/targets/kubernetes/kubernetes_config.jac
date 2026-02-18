@@ -42,7 +42,11 @@ class KubernetesConfig(BaseConfig) {
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
         additional_packages: list[str] = [],
-        plugin_versions: dict[str, str] = {};
+        plugin_versions: dict[str, str] = {},
+        monitoring_enabled: bool = False,
+        prometheus_admin_password: str = 'Adminpassword123',
+        prometheus_node_port: int = 30090,
+        grafana_node_port: int = 30300;
 
     def init(
         self: KubernetesConfig,
@@ -82,7 +86,11 @@ class KubernetesConfig(BaseConfig) {
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
         additional_packages: list[str] = [],
-        plugin_versions: dict[str, str] = {}
+        plugin_versions: dict[str, str] = {},
+        monitoring_enabled: bool = False,
+        prometheus_admin_password: str = 'Adminpassword123',
+        prometheus_node_port: int = 30090,
+        grafana_node_port: int = 30300
     ) -> None {
         self.app_name = app_name;
         self.namespace = namespace;
@@ -127,6 +135,11 @@ class KubernetesConfig(BaseConfig) {
         self.install_jaseci = install_jaseci;
         self.additional_packages = additional_packages;
         self.plugin_versions = plugin_versions;
+        # Monitoring configuration
+        self.monitoring_enabled = monitoring_enabled;
+        self.prometheus_admin_password = prometheus_admin_password;
+        self.prometheus_node_port = prometheus_node_port;
+        self.grafana_node_port = grafana_node_port;
     }
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
@@ -172,7 +185,12 @@ class KubernetesConfig(BaseConfig) {
                 'jaseci_commit': self.jaseci_commit,
                 'install_jaseci': self.install_jaseci,
                 'additional_packages': self.additional_packages,
-                'plugin_versions': self.plugin_versions
+                'plugin_versions': self.plugin_versions,
+                # Monitoring configuration
+                'monitoring_enabled': self.monitoring_enabled,
+                'prometheus_admin_password': self.prometheus_admin_password,
+                'prometheus_node_port': self.prometheus_node_port,
+                'grafana_node_port': self.grafana_node_port
             }
         );
         return base;
@@ -218,7 +236,13 @@ class KubernetesConfig(BaseConfig) {
             jaseci_commit=config.get('jaseci_commit'),
             install_jaseci=config.get('install_jaseci', True),
             additional_packages=config.get('additional_packages', []),
-            plugin_versions=config.get('plugin_versions', {})
+            plugin_versions=config.get('plugin_versions', {}),
+            monitoring_enabled=config.get('monitoring_enabled', False),
+            prometheus_admin_password=config.get(
+                'prometheus_admin_password', 'Adminpassword123'
+            ),
+            prometheus_node_port=config.get('prometheus_node_port', 30090),
+            grafana_node_port=config.get('grafana_node_port', 30300)
         );
     }
 }

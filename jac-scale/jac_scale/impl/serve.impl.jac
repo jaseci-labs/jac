@@ -1218,7 +1218,7 @@ impl JacAPIServer.postinit -> None {
     # Initialize Prometheus metrics if enabled
     import from jac_scale.factories.utility_factory { UtilityFactory }
     import time;
-    metrics_config = get_scale_config().get_metrics_config();
+    metrics_config = get_scale_config().get_monitoring_config();
     self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
     if self._metrics.is_enabled() {
         metrics_collector = self._metrics;
