@@ -3,6 +3,7 @@ access_mod_check.jac
 actions.jac
 advanced_language_features.jac
 app.cl.jac
+async_for.jac
 app_err.jac
 app.jac
 archetype.impl.jac
@@ -18,6 +19,7 @@ checker_arity.jac
 checker_binary_op.jac
 checker_callable.jac
 checker_call_expr_class.jac
+checker_class_enum.jac
 checker_cat_is_animal.jac
 checker_class_construct.jac
 checker_connect_filter.jac
@@ -70,8 +72,11 @@ console.impl.jac
 construct_types.impl.jac
 context.impl.jac
 core_language_features.jac
+codeinfo.jac
+constant.jac
 corelib_fmt.jac
 custom_access_validation.jac
+database_factory.jac
 data_spatial_types.jac
 db.impl.jac
 decorator_stack.jac

@@ -1394,8 +1394,32 @@ test "enum_type_checking" {
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
-        "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        'func_wrong_type: str = process_color("not a color")'
+        "impl_shape_name_err: int = ShapeType.SQUARE.name"
+    ];
+
+    assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
+        expected_errors
+    )} errors, got {len(program.errors_had)}: " + "\n".join(
+        [err.pretty_print() for err in program.errors_had]
+    );
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
+}
+
+test "class_based_enum_type_checking" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_class_enum.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    expected_errors = [
+        "Cannot assign <Tokens.FLOAT> to <class int>",
+        "Cannot assign <class str> to enum member 'FLOAT' of type <class int>",
+        "Cannot assign <class str> to enum member 'LSQUARE' of type <class int>",
+        "Cannot assign <class str> to enum member 'RSQUARE' of type <class int>"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(

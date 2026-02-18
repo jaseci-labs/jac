@@ -384,7 +384,10 @@ impl UniScopeNode.lookup(
     if (name in self.names_in_scope) {
         return self.names_in_scope[name];
     }
-    if ((deep and self.parent_scope) and (sym := self.parent_scope.lookup(name, deep))) {
+    if (
+        (deep and self.parent_scope)
+        and (sym := self.parent_scope.lookup(name, deep, incl_inner_scope))
+    ) {
         return sym;
     }
     if incl_inner_scope {
