@@ -25,6 +25,7 @@ nav:
           - "Part 2: Add AI": "tutorials/first-app/part2-ai-features.md"
           - "Part 3: Walkers, Auth & Structure": "tutorials/first-app/part3-multi-user.md"
       - Core Language:
+          - Jac Programming Primer: "tutorials/language/coding_primer.md"
           - Jac Basics (from Python): "tutorials/language/basics.md"
           - Mixing Jac and Python: "tutorials/language/mixing-jac-python.md"
           - Jac as a Python Library: "tutorials/language/library-mode.md"
@@ -96,7 +97,6 @@ nav:
           - "(Deprecated) jac-cloud": "community/release_notes/jac-cloud.md"
       - Internals:
           - Contributing Guide: "community/internals/contrib.md"
-          - JSX Design Doc: "community/internals/jsx_client_serv_design.md"
           - Import Patterns: "community/internals/jac_import_patterns.md"
           - UniIR Nodes: "community/internals/uniir_node.md"
 

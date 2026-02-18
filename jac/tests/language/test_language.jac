@@ -671,3 +671,8 @@ test "type aliases and modern generics" {
     output = run_jac(os.path.join(FIXTURES, "type_alias_generics.jac"));
     assert output == "True\n42\nok\n";
 }
+
+test "operator precedence matches python" {
+    output = run_jac(os.path.join(FIXTURES, "operator_precedence.jac"));
+    assert "PASS" in output , f"Operator precedence test failed:\n{output}";
+}

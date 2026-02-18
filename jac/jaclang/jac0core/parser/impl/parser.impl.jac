@@ -824,10 +824,10 @@ impl Parser.parse_pipe -> Expr {
 }
 
 impl Parser.parse_pipe_back -> Expr {
-    left = self.parse_bitwise_or();
+    left = self.parse_logical_or();
     while self.match_tok(TokenKind.PIPE_BKWD) {
         op = self.make_uni_token(self.previous());
-        right = self.parse_bitwise_or();
+        right = self.parse_logical_or();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
@@ -864,11 +864,11 @@ impl Parser.parse_bitwise_and -> Expr {
 }
 
 impl Parser.parse_shift -> Expr {
-    left = self.parse_logical_or();
+    left = self.parse_arithmetic();
     while self.check_any(TokenKind.LSHIFT, TokenKind.RSHIFT) {
         tok = self.advance();
         op = self.make_uni_token(tok);
-        right = self.parse_logical_or();
+        right = self.parse_arithmetic();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
@@ -930,7 +930,7 @@ impl Parser.parse_logical_not -> Expr {
 }
 
 impl Parser.parse_compare -> Expr {
-    left = self.parse_arithmetic();
+    left = self.parse_bitwise_or();
     if self.check_any(
         TokenKind.EE,
         TokenKind.NE,
@@ -962,7 +962,7 @@ impl Parser.parse_compare -> Expr {
             op = self.make_uni_token(op_tok);
             ops.append(op);
             kid.append(op);
-            right = self.parse_arithmetic();
+            right = self.parse_bitwise_or();
             rights.append(right);
             kid.append(right);
         }
