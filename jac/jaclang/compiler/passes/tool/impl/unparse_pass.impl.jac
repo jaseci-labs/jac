@@ -123,6 +123,38 @@ impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
     nd.gen.jac = ": " + nd.tag.gen.jac;
 }
 
+"""TypeParam."""
+impl UnparsePass.exit_type_param(nd: uni.TypeParam) -> None {
+    parts: list = [nd.name.gen.jac];
+    if nd.bound {
+        parts.append(": " + nd.bound.gen.jac);
+    }
+    if nd.default_val {
+        parts.append(" = " + nd.default_val.gen.jac);
+    }
+    nd.gen.jac = "".join(parts);
+}
+
+"""TypeAlias statement."""
+impl UnparsePass.exit_type_alias(nd: uni.TypeAlias) -> None {
+    parts: list = [];
+    if nd.doc {
+        parts.append(nd.doc.gen.jac);
+    }
+    parts.append("type");
+    if nd.access {
+        parts.append(nd.access.gen.jac);
+    }
+    parts.append(nd.name.gen.jac);
+    if nd.type_params {
+        tp_str = ", ".join([tp.gen.jac for tp in nd.type_params]);
+        parts.append("[" + tp_str + "]");
+    }
+    parts.append("=");
+    parts.append(nd.value.gen.jac);
+    nd.gen.jac = " ".join(parts);
+}
+
 """GlobalVars statement."""
 impl UnparsePass.exit_global_vars(nd: uni.GlobalVars) -> None {
     parts: list = [];
@@ -255,6 +287,10 @@ impl UnparsePass.exit_archetype(nd: uni.Archetype) -> None {
         parts.append(nd.access.gen.jac);
     }
     parts.append(nd.name.gen.jac);
+    if nd.type_params {
+        tp_str = ", ".join([tp.gen.jac for tp in nd.type_params]);
+        parts.append("[" + tp_str + "]");
+    }
     if nd.base_classes {
         parts.append("(" + self._comma_sep(nd.base_classes) + ")");
     }

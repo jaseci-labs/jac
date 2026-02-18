@@ -62,6 +62,22 @@ impl SymTabBuildPass.exit_module(self: SymTabBuildPass, nd: uni.Module) -> None 
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -> None {
+    self.push_scope_and_link(nd);
+    assert (nd.parent_scope is not None);
+    nd.parent_scope.def_insert(nd, access_spec=nd, single_decl='type_alias');
+}
+
+impl SymTabBuildPass.exit_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -> None {
+    self.pop_scope();
+}
+
+impl SymTabBuildPass.enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) -> None {
+    if nd.sym_tab is not None {
+        nd.sym_tab.def_insert(nd, single_decl='type_param');
+    }
+}
+
 impl SymTabBuildPass.exit_global_vars(
     self: SymTabBuildPass, nd: uni.GlobalVars
 ) -> None {

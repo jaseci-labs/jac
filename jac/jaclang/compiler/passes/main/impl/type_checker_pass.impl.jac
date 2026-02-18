@@ -172,6 +172,9 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     }
 }
 
+"""Exit a type alias node."""
+impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None { }
+
 """Exit an archetype node - traverse ImplDef body if present."""
 impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None {
     if isinstance(nd.body, uni.ImplDef) {

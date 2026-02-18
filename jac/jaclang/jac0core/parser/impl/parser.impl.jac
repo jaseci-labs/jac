@@ -3260,6 +3260,23 @@ impl Parser.parse_element_stmt{
             return stmt;
         }
     }
+    # Type alias: type Name = Expr; or type Name[T] = Expr;
+    if self.check(TokenKind.TYP_TYPE) {
+        save = self.pos;
+        self.advance();
+        # Check for optional access tag between type and name
+        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
+            self.advance();
+        }
+        if self.check_name() or self.check(TokenKind.KWESC_NAME) {
+            self.advance();
+            if self.check(TokenKind.EQ) or self.check(TokenKind.LSQUARE) {
+                self.pos = save;
+                return self.parse_type_alias();
+            }
+        }
+        self.pos = save;
+    }
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
         return self.parse_import_stmt();
     }
@@ -3370,6 +3387,15 @@ impl Parser.parse_element_stmt{
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         return self.parse_ability();
+    }
+    # Handle docstring before type alias: "docstring" type Name = ...;
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.TYP_TYPE) {
+        doc_tok = self.advance();
+        elem_doc = self.make_string(doc_tok);
+        ta = self.parse_type_alias();
+        ta.doc = elem_doc;
+        ta.add_kids_left([elem_doc]);
+        return ta;
     }
     # Handle docstring before glob: "docstring" glob ...
     if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_GLOBAL) {
@@ -5045,6 +5071,15 @@ impl Parser.parse_archetype -> Archetype {
         name_tok = self.expect_name();
     }
     name = self.make_name_or_special(name_tok);
+    # Parse optional type parameters: obj Foo[T, E] { ... }
+    type_params: list[TypeParam] | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        type_params = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
     base_classes: list = [];
     lp_uni = None;
     rp_uni = None;
@@ -5096,6 +5131,16 @@ impl Parser.parse_archetype -> Archetype {
         kid.append(access);
     }
     kid.append(name);
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
     if base_classes {
         kid.append(lp_uni);
         for (i, bc) in enumerate(base_classes) {
@@ -5121,7 +5166,8 @@ impl Parser.parse_archetype -> Archetype {
         body=body,
         kid=kid,
         doc=None,
-        decorators=decorators
+        decorators=decorators,
+        type_params=type_params
     );
     if is_async {
         arch.is_async = True;
@@ -6476,6 +6522,105 @@ impl Parser.parse_sem_def -> SemDef {
     kid.append(self.make_semi());
     self.match_tok(TokenKind.SEMI);
     return SemDef(target=target_names, value=value, kid=kid);
+}
+
+impl Parser.parse_type_alias -> TypeAlias {
+    type_kw_uni = self.consume_uni(TokenKind.TYP_TYPE);
+    access = self.parse_access_tag();
+    name_tok: Token;
+    if self.check_name() {
+        name_tok = self.advance();
+    } elif self.is_keyword_token() {
+        name_tok = self.advance();
+    } else {
+        name_tok = self.expect_name();
+    }
+    name = self.make_name_or_special(name_tok);
+    type_params: list[TypeParam] | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    tp_comma_unis: list = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        type_params = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
+    eq_uni = self.consume_uni(TokenKind.EQ);
+    value = self.parse_pipe();
+    self.expect(TokenKind.SEMI);
+    kid: list = [type_kw_uni];
+    if access {
+        kid.append(access);
+    }
+    kid.append(name);
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
+    kid.append(eq_uni);
+    kid.append(value);
+    kid.append(self.make_semi());
+    return TypeAlias(
+        name=name,
+        type_params=type_params,
+        value=value,
+        access=access,
+        kid=kid,
+        doc=None
+    );
+}
+
+impl Parser.parse_type_params -> list {
+    params: list = [];
+    # Parse first type param
+    name_tok = self.expect_name();
+    name = self.make_name_or_special(name_tok);
+    bound: Expr | None = None;
+    default_val: Expr | None = None;
+    tp_kid: list = [name];
+    if self.match_tok(TokenKind.COLON) {
+        tp_kid.append(self.make_uni_token(self.previous()));
+        bound = self.parse_pipe();
+        tp_kid.append(bound);
+    }
+    if self.match_tok(TokenKind.EQ) {
+        tp_kid.append(self.make_uni_token(self.previous()));
+        default_val = self.parse_pipe();
+        tp_kid.append(default_val);
+    }
+    params.append(
+        TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
+    );
+    while self.match_tok(TokenKind.COMMA) {
+        if self.check(TokenKind.RSQUARE) {
+            break;
+        }
+        name_tok = self.expect_name();
+        name = self.make_name_or_special(name_tok);
+        bound = None;
+        default_val = None;
+        tp_kid = [name];
+        if self.match_tok(TokenKind.COLON) {
+            tp_kid.append(self.make_uni_token(self.previous()));
+            bound = self.parse_pipe();
+            tp_kid.append(bound);
+        }
+        if self.match_tok(TokenKind.EQ) {
+            tp_kid.append(self.make_uni_token(self.previous()));
+            default_val = self.parse_pipe();
+            tp_kid.append(default_val);
+        }
+        params.append(
+            TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
+        );
+    }
+    return params;
 }
 
 impl Parser.parse_dotted_name -> Expr {
