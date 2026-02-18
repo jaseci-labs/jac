@@ -20,6 +20,47 @@ impl NormalizePass.enter_module(nd: uni.Module) -> None {
     nd.set_kids(nodes=new_kid if len(new_kid) else [EmptyToken()]);
 }
 
+"""Normalize TypeParam kid list."""
+impl NormalizePass.enter_type_param(nd: uni.TypeParam) -> None {
+    new_kid: list[uni.UniNode] = [nd.name];
+    if nd.bound {
+        new_kid.append(nd.gen_token(Tok.COLON));
+        new_kid.append(nd.bound);
+    }
+    if nd.default_val {
+        new_kid.append(nd.gen_token(Tok.EQ));
+        new_kid.append(nd.default_val);
+    }
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize TypeAlias kid list."""
+impl NormalizePass.enter_type_alias(nd: uni.TypeAlias) -> None {
+    new_kid: list[uni.UniNode] = [];
+    if nd.doc {
+        new_kid.append(nd.doc);
+    }
+    new_kid.append(nd.gen_token(Tok.TYP_TYPE));
+    if nd.access {
+        new_kid.append(nd.access);
+    }
+    new_kid.append(nd.name);
+    if nd.type_params {
+        new_kid.append(nd.gen_token(Tok.LSQUARE));
+        for idx in range(len(nd.type_params)) {
+            new_kid.append(nd.type_params[idx]);
+            if idx < len(nd.type_params) - 1 {
+                new_kid.append(nd.gen_token(Tok.COMMA));
+            }
+        }
+        new_kid.append(nd.gen_token(Tok.RSQUARE));
+    }
+    new_kid.append(nd.gen_token(Tok.EQ));
+    new_kid.append(nd.value);
+    new_kid.append(nd.gen_token(Tok.SEMI));
+    nd.set_kids(nodes=new_kid);
+}
+
 """Normalize GlobalVars kid list."""
 impl NormalizePass.enter_global_vars(nd: uni.GlobalVars) -> None {
     new_kid: list[uni.UniNode] = [];
@@ -287,6 +328,16 @@ impl NormalizePass.enter_archetype(nd: uni.Archetype) -> None {
         new_kid.append(nd.access);
     }
     new_kid.append(nd.name);
+    if nd.type_params {
+        new_kid.append(nd.gen_token(Tok.LSQUARE));
+        for idx in range(len(nd.type_params)) {
+            new_kid.append(nd.type_params[idx]);
+            if idx < len(nd.type_params) - 1 {
+                new_kid.append(nd.gen_token(Tok.COMMA));
+            }
+        }
+        new_kid.append(nd.gen_token(Tok.RSQUARE));
+    }
     if nd.base_classes {
         new_kid.append(nd.gen_token(Tok.LPAREN));
         for idx in range(len(nd.base_classes)) {
