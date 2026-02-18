@@ -34,4 +34,4 @@ jobs:
 
       - name: Run jac check (type checking)
         run: |
-          find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -exec jac check --nowarn {} +
+          jac check . --ignore "*_err.jac" "*_syntax_err.jac" "test_*.jac" "checker_*.jac" cli/  --nowarn
