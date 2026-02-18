@@ -240,9 +240,11 @@ def _interpolate_recursive(
 
 glob _config: JacConfig | None = None;
 
-# Get the global configuration, discovering it if necessary
+# Get the global configuration, discovering it if necessary.
+# If start_path is provided, config will be discovered from that path
+# instead of the current working directory.
 def get_config(
-    force_discover: bool = False
+    start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None;
 
 # Set the global configuration

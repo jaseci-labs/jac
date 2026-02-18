@@ -121,6 +121,9 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
     if path.endswith("abc.py") {
         path = self._TYPING_STUB_FILE_PATH;
     }
+    if path.endswith("enum.py") {
+        path = self._ENUM_STUB_FILE_PATH;
+    }
     mod: uni.Module;
     if path in self.program.mod.hub {
         mod = self.program.mod.hub[path];

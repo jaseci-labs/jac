@@ -64,7 +64,10 @@ impl check(
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
-            # Filter out errors/warnings from ignored files
+            # Filter out errors/warnings from ignored files and non-.jac files
+            # By default, only show errors from .jac files (not from Python stdlib, stubs, etc.)
+            # TODO: This is ad-hoc, need proper error handling across
+            # different file types; will be addressed in future refactor.
             def filter_issues(issues: list) -> list {
                 return [
                     i

@@ -84,122 +84,33 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord() builtin: load first byte, zero-extend to i64
-    if func_name == "ord" {
+    # Handle multi-arg builtins via emitter dispatch
+    if func_name in ("abs", "min", "max", "pow") {
         params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                byte_val = self.builder.load(arg_val, name="ord.byte");
-                return self.builder.zext(byte_val, ir.IntType(64), name="ord.val");
+        arg_vals: list[ir.Value] = [];
+        for param in params_l {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            result = self._dispatch_builtin(func_name, arg_vals);
+            if result is not None {
+                return result;
             }
         }
     }
-    # Handle int() builtin: call strtol with ValueError check
-    if func_name == "int" {
+    # Handle ord, int, chr, str builtins via emitter dispatch
+    if func_name in ("ord", "int", "chr", "str") {
         params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
-                i64 = ir.IntType(64);
-                i32 = ir.IntType(32);
-                # strtol(str, &endptr, base) -> long
-                strtol_fn = self._get_or_declare_extern(
-                    "strtol", i64, [i8p, i8p.as_pointer(), i32]
-                );
-                # Allocate endptr on the stack
-                endptr_alloca = self.builder.alloca(i8p, name="endptr");
-                # Call strtol(str, &endptr, 10)
-                result_val = self.builder.call(
-                    strtol_fn,
-                    [arg_val, endptr_alloca, ir.Constant(i32, 10)],
-                    name="strtol.result"
-                );
-                # Check 1: endptr == str → nothing parsed
-                endptr_val = self.builder.load(endptr_alloca, name="endptr.val");
-                no_parse = self.builder.icmp_unsigned(
-                    "==", endptr_val, arg_val, name="int.noparse"
-                );
-                self._emit_runtime_raise(
-                    no_parse, "ValueError", "invalid literal for int()"
-                );
-                # Check 2: *endptr != '\0' → trailing characters
-                end_char = self.builder.load(endptr_val, name="end.char");
-                has_trail = self.builder.icmp_unsigned(
-                    "!=", end_char, ir.Constant(ir.IntType(8), 0), name="int.trail"
-                );
-                self._emit_runtime_raise(
-                    has_trail, "ValueError", "invalid literal for int()"
-                );
-                return result_val;
-            }
-        }
-    }
-    # Handle chr() builtin: convert integer to single-character string
-    if func_name == "chr" {
-        params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
-                # Allocate 2 bytes for character + null terminator
-                gc_malloc = self._get_or_declare_extern(
-                    "GC_malloc", i8p, [ir.IntType(64)]
-                );
-                str_ptr = self.builder.call(
-                    gc_malloc, [ir.Constant(ir.IntType(64), 2)], name="chr.buf"
-                );
-                # Truncate i64 to i8
-                byte_val = self.builder.trunc(arg_val, ir.IntType(8), name="chr.byte");
-                # Store character at index 0
-                self.builder.store(byte_val, str_ptr);
-                # Store null terminator at index 1
-                idx1_ptr = self.builder.gep(
-                    str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr"
-                );
-                self.builder.store(ir.Constant(ir.IntType(8), 0), idx1_ptr);
-                return str_ptr;
-            }
-        }
-    }
-    # Handle str() builtin: convert int to string using snprintf
-    if func_name == "str" {
-        params_l = nd.params or [];
-        if params_l {
-            arg_val = self._codegen_expr(params_l[0]);
-            if arg_val is not None {
-                i8p = ir.IntType(8).as_pointer();
-                # Allocate buffer for string representation (32 bytes is plenty for integers)
-                gc_malloc = self._get_or_declare_extern(
-                    "GC_malloc", i8p, [ir.IntType(64)]
-                );
-                buf_ptr = self.builder.call(
-                    gc_malloc, [ir.Constant(ir.IntType(64), 32)], name="str.buf"
-                );
-                # Use snprintf to convert
-                snprintf = self._get_or_declare_extern(
-                    "snprintf",
-                    ir.IntType(32),
-                    [i8p, ir.IntType(64), i8p],
-                    var_arg=True
-                );
-                # Determine format string based on type
-                if isinstance(arg_val.type, ir.IntType) {
-                    fmt = self._get_fmt_string("%ld");
-                } elif isinstance(arg_val.type, ir.DoubleType) {
-                    fmt = self._get_fmt_string("%g");
-                } else {
-                    # Default to %ld
-                    fmt = self._get_fmt_string("%ld");
+                result = self._dispatch_builtin(func_name, [arg_val]);
+                if result is not None {
+                    return result;
                 }
-                fmt_ptr = self.builder.bitcast(fmt, i8p, name="str.fmt.ptr");
-                self.builder.call(
-                    snprintf,
-                    [buf_ptr, ir.Constant(ir.IntType(64), 32), fmt_ptr, arg_val],
-                    name="str.snprintf"
-                );
-                return buf_ptr;
             }
         }
     }

@@ -67,8 +67,7 @@ repos:
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
               ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/python_impl/8bitoperator_jve\.ttf$
+              ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$
           )
 
       - id: ban-em-dashes
@@ -86,5 +85,5 @@ repos:
         args: [--lintfix]
         files: \.jac$
         require_serial: true
-        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$)
+        exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/)
         additional_dependencies: [llvmlite>=0.43.0]

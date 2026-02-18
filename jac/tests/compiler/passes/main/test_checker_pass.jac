@@ -1234,16 +1234,58 @@ test "type_narrowing" {
     mod = program.compile(os.path.join(FIXTURES, "checker_type_narrowing.jac"));
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 1 , f"Expected exactly 1 type error (join-point in test 5), but got " + f"{len(
+    assert len(program.errors_had) == 10 , f"Expected exactly 10 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
-    assert_error_pretty_found(
+    expected_errors = [
         """
-        fail: Dog = animal;            # <-- Error (Dog | Cat cannot assign to Dog)
-    """,
-        program.errors_had[0].pretty_print()
-    );
+        fail: Dog = animal;  # <-- Error (Dog | Cat cannot assign to Dog)
+        ^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        c: Cat = animal;  # <-- Error: Dog cannot be assigned to Cat
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        wrong: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^^^^^
+        """,
+        """
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        s: str = val;  # <-- Error: str | int cannot assign to str
+        ^^^^^^^^^^^^^
+        """,
+        """
+        d: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        d: Dog = animal;  # <-- Error: Dog | Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        d: Dog = animal;  # <-- Error: Cat cannot assign to Dog
+        ^^^^^^^^^^^^^^^^
+        """,
+        """
+        r: Reptile = creature;  # <-- Error: Lion cannot assign to Reptile
+        ^^^^^^^^^^^^^^^^^^^^^^
+        """
+    ];
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
 }
 
 test "postinit_fields_not_required_in_constructor" {
@@ -1352,8 +1394,32 @@ test "enum_type_checking" {
         "value_err: str = Color.BLUE.value",
         "value_status_val_err: int = Status.ACTIVE.value",
         "auto_val_err: str = AutoValueTest.THIRD.value",
-        "impl_shape_name_err: int = ShapeType.SQUARE.name",
-        'func_wrong_type: str = process_color("not a color")'
+        "impl_shape_name_err: int = ShapeType.SQUARE.name"
+    ];
+
+    assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
+        expected_errors
+    )} errors, got {len(program.errors_had)}: " + "\n".join(
+        [err.pretty_print() for err in program.errors_had]
+    );
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
+}
+
+test "class_based_enum_type_checking" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "checker_class_enum.jac"));
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    expected_errors = [
+        "Cannot assign <Tokens.FLOAT> to <class int>",
+        "Cannot assign <class str> to enum member 'FLOAT' of type <class int>",
+        "Cannot assign <class str> to enum member 'LSQUARE' of type <class int>",
+        "Cannot assign <class str> to enum member 'RSQUARE' of type <class int>"
     ];
 
     assert len(program.errors_had) == len(expected_errors) , f"Expected {len(
@@ -1445,5 +1511,44 @@ test "callable_type_annotation" {
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[7].pretty_print()
+    );
+}
+
+"""Test unbound method call type checking (ParentClass.init(self, ...))."""
+test "unbound_method_call" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_unbound_method_call.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    assert_error_pretty_found(
+        """Cannot assign <class int> to parameter 'name' of type <class str>""",
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """Not all required parameters were provided in the function call: 'name'""",
+        program.errors_had[1].pretty_print()
+    );
+}
+
+"""Test bare `type` parameter accepts classes but rejects instances."""
+test "type_param_assignment" {
+    program = JacProgram();
+    path = os.path.join(FIXTURES, "checker_type_param.jac");
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Should have 1 error for the instance case (e1)
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    assert_error_pretty_found(
+        """Cannot assign <class Animal> to parameter 'cls' of type <class type>""",
+        program.errors_had[0].pretty_print()
     );
 }

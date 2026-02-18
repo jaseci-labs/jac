@@ -209,9 +209,11 @@ obj TypeEvaluator {
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
-        checking_overload: bool = False
+        checking_overload: bool = False,
+        is_unbound_call: bool = False
     ) -> MatchArgsToParamsResult;
 
+    def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
@@ -242,6 +244,11 @@ obj TypeEvaluator {
         symbol: uni.Symbol
     ) -> TypeBase | None;
 
+    def _filter_union_for_isinstance(
+        base_type: TypeBase, target_type: TypeBase
+    ) -> TypeBase | None;
+
+    def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }

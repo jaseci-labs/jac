@@ -207,6 +207,8 @@ variables
 
     def exit_sub_tag(self: PyastGenPass, nd: uni.SubTag[uni.T]) -> None;
     def exit_module(self: PyastGenPass, nd: uni.Module) -> None;
+    def exit_type_param(self: PyastGenPass, nd: uni.TypeParam) -> None;
+    def exit_type_alias(self: PyastGenPass, nd: uni.TypeAlias) -> None;
     def exit_global_vars(self: PyastGenPass, nd: uni.GlobalVars) -> None;
     def exit_test(self: PyastGenPass, nd: uni.Test) -> None;
     def exit_module_code(self: PyastGenPass, nd: uni.ModuleCode) -> None;

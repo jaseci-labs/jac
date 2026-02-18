@@ -7,29 +7,29 @@ def test_run {
     "Loaded Modules:" |> print;
     for mod_name in modules {
         f"Module: {mod_name}" |> print;
-    }
-    # Print walkers
-    walkers = JacRuntime.list_walkers(mod_name);
-    if walkers {
-        f"Walkers in {mod_name}:" |> print;
-        for walker in walkers {
-            f"  - Walker: {walker}" |> print;
+        # Print walkers
+        walkers = JacRuntime.list_walkers(mod_name);
+        if walkers {
+            f"Walkers in {mod_name}:" |> print;
+            for walker in walkers {
+                f"  - Walker: {walker}" |> print;
+            }
         }
-    }
-    # Print nodes
-    nodes = JacRuntime.list_nodes(mod_name);
-    if nodes {
-        f"Nodes in {mod_name}:" |> print;
-        for nd in nodes {
-            f"  - Node: {nd}" |> print;
+        # Print nodes
+        nodes = JacRuntime.list_nodes(mod_name);
+        if nodes {
+            f"Nodes in {mod_name}:" |> print;
+            for nd in nodes {
+                f"  - Node: {nd}" |> print;
+            }
         }
-    }
-    # Print edges
-    edges = JacRuntime.list_edges(mod_name);
-    if edges {
-        f"Edges in {mod_name}:" |> print;
-        for edge in edges {
-            f"  - Edge: {edge}" |> print;
+        # Print edges
+        edges = JacRuntime.list_edges(mod_name);
+        if edges {
+            f"Edges in {mod_name}:" |> print;
+            for edge in edges {
+                f"  - Edge: {edge}" |> print;
+            }
         }
     }
     root spawn bar_walk();

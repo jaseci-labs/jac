@@ -149,6 +149,46 @@ impl TypeEvaluator._is_expr_super(expr: uni.Expr) -> bool {
     return False;
 }
 
+"""Check if a function call is an unbound method call (Class.method(self, ...) pattern)."""
+impl TypeEvaluator._is_unbound_method_call(expr: uni.FuncCall) -> bool {
+    # First check if there are positional arguments and the first one is 'self'
+    first_positional_arg: uni.Expr | None = None;
+    for arg in expr.params {
+        if not isinstance(arg, uni.KWPair) {
+            first_positional_arg = arg;
+            break;
+        }
+    }
+    # If no positional args or first arg is not 'self', it's not an unbound call
+    if first_positional_arg is None or not self._is_expr_self(first_positional_arg) {
+        return False;
+    }
+    # TODO: Atomtrailer should have a symbol
+
+    # Check if target is Class.method pattern (method on instantiable class)
+    if isinstance(expr.target, uni.AtomTrailer) and expr.target.is_attr {
+        base_type = self.get_type_of_expression(expr.target.target);
+        if isinstance(base_type, types.ClassType) and base_type.is_instantiable_class() {
+            # Accessing a method on a class (not instance)
+            # Check if accessed member is a method
+            if isinstance(expr.target.right, uni.Name) {
+                member = self._lookup_class_member(base_type, expr.target.right.value);
+                if member {
+                    member_type = self.get_type_of_symbol(member.symbol);
+                    if isinstance(member_type, types.FunctionType) {
+                        # Static methods don't have self, so can't be unbound calls
+                        if member_type.function_flags & types.FunctionTypeFlags.StaticMethod {
+                            return False;
+                        }
+                        return True;
+                    }
+                }
+            }
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase {
     sym.add_use(expr);
     expr.type = self.get_type_of_symbol(sym);
