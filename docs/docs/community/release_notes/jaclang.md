@@ -21,6 +21,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Operator Primitive Dispatch for ES Codegen**: Wired type-aware operator dispatch into the JavaScript code generation pass. Binary, comparison, unary, and augmented assignment operators now query the type evaluator and delegate to the appropriate primitive emitter, producing correct JS semantics for Python-style operators (e.g., `list + list` emits spread concatenation `[...a, ...b]`, `str * n` emits `.repeat(n)`, `x in list` emits `.includes(x)`).
 - **Fix: Lexer `<` Comparison vs JSX Tag Disambiguation**: Fixed an infinite loop where `i<points` in a for-loop caused the lexer to enter JSX tag mode. The lexer now tracks the previous token to distinguish `<` as a comparison operator (after values) from a JSX opening tag (after keywords like `return`, operators, or delimiters).
 - **Fix: Quoted JSX Text Produces Invalid JS**: Fixed JSX text containing quote characters (e.g., `<p>"text"</p>`) generating invalid double-double-quoted JavaScript (`""text""`). Inner quotes are now properly escaped in the emitted JS string literals.
+- **Fix: `unittest.mock.patch` Compatibility in Jac Tests**: Fixed `unittest.mock.patch` not intercepting calls in Jac test blocks.
 - 2 Minor refactors/changes.
 
 ## jaclang 0.10.2 (Latest Release)
