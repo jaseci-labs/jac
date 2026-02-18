@@ -1685,6 +1685,7 @@ test "websocket nonexistent walker" {
 }
 
 test "http walker not accessible via ws" {
+    import websockets;
     sp = setup_serve_server();
     try {
         async def _test -> None {
