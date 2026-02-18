@@ -11,13 +11,21 @@ cl {
 
         return
             <div style={{"padding": "2rem"}}>
-                <h1>Users Directory</h1>
+                <h1>
+                    Users Directory
+                </h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Click on a user to view their profile (demonstrates dynamic [id] routing)
                 </p>
-                <div style={{"display": "flex", "flexDirection": "column", "gap": "0.75rem"}}>
-                    {users.map(lambda user: any -> any {
-                        return
+                <div
+                    style={{
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "gap": "0.75rem"
+                    }}
+                >
+                    {users.map(
+                        lambda user: any  -> any { return
                             <Link
                                 key={user["id"]}
                                 to={"/users/" + user["id"]}
@@ -31,12 +39,16 @@ cl {
                                     "border": "1px solid #e5e7eb"
                                 }}
                             >
-                                <strong>{user["name"]}</strong>
-                                <span style={{"color": "#6b7280", "marginLeft": "0.5rem"}}>
-                                    — {user["role"]}
+                                <strong>
+                                    {user["name"]}
+                                </strong>
+                                <span
+                                    style={{"color": "#6b7280", "marginLeft": "0.5rem"}}
+                                >
+                                    —{user["role"]}
                                 </span>
-                            </Link>;
-                    })}
+                            </Link>; }
+                    )}
                 </div>
             </div>;
     }

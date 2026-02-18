@@ -22,12 +22,11 @@ cl {
         ];
 
         # Filter results based on query
-        results = allResults.filter(lambda item: any -> bool {
-            if not query {
+        results = allResults.filter(
+            lambda item: any  -> bool { if not query {
                 return True;
-            }
-            return item["title"].toLowerCase().includes(query.toLowerCase());
-        });
+            }return item["title"].toLowerCase().includes(query.toLowerCase()); }
+        );
 
         def handleSearch(e: any) -> None {
             e.preventDefault();
@@ -48,17 +47,18 @@ cl {
 
         return
             <div style={{"padding": "2rem", "maxWidth": "600px"}}>
-                <h1>Search</h1>
+                <h1>
+                    Search
+                </h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Demonstrates query parameter handling with URLSearchParams
                 </p>
-
                 <form onSubmit={handleSearch} style={{"marginBottom": "2rem"}}>
                     <div style={{"display": "flex", "gap": "0.5rem"}}>
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: any -> None { inputValue = e.target.value; }}
+                            onChange={lambda e: any  -> None { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",
@@ -82,7 +82,6 @@ cl {
                         </button>
                     </div>
                 </form>
-
                 <div
                     style={{
                         "background": "#f3f4f6",
@@ -92,20 +91,26 @@ cl {
                         "fontSize": "0.875rem"
                     }}
                 >
-                    <strong>Current URL params:</strong><br />
-                    q = "{query}"<br />
-                    page = {page}
+                    <strong>
+                        Current URL params:
+                    </strong>
+                    <br/>
+                    q = "
+                    {query}
+                    "
+                    <br/>
+                    page =
+                    {page}
                 </div>
-
-                {query and (
+                {query
+                and (
                     <p style={{"marginBottom": "1rem"}}>
-                        Found {results.length} results for "{query}"
+                        Found{results.length} results for "{query}"
                     </p>
                 )}
-
                 <ul style={{"listStyle": "none", "padding": "0"}}>
-                    {results.map(lambda item: any -> any {
-                        return
+                    {results.map(
+                        lambda item: any  -> any { return
                             <li
                                 key={item["title"]}
                                 style={{
@@ -115,11 +120,21 @@ cl {
                                     "justifyContent": "space-between"
                                 }}
                             >
-                                <span>{item["title"]}</span>
+                                <span>
+                                    {item["title"]}
+                                </span>
                                 <span
                                     style={{
-                                        "background": (item["type"] == "user" and "#dbeafe" or "#dcfce7"),
-                                        "color": (item["type"] == "user" and "#1e40af" or "#166534"),
+                                        "background": (
+                                            item["type"] == "user"
+                                            and "#dbeafe"
+                                            or "#dcfce7"
+                                        ),
+                                        "color": (
+                                            item["type"] == "user"
+                                            and "#1e40af"
+                                            or "#166534"
+                                        ),
                                         "padding": "0.25rem 0.5rem",
                                         "borderRadius": "4px",
                                         "fontSize": "0.75rem"
@@ -127,13 +142,14 @@ cl {
                                 >
                                     {item["type"]}
                                 </span>
-                            </li>;
-                    })}
+                            </li>; }
+                    )}
                 </ul>
-
-                <div style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}>
+                <div
+                    style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}
+                >
                     <button
-                        onClick={lambda -> None { goToPage(page - 1); }}
+                        onClick={lambda -> None { goToPage(page - 1);}}
                         disabled={page <= 1}
                         style={{
                             "padding": "0.5rem 1rem",
@@ -145,9 +161,11 @@ cl {
                     >
                         Previous
                     </button>
-                    <span style={{"padding": "0.5rem 1rem"}}>Page {page}</span>
+                    <span style={{"padding": "0.5rem 1rem"}}>
+                        Page{page}
+                    </span>
                     <button
-                        onClick={lambda -> None { goToPage(page + 1); }}
+                        onClick={lambda -> None { goToPage(page + 1);}}
                         style={{
                             "padding": "0.5rem 1rem",
                             "border": "1px solid #d1d5db",
@@ -158,9 +176,10 @@ cl {
                         Next
                     </button>
                 </div>
-
                 <div style={{"marginTop": "2rem"}}>
-                    <Link to="/" style={{"color": "#3b82f6"}}>← Back to Home</Link>
+                    <Link to="/" style={{"color": "#3b82f6"}}>
+                        ← Back to Home
+                    </Link>
                 </div>
             </div>;
     }

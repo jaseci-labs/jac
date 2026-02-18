@@ -23,13 +23,21 @@ cl {
 
         return
             <div style={{"padding": "2rem"}}>
-                <h1>Blog Posts</h1>
+                <h1>
+                    Blog Posts
+                </h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Click on a post to read it (demonstrates slug-based [slug] routing)
                 </p>
-                <div style={{"display": "flex", "flexDirection": "column", "gap": "1rem"}}>
-                    {posts.map(lambda post: any -> any {
-                        return
+                <div
+                    style={{
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "gap": "1rem"
+                    }}
+                >
+                    {posts.map(
+                        lambda post: any  -> any { return
                             <Link
                                 key={post["slug"]}
                                 to={"/posts/" + post["slug"]}
@@ -44,14 +52,25 @@ cl {
                                     "boxShadow": "0 1px 2px rgba(0,0,0,0.05)"
                                 }}
                             >
-                                <h3 style={{"margin": "0 0 0.5rem 0", "color": "#3b82f6"}}>
+                                <h3
+                                    style={{
+                                        "margin": "0 0 0.5rem 0",
+                                        "color": "#3b82f6"
+                                    }}
+                                >
                                     {post["title"]}
                                 </h3>
-                                <p style={{"margin": "0", "color": "#6b7280", "fontSize": "0.875rem"}}>
+                                <p
+                                    style={{
+                                        "margin": "0",
+                                        "color": "#6b7280",
+                                        "fontSize": "0.875rem"
+                                    }}
+                                >
                                     {post["excerpt"]}
                                 </p>
-                            </Link>;
-                    })}
+                            </Link>; }
+                    )}
                 </div>
             </div>;
     }
