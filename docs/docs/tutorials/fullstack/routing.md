@@ -565,32 +565,6 @@ cl {
 }
 ```
 
-### Role-Based Access
-
-```jac
-cl import from "@jac/runtime" { Navigate, jacIsLoggedIn }
-
-cl {
-    def:pub AdminRoute(props: dict) -> JsxElement {
-        has user: dict = {};
-
-        isAuthenticated = jacIsLoggedIn();
-
-        if not isAuthenticated {
-            return <Navigate to="/login" />;
-        }
-
-        if user.get("role") != "admin" {
-            return <div className="error">
-                <h2>Access Denied</h2>
-                <p>You need admin privileges to view this page.</p>
-            </div>;
-        }
-
-        return <>{props.children}</>;
-    }
-}
-
 ---
 
 ## Query Parameters
