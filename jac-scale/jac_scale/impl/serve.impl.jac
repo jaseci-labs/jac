@@ -96,10 +96,9 @@ impl JacAPIServer.start(
                         project_dir=project_dir,
                         config=config
                     );
-                    console.warning(f"Failed to build client bundle: {e}");
+                    console.warning("Failed to build client bundle");
                     console.print(file=sys.stderr);
                     console.print(formatted_error, file=sys.stderr);
-                    console.print(file=sys.stderr);
                     console.warning(
                         'Client pages will not be available until this is fixed.',
                         emoji=True
