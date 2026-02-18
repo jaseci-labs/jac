@@ -513,7 +513,6 @@ impl is_debug_mode(config: object = None) -> bool {
     if env_debug in ("0", "false", "no") {
         return False;
     }
-
     # Check config - default is True if not specified
     if config {
         try {
@@ -525,7 +524,6 @@ impl is_debug_mode(config: object = None) -> bool {
             ;
         }
     }
-
     # Default to True (debug enabled by default)
     return True;
 }

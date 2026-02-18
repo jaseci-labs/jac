@@ -101,7 +101,8 @@ impl JacAPIServer.start(
                     console.print(formatted_error, file=sys.stderr);
                     console.print(file=sys.stderr);
                     console.warning(
-                        'Client pages will not be available until this is fixed.', emoji=True
+                        'Client pages will not be available until this is fixed.',
+                        emoji=True
                     );
                     console.print(file=sys.stderr);
                     console.info(
