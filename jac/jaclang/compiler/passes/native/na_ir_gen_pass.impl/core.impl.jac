@@ -55,6 +55,10 @@ impl NaIRGenPass.init(
     self.dict_types: dict[(str, object)] = {};  # "key_type:val_type" → dict struct type
     self.dict_helpers: dict[(str, dict)] = {};  # "key_type:val_type" → {new, set, get, contains, len}
     self.var_dict_type: dict[(str, str)] = {};  # var_name → "key_type:val_type"
+    # JacVal tagged union for dict[str, any] support
+    self.jacval_type = self.llvm_module.context.get_identified_type("JacVal");
+    self.jacval_type.set_body(ir.IntType(8), ir.IntType(64));  # {i8 tag, i64 payload}
+    self._dict_val_type_hint: (str | None) = None;  # "jacval" when dict[str, any]
     # Set support (Phase 13)
     self.set_types: dict[(str, object)] = {};  # elem_type_name → set struct type
     self.set_helpers: dict[(str, dict)] = {};  # elem_type_name → {new, add, contains, len}

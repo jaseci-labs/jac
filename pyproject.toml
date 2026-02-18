@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jaseci-hooks"
 version = "0.0.1"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [project.scripts]
 jac = "jaclang.cli.cli:start_cli"

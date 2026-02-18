@@ -120,6 +120,8 @@ interop_analysis_pass.impl.jac
 jac_auto_lint_pass.impl.jac
 jac_formatter_pass.impl.jac
 jfast_api.impl.jac
+jsx_lt_comparison_bug.cl.jac
+jsx_text_quotes_bug.cl.jac
 lang_tools.impl.jac
 level_genarator.jac
 level.impl.jac
@@ -155,6 +157,7 @@ pass_keyword_err.jac
 player.impl.jac
 plugin_config.impl.jac
 plugin.jac
+prim_builtins.jac
 program.impl.jac
 program.jac
 project.impl.jac
@@ -199,6 +202,7 @@ test_jaseci.jac
 test_lang_serve.jac
 test_man_code.jac
 test_native_gen_pass.jac
+test_prim_equivalence.jac
 test_py_infra.jac
 test_sem_tokens.jac
 test_serve.jac
@@ -231,3 +235,26 @@ yield_in_assignment.jac
 template_loader.impl.jac
 analysis.impl.jac
 semantic_analysis_pass.impl.jac
+# Converted from Python - type check issues expected
+integration_tests.jac
+test_byllm.jac
+test_deploy_k8s.jac
+test_desktop_api_url.jac
+test_direct_db.jac
+test_e2e.jac
+test_examples.jac
+test_file_upload.jac
+test_helpers.jac
+test_it_desktop.jac
+test_it.jac
+test_k8s_utils.jac
+test_littlex_client.jac
+test_memory_hierarchy.jac
+test_mtir_integration.jac
+test_restspec.jac
+test_sso.jac
+test_validate_md_files.jac
+test_webhook.jac
+top_contributors.jac
+top_voices.jac
+validate_docs_code.jac

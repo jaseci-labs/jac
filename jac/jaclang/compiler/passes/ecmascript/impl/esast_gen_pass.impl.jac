@@ -2412,6 +2412,16 @@ impl EsastGenPass.exit_enum(nd: uni.Enum) -> None {
     nd.gen.es_ast = var_decl;
 }
 
+"""Process type alias - no runtime JS code needed."""
+impl EsastGenPass.exit_type_alias(nd: uni.TypeAlias) -> None {
+    nd.gen.es_ast = [];
+}
+
+"""Process type param - no runtime JS code needed."""
+impl EsastGenPass.exit_type_param(nd: uni.TypeParam) -> None {
+    nd.gen.es_ast = [];
+}
+
 """Process archetype (class) declaration."""
 impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.code_context == CodeContext.CLIENT {

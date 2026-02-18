@@ -209,6 +209,7 @@ obj NaIRGenPass(Transform) {
         key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
     ) -> None;
 
+    def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
         target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str

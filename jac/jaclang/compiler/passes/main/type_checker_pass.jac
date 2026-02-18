@@ -21,6 +21,7 @@ class TypeCheckPass(UniPass) {
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
     def enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None;
     def exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None;
     def exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None;
     def exit_import(self: TypeCheckPass, nd: uni.Import) -> None;

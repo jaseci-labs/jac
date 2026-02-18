@@ -666,3 +666,8 @@ test "fstring escape sequences" {
     assert lines[2] == "'line1\\nline2\\nline3'";
     assert lines[3] == "'world\\tworld\\tworld'";
 }
+
+test "type aliases and modern generics" {
+    output = run_jac(os.path.join(FIXTURES, "type_alias_generics.jac"));
+    assert output == "True\n42\nok\n";
+}

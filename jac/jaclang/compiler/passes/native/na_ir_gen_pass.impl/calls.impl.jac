@@ -84,6 +84,23 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+    # Handle multi-arg builtins via emitter dispatch
+    if func_name in ("abs", "min", "max", "pow") {
+        params_l = nd.params or [];
+        arg_vals: list[ir.Value] = [];
+        for param in params_l {
+            v = self._codegen_expr(param);
+            if v is not None {
+                arg_vals.append(v);
+            }
+        }
+        if arg_vals {
+            result = self._dispatch_builtin(func_name, arg_vals);
+            if result is not None {
+                return result;
+            }
+        }
+    }
     # Handle ord, int, chr, str builtins via emitter dispatch
     if func_name in ("ord", "int", "chr", "str") {
         params_l = nd.params or [];
