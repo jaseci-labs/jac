@@ -505,17 +505,29 @@ impl get_default_detectors -> list[
 }
 
 impl is_debug_mode(config: object = None) -> bool {
+    # Check environment variable first (can override config)
+    env_debug = os.environ.get("JAC_DEBUG", "").lower();
+    if env_debug in ("1", "true", "yes") {
+        return True;
+    }
+    if env_debug in ("0", "false", "no") {
+        return False;
+    }
+
+    # Check config - default is True if not specified
     if config {
         try {
             client_cfg = config.get_plugin_config("client");
-            if client_cfg and client_cfg.get("debug", True) {
-                return True;
+            if client_cfg {
+                return client_cfg.get("debug", True);
             }
         } except Exception {
             ;
         }
     }
-    return os.environ.get("JAC_DEBUG", "").lower() in ("1", "true", "yes");
+
+    # Default to True (debug enabled by default)
+    return True;
 }
 
 """Collect all .jac files in project, excluding build directories."""
