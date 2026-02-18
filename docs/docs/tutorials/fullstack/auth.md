@@ -469,7 +469,8 @@ cl {
 
     glob AuthContext = createContext(None);
 
-    def:pub AuthProvider(props: dict) -> any {
+    # Auth Provider component
+    def:pub AuthProvider(props: dict) -> JsxElement {
         has user: any = None;
         has loading: bool = True;
 

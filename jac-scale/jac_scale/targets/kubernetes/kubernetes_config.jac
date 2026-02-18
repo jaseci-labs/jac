@@ -20,6 +20,9 @@ class KubernetesConfig(BaseConfig) {
         liveness_initial_delay: int = 10,
         liveness_period: int = 20,
         liveness_failure_threshold: int = 80,
+        min_replicas: int = 1,
+        max_replicas: int = 3,
+        cpu_utilization_target: int = 50,
         health_check_path: str = '/docs',
         # Runtime configuration
         python_image: str = 'python:3.12-slim',
@@ -61,6 +64,9 @@ class KubernetesConfig(BaseConfig) {
         liveness_initial_delay: int = 10,
         liveness_period: int = 20,
         liveness_failure_threshold: int = 80,
+        min_replicas: int = 1,
+        max_replicas: int = 3,
+        cpu_utilization_target: int = 50,
         health_check_path: str = '/docs',
         python_image: str = 'python:3.12-slim',
         busybox_image: str = 'busybox:1.36',
@@ -97,6 +103,9 @@ class KubernetesConfig(BaseConfig) {
         self.liveness_initial_delay = liveness_initial_delay;
         self.liveness_period = liveness_period;
         self.liveness_failure_threshold = liveness_failure_threshold;
+        self.min_replicas = min_replicas;
+        self.max_replicas = max_replicas;
+        self.cpu_utilization_target = cpu_utilization_target;
         self.health_check_path = health_check_path;
         # Runtime configuration
         self.python_image = python_image;
@@ -140,6 +149,9 @@ class KubernetesConfig(BaseConfig) {
                 'liveness_initial_delay': self.liveness_initial_delay,
                 'liveness_period': self.liveness_period,
                 'liveness_failure_threshold': self.liveness_failure_threshold,
+                'min_replicas': self.min_replicas,
+                'max_replicas': self.max_replicas,
+                'cpu_utilization_target': self.cpu_utilization_target,
                 'health_check_path': self.health_check_path,
                 # Runtime configuration
                 'python_image': self.python_image,
@@ -186,6 +198,9 @@ class KubernetesConfig(BaseConfig) {
             liveness_initial_delay=config.get('liveness_initial_delay', 10),
             liveness_period=config.get('liveness_period', 20),
             liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
+            min_replicas=config.get('min_replicas', 1),
+            max_replicas=config.get('max_replicas', 3),
+            cpu_utilization_target=config.get('cpu_utilization_target', 50),
             health_check_path=config.get('health_check_path', '/docs'),
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),

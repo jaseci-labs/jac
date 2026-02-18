@@ -100,6 +100,13 @@ impl JacLangServer.type_check_file(
                 annex_view=fs_path,
             );
         }
+        # Aggregate errors from internal_program (jaclang.* modules) if any
+        all_errors = list(self.errors_had);
+        all_warnings = list(self.warnings_had);
+        if (self._compiler and self._compiler._internal_program) {
+            all_errors.extend(self._compiler._internal_program.errors_had);
+            all_warnings.extend(self._compiler._internal_program.warnings_had);
+        }
         self.publish_diagnostics(
             (
                 uris.from_fs_path(annex_view)
@@ -107,14 +114,12 @@ impl JacLangServer.type_check_file(
                 else uris.from_fs_path(fs_path)
                 # to display diagnostic , it need URI starts with "file://"
             ),
-            utils.gen_diagnostics(
-                (annex_view or fs_path), self.errors_had, self.warnings_had
-            )
+            utils.gen_diagnostics((annex_view or fs_path), all_errors, all_warnings)
         );
         if annex_view {
             self.publish_diagnostics(
                 uris.from_fs_path(fs_path),
-                utils.gen_diagnostics(fs_path, self.errors_had, self.warnings_had)
+                utils.gen_diagnostics(fs_path, all_errors, all_warnings)
             );
         }
     } except Exception as e {
@@ -246,10 +251,10 @@ impl JacLangServer.rename_symbol(
     node_selected = self.get_token_at_position(file_path, position);
     if node_selected and node_selected.sym {
         changes: dict[(str, list[lspt.TextEdit])] = {};
-        for node in [*node_selected.sym.uses, node_selected.sym.defn[0]] {
-            key = uris.from_fs_path(node.loc.mod_path);
+        for nd in [*node_selected.sym.uses, node_selected.sym.defn[0]] {
+            key = uris.from_fs_path(nd.loc.mod_path);
             new_edit = lspt.TextEdit(
-                range=utils.create_range(node.loc), new_text=new_name
+                range=utils.create_range(nd.loc), new_text=new_name
             );
             utils.add_unique_text_edit(changes, key, new_edit);
         }
@@ -482,15 +487,15 @@ impl JacLangServer.get_node_type(n: uni.AstNode) -> Optional[TypeBase] {
     return None;
 }
 
-impl JacLangServer.get_completion_of_node(node: uni.AstNode) -> lspt.CompletionList {
-    if (node_type := self.get_node_type(node)) {
+impl JacLangServer.get_completion_of_node(nd: uni.AstNode) -> lspt.CompletionList {
+    if (node_type := self.get_node_type(nd)) {
         self.debug("found type " + str(node_type));
         return self.get_completion_items_of(node_type);
-    } elif isinstance(node, UniScopeNode) {
-        self.debug("found scope node " + str(node));
-        return self.get_completion_items_of(node);
+    } elif isinstance(nd, UniScopeNode) {
+        self.debug("found scope node " + str(nd));
+        return self.get_completion_items_of(nd);
     }
-    self.debug("no type found for node " + str(node));
+    self.debug("no type found for node " + str(nd));
     return lspt.CompletionList(is_incomplete=False, items=[]);
 }
 
@@ -528,8 +533,20 @@ impl JacLangServer.wait_till_idle_sync(file_uri: str) -> None {
         }
     }
     self._do_type_check(file_uri);
-    # Wait for dispatcher to become idle
-    self._idle_event.wait();
+    # Wait for dispatcher to become idle and re-check queue state after wake to avoid races with stale work events.
+    while True {
+        self._idle_event.wait();
+        with self._state_lock {
+            has_pending_work = bool(
+                self.pipe or self.dirty_files or self._debounce_timer
+            );
+        }
+        if not has_pending_work {
+            break;
+        }
+        self._idle_event.clear();
+        self._work_event.set();
+    }
     self.debug("Server is now idle");
 }
 
@@ -637,16 +654,35 @@ impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
 """Remove errors and warnings for a specific file from the lists."""
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     self.module_manager.clear_alerts_for_file(file_path);
+    # Also clear from internal_program (jaclang.* modules) if it exists
+    if (self._compiler and self._compiler._internal_program) {
+        internal = self._compiler._internal_program;
+        internal.errors_had = [
+            e
+            for e in internal.errors_had
+            if e.loc.mod_path != file_path
+        ];
+        internal.warnings_had = [
+            w
+            for w in internal.warnings_had
+            if w.loc.mod_path != file_path
+        ];
+    }
 }
 
 """Return diagnostics for all files as a dict {uri: diagnostics}."""
 impl JacLangServer.diagnostics -> dict[str, list] {
+    # Aggregate errors from internal_program (jaclang.* modules) if any
+    all_errors = list(self.errors_had);
+    all_warnings = list(self.warnings_had);
+    if (self._compiler and self._compiler._internal_program) {
+        all_errors.extend(self._compiler._internal_program.errors_had);
+        all_warnings.extend(self._compiler._internal_program.warnings_had);
+    }
     result = {};
     for file_path in self.mod.hub {
         uri = uris.from_fs_path(file_path);
-        result[uri] = utils.gen_diagnostics(
-            file_path, self.errors_had, self.warnings_had
-        );
+        result[uri] = utils.gen_diagnostics(file_path, all_errors, all_warnings);
     }
     return result;
 }

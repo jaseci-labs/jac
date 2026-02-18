@@ -84,7 +84,7 @@ The server file has three sections: the app entry point, AI types and functions,
 cl {
     import from frontend { app as ClientApp }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         return
             <ClientApp />;
     }
@@ -362,7 +362,7 @@ Two new import styles:
 The component declares its state and method signatures:
 
 ```jac
-def:pub app -> any {
+def:pub app -> JsxElement {
     has isLoggedIn: bool = False,
         checkingAuth: bool = True,
         isSignup: bool = False,
@@ -430,7 +430,7 @@ impl app.fetchTodos -> None {
 }
 
 impl app.addTodo -> None {
-    if not newTodoText.trim() { return; }
+    if not newTodoText.strip() { return; }
     response = root spawn AddTodo(title=newTodoText);
     newTodo = response.reports[0];
     todos = todos.concat([{
@@ -476,7 +476,7 @@ Authentication uses the built-in `jacLogin`, `jacSignup`, and `jacLogout` functi
 ```jac
 impl app.handleLogin -> None {
     error = "";
-    if not username.trim() or not password {
+    if not username.strip() or not password {
         error = "Please fill in all fields";
         return;
     }
@@ -494,11 +494,11 @@ impl app.handleLogin -> None {
 
 impl app.handleSignup -> None {
     error = "";
-    if not username.trim() or not password {
+    if not username.strip() or not password {
         error = "Please fill in all fields";
         return;
     }
-    if password.length < 4 {
+    if len(password) < 4 {
         error = "Password must be at least 4 characters";
         return;
     }
@@ -534,7 +534,7 @@ impl app.fetchMealPlan -> None {
 }
 
 impl app.generateIngredients -> None {
-    if not mealInput.trim() { return; }
+    if not mealInput.strip() { return; }
     ingredientsLoading = True;
     result = root spawn GenerateShoppingList(meal_description=mealInput);
     ingredients = result.reports[0] if result.reports else [];
@@ -585,7 +585,7 @@ Displays a single todo with toggle and delete:
 ```jac
 """Todo item component."""
 
-def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> any {
+def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> JsxElement {
     return
         <div className="todo-item">
             <input
@@ -617,7 +617,7 @@ Displays a single ingredient with cost and carb badge:
 ```jac
 """Ingredient item component for the shopping list."""
 
-def:pub IngredientItem(ingredient: dict) -> any {
+def:pub IngredientItem(ingredient: dict) -> JsxElement {
     return
         <div className="ingredient-item">
             <div className="ingredient-info">
@@ -679,7 +679,7 @@ All the complete files are in the collapsible sections below. Create each file i
     cl {
         import from frontend { app as ClientApp }
 
-        def:pub app -> any {
+        def:pub app -> JsxElement {
             return
                 <ClientApp />;
         }
@@ -893,7 +893,7 @@ All the complete files are in the collapsible sections below. Create each file i
         GenerateShoppingList, ListMealPlan, ClearMealPlan
     }
 
-    def:pub app -> any {
+    def:pub app -> JsxElement {
         has isLoggedIn: bool = False,
             checkingAuth: bool = True,
             isSignup: bool = False,
@@ -992,7 +992,7 @@ All the complete files are in the collapsible sections below. Create each file i
                                                 <div className="empty-message">
                                                     No tasks yet. Add one above!
                                                 </div>
-                                            ) if todos.length == 0 else (
+                                            ) if len(todos) == 0 else (
                                                 <div>
                                                     {[
                                                         <TodoItem
@@ -1008,9 +1008,9 @@ All the complete files are in the collapsible sections below. Create each file i
                                     )}
                                 </div>
                                 <div className="remaining-count">
-                                    {todos.filter(
+                                    {len(todos.filter(
                                         lambda t: any -> bool { return not t.completed; }
-                                    ).length} items remaining
+                                    ))} items remaining
                                 </div>
                             </div>
                             <div className="column-right">
@@ -1049,7 +1049,7 @@ All the complete files are in the collapsible sections below. Create each file i
                                                 <div className="empty-message">
                                                     Enter a meal above to generate ingredients.
                                                 </div>
-                                            ) if ingredients.length == 0 else (
+                                            ) if len(ingredients) == 0 else (
                                                 <div>
                                                     {[
                                                         <IngredientItem
@@ -1107,7 +1107,7 @@ All the complete files are in the collapsible sections below. Create each file i
     }
 
     impl app.addTodo -> None {
-        if not newTodoText.trim() { return; }
+        if not newTodoText.strip() { return; }
         response = root spawn AddTodo(title=newTodoText);
         newTodo = response.reports[0];
         todos = todos.concat([{
@@ -1143,7 +1143,7 @@ All the complete files are in the collapsible sections below. Create each file i
 
     impl app.handleLogin -> None {
         error = "";
-        if not username.trim() or not password {
+        if not username.strip() or not password {
             error = "Please fill in all fields";
             return;
         }
@@ -1161,11 +1161,11 @@ All the complete files are in the collapsible sections below. Create each file i
 
     impl app.handleSignup -> None {
         error = "";
-        if not username.trim() or not password {
+        if not username.strip() or not password {
             error = "Please fill in all fields";
             return;
         }
-        if password.length < 4 {
+        if len(password) < 4 {
             error = "Password must be at least 4 characters";
             return;
         }
@@ -1208,7 +1208,7 @@ All the complete files are in the collapsible sections below. Create each file i
     }
 
     impl app.generateIngredients -> None {
-        if not mealInput.trim() { return; }
+        if not mealInput.strip() { return; }
         ingredientsLoading = True;
         result = root spawn GenerateShoppingList(meal_description=mealInput);
         ingredients = result.reports[0] if result.reports else [];
@@ -1320,7 +1320,7 @@ All the complete files are in the collapsible sections below. Create each file i
     ```jac
     """Todo item component."""
 
-    def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> any {
+    def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> JsxElement {
         return
             <div className="todo-item">
                 <input
@@ -1350,7 +1350,7 @@ All the complete files are in the collapsible sections below. Create each file i
     ```jac
     """Ingredient item component for the shopping list."""
 
-    def:pub IngredientItem(ingredient: dict) -> any {
+    def:pub IngredientItem(ingredient: dict) -> JsxElement {
         return
             <div className="ingredient-item">
                 <div className="ingredient-info">

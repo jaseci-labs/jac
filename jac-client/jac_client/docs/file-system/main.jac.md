@@ -43,7 +43,7 @@ Every `main.jac` file must contain:
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             {/* Your application UI */}
         </div>;
@@ -55,7 +55,7 @@ cl {
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <h1>Hello, World!</h1>
         </div>;
@@ -86,7 +86,7 @@ cl {
 ```jac
 #  WRONG - No app() function
 cl {
-    def HomePage() -> any {
+    def HomePage() -> JsxElement {
         return <div>Home</div>;
     }
 }
@@ -97,7 +97,7 @@ cl {
 ```jac
 #  WRONG - Function named 'main' instead of 'app'
 cl {
-    def main() -> any {
+    def main() -> JsxElement {
         return <div>App</div>;
     }
 }
@@ -108,7 +108,7 @@ cl {
 ```jac
 #  WRONG - app() not exported with :pub
 cl {
-    def app() -> any {
+    def app() -> JsxElement {
         return <div>App</div>;
     }
 }
@@ -118,7 +118,7 @@ cl {
 
 ```jac
 #  WRONG - app() not in cl block
-def app() -> any {
+def app() -> JsxElement {
     return <div>App</div>;
 }
 ```

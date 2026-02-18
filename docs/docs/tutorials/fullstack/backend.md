@@ -122,7 +122,7 @@ Use `root spawn walker_name()` to call walkers from client code:
 sv import from ...main { get_tasks, add_task, toggle_task }
 
 cl {
-    def:pub TaskList() -> any {
+    def:pub TaskList() -> JsxElement {
         has tasks: list = [];
         has loading: bool = True;
         has error: str = "";
@@ -178,7 +178,7 @@ cl {
 sv import from ...main { get_tasks, add_task, toggle_task, delete_task }
 
 cl {
-    def:pub TaskManager() -> any {
+    def:pub TaskManager() -> JsxElement {
         has tasks: list = [];
         has new_title: str = "";
         has loading: bool = True;
@@ -280,7 +280,7 @@ cl {
 sv import from ...main { submit_data }
 
 cl {
-    def:pub SafeSubmit() -> any {
+    def:pub SafeSubmit() -> JsxElement {
         has error_msg: str = "";
         has submitting: bool = False;
 
@@ -320,7 +320,7 @@ cl {
 
 ```jac
 cl {
-    def:pub DataView() -> any {
+    def:pub DataView() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
         has error: str = "";
@@ -375,7 +375,7 @@ cl {
 cl {
     import from react { useEffect }
 
-    def:pub LiveData() -> any {
+    def:pub LiveData() -> JsxElement {
         has data: any = None;
         has loading: bool = True;
 
@@ -454,7 +454,7 @@ walker:pub toggle_task {
 
 # === Frontend: UI ===
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         has tasks: list = [];
         has input_text: str = "";
         has loading: bool = True;

@@ -113,6 +113,26 @@ impl FunctionType.postinit -> None {
 
 """Return a string representation of the function type."""
 impl FunctionType.__str__ -> str {
+    # For functions created from Callable annotations, use Callable[...] format
+    if self.is_from_callable_annotation() {
+        if self.is_gradual_callable_form() {
+            return_type_str = str(self.return_type) if self.return_type else "Unknown";
+            return f"Callable[..., {return_type_str}]";
+        }
+        # Collect parameter types
+        param_type_strs: list[str] = [];
+        for param in self.parameters or [] {
+            if param.param_type {
+                param_type_strs.append(str(param.param_type));
+            } else {
+                param_type_strs.append("Unknown");
+            }
+        }
+        params_str = ", ".join(param_type_strs);
+        return_type_str = str(self.return_type) if self.return_type else "Unknown";
+        return f"Callable[[{params_str}], {return_type_str}]";
+    }
+    # Standard function representation
     param_strs: list[str] = [];
     for param in self.parameters or [] {
         param_str = param.name;
@@ -210,7 +230,9 @@ impl ClassType.get_class_symbol -> Symbol {
 
 """Return a new class type specialized with the given type arguments."""
 impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
-    new_private = ClassType.ClassDetailsPrivate(type_args=type_args);
+    new_private = ClassType.ClassDetailsPrivate(
+        type_args=type_args, alias_name=self.private.alias_name  # Preserve alias_name
+    );
     return ClassType(shared=self.shared, private=new_private, flags=self.flags);
 }
 
@@ -218,7 +240,10 @@ impl ClassType.clone_as_class -> ClassType {
     if not self.is_instance() {
         return self;
     }
-    private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
+    private = ClassType.ClassDetailsPrivate(
+        type_args=self.private.type_args[:],
+        alias_name=self.private.alias_name  # Preserve alias_name
+    );
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
     new_flags = TypeFlags((new_flag | TypeFlags.Instantiable));
@@ -231,13 +256,34 @@ impl ClassType.clone_as_instance -> ClassType {
     if self.is_instance() {
         return self;
     }
-    private = ClassType.ClassDetailsPrivate(type_args=self.private.type_args[:]);
+    private = ClassType.ClassDetailsPrivate(
+        type_args=self.private.type_args[:],
+        alias_name=self.private.alias_name  # Preserve alias_name
+    );
     new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
     new_flags = TypeFlags((new_flag | TypeFlags.Instance));
     new_instance.flags = new_flags;
     return new_instance;
+}
+
+"""
+Check if this class type is a special form with the given alias name.
+
+Similar to Pyright's ClassType.isSpecialBuiltIn(). Special forms like
+Callable, Union, Optional are all _SpecialForm in typing.pyi but have
+different alias_names to distinguish them.
+"""
+impl ClassType.is_special_form(name: str | None = None) -> bool {
+    if self.private is None or self.private.alias_name is None {
+        return False;
+    }
+    if name is None {
+        return True;  # Any special form
+
+    }
+    return self.private.alias_name == name;
 }
 
 """Return a string representation of the class type."""
@@ -303,4 +349,47 @@ impl TypeBase.is_any_type -> bool {
         return self.is_builtin("object");
     }
     return False;
+}
+
+"""Return string representation of enum member (e.g., <Color.RED>)."""
+impl EnumMemberType.__str__ -> str {
+    return f"<{self.enum_class.shared.class_name}.{self.member_info.member_name}>";
+}
+
+"""Return the member name as a string (e.g., "RED", "BLUE")."""
+impl EnumMemberType.get_name_as_str -> str {
+    return self.member_info.member_name;
+}
+
+"""Get value type: check member's explicit type first, then enum's inherited type requirement."""
+impl EnumMemberType.get_value_type -> TypeBase {
+    return self.member_info.value_type
+    or self.enum_class.shared.enum_value_type
+    or UnknownType();
+}
+
+# --- FunctionType Callable support methods ---
+"""
+Check if this is a gradual callable form (Callable[..., T]).
+
+Gradual callable forms accept any arguments and are compatible with
+any function signature. This is used when the parameter types are
+not specified (using ellipsis).
+"""
+impl FunctionType.is_gradual_callable_form -> bool {
+    return bool(self.function_flags & FunctionTypeFlags.GradualCallableForm);
+}
+
+"""
+Check if this function type was created from a Callable annotation.
+
+This distinguishes between:
+- Actual function definitions: `def foo(x: int) -> str: ...`
+- Callable type annotations: `callback: Callable[[int], str]`
+
+In Jac, Callable annotations are identified by having an empty func_name,
+since all actual function definitions have a name.
+"""
+impl FunctionType.is_from_callable_annotation -> bool {
+    return self.func_name == "";
 }

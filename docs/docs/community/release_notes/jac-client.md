@@ -2,7 +2,18 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.17 (Unreleased)
+## jac-client 0.2.19 (Unreleased)
+
+- **Target System Refactoring**: Refactored the client target system for improved scalability and maintainability. Introduced `TargetFactory` singleton with lazy loading for non-web targets (Desktop, PWA), reducing startup overhead when only the default web target is used. Resolved circular import issues by deferring imports to function scope. Extracted magic numbers to named constants (`VITE_DEV_SERVER_PORT`, `DEFAULT_FUNCTION_NAME`) and decomposed `_generate_index_html` into focused helper functions. Added robust process termination with graceful shutdown fallback and safe attribute access chains for module introspection.
+
+## jac-client 0.2.18 (Latest Release)
+
+- 2 Minor internal refactors
+- **Standardize Jac idioms in examples and runtime**: Replaced JS-style method calls with Jac-idiomatic equivalents across all examples, test fixtures, and the client runtime plugin (`.trim()` → `.strip()`, `.push()` → `.append()`, `.length` → `len()`, `.toUpperCase()/.toLowerCase()` → `.upper()/.lower()`, `console.log()` → `print()`, etc.). These are now translated to the correct JS equivalents at compile time via the primitive emitter infrastructure.
+
+## jac-client 0.2.17
+
+- **Structured Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes (JAC_CLIENT_XXX), source code snippets pointing to the error location, actionable hints, and quick fix commands. The diagnostic engine maps Vite/npm errors back to original `.jac` files, hiding internal JavaScript paths from developers. Detectors identify common issues: missing npm dependencies (JAC_CLIENT_001), syntax errors (JAC_CLIENT_003), and unresolved imports (JAC_CLIENT_004). Enable `debug = true` under `[plugins.client]` in `jac.toml` or set `JAC_DEBUG=1` to see raw error output alongside formatted diagnostics.
 
 - Various refactors
 - **Improved `jac start` Output Ordering**: Fixed misleading output timing where "Server ready" and localhost URLs appeared before compilation completed. The Vite dev server now captures its initial output and waits for the ready signal before displaying status messages, ensuring users see compilation progress first and server URLs only when the server is actually ready to accept connections.
@@ -13,8 +24,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
+- Docs update: return type `any` -> `JsxElement`
 
-## jac-client 0.2.16 (Latest Release)
+## jac-client 0.2.16
 
  **Fix: ESM Script Loading**: Added `type="module"` to generated `<script>` tags in the client HTML output. The Vite bundler already produces ES module output, but the script tags were missing the module attribute, causing browsers to reject ESM syntax (e.g., `import`/`export`) from newer npm packages. Affects both the server-rendered page and the `jac build --target web` static output.
 

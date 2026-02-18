@@ -151,7 +151,7 @@ import from jaclang.transport { BaseTransport, HTTPTransport }
 cl {
     import from react { useState, useEffect }
 
-    def:pub App -> any {
+    def:pub App -> JsxElement {
         has count: int = 0;
         return <div><h1>Counter: {count}</h1></div>;
     }
@@ -168,7 +168,7 @@ In client components, `has` creates reactive state:
 
 ```jac
 cl {
-    def:pub TodoApp() -> any {
+    def:pub TodoApp() -> JsxElement {
         has todos: list = [];
         has input_text: str = "";
 
@@ -202,7 +202,7 @@ Use `can with entry` for mount effects and `can with exit` for cleanup:
 
 ```jac
 cl {
-    def:pub DataLoader() -> any {
+    def:pub DataLoader() -> JsxElement {
         has data: list = [];
         has loading: bool = True;
 
@@ -220,7 +220,7 @@ cl {
         return <div>{data}</div>;
     }
 
-    def:pub UserProfile(userId: str) -> any {
+    def:pub UserProfile(userId: str) -> JsxElement {
         has user: dict = {};
 
         # Re-fetch when userId changes
@@ -242,7 +242,7 @@ cl {
 
 ```jac
 cl {
-    def:pub JsxExamples() -> any {
+    def:pub JsxExamples() -> JsxElement {
         has variable: str = "text";
         has condition: bool = True;
         has items: list = [];
@@ -271,7 +271,7 @@ cl {
     import from ../lib/utils { cn }   # Relative import
     # Or with path alias: import from "@/lib/utils" { cn }
 
-    def:pub StylingExamples() -> any {
+    def:pub StylingExamples() -> JsxElement {
         has condition: bool = True;
         has hasError: bool = False;
         has isSuccess: bool = True;
@@ -324,7 +324,7 @@ myapp/
 cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 cl {
-    def:pub App() -> any {
+    def:pub App() -> JsxElement {
         return (
             <Router>
                 <nav>

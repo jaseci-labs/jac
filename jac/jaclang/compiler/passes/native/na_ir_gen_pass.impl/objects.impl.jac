@@ -121,8 +121,8 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 }
 
 """Register a struct type — define its field layout from has declarations."""
-impl NaIRGenPass._codegen_archetype(`node: uni.Archetype) -> None {
-    arch_name = (`node).name.value if (`node).name else "unknown";
+impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
+    arch_name = (nd).name.value if (nd).name else "unknown";
     struct_type = self.struct_types.get(arch_name);
     if struct_type is None {
         return;
@@ -161,8 +161,8 @@ impl NaIRGenPass._codegen_archetype(`node: uni.Archetype) -> None {
         }
     }
     # Add own fields from ArchHas nodes
-    if (`node).body is not None {
-        for stmt in (`node).body {
+    if (nd).body is not None {
+        for stmt in (nd).body {
             if isinstance(stmt, uni.ArchHas) {
                 for var in stmt.vars {
                     fname = var.name.value if var.name else "field";
@@ -324,8 +324,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""
-impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None) {
-    type_name = self._get_name(node.target);
+impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
+    type_name = self._get_name(nd.target);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -364,7 +364,7 @@ impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None)
     field_defaults = self.struct_field_defaults.get(type_name, {});
     # Track which fields were explicitly set
     set_fields: set[str] = set();
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
@@ -433,9 +433,14 @@ impl NaIRGenPass._codegen_instantiation(node: uni.FuncCall) -> (ir.Value | None)
     return obj_ptr;
 }
 
-"""Generate method call: obj.method(args)."""
-impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
-    trailer = node.target;
+"""Generate method call: obj.method(args).
+
+Primitive type methods are dispatched through the emitter layer
+(primitives_native.jac). If the emitter returns a result, it is used
+directly; if it returns None, the inline codegen below handles it.
+"""
+impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
+    trailer = nd.target;
     if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
         return None;
     }
@@ -444,63 +449,75 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
-    # Handle list methods: append (simple name target)
+    # --- Primitive emitter dispatch (list, set, str methods) ---
+    # Evaluate target and args, dispatch through emitter layer.
+    # List methods (simple name target)
     if target_name is not None and target_name in self.var_list_elem_type {
         elem_type_name = self.var_list_elem_type[target_name];
-        helpers = self.list_helpers.get(elem_type_name);
-        if helpers is not None and method_name == "append" {
-            list_val = self._codegen_expr(trailer.target);
-            if list_val is None {
-                return None;
-            }
-            params = node.params or [];
-            if params {
-                val = self._codegen_expr(params[0]);
-                if val is not None {
-                    elem_type = helpers["elem_type"];
-                    val = self._coerce_type(val, elem_type);
-                    self.builder.call(helpers["append"], [list_val, val]);
+        list_val = self._codegen_expr(trailer.target);
+        if list_val is not None {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
             }
-            return ir.Constant(ir.IntType(64), 0);
+            result = self._dispatch_primitive_method(
+                "list", method_name, list_val, arg_vals, elem_type_name
+            );
+            if result is not None {
+                return result;
+            }
         }
     }
-    # Handle set methods: add (simple name target)
+    # Set methods (simple name target)
     if target_name is not None and target_name in self.var_set_elem_type {
         elem_type_name = self.var_set_elem_type[target_name];
-        helpers = self.set_helpers.get(elem_type_name);
-        if helpers is not None and method_name == "add" {
-            set_val = self._codegen_expr(trailer.target);
-            if set_val is None {
-                return None;
-            }
-            params = node.params or [];
-            if params {
-                val = self._codegen_expr(params[0]);
-                if val is not None {
-                    elem_type = helpers["elem_type"];
-                    val = self._coerce_type(val, elem_type);
-                    self.builder.call(helpers["add"], [set_val, val]);
+        set_val = self._codegen_expr(trailer.target);
+        if set_val is not None {
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
             }
-            return ir.Constant(ir.IntType(64), 0);
+            result = self._dispatch_primitive_method(
+                "set", method_name, set_val, arg_vals, elem_type_name
+            );
+            if result is not None {
+                return result;
+            }
         }
     }
-    # Handle string methods: strip, split (on any target expression)
-    if method_name in ("strip", "split") {
+    # String methods (on any target expression whose type is i8*)
+    if method_name in (
+        "strip",
+        "split",
+        "upper",
+        "lower",
+        "find",
+        "startswith",
+        "endswith"
+    ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
-            if method_name == "strip" {
-                return self._codegen_str_strip(str_val);
-            }
-            if method_name == "split" {
-                params = node.params or [];
-                if params {
-                    sep_val = self._codegen_expr(params[0]);
-                    if sep_val is not None {
-                        return self._codegen_str_split(str_val, sep_val);
-                    }
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
+            }
+            result = self._dispatch_primitive_method(
+                "str", method_name, str_val, arg_vals, ""
+            );
+            if result is not None {
+                return result;
             }
         }
     }
@@ -521,7 +538,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
                 if elem_type_name is not None and method_name == "append" {
                     helpers = self.list_helpers.get(elem_type_name);
                     if helpers is not None {
-                        params = node.params or [];
+                        params = nd.params or [];
                         if params {
                             val = self._codegen_expr(params[0]);
                             if val is not None {
@@ -572,7 +589,7 @@ impl NaIRGenPass._codegen_method_call(node: uni.FuncCall) -> (ir.Value | None) {
     }
     # Build args: [self_ptr, arg1, arg2, ...]
     args: list[ir.Value] = [obj_val];
-    params = node.params or [];
+    params = nd.params or [];
     for param in params {
         val = self._codegen_expr(param);
         if val is not None {

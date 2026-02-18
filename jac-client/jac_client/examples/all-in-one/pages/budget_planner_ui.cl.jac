@@ -42,13 +42,13 @@ cl def:pub BudgetPlanner -> JsxElement {
 
     return
         <div className="app-container">
-            <Header />
+            <Header/>
             <main className="main-content">
                 <div className="left-panel">
-                    <Summary />
-                    <ProfitOverview />
-                    <TransactionForm />
-                    <CategoryFilter selectedCategory={filter} onSelect={setFilter} />
+                    <Summary/>
+                    <ProfitOverview/>
+                    <TransactionForm/>
+                    <CategoryFilter selectedCategory={filter} onSelect={setFilter}/>
                     <TransactionList
                         transactions={sorted}
                         onDelete={budget["deleteTransaction"]}

@@ -34,7 +34,7 @@ impl _jac_graph_json(file: (str | None) = None) -> str {
 
 """Print the graph in different formats."""
 impl printgraph(
-    `node: (NodeArchetype | None) = None,
+    nd: (NodeArchetype | None) = None,
     depth: int = -1,
     traverse: bool = False,
     edge_type: (list[str] | None) = None,
@@ -51,7 +51,7 @@ impl printgraph(
     }
     return jac.printgraph(
         edge_type=edge_type,
-        `node=(`node or jac.root()),
+        nd=(nd or jac.root()),
         depth=depth,
         traverse=traverse,
         bfs=bfs,

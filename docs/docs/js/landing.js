@@ -630,7 +630,7 @@ document.addEventListener('DOMContentLoaded', function () {
 const tabsData = [
     {
         tagline: "Jac Supersets Python",
-        summary: `Jac is a drop-in replacement for Python and supersets Python, much like Typescript supersets Javascript or C++ supersets C. It maintains full interoperability with the Python ecosystem, introducing new features to minimize complexity and accelerate AI application development. We also provide library mode.`,
+        summary: `Jac supersets Python and JavaScript, much like TypeScript supersets JavaScript or C++ supersets C. It maintains full interoperability with the Python ecosystem, introducing new features to minimize complexity and accelerate AI application development. We also provide library mode.`,
         filename: "distance_calculator.jac",
         code: `
 import math;
@@ -669,7 +669,7 @@ glob llm = Model(model_name="gpt-4o");
 # Define AI-powered functions with just signatures!
 def translate(text: str, target_language: str) -> str by llm();
 
-def analyze_sentiment(text: str) -> str by llm(method='Reason');
+def analyze_sentiment(text: str) -> str by llm();
 
 with entry {
     customer_feedback = "I'm really disappointed with the product quality.";

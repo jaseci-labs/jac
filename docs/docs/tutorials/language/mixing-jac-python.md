@@ -1,6 +1,6 @@
 # Mixing Jac and Python
 
-Jac is designed as a superset of Python, extending the language with additional features for modern software architecture while maintaining full compatibility with the Python ecosystem. Python developers can leverage their existing knowledge while accessing new capabilities for graph-based and object-spatial programming.
+Jac supersets Python with additional features for modern software architecture while maintaining full compatibility with the Python ecosystem. Python developers can leverage their existing knowledge while accessing new capabilities for graph-based and object-spatial programming.
 
 ## How it Works: Transpilation to Native Python
 

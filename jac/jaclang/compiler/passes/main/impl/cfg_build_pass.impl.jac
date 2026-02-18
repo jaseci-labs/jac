@@ -1,4 +1,5 @@
 """Print the control flow graph."""
+
 impl cfg_dot_from_file(file_name: str) -> str {
     import from jaclang.jac0core.program { JacProgram }
     with open(file_name) as f {
@@ -26,6 +27,7 @@ impl CoalesceBBPass.printgraph_cfg -> str {
             'bb_stmts': bb['bb_stmts'],
             'bb_out': [0 for _ in range(len(bb['bb_out']))] if bb['bb_out'] else None
         };
+
         if bb['bb_out'] {
             for out_obj in bb['bb_out'] {
                 for (k, v) in self.basic_blocks.items() {
@@ -71,9 +73,9 @@ impl CoalesceBBPass.printgraph_cfg -> str {
             stmts = '\\n'.join(
                 [stmt.replace('"', '\\"') for stmt in value['bb_stmts']]
             );
-            dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];\n';
+            dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];' + "\n";
         } else {
-            dot += f'  {key} [label="BB{key}"];\n';
+            dot += f'  {key} [label="BB{key}"];' + "\n";
         }
     }
     for (key, value) in cfg.items() {
@@ -88,10 +90,10 @@ impl CoalesceBBPass.printgraph_cfg -> str {
 }
 
 """Enter BasicBlockStmt nodes."""
-impl CoalesceBBPass.enter_node(`node: uni.UniNode) -> None {
-    if (isinstance(`node, uni.UniCFGNode) and not isinstance(`node, uni.Semi)) {
-        tail = `node.get_tail();
-        bb = self.get_bb(`node);
+impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
+    if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
+        tail = nd.get_tail();
+        bb = self.get_bb(nd);
         for bbs in self.basic_blocks.values() {
             if (bbs['bb_stmts'] == bb) {
                 return;
@@ -103,9 +105,9 @@ impl CoalesceBBPass.enter_node(`node: uni.UniNode) -> None {
 }
 
 """Get basic block."""
-impl CoalesceBBPass.get_bb(`node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
-    head = `node.get_head();
-    tail = `node.get_tail();
+impl CoalesceBBPass.get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode] {
+    head = nd.get_head();
+    tail = nd.get_tail();
     bb_list: list[uni.UniCFGNode] = [];
     if (head and tail) {
         cur_node = head;
@@ -113,6 +115,7 @@ impl CoalesceBBPass.get_bb(`node: uni.UniCFGNode) -> list[uni.UniCFGNode] {
             if (cur_node not in bb_list) {
                 bb_list.append(cur_node);
             }
+
             if cur_node.bb_out {
                 cur_node = cur_node.bb_out[0];
             }
@@ -135,11 +138,11 @@ impl CFGBuildPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -
 """After pass."""
 impl CFGBuildPass.after_pass -> None {
     if self.to_connect {
-        for `node in self.to_connect {
-            if isinstance(`node, uni.UniCFGNode) {
-                parent_bb = self.get_parent_bb_stmt(`node);
+        for nd in self.to_connect {
+            if isinstance(nd, uni.UniCFGNode) {
+                parent_bb = self.get_parent_bb_stmt(nd);
                 if parent_bb {
-                    self.link_bbs(parent_bb, `node);
+                    self.link_bbs(parent_bb, nd);
                 }
             }
         }
@@ -147,80 +150,78 @@ impl CFGBuildPass.after_pass -> None {
 }
 
 """Exit BasicBlockStmt nodes."""
-impl CFGBuildPass.exit_node(`node: uni.UniNode) -> None {
-    if (isinstance(`node, uni.UniCFGNode) and not isinstance(`node, uni.Semi)) {
+impl CFGBuildPass.exit_node(nd: uni.UniNode) -> None {
+    if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
         self.first_exit = True;
-        if (not `node.bb_out and not isinstance(`node, (uni.ReturnStmt, uni.ArchHas))) {
-            self.to_connect.append(`node);
+        if (not nd.bb_out and not isinstance(nd, (uni.ReturnStmt, uni.ArchHas))) {
+            self.to_connect.append(nd);
         }
-        if (
-            isinstance(`node, (uni.InForStmt, uni.IterForStmt)) and self.for_loop_stack
-        ) {
+        if (isinstance(nd, (uni.InForStmt, uni.IterForStmt)) and self.for_loop_stack) {
             for from_node in self.for_loop_stack[-1][1:] {
-                self.link_bbs(from_node, `node);
+                self.link_bbs(from_node, nd);
+
                 if (from_node in self.to_connect) {
                     self.to_connect.remove(from_node);
                 }
             }
-            self.pop_loop_stack(`node);
-            self.to_connect.append(`node);
-        } elif (isinstance(`node, uni.WhileStmt) and self.while_loop_stack) {
+            self.pop_loop_stack(nd);
+            self.to_connect.append(nd);
+        } elif (isinstance(nd, uni.WhileStmt) and self.while_loop_stack) {
             for from_node in self.while_loop_stack[-1][1:] {
-                self.link_bbs(from_node, `node);
+                self.link_bbs(from_node, nd);
+
                 if (from_node in self.to_connect) {
                     self.to_connect.remove(from_node);
                 }
             }
-            self.pop_loop_stack(`node);
-            self.to_connect.append(`node);
-        } elif (isinstance(`node, uni.Ability) and self.ability_stack) {
+            self.pop_loop_stack(nd);
+            self.to_connect.append(nd);
+        } elif (isinstance(nd, uni.Ability) and self.ability_stack) {
             for from_node in self.ability_stack[-1][1:] {
                 if (from_node in self.to_connect) {
                     self.to_connect.remove(from_node);
                 }
             }
             self.ability_stack.pop();
-        } elif (isinstance(`node, (uni.IfStmt, uni.ElseIf)) and not `node.else_body) {
-            self.to_connect.append(`node);
+        } elif (isinstance(nd, (uni.IfStmt, uni.ElseIf)) and not nd.else_body) {
+            self.to_connect.append(nd);
         }
     }
 }
 
 """Enter BasicBlockStmt nodes."""
-impl CFGBuildPass.enter_node(`node: uni.UniNode) -> None {
-    if (isinstance(`node, uni.UniCFGNode) and not isinstance(`node, uni.Semi)) {
-        bb_stmts = self.get_code_block_sequence(`node.parent);
+impl CFGBuildPass.enter_node(nd: uni.UniNode) -> None {
+    if (isinstance(nd, uni.UniCFGNode) and not isinstance(nd, uni.Semi)) {
+        bb_stmts = self.get_code_block_sequence(nd.parent);
         if (
-            isinstance(`node, uni.CodeBlockStmt)
-            and `node.parent
-            and not isinstance(`node, (uni.ElseIf, uni.ElseStmt))
+            isinstance(nd, uni.CodeBlockStmt)
+            and nd.parent
+            and not isinstance(nd, (uni.ElseIf, uni.ElseStmt))
             and bb_stmts
             and self.first_exit
         ) {
-            if (`node.parent and isinstance(`node.parent, uni.Archetype)) {
-                parent_obj = `node.parent;
+            if (nd.parent and isinstance(nd.parent, uni.Archetype)) {
+                parent_obj = nd.parent;
                 if parent_obj {
-                    self.link_bbs(parent_obj, `node);
+                    self.link_bbs(parent_obj, nd);
                 }
-            } elif (bb_stmts[0] == `node) {
-                if (isinstance(`node.parent, uni.ModuleCode) and self.to_connect) {
+            } elif (bb_stmts[0] == nd) {
+                if (isinstance(nd.parent, uni.ModuleCode) and self.to_connect) {
                     for bb in self.to_connect {
-                        self.link_bbs(bb, `node);
+                        self.link_bbs(bb, nd);
                         self.to_connect.remove(bb);
                     }
                 } else {
-                    parent_bb = self.get_parent_bb_stmt(`node);
+                    parent_bb = self.get_parent_bb_stmt(nd);
                     if parent_bb {
-                        self.link_bbs(parent_bb, `node);
+                        self.link_bbs(parent_bb, nd);
                     }
                 }
-            } elif (
-                self.to_connect and not isinstance(`node, (uni.ElseIf, uni.ElseStmt))
-            ) {
+            } elif (self.to_connect and not isinstance(nd, (uni.ElseIf, uni.ElseStmt))) {
                 to_remove = [];
                 for parent in self.to_connect {
                     if isinstance(parent, uni.UniCFGNode) {
-                        self.link_bbs(parent, `node);
+                        self.link_bbs(parent, nd);
                         to_remove.append(parent);
                     }
                 }
@@ -229,43 +230,43 @@ impl CFGBuildPass.enter_node(`node: uni.UniNode) -> None {
                 }
             } else {
                 for i in range(len(bb_stmts)) {
-                    if (bb_stmts[i] == `node) {
+                    if (bb_stmts[i] == nd) {
                         parent_bb = bb_stmts[(i - 1)];
-                        self.link_bbs(parent_bb, `node);
+                        self.link_bbs(parent_bb, nd);
                     }
                 }
             }
         } else {
-            parent_bb = self.get_parent_bb_stmt(`node);
+            parent_bb = self.get_parent_bb_stmt(nd);
             if parent_bb {
-                self.link_bbs(parent_bb, `node);
+                self.link_bbs(parent_bb, nd);
             }
         }
-        if isinstance(`node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
-            self.push_loop_stack(`node);
+        if isinstance(nd, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
+            self.push_loop_stack(nd);
         } else {
             if self.for_loop_stack {
-                self.for_loop_stack[-1].append(`node);
+                self.for_loop_stack[-1].append(nd);
             }
             if self.while_loop_stack {
-                self.while_loop_stack[-1].append(`node);
+                self.while_loop_stack[-1].append(nd);
             }
         }
-        if isinstance(`node, uni.Ability) {
-            self.ability_stack.append([`node]);
+        if isinstance(nd, uni.Ability) {
+            self.ability_stack.append([nd]);
         } elif self.ability_stack {
-            self.ability_stack[-1].append(`node);
+            self.ability_stack[-1].append(nd);
         }
     }
 }
 
 """Get code block sequence."""
 impl CFGBuildPass.get_code_block_sequence(
-    `node: (uni.UniNode | None)
+    nd: (uni.UniNode | None)
 ) -> (list[uni.UniCFGNode] | None) {
     sequence: list[uni.UniCFGNode] = [];
-    if ((`node is not None) and `node?.body and isinstance(`node?.body, Sequence)) {
-        for bbs in `node.body {
+    if ((nd is not None) and nd?.body and isinstance(nd?.body, Sequence)) {
+        for bbs in nd.body {
             if isinstance(bbs, uni.UniCFGNode) {
                 sequence.append(bbs);
             }
@@ -297,10 +298,10 @@ impl CFGBuildPass.link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> No
 }
 
 """Get parent basic block."""
-impl CFGBuildPass.get_parent_bb_stmt(`node: uni.UniCFGNode) -> (uni.UniCFGNode | None) {
-    if not isinstance(`node, uni.Module) {
+impl CFGBuildPass.get_parent_bb_stmt(nd: uni.UniCFGNode) -> (uni.UniCFGNode | None) {
+    if not isinstance(nd, uni.Module) {
         try {
-            parent_bb_stmt = `node.parent_of_type(uni.UniCFGNode);
+            parent_bb_stmt = nd.parent_of_type(uni.UniCFGNode);
             return parent_bb_stmt;
         } except Exception {
             return None;
@@ -311,11 +312,11 @@ impl CFGBuildPass.get_parent_bb_stmt(`node: uni.UniCFGNode) -> (uni.UniCFGNode |
 }
 
 """Pop loop stack."""
-impl CFGBuildPass.pop_loop_stack(`node: uni.UniCFGNode) -> None {
-    if (isinstance(`node, uni.WhileStmt) and (len(self.while_loop_stack) > 0)) {
+impl CFGBuildPass.pop_loop_stack(nd: uni.UniCFGNode) -> None {
+    if (isinstance(nd, uni.WhileStmt) and (len(self.while_loop_stack) > 0)) {
         self.while_loop_stack.pop();
     } elif (
-        isinstance(`node, (uni.InForStmt, uni.IterForStmt))
+        isinstance(nd, (uni.InForStmt, uni.IterForStmt))
         and (len(self.for_loop_stack) > 0)
     ) {
         self.for_loop_stack.pop();

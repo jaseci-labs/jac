@@ -1,7 +1,7 @@
 """List, set, and dict comprehension codegen."""
 """Generate code for a list comprehension [expr for x in iterable if cond]."""
-impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Determine element type from context
@@ -12,7 +12,7 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
     } else {
         # 2. Try to infer from first collection's element type
         # For [m for m in items], infer from items' element type
-        first_compr = node.compr[0];
+        first_compr = nd.compr[0];
         coll_name = self._get_name(first_compr.collection);
         if coll_name is not None and coll_name in self.var_type_node {
             hint = self._get_list_elem_from_type_node(self.var_type_node[coll_name]);
@@ -21,33 +21,33 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
             }
         }
         # 3. If output is a TupleVal, assume ptr type
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.TupleVal) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.TupleVal) {
             elem_type_name = "ptr";
         }
         # 4. If output is a struct instantiation (FuncCall to known struct), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.FuncCall) {
-            call_name = self._get_name(node.out_expr.target);
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.FuncCall) {
+            call_name = self._get_name(nd.out_expr.target);
             if call_name is not None and call_name in self.struct_types {
                 elem_type_name = "ptr";
             }
         }
         # 5. If output is a ListCompr (nested list comprehension), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListCompr) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.ListCompr) {
             elem_type_name = "ptr";
         }
         # 6. If output is a ListVal (list literal), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.ListVal) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.ListVal) {
             elem_type_name = "ptr";
         }
         # 7. If output is a Null (None), use ptr
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.Null) {
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.Null) {
             elem_type_name = "ptr";
         }
         # 8. If output is a Name that's in a for-loop (same name as loop variable), use inferred type
-        if elem_type_name == "i64" and isinstance(node.out_expr, uni.Name) {
-            out_name = node.out_expr.value;
+        if elem_type_name == "i64" and isinstance(nd.out_expr, uni.Name) {
+            out_name = nd.out_expr.value;
             # Check if out_name matches any of the comprehension loop variables
-            for compr in node.compr {
+            for compr in nd.compr {
                 target_name = self._get_name(compr.target);
                 if target_name == out_name {
                     # The output is the loop variable itself, infer from collection
@@ -80,7 +80,7 @@ impl NaIRGenPass._codegen_list_compr(node: uni.ListCompr) -> (ir.Value | None) {
     # Create new empty list
     list_val = self.builder.call(helpers["new"], [], name="compr.list");
     # Generate nested loops for each InnerCompr
-    self._codegen_compr_loops(node.compr, 0, list_val, node.out_expr, elem_type_name);
+    self._codegen_compr_loops(nd.compr, 0, list_val, nd.out_expr, elem_type_name);
     return list_val;
 }
 
@@ -251,16 +251,16 @@ impl NaIRGenPass._codegen_compr_loops(
 }
 
 """Generate code for a dict comprehension {k: v for x in iterable if cond}."""
-impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Get key and value expressions from DictCompr's kv_pair
-    if node.kv_pair is None {
+    if nd.kv_pair is None {
         return None;
     }
-    key_expr = node.kv_pair.key;
-    val_expr = node.kv_pair.value;
+    key_expr = nd.kv_pair.key;
+    val_expr = nd.kv_pair.value;
     if key_expr is None or val_expr is None {
         return None;
     }
@@ -307,9 +307,7 @@ impl NaIRGenPass._codegen_dict_compr(node: uni.DictCompr) -> (ir.Value | None) {
     # Create new empty dict
     dict_val = self.builder.call(helpers["new"], [], name="dcompr.dict");
     # Generate nested loops for each InnerCompr
-    self._codegen_dict_compr_loops(
-        node.compr, 0, dict_val, key_expr, val_expr, dict_key
-    );
+    self._codegen_dict_compr_loops(nd.compr, 0, dict_val, key_expr, val_expr, dict_key);
     return dict_val;
 }
 
@@ -545,15 +543,15 @@ impl NaIRGenPass._codegen_dict_compr_range_loop(
 }
 
 """Generate code for a set comprehension {expr for x in iterable if cond}."""
-impl NaIRGenPass._codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None) {
-    if not node.compr {
+impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
+    if not nd.compr {
         return None;
     }
     # Determine element type and size
     elem_type_name = "i64";
     elem_type = ir.IntType(64);
     elem_size = 0;
-    out_expr = node.out_expr;
+    out_expr = nd.out_expr;
     # Check if output is a tuple
     if isinstance(out_expr, uni.TupleVal) {
         # Estimate tuple size from number of elements (assume int-sized elements)
@@ -577,7 +575,7 @@ impl NaIRGenPass._codegen_set_compr(node: uni.SetCompr) -> (ir.Value | None) {
     # Create new empty set
     set_val = self.builder.call(helpers["new"], [], name="scompr.set");
     # Generate nested loops
-    self._codegen_set_compr_loops(node.compr, 0, set_val, out_expr, elem_type_name);
+    self._codegen_set_compr_loops(nd.compr, 0, set_val, out_expr, elem_type_name);
     return set_val;
 }
 

@@ -1,13 +1,13 @@
 """Tuple codegen and unpacking."""
 """Generate tuple value: (a, b, c) -> struct with fields."""
-impl NaIRGenPass._codegen_tuple_val(node: uni.TupleVal) -> (ir.Value | None) {
-    if not node.values {
+impl NaIRGenPass._codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None) {
+    if not nd.values {
         return None;
     }
     # Evaluate all elements
     elem_vals: list[ir.Value] = [];
     elem_types: list[ir.Type] = [];
-    for val in node.values {
+    for val in nd.values {
         v = self._codegen_expr(val);
         if v is None {
             return None;

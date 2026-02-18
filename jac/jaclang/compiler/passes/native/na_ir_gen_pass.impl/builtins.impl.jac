@@ -21,9 +21,9 @@ impl NaIRGenPass._get_printf -> ir.Function {
 }
 
 """Emit printf call for print()."""
-impl NaIRGenPass._emit_print(node: uni.FuncCall) -> (ir.Value | None) {
+impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
     printf = self._get_printf();
-    params = node.params or [];
+    params = nd.params or [];
     if not params {
         fmt = self._get_fmt_string("");
         fmt_ptr = self.builder.bitcast(fmt, ir.IntType(8).as_pointer());
@@ -70,13 +70,13 @@ impl NaIRGenPass._get_fmt_string(fmt: str) -> ir.GlobalVariable {
 
 # ─── Helper Methods ──────────────────────────────────────────
 """Generate code for a MultiString node (wraps String/FString)."""
-impl NaIRGenPass._codegen_multistring(node: uni.MultiString) -> (ir.Value | None) {
-    if not node.strings {
+impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) {
+    if not nd.strings {
         return None;
     }
     # Single string — delegate directly
-    if len(node.strings) == 1 {
-        part = node.strings[0];
+    if len(nd.strings) == 1 {
+        part = nd.strings[0];
         if isinstance(part, uni.FString) {
             return self._codegen_fstring(part);
         }
@@ -84,7 +84,7 @@ impl NaIRGenPass._codegen_multistring(node: uni.MultiString) -> (ir.Value | None
     }
     # Multiple strings — concatenate via string concat
     result = None;
-    for part in node.strings {
+    for part in nd.strings {
         if isinstance(part, uni.FString) {
             val = self._codegen_fstring(part);
         } else {
@@ -117,8 +117,8 @@ impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir
 }
 
 """Generate a string literal as a global constant, returning i8*."""
-impl NaIRGenPass._codegen_string(node: uni.String) -> (ir.Value | None) {
-    raw = node.value;
+impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
+    raw = nd.value;
     # Strip quotes for standalone string literals
     if len(raw) >= 6 and (raw[:3] == '"""' or raw[:3] == "'''") {
         text = raw[3:-3];
@@ -138,10 +138,10 @@ impl NaIRGenPass._codegen_string(node: uni.String) -> (ir.Value | None) {
 }
 
 """Generate f-string by building a printf-style format string and calling snprintf."""
-impl NaIRGenPass._codegen_fstring(node: uni.FString) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     fmt_parts: list[str] = [];
     args: list[ir.Value] = [];
-    for part in node.parts {
+    for part in nd.parts {
         if isinstance(part, uni.String) {
             # Literal text portion — value has no quotes for fstring parts
             raw = part.value;

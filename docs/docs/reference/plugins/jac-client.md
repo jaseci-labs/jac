@@ -41,7 +41,7 @@ Use `cl { }` to define client-side (React) code:
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <h1>Hello, World!</h1>
         </div>;
@@ -55,7 +55,7 @@ The entry `app()` function must be exported with `:pub`:
 
 ```jac
 cl {
-    def:pub app() -> any {  # :pub required
+    def:pub app() -> JsxElement {  # :pub required
         return <App />;
     }
 }
@@ -69,7 +69,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Button(props: dict) -> any {
+    def:pub Button(props: dict) -> JsxElement {
         return <button
             className={props.get("className", "")}
             onClick={props.get("onClick")}
@@ -84,7 +84,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Card(props: dict) -> any {
+    def:pub Card(props: dict) -> JsxElement {
         return <div className="card">
             <h2>{props["title"]}</h2>
             <p>{props["description"]}</p>
@@ -98,7 +98,7 @@ cl {
 
 ```jac
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <div>
             <Card title="Welcome" description="Hello!">
                 <Button onClick={lambda -> None { print("clicked"); }}>
@@ -120,7 +120,7 @@ Inside `cl { }` blocks, `has` creates reactive state:
 
 ```jac
 cl {
-    def:pub Counter() -> any {
+    def:pub Counter() -> JsxElement {
         has count: int = 0;  # Compiles to useState(0)
 
         return <div>
@@ -144,7 +144,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Form() -> any {
+    def:pub Form() -> JsxElement {
         has name: str = "";
         has items: list = [];
         has data: dict = {"key": "value"};
@@ -177,7 +177,7 @@ Similar to how `has` variables automatically generate `useState`, the `can with 
 
 ```jac
 cl {
-    def:pub DataLoader() -> any {
+    def:pub DataLoader() -> JsxElement {
         has data: list = [];
         has loading: bool = True;
 
@@ -195,7 +195,7 @@ cl {
         return <div>...</div>;
     }
 
-    def:pub UserProfile(userId: str) -> any {
+    def:pub UserProfile(userId: str) -> JsxElement {
         has user: dict = {};
 
         # Re-run when userId changes (dependency array)
@@ -221,7 +221,7 @@ You can also use `useEffect` manually by importing it from React:
 cl {
     import from react { useEffect }
 
-    def:pub DataLoader() -> any {
+    def:pub DataLoader() -> JsxElement {
         has data: list = [];
         has loading: bool = True;
 
@@ -248,7 +248,7 @@ cl {
 
     glob AppContext = createContext(None);
 
-    def:pub AppProvider(props: dict) -> any {
+    def:pub AppProvider(props: dict) -> JsxElement {
         has theme: str = "light";
 
         return <AppContext.Provider value={{"theme": theme}}>
@@ -256,7 +256,7 @@ cl {
         </AppContext.Provider>;
     }
 
-    def:pub ThemedComponent() -> any {
+    def:pub ThemedComponent() -> JsxElement {
         ctx = useContext(AppContext);
         return <div className={ctx.theme}>Content</div>;
     }
@@ -276,7 +276,7 @@ Use native Jac `spawn` syntax to call walkers from client code. First, import yo
 sv import from ...main { get_tasks, create_task }
 
 cl {
-    def:pub TaskList() -> any {
+    def:pub TaskList() -> JsxElement {
         has tasks: list = [];
         has loading: bool = True;
 
@@ -315,7 +315,7 @@ The `spawn` call returns a result object:
 sv import from ...main { create_task, toggle_task, delete_task }
 
 cl {
-    def:pub TaskForm() -> any {
+    def:pub TaskForm() -> JsxElement {
         has title: str = "";
         has tasks: list = [];
 
@@ -388,7 +388,7 @@ For manual routing, import components from `@jac/runtime`:
 cl import from "@jac/runtime" { Router, Routes, Route, Link }
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Router>
             <nav>
                 <Link to="/">Home</Link>
@@ -410,7 +410,7 @@ cl {
 cl import from "@jac/runtime" { useParams }
 
 cl {
-    def:pub UserProfile() -> any {
+    def:pub UserProfile() -> JsxElement {
         params = useParams();
         user_id = params["id"];
 
@@ -427,7 +427,7 @@ cl {
 cl import from "@jac/runtime" { useNavigate }
 
 cl {
-    def:pub LoginForm() -> any {
+    def:pub LoginForm() -> JsxElement {
         navigate = useNavigate();
 
         async def handle_login() -> None {
@@ -450,7 +450,7 @@ cl {
 cl import from "@jac/runtime" { Outlet }
 
 cl {
-    def:pub DashboardLayout() -> any {
+    def:pub DashboardLayout() -> JsxElement {
         # Child routes render where Outlet is placed
         return <div>
             <Sidebar />
@@ -575,7 +575,7 @@ cl {
 
 ```jac
 cl {
-    def:pub StyledComponent() -> any {
+    def:pub StyledComponent() -> JsxElement {
         return <div style={{"color": "blue", "padding": "10px"}}>
             Styled content
         </div>;
@@ -587,7 +587,7 @@ cl {
 
 ```jac
 cl {
-    def:pub Card() -> any {
+    def:pub Card() -> JsxElement {
         return <div className="card card-primary">
             Content
         </div>;
@@ -635,7 +635,7 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
 cl {
     import from "./components/Button" { Button }
 
-    def:pub app() -> any {
+    def:pub app() -> JsxElement {
         return <Button label="Click" onClick={lambda -> None { }} />;
     }
 }
@@ -892,7 +892,7 @@ In dev mode, API routes are automatically proxied:
 
 ```jac
 cl {
-    def:pub Form() -> any {
+    def:pub Form() -> JsxElement {
         has value: str = "";
 
         return <div>
@@ -917,7 +917,7 @@ cl {
 
 ```jac
 cl {
-    def:pub ConditionalComponent() -> any {
+    def:pub ConditionalComponent() -> JsxElement {
         has show: bool = False;
         has items: list = [];
 
