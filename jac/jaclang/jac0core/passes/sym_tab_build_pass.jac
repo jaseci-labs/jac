@@ -65,6 +65,9 @@ class SymTabBuildPass(UniPass) {
 
     def enter_module(self: SymTabBuildPass, nd: uni.Module) -> None;
     def exit_module(self: SymTabBuildPass, nd: uni.Module) -> None;
+    def enter_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -> None;
+    def exit_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -> None;
+    def enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) -> None;
     def exit_global_vars(self: SymTabBuildPass, nd: uni.GlobalVars) -> None;
     def exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None;
     """Handle walrus operator (:=) assignments."""

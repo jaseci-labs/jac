@@ -189,8 +189,8 @@ obj LanguageServerTestHelper {
 # --- Constants ---
 glob CIRCLE_TEMPLATE = "circle_template.jac",
      GLOB_TEMPLATE = "glob_template.jac",
-     EXPECTED_CIRCLE_TOKEN_COUNT = 340,
-     EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 340,
+     EXPECTED_CIRCLE_TOKEN_COUNT = 345,
+     EXPECTED_CIRCLE_TOKEN_COUNT_ERROR = 345,
      EXPECTED_GLOB_TOKEN_COUNT = 15,
      EXPECTED_GLOB_ERROR_TOKEN_COUNT = 15;
 

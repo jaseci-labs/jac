@@ -37,7 +37,15 @@ import from jaclang.jac0core.unitree {
 import from jaclang.jac0core.unitree { ClientBlock, ServerBlock, NativeBlock }
 import from jaclang.jac0core.unitree { Import, ModulePath, ModuleItem }
 import from jaclang.jac0core.unitree { CommentToken }
-import from jaclang.jac0core.unitree { Archetype, Ability, Enum, ImplDef, SemDef }
+import from jaclang.jac0core.unitree {
+    Archetype,
+    Ability,
+    Enum,
+    ImplDef,
+    SemDef,
+    TypeAlias,
+    TypeParam
+}
 import from jaclang.jac0core.unitree {
     ArchHas,
     HasVar,
@@ -506,6 +514,8 @@ obj Parser {
     def parse_impl_target_name -> Name;
     def parse_impl_enum_body -> list;
     def parse_sem_def -> SemDef;
+    def parse_type_alias -> TypeAlias;
+    def parse_type_params -> list;
     def parse_dotted_name -> Expr;
 }
 

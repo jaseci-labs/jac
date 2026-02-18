@@ -368,7 +368,14 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
         return nd.raw;
     }
     if isinstance(nd.value, str) {
-        return f'"{nd.value}"';
+        escaped = nd.value.replace('\\', '\\\\').replace('"', '\\"').replace(
+            '\n', '\\n'
+        ).replace(
+            '\r', '\\r'
+        ).replace(
+            '\t', '\\t'
+        );
+        return f'"{escaped}"';
     } elif (nd.value is None) {
         return 'null';
     } elif isinstance(nd.value, bool) {

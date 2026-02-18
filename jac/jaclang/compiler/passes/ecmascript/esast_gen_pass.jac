@@ -84,6 +84,43 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.RSHIFT_EQ: '>>=',
          Tok.STAR_POW_EQ: '**='
      },
+     OP_EMIT_MAP: dict[(Tok, str)] = {
+         Tok.PLUS: "emit_op_add",
+         Tok.MINUS: "emit_op_sub",
+         Tok.STAR_MUL: "emit_op_mul",
+         Tok.DIV: "emit_op_truediv",
+         Tok.FLOOR_DIV: "emit_op_floordiv",
+         Tok.MOD: "emit_op_mod",
+         Tok.STAR_POW: "emit_op_pow",
+         Tok.BW_AND: "emit_op_and",
+         Tok.BW_OR: "emit_op_or",
+         Tok.BW_XOR: "emit_op_xor",
+         Tok.LSHIFT: "emit_op_lshift",
+         Tok.RSHIFT: "emit_op_rshift"
+     },
+     CMP_EMIT_MAP: dict[(Tok, str)] = {
+         Tok.EE: "emit_op_eq",
+         Tok.NE: "emit_op_ne",
+         Tok.LT: "emit_op_lt",
+         Tok.GT: "emit_op_gt",
+         Tok.LTE: "emit_op_le",
+         Tok.GTE: "emit_op_ge",
+         Tok.KW_IN: "emit_op_contains",
+         Tok.KW_NIN: "emit_op_contains"
+     },
+     UNARY_EMIT_MAP: dict[(Tok, str)] = {
+         Tok.MINUS: "emit_op_neg",
+         Tok.PLUS: "emit_op_pos",
+         Tok.BW_NOT: "emit_op_invert"
+     },
+     AUG_EMIT_MAP: dict[(Tok, str)] = {
+         Tok.ADD_EQ: "emit_op_iadd",
+         Tok.SUB_EQ: "emit_op_isub",
+         Tok.MUL_EQ: "emit_op_imul",
+         Tok.BW_OR_EQ: "emit_op_ior",
+         Tok.BW_AND_EQ: "emit_op_iand",
+         Tok.BW_XOR_EQ: "emit_op_ixor"
+     },
      LiteralValue = str | bool | int | float | None;
 
 """Track declarations within a lexical scope."""
@@ -188,6 +225,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
+    def exit_type_alias(nd: uni.TypeAlias) -> None;
+    def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
@@ -226,6 +265,14 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
+    def _try_primitive_op(
+        expr_node: uni.UniNode,
+        emit_method: str,
+        left_es: es.Expression,
+        right_es: (es.Expression | None),
+        jac_node: uni.UniNode
+    ) -> (es.Expression | None);
+
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;

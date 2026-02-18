@@ -70,13 +70,19 @@ def _ensure_jac_runtime():
         pytest.skip(f"Jac runtime unavailable: {exc}")
 
 
-def _fresh_jac_state():
+def _fresh_jac_state(*, clear_modules: bool = True):
     """Reset Jac state so each test gets a clean environment.
 
-    Mirrors conftest.py's ``fresh_jac_context`` fixture:
-    - Closes any existing execution context
-    - Clears user modules from sys.modules
-    - Creates fresh JacProgram and execution context
+    When *clear_modules* is True (the default, used at collection time),
+    user modules are evicted from ``sys.modules`` so that reimporting
+    produces a clean slate.
+
+    When *clear_modules* is False (used between tests within a single
+    file), modules stay in ``sys.modules`` so that ``unittest.mock.patch``
+    can find the same module objects that test code references via their
+    ``__globals__`` dicts.  Without this, patching a module-level name
+    has no effect because ``mock.patch`` patches a *new* module object
+    while test code still reads from the *old* one.
     """
     from jaclang.jac0core.program import JacProgram
     from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
@@ -85,11 +91,12 @@ def _fresh_jac_state():
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
-    # Remove previously-loaded user .jac modules from sys.modules.
-    for mod in list(JacRuntime.loaded_modules.values()):
-        if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
-            sys.modules.pop(mod.__name__, None)
-    JacRuntime.loaded_modules.clear()
+    if clear_modules:
+        # Remove previously-loaded user .jac modules from sys.modules.
+        for mod in list(JacRuntime.loaded_modules.values()):
+            if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
+                sys.modules.pop(mod.__name__, None)
+        JacRuntime.loaded_modules.clear()
 
     # Set up fresh state with isolated storage (temp directory avoids
     # stale SQLite data from previous tests)
@@ -194,8 +201,14 @@ class JacTestItem(pytest.Item):
         self._test_case = callobj
 
     def runtest(self):
-        """Reset Jac state and execute the test."""
-        _fresh_jac_state()
+        """Reset Jac execution context and execute the test.
+
+        We intentionally keep modules in ``sys.modules`` (clear_modules=False)
+        so that ``unittest.mock.patch("pkg.mod.func")`` resolves to the same
+        module object whose ``__globals__`` dict is referenced by the code
+        under test.  Module-level cleanup happens once at collection time.
+        """
+        _fresh_jac_state(clear_modules=False)
         self._test_case.runTest()
 
     def repr_failure(self, excinfo: pytest.ExceptionInfo[BaseException]) -> str:
