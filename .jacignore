@@ -157,6 +157,7 @@ pass_keyword_err.jac
 player.impl.jac
 plugin_config.impl.jac
 plugin.jac
+prim_builtins.jac
 program.impl.jac
 program.jac
 project.impl.jac
@@ -201,6 +202,7 @@ test_jaseci.jac
 test_lang_serve.jac
 test_man_code.jac
 test_native_gen_pass.jac
+test_prim_equivalence.jac
 test_py_infra.jac
 test_sem_tokens.jac
 test_serve.jac

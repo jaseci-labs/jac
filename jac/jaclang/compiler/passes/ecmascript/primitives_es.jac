@@ -1604,15 +1604,15 @@ class ESBuiltinEmitter(BuiltinEmitter[
     }
 
     def emit_hex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
-        return "'0x' + " + args[0] + ".toString(16)";
+        return "'0x' + (" + args[0] + ").toString(16)";
     }
 
     def emit_oct(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
-        return "'0o' + " + args[0] + ".toString(8)";
+        return "'0o' + (" + args[0] + ").toString(8)";
     }
 
     def emit_bin(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
-        return "'0b' + " + args[0] + ".toString(2)";
+        return "'0b' + (" + args[0] + ").toString(2)";
     }
 
     def emit_pow(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
