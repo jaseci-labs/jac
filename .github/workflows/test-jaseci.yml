@@ -196,8 +196,8 @@ jobs:
 
       - name: Run K8 tests
         run: |
-          pytest  -s -x -n auto jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x -n auto jac-scale/jac_scale/tests/test_deploy_k8s.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
     runs-on: ubuntu-latest
