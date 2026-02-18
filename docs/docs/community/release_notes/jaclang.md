@@ -25,6 +25,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Quoted JSX Text Produces Invalid JS**: Fixed JSX text containing quote characters (e.g., `<p>"text"</p>`) generating invalid double-double-quoted JavaScript (`""text""`). Inner quotes are now properly escaped in the emitted JS string literals.
 - **Fix: `unittest.mock.patch` Compatibility in Jac Tests**: Fixed `unittest.mock.patch` not intercepting calls in Jac test blocks.
 - **Modern Generics: `type` Aliases & Inline Type Parameters**: Added PEP 695-style `type` alias statements (`type JsonPrimitive = str | int | float | bool | None;`) and inline generic type parameters on archetypes (`obj Result[T, E = Exception] { ... }`). Supports bounded type vars (`T: Comparable`), default type values, and recursive type aliases. Compiles to native Python 3.12 `ast.TypeAlias` and `ast.TypeVar` nodes.
+- **Fix: Operator Precedence for Bitwise vs Logical Operators**: Fixed operator precedence so bitwise operators (`|`, `^`, `&`, `<<`, `>>`) bind tighter than logical operators (`or`, `and`, `not`), matching Python's semantics. Previously `3 & 1 == 1` was parsed as `3 & (1 == 1)` instead of `(3 & 1) == 1`.
 - 2 Minor refactors/changes.
 
 ## jaclang 0.10.2 (Latest Release)
