@@ -951,8 +951,10 @@ verbose = true
             os.chdir(original_cwd)
 
 
-def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int:
+def _run_jac_check(test_dir: str, ignore_pattern: list | None = None) -> int:
     """Run jac check and return file count."""
+    if ignore_pattern is None:
+        ignore_pattern = []
     captured_stdout = io.StringIO()
     captured_stderr = io.StringIO()
     old_stdout = sys.stdout
@@ -1002,7 +1004,9 @@ def test_jac_grammar_lark(
 def test_jac_cli_check_ignore_patterns(fixture_path: Callable[[str], str]) -> None:
     """Test --ignore flag with exact pattern matching (combined patterns)."""
     test_dir = fixture_path("deep")
-    result_count = _run_jac_check(test_dir, "deeper,one_lev_dup.jac,one_lev.jac,mycode")
+    result_count = _run_jac_check(
+        test_dir, ["deeper", "one_lev_dup.jac", "one_lev.jac", "mycode"]
+    )
     # Only mycode.jac is checked; all other files are ignored
     assert result_count == 1
 
