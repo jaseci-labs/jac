@@ -95,4 +95,6 @@ def lookup_symtab(
 
 def class_implements_protocol(cls: types.ClassType, proto: types.ClassType) -> bool;
 
-def get_missing_protocol_members(cls: types.ClassType, proto: types.ClassType) -> list[str];
+def get_missing_protocol_members(
+    cls: types.ClassType, proto: types.ClassType
+) -> list[str];

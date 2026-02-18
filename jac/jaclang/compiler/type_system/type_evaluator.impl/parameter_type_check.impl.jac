@@ -29,7 +29,8 @@ impl TypeEvaluator.validate_arg_types(
                     # Check if param_type is a protocol by checking its base classes.
                     is_protocol = False;
                     for base_cls in param.param_type.shared.base_classes {
-                        if isinstance(base_cls, types.ClassType) and base_cls.shared is not None {
+                        if isinstance(base_cls, types.ClassType)
+                        and base_cls.shared is not None {
                             if base_cls.shared == self.prefetch.protocol_class.shared {
                                 is_protocol = True;
                                 break;
@@ -38,7 +39,9 @@ impl TypeEvaluator.validate_arg_types(
                     }
                     if is_protocol {
                         # Get missing members for a more helpful error message.
-                        missing = type_utils.get_missing_protocol_members(arg_type, param.param_type);
+                        missing = type_utils.get_missing_protocol_members(
+                            arg_type, param.param_type
+                        );
                         if missing {
                             missing_str = ", ".join(missing);
                             error_msg = f"{arg_type} is missing required protocol member(s): {missing_str}";
