@@ -7,7 +7,7 @@ jobs:
   precompile:
     strategy:
       matrix:
-        python-version: ['3.12', '3.13', '3.14']
+        python-version: ['3.12', '3.13'] # Precompile failed for 3.14 because of pillow, so for now we are skipping 3.14.
     runs-on: ubuntu-latest
 
     steps:
