@@ -68,7 +68,7 @@ def parse_spec(text: str) -> dict[str, str] {
 
 # ── Unit tests: grammar model and formatting ─────────────────────────────
 test "gtok ebnf" {
-    assert fmt(GTok(name="KW_IF")) == "KW_IF";
+    assert fmt(GTok(name="KW_IF")) == '"if"';
 }
 
 test "gref ebnf" {
@@ -77,7 +77,7 @@ test "gref ebnf" {
 
 test "gseq ebnf" {
     seq = GSeq(items=[GTok(name="KW_IF"), GRef(name="expression")]);
-    assert fmt(seq) == "KW_IF expression";
+    assert fmt(seq) == '"if" expression';
 }
 
 test "galt ebnf" {
@@ -97,7 +97,7 @@ test "gopt alt ebnf" {
 
 test "gstar ebnf" {
     star = GStar(inner=GSeq(items=[GTok(name="BW_OR"), GRef(name="bitwise_xor")]));
-    assert fmt(star) == "(BW_OR bitwise_xor)*";
+    assert fmt(star) == '("|" bitwise_xor)*';
 }
 
 test "grammar rule ebnf" {
@@ -111,7 +111,7 @@ test "grammar rule ebnf" {
         )
     );
     ebnf = rule.to_ebnf();
-    assert ebnf == "bitwise_or ::= bitwise_xor (BW_OR bitwise_xor)*";
+    assert ebnf == 'bitwise_or ::= bitwise_xor ("|" bitwise_xor)*';
 }
 
 test "alt inside seq gets parens" {
@@ -177,7 +177,7 @@ test "bitwise or structure" {
     assert "bitwise_or" in rule_map;
     ebnf = fmt(rule_map["bitwise_or"].body);
     assert "bitwise_xor" in ebnf;
-    assert "BW_OR" in ebnf;
+    assert '"|"' in ebnf;
 }
 
 test "if stmt structure" {
@@ -188,10 +188,10 @@ test "if stmt structure" {
     rule_map = {r.name: r for r in extracted.rules};
     assert "if_stmt" in rule_map;
     ebnf = fmt(rule_map["if_stmt"].body);
-    assert "KW_IF" in ebnf;
+    assert '"if"' in ebnf;
     assert "expression" in ebnf;
-    assert "LBRACE" in ebnf;
-    assert "RBRACE" in ebnf;
+    assert '"{"' in ebnf;
+    assert '"}"' in ebnf;
 }
 
 test "while stmt structure" {
@@ -202,7 +202,7 @@ test "while stmt structure" {
     rule_map = {r.name: r for r in extracted.rules};
     assert "while_stmt" in rule_map;
     ebnf = fmt(rule_map["while_stmt"].body);
-    assert "KW_WHILE" in ebnf;
+    assert '"while"' in ebnf;
     assert "expression" in ebnf;
 }
 

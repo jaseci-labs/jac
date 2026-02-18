@@ -45,7 +45,7 @@ for folder in "${!FOLDER_TO_NOTES[@]}"; do
 
     while IFS= read -r file; do
         [ -z "$file" ] && continue
-        if [[ "$file" == "${folder}"* ]]; then
+        if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
         if [[ "$file" == "$notes_file" ]]; then

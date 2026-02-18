@@ -569,6 +569,30 @@ impl PyastGenPass.exit_module(self: PyastGenPass, nd: uni.Module) -> None {
     nd.gen.py = ast3.unparse(nd.gen.py_ast[0]);
 }
 
+impl PyastGenPass.exit_type_param(self: PyastGenPass, nd: uni.TypeParam) -> None {
+    bound_ast = cast(ast3.expr, nd.bound.gen.py_ast[0]) if nd.bound else None;
+    type_var = self.sync(ast3.TypeVar(name=nd.name.value, bound=bound_ast));
+    nd.gen.py_ast = [type_var];
+}
+
+impl PyastGenPass.exit_type_alias(self: PyastGenPass, nd: uni.TypeAlias) -> None {
+    type_param_asts: list[ast3.type_param] = [];
+    for tp in nd.type_params {
+        if tp.gen.py_ast {
+            type_param_asts.append(cast(ast3.type_param, tp.gen.py_ast[0]));
+        }
+    }
+    value_ast = cast(ast3.expr, nd.value.gen.py_ast[0]);
+    type_alias = self.sync(
+        ast3.TypeAlias(
+            name=self.sync(ast3.Name(id=nd.name.sym_name, ctx=ast3.Store())),
+            type_params=type_param_asts,
+            value=value_ast
+        )
+    );
+    nd.gen.py_ast = [type_alias];
+}
+
 impl PyastGenPass.exit_global_vars(self: PyastGenPass, nd: uni.GlobalVars) -> None {
     if nd.doc {
         doc = self.sync(
@@ -871,6 +895,14 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
     if (nd.arch_type.name != Tok.KW_CLASS) {
         base_classes.append(self.jaclib_obj(nd.arch_type.value.capitalize()));
     }
+    type_param_asts: list[ast3.type_param] = [];
+    if nd.type_params {
+        for tp in nd.type_params {
+            if tp.gen.py_ast {
+                type_param_asts.append(cast(ast3.type_param, tp.gen.py_ast[0]));
+            }
+        }
+    }
     class_def = self.sync(
         ast3.ClassDef(
             name=nd.name.sym_name,
@@ -878,7 +910,7 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
             keywords=[],
             body=[cast(ast3.stmt, i) for i in body],
             decorator_list=[cast(ast3.expr, i) for i in decorators],
-            type_params=[]
+            type_params=type_param_asts
         )
     );
     nd.gen.py_ast = [class_def];

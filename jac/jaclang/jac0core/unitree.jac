@@ -586,6 +586,30 @@ class ProgramModule(UniNode) {
     def init(self: ProgramModule, main_mod: (Module | None) = None) -> None;
 }
 
+"""TypeParam node type for Jac Ast: T, T: Bound, T = Default."""
+class TypeParam(AstSymbolNode, UniNode) {
+    def init(
+        self: TypeParam,
+        name: Name,
+        bound: (Expr | None),
+        default_val: (Expr | None),
+        kid: Sequence[UniNode]
+    ) -> None;
+}
+
+"""TypeAlias node type for Jac Ast: type Name[T, E = X] = TypeExpr;"""
+class TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode) {
+    def init(
+        self: TypeAlias,
+        name: Name,
+        type_params: (Sequence[TypeParam] | None),
+        value: Expr,
+        access: (SubTag[Token] | None),
+        kid: Sequence[UniNode],
+        doc: (String | None) = None
+    ) -> None;
+}
+
 """GlobalVars node type for Jac Ast."""
 class GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
     def init(
@@ -753,7 +777,8 @@ class Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImp
         body: Sequence[ArchBlockStmt] | ImplDef | None,
         kid: Sequence[UniNode],
         doc: (String | None) = None,
-        decorators: (Sequence[Expr] | None) = None
+        decorators: (Sequence[Expr] | None) = None,
+        type_params: (Sequence[TypeParam] | None) = None
     ) -> None;
 
     def _get_impl_resolved_body(self: Archetype) -> list;

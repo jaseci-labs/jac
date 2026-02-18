@@ -1079,6 +1079,22 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             }
         }
     }
+    # --- Bare `type` assignment compatibility ---
+    # Handle assignment of any class type to bare `type` parameter.
+    # In Python's type system, bare `type` accepts any class (equivalent to type[Unknown]).
+    if self.prefetch and self.prefetch.type_class {
+        if isinstance(dest_type, types.ClassType)
+        and isinstance(src_type, types.ClassType) {
+            # Check if dest_type is the `type` builtin (bare type annotation)
+            if isinstance(self.prefetch.type_class, types.ClassType)
+            and dest_type.shared == self.prefetch.type_class.shared {
+                # Any instantiable class type can be assigned to bare `type`.
+                if src_type.is_instantiable_class() {
+                    return True;
+                }
+            }
+        }
+    }
     if dest_type.is_class_instance() and src_type.is_class_instance() {
         assert isinstance(dest_type, types.ClassType);
         assert isinstance(src_type, types.ClassType);

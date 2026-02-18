@@ -918,11 +918,11 @@ impl _interpolate_recursive(obj: Any) -> Any {
 # Global Configuration Singleton Implementation
 # ===============================================================================
 impl get_config(
-    force_discover: bool = False
+    start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
     global _config;
     if _config is None or force_discover {
-        _config = JacConfig.discover();
+        _config = JacConfig.discover(start_path=start_path);
     }
     return _config;
 }

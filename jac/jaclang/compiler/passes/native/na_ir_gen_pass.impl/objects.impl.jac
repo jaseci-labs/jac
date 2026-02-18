@@ -435,12 +435,9 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
 
 """Generate method call: obj.method(args).
 
-TODO: Wire in the primitive emitter dispatch from
-jaclang.compiler.passes.native.primitives_native. The current
-implementation uses type-specific helper dicts (list_helpers,
-dict_helpers, set_helpers) with LLVM IR values. The string-based
-emitter interface would need to be adapted to return IR builder
-calls or function references instead of source text strings.
+Primitive type methods are dispatched through the emitter layer
+(primitives_native.jac). If the emitter returns a result, it is used
+directly; if it returns None, the inline codegen below handles it.
 """
 impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     trailer = nd.target;
@@ -452,63 +449,75 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if method_name is None {
         return None;
     }
-    # Handle list methods: append (simple name target)
+    # --- Primitive emitter dispatch (list, set, str methods) ---
+    # Evaluate target and args, dispatch through emitter layer.
+    # List methods (simple name target)
     if target_name is not None and target_name in self.var_list_elem_type {
         elem_type_name = self.var_list_elem_type[target_name];
-        helpers = self.list_helpers.get(elem_type_name);
-        if helpers is not None and method_name == "append" {
-            list_val = self._codegen_expr(trailer.target);
-            if list_val is None {
-                return None;
-            }
+        list_val = self._codegen_expr(trailer.target);
+        if list_val is not None {
             params = nd.params or [];
-            if params {
-                val = self._codegen_expr(params[0]);
-                if val is not None {
-                    elem_type = helpers["elem_type"];
-                    val = self._coerce_type(val, elem_type);
-                    self.builder.call(helpers["append"], [list_val, val]);
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
             }
-            return ir.Constant(ir.IntType(64), 0);
+            result = self._dispatch_primitive_method(
+                "list", method_name, list_val, arg_vals, elem_type_name
+            );
+            if result is not None {
+                return result;
+            }
         }
     }
-    # Handle set methods: add (simple name target)
+    # Set methods (simple name target)
     if target_name is not None and target_name in self.var_set_elem_type {
         elem_type_name = self.var_set_elem_type[target_name];
-        helpers = self.set_helpers.get(elem_type_name);
-        if helpers is not None and method_name == "add" {
-            set_val = self._codegen_expr(trailer.target);
-            if set_val is None {
-                return None;
-            }
+        set_val = self._codegen_expr(trailer.target);
+        if set_val is not None {
             params = nd.params or [];
-            if params {
-                val = self._codegen_expr(params[0]);
-                if val is not None {
-                    elem_type = helpers["elem_type"];
-                    val = self._coerce_type(val, elem_type);
-                    self.builder.call(helpers["add"], [set_val, val]);
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
             }
-            return ir.Constant(ir.IntType(64), 0);
+            result = self._dispatch_primitive_method(
+                "set", method_name, set_val, arg_vals, elem_type_name
+            );
+            if result is not None {
+                return result;
+            }
         }
     }
-    # Handle string methods: strip, split (on any target expression)
-    if method_name in ("strip", "split") {
+    # String methods (on any target expression whose type is i8*)
+    if method_name in (
+        "strip",
+        "split",
+        "upper",
+        "lower",
+        "find",
+        "startswith",
+        "endswith"
+    ) {
         str_val = self._codegen_expr(trailer.target);
         if str_val is not None and str_val.type == ir.IntType(8).as_pointer() {
-            if method_name == "strip" {
-                return self._codegen_str_strip(str_val);
-            }
-            if method_name == "split" {
-                params = nd.params or [];
-                if params {
-                    sep_val = self._codegen_expr(params[0]);
-                    if sep_val is not None {
-                        return self._codegen_str_split(str_val, sep_val);
-                    }
+            params = nd.params or [];
+            arg_vals: list[ir.Value] = [];
+            for param in params {
+                v = self._codegen_expr(param);
+                if v is not None {
+                    arg_vals.append(v);
                 }
+            }
+            result = self._dispatch_primitive_method(
+                "str", method_name, str_val, arg_vals, ""
+            );
+            if result is not None {
+                return result;
             }
         }
     }

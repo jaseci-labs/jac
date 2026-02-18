@@ -17,6 +17,9 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_name == "None" {
             return ir.VoidType();
         }
+        if type_name == "any" {
+            return self.jacval_type;
+        }
     }
     # Handle BuiltinType nodes
     if uni?.BuiltinType and isinstance(type_expr, uni.BuiltinType) {
@@ -36,6 +39,9 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
         if type_name == "None" {
             return ir.VoidType();
+        }
+        if type_name == "any" {
+            return self.jacval_type;
         }
     }
     # Handle union types: T | None → resolve T (BinaryExpr with BW_OR op)
@@ -118,6 +124,8 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
                         val_type_name = "f64";
                     } elif isinstance(val_type, ir.PointerType) {
                         val_type_name = "ptr";
+                    } elif self?.jacval_type and val_type == self.jacval_type {
+                        val_type_name = "jacval";
                     }
                     dict_key = f"{key_type_name}:{val_type_name}";
                     self._emit_dict_helpers(
