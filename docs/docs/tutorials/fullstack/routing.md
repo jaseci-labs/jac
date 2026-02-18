@@ -20,23 +20,44 @@ Jac-client supports two routing approaches:
 
 ## File-Based Routing (Recommended)
 
-Create a `pages/` directory with `.jac` files that automatically become routes:
+Create a `pages/` directory with `.jac` files that automatically become routes.
+
+### Project Structure
 
 ```
 myapp/
 ├── main.jac
 └── pages/
-    ├── index.jac          # /
-    ├── about.jac          # /about
-    ├── contact.jac        # /contact
+    ├── layout.jac            # Root layout (wraps all pages)
+    ├── index.jac             # / (home page)
+    ├── about.jac             # /about
     ├── users/
-    │   ├── index.jac      # /users
-    │   └── [id].jac       # /users/:id (dynamic route)
-    └── (auth)/            # Route group (parentheses)
-        ├── layout.jac     # Shared layout for auth routes
-        ├── login.jac      # /login
-        └── signup.jac     # /signup
+    │   ├── index.jac         # /users
+    │   └── [id].jac          # /users/:id (dynamic)
+    ├── posts/
+    │   ├── index.jac         # /posts
+    │   └── [slug].jac        # /posts/:slug (dynamic)
+    ├── (public)/             # Route group (no auth required)
+    │   ├── login.jac         # /login
+    │   └── signup.jac        # /signup
+    ├── (auth)/               # Route group (auth required)
+    │   ├── index.jac         # / (protected home)
+    │   └── dashboard.jac     # /dashboard
+    └── [...notFound].jac     # Catch-all 404 page
 ```
+
+### Route Mapping Reference
+
+| File | Route | Description |
+|------|-------|-------------|
+| `pages/index.jac` | `/` | Home page |
+| `pages/about.jac` | `/about` | Static page |
+| `pages/users/index.jac` | `/users` | Users list |
+| `pages/users/[id].jac` | `/users/:id` | Dynamic user profile |
+| `pages/posts/[slug].jac` | `/posts/:slug` | Dynamic blog post |
+| `pages/[...notFound].jac` | `*` | Catch-all 404 |
+
+### Basic Page
 
 Each page file exports a `page` function:
 
@@ -51,6 +72,135 @@ cl {
     }
 }
 ```
+
+### Dynamic Routes with `[param]`
+
+Use square brackets for dynamic URL segments:
+
+```jac
+# pages/users/[id].jac
+cl import from "@jac/runtime" { Link, useParams }
+
+cl {
+    def:pub page() -> JsxElement {
+        params = useParams();
+        userId = params.id;
+
+        # Mock data lookup
+        users = {
+            "1": {"name": "Alice", "role": "Admin"},
+            "2": {"name": "Bob", "role": "Developer"}
+        };
+
+        user = users[userId];
+
+        if not user {
+            return <div>
+                <h1>User Not Found</h1>
+                <Link to="/users">Back to Users</Link>
+            </div>;
+        }
+
+        return <div>
+            <Link to="/users">← Back</Link>
+            <h1>User: {user["name"]}</h1>
+            <p>Role: {user["role"]}</p>
+        </div>;
+    }
+}
+```
+
+### Slug-Based Routes
+
+```jac
+# pages/posts/[slug].jac
+cl import from "@jac/runtime" { Link, useParams }
+
+cl {
+    def:pub page() -> JsxElement {
+        params = useParams();
+        slug = params.slug;  # e.g., "getting-started-with-jac"
+
+        return <article>
+            <Link to="/posts">← All Posts</Link>
+            <h1>Blog Post</h1>
+            <p>Slug: {slug}</p>
+        </article>;
+    }
+}
+```
+
+### Catch-All Routes with `[...param]`
+
+Use `[...param]` for catch-all routes (404 pages, docs, etc.):
+
+```jac
+# pages/[...notFound].jac
+cl import from "@jac/runtime" { Link }
+
+cl {
+    def:pub page() -> JsxElement {
+        return <div style={{"textAlign": "center", "padding": "2rem"}}>
+            <h1>404 - Page Not Found</h1>
+            <p>The page you are looking for does not exist.</p>
+            <Link to="/">Back to Home</Link>
+        </div>;
+    }
+}
+```
+
+### Route Groups with `(groupName)`
+
+Route groups organize pages **without affecting the URL**:
+
+| Directory | Effect |
+|-----------|--------|
+| `(public)/` | Groups public pages, no URL segment added |
+| `(auth)/` | Groups protected pages, auto-requires login |
+
+```
+pages/
+├── (public)/
+│   ├── login.jac      # Route: /login
+│   └── signup.jac     # Route: /signup
+├── (auth)/
+│   ├── index.jac      # Route: / (protected)
+│   └── settings.jac   # Route: /settings (protected)
+```
+
+The `(auth)` group automatically wraps pages with authentication checks.
+
+### Layout Files
+
+Create `layout.jac` to wrap pages with shared UI:
+
+```jac
+# pages/layout.jac
+cl import from "@jac/runtime" { Outlet }
+cl import from ..components.navigation { Navigation }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <>
+            <Navigation />
+            <main style={{"maxWidth": "960px", "margin": "0 auto"}}>
+                <Outlet />  {/* Child routes render here */}
+            </main>
+            <footer>Footer content</footer>
+        </>;
+    }
+}
+```
+
+### Index Files
+
+`index.jac` represents the default page for a directory:
+
+| File | Route |
+|------|-------|
+| `pages/index.jac` | `/` |
+| `pages/users/index.jac` | `/users` |
+| `pages/posts/index.jac` | `/posts` |
 
 ---
 
@@ -666,19 +816,54 @@ cl {
 
 ---
 
+## Routing Hooks Reference
+
+Import from `@jac/runtime`:
+
+```jac
+cl import from "@jac/runtime" {
+    Link,           # Navigation link component
+    useNavigate,    # Programmatic navigation
+    useParams,      # Access URL parameters
+    useLocation,    # Get current location info
+    Navigate,       # Redirect component
+    Outlet          # Render child routes (for layouts)
+}
+```
+
+| Hook | Returns | Usage |
+|------|---------|-------|
+| `useParams()` | `dict` | `params.id`, `params.slug` |
+| `useNavigate()` | function | `navigate("/path")`, `navigate(-1)` |
+| `useLocation()` | object | `location.pathname`, `location.search` |
+
+---
+
 ## Key Takeaways
+
+### File-Based Routing Patterns
+
+| Pattern | File | Route |
+|---------|------|-------|
+| Static page | `about.jac` | `/about` |
+| Index page | `users/index.jac` | `/users` |
+| Dynamic param | `users/[id].jac` | `/users/:id` |
+| Slug param | `posts/[slug].jac` | `/posts/:slug` |
+| Catch-all | `[...notFound].jac` | `*` (404) |
+| Route group | `(auth)/dashboard.jac` | `/dashboard` |
+| Layout | `layout.jac` | Wraps child routes |
+
+### Quick Reference
 
 | Concept | Usage |
 |---------|-------|
-| File-based routing | Create files in `pages/` directory |
-| Define routes | `<Route path="/..." element={<Comp />} />` |
 | Navigation links | `<Link to="/path">Text</Link>` |
-| URL parameters | `useParams()` returns `{param: value}` |
+| URL parameters | `params = useParams(); params.id` |
 | Programmatic nav | `navigate("/path")` or `navigate(-1)` |
 | Query strings | `useLocation().search` + `URLSearchParams` |
 | Nested routes | `<Outlet />` renders child routes |
-| Protected routes | Use `AuthGuard` component |
-| 404 handling | `<Route path="*" element={<NotFound />} />` |
+| Protected routes | Use `(auth)/` group or `AuthGuard` |
+| 404 handling | `[...notFound].jac` or `path="*"` |
 
 ---
 
