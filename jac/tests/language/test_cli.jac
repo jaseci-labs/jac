@@ -1496,3 +1496,10 @@ test "jac cli check ignore patterns" {
     );
     assert result_count == 1;
 }
+
+test "jac cli check ignore with wildcards" {
+    """Test --ignore with multiple wildcard patterns."""
+    test_dir = fixture_path("deep");
+    result_count = _run_jac_check(test_dir, ["one_lev*", "snd_*"]);
+    assert result_count == 3;
+}
