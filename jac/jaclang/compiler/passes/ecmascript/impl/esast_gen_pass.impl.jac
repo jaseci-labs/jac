@@ -1077,8 +1077,6 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
     if nd.aug_op {
         (left, _, _) = self._convert_assignment_target(nd.target[0]);
         aug_tok = Tok(nd.aug_op.name) if (nd.aug_op.name in Tok.__members__) else None;
-        operator = ES_AUG_ASSIGN_OPS.get(aug_tok) if aug_tok else None;
-        operator = operator or '=';
         right = cast(
             es.Expression,
             (
@@ -1089,6 +1087,22 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                 )
             )
         );
+        # Type-aware augmented assignment primitive dispatch
+        _aug_emit_name = AUG_EMIT_MAP.get(aug_tok) if aug_tok else None;
+        if _aug_emit_name {
+            _prim_result = self._try_primitive_op(
+                nd.target[0], _aug_emit_name, cast(es.Expression, left), right, nd
+            );
+            if _prim_result is not None {
+                expr_stmt = self.sync_loc(
+                    es.ExpressionStatement(expression=_prim_result), jac_node=nd
+                );
+                nd.gen.es_ast = expr_stmt;
+                return;
+            }
+        }
+        operator = ES_AUG_ASSIGN_OPS.get(aug_tok) if aug_tok else None;
+        operator = operator or '=';
         assign_expr = self.sync_loc(
             es.AssignmentExpression(operator=operator, left=left, right=right),
             jac_node=nd
@@ -1296,6 +1310,81 @@ impl EsastGenPass._convert_assignment_target(
     return (left, reference, None);
 }
 
+"""Try to dispatch an operator through the primitive emitter system.
+
+Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
+if the type evaluator doesn't know the type or the emitter doesn't handle this op.
+"""
+impl EsastGenPass._try_primitive_op(
+    expr_node: uni.UniNode,
+    emit_method: str,
+    left_es: es.Expression,
+    right_es: (es.Expression | None),
+    jac_node: uni.UniNode
+) -> (es.Expression | None) {
+    import from jaclang.compiler.type_system { types as jtypes }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
+    _obj_type = None;
+    try {
+        _te = self.prog.get_type_evaluator();
+        if _te {
+            _obj_type = _te.get_type_of_expression(expr_node);
+        }
+    } except Exception {
+        _obj_type = None;
+    }
+    if not (
+        isinstance(_obj_type, jtypes.ClassType)
+        and _obj_type.shared
+        and _obj_type.shared.class_name in self._primitive_type_names
+    ) {
+        return None;
+    }
+    # Lazily initialize emitter singletons on first use
+    if self._primitive_emitters is None {
+        _pes = __import__(
+            "jaclang.compiler.passes.ecmascript.primitives_es",
+            fromlist=["ESIntEmitter"]
+        );
+        self._primitive_emitters = {
+            "int": _pes.ESIntEmitter(),
+            "float": _pes.ESFloatEmitter(),
+            "complex": _pes.ESComplexEmitter(),
+            "str": _pes.ESStrEmitter(),
+            "bytes": _pes.ESBytesEmitter(),
+            "list": _pes.ESListEmitter(),
+            "dict": _pes.ESDictEmitter(),
+            "set": _pes.ESSetEmitter(),
+            "frozenset": _pes.ESFrozensetEmitter(),
+            "tuple": _pes.ESTupleEmitter(),
+            "range": _pes.ESRangeEmitter()
+        };
+        self._es_emit_ctx_class = _pes.ESEmitCtx;
+    }
+    _type_name = _obj_type.shared.class_name;
+    # bool delegates to int emitter
+    if _type_name == "bool" {
+        _type_name = "int";
+    }
+    _emitter = self._primitive_emitters.get(_type_name);
+    _emit_fn = getattr(_emitter, emit_method, None) if _emitter else None;
+    if not _emit_fn {
+        return None;
+    }
+    _unparser = JSCodeGenerator();
+    _ctx = self._es_emit_ctx_class(unparser=_unparser);
+    _target_str = _unparser.generate(left_es);
+    _args_strs: list[str] = [];
+    if right_es is not None {
+        _args_strs.append(_unparser.generate(right_es));
+    }
+    _result = _emit_fn(_ctx, _target_str, _args_strs);
+    if _result is None {
+        return None;
+    }
+    return self.sync_loc(es.Identifier(name=_result), jac_node=jac_node);
+}
+
 """Process unary expression."""
 impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     operand = cast(
@@ -1305,6 +1394,17 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         )
     );
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
+    # Type-aware unary primitive dispatch
+    _unary_emit_name = UNARY_EMIT_MAP.get(op_tok) if op_tok else None;
+    if _unary_emit_name {
+        _prim_result = self._try_primitive_op(
+            nd.operand, _unary_emit_name, operand, None, nd
+        );
+        if _prim_result is not None {
+            nd.gen.es_ast = _prim_result;
+            return;
+        }
+    }
     operator = ES_UNARY_OPS.get(op_tok) if op_tok else None;
     operator = operator or '!';
     unary_expr = self.sync_loc(
@@ -1343,6 +1443,35 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             )
         );
         op_tok = Tok(op_token.name) if (op_token.name in Tok.__members__) else None;
+        # Type-aware comparison primitive dispatch
+        _cmp_emit_name = CMP_EMIT_MAP.get(op_tok) if op_tok else None;
+        if _cmp_emit_name {
+            # For in/not in: type-check the container (right), swap target/arg
+            if op_tok in (Tok.KW_IN, Tok.KW_NIN) {
+                _prim_result = self._try_primitive_op(
+                    right_node, _cmp_emit_name, right, left, nd
+                );
+            } else {
+                _prim_result = self._try_primitive_op(
+                    nd.left, _cmp_emit_name, left, right, nd
+                );
+            }
+            if _prim_result is not None {
+                if op_tok == Tok.KW_NIN {
+                    comparison = self.sync_loc(
+                        es.UnaryExpression(
+                            operator='!', prefix=True, argument=_prim_result
+                        ),
+                        jac_node=nd
+                    );
+                } else {
+                    comparison = _prim_result;
+                }
+                comparisons.append(comparison);
+                left = right;
+                continue;
+            }
+        }
         operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None;
         operator = operator or '===';
         comparison: (es.UnaryExpression | es.BinaryExpression);
@@ -1445,6 +1574,19 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         );
         nd.gen.es_ast = assign_expr;
         return;
+    }
+    # Type-aware operator primitive dispatch
+    if op_name {
+        _op_emit_name = OP_EMIT_MAP.get(op_name);
+        if _op_emit_name {
+            _prim_result = self._try_primitive_op(
+                nd.left, _op_emit_name, left, right, nd
+            );
+            if _prim_result is not None {
+                nd.gen.es_ast = _prim_result;
+                return;
+            }
+        }
     }
     logical_op = ES_LOGICAL_OPS.get(op_name) if op_name else None;
     bin_expr: (es.LogicalExpression | es.BinaryExpression);

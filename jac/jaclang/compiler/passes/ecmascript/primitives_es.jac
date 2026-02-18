@@ -1,8 +1,8 @@
 """ECMAScript backend primitive emitter implementations.
 
-Maps Jac primitive methods to their JavaScript equivalents. Where no direct
-JS equivalent exists, calls are emitted to the Jac JS runtime library
-(_jac.str.partition, _jac.list.remove, etc.).
+Maps Jac primitive methods and operators to their JavaScript equivalents.
+Where no direct JS equivalent exists, calls are emitted to the Jac JS
+runtime library (_jac.str.partition, _jac.list.remove, etc.).
 
 Each emitter is a stateless singleton; backend context is passed per-call
 via ESEmitCtx.
@@ -60,12 +60,18 @@ def _rt(ns: str, method: str, args: list[str]) -> str {
     return "_jac." + ns + "." + method + "()";
 }
 
+def _binop(left: str, op: str, right: str) -> str {
+    """Emit (left op right) with parens for safety.""";
+    return "(" + left + " " + op + " " + right + ")";
+}
+
 # =============================================================================
 #  Numeric Types
 # =============================================================================
 class ESIntEmitter(IntEmitter[
     (str, ESEmitCtx)
 ]) {
+    # --- Named methods ---
     def emit_bit_length(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
@@ -99,9 +105,109 @@ class ESIntEmitter(IntEmitter[
     def emit_from_bytes(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("int", "from_bytes", args);
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "+", args[0]);
+    }
+
+    def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "-", args[0]);
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "*", args[0]);
+    }
+
+    def emit_op_truediv(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _binop(target, "/", args[0]);
+    }
+
+    def emit_op_floordiv(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return "Math.floor(" + target + " / " + args[0] + ")";
+    }
+
+    def emit_op_mod(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        # Python modulo semantics: result has same sign as divisor
+        return _rt("int", "mod", [target, args[0]]);
+    }
+
+    def emit_op_pow(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "**", args[0]);
+    }
+
+    # --- Bitwise operators ---
+    def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "&", args[0]);
+    }
+
+    def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "|", args[0]);
+    }
+
+    def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "^", args[0]);
+    }
+
+    def emit_op_lshift(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _binop(target, "<<", args[0]);
+    }
+
+    def emit_op_rshift(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _binop(target, ">>", args[0]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "===", args[0]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "!==", args[0]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<", args[0]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">", args[0]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<=", args[0]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">=", args[0]);
+    }
+
+    # --- Unary operators ---
+    def emit_op_neg(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "(-" + target + ")";
+    }
+
+    def emit_op_pos(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "(+" + target + ")";
+    }
+
+    def emit_op_invert(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return "(~" + target + ")";
+    }
 }
 
 class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
+    # --- Named methods ---
     def emit_is_integer(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
@@ -127,13 +233,123 @@ class ESFloatEmitter(FloatEmitter[(str, ESEmitCtx)]) {
     def emit_fromhex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("float", "fromhex", args);
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "+", args[0]);
+    }
+
+    def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "-", args[0]);
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "*", args[0]);
+    }
+
+    def emit_op_truediv(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _binop(target, "/", args[0]);
+    }
+
+    def emit_op_floordiv(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return "Math.floor(" + target + " / " + args[0] + ")";
+    }
+
+    def emit_op_mod(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        # Python modulo semantics: result has same sign as divisor
+        return _rt("float", "mod", [target, args[0]]);
+    }
+
+    def emit_op_pow(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "**", args[0]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "===", args[0]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "!==", args[0]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<", args[0]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">", args[0]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<=", args[0]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">=", args[0]);
+    }
+
+    # --- Unary operators ---
+    def emit_op_neg(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "(-" + target + ")";
+    }
+
+    def emit_op_pos(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "(+" + target + ")";
+    }
 }
 
 class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
+    # --- Named methods ---
     def emit_conjugate(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
         return _rt("complex", "conjugate", [target]);
+    }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "add", [target, args[0]]);
+    }
+
+    def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "sub", [target, args[0]]);
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "mul", [target, args[0]]);
+    }
+
+    def emit_op_truediv(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("complex", "truediv", [target, args[0]]);
+    }
+
+    def emit_op_pow(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "pow", [target, args[0]]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("complex", "eq", [target, args[0]]);
+    }
+
+    # --- Unary operators ---
+    def emit_op_neg(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "neg", [target]);
+    }
+
+    def emit_op_pos(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("complex", "pos", [target]);
     }
 }
 
@@ -430,6 +646,51 @@ class ESStrEmitter(StrEmitter[
     def emit_maketrans(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("str", "maketrans", args);
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "+", args[0]);
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "repeat", [args[0]]);
+    }
+
+    def emit_op_mod(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("str", "mod", [target, args[0]]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "===", args[0]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "!==", args[0]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<", args[0]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">", args[0]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, "<=", args[0]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _binop(target, ">=", args[0]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _mcall(target, "includes", [args[0]]);
+    }
 }
 
 class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
@@ -642,6 +903,51 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
     def emit_maketrans(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("bytes", "maketrans", args);
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "add", [target, args[0]]);
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "mul", [target, args[0]]);
+    }
+
+    def emit_op_mod(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "mod", [target, args[0]]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("bytes", "eq", [target, args[0]]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "lt", [target, args[0]]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "gt", [target, args[0]]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "le", [target, args[0]]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("bytes", "ge", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("bytes", "contains", [target, args[0]]);
+    }
 }
 
 # =============================================================================
@@ -650,6 +956,7 @@ class ESBytesEmitter(BytesEmitter[(str, ESEmitCtx)]) {
 class ESListEmitter(ListEmitter[
     (str, ESEmitCtx)
 ]) {
+    # --- Named methods ---
     def emit_append(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _mcall(target, "push", args);
     }
@@ -704,9 +1011,65 @@ class ESListEmitter(ListEmitter[
     def emit_copy(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return "[..." + target + "]";
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "[..." + target + ", ..." + args[0] + "]";
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "repeat", [target, args[0]]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("list", "eq", [target, args[0]]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "lt", [target, args[0]]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "gt", [target, args[0]]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "le", [target, args[0]]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("list", "ge", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _mcall(target, "includes", [args[0]]);
+    }
+
+    # --- In-place operators ---
+    def emit_op_iadd(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        # list += other is extend in-place (mutates), not concat+reassign
+        return target + ".push(..." + args[0] + ")";
+    }
+
+    def emit_op_imul(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("list", "imul", [target, args[0]]);
+    }
 }
 
 class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
+    # --- Named methods ---
     def emit_get(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         if len(args) == 1 {
             return target + "[" + args[0] + "] ?? undefined";
@@ -757,10 +1120,36 @@ class ESDictEmitter(DictEmitter[(str, ESEmitCtx)]) {
     def emit_fromkeys(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("dict", "fromkeys", args);
     }
+
+    # --- Bitwise operators (dict merge) ---
+    def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "{..." + target + ", ..." + args[0] + "}";
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("dict", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("dict", "eq", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _binop(args[0], "in", target);
+    }
+
+    # --- In-place operators ---
+    def emit_op_ior(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "Object.assign(" + target + ", " + args[0] + ")";
+    }
 }
 
 class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
-    # Mutation
+    # --- Named methods (mutation) ---
     def emit_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _mcall(target, "add", args);
     }
@@ -783,7 +1172,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
         return _mcall(target, "clear", []);
     }
 
-    # Set algebra
+    # --- Named methods (set algebra) ---
     def emit_union(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _mcall(target, "union", args);
     }
@@ -806,7 +1195,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
         return _mcall(target, "symmetricDifference", args);
     }
 
-    # In-place set algebra
+    # --- Named methods (in-place set algebra) ---
     def emit_update(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _rt("set", "update", [target] + args);
     }
@@ -829,7 +1218,7 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
         return _rt("set", "symmetric_difference_update", [target] + args);
     }
 
-    # Tests
+    # --- Named methods (tests) ---
     def emit_issubset(
         self, ctx: ESEmitCtx, target: str, args: list[str]
     ) -> (str | None) {
@@ -851,9 +1240,82 @@ class ESSetEmitter(SetEmitter[(str, ESEmitCtx)]) {
     def emit_copy(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return "new Set(" + target + ")";
     }
+
+    # --- Set algebra operators ---
+    def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "union", [args[0]]);
+    }
+
+    def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "intersection", [args[0]]);
+    }
+
+    def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "difference", [args[0]]);
+    }
+
+    def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "symmetricDifference", [args[0]]);
+    }
+
+    # --- Comparison operators (subset/superset) ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("set", "eq", [target, args[0]]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "isSubsetOf", [args[0]]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "is_proper_subset", [target, args[0]]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "isSupersetOf", [args[0]]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "is_proper_superset", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _mcall(target, "has", [args[0]]);
+    }
+
+    # --- In-place operators ---
+    def emit_op_ior(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "update", [target, args[0]]);
+    }
+
+    def emit_op_iand(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("set", "intersection_update", [target, args[0]]);
+    }
+
+    def emit_op_isub(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("set", "difference_update", [target, args[0]]);
+    }
+
+    def emit_op_ixor(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("set", "symmetric_difference_update", [target, args[0]]);
+    }
 }
 
 class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
+    # --- Named methods ---
     def emit_union(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _mcall(target, "union", args);
     }
@@ -897,10 +1359,59 @@ class ESFrozensetEmitter(FrozensetEmitter[(str, ESEmitCtx)]) {
     def emit_copy(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return "new Set(" + target + ")";
     }
+
+    # --- Set algebra operators ---
+    def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "union", [args[0]]);
+    }
+
+    def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "intersection", [args[0]]);
+    }
+
+    def emit_op_sub(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "difference", [args[0]]);
+    }
+
+    def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "symmetricDifference", [args[0]]);
+    }
+
+    # --- Comparison operators (subset/superset) ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("set", "eq", [target, args[0]]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "isSubsetOf", [args[0]]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "is_proper_subset", [target, args[0]]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _mcall(target, "isSupersetOf", [args[0]]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("set", "is_proper_superset", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _mcall(target, "has", [args[0]]);
+    }
 }
 
 class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
-    # JS arrays used as tuples
+    # --- Named methods ---
     def emit_count(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _rt("tuple", "count", [target] + args);
     }
@@ -911,15 +1422,73 @@ class ESTupleEmitter(TupleEmitter[(str, ESEmitCtx)]) {
         }
         return _rt("tuple", "index", [target] + args);
     }
+
+    # --- Arithmetic operators ---
+    def emit_op_add(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "[..." + target + ", ..." + args[0] + "]";
+    }
+
+    def emit_op_mul(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "repeat", [target, args[0]]);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("tuple", "eq", [target, args[0]]);
+    }
+
+    def emit_op_lt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "lt", [target, args[0]]);
+    }
+
+    def emit_op_gt(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "gt", [target, args[0]]);
+    }
+
+    def emit_op_le(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "le", [target, args[0]]);
+    }
+
+    def emit_op_ge(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("tuple", "ge", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _mcall(target, "includes", [args[0]]);
+    }
 }
 
 class ESRangeEmitter(RangeEmitter[(str, ESEmitCtx)]) {
+    # --- Named methods ---
     def emit_count(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _rt("range", "count", [target] + args);
     }
 
     def emit_index(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
         return _rt("range", "index", [target] + args);
+    }
+
+    # --- Comparison operators ---
+    def emit_op_eq(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return _rt("range", "eq", [target, args[0]]);
+    }
+
+    def emit_op_ne(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "!" + _rt("range", "eq", [target, args[0]]);
+    }
+
+    # --- Membership operators ---
+    def emit_op_contains(
+        self, ctx: ESEmitCtx, target: str, args: list[str]
+    ) -> (str | None) {
+        return _rt("range", "contains", [target, args[0]]);
     }
 }
 
