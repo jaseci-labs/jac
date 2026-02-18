@@ -41,6 +41,7 @@ checker_overload.jac
 checker_param_types.jac
 checker_property.jac
 checker_protocol.jac
+checker_protocol_mro.jac
 checker_return_type.jac
 checker_root_type.jac
 checker_self_type.jac
