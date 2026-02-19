@@ -135,6 +135,10 @@ obj JacAPIServer(JServer) {
     def create_websocket_handler(walker_name: str) -> Callable;
     def register_websocket_endpoints -> None;
     def register_dynamic_websocket_endpoint -> None;
+    # Graph visualization endpoint
+    def register_graph_endpoint -> None;
+    def serve_graph_page -> HTMLResponse;
+    def graph_data(Authorization: (str | None) = None) -> JSONResponse;
 }
 
 class UpdateUsernameRequest(BaseModel) {
