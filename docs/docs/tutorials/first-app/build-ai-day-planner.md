@@ -250,7 +250,7 @@ A node is an `obj` style class type declared with the `node` keyword. Its fields
 node Task {
     has id: str,
         title: str,
-        done: bool = F  alse;
+        done: bool = False;
 }
 ```
 
