@@ -16,7 +16,7 @@ enum TypeCategory ( IntEnum ) {
     Unbound,
     Unknown,
     Never,
-    Any,
+    AnyKind,
     Module,
     TypeVar,
     Class,
@@ -112,7 +112,7 @@ obj NeverType(TypeBase) {
 """Represents a type that can be anything."""
 obj AnyType(TypeBase) {
     with entry {
-        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
+        CATEGORY: ClassVar[TypeCategory] = TypeCategory.AnyKind;
     }
 
     def __str__ -> str;
