@@ -268,7 +268,7 @@ cl {
 cl {
     # cn() utility from local lib/utils.ts (shadcn/ui pattern)
     # Uses clsx + tailwind-merge for conditional class names
-    import from ../lib/utils { cn }   # Relative import
+    import from "../lib/utils" { cn }   # Relative import
     # Or with path alias: import from "@/lib/utils" { cn }
 
     def:pub StylingExamples() -> JsxElement {

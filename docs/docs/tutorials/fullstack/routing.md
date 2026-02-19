@@ -184,7 +184,7 @@ cl {
         return <>
             <Navigation />
             <main style={{"maxWidth": "960px", "margin": "0 auto"}}>
-                <Outlet />  {/* Child routes render here */}
+                <Outlet />  # Child routes render here
             </main>
             <footer>Footer content</footer>
         </>;
@@ -222,6 +222,7 @@ cl {
         </Router>;
     }
 }
+```
 
 ---
 
@@ -364,6 +365,7 @@ cl {
     # URL: /blog/tech/123
     # params = {"category": "tech", "postId": "123"}
 }
+```
 
 ---
 
@@ -449,6 +451,7 @@ cl {
         </Router>;
     }
 }
+```
 
 ---
 
@@ -516,6 +519,7 @@ cl {
         </div>;
     }
 }
+```
 
 ---
 
@@ -609,6 +613,7 @@ cl {
 
     # URL: /search?q=hello&page=2
 }
+```
 
 ---
 
@@ -636,6 +641,7 @@ cl {
         </Router>;
     }
 }
+```
 
 ---
 
@@ -684,6 +690,7 @@ cl {
     color: blue;
     font-weight: bold;
 }
+```
 
 ---
 
@@ -787,6 +794,7 @@ cl {
         </Router>;
     }
 }
+```
 
 ---
 
