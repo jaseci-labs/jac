@@ -1180,7 +1180,7 @@ impl Import.__jac_detected(self: Import) -> bool {
             }
         }
     }
-    return `any(
+    return any(
         (
             isinstance(i, ModulePath)
             and i.resolve_relative_path().endswith(('.jac', '.cl.jac'))
@@ -1339,7 +1339,7 @@ impl Archetype._get_impl_resolved_body(self: Archetype) -> list {
 @ property
 impl Archetype.is_abstract(self: Archetype) -> bool {
     body = self._get_impl_resolved_body();
-    return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
+    return any((isinstance(i, Ability) and i.is_abstract) for i in body);
 }
 
 impl Archetype.get_has_vars(self: Archetype) -> list[HasVar] {
@@ -1543,7 +1543,7 @@ impl Ability.is_method(self: Ability) -> bool {
 impl Ability.is_cls_method(self: Ability) -> bool {
     return (
         self.is_method
-        and `any(
+        and any(
             (isinstance(dec, Name) and (dec.sym_name == 'classmethod'))
             for dec in (self.decorators or ())
         )
@@ -2811,7 +2811,7 @@ impl String.lit_value(self: String) -> str {
     if isinstance(self.value, `bytes) {
         return self.value;
     }
-    if `any(
+    if any(
         (
             self.value.startswith(prefix)
             and self.value[len(prefix):].startswith(("'", '"'))

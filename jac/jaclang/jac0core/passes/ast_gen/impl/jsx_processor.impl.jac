@@ -21,7 +21,7 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         );
     }
     attributes = nd.attributes or [];
-    has_spread = `any(isinstance(attr, uni.JsxSpreadAttribute) for attr in attributes);
+    has_spread = any(isinstance(attr, uni.JsxSpreadAttribute) for attr in attributes);
     if not attributes {
         props_expr: Expression = self.pass_ref.sync_loc(
             es.ObjectExpression(properties=[]), jac_node=nd
@@ -232,7 +232,7 @@ impl PyJsxProcessor.element(self: PyJsxProcessor, nd: uni.JsxElement) -> list[as
     }
     if not nd.attributes {
         attrs_expr = self.pass_ref.sync(ast3.Dict(keys=[], values=[]), nd);
-    } elif `any(isinstance(attr, uni.JsxSpreadAttribute) for attr in nd.attributes) {
+    } elif any(isinstance(attr, uni.JsxSpreadAttribute) for attr in nd.attributes) {
         attrs_expr = self.pass_ref.sync(ast3.Dict(keys=[], values=[]), nd);
         for attr in nd.attributes {
             if isinstance(attr, uni.JsxSpreadAttribute) {
