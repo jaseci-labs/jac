@@ -119,7 +119,7 @@ builtin_type ::=
         | "dict"
         | "bool"
         | "bytes"
-        | "any"
+        | "Any"
         | "type"
     )?
 
@@ -243,7 +243,7 @@ lambda_params ::=
                     | "dict"
                     | "bool"
                     | "bytes"
-                    | "any"
+                    | "Any"
                     | "type"
                 ) ("," | "=" | ":" | "->" | "{")?
             )? pipe
@@ -393,7 +393,7 @@ single_pattern ::=
                 | "dict"
                 | "bool"
                 | "bytes"
-                | "any"
+                | "Any"
                 | "type"
             ) class_pattern_args?
           | expression
