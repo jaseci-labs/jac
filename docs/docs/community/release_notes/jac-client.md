@@ -3,6 +3,7 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
 ## jac-client 0.2.20 (Unreleased)
+- **Fix: Change builtin python "any" to "Any"**: Changed builtin python "any" to "Any" in jaclang.
 
 ## jac-client 0.2.19 (Latest Release)
 
