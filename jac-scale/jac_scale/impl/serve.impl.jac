@@ -3025,7 +3025,6 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
 """Return graph data as JSON. Uses authenticated user's root if token provided, otherwise falls back to __guest__ (super root)."""
 impl JacAPIServer.graph_data(Authorization: (str | None) = None) -> JSONResponse {
     import from jaclang.runtimelib.utils { collect_node_connections }
-
     # Try to validate JWT token; fall back to __guest__ if not provided
     token: (str | None) = None;
     if (
@@ -3038,7 +3037,6 @@ impl JacAPIServer.graph_data(Authorization: (str | None) = None) -> JSONResponse
     username = self.user_manager.validate_jwt_token(token) if token else None;
     # Fall back to __guest__ (super root) when no auth provided
     username = username or '__guest__';
-
     # Get user's root node and collect graph data
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
@@ -3047,10 +3045,8 @@ impl JacAPIServer.graph_data(Authorization: (str | None) = None) -> JSONResponse
             content={'error': 'Not found', 'message': 'User root not found'}
         );
     }
-
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
-
     try {
         user_root = ctx.get_root();
         visited_nodes: set = set();
@@ -3068,7 +3064,10 @@ impl JacAPIServer.graph_data(Authorization: (str | None) = None) -> JSONResponse
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {'from': str(id(source_node)), 'to': str(id(target_node))};
+            edge_data: dict = {
+                'from': str(id(source_node)),
+                'to': str(id(target_node))
+            };
             if (repr(edge_arch) != 'GenericEdge()') {
                 edge_data['label'] = repr(edge_arch);
             }
@@ -3076,13 +3075,11 @@ impl JacAPIServer.graph_data(Authorization: (str | None) = None) -> JSONResponse
         }
 
         return JSONResponse(
-            status_code=200,
-            content={'version': '1.0', 'nodes': nodes, 'edges': edges}
+            status_code=200, content={'version': '1.0', 'nodes': nodes, 'edges': edges}
         );
     } except Exception as e {
         return JSONResponse(
-            status_code=500,
-            content={'error': 'Internal error', 'message': str(e)}
+            status_code=500, content={'error': 'Internal error', 'message': str(e)}
         );
     }
 }
