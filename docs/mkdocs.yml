@@ -13,6 +13,7 @@ nav:
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
       - Core Concepts: "quick-guide/what-makes-jac-different.md"
+      - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
       - FAQ: "quick-guide/faq.md"
       - Next Steps: "quick-guide/next-steps.md"
@@ -20,10 +21,7 @@ nav:
   - Tutorials:
       - Overview: "tutorials/index.md"
       - Learning Roadmap: "tutorials/roadmap.md"
-      - Build Your First App:
-          - "Part 1: Todo App": "tutorials/first-app/part1-todo-app.md"
-          - "Part 2: Add AI": "tutorials/first-app/part2-ai-features.md"
-          - "Part 3: Walkers, Auth & Structure": "tutorials/first-app/part3-multi-user.md"
+      - Build an AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Core Language:
           - Jac Programming Primer: "tutorials/language/coding_primer.md"
           - Jac Basics (from Python): "tutorials/language/basics.md"
@@ -46,6 +44,10 @@ nav:
           - Authentication: "tutorials/fullstack/auth.md"
           - Routing: "tutorials/fullstack/routing.md"
           - "Build a Todo App": "tutorials/fullstack/todo-app.md"
+          - Build Your First App (Legacy):
+              - "Legacy: Todo App (Part 1)": "tutorials/first-app/part1-todo-app.md"
+              - "Legacy: Add AI (Part 2)": "tutorials/first-app/part2-ai-features.md"
+              - "Legacy: Walkers & Auth (Part 3)": "tutorials/first-app/part3-multi-user.md"
       - Production:
           - Local API Server: "tutorials/production/local.md"
           - Deploy to Kubernetes: "tutorials/production/kubernetes.md"
@@ -229,8 +231,8 @@ plugins:
         getting-started/index.md: quick-guide/index.md
         quick-guide/first-graph.md: quick-guide/what-makes-jac-different.md
         quick-guide/thinking-in-graphs.md: quick-guide/what-makes-jac-different.md
-        quick-guide/first-app.md: tutorials/first-app/part1-todo-app.md
-        quick-guide/first-fullstack-ai-app.md: tutorials/first-app/part1-todo-app.md
+        quick-guide/first-app.md: tutorials/first-app/build-ai-day-planner.md
+        quick-guide/first-fullstack-ai-app.md: tutorials/first-app/build-ai-day-planner.md
         cli/index.md: reference/cli/index.md
         configuration/index.md: reference/config/index.md
 
