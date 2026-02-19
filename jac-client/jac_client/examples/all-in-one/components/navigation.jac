@@ -102,6 +102,15 @@ cl {
                                 <Link to="/budget" style={linkStyle("/budget")}>
                                     Budget Planner
                                 </Link>
+                                <Link to="/users" style={linkStyle("/users")}>
+                                    Users
+                                </Link>
+                                <Link to="/posts" style={linkStyle("/posts")}>
+                                    Posts
+                                </Link>
+                                <Link to="/search" style={linkStyle("/search")}>
+                                    Search
+                                </Link>
                             </>
                         )}
                     </div>
