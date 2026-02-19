@@ -31,7 +31,7 @@ def numeric_py() -> dict {
 }
 
 na {
-    def numeric_na() -> dict[str, any] {
+    def numeric_na() -> dict[str, Any] {
         a: int = 17;
         b: int = 5;
         x: float = 3.5;

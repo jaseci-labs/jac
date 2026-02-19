@@ -23,7 +23,7 @@ def builtins_py() -> dict {
 }
 
 na {
-    def builtins_na() -> dict[str, any] {
+    def builtins_na() -> dict[str, Any] {
         items: list[int] = [1, 2, 3];
         return {
             "abs_pos": abs(5),

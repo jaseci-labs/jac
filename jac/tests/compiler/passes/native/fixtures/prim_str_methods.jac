@@ -27,7 +27,7 @@ def str_methods_py() -> dict {
 }
 
 na {
-    def str_methods_na() -> dict[str, any] {
+    def str_methods_na() -> dict[str, Any] {
         s1: str = "  hello  ";
         s2: str = "\thello\t";
         s3: str = "a,b,c";

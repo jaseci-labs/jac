@@ -71,7 +71,7 @@ def list_methods_py() -> dict {
 }
 
 na {
-    def list_methods_na() -> dict[str, any] {
+    def list_methods_na() -> dict[str, Any] {
         # append + len
         a: list[int] = [10, 20, 30];
         a.append(40);

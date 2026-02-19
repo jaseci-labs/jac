@@ -14,7 +14,7 @@ def dict_methods_py() -> dict {
 }
 
 na {
-    def dict_methods_na() -> dict[str, any] {
+    def dict_methods_na() -> dict[str, Any] {
         d: dict[str, int] = {"a": 100, "b": 200, "c": 300};
         return {
             "len": len(d),
