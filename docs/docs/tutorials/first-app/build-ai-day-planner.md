@@ -265,7 +265,6 @@ Every Jac program has a built-in `root` node -- the entry point of the graph. Th
 ```mermaid
 graph LR
     root((root))
-    style root fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 Any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` is the declaration that it should be saved. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
@@ -302,7 +301,6 @@ graph LR
     root((root)) --> T1["Task(#quot;Buy groceries#quot;)"]
     root --> T2["Task(#quot;Team standup at 10am#quot;)"]
     root --> T3["Task(#quot;Go for a run#quot;)"]
-    style root fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 The `++>` operator returns a list containing the newly created node. You can capture it:
@@ -1167,11 +1165,9 @@ Notice how `generate_list` clears old shopping items before generating new ones.
 graph LR
     root((root)) --> T1["Task(#quot;Buy groceries#quot;, shopping)"]
     root --> T2["Task(#quot;Team standup#quot;, work)"]
-    root --> S1["ShoppingItem(#quot;Chicken breast#quot;, 2lb, $5.99)"]
-    root --> S2["ShoppingItem(#quot;Soy sauce#quot;, 2tbsp, $0.50)"]
-    style root fill:#f9f,stroke:#333,stroke-width:2px
-    style S1 fill:#bde0fe,stroke:#333
-    style S2 fill:#bde0fe,stroke:#333
+    root --> S1["ShoppingItem(#quot;Chicken breast#quot;, 2lb, $5.99)"]:::shopping
+    root --> S2["ShoppingItem(#quot;Soy sauce#quot;, 2tbsp, $0.50)"]:::shopping
+    classDef shopping stroke-width:2px,stroke-dasharray:5 5
 ```
 
 **Update the Frontend**
@@ -2437,18 +2433,15 @@ A walker is code that moves through the graph, triggering abilities as it enters
 
 ```mermaid
 graph LR
-    W["Walker: ListTasks"] -.->|spawn| root((root))
+    W["Walker: ListTasks"]:::walker -.->|spawn| root((root))
     root -->|visit| T1["Task: #quot;Buy groceries#quot;"]
     root -->|visit| T2["Task: #quot;Team standup#quot;"]
     root -->|visit| T3["Task: #quot;Go running#quot;"]
-    T1 -.-o A1(("ability fires"))
-    T2 -.-o A2(("ability fires"))
-    T3 -.-o A3(("ability fires"))
-    style W fill:#ffd166,stroke:#333,stroke-width:2px
-    style root fill:#f9f,stroke:#333,stroke-width:2px
-    style A1 fill:#06d6a0,stroke:#333
-    style A2 fill:#06d6a0,stroke:#333
-    style A3 fill:#06d6a0,stroke:#333
+    T1 -.-o A1(("ability fires")):::ability
+    T2 -.-o A2(("ability fires")):::ability
+    T3 -.-o A3(("ability fires")):::ability
+    classDef walker stroke-width:3px,stroke-dasharray:none
+    classDef ability stroke-width:2px,stroke-dasharray:3 3
 ```
 
 Think of it like a robot walking through a building. At each room (node), it can look around (`here`), check its own clipboard (`self`), move to connected rooms (`visit`), and write down findings (`report`).
