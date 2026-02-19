@@ -40,11 +40,10 @@ impl check(
                 return [
                     i
                     for i in issues
-                    if not (
-                        i.loc
-                        and i.loc.mod_path
-                        and _should_ignore(i.loc.mod_path, ignore_list)
-                    )
+                    if i.loc
+                    and i.loc.mod_path
+                    and i.loc.mod_path.endswith(".jac")
+                    and not any(p in i.loc.mod_path for p in ignore_list)
                 ];
             }
             filtered_errors = filter_issues(new_errors);
