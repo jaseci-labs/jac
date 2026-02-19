@@ -7,12 +7,12 @@ def ultimate_signature(
     *args: int,
     kw_req: str,
     kw_opt: int = 100,
-    **kwargs: any
+    **kwargs: Any
 ) -> str {
     return f"{pos_only}|{pos_def}|{reg_def}|{len(args)}|{kw_req}|{kw_opt}|{len(kwargs)}";
 }
 
-def separators_only( / , * , x: int)  -> int {
+def separators_only(/, *, x: int) -> int {
     return x;
 }
 

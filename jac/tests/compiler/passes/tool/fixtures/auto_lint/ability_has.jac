@@ -1,7 +1,7 @@
 """Test fixture for has statement combining inside abilities (functions)."""
 
 # has statements inside a function should be combined
-def app() -> any {
+def app() -> Any {
     has count: int = 0;
     has name: str = "test";
     has enabled: bool = True;
@@ -19,7 +19,10 @@ cl {
         has label: str = "Counter";
         has visible: bool = True;
 
-        return <div>{label}: {value}</div>;
+        return
+            <div>
+                {label}:{value}
+            </div>;
     }
 }
 

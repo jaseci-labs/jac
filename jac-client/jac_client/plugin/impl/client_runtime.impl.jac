@@ -1,4 +1,4 @@
-impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
+impl __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -52,7 +52,7 @@ impl __getApiBaseUrl -> str {
     return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{left}";
@@ -75,11 +75,11 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     return payload["data"] if payload["data"] else {};
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
+impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -214,7 +214,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
         <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
     return
         <div
             role="alert"

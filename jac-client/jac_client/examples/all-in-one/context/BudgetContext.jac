@@ -11,7 +11,7 @@ cl {
     glob:pub BudgetContext = createContext(None);
 
     # Provider component - wraps app and provides budget state
-    def:pub BudgetProvider(children: any) -> JsxElement {
+    def:pub BudgetProvider(children: Any) -> JsxElement {
         budget = useBudget();
 
         return

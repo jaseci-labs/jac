@@ -27,7 +27,7 @@ enum TokenKind {
     TYP_DICT = "dict",
     TYP_BOOL = "bool",
     TYP_BYTES = "bytes",
-    TYP_ANY = "any",
+    TYP_ANY = "Any",
     TYP_TYPE = "type",
     KW_ABSTRACT = "abs",
     KW_OBJECT = "obj",
@@ -247,7 +247,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "dict": TokenKind.TYP_DICT,
          "bool": TokenKind.TYP_BOOL,
          "bytes": TokenKind.TYP_BYTES,
-         "any": TokenKind.TYP_ANY,
+         "Any": TokenKind.TYP_ANY,
          "type": TokenKind.TYP_TYPE,
          # Declaration keywords
          "abs": TokenKind.KW_ABSTRACT,

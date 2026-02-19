@@ -218,7 +218,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
                 if val_node is not None {
                     val_name = self._get_name(val_node);
-                    if val_name == "any" {
+                    if val_name == "Any" {
                         self._dict_val_type_hint = "jacval";
                     }
                 }

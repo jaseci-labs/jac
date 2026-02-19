@@ -8,7 +8,7 @@ cl import from ..constants.categories {
 
 cl {
     # Filter buttons for categories
-    def:pub CategoryFilter(selectedCategory: str, onSelect: any) -> JsxElement {
+    def:pub CategoryFilter(selectedCategory: str, onSelect: Any) -> JsxElement {
         # Add "ALL" to the beginning of categories
         allCategories = ["ALL"].concat(CATEGORIES);
 
@@ -19,7 +19,7 @@ cl {
                 </h3>
                 <div className="filter-buttons">
                     {allCategories.map(
-                        lambda cat: str  -> any { isActive = selectedCategory == cat;color = CATEGORY_COLORS[
+                        lambda cat: str  -> Any { isActive = selectedCategory == cat;color = CATEGORY_COLORS[
                             cat
                         ]
                         if cat != "ALL"

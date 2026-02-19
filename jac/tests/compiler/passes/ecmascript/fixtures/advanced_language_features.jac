@@ -2,9 +2,9 @@
 
 cl {
     # Lambdas and higher-order helpers
-    def lambda_examples()  -> dict {
-        adder = lambda  a: int , b: int: a + b;
-        scaler = lambda  value: int , factor: int: value * factor;
+    def lambda_examples() -> dict {
+        adder = lambda a: int , b: int : a + b;
+        scaler = lambda value: int , factor: int : value * factor;
         numbers = [1, 2, 3, 4];
         doubled = [scaler(n, 2) for n in numbers];
         filtered = [
@@ -42,7 +42,7 @@ cl {
     }
 
     # Spread and rest patterns
-    def spread_and_rest_examples()  -> dict {
+    def spread_and_rest_examples() -> dict {
         base = [1, 2, 3];
         extras = [4, 5];
         combined = [*base, *extras, 6];
@@ -84,7 +84,7 @@ cl {
     }
 
     # Destructuring & rest patterns
-    def advanced_destructuring()  -> dict {
+    def advanced_destructuring() -> dict {
         (first, *middle, last) = [10, 20, 30, 40, 50];
         point = (100, 200);
         (x, y) = point;
@@ -121,7 +121,7 @@ cl {
     }
 
     # Update expression stand-ins
-    def update_expression_examples()  -> dict {
+    def update_expression_examples() -> dict {
         counter = 0;
         for _ in range(5) {
             counter += 1;
@@ -153,7 +153,7 @@ cl {
         optional = optional_access_examples({"config": {"value": 7, "mode": "strict"}});
         destructured = advanced_destructuring();
 
-        async def gather_async()  -> dict {
+        async def gather_async() -> dict {
             return await async_pipeline(values);
         }
 
@@ -176,48 +176,54 @@ cl {
         };
     }
 
-    def TodoList(filteredTodos: any, toggleTodo: any, deleteTodo: any) -> JsxElement {
+    def TodoList(filteredTodos: Any, toggleTodo: Any, deleteTodo: Any) -> JsxElement {
         if filteredTodos.length == 0 {
-            return <div
-                style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
-            >
-                No todos yet. Add one above!
-            </div>;
+            return
+                <div
+                    style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
+                >
+                    No todos yet. Add one above!
+                </div>;
         }
 
-        return <div>
-            {filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
-                    key={todo._jac_id}
-                    todo={todo}
-                    toggleTodo={toggleTodo}
-                    deleteTodo={props.deleteTodo}
-                    children={props.children}
-                />; }
-            )}
-        </div>;
+        return
+            <div>
+                {filteredTodos.map(
+                    lambda todo: Any  -> Any { return
+                        <TodoItem
+                            key={todo._jac_id}
+                            todo={todo}
+                            toggleTodo={toggleTodo}
+                            deleteTodo={props.deleteTodo}
+                            children={props.children}
+                        />; }
+                )}
+            </div>;
     }
 
-    def PropTodoList(props: any) -> JsxElement {
+    def PropTodoList(props: Any) -> JsxElement {
         if props.filteredTodos.length == 0 {
-            return <div
-                style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
-            >
-                No todos yet. Add one above!
-            </div>;
+            return
+                <div
+                    style={{"padding": "20px", "textAlign": "center", "color": "#999"}}
+                >
+                    No todos yet. Add one above!
+                </div>;
         }
 
-        return <div>
-            {props.filteredTodos.map(
-                lambda  todo: any  -> any{ return <TodoItem
-                    key={todo._jac_id}
-                    todo={todo}
-                    toggleTodo={props.toggleTodo}
-                    deleteTodo={props.deleteTodo}
-                    children={props.children}
-                />; }
-            )}
-        </div>;
+        return
+            <div>
+                {props.filteredTodos.map(
+                    lambda todo: Any  -> Any { return
+                        <TodoItem
+                            key={todo._jac_id}
+                            todo={todo}
+                            toggleTodo={props.toggleTodo}
+                            deleteTodo={props.deleteTodo}
+                            children={props.children}
+                        />; }
+                )}
+            </div>;
     }
 
     def `def(`from: str, `class: str) -> str {

@@ -17,7 +17,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_name == "None" {
             return ir.VoidType();
         }
-        if type_name == "any" {
+        if type_name == "Any" {
             return self.jacval_type;
         }
     }
@@ -40,7 +40,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_name == "None" {
             return ir.VoidType();
         }
-        if type_name == "any" {
+        if type_name == "Any" {
             return self.jacval_type;
         }
     }

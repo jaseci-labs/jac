@@ -6,11 +6,15 @@ and Rollup reject with "Expected ',', got 'ident'".
 """
 
 cl {
-    def:pub app() -> any {
+    def:pub app() -> Any {
         return (
             <div>
-                <h1>Results</h1>
-                <p>"Try: show all to reset"</p>
+                <h1>
+                    Results
+                </h1>
+                <p>
+                    "Try: show all to reset"
+                </p>
             </div>
         );
     }
