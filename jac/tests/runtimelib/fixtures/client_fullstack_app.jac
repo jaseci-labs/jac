@@ -13,10 +13,15 @@ cl def:pub app() -> JsxElement {
 
     return
         <div id="app">
-            <h1>Items</h1>
+            <h1>
+                Items
+            </h1>
             <ul>
                 {items.map(
-                    lambda item: dict -> any { return <li>{item.name}</li>; }
+                    lambda item: dict  -> Any { return
+                        <li>
+                            {item.name}
+                        </li>; }
                 )}
             </ul>
         </div>;

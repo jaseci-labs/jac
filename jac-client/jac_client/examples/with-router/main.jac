@@ -16,7 +16,7 @@ cl {
         location = useLocation();
         navigate = useNavigate();
 
-        def goToAbout(e: any) -> None {
+        def goToAbout(e: Any) -> None {
             navigate("/about");
         }
 
@@ -124,12 +124,12 @@ cl {
     def Contact -> JsxElement {
         has submitted: bool = False;
 
-        def handleSubmit(e: any) -> None {
+        def handleSubmit(e: Any) -> None {
             e.preventDefault();
             submitted = True;
         }
 
-        def resetForm(e: any) -> None {
+        def resetForm(e: Any) -> None {
             submitted = False;
         }
 
@@ -185,7 +185,7 @@ cl {
         location = useLocation();
         navigate = useNavigate();
 
-        def goHome(e: any) -> None {
+        def goHome(e: Any) -> None {
             navigate("/");
         }
 

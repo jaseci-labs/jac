@@ -6,7 +6,7 @@ cl import from .TransactionItem {
 
 cl {
     # Props: transactions list and delete handler
-    def:pub TransactionList(transactions: list, onDelete: any) -> JsxElement {
+    def:pub TransactionList(transactions: list, onDelete: Any) -> JsxElement {
         if len(transactions) == 0 {
             return
                 <div className="empty-state">

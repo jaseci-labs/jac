@@ -730,7 +730,7 @@ impl JacAutoLintPass.enter_builtin_type(nd: uni.BuiltinType) -> None {
 """Convert hasattr(obj, "attr") to null-safe access.
 
 This helper checks if a FuncCall is a hasattr call with exactly two arguments:
-- First arg: any expression (the object)
+- First arg: Any expression (the object)
 - Second arg: a string literal (the attribute name)
 
 If valid, creates and returns an AtomTrailer with is_null_ok=True.

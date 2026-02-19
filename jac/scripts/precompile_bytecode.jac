@@ -63,7 +63,7 @@ def find_package_dir(source_dir: str) -> str | None {
     if candidate.is_dir() and any(candidate.rglob("*.jac")) {
         return str(candidate);
     }
-    # Last resort: any child dir containing .jac files
+    # Last resort: Any child dir containing .jac files
     for child in sorted(src.iterdir()) {
         if child.is_dir()
         and child.name not in excluded

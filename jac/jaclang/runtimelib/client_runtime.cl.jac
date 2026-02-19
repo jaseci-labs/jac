@@ -2,21 +2,21 @@
 
 # JSX element representation
 obj JsxElement {
-    has tag: any,
+    has tag: Any,
         props: dict = {},
         children: list = [];
 }
 # JSX factory function
 def __jacJsx(
-    tag: any, props: dict = {}, children: list = []
+    tag: Any, props: dict = {}, children: list = []
 ) -> JsxElement;
 # DOM rendering function
-def renderJsxTree(nd: JsxElement, container: any) -> None;
+def renderJsxTree(nd: JsxElement, container: Any) -> None;
 # Internal: Build DOM from JSX tree
-def __buildDom(nd: any) -> any;
+def __buildDom(nd: Any) -> Any;
 # Internal: Apply property to DOM element
 def __applyProp(
-    element: any, key: str, value: any
+    element: Any, key: str, value: Any
 ) -> None;
 # ============================================================================
 # Reactive State Management System
@@ -38,7 +38,7 @@ glob __jacReactiveContext = {
 # Create a reactive signal (primitive value)
 # Returns [getter, setter] tuple for reactive primitive value
 def createSignal(
-    initialValue: any
+    initialValue: Any
 ) -> list;
 # Create reactive state (object/dict)
 # Returns [getter, setter] tuple for reactive object
@@ -48,12 +48,12 @@ def createState(
 # Run effect when dependencies change
 # Executes effectFn and re-runs when tracked signals change
 def createEffect(
-    effectFn: any
+    effectFn: Any
 ) -> None;
 # Run effect once when component mounts (similar to useEffect with empty deps)
 # Executes mountFn once when the component first renders
 def onMount(
-    mountFn: any
+    mountFn: Any
 ) -> None;
 # Internal: Track component dependencies
 def __jacTrackDependency(
@@ -65,16 +65,16 @@ def __jacNotifySubscribers(
 ) -> None;
 # Internal: Run an effect function with dependency tracking
 def __jacRunEffect(
-    effectFn: any
+    effectFn: Any
 ) -> None;
 # Schedule a re-render (batched)
-def __jacScheduleRerender(componentId: any) -> None;
+def __jacScheduleRerender(componentId: Any) -> None;
 # Schedule a flush of pending renders
 def __jacScheduleFlush -> None;
 # Flush all pending renders
 def __jacFlushRenders -> None;
 # Re-render the root component
-def __jacRerenderComponent(componentId: any) -> None;
+def __jacRerenderComponent(componentId: Any) -> None;
 # ============================================================================
 # Declarative Routing System
 # ============================================================================
@@ -82,15 +82,15 @@ def __jacRerenderComponent(componentId: any) -> None;
 # Route configuration object
 obj RouteConfig {
     has path: str,
-        component: any,
-        guard: any = None;
+        component: Any,
+        guard: Any = None;
 }
 # Create a router instance
 def createRouter(
     routes: list, defaultRoute: str = "/"
 ) -> dict;
 # Route config factory
-def Route(path: str, component: any, guard: any = None) -> dict;
+def Route(path: str, component: Any, guard: Any = None) -> dict;
 # Link component for declarative navigation
 def Link(props: dict) -> JsxElement;
 # Navigate programmatically
@@ -104,11 +104,11 @@ def __jacGetPath -> str;
 # ============================================================================
 async def __jacSpawn(
     left: str, right: str = "", fields: dict = {}
-) -> any;
+) -> Any;
 # Function call function - calls server-side functions from client
 async def __jacCallFunction(
     function_name: str, args: dict = {}
-) -> any;
+) -> Any;
 # Authentication helpers
 async def jacSignup(username: str, password: str) -> dict;
 async def jacLogin(username: str, password: str) -> bool;
@@ -120,29 +120,29 @@ def __getLocalStorage(key: str) -> str;
 def __setLocalStorage(key: str, value: str) -> None;
 
 def __removeLocalStorage(key: str) -> None;
-def __isObject(value: any) -> bool;
+def __isObject(value: Any) -> bool;
 
-def __isFunction(value: any) -> bool;
-def __objectKeys(obj: any) -> list;
+def __isFunction(value: Any) -> bool;
+def __objectKeys(obj: Any) -> list;
 # Low-level helpers
-def __jacHasOwn(obj: any, key: any) -> bool;
+def __jacHasOwn(obj: Any, key: Any) -> bool;
 # Internal polyfill for Python-style dict.get on plain JS objects
 def __jacEnsureObjectGetPolyfill -> None;
 # Common utility helpers
-def __jacGetDocument(scope: any) -> any;
-def __jacParseJsonObject(text: str) -> any;
+def __jacGetDocument(scope: Any) -> Any;
+def __jacParseJsonObject(text: str) -> Any;
 
 def __jacBuildOrderedArgs(order: list, argsDict: dict) -> list;
-def __jacResolveRenderer(scope: any) -> any;
+def __jacResolveRenderer(scope: Any) -> Any;
 
-def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any;
+def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> Any;
 def __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list, targetName: str
+    target: Any, scope: Any, orderedArgs: list, targetName: str
 ) -> dict;
 # Runtime support helpers for client module registration / hydration
-def __jacGlobalScope -> any;
+def __jacGlobalScope -> Any;
 def __jacEnsureRegistry -> dict;
-def __jacApplyRender(renderer: any, container: any, nd: any) -> None;
+def __jacApplyRender(renderer: Any, container: Any, nd: Any) -> None;
 
 def __jacHydrateFromDom(defaultModuleName: str) -> None;
 def __jacExecuteHydration -> None;
@@ -157,7 +157,7 @@ def __jacRegisterClientModule(
 # ============================================================================
 # These provide React-like API using the core reactive primitives
 def useState(
-    initialValue: any
+    initialValue: Any
 ) -> list;
 
-def useEffect(effectFn: any, deps: list = []) -> None;
+def useEffect(effectFn: Any, deps: list = []) -> None;
