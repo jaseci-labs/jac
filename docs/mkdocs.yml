@@ -13,6 +13,7 @@ nav:
       - Installation: "quick-guide/install.md"
       - Hello World: "quick-guide/hello-world.md"
       - Core Concepts: "quick-guide/what-makes-jac-different.md"
+      - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
       - FAQ: "quick-guide/faq.md"
       - Next Steps: "quick-guide/next-steps.md"
