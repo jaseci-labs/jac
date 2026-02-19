@@ -253,7 +253,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.MULTI {
         # Multiple arguments
-        if arg.name in ("paths", "packages") {
+        if arg.name in ("paths", "packages", "names") {
             # Positional multiple arguments
             kwargs["nargs"] = "+";
             if arg.default is not None {
