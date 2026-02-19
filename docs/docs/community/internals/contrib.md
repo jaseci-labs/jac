@@ -75,25 +75,18 @@ git remote -v
 To get setup run
 
 ```bash
-# Install black
 python3 -m venv ~/.jacenv/
 source ~/.jacenv/bin/activate
 pip3 install pre-commit pytest pytest-xdist
 pre-commit install
 ```
 
-To understand our linting and mypy type checking have a look at our pre-commit actions. You can set up your enviornment accordingly. For help interpreting this if you need it, call upon our friend Mr. ChatGPT or one of his colleagues.
+Pre-commit handles all linting (ruff), formatting, and type checking (mypy) automatically when you commit.
 
-??? Grock "Our pre-commit process"
+??? info "Our pre-commit process"
     ```yaml linenums="1"
     --8<-- ".pre-commit-config.yaml"
     ```
-
-This is how we run checks on demand.
-
-```bash
---8<-- "scripts/check.sh"
-```
 
 This is how we run our tests.
 
@@ -103,16 +96,8 @@ This is how we run our tests.
 
 ## Run docs site locally
 
-This is how we run the docs.
-
 ```bash
 --8<-- "scripts/run_docs.sh"
-```
-
-## Build VSCode Extention
-
-```bash
---8<-- "scripts/build_vsce.sh"
 ```
 
 ## Release Flow (Automated)
