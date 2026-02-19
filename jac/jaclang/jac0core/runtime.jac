@@ -34,6 +34,7 @@ import from jaclang.jac0core.archetype {
     ObjectSpatialPath,
     Root
 }
+import from jaclang.jac0core.ttg { JacTTGGenerator }
 import from jaclang.jac0core.constant { EdgeDir, colors }
 import from jaclang.jac0core.constructs {
     AccessLevel,
@@ -564,6 +565,32 @@ class JacWalker {
         current_loc = nd.archetype;
         ctx = JacRuntimeInterface.get_context();
         call_state = ctx.call_state.get(None);
+        # TTG generation (only when prefetching is enabled).
+        if os.environ.get("JAC_PREFETCH", "0") == "1" {
+            try {
+                _root = JacRuntimeInterface.`root();
+                start_id = nd.id if isinstance(nd, NodeAnchor) else nd.target.id;
+                (ttg_state, ttg_visited, ttg_child_map) = JacTTGGenerator.get_ttg(
+                    warch, start_id, _root.graph, _root.type_map
+                );
+                warch.__ttg__ = ttg_state;
+                warch.__ttg_children__ = ttg_child_map;
+                warch.__ttg_visited__ = ttg_visited;
+                # Prefetch child nodes for cache warming.
+                if ttg_child_map {
+                    prefetch_list = JacTTGGenerator.get_prefetch_list(
+                        start_id, ttg_child_map
+                    );
+                    if prefetch_list {
+                        ctx.mem.prefetch(prefetch_list);
+                    }
+                }
+            } except Exception {
+                warch.__ttg__ = None;
+                warch.__ttg_children__ = None;
+                warch.__ttg_visited__ = None;
+            }
+        }
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
                 i.func(warch, current_loc);
@@ -1589,7 +1616,20 @@ system,
         return `list(jmem.get_roots());
     }
 
-    """Jac's root getter."""
+    """Register edge in Root's TTG topology graph (safe wrapper)."""
+    static def ttg_register_edge_safe(
+        source: NodeAnchor, eanch: EdgeAnchor, target: NodeAnchor, is_undirected: bool
+    ) -> None {
+        _root = JacRuntimeInterface.`root();
+        if hasattr(_root, 'graph') and hasattr(_root, '_ttg_register_edge') {
+            _root._ttg_register_edge(source, eanch, target);
+            if is_undirected {
+                _root._ttg_register_edge(target, eanch, source);
+            }
+        }
+    }
+
+    """Jac's edge builder."""
     static def build_edge(
         is_undirected: bool,
         conn_type: type[EdgeArchetype] | EdgeArchetype | None,
@@ -1618,6 +1658,10 @@ system,
             if (source.persistent or target.persistent) {
                 JacRuntimeInterface.save(eanch);
             }
+            # Register edge in Root's TTG topology graph.
+            JacRuntimeInterface.ttg_register_edge_safe(
+                source, eanch, target, is_undirected
+            );
             return `edge;
         }
         return builder;

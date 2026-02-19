@@ -885,6 +885,77 @@ impl PyastGenPass.exit_archetype(self: PyastGenPass, nd: uni.Archetype) -> None 
             )
         );
     }
+    # Emit __jac_ttg_visits__ ClassVar for walker archetypes.
+    # Uses string names (forward references) to avoid NameError when
+    # referenced types are defined after the walker or in dynamic modules.
+    if (nd.arch_type.name == Tok.KW_WALKER) {
+        visit_payload = getattr(nd, TTG_VISIT_FIELD, None);
+        visit_elements: list[ast3.expr] = [];
+        if isinstance(visit_payload, `list) {
+            for visit_info in visit_payload {
+                from_arch = visit_info[0] if isinstance(visit_info, `tuple) else None;
+                edge_arch = visit_info[1] if isinstance(visit_info, `tuple) else None;
+                from_ref = (
+                    self.sync(
+                        ast3.Constant(
+                            value=getattr(
+                                from_arch.name, 'sym_name', from_arch.name.value
+                            )
+                        )
+                    )
+                    if (from_arch is not None and getattr(from_arch, 'name', None))
+                    else self.sync(ast3.Constant(value=None))
+                );
+                edge_ref = (
+                    self.sync(
+                        ast3.Constant(
+                            value=getattr(
+                                edge_arch.name, 'sym_name', edge_arch.name.value
+                            )
+                        )
+                    )
+                    if (edge_arch is not None and getattr(edge_arch, 'name', None))
+                    else self.sync(ast3.Constant(value=None))
+                );
+                visit_elements.append(
+                    self.sync(
+                        ast3.Call(
+                            func=self.jaclib_obj('VisitType'),
+                            args=[],
+                            keywords=[
+                                self.sync(
+                                    ast3.keyword(arg='from_node_type', value=from_ref)
+                                ),
+                                self.sync(
+                                    ast3.keyword(arg='edge_type', value=edge_ref)
+                                )
+                            ]
+                        )
+                    )
+                );
+            }
+        }
+        visit_value = self.sync(ast3.List(elts=visit_elements, ctx=ast3.Load()));
+        insert_idx = 0;
+        if nd.is_async {
+            insert_idx += 1;
+        }
+        if nd.doc {
+            insert_idx += 1;
+        }
+        body.insert(
+            insert_idx,
+            self.sync(
+                ast3.Assign(
+                    targets=[
+                        self.sync(ast3.Name(id=TTG_VISIT_FIELD, ctx=ast3.Store()))
+                    ],
+                    value=visit_value
+                ),
+                jac_node=nd
+            )
+        );
+    }
     decorators = [cast(ast3.expr, i.gen.py_ast[0]) for i in nd.decorators]
     if nd.decorators
     else [];

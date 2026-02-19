@@ -11,6 +11,7 @@ import from jaclang.jac0core.archetype {
     NodeArchetype,
     ObjectSpatialFunction,
     Root,
+    VisitType,
     WalkerAnchor,
     WalkerArchetype
 }
@@ -28,6 +29,7 @@ glob __all__ = [
          'GenericEdge',
          'JsxElement',
          'Root',
+         'VisitType',
          'MTIR',
          'MTRuntime',
          'ObjectSpatialFunction'

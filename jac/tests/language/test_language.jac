@@ -676,3 +676,17 @@ test "operator precedence matches python" {
     output = run_jac(os.path.join(FIXTURES, "operator_precedence.jac"));
     assert "PASS" in output , f"Operator precedence test failed:\n{output}";
 }
+
+# ── TTG (Temporal Trace Graph) tests ─────────────────────────────────────────
+test "ttg root graph topology tracking" {
+    output = run_jac(os.path.join(FIXTURES, "ttg_basic.jac"));
+    assert "graph_populated True" in output;
+    assert "type_map_populated True" in output;
+}
+
+test "ttg walker traversal with typed edges" {
+    output = run_jac(os.path.join(FIXTURES, "ttg_basic.jac"));
+    # Walker enters Root, visits BasicEdge children (a1, a2, b4).
+    # Only TypeA nodes trigger the 'run' ability, so visited = [1, 2].
+    assert "visited [1, 2]" in output;
+}

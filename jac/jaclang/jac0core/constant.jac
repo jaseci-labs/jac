@@ -617,4 +617,5 @@ glob TOKEN_MAP: dict[str, str] = {
          '#F0F8FF',
          '#F8F8FF',
          '#F0FFFF'
-     ];
+     ],
+     TTG_VISIT_FIELD = "__jac_ttg_visits__";

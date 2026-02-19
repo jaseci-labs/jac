@@ -10,6 +10,7 @@ names stable because the Jac -> Python code generator emits imports for these.
 import from jaclang.jac0core.archetype { GenericEdge, Root }
 import from jaclang.jac0core.archetype { ObjectSpatialFunction as DSFunc }
 import from jaclang.jac0core.archetype { ObjectSpatialPath as OPath }
+import from jaclang.jac0core.archetype { VisitType }
 import from jaclang.jac0core.constant { EdgeDir }
 import from jaclang.jac0core.constructs { Archetype as Obj }
 import from jaclang.jac0core.constructs { EdgeArchetype as Edge }
@@ -28,6 +29,7 @@ glob __all__ = [
          'OPath',
          'DSFunc',
          'EdgeDir',
+         'VisitType',
          'root',
          'spawn',
          'visit',

@@ -285,7 +285,24 @@ impl GenericEdge.__repr__(self: GenericEdge) -> str {
 """Create default anchor."""
 @ cached_property
 impl Root.__jac__(self: Root) -> NodeAnchor {
-    return NodeAnchor(archetype=self, persistent=True, edges=[]);
+    anchor = NodeAnchor(archetype=self, persistent=True, edges=[]);
+    self.type_map[anchor.id] = Root;
+    return anchor;
+}
+
+"""Register an edge in Root's topology graph and type_map.
+
+This records (source_id, edge_id, target_id) tuples so that the TTG
+generator can traverse the graph structure without loading any Jac
+archetype instances.
+"""
+impl Root._ttg_register_edge(
+    self: Root, source: NodeAnchor, edge_anchor: EdgeAnchor, target: NodeAnchor
+) -> None {
+    self.graph.append((source.id, edge_anchor.id, target.id));
+    self.type_map.setdefault(source.id, `type(source.archetype));
+    self.type_map[edge_anchor.id] = `type(edge_anchor.archetype);
+    self.type_map.setdefault(target.id, `type(target.archetype));
 }
 
 """Override repr for archetype."""

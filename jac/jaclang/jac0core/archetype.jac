@@ -233,11 +233,23 @@ class EdgeArchetype(Archetype) {
     }
 }
 
+"""Lightweight carrier for walker visit metadata used by TTG generation.
+
+Fields accept either a concrete type or a string name (forward reference).
+String names are resolved lazily at runtime by the TTG generator.
+"""
+@dataclass(frozen=True)
+class VisitType {
+    has from_node_type: (type[NodeArchetype] | str | None) = None,
+        edge_type: (type[EdgeArchetype] | str | None) = None;
+}
+
 """Walker Archetype Protocol."""
 class WalkerArchetype(Archetype) {
     with entry {
         __jac_async__: ClassVar = False;
         __jac_base__: ClassVar = True;
+        __jac_ttg_visits__: ClassVar[list[VisitType]] = [];
         reports: list[Any] = field(default_factory=`list);
     }
 
@@ -278,8 +290,16 @@ obj Root(NodeArchetype) {
         __jac_base__: ClassVar = True;
     }
 
+    has graph: list[tuple[(UUID, UUID, UUID)]] = field(default_factory=`list),
+        type_map: dict[(UUID, type)] = field(default_factory=`dict);
+
     @cached_property
     def __jac__(self: Root) -> NodeAnchor;
+
+    """Register an edge in the Root's topology graph and type_map."""
+    def _ttg_register_edge(
+        self: Root, source: NodeAnchor, edge_anchor: EdgeAnchor, target: NodeAnchor
+    ) -> None;
 
     def __repr__(self: Root) -> str;
 }

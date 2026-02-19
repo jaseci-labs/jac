@@ -27,7 +27,7 @@ import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.constant { Constants as Con }
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { TTG_VISIT_FIELD, Tokens as Tok }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { PyJsxProcessor }
 glob T = TypeVar('T', bound=ast3.AST),

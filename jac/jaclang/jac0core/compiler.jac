@@ -21,6 +21,7 @@ import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     InteropAnalysisPass,
     JacAnnexPass,
+    JacTTGPass,
     PyastGenPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
@@ -66,6 +67,7 @@ def get_ir_gen_sched -> list[type[Transform[(uni.Module, uni.Module)]]] {
             SymTabBuildPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
+            JacTTGPass,
             SemDefMatchPass,
             CFGBuildPass,
             MTIRGenPass
