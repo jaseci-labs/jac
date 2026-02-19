@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.11 (Unreleased)
 
+- **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
+
 ## jac-scale 0.1.10 (Latest Release)
 
 - **support horizontal scaling**:  based on average cpu usage k8s pods are horizontally scaled

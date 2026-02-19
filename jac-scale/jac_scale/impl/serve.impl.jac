@@ -2582,6 +2582,16 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
             gap: 8px;
         }
         .logo svg { color: #f59e0b; }
+        .mode-badge {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 3px 10px;
+            border-radius: 4px;
+        }
+        .mode-badge.public { background: #1e3a5f; color: #38bdf8; border: 1px solid #0ea5e9; }
+        .mode-badge.user { background: #14532d; color: #4ade80; border: 1px solid #22c55e; }
         .stats {
             font-size: 12px;
             color: #94a3b8;
@@ -2650,13 +2660,15 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
         .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
         .legend-color { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); }
 
-        /* Login page */
-        .login-page {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+        /* Login modal overlay */
+        .login-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            align-items: center; justify-content: center;
+            z-index: 300;
         }
+        .login-overlay.open { display: flex; }
         .login-card {
             background: #1e293b;
             border: 1px solid #334155;
@@ -2664,6 +2676,7 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
             padding: 32px;
             width: 360px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            position: relative;
         }
         .login-card .logo { justify-content: center; font-size: 20px; margin-bottom: 24px; }
         .login-card label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
@@ -2681,16 +2694,24 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
         }
         .login-card .login-btn:hover { background: #2563eb; }
         .login-card .login-btn:disabled { background: #334155; cursor: not-allowed; }
+        .login-close {
+            position: absolute; top: 12px; right: 12px; background: none;
+            border: none; color: #64748b; cursor: pointer; font-size: 18px;
+        }
+        .login-close:hover { color: #e2e8f0; }
         .login-error {
             color: #ef4444; font-size: 13px; margin-bottom: 12px;
             display: none; text-align: center;
         }
+        .btn-login { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+        .btn-login:hover { background: #2563eb; border-color: #2563eb; }
     </style>
 </head>
 <body>
-    <!-- Login page (shown when no token) -->
-    <div id="login-page" class="login-page" style="display:none">
+    <!-- Login modal -->
+    <div class="login-overlay" id="login-overlay">
         <div class="login-card">
+            <button class="login-close" onclick="closeLogin()">&times;</button>
             <div class="logo">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="16" x2="6" y2="16.5"/><line x1="12" y1="16" x2="18" y2="16.5"/></svg>
                 Jac Graph
@@ -2704,38 +2725,41 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
         </div>
     </div>
 
-    <!-- Graph page (shown when authenticated) -->
-    <div id="graph-page" style="display:none">
-        <div class="header">
-            <div class="header-left">
-                <div class="logo">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="16" x2="6" y2="16.5"/><line x1="12" y1="16" x2="18" y2="16.5"/></svg>
-                    Jac Graph
-                </div>
-                <div class="stats" id="stats">Loading...</div>
+    <!-- Graph page (always visible) -->
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="16"/><circle cx="6" cy="19" r="3"/><circle cx="18" cy="19" r="3"/><line x1="12" y1="16" x2="6" y2="16.5"/><line x1="12" y1="16" x2="18" y2="16.5"/></svg>
+                Jac Graph
             </div>
-            <div class="header-right">
-                <button class="btn" onclick="refreshGraph()" title="Refresh">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-                    Refresh
-                </button>
-                <button class="btn" onclick="fitGraph()">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
-                    Fit
-                </button>
-                <button class="btn" onclick="togglePhysics()" id="physics-btn">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>
-                    Physics
-                </button>
-                <button class="btn btn-logout" onclick="doLogout()">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Logout
-                </button>
-            </div>
+            <div class="mode-badge" id="mode-badge">Loading</div>
+            <div class="stats" id="stats"></div>
         </div>
-        <div id="graph-container"></div>
-        <div class="tooltip" id="tooltip"></div>
+        <div class="header-right">
+            <button class="btn" onclick="refreshGraph()" title="Refresh">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+                Refresh
+            </button>
+            <button class="btn" onclick="fitGraph()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                Fit
+            </button>
+            <button class="btn" onclick="togglePhysics()" id="physics-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>
+                Physics
+            </button>
+            <button class="btn btn-login" id="auth-btn" onclick="openLogin()" style="display:none">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                Login
+            </button>
+            <button class="btn btn-logout" id="logout-btn" onclick="doLogout()" style="display:none">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Logout
+            </button>
+        </div>
     </div>
+    <div id="graph-container"></div>
+    <div class="tooltip" id="tooltip"></div>
 
     <script>
         let network = null;
@@ -2744,27 +2768,32 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
         let authToken = localStorage.getItem('jac_token') || null;
         const baseUrl = window.location.origin;
 
-        // Route to correct page on load
-        if (authToken) {
-            showGraphPage();
-        } else {
-            showLoginPage();
-        }
+        // Load graph immediately and update header buttons
+        updateHeaderButtons();
+        loadGraphData();
 
         // Enter key submits login
         document.getElementById('login-password').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') doLogin();
         });
 
-        function showLoginPage() {
-            document.getElementById('login-page').style.display = 'flex';
-            document.getElementById('graph-page').style.display = 'none';
+        function updateHeaderButtons() {
+            document.getElementById('auth-btn').style.display = authToken ? 'none' : 'flex';
+            document.getElementById('logout-btn').style.display = authToken ? 'flex' : 'none';
+            const badge = document.getElementById('mode-badge');
+            badge.textContent = authToken ? 'User Graph' : 'Public Graph';
+            badge.className = 'mode-badge ' + (authToken ? 'user' : 'public');
         }
 
-        function showGraphPage() {
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('graph-page').style.display = 'block';
-            loadGraphData();
+        function openLogin() {
+            document.getElementById('login-error').style.display = 'none';
+            document.getElementById('login-username').value = '';
+            document.getElementById('login-password').value = '';
+            document.getElementById('login-overlay').classList.add('open');
+        }
+
+        function closeLogin() {
+            document.getElementById('login-overlay').classList.remove('open');
         }
 
         async function doLogin() {
@@ -2790,7 +2819,9 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
                 if (result.ok && result.data && result.data.token) {
                     authToken = result.data.token;
                     localStorage.setItem('jac_token', authToken);
-                    showGraphPage();
+                    closeLogin();
+                    updateHeaderButtons();
+                    loadGraphData();
                 } else {
                     errEl.textContent = (result.error && result.error.message) || 'Invalid credentials';
                     errEl.style.display = 'block';
@@ -2806,7 +2837,8 @@ impl JacAPIServer.serve_graph_page -> HTMLResponse {
         function doLogout() {
             authToken = null;
             localStorage.removeItem('jac_token');
-            showLoginPage();
+            updateHeaderButtons();
+            loadGraphData();
         }
 
         async function loadGraphData() {
