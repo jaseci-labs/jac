@@ -999,6 +999,12 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             for _a in args {
                 _args_strs.append(_unparser.generate(_a));
             }
+            # Include keyword argument values (e.g., key=lambda, reverse=True)
+            for _p in props {
+                if isinstance(_p, es.Property) and _p.value {
+                    _args_strs.append(_unparser.generate(_p.value));
+                }
+            }
             _result = _emit_fn(_ctx, _args_strs);
             if _result is not None and "_jac." in str(_result) {
                 self.needs_jac_runtime = True;

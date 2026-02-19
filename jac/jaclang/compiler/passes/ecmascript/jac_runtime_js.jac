@@ -172,7 +172,9 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         return [...parts.slice(0, maxsplit), parts.slice(maxsplit).join(" ")].filter(x => x !== undefined);
       }
       if (maxsplit === undefined) return s.split(sep);
-      return s.split(sep, maxsplit + 1);
+      const parts = s.split(sep);
+      if (parts.length <= maxsplit + 1) return parts;
+      return [...parts.slice(0, maxsplit), parts.slice(maxsplit).join(sep)];
     },
     rsplit(s, sep, maxsplit) {
       if (maxsplit === undefined) return _jac.str.split(s, sep);
@@ -356,7 +358,20 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       for (const k of keys) d[k] = v;
       return d;
     },
-    eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+    eq(a, b) {
+      const ka = Object.keys(a), kb = Object.keys(b);
+      if (ka.length !== kb.length) return false;
+      for (const k of ka) {
+        if (!(k in b)) return false;
+        const va = a[k], vb = b[k];
+        if (va !== vb) {
+          if (typeof va === "object" && typeof vb === "object" && va !== null && vb !== null) {
+            if (JSON.stringify(va) !== JSON.stringify(vb)) return false;
+          } else return false;
+        }
+      }
+      return true;
+    }
   },
 
   set: {
