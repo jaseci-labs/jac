@@ -217,6 +217,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install build
 
+    - name: Install jaclang for precompilation
+      run: pip install -e jac
+
+    - name: Precompile all packages
+      run: |
+        jac run jac/scripts/precompile_bytecode.jac ./jac
+        jac run jac/scripts/precompile_bytecode.jac ./jac-client
+        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
+        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+
+    - name: Uninstall editable jaclang
+      run: pip uninstall -y jaclang
+
     - name: Build and install packages
       run: |
         python -m build jac --wheel
@@ -229,6 +242,11 @@ jobs:
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
         pip install pytest-asyncio
+
+    - name: Verify cold start with precompiled bytecode
+      run: |
+        jac purge
+        timeout 5 jac --version
 
     - name: Run integration tests
       run: jac run scripts/integration_tests.jac

@@ -1338,6 +1338,8 @@ impl TypeEvaluator._compute_narrowed_at(
 
     }
     visited.add(stmt_id);
+    # Ignore back-edges from loop body to preserve pre-loop narrowing.
+    is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));
     if not stmt.bb_in {
         self._narrowing_cache[cache_key] = None;
         return None;
@@ -1348,6 +1350,19 @@ impl TypeEvaluator._compute_narrowed_at(
         if pred is stmt {
             has_unnarrowed_pred = True;
             continue;
+        }
+        # Ignore back-edges from loop body to preserve pre-loop narrowing.
+        if is_loop_header {
+            # Skip back-edges from loop body.
+            ancestor: uni.UniNode | None = None;
+            if isinstance(stmt, uni.InForStmt) {
+                ancestor = pred.find_parent_of_type(uni.InForStmt);
+            } else {
+                ancestor = pred.find_parent_of_type(uni.IterForStmt);
+            }
+            if ancestor is stmt {
+                continue;  # skip loop back-edge
+            }
         }
         # Recursively get predecessor's narrowed type.
         pred_narrowed = self._compute_narrowed_at(symbol, pred, visited);

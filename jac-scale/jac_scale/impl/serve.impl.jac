@@ -88,12 +88,22 @@ impl JacAPIServer.start(
                         f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
                     );
                 } except Exception as e {
-                    console.warning(f"Failed to build client bundle: {e}");
-                    console.print(
-                        "\n  Client pages will not be available until this is fixed.\n",
-                        style="muted",
-                        file=sys.stderr
+                    # Format error with diagnostics
+                    error_output = str(e);
+                    project_dir = config.project_root if config else Path.cwd();
+                    formatted_error = Jac.format_build_error(
+                        error_output=error_output,
+                        project_dir=project_dir,
+                        config=config
                     );
+                    console.warning("Failed to build client bundle");
+                    console.print(file=sys.stderr);
+                    console.print(formatted_error, file=sys.stderr);
+                    console.warning(
+                        'Client pages will not be available until this is fixed.',
+                        emoji=True
+                    );
+                    console.print(file=sys.stderr);
                     console.info(
                         'Try again after running: jac clean --all', emoji=True
                     );
@@ -1208,7 +1218,7 @@ impl JacAPIServer.postinit -> None {
     # Initialize Prometheus metrics if enabled
     import from jac_scale.factories.utility_factory { UtilityFactory }
     import time;
-    metrics_config = get_scale_config().get_metrics_config();
+    metrics_config = get_scale_config().get_monitoring_config();
     self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
     if self._metrics.is_enabled() {
         metrics_collector = self._metrics;

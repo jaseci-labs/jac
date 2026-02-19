@@ -58,3 +58,8 @@ background_color = "#ffffff"
 # short_name = "App"
 [plugins.scale.secrets]
 TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
+
+[plugins.scale.monitoring]
+enabled = true
+namespace = "default"
+walker_metrics = true

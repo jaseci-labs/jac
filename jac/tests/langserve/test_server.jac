@@ -541,3 +541,26 @@ test "test_go_to_definition_nested_impl_symbols" {
         teardown_test();
     }
 }
+
+test "test_hover_narrowing_in_loop" {
+    setup_test();
+    try {
+        lsp = create_server();
+        # Use the dedicated LSP fixture
+        narrowing_file = uris.from_fs_path(fixture_path("hover_loop.jac"));
+        lsp.type_check_file(narrowing_file);
+
+        # Line 13 is: for s in expr.strings {
+        # 'expr' starts at column 17 and ends at 21 (0-indexed coords: 12, 17)
+        pos = lspt.Position(12, 18);
+        hover = lsp.get_hover_info(narrowing_file, pos);
+
+        assert hover is not None , "Hover should return info for expr inside loop";
+        # Verify it shows the narrowed type MyString
+        assert "MyString" in hover.contents.value , f"Hover should show MyString, got: {hover.contents.value}";
+        # Verify it does NOT show the union type MyInt or None
+        assert "MyInt" not in hover.contents.value , "Hover should NOT show MyInt (it should be narrowed)";
+    } finally {
+        teardown_test();
+    }
+}

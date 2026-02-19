@@ -48,7 +48,7 @@ Execute a Jac file.
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
+jac run [-h] [-m] [--no-main] [-c] [--no-cache] [--profile PROFILE] filename [args ...]
 ```
 
 | Option | Description | Default |
@@ -56,6 +56,10 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
 | `filename` | Jac file to run | Required |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
+| `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
+| `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
+
+Like Python, everything after the filename is passed to the script. Jac flags must come **before** the filename.
 
 **Examples:**
 
@@ -63,8 +67,51 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [filename]
 # Run a file
 jac run main.jac
 
-# Run without cache
-jac run main.jac --no-cache
+# Run without cache (flags before filename)
+jac run --no-cache main.jac
+
+# Pass arguments to the script
+jac run script.jac arg1 arg2
+
+# Pass flag-like arguments to the script
+jac run script.jac --verbose --output result.txt
+```
+
+**Passing arguments to scripts:**
+
+Arguments after the filename are available in the script via `sys.argv`:
+
+```jac
+# greet.jac
+import sys;
+
+with entry {
+    name = sys.argv[1] if len(sys.argv) > 1 else "World";
+    print(f"Hello, {name}!");
+}
+```
+
+```bash
+jac run greet.jac Alice        # Hello, Alice!
+jac run greet.jac              # Hello, World!
+```
+
+`sys.argv[0]` is the script filename (like Python). For scripts that accept
+flags, use Python's `argparse` module:
+
+```jac
+import argparse;
+
+with entry {
+    parser = argparse.ArgumentParser();
+    parser.add_argument("--name", default="World");
+    args = parser.parse_args();
+    print(f"Hello, {args.name}!");
+}
+```
+
+```bash
+jac run greet.jac --name Alice
 ```
 
 ---

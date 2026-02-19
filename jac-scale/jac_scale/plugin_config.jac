@@ -202,15 +202,15 @@ class JacScalePluginConfig {
                         }
                     }
                 },
-                "metrics": {
+                "monitoring": {
                     "type": "dict",
                     "default": {},
-                    "description": "Prometheus metrics configuration",
+                    "description": "Monitoring configuration for the HTTP /metrics endpoint and Kubernetes Prometheus + Grafana stack",
                     "nested": {
                         "enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable Prometheus metrics collection and /metrics endpoint"
+                            "description": "Enable Prometheus metrics collection, /metrics endpoint, and Kubernetes monitoring stack"
                         },
                         "endpoint": {
                             "type": "string",
@@ -245,6 +245,21 @@ class JacScalePluginConfig {
                                 10.0
                             ],
                             "description": "Histogram bucket boundaries in seconds for latency metrics"
+                        },
+                        "prometheus_admin_password": {
+                            "type": "string",
+                            "default": "Adminpassword123",
+                            "description": "Admin password for Grafana when deploying the monitoring stack"
+                        },
+                        "prometheus_node_port": {
+                            "type": "int",
+                            "default": 30090,
+                            "description": "NodePort for Prometheus when deploying the monitoring stack"
+                        },
+                        "grafana_node_port": {
+                            "type": "int",
+                            "default": 30300,
+                            "description": "NodePort for Grafana when deploying the monitoring stack"
                         }
                     }
                 }

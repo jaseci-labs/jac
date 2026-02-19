@@ -27,7 +27,7 @@ import from jaclang.compiler.primitives {
 
 # --- Context ----------------------------------------------------------------
 class NativeEmitCtx {
-    """Native emission context — provides typed access to LLVM infrastructure.
+    """Native emission — provides typed access to LLVM infrastructure.
 
     Created per dispatch call with the appropriate type_key.
     """

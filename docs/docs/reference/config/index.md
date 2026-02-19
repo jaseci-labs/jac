@@ -423,7 +423,7 @@ Most settings can be overridden via CLI flags:
 
 ```bash
 # Override run settings
-jac run main.jac --no-cache --session my_session
+jac run --no-cache --session my_session main.jac
 
 # Override test settings
 jac test --verbose --fail-fast

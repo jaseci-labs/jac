@@ -685,6 +685,34 @@ test "jsx text with quotes does not produce double-double quotes" {
     assert_balanced_syntax(js_code, fixture);
 }
 
+test "jac runtime is defined when referenced in generated js" {
+    # When the compiler emits _jac.* calls (e.g. _jac.list.sort,
+    # _jac.str.capitalize), the generated JS must define _jac.
+    # Previously _jac was referenced but never provided, causing
+    # "ReferenceError: _jac is not defined" at runtime.
+    fixture = "prim_jac_runtime.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The compiled JS should contain _jac.* calls for these operations
+    assert "_jac." in js_code , (
+        "Expected _jac.* runtime calls in generated JS for primitives "
+        "that have no direct JS equivalent"
+    );
+
+    # The _jac namespace must be defined (inlined as const _jac = {...})
+    assert "const _jac" in js_code , (
+        "Generated JS references _jac but never defines it. "
+        "This causes 'ReferenceError: _jac is not defined' at runtime."
+    );
+
+    # Verify the runtime object contains the expected namespaces
+    for ns in ["str:", "list:", "dict:", "builtin:"] {
+        assert ns in js_code , (f"_jac runtime missing namespace '{ns.rstrip(':')}'");
+    }
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "convert to js import path preserves js format" {
     # Paths already in JavaScript format should pass through unchanged
     assert convert_to_js_import_path("./styles.css") == "./styles.css";

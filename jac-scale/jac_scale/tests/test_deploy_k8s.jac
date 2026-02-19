@@ -209,8 +209,8 @@ test "deploy all in one" {
         test_dir, "../../../jac-client/jac_client/examples/all-in-one"
     );
 
-    scale_config = get_scale_config();
-    target_config = scale_config.get_kubernetes_config();
+    app_scale_config = JacScaleConfig(Path(os.path.normpath(todo_app_path)));
+    target_config = app_scale_config.get_kubernetes_config();
     target_config["app_name"] = app_name;
     target_config["namespace"] = namespace;
     target_config["node_port"] = 30001;
@@ -230,7 +230,6 @@ test "deploy all in one" {
         "kubernetes", target_config, logger
     );
 
-    app_scale_config = JacScaleConfig(Path(os.path.normpath(todo_app_path)));
     deployment_target.secrets = app_scale_config.get_secrets_config();
 
     app_config = AppConfig(
@@ -240,7 +239,7 @@ test "deploy all in one" {
     result = deployment_target.deploy(app_config);
     result = deployment_target.deploy(app_config);
     details = result.details;
-    assert len(details) == 9;
+    assert len(details) == 10;
     assert result.success is True;
     print(f"Deployment successful: {result.message}");
 
@@ -281,6 +280,76 @@ test "deploy all in one" {
         name=f"{app_name}-redis-service", namespace=namespace
     );
     assert redis_service.spec.ports[0].port == 6379;
+
+    # Validate Prometheus Deployment, Service, and ConfigMap
+    prometheus_name = f"{app_name}-prometheus";
+    prometheus_deploy = apps_v1.read_namespaced_deployment(
+        name=prometheus_name, namespace=namespace
+    );
+    assert prometheus_deploy.metadata.name == prometheus_name;
+    assert prometheus_deploy.spec.replicas == 1;
+    prometheus_container = prometheus_deploy.spec.template.spec.containers[0];
+    assert prometheus_container.image == "prom/prometheus:latest";
+    print(f"Prometheus Deployment '{prometheus_name}' exists");
+
+    prometheus_service = core_v1.read_namespaced_service(
+        name=f"{prometheus_name}-service", namespace=namespace
+    );
+    assert prometheus_service.spec.type == "ClusterIP";
+    assert prometheus_service.spec.ports[0].port == 9090;
+    print(f"Prometheus Service '{prometheus_name}-service' (ClusterIP:9090) exists");
+
+    prometheus_config = core_v1.read_namespaced_config_map(
+        name=f"{prometheus_name}-config", namespace=namespace
+    );
+    assert "prometheus.yml" in prometheus_config.data;
+    assert f"{app_name}-service" in prometheus_config.data["prometheus.yml"];
+    print(f"Prometheus ConfigMap '{prometheus_name}-config' exists with scrape target");
+
+    # Validate Grafana Deployment, Service, Secret, and ConfigMaps
+    grafana_name = f"{app_name}-grafana";
+    grafana_deploy = apps_v1.read_namespaced_deployment(
+        name=grafana_name, namespace=namespace
+    );
+    assert grafana_deploy.metadata.name == grafana_name;
+    assert grafana_deploy.spec.replicas == 1;
+    grafana_container = grafana_deploy.spec.template.spec.containers[0];
+    assert grafana_container.image == "grafana/grafana:latest";
+    assert len(grafana_container.volume_mounts) == 3;
+    print(f"Grafana Deployment '{grafana_name}' exists with 3 volume mounts");
+
+    grafana_service = core_v1.read_namespaced_service(
+        name=f"{grafana_name}-service", namespace=namespace
+    );
+    assert grafana_service.spec.type == "NodePort";
+    assert grafana_service.spec.ports[0].port == 3000;
+    print(f"Grafana Service '{grafana_name}-service' (NodePort) exists");
+
+    grafana_secret = core_v1.read_namespaced_secret(
+        name=f"{grafana_name}-secret", namespace=namespace
+    );
+    assert grafana_secret.metadata.name == f"{grafana_name}-secret";
+    print(f"Grafana Secret '{grafana_name}-secret' exists");
+
+    grafana_ds = core_v1.read_namespaced_config_map(
+        name=f"{grafana_name}-datasources", namespace=namespace
+    );
+    assert "datasource.yaml" in grafana_ds.data;
+    assert "prometheus" in grafana_ds.data["datasource.yaml"];
+    print("Grafana datasource ConfigMap exists with Prometheus datasource");
+
+    grafana_dashboard = core_v1.read_namespaced_config_map(
+        name=f"{grafana_name}-dashboard", namespace=namespace
+    );
+    assert "jac-scale.json" in grafana_dashboard.data;
+    assert "Jac Scale - App Metrics" in grafana_dashboard.data["jac-scale.json"];
+    print("Grafana dashboard ConfigMap exists with Jac Scale dashboard");
+
+    grafana_provider = core_v1.read_namespaced_config_map(
+        name=f"{grafana_name}-dashboard-provider", namespace=namespace
+    );
+    assert "provider.yaml" in grafana_provider.data;
+    print("Grafana dashboard provider ConfigMap exists");
 
     # Validate code-server Deployment and Service
     code_server_deploy = apps_v1.read_namespaced_deployment(
@@ -432,6 +501,73 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
+    # Verify Prometheus cleanup
+    prometheus_name = f"{app_name}-prometheus";
+    try {
+        apps_v1.read_namespaced_deployment(prometheus_name, namespace=namespace);
+        raise AssertionError("Prometheus Deployment should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(
+            f"{prometheus_name}-service", namespace=namespace
+        );
+        raise AssertionError("Prometheus Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(
+            name=f"{prometheus_name}-config", namespace=namespace
+        );
+        raise AssertionError("Prometheus ConfigMap should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Grafana cleanup
+    grafana_name = f"{app_name}-grafana";
+    try {
+        apps_v1.read_namespaced_deployment(grafana_name, namespace=namespace);
+        raise AssertionError("Grafana Deployment should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{grafana_name}-service", namespace=namespace);
+        raise AssertionError("Grafana Service should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_secret(f"{grafana_name}-secret", namespace=namespace);
+        raise AssertionError("Grafana Secret should have been deleted") ;
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    for cm_name in [
+        f"{grafana_name}-datasources",
+        f"{grafana_name}-dashboard-provider",
+        f"{grafana_name}-dashboard"
+    ] {
+        try {
+            core_v1.read_namespaced_config_map(name=cm_name, namespace=namespace);
+            raise AssertionError(
+                f"Grafana ConfigMap '{cm_name}' should have been deleted"
+            ) ;
+        } except ApiException as e {
+            assert e.status == 404 , f"Expected 404 for '{cm_name}', got {e.status}";
+        }
+    }
+
+    print("Monitoring stack (Prometheus + Grafana) cleanup verified");
+
     # Verify K8s Secret cleanup
     try {
         core_v1.read_namespaced_secret(f"{app_name}-secrets", namespace=namespace);
@@ -486,7 +622,7 @@ test "early exit" {
     details = result.details;
     print(f"Deployment result: {details}");
     assert "health_check_of_deployment" not in details;
-    assert len(details) == 8;
+    assert len(details) == 9;
     assert result.success is False;
 }
 

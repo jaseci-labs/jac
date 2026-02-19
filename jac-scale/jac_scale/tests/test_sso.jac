@@ -141,7 +141,7 @@ class MockScaleConfig {
         return {"namespace": "default"};
     }
 
-    def get_metrics_config(self) -> dict {
+    def get_monitoring_config(self) -> dict {
         return {"enabled": False};
     }
 }

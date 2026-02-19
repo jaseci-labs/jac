@@ -1503,3 +1503,51 @@ test "jac cli check ignore with wildcards" {
     result_count = _run_jac_check(test_dir, ["one_lev*", "snd_*"]);
     assert result_count == 3;
 }
+
+test "lexer does not hang on unterminated jsx" {
+    # BUG: Unterminated JSX (e.g. `<div>hello` with no closing tag)
+    # hits EOF while the lexer is still in JSX_CONTENT mode.
+    # scan_jsx_content returns ERROR without popping the mode or
+    # producing EOF, so tokenize() looped forever. The stuck detector
+    # now forces EOF when the lexer stops advancing.
+    captured_stderr = io.StringIO();
+    old_stderr = sys.stderr;
+    sys.stderr = captured_stderr;
+
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = execution.run(fixture_path("jsx_unterminated_hang.jac"));
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    assert result == 1 , "should exit with error code 1, not hang";
+    assert "Error" in stderr , "should report parse errors to stderr";
+}
+
+test "bare lt in jsx content is treated as text" {
+    # A `<` not followed by alpha, `/`, or `>` (e.g. `<--`) should be
+    # consumed as JSX text, not mistaken for a tag opener. Previously
+    # the text loop broke on every `<`, and when no JSX pattern matched
+    # the lexer never advanced — causing an infinite loop.
+    captured_stderr = io.StringIO();
+    old_stderr = sys.stderr;
+    sys.stderr = captured_stderr;
+
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = execution.run(fixture_path("jsx_bare_lt_in_content.jac"));
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    assert result == 0 , f"should compile successfully, got errors: {stderr}";
+}

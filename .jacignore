@@ -127,6 +127,7 @@ jac_formatter_pass.impl.jac
 jfast_api.impl.jac
 jsx_lt_comparison_bug.cl.jac
 jsx_text_quotes_bug.cl.jac
+jsx_unterminated_hang.jac
 lang_tools.impl.jac
 level_genarator.jac
 level.impl.jac
@@ -237,6 +238,9 @@ web_target.impl.jac
 with_context.jac
 with_llm_method.jac
 yield_in_assignment.jac
+template_loader.impl.jac
+analysis.impl.jac
+semantic_analysis_pass.impl.jac
 # Converted from Python - type check issues expected
 integration_tests.jac
 test_byllm.jac
@@ -260,3 +264,5 @@ test_webhook.jac
 top_contributors.jac
 top_voices.jac
 validate_docs_code.jac
+precompile_bytecode.jac
+cli.impl.jac
