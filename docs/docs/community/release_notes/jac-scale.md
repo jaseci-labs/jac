@@ -2,11 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.11 (Unreleased)
+## jac-scale 0.1.12 (Unreleased)
+
+## jac-scale 0.1.11 (Latest Release)
 
 - **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
 
-## jac-scale 0.1.10 (Latest Release)
+## jac-scale 0.1.10
 
 - **support horizontal scaling**:  based on average cpu usage k8s pods are horizontally scaled
 - **Client Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes, source snippets, and quick fix suggestions instead of raw Vite/Rollup output. Uses the `jac-client` diagnostic engine for consistent error formatting across `jac start` and `jac build`.
