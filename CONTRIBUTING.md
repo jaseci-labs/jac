@@ -125,12 +125,23 @@ The docs site has three tiers with different expectations for contributors:
 
 ## Release Flow (for the empowered)
 
-- Version bump jac, jac-client, byllm
-  - Remember to version bump requirement of jaclang in jac-client and byllm
-- Update release notes (unreleased becomes released)
-- Push to main
-- Go to GitHub, run `Release jaclang to PYPI` action manually
-- After success
-  - Run `Release jac-client to PYPI` action manually
-  - Run `Release jac-byllm to PYPI` action manually
-- If All success, W for you!!
+Releasing new versions to PyPI is a two-step process using GitHub Actions.
+
+### Step 1: Create and Merge the Release PR
+
+1. Go to **GitHub Actions** → **Create Release PR**
+2. Click **Run workflow**
+3. For each package, select the version bump type (`skip`, `patch`, `minor`, or `major`)
+4. Click **Run workflow**
+5. The workflow creates a PR with all version bumps (example: [PR #4675](https://github.com/jaseci-labs/jaseci/pull/4675))
+6. Wait for CI tests to pass, then **approve and merge** the PR to main
+
+### Step 2: Publish to PyPI
+
+After the release PR is merged, go to **GitHub Actions** and run the `Release <package> to PYPI` workflow for each bumped package **in this order**:
+
+1. **jaclang** (core - must be first)
+2. **jac-client**, **jac-byllm**, **jac-scale**, **jac-super** (depend on jaclang)
+3. **jaseci** (meta-package - last)
+
+> **Important**: Wait for each workflow to complete before starting the next.
