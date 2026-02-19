@@ -256,3 +256,90 @@ jobs:
         jac check jac/tests/compiler/passes/main/fixtures/checker_type_ref.jac
         pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Create jac-gpt from jacpack
+      run: |
+        jac create jac-gpt --use https://github.com/jaseci-labs/jacpacks/blob/main/jac-gpt/jac-gpt.jacpack
+        cd jac-gpt && jac install
+
+    - name: Start jac-gpt server in background
+      working-directory: jac-gpt
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        timeout 600 jac start main.jac > /tmp/jac-server.log 2>&1 &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "Server starting with PID $SERVER_PID..."
+        sleep 10
+        if ! kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/jac-server.log
+          exit 1
+        fi
+
+    - name: Wait for jac-gpt server to be ready
+      run: |
+        echo "Waiting for server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.SERVER_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/jac-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>/dev/null; then
+            echo "Server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/jac-server.log
+        exit 1
+
+    - name: Verify HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "Root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "Server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop jac-gpt server
+      if: always()
+      run: |
+        if [ -n "${{ env.SERVER_PID }}" ]; then
+          kill ${{ env.SERVER_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.SERVER_PID }} 2>/dev/null || true
+        fi
+
+    - name: Upload jac-gpt server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: jac-pack-test-logs
+        path: /tmp/jac-server.log
+        retention-days: 7
+
+    - name: Jac pack test summary
+      if: always()
+      run: |
+        echo "## jac-pack-test (jac-gpt)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| **Status** | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
