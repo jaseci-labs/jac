@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - **Fix: Bare-Dot Relative Import (`from . import x`) Not Resolved**: Fixed `import from . { x }` silently resolving to `UnknownType`. The import path is now computed directly from the current file's directory, ensuring sibling modules are correctly found and type-checked.
 - **Fix:**: update the jac-check command to print the file names of the files that failed to have clean error message.
+- **Fix: Duplicate `__jacCallFunction` Import in `.cl.jac` with Impl Files**: Fixed `.impl.jac` files defaulting to SERVER context, causing regular imports to generate duplicate RPC stubs. Impl/test annexes now inherit context from their parent (`.cl.jac` → CLIENT, `.sv.jac` → SERVER). Also updated naming convention: `app.cl.jac` uses `app.impl.cl.jac` instead of `app.cl.impl.jac`.
 
 ## jaclang 0.10.5 (Latest Release)
 
