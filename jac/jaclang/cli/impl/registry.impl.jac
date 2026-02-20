@@ -252,13 +252,27 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         }
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.MULTI {
-        # Multiple positional arguments
-        kwargs["nargs"] = "+";
-        if arg.default is not None {
-            kwargs["default"] = arg.default;
+        # Multiple arguments
+        if arg.name in ("paths", "packages", "names") {
+            # Positional multiple arguments
+            kwargs["nargs"] = "+";
+            if arg.default is not None {
+                kwargs["default"] = arg.default;
+                kwargs["nargs"] = "*";
+            }
+            parser.add_argument(arg.name, **kwargs);
+        } else {
+            # Optional multiple arguments (--ignore dir1 dir2 dir3)
             kwargs["nargs"] = "*";
+            if arg.default is not None {
+                kwargs["default"] = arg.default;
+            }
+            if arg.short {
+                parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
+            } else {
+                parser.add_argument(f"--{arg.name}", **kwargs);
+            }
         }
-        parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.REMAINDER {
         # Remaining arguments
         kwargs["nargs"] = argparse.REMAINDER;

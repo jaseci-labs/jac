@@ -266,7 +266,10 @@ cl {
 
 ```jac
 cl {
-    import from "@jac-client/utils" { cn }
+    # cn() utility from local lib/utils.ts (shadcn/ui pattern)
+    # Uses clsx + tailwind-merge for conditional class names
+    import from "../lib/utils" { cn }   # Relative import
+    # Or with path alias: import from "@/lib/utils" { cn }
 
     def:pub StylingExamples() -> JsxElement {
         has condition: bool = True;
@@ -289,15 +292,41 @@ cl {
 }
 ```
 
+> **Note:** The `cn()` utility is a local file you create in your project (shadcn/ui pattern):
+>
+> ```typescript
+> // lib/utils.ts
+> import { type ClassValue, clsx } from "clsx"
+> import { twMerge } from "tailwind-merge"
+> export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+> ```
+>
+> To use `@/` path alias, configure it in your `tsconfig.json` or Vite config.
+
 ### 6 Routing
 
-```jac
-cl {
-    import from "react-router-dom" { BrowserRouter, Routes, Route, Link }
+**File-Based Routing (Recommended):**
 
+Create a `pages/` directory with `.jac` files that export a `page` function:
+
+```
+myapp/
+└── pages/
+    ├── index.jac          # /
+    ├── about.jac          # /about
+    └── users/
+        └── [id].jac       # /users/:id (dynamic route)
+```
+
+**Manual Routing:**
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
+
+cl {
     def:pub App() -> JsxElement {
         return (
-            <BrowserRouter>
+            <Router>
                 <nav>
                     <Link to="/">Home</Link>
                     <Link to="/about">About</Link>
@@ -306,7 +335,7 @@ cl {
                     <Route path="/" element={<Home />} />
                     <Route path="/about" element={<About />} />
                 </Routes>
-            </BrowserRouter>
+            </Router>
         );
     }
 }
@@ -329,32 +358,49 @@ typescript = false
 
 ### 1 Calling Server Walkers
 
-From client code, call server walkers:
+From client code, use `sv import` to import walkers and `spawn` syntax to call them:
 
 ```jac
+# Import walkers from server
+sv import from ...main { AddTodo, GetTodos }
+
 cl {
-    async def add_todo(text: str) -> None {
-        result = root spawn AddTodo(title=text);
-        new_todo = result.reports[0];
-        self.todos.append(new_todo);
+    def:pub TodoApp() -> any {
+        has todos: list = [];
+
+        # Fetch data on mount
+        async can with entry {
+            result = root spawn GetTodos();
+            if result.reports {
+                todos = result.reports[0];
+            }
+        }
+
+        # Create new todo
+        async def addTodo(text: str) -> None {
+            result = root spawn AddTodo(title=text);
+            if result.reports {
+                todos = todos.concat([result.reports[0]]);
+            }
+        }
+
+        return <div>...</div>;
     }
 }
 ```
 
-### 2 jacSpawn() Function
+### 2 Spawn Syntax
 
-Client-side walker invocation:
+| Syntax | Description |
+|--------|-------------|
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
+| `node_id spawn WalkerName()` | Spawn from specific node |
 
-```jac
-cl {
-    import from "@jac-client/utils" { jacSpawn }
+The spawn call returns a result object with:
 
-    async def fetch_users -> None {
-        result = await jacSpawn("GetUsers", {});
-        self.users = result.reports;
-    }
-}
-```
+- `result.reports` - Data reported by the walker
+- `result.status` - HTTP status code
 
 ### 3 Starting Full-Stack Server
 
@@ -373,7 +419,7 @@ jac start main.jac --port 8000
 ### 1 Built-in Auth Functions
 
 ```jac
-import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -381,23 +427,33 @@ import from "@jac-client/utils" {
 }
 
 cl {
-    async def handle_login -> None {
-        success = await jacLogin(self.email, self.password);
-        if success {
-            self.logged_in = True;
-        }
-    }
+    def:pub AuthExample() -> any {
+        has isLoggedIn: bool = False;
+        has email: str = "";
+        has password: str = "";
 
-    async def handle_signup -> None {
-        success = await jacSignup(self.email, self.password);
-        if success {
-            await self.handle_login();
+        async def handleLogin() -> None {
+            # jacLogin returns bool (True = success, False = failure)
+            success = await jacLogin(email, password);
+            if success {
+                isLoggedIn = True;
+            }
         }
-    }
 
-    def handle_logout -> None {
-        jacLogout();
-        self.logged_in = False;
+        async def handleSignup() -> None {
+            # jacSignup returns dict with success key
+            result = await jacSignup(email, password);
+            if result["success"] {
+                await handleLogin();
+            }
+        }
+
+        def handleLogout() -> None {
+            jacLogout();
+            isLoggedIn = False;
+        }
+
+        return <div>...</div>;
     }
 }
 ```

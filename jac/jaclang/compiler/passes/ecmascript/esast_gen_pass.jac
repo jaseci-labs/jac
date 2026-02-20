@@ -225,6 +225,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
+    def _generate_sv_import_stubs(nd: uni.Import) -> None;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;

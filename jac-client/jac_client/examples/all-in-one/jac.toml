@@ -69,3 +69,9 @@ swr_enabled = true
 # Make read_test_data uncacheable for testing immediate refresh
 # [plugins.client.cache.uncacheable]
 # walkers = ["read_test_data"]
+
+[plugins.scale.monitoring]
+enabled = true
+namespace = "default"
+walker_metrics = true
+

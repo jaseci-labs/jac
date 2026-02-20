@@ -95,6 +95,7 @@ glob GAP_FILES = [
          "with_exit_at_module_level": 'with exit { print("bye"); }',
          "abs_prefix_on_ability": "obj Foo { abs def bar(); }",
          "abs_prefix_decorated_ability": "@mydeco abs def bar() { }",
+         "abs_prefix_on_archetype": "abs obj Foo { }",
          "bare_expression_at_module_level": "5 + 3;",
          "bare_expression_in_archetype": "obj Foo { 5 + 3; }",
          "impl_bare_semicolon": "impl Foo.bar;",

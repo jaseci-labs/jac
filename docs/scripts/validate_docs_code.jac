@@ -47,10 +47,21 @@ def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
         lines = f.read().split("\n");
     }
     pattern = re.compile(r"^```(jac(?::\w+)?(?:\s+[^\n]*)?)\s*$");
+    skip_pattern = re.compile(r"<!--\s*jac-skip\s*-->");
     i = 0;
     while i < len(lines) {
         m = pattern.match(lines[i]);
         if m {
+            # Skip blocks preceded by <!-- jac-skip --> comment
+            if i > 0 and skip_pattern.search(lines[i - 1]) {
+                # Advance past the block without collecting it
+                i += 1;
+                while i < len(lines) and not lines[i].startswith("```") {
+                    i += 1;
+                }
+                i += 1;
+                continue;
+            }
             start_line = i + 1;
             block_lines: list[str] = [];
             i += 1;

@@ -2,11 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.19 (Unreleased)
+## jac-client 0.2.20 (Unreleased)
 
+## jac-client 0.2.19 (Latest Release)
+
+- **Debug Mode Enabled by Default**: Debug mode is now `true` by default for a better development experience. Raw error output is displayed automatically without needing to configure `debug = true` in `jac.toml`. To disable, set `debug = false` in the `[plugins.client]` section. A warning is shown when running `jac start` in production mode (without `--dev`) with debug enabled, recommending to disable it for production deployments.
+
+- **Update client documetnation and enhance all in one example sith advance routings**
 - **Target System Refactoring**: Refactored the client target system for improved scalability and maintainability. Introduced `TargetFactory` singleton with lazy loading for non-web targets (Desktop, PWA), reducing startup overhead when only the default web target is used. Resolved circular import issues by deferring imports to function scope. Extracted magic numbers to named constants (`VITE_DEV_SERVER_PORT`, `DEFAULT_FUNCTION_NAME`) and decomposed `_generate_index_html` into focused helper functions. Added robust process termination with graceful shutdown fallback and safe attribute access chains for module introspection.
+- Internal: updated all-in-one jac.toml to enable metrics endpoint
 
-## jac-client 0.2.18 (Latest Release)
+## jac-client 0.2.18
 
 - 2 Minor internal refactors
 - **Standardize Jac idioms in examples and runtime**: Replaced JS-style method calls with Jac-idiomatic equivalents across all examples, test fixtures, and the client runtime plugin (`.trim()` → `.strip()`, `.push()` → `.append()`, `.length` → `len()`, `.toUpperCase()/.toLowerCase()` → `.upper()/.lower()`, `console.log()` → `print()`, etc.). These are now translated to the correct JS equivalents at compile time via the primitive emitter infrastructure.
@@ -24,7 +30,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 - Updated all-in-one example `jac.toml` to include `[plugins.scale.secrets]` test config.
 - **Improved API Error Handling**: Walker and function API calls now check `response.ok` and throw descriptive exceptions on HTTP errors. The `Authorization` header is only sent when a token is present, avoiding empty `Bearer` headers.
 - **Better Error Diagnostics**: Silent `except Exception {}` blocks in `jacLogin` and `__jacCallFunction` now log warnings via `console.warn` for easier debugging.
-- Docs update: return type `any` -> `JsxElement`
 
 ## jac-client 0.2.16
 

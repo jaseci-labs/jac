@@ -221,7 +221,20 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     # other classes are with symbol type TYPE.
     # TODO: We need to handle @dataclass decorator as well.
     is_data_class = node_.sym_category != SymbolType.TYPE;
-    is_enum_class = node_.sym_category == SymbolType.ENUM_ARCH;
+    # Detect class-based enums: is_enum_class propagates from prefetched Enum.
+    import from jaclang.compiler.type_system { enum_utils }
+    is_enum_class = any(
+        isinstance(base, types.ClassType) and base.shared.is_enum_class
+        for base in base_classes
+    );
+    enum_members: dict[str, types.EnumMemberInfo] | None = None;
+    enum_value_type: types.TypeBase | None = None;
+    if is_enum_class {
+        enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
+            base_classes, self.prefetch
+        );
+        enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
+    }
     cls_type = types.ClassType(
         shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
@@ -231,6 +244,8 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             is_builtin_class=is_builtin_class,
             is_data_class=is_data_class,
             is_enum_class=is_enum_class,
+            enum_value_type=enum_value_type,
+            enum_members=enum_members,
         ),
         private=None,
         flags=types.TypeFlags.Instantiable,
@@ -260,24 +275,12 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
     if not base_classes and self.prefetch and self.prefetch.enum_class {
         base_classes.append(self.prefetch.enum_class);
     }
-    # Build member dictionary (RED=1, GREEN=2, etc.)
-    enum_members = enum_utils.build_enum_members(node_, self);
     # Get required value type for special enums (IntEnum → int, StrEnum → str, IntFlag → int)
     enum_value_type = enum_utils.get_special_enum_value_type_from_bases(
         base_classes, self.prefetch
     );
-    # Validate member values match required type
-    if enum_value_type {
-        for member in enum_members.values() {
-            if isinstance(member.value_type, types.ClassType)
-            and member.value_type.shared != enum_value_type.shared {
-                self.add_diagnostic(
-                    node_,
-                    f"Cannot assign {member.value_type} to enum member '{member.member_name}' of type {enum_value_type}"
-                );
-            }
-        }
-    }
+    # Build member dictionary (RED=1, GREEN=2, etc.) with validation
+    enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     cls_type = types.ClassType(
         shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
