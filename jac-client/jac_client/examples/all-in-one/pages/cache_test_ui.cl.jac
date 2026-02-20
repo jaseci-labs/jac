@@ -1,5 +1,4 @@
-# Cache Test Page - Test caching functionality
-# Demonstrates: Cache API, node-specific operations, metrics visualization
+# Cache Test Page
 
 import from "@jac/runtime" {
     Link,
@@ -12,23 +11,14 @@ import from "@jac/runtime" {
 }
 import from react { useState, useEffect }
 
-# Import walkers to test caching
 sv import from ..main {
     read_test_data,
     create_test_data,
     update_test_data
 }
 
-# ============================================================================
-# CONSTANTS
-# ============================================================================
 glob MAX_LOG_ENTRIES: int = 20;
 
-# ============================================================================
-# REUSABLE COMPONENTS
-# ============================================================================
-
-# Button component for cache operations
 def:pub CacheButton(
     text: str, onClick: any, color: str
 ) -> JsxElement {
@@ -52,7 +42,6 @@ def:pub CacheButton(
         </button>;
 }
 
-# Metric display card
 def:pub MetricCard(
     label: str, value: any, color: str
 ) -> JsxElement {
@@ -75,7 +64,6 @@ def:pub MetricCard(
         </div>;
 }
 
-# Reusable input field component
 def:pub InputField(
     value: str, onChange: any, placeholder: str, width: str = "180px", monospace: bool = False
 ) -> JsxElement {
@@ -97,11 +85,7 @@ def:pub InputField(
         />;
 }
 
-# ============================================================================
-# MAIN PAGE COMPONENT
-# ============================================================================
 def:pub CacheTest() -> JsxElement {
-    # State management
     has metrics: dict = {"hits": 0, "misses": 0, "hitRate": 0, "evictions": 0, "cacheSize": 0};
     has stats: dict = {"entries": 0, "keys": [], "config": {}};
     has enabled: bool = True;
@@ -110,10 +94,6 @@ def:pub CacheTest() -> JsxElement {
     has nodeIdInput: str = "";
     has messageInput: str = "Updated!";
     has allNodes: list = [];
-
-    # ========================================================================
-    # UTILITY FUNCTIONS
-    # ========================================================================
 
     refreshMetrics = lambda -> None {
         metrics = jacGetCacheMetrics();
@@ -131,14 +111,9 @@ def:pub CacheTest() -> JsxElement {
         logMessages = newLog;
     };
 
-    # Load metrics on mount
     can with entry {
         refreshMetrics();
     }
-
-    # ========================================================================
-    # EVENT HANDLERS - Basic Operations
-    # ========================================================================
 
     async def doFetch -> None {
         loading = True;

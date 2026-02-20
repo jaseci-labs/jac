@@ -4,6 +4,18 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.2.20 (Unreleased)
 
+- **Response Caching for Walker Calls**: Added built-in caching layer that automatically caches walker responses to reduce network requests. Features include LRU eviction (500 entry limit), TTL-based expiration (default 60 seconds), and request deduplication (concurrent identical `spawn` calls share a single network request). Cache is automatically cleared on authentication changes (login/logout/signup) to prevent data leaks. Authentication walkers are excluded from caching for security.
+
+- **Cache Management API**: New functions available via `@jac/runtime` for cache control:
+  - `jacInvalidate(walker, nodeId)` - Invalidate cache entries for a specific walker and optional node
+  - `jacClearCache()` - Clear entire cache
+  - `jacGetCacheMetrics()` - Returns `{hits, misses, hitRate, evictions, cacheSize}`
+  - `jacCacheStats()` - Returns `{entries, keys, config}`
+  - `jacPrefetch(walker, nodeId, fields)` - Preload data before user needs it
+  - `jacSetCacheEnabled(bool)` / `jacIsCacheEnabled()` - Runtime cache toggle
+
+- **Cache Configuration via jac.toml**: Configure caching behavior in `[plugins.client.cache]` section with `enabled`, `max_entries`, and `default_ttl_ms` options. Access cache state in browser console via `window.__jacCacheState__` when `debug = true`.
+
 ## jac-client 0.2.19 (Latest Release)
 
 - **Debug Mode Enabled by Default**: Debug mode is now `true` by default for a better development experience. Raw error output is displayed automatically without needing to configure `debug = true` in `jac.toml`. To disable, set `debug = false` in the `[plugins.client]` section. A warning is shown when running `jac start` in production mode (without `--dev`) with debug enabled, recommending to disable it for production deployments.

@@ -1018,6 +1018,111 @@ If `MainContent` throws an error, only that boundary's fallback is shown, while 
 
 ---
 
+## Caching
+
+jac-client automatically caches walker responses to reduce network requests and improve performance.
+
+### How It Works
+
+Walker calls via `spawn` are automatically cached with:
+
+- **Request Deduplication**: Concurrent identical calls share a single network request
+- **LRU Eviction**: 500 entry limit with automatic eviction
+- **TTL Expiration**: Cached entries expire after configurable TTL (default: 60 seconds)
+- **Auth-Aware**: Cache cleared on login/logout/signup
+
+### Basic Usage
+
+```jac
+# Walker calls are automatically cached
+todos = root spawn read_todos();  # Network request
+todos = root spawn read_todos();  # Cache hit!
+
+# After mutation, invalidate cache
+root spawn create_todo(text="New item");
+jacInvalidate("read_todos");
+```
+
+### Cache API
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `jacInvalidate(walker, nodeId)` | `void` | Invalidate cache for walker (and optional node) |
+| `jacClearCache()` | `void` | Clear entire cache |
+| `jacGetCacheMetrics()` | `dict` | Returns `{hits, misses, hitRate, evictions, cacheSize}` |
+| `jacCacheStats()` | `dict` | Returns `{entries, keys, config}` |
+| `jacPrefetch(walker, nodeId, fields)` | `void` | Preload data |
+| `jacSetCacheEnabled(bool)` | `void` | Enable/disable cache |
+| `jacIsCacheEnabled()` | `bool` | Check if cache is enabled |
+
+### Cache Invalidation
+
+```jac
+cl import from "@jac/runtime" { jacInvalidate, jacClearCache }
+
+cl {
+    async def handleCreate() -> None {
+        root spawn create_todo(text="New item");
+        jacInvalidate("read_todos");  # Invalidate list cache
+    }
+
+    async def handleUpdate(todoId: str) -> None {
+        todoId spawn update_todo(text="Updated");
+        jacInvalidate("read_todos");           # Invalidate list
+        jacInvalidate("get_todo", todoId);     # Invalidate specific item
+    }
+}
+```
+
+### Prefetching
+
+```jac
+cl import from "@jac/runtime" { jacPrefetch }
+
+cl {
+    def:pub PostList(posts: list) -> JsxElement {
+        return <ul>
+            {[<li
+                key={post["id"]}
+                onMouseEnter={lambda -> None { jacPrefetch("get_post", post["id"]); }}
+            >
+                {post["title"]}
+            </li> for post in posts]}
+        </ul>;
+    }
+}
+```
+
+### Configuration
+
+```toml
+# jac.toml
+[plugins.client]
+debug = true  # Enable console access to cache state
+
+[plugins.client.cache]
+enabled = true
+max_entries = 500
+default_ttl_ms = 60000
+```
+
+### Debugging
+
+Access cache state in browser console (requires `debug = true`):
+
+```javascript
+// View cache state
+window.__jacCacheState__
+
+// View metrics
+__jacCacheState__.metrics
+
+// View cached keys
+Object.keys(__jacCacheState__.cache)
+```
+
+---
+
 ## Related Resources
 
 - [Fullstack Setup Tutorial](../../tutorials/fullstack/setup.md)
