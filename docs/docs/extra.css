@@ -460,8 +460,9 @@ html, body {
 .md-typeset .code-block,
 .md-typeset .code-output {
     font-family: 'Fira Mono', 'JetBrains Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace' !important;
-    font-size: 15px;
-    border-radius: 6px !important;
+    font-size: 13.5px;
+    line-height: 1.45;
+    border-radius: 4px !important;
     --md-code-hl-name-color: #fafafa;
     --md-code-hl-keyword-color: #8BE9FD;
     --md-code-hl-function-color: #FF79C6;
@@ -471,19 +472,26 @@ html, body {
     --md-code-hl-operator-color: #FFB86C;
     --md-code-hl-punctuation-color: #F8F8F2;
     --md-code-hl-comment-color: #6272A4;
-    border: 1px solid #555555;
+    border: 1px solid #444;
+}
+
+.md-typeset pre {
+    margin: 0.75em 0;
+    padding: 0;
+}
+
+.md-typeset pre>code {
+    padding: 0.6em 0.8em;
+    background-color: #282a36;
+    --md-code-fg-color: #f8f8f2;
 }
 
 .md-typeset code {
     color: #f8f8f2;
+    padding: 0.15em 0.4em;
 }
 
 @import url('https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500;700&display=swap');
-
-.md-typeset pre>code {
-    background-color: #282a36;
-    --md-code-fg-color: #f8f8f2;
-}
 
 /* Footer */
 .md-footer {
@@ -728,10 +736,6 @@ html, body {
     .footer-bottom {
         padding-top: 24px;
     }
-}
-
-.md-main__inner.md-grid {
-    max-width: 100vw;
 }
 
 /* Quotes */
