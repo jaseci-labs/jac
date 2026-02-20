@@ -6,7 +6,7 @@ In-depth tutorials organized by topic. Each tutorial takes 30-60 minutes to comp
 
 ## Start Here
 
-New to Jac? Begin with the **Build Your First App** tutorial -- a 3-part guide that takes you from zero to a multi-user AI-powered app:
+New to Jac? Begin with the **Build Your First App** tutorial : a 3-part guide that takes you from zero to a multi-user AI-powered app:
 
 | Part | What You'll Build | Concepts |
 |------|-------------------|----------|
@@ -16,6 +16,17 @@ New to Jac? Begin with the **Build Your First App** tutorial -- a 3-part guide t
 
 !!! note "First App vs Full-Stack Tutorials"
     **Build Your First App** is a quick end-to-end journey -- build one app across three parts, learning concepts as you go. **Full-Stack Apps** (below) is a deep-dive into each concept individually. New to Jac? Start with Build Your First App. Want to understand a specific topic (routing, state, auth)? Use the Full-Stack tutorials as targeted reference.
+
+### Agentic AI (Hands-on)
+
+Try a step-by-step series that builds an agentic chatbot from simple chat to multi-agent RAG:
+
+| Part | What You'll Build | Concepts |
+|------|-------------------|----------|
+| [Part 1: Simple Chat](agentic-chatbot/part1-simple-chat.md) | Basic streaming chat with LLM integration | Streaming SSE, LLM integration |
+| [Part 2: Persistent Sessions](agentic-chatbot/part2-persistent-sessions.md) | Add persistent sessions and user auth | Session nodes, auth, persistence |
+| [Part 3: RAG with Docs](agentic-chatbot/part3-rag-docs.md) | Add retrieval-augmented generation using your docs | RAG, vector search integration |
+| [Part 4: Multi-Agent](agentic-chatbot/part4-multi-agent.md) | Compose multiple agents for delegated tasks | Multi-agent orchestration, tool use |
 
 ---
 
@@ -44,6 +55,7 @@ Build AI-powered applications with byLLM.
 | [byLLM Quickstart](ai/quickstart.md) | First LLM-integrated function | 20 min |
 | [Structured Outputs](ai/structured-outputs.md) | Type-safe responses with enums and objects | 30 min |
 | [Agentic AI](ai/agentic.md) | Tool calling and ReAct patterns | 45 min |
+| [Agentic AI Chatbot (Hands-on series)](agentic-chatbot/part1-simple-chat.md) | Build a multi-part, agentic chatbot with persistent sessions and RAG | 1–2 hrs |
 
 ---
 

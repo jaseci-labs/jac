@@ -24,6 +24,11 @@ nav:
           - "Part 1: Todo App": "tutorials/first-app/part1-todo-app.md"
           - "Part 2: Add AI": "tutorials/first-app/part2-ai-features.md"
           - "Part 3: Walkers, Auth & Structure": "tutorials/first-app/part3-multi-user.md"
+      - Agentic AI Chatbot:
+          - "Part 1: Simple Chat": "tutorials/agentic-chatbot/part1-simple-chat.md"
+          - "Part 2: Persistent Sessions": "tutorials/agentic-chatbot/part2-persistent-sessions.md"
+          - "Part 3: RAG with Docs": "tutorials/agentic-chatbot/part3-rag-docs.md"
+          - "Part 4: Multi-Agent": "tutorials/agentic-chatbot/part4-multi-agent.md"
       - Core Language:
           - Jac Programming Primer: "tutorials/language/coding_primer.md"
           - Jac Basics (from Python): "tutorials/language/basics.md"

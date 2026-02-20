@@ -54,17 +54,21 @@ Settings live in `jac.toml` under `[config]`. `server.jac` reads them at startup
 ```jac
 import from byllm.lib { Model }
 import from dotenv { load_dotenv }
-import tomllib, os, json;
+import from jaclang.project.config { get_config }
+import json;
 
 with entry {
     load_dotenv();   # reads OPENAI_API_KEY from .env
 }
 
-glob _cfg: dict = _load_project_config();
+glob _jac_config = get_config();
+glob _cfg: dict = _jac_config._raw_data.get("config", {}) if _jac_config else {};
 glob llm = Model(model_name=_cfg.get("llm_model", "gpt-4.1-mini"));
 ```
 
 **`with entry`** runs once when the module loads.
+
+**`get_config()`** auto-discovers `jac.toml` by walking up from the current directory - the same resolver the Jac runtime uses internally. `_raw_data` holds the full parsed TOML including custom sections like `[config]`. Keeping config in `jac.toml` means you can change the model name or chatbot name without touching any source code.
 
 **`glob llm`** declares a module-level variable shared by all LLM method calls.
 
@@ -284,28 +288,16 @@ def:pub ChatInput(
     """Step 1: Minimal chat backend."""
 
     import json;
-    import os;
-    import tomllib;
     import from byllm.lib { Model }
     import from dotenv { load_dotenv }
+    import from jaclang.project.config { get_config }
 
     with entry {
         load_dotenv();
     }
 
-    def _load_project_config() -> dict {
-        try {
-            toml_path = os.path.join(os.path.dirname(__file__), "..", "jac.toml");
-            with open(toml_path, "rb") as f {
-                return tomllib.load(f).get("config", {});
-            }
-        } except Exception as e {
-            print(f"Warning: could not load jac.toml config: {e}");
-            return {};
-        }
-    }
-
-    glob _cfg: dict = _load_project_config();
+    glob _jac_config = get_config();
+    glob _cfg: dict = _jac_config._raw_data.get("config", {}) if _jac_config else {};
     glob llm = Model(model_name=_cfg.get("llm_model", "gpt-4.1-mini"));
 
     def stream_chunks(gen: any) -> any {

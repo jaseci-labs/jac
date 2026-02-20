@@ -69,8 +69,10 @@ reranking_model      = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
 ```jac
 import from services.rag_engine { RagEngine }
+import from jaclang.project.config { get_config }
 
-glob _cfg: dict = _load_project_config();
+glob _jac_config = get_config();
+glob _cfg: dict = _jac_config._raw_data.get("config", {}) if _jac_config else {};
 glob _rag: dict = _cfg.get("rag", {});
 
 glob docs_path: str  = _rag.get("docs_path", "services/docs");
@@ -494,8 +496,8 @@ def:pub ChatPage() -> JsxElement {
     [config]
     chatbot_name   = "DocBot"
     llm_model      = "gpt-4.1-mini"
-    docs_site_url  = ""          # Base URL of your hosted docs (used to build suggest_docs links)
-    github_repo_url = "https://github.com/jaseci-labs/jaseci"         # Optional: clone + ingest a GitHub repo on first startup
+    docs_site_url  = ""          # Base URL of your hosted docs site (e.g. "https://docs.mysite.com")
+    github_repo_url = ""         # Optional: set to a public repo to clone + index on first startup
     github_branch   = "main"
 
     # ── RAG / FAISS configuration ─────────────────────────────────────────────────
@@ -545,29 +547,18 @@ Open `http://localhost:8000`, click the **Docs** button in the header, and ask a
 
     import os;
     import json;
-    import tomllib;
     import from byllm.lib { Model }
     import from dotenv { load_dotenv }
     import from datetime { datetime }
     import from services.rag_engine { RagEngine }
+    import from jaclang.project.config { get_config }
 
     with entry {
         load_dotenv();
     }
 
-    def _load_project_config() -> dict {
-        try {
-            toml_path = os.path.join(os.path.dirname(__file__), "..", "jac.toml");
-            with open(toml_path, "rb") as f {
-                return tomllib.load(f).get("config", {});
-            }
-        } except Exception as e {
-            print(f"Warning: could not load jac.toml config: {e}");
-            return {};
-        }
-    }
-
-    glob _cfg: dict = _load_project_config();
+    glob _jac_config = get_config();
+    glob _cfg: dict = _jac_config._raw_data.get("config", {}) if _jac_config else {};
     glob _rag: dict = _cfg.get("rag", {});
 
     glob docs_path: str  = _rag.get("docs_path", "services/docs");
@@ -638,11 +629,7 @@ Open `http://localhost:8000`, click the **Docs** button in the header, and ask a
         has chat_history: list[dict] = [];
 
         can init_session with Root entry {
-            all_sessions = [-->(?:Session)];
-            found = None;
-            for s in all_sessions {
-                if s.id == self.session_id { found = s; break; }
-            }
+            found = [-->(?:Session, id == self.session_id)];
             if found {
                 visit found;
             } else {

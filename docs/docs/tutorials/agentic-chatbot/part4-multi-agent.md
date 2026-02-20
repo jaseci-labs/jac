@@ -140,11 +140,7 @@ walker interact {
 
     """Find the matching Session node or create a new one, then visit it."""
     can init_session with Root entry {
-        all_sessions = [-->(?:Session)];
-        found = None;
-        for s in all_sessions {
-            if s.id == self.session_id { found = s; break; }
-        }
+        found = [-->(?:Session, id == self.session_id)];
         if found {
             visit found;
         } else {
@@ -341,29 +337,18 @@ The LLM selects only the relevant agents for each query - a greeting will show o
 
     import os;
     import json;
-    import tomllib;
     import from byllm.lib { Model }
     import from dotenv { load_dotenv }
     import from datetime { datetime }
     import from services.rag_engine { RagEngine }
+    import from jaclang.project.config { get_config }
 
     with entry {
         load_dotenv();
     }
 
-    def _load_project_config() -> dict {
-        try {
-            toml_path = os.path.join(os.path.dirname(__file__), "..", "jac.toml");
-            with open(toml_path, "rb") as f {
-                return tomllib.load(f).get("config", {});
-            }
-        } except Exception as e {
-            print(f"Warning: could not load jac.toml config: {e}");
-            return {};
-        }
-    }
-
-    glob _cfg: dict = _load_project_config();
+    glob _jac_config = get_config();
+    glob _cfg: dict = _jac_config._raw_data.get("config", {}) if _jac_config else {};
     glob _rag: dict = _cfg.get("rag", {});
 
     glob docs_path: str  = _rag.get("docs_path", "services/docs");
@@ -452,11 +437,7 @@ The LLM selects only the relevant agents for each query - a greeting will show o
         """Find the matching Session node or create a new one, then visit it."""
         can init_session with Root entry {
             print(f"Attempting to initialize session {self.session_id}");
-            all_sessions = [-->(?:Session)];
-            found = None;
-            for s in all_sessions {
-                if s.id == self.session_id { found = s; break; }
-            }
+            found = [-->(?:Session, id == self.session_id)];
             if found {
                 visit found;
             } else {
@@ -545,7 +526,12 @@ The LLM selects only the relevant agents for each query - a greeting will show o
 
             try {
                 results = rag_engine.vectorstore.similarity_search_with_score(self.message, k=10);
-                docs_site_url = _cfg.get("docs_site_url", "").rstrip("/");
+                docs_site_url   = _cfg.get("docs_site_url", "").rstrip("/");
+                github_repo_url = _cfg.get("github_repo_url", "").rstrip("/");
+                github_branch   = _cfg.get("github_branch", "main");
+
+                # Directory where the GitHub repo was cloned (if used)
+                github_clone_dir = os.path.join(docs_path, "github_repo");
 
                 seen_sources = {};
                 suggestions = [];
@@ -553,13 +539,29 @@ The LLM selects only the relevant agents for each query - a greeting will show o
                     source = doc.metadata.get("source", "");
                     if source and source not in seen_sources {
                         seen_sources[source] = True;
+
                         if docs_site_url {
+                            # Explicit docs site configured - build a clean slug URL
                             rel = os.path.relpath(source, docs_path);
                             rel_no_ext = os.path.splitext(rel)[0];
                             url = docs_site_url + "/" + rel_no_ext.replace("\\", "/");
+                        } elif github_repo_url and os.path.isabs(source) and source.startswith(os.path.abspath(github_clone_dir)) {
+                            # File was cloned from a GitHub repo - build a blob URL
+                            rel = os.path.relpath(source, github_clone_dir);
+                            url = github_repo_url + "/blob/" + github_branch + "/" + rel.replace("\\", "/");
+                        } elif github_repo_url and "github_repo" in source {
+                            # Relative path variant - still points inside the clone dir
+                            parts = source.split("github_repo" + os.sep, 1);
+                            rel = parts[1] if len(parts) > 1 else source;
+                            url = github_repo_url + "/blob/" + github_branch + "/" + rel.replace("\\", "/");
+                        } elif github_repo_url {
+                            # No explicit docs site but a repo is configured - link to repo root
+                            rel = os.path.relpath(source, docs_path);
+                            url = github_repo_url + "/blob/" + github_branch + "/" + rel.replace("\\", "/");
                         } else {
                             url = source;
                         }
+
                         basename = os.path.splitext(os.path.basename(source))[0];
                         title = basename.replace("-", " ").replace("_", " ").title();
                         suggestions.append({"url": url, "title": title, "reason": ""});

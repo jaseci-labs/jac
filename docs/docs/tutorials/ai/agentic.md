@@ -28,6 +28,13 @@ Regular LLM:     Agentic LLM:
 
 ---
 
+---
+
+## Hands-on tutorial
+
+For a step-by-step, hands-on walkthrough that builds an agentic chatbot (simple chat, persistent sessions, RAG, and multi-agent flavors), see the tutorial series: [Agentic AI Chatbot — Part 1: Simple Chat](../agentic-chatbot/part1-simple-chat.md).
+
+
 ## Basic Tool Calling
 
 Define functions the LLM can use:
