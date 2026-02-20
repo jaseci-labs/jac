@@ -35,4 +35,4 @@ jobs:
       - name: Run jac check (using .jacignore)
         run: |
           IGNORE_LIST=$(paste -sd, .jacignore)
-          jac check . --nowarn
+          jac check . --no-print_errs
