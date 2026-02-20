@@ -1,4 +1,6 @@
 # Cache Test Page - Test caching functionality
+# Demonstrates: Cache API, node-specific operations, metrics visualization
+
 import from "@jac/runtime" {
     Link,
     jacInvalidate,
@@ -6,8 +8,7 @@ import from "@jac/runtime" {
     jacGetCacheMetrics,
     jacCacheStats,
     jacIsCacheEnabled,
-    jacSetCacheEnabled,
-    jacSpawn
+    jacSetCacheEnabled
 }
 import from react { useState, useEffect }
 
@@ -18,6 +19,16 @@ sv import from ..main {
     update_test_data
 }
 
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+glob MAX_LOG_ENTRIES: int = 20;
+
+# ============================================================================
+# REUSABLE COMPONENTS
+# ============================================================================
+
+# Button component for cache operations
 def:pub CacheButton(
     text: str, onClick: any, color: str
 ) -> JsxElement {
@@ -41,6 +52,7 @@ def:pub CacheButton(
         </button>;
 }
 
+# Metric display card
 def:pub MetricCard(
     label: str, value: any, color: str
 ) -> JsxElement {
@@ -63,23 +75,49 @@ def:pub MetricCard(
         </div>;
 }
 
+# Reusable input field component
+def:pub InputField(
+    value: str, onChange: any, placeholder: str, width: str = "180px", monospace: bool = False
+) -> JsxElement {
+    fontFamily = "monospace" if monospace else "inherit";
+    return
+        <input
+            type="text"
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            style={{
+                "padding": "8px 12px",
+                "borderRadius": "4px",
+                "border": "1px solid #cbd5e1",
+                "fontSize": "14px",
+                "width": width,
+                "fontFamily": fontFamily
+            }}
+        />;
+}
+
+# ============================================================================
+# MAIN PAGE COMPONENT
+# ============================================================================
 def:pub CacheTest() -> JsxElement {
+    # State management
     has metrics: dict = {"hits": 0, "misses": 0, "hitRate": 0, "evictions": 0, "cacheSize": 0};
     has stats: dict = {"entries": 0, "keys": [], "config": {}};
     has enabled: bool = True;
-    has fetchCount: int = 0;
+    has loading: bool = False;
     has logMessages: list = [];
     has nodeIdInput: str = "";
-    has walkerInput: str = "update_test_data";
     has messageInput: str = "Updated!";
-    has createdNodes: list = [];
     has allNodes: list = [];
 
+    # ========================================================================
+    # UTILITY FUNCTIONS
+    # ========================================================================
+
     refreshMetrics = lambda -> None {
-        m = jacGetCacheMetrics();
-        metrics = m;
-        s = jacCacheStats();
-        stats = s;
+        metrics = jacGetCacheMetrics();
+        stats = jacCacheStats();
         enabled = jacIsCacheEnabled();
     };
 
@@ -87,26 +125,32 @@ def:pub CacheTest() -> JsxElement {
         d = Reflect.construct(Date, []);
         timestamp = d.toLocaleTimeString();
         newLog = [f"[{timestamp}] {msg}"];
-        for item in logMessages.slice(0, 19) {
+        for item in logMessages.slice(0, MAX_LOG_ENTRIES - 1) {
             newLog.push(item);
         }
         logMessages = newLog;
     };
 
+    # Load metrics on mount
     can with entry {
         refreshMetrics();
     }
 
+    # ========================================================================
+    # EVENT HANDLERS - Basic Operations
+    # ========================================================================
+
     async def doFetch -> None {
+        loading = True;
         addLog("Fetching read_test_data...");
         try {
             result = root spawn read_test_data();
-            fetchCount = fetchCount + 1;
             addLog(f"Got result: {JSON.stringify(result)}");
             refreshMetrics();
         } except Exception as e {
             addLog(f"Error: {e}");
         }
+        loading = False;
     }
 
     async def doFetchMultiple -> None {
@@ -115,98 +159,10 @@ def:pub CacheTest() -> JsxElement {
         await doFetch();
     }
 
-    # Create a new TestData node
-    async def doCreateNode -> None {
-        addLog("Creating new TestData node...");
-        try {
-            result = root spawn create_test_data(message=f"Test {Date.now()}");
-            addLog(f"Created node: {JSON.stringify(result)}");
-            # Extract node ID from result
-            if result and result["__jac__"] and result["__jac__"]["id"] {
-                nodeInfo = {"id": result["__jac__"]["id"], "message": result["message"]};
-                newNodes = [nodeInfo];
-                for n in createdNodes {
-                    newNodes.push(n);
-                }
-                createdNodes = newNodes;
-            }
-            refreshMetrics();
-        } except Error as e {
-            addLog(f"Error creating node: {e.message}");
-        }
-    }
-
-    # Fetch all TestData nodes
-    async def doFetchAllNodes -> None {
-        addLog("Fetching all TestData nodes...");
-        try {
-            result = root spawn read_test_data();
-            addLog(f"Got {result.length if result.length else 0} nodes");
-            # Store nodes with their IDs
-            nodes = [];
-            if Array.isArray(result) {
-                for item in result {
-                    if item and item["__jac__"] and item["__jac__"]["id"] {
-                        nodes.push({"id": item["__jac__"]["id"], "message": item["message"], "count": item["count"]});
-                    }
-                }
-            }
-            allNodes = nodes;
-            refreshMetrics();
-        } except Error as e {
-            addLog(f"Error: {e.message}");
-        }
-    }
-
-    # Select a node ID for testing
-    selectNode = lambda nId: str -> None {
-        nodeIdInput = nId;
-        addLog(f"Selected node: {nId}");
-    };
-
     doInvalidate = lambda -> None {
         jacInvalidate("read_test_data");
         addLog("Invalidated read_test_data cache");
         refreshMetrics();
-    };
-
-    # Node-specific operations
-    async def doFetchWithNode -> None {
-        wName = walkerInput or "update_test_data";
-        nId = nodeIdInput or "";
-        fields = {};
-        if wName == "update_test_data" {
-            fields = {"new_message": messageInput};
-        }
-        addLog(f"Spawning {wName} on node '{nId}' with fields: {JSON.stringify(fields)}");
-        try {
-            result = await jacSpawn(wName, nId, fields);
-            fetchCount = fetchCount + 1;
-            addLog(f"Got result: {JSON.stringify(result)}");
-            refreshMetrics();
-        } except Error as e {
-            addLog(f"Error: {e.message}");
-        }
-    }
-
-    handleMessageChange = lambda e: any -> None {
-        messageInput = e.target.value;
-    };
-
-    doInvalidateWithNode = lambda -> None {
-        wName = walkerInput or "read_test_data";
-        nId = nodeIdInput or "";
-        jacInvalidate(wName, nId);
-        addLog(f"Invalidated {wName} cache for node '{nId}'");
-        refreshMetrics();
-    };
-
-    handleNodeIdChange = lambda e: any -> None {
-        nodeIdInput = e.target.value;
-    };
-
-    handleWalkerChange = lambda e: any -> None {
-        walkerInput = e.target.value;
     };
 
     doClear = lambda -> None {
@@ -219,26 +175,130 @@ def:pub CacheTest() -> JsxElement {
         newState = not enabled;
         jacSetCacheEnabled(newState);
         enabled = newState;
-        if newState {
-            addLog("Cache ENABLED");
-        } else {
-            addLog("Cache DISABLED");
-        }
+        addLog(f"Cache {'ENABLED' if newState else 'DISABLED'}");
         refreshMetrics();
     };
 
-    enabledText = "Disable Cache";
-    enabledColor = "#10b981";
-    enabledStatus = "Yes";
-    if not enabled {
-        enabledText = "Enable Cache";
-        enabledColor = "#6b7280";
-        enabledStatus = "No";
+    # ========================================================================
+    # EVENT HANDLERS - Node Operations
+    # ========================================================================
+
+    async def doCreateNode -> None {
+        loading = True;
+        addLog("Creating new TestData node...");
+        try {
+            result = root spawn create_test_data(message=f"Test {Date.now()}");
+            addLog(f"Created node: {JSON.stringify(result)}");
+            refreshMetrics();
+            # Refresh node list
+            await doFetchAllNodes();
+        } except Exception as e {
+            addLog(f"Error creating node: {e}");
+        }
+        loading = False;
     }
+
+    async def doFetchAllNodes -> None {
+        loading = True;
+        addLog("Fetching all TestData nodes...");
+        try {
+            result = root spawn read_test_data();
+            nodeCount = result.length if result.length else 0;
+            addLog(f"Got {nodeCount} nodes");
+            # Store nodes with their IDs
+            nodes = [];
+            if Array.isArray(result) {
+                for item in result {
+                    if item and item["__jac__"] and item["__jac__"]["id"] {
+                        nodes.push({
+                            "id": item["__jac__"]["id"],
+                            "message": item["message"],
+                            "count": item["count"]
+                        });
+                    }
+                }
+            }
+            allNodes = nodes;
+            refreshMetrics();
+        } except Exception as e {
+            addLog(f"Error: {e}");
+        }
+        loading = False;
+    }
+
+    selectNode = lambda nId: str -> None {
+        nodeIdInput = nId;
+        addLog(f"Selected node: {nId}");
+    };
+
+    # ========================================================================
+    # EVENT HANDLERS - Node-Specific Cache Operations
+    # ========================================================================
+
+    async def doUpdateNode -> None {
+        nId = nodeIdInput;
+        if not nId {
+            addLog("Error: No node selected. Click a node above first.");
+            return;
+        }
+        loading = True;
+        addLog(f"Spawning update_test_data on node '{nId}'");
+        try {
+            result = nId spawn update_test_data(new_message=messageInput);
+            addLog(f"Got result: {JSON.stringify(result)}");
+            refreshMetrics();
+        } except Exception as e {
+            addLog(f"Error: {e}");
+        }
+        loading = False;
+    }
+
+    doInvalidateWithNode = lambda -> None {
+        nId = nodeIdInput or "";
+        jacInvalidate("update_test_data", nId);
+        addLog(f"Invalidated update_test_data cache for node '{nId}'");
+        refreshMetrics();
+    };
+
+    # ========================================================================
+    # INPUT HANDLERS
+    # ========================================================================
+
+    handleNodeIdChange = lambda e: any -> None {
+        nodeIdInput = e.target.value;
+    };
+
+    handleMessageChange = lambda e: any -> None {
+        messageInput = e.target.value;
+    };
+
+    # ========================================================================
+    # COMPUTED VALUES
+    # ========================================================================
+
+    enabledText = "Disable Cache" if enabled else "Enable Cache";
+    enabledColor = "#10b981" if enabled else "#6b7280";
+    enabledStatus = "Yes" if enabled else "No";
     hitRateText = f"{(metrics['hitRate'] * 100).toFixed(1)}%";
+
+    # ========================================================================
+    # RENDER
+    # ========================================================================
 
     return
         <div style={{"padding": "20px", "maxWidth": "1000px", "margin": "0 auto", "fontFamily": "system-ui"}}>
+            {loading and <div style={{
+                "position": "fixed",
+                "top": "20px",
+                "right": "20px",
+                "backgroundColor": "#3b82f6",
+                "color": "white",
+                "padding": "10px 20px",
+                "borderRadius": "6px",
+                "boxShadow": "0 4px 6px rgba(0,0,0,0.2)",
+                "zIndex": "1000"
+            }}>Loading...</div>}
+
             <div style={{"marginBottom": "20px"}}>
                 <Link to="/" style={{"color": "#3b82f6", "textDecoration": "none"}}>
                     {"<- Back to Home"}
@@ -308,56 +368,17 @@ def:pub CacheTest() -> JsxElement {
             <div style={{"marginBottom": "30px", "padding": "20px", "backgroundColor": "#e0f2fe", "borderRadius": "8px"}}>
                 <h3 style={{"marginTop": "0"}}>Node-Specific Cache Operations</h3>
                 <div style={{"display": "flex", "gap": "10px", "marginBottom": "10px", "flexWrap": "wrap", "alignItems": "center"}}>
-                    <label style={{"fontWeight": "600"}}>Walker:</label>
-                    <input
-                        type="text"
-                        value={walkerInput}
-                        onChange={handleWalkerChange}
-                        placeholder="update_test_data"
-                        style={{
-                            "padding": "8px 12px",
-                            "borderRadius": "4px",
-                            "border": "1px solid #cbd5e1",
-                            "fontSize": "14px",
-                            "width": "180px"
-                        }}
-                    />
                     <label style={{"fontWeight": "600"}}>Node ID:</label>
-                    <input
-                        type="text"
-                        value={nodeIdInput}
-                        onChange={handleNodeIdChange}
-                        placeholder="Click a node above"
-                        style={{
-                            "padding": "8px 12px",
-                            "borderRadius": "4px",
-                            "border": "1px solid #cbd5e1",
-                            "fontSize": "14px",
-                            "width": "280px",
-                            "fontFamily": "monospace"
-                        }}
-                    />
+                    <InputField value={nodeIdInput} onChange={handleNodeIdChange} placeholder="Click a node above" width="320px" monospace={True}/>
                 </div>
                 <div style={{"display": "flex", "gap": "10px", "marginBottom": "15px", "flexWrap": "wrap", "alignItems": "center"}}>
-                    <label style={{"fontWeight": "600"}}>Message (for update_test_data):</label>
-                    <input
-                        type="text"
-                        value={messageInput}
-                        onChange={handleMessageChange}
-                        placeholder="New message"
-                        style={{
-                            "padding": "8px 12px",
-                            "borderRadius": "4px",
-                            "border": "1px solid #cbd5e1",
-                            "fontSize": "14px",
-                            "width": "200px"
-                        }}
-                    />
+                    <label style={{"fontWeight": "600"}}>Message:</label>
+                    <InputField value={messageInput} onChange={handleMessageChange} placeholder="New message" width="200px"/>
                 </div>
-                <CacheButton text="Spawn on Node" onClick={doFetchWithNode} color="#0284c7"/>
+                <CacheButton text="Update Node" onClick={doUpdateNode} color="#0284c7"/>
                 <CacheButton text="Invalidate Node Cache" onClick={doInvalidateWithNode} color="#ea580c"/>
                 <p style={{"fontSize": "12px", "color": "#64748b", "marginTop": "10px", "marginBottom": "0"}}>
-                    Cache key format: walker:nodeId:fields. Different fields = different cache entries.
+                    Uses: nodeId spawn update_test_data(new_message=...). Cache key: walker:nodeId:fields
                 </p>
             </div>
 

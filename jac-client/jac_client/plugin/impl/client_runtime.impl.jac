@@ -361,22 +361,17 @@ impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
 impl jacInvalidate(walker: str, nodeId: str = "") -> None {
     # Handle undefined nodeId (JS default param issue)
     actualNodeId = nodeId or "";
-    console.log("[jacInvalidate] Called with walker:", walker, "nodeId:", actualNodeId);
     if not globalThis.__jacCacheState__ {
-        console.log("[jacInvalidate] No cache state exists");
         return;
     }
     state = globalThis.__jacCacheState__;
     prefix = f"{walker}:{actualNodeId}";
-    console.log("[jacInvalidate] Looking for keys with prefix:", prefix);
-    console.log("[jacInvalidate] Current cache keys:", Object.keys(state["cache"]));
     keysToDelete = [];
     for key in Object.keys(state["cache"]) {
         if key.startsWith(prefix) {
             keysToDelete.push(key);
         }
     }
-    console.log("[jacInvalidate] Keys to delete:", keysToDelete);
     for key in keysToDelete {
         Reflect.deleteProperty(state["cache"], key);
         idx = state["order"].indexOf(key);
@@ -384,23 +379,18 @@ impl jacInvalidate(walker: str, nodeId: str = "") -> None {
             state["order"].splice(idx, 1);
         }
     }
-    console.log("[jacInvalidate] Done. Remaining keys:", Object.keys(state["cache"]));
 }
 
 # Clear all cached data
 impl jacClearCache() -> None {
-    console.log("[jacClearCache] Called");
     if not globalThis.__jacCacheState__ {
-        console.log("[jacClearCache] No cache state exists");
         return;
     }
     state = globalThis.__jacCacheState__;
-    console.log("[jacClearCache] Clearing", Object.keys(state["cache"]).length, "entries");
     for key in Object.keys(state["cache"]) {
         Reflect.deleteProperty(state["cache"], key);
     }
     state["order"].splice(0, state["order"].length);
-    console.log("[jacClearCache] Done");
 }
 
 # Get cache metrics
