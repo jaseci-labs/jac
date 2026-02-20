@@ -7,6 +7,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.10.5 (Latest Release)
 
 - **Fix: `sv import` of `def:pub` Functions Generates RPC Stubs**: Fixed `sv import from module { func }` in `.cl.jac` files not generating for `def:pub` server functions.
+- **Fix: Type Narrowing Infinite Loop on Large Files**: Fixed `jac check` hanging indefinitely on large `.jac` files (e.g. standalone `.impl.jac` modules). The backward CFG walk in `_compute_narrowed_at` had no depth bound, causing combinatorial explosion when the module-level CFG contained hundreds of basic blocks. Added a depth limit to the walk; narrowing beyond the limit conservatively returns the declared type.
 
 ## jaclang 0.10.4
 
