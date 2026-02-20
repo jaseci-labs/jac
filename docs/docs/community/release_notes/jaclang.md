@@ -3,6 +3,7 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
 ## jaclang 0.10.6 (Unreleased)
+
 - **Fix:**: update the jac-check command to print the file names of the files that failed to have clean error message.
 
 ## jaclang 0.10.5 (Latest Release)
