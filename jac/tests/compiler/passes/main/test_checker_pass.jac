@@ -1552,3 +1552,18 @@ test "type_param_assignment" {
         program.errors_had[0].pretty_print()
     );
 }
+
+"""Test bare-dot relative import (from . import x) resolves sibling module and catches type errors."""
+test "bare_dot_relative_import" {
+    path = os.path.join(FIXTURES, "checker_bare_dot_import.jac");
+    program = JacProgram();
+    mod = program.compile(path);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1;
+    assert_error_pretty_found(
+        """
+      err: str = checker_imported.some_int;
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
