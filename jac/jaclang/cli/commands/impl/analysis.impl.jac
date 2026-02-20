@@ -109,7 +109,6 @@ impl check(
             failed_file_list.append(path);
         }
     }
-
     # Print summary of failed files
     if failed_file_list {
         console.print("\nFAILED files:");
@@ -117,7 +116,6 @@ impl check(
             console.print(f"  {failed_file}");
         }
     }
-
     check_type = "Parsed" if parse_only else "Checked";
     summary_msg = f"{check_type} {total_files} '.jac' files: {(
         total_files - failed_files
@@ -127,7 +125,6 @@ impl check(
     } else {
         console.success(summary_msg);
     }
-
     if (total_errors > 0 and not warnonly) {
         return 1;
     }
