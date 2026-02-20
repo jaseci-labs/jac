@@ -2,15 +2,15 @@
 
 Jac is a new language. AI models tend to hallucinate syntax from outdated or nonexistent versions, and things break. To fix this, we maintain an official condensed language reference designed specifically for LLM context windows: [jaseci-llmdocs](https://github.com/jaseci-labs/jaseci-llmdocs).
 
-Grab the latest `candidate.txt` from the [releases page](https://github.com/jaseci-labs/jaseci-llmdocs/releases/latest) and paste it into your AI tool's persistent context.
+Grab the latest `jac-llmdocs.md` from the [releases page](https://github.com/jaseci-labs/jaseci-llmdocs/releases/latest/) and paste it into your AI tool's persistent context.
 
 ```bash
-curl -LO https://github.com/jaseci-labs/jaseci-llmdocs/releases/latest/download/candidate.txt
+curl -LO https://github.com/jaseci-labs/jaseci-llmdocs/releases/download/v0.10.4/jac-llmdocs.md
 ```
 
 ## Where to Put It
 
-Every AI coding tool has a file or setting where you can drop persistent instructions. Paste the contents of `candidate.txt` there:
+Every AI coding tool has a file or setting where you can drop persistent instructions. Paste the contents of `jac-llmdocs.md` there:
 
 | Tool | Context File |
 |------|-------------|
@@ -24,19 +24,19 @@ Quick setup:
 
 ```bash
 # Claude Code
-cat candidate.txt >> CLAUDE.md
+cat jac-llmdocs.md >> CLAUDE.md
 
 # Gemini CLI
-cat candidate.txt >> GEMINI.md
+cat jac-llmdocs.md >> GEMINI.md
 
 # Cursor
-mkdir -p .cursor/rules && cp candidate.txt .cursor/rules/jac-reference.mdc
+mkdir -p .cursor/rules && cp jac-llmdocs.md .cursor/rules/jac-reference.mdc
 
 # Antigravity
-cat candidate.txt >> GEMINI.md
+cat jac-llmdocs.md >> GEMINI.md
 
 # OpenAI Codex
-cat candidate.txt >> AGENTS.md
+cat jac-llmdocs.md >> AGENTS.md
 ```
 
 When you update Jac, pull a fresh copy from the releases page to stay current.
