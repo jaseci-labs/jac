@@ -12,6 +12,7 @@ description = "Complete all-in-one example with authentication and UI components
 base_route_app = "app"
 
 [plugins.client]
+debug = true
 # Vite bundler configuration (optional overrides)
 # vite.plugins = []
 # vite.build = {}
@@ -58,3 +59,13 @@ background_color = "#ffffff"
 # short_name = "App"
 [plugins.scale.secrets]
 TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
+
+[plugins.client.cache]
+max_entries = 500
+max_size_mb = 10
+default_ttl_ms = 60000
+swr_enabled = true
+
+# Make read_test_data uncacheable for testing immediate refresh
+# [plugins.client.cache.uncacheable]
+# walkers = ["read_test_data"]
