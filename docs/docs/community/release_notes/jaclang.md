@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.10.6 (Unreleased)
 
+- **Fix:**: update the jac-check command to print the file names of the files that failed to have clean error message.
+
 ## jaclang 0.10.5 (Latest Release)
 
 - **Fix: `sv import` of `def:pub` Functions Generates RPC Stubs**: Fixed `sv import from module { func }` in `.cl.jac` files not generating for `def:pub` server functions.
