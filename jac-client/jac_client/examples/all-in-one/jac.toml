@@ -74,4 +74,3 @@ swr_enabled = true
 enabled = true
 namespace = "default"
 walker_metrics = true
-
