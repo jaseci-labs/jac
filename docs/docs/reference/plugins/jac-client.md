@@ -1034,13 +1034,17 @@ Walker calls via `spawn` are automatically cached with:
 ### Basic Usage
 
 ```jac
-# Walker calls are automatically cached
-todos = root spawn read_todos();  # Network request
-todos = root spawn read_todos();  # Cache hit!
+cl import from "@jac/runtime" { jacInvalidate }
+cl {
+    # Walker calls are automatically cached
+    todos = root spawn read_todos();  # Network request
+    todos = root spawn read_todos();  # Cache hit!
 
-# After mutation, invalidate cache
-root spawn create_todo(text="New item");
-jacInvalidate("read_todos");
+    # After mutation, invalidate cache
+    root spawn create_todo(text="New item");
+    jacInvalidate("read_todos");
+}
+
 ```
 
 ### Cache API
