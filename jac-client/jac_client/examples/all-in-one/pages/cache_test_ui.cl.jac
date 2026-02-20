@@ -154,10 +154,6 @@ def:pub CacheTest() -> JsxElement {
         refreshMetrics();
     };
 
-    # ========================================================================
-    # EVENT HANDLERS - Node Operations
-    # ========================================================================
-
     async def doCreateNode -> None {
         loading = True;
         addLog("Creating new TestData node...");
@@ -165,7 +161,6 @@ def:pub CacheTest() -> JsxElement {
             result = root spawn create_test_data(message=f"Test {Date.now()}");
             addLog(f"Created node: {JSON.stringify(result)}");
             refreshMetrics();
-            # Refresh node list
             await doFetchAllNodes();
         } except Exception as e {
             addLog(f"Error creating node: {e}");
@@ -180,7 +175,6 @@ def:pub CacheTest() -> JsxElement {
             result = root spawn read_test_data();
             nodeCount = result.length if result.length else 0;
             addLog(f"Got {nodeCount} nodes");
-            # Store nodes with their IDs
             nodes = [];
             if Array.isArray(result) {
                 for item in result {
@@ -205,10 +199,6 @@ def:pub CacheTest() -> JsxElement {
         nodeIdInput = nId;
         addLog(f"Selected node: {nId}");
     };
-
-    # ========================================================================
-    # EVENT HANDLERS - Node-Specific Cache Operations
-    # ========================================================================
 
     async def doUpdateNode -> None {
         nId = nodeIdInput;
@@ -235,10 +225,6 @@ def:pub CacheTest() -> JsxElement {
         refreshMetrics();
     };
 
-    # ========================================================================
-    # INPUT HANDLERS
-    # ========================================================================
-
     handleNodeIdChange = lambda e: any -> None {
         nodeIdInput = e.target.value;
     };
@@ -247,18 +233,10 @@ def:pub CacheTest() -> JsxElement {
         messageInput = e.target.value;
     };
 
-    # ========================================================================
-    # COMPUTED VALUES
-    # ========================================================================
-
     enabledText = "Disable Cache" if enabled else "Enable Cache";
     enabledColor = "#10b981" if enabled else "#6b7280";
     enabledStatus = "Yes" if enabled else "No";
     hitRateText = f"{(metrics['hitRate'] * 100).toFixed(1)}%";
-
-    # ========================================================================
-    # RENDER
-    # ========================================================================
 
     return
         <div style={{"padding": "20px", "maxWidth": "1000px", "margin": "0 auto", "fontFamily": "system-ui"}}>

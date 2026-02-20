@@ -104,6 +104,7 @@ cl {
                                 </Link>
                                 <Link to="/cache" style={linkStyle("/cache")}>
                                     Cache Test
+                                </Link>
                                 <Link to="/users" style={linkStyle("/users")}>
                                     Users
                                 </Link>
