@@ -3,6 +3,7 @@
 import contextlib;
 import os;
 import sys;
+import pytest;
 import from pathlib { Path }
 
 import lsprotocol.types as lspt;
@@ -18,7 +19,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      PASSES_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
-     _active_servers: list = [];
+     _active_servers: list = [],
+     _server_cache: dict = {};  # Cache servers by workspace path
 
 def _clear_jac_modules {
     """Clear jac-compiled modules from sys.modules."""
@@ -33,26 +35,44 @@ def _clear_jac_modules {
     }
 }
 
-def setup_test {
-    """Set up test environment.
+@pytest.fixture(scope="module", autouse=True)
+def module_setup_teardown() {
+    """Module-level setup and teardown for all tests.
 
-    Note: _fresh_jac_state() runs automatically before each Jac test via the
-    pytest plugin, which resets JacRuntime. We only need to handle server-
-    specific setup here.
+    This fixture runs once before all tests in the module and cleans up
+    after all tests complete, significantly reducing overhead.
     """
+    # Setup: Clear modules before any test runs
     _clear_jac_modules();
-    _active_servers.clear();
-}
 
-def teardown_test {
-    """Tear down test environment."""
+    # Yield control to tests
+    yield;
+
+    # Teardown: Clean up all servers and modules after all tests complete
     for server in _active_servers {
-        with contextlib.suppress(Exception) as _s {
+        with contextlib.suppress(Exception) {
             server.shutdown();
         }
         server.clear_type_system(clear_hub=True);
     }
     _active_servers.clear();
+    _server_cache.clear();
+    _clear_jac_modules();
+}
+
+@pytest.fixture(autouse=True)
+def test_isolation() {
+    """Ensure minimal isolation between tests without full server recreation.
+
+    This runs before/after each test but doesn't recreate servers - it just
+    clears module state that might interfere between tests.
+    """
+    # Pre-test: Clear compiled modules to prevent cross-test pollution
+    _clear_jac_modules();
+
+    yield;
+
+    # Post-test: Minimal cleanup (servers are reused, cleaned up at module end)
     _clear_jac_modules();
 }
 
@@ -72,12 +92,34 @@ def passes_main_fixture_abs_path(name: str) -> str {
 }
 
 def create_server(workspace_path: str | None = None) -> JacLangServer {
-    """Create a JacLangServer wired to the given workspace."""
-    lsp = JacLangServer();
+    """Create or retrieve a cached JacLangServer for the given workspace.
+
+    This function implements server reuse - if a server for the same workspace
+    already exists, it returns that instead of creating a new one. This
+    significantly speeds up test execution by avoiding repeated server creation.
+
+    Args:
+        workspace_path: Optional workspace path. Defaults to FIXTURE_DIR.
+
+    Returns:
+        A JacLangServer instance for the specified workspace.
+    """
     workspace_root = workspace_path if workspace_path is not None else FIXTURE_DIR;
+
+    # Check if we already have a server for this workspace
+    if workspace_root in _server_cache {
+        return _server_cache[workspace_root];
+    }
+
+    # Create new server if not in cache
+    lsp = JacLangServer();
     workspace_val = Workspace(workspace_root, lsp);
     lsp.lsp._workspace = workspace_val;
+
+    # Cache and track the server
+    _server_cache[workspace_root] = lsp;
     _active_servers.append(lsp);
+
     return lsp;
 }
 
@@ -88,8 +130,6 @@ obj Case {
 }
 
 test "test_impl_stay_connected" {
-    setup_test();
-    try {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"));
         circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"));
@@ -107,14 +147,10 @@ test "test_impl_stay_connected" {
                 "'", ""
             )
         );
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_impl_auto_discover" {
-    setup_test();
-    try {
         lsp = create_server();
         circle_impl_file = uris.from_fs_path(fixture_path("circle_pure.impl.jac"));
         lsp.type_check_file(circle_impl_file);
@@ -126,26 +162,18 @@ test "test_impl_auto_discover" {
                 "'", ""
             )
         );
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_outline_symbols" {
-    setup_test();
-    try {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"));
         lsp.type_check_file(circle_file);
         assert len(lsp.get_outline(circle_file)) == 8;
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition" {
-    setup_test();
-    try {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle_pure.jac"));
         lsp.type_check_file(circle_file);
@@ -176,14 +204,10 @@ test "test_go_to_definition" {
         assert "fixtures/goto_def_tests.jac:16:5-16:8" in str(
             lsp.get_definition(goto_defs_file, lspt.Position(17, 10))
         );
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_method_manual_impl" {
-    setup_test();
-    try {
         lsp = create_server("");
         decldef_file = uris.from_fs_path(
             examples_abs_path("micro/decl_defs_main.impl.jac")
@@ -197,14 +221,10 @@ test "test_go_to_definition_method_manual_impl" {
         assert "decl_defs_main.jac:7:8-7:17" in str(
             lsp.get_definition(decldef_file, lspt.Position(2, 20))
         );
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_md_path" {
-    setup_test();
-    try {
         lsp = create_server();
         import_file = uris.from_fs_path(fixture_path("md_path.jac"));
         lsp.type_check_file(import_file);
@@ -235,14 +255,10 @@ test "test_go_to_definition_md_path" {
             );
             assert expected in result , f"Line {line}, char {char}: expected '{expected}' in '{result}'";
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_connect_filter" {
-    setup_test();
-    try {
         lsp = create_server("");
         import_file = uris.from_fs_path(
             passes_main_fixture_abs_path("checker_connect_filter.jac")
@@ -269,14 +285,10 @@ test "test_go_to_definition_connect_filter" {
                 lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
             );
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_atom_trailer" {
-    setup_test();
-    try {
         lsp = create_server();
         import_file = uris.from_fs_path(fixture_path("user.jac"));
         lsp.type_check_file(import_file);
@@ -291,14 +303,10 @@ test "test_go_to_definition_atom_trailer" {
                 lsp.get_definition(import_file, lspt.Position(line - 1, char - 1))
             );
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_missing_mod_warning" {
-    setup_test();
-    try {
         lsp = create_server();
         import_file = uris.from_fs_path(fixture_path("md_path.jac"));
         lsp.type_check_file(import_file);
@@ -312,16 +320,12 @@ test "test_missing_mod_warning" {
         for expected in expected_warnings {
             assert any(expected in w for w in warnings_str) , f"Expected warning '{expected}' not found in {warnings_str}";
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_completion" {
     import asyncio;
 
-    setup_test();
-    try {
         lsp = create_server();
         base_module_file = uris.from_fs_path(fixture_path("completion_test_err.jac"));
         lsp.type_check_file(base_module_file);
@@ -341,14 +345,10 @@ test "test_completion" {
                 assert completion in str(completions);
             }
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_reference" {
-    setup_test();
-    try {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle.jac"));
         lsp.type_check_file(circle_file);
@@ -364,14 +364,10 @@ test "test_go_to_reference" {
                 assert expected in references;
             }
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_def_import_star" {
-    setup_test();
-    try {
         lsp = create_server("");
         import_star_file = uris.from_fs_path(
             passes_main_fixture_abs_path("checker_import_star/main.jac")
@@ -392,14 +388,10 @@ test "test_go_to_def_import_star" {
                 lsp.get_definition(import_star_file, lspt.Position(line - 1, char - 1))
             );
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_stub_impl_hover_and_goto_def" {
-    setup_test();
-    try {
         lsp = create_server();
         test_file = uris.from_fs_path(fixture_path("stub_hover.jac"));
         impl_file_path = fixture_path("stub_hover.impl.jac");
@@ -454,14 +446,10 @@ test "test_stub_impl_hover_and_goto_def" {
         defn_start = lsp.get_definition(impl_file, lspt.Position(22, 17));
         assert defn_start is not None , "Definition should be found for Thread.start method";
         assert "threading" in defn_start.uri , f"Definition should point to threading module, got: {defn_start.uri}";
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_impl_body_self_attr" {
-    setup_test();
-    try {
         lsp = create_server("");
         impl_file = uris.from_fs_path(
             passes_main_fixture_abs_path("impl_symbol_resolution.impl.jac")
@@ -481,14 +469,10 @@ test "test_go_to_definition_impl_body_self_attr" {
             assert expected in str(result) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {result}";
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_directory_import" {
-    setup_test();
-    try {
         lsp = create_server();
         import_file = uris.from_fs_path(fixture_path("local_imports/main.jac"));
         lsp.type_check_file(import_file);
@@ -508,14 +492,10 @@ test "test_go_to_definition_directory_import" {
             assert expected in str(def_loc) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {def_loc}";
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_go_to_definition_nested_impl_symbols" {
-    setup_test();
-    try {
         lsp = create_server();
         impl_file = uris.from_fs_path(fixture_path("nested_impl_resolution.impl.jac"));
         lsp.type_check_file(impl_file);
@@ -537,14 +517,10 @@ test "test_go_to_definition_nested_impl_symbols" {
             assert expected in str(result) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {result}";
         }
-    } finally {
-        teardown_test();
-    }
+
 }
 
 test "test_hover_narrowing_in_loop" {
-    setup_test();
-    try {
         lsp = create_server();
         # Use the dedicated LSP fixture
         narrowing_file = uris.from_fs_path(fixture_path("hover_loop.jac"));
@@ -560,7 +536,5 @@ test "test_hover_narrowing_in_loop" {
         assert "MyString" in hover.contents.value , f"Hover should show MyString, got: {hover.contents.value}";
         # Verify it does NOT show the union type MyInt or None
         assert "MyInt" not in hover.contents.value , "Hover should NOT show MyInt (it should be narrowed)";
-    } finally {
-        teardown_test();
-    }
+
 }
