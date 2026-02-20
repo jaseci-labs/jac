@@ -102,6 +102,9 @@ cl {
                                 <Link to="/budget" style={linkStyle("/budget")}>
                                     Budget Planner
                                 </Link>
+                                <Link to="/cache" style={linkStyle("/cache")}>
+                                    Cache Test
+                                </Link>
                             </>
                         )}
                     </div>

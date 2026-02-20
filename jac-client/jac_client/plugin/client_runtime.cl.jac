@@ -49,3 +49,47 @@ def:pub __removeLocalStorage(key: str) -> None;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+
+# ============================================================================
+# CACHE API - Caching for walker calls
+# ============================================================================
+
+"""Invalidate cache entries for a specific walker.
+
+Args:
+    walker: Walker name to invalidate
+    nodeId: Optional node ID to narrow invalidation scope
+"""
+def:pub jacInvalidate(walker: str, nodeId: str = "") -> None;
+
+"""Clear all cached data."""
+def:pub jacClearCache() -> None;
+
+"""Get cache metrics for monitoring.
+
+Returns:
+    dict with hits, misses, hitRate, evictions, cacheSize
+"""
+def:pub jacGetCacheMetrics() -> dict;
+
+"""Get detailed cache statistics.
+
+Returns:
+    dict with entries, keys, config
+"""
+def:pub jacCacheStats() -> dict;
+
+"""Prefetch walker result into cache (fire and forget).
+
+Args:
+    walker: Walker name to prefetch
+    nodeId: Optional node ID
+    fields: Optional walker parameters
+"""
+def:pub jacPrefetch(walker: str, nodeId: str = "", fields: dict = {}) -> None;
+
+"""Check if cache is enabled."""
+def:pub jacIsCacheEnabled() -> bool;
+
+"""Enable or disable cache at runtime."""
+def:pub jacSetCacheEnabled(enabled: bool) -> None;

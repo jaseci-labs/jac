@@ -569,7 +569,6 @@ def:pub FeaturesTest -> JsxElement {
                         #             Imported TypeScript React component with data from JAC. #
                     </p>
                     #         #
-                    <PieChart data={chart_data} title="Feature Test Distribution"/>
                     #
                     <p
                         style={{

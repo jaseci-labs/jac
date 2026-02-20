@@ -40,6 +40,17 @@ cl {
                                 Test Features
                             </button>
                         </Link>
+                        <Link to="/cache">
+                            <button
+                                className="cta-button"
+                                style={{
+                                    "backgroundColor": "#10b981",
+                                    "border": "2px solid #10b981"
+                                }}
+                            >
+                                Cache Test
+                            </button>
+                        </Link>
                     </div>
                 </section>
                 <section className="features-section">
