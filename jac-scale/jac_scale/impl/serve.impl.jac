@@ -573,32 +573,20 @@ impl JacAPIServer.create_function_parameters(
     func_name: str, method: HTTPMethod = HTTPMethod.POST
 ) -> list[APIParameter] {
     parameters: list[APIParameter] = [];
-    if self.introspector.is_auth_required_for_function(func_name) {
-        parameters.append(
-            APIParameter(
-                name='Authorization',
-                data_type='string',
-                required=False,
-                default=None,
-                description='Bearer token for authentication',
-                type=ParameterType.HEADER
-            )
-        );
-    }
-    func_fields = self.introspector.introspect_callable(
-        self.get_functions()[func_name]
-    )['parameters'];
+    # Extract path parameter names from restspec path
+    func_obj = self.get_functions()[func_name];
+    restspec = func_obj.restspec if func_obj?.restspec else None;
+    spec_path = restspec.path if restspec else None;
+    path_param_names = _extract_path_param_names(spec_path);
+    func_fields = self.introspector.introspect_callable(func_obj)['parameters'];
     for field_name in func_fields {
         field_type = func_fields[field_name]['type'];
-        # Determine parameter type based on field type and method
-        if (
-            method == HTTPMethod.GET
-            and not ('UploadFile' in field_type or 'uploadfile' in field_type.lower())
-        ) {
-            param_type = ParameterType.QUERY;
+        if field_name in path_param_names {
+            param_type = ParameterType.PATH;
         } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
-            # Support UploadFile type for file uploads
             param_type = ParameterType.FILE;
+        } elif method == HTTPMethod.GET {
+            param_type = ParameterType.QUERY;
         } else {
             param_type = ParameterType.BODY;
         }
@@ -620,11 +608,12 @@ impl JacAPIServer.create_function_callback(
     func_name: str
 ) -> Callable[..., TransportResponse] {
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
-    async def callback(**kwargs: JsonValue) -> TransportResponse {
+    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
-            authorization = kwargs.pop('Authorization', None);
+            authorization = request.headers.get('Authorization');
             token: (str | None) = None;
             if (
                 authorization
@@ -720,18 +709,11 @@ impl JacAPIServer.create_walker_parameters(
     walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
 ) -> list[APIParameter] {
     parameters: list[APIParameter] = [];
-    if self.introspector.is_auth_required_for_walker(walker_name) {
-        parameters.append(
-            APIParameter(
-                name='Authorization',
-                data_type='string',
-                required=False,
-                default=None,
-                description='Bearer token for authentication',
-                type=ParameterType.HEADER
-            )
-        );
-    }
+    # Extract path parameter names from restspec path (e.g. /items/{item_id} -> {"item_id"})
+    walker_cls = self.get_walkers()[walker_name];
+    restspec = walker_cls.restspec if walker_cls?.restspec else None;
+    spec_path = restspec.path if restspec else None;
+    path_param_names = _extract_path_param_names(spec_path);
     walker_fields = self.introspector.introspect_walker(
         self.get_walkers()[walker_name]
     )['fields'];
@@ -740,17 +722,14 @@ impl JacAPIServer.create_walker_parameters(
             continue;
         }
         field_type = walker_fields[field_name]['type'];
-        # Determine parameter type based on field type and method
-        if (field_name == '_jac_spawn_node') {
+        # Determine parameter type: path params first, then file, then query/body by method
+        if field_name == '_jac_spawn_node' or field_name in path_param_names {
             param_type = ParameterType.PATH;
-        } elif (
-            method == HTTPMethod.GET
-            and not ('UploadFile' in field_type or 'uploadfile' in field_type.lower())
-        ) {
-            param_type = ParameterType.QUERY;
         } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
             # Support UploadFile type for file uploads
             param_type = ParameterType.FILE;
+        } elif method == HTTPMethod.GET {
+            param_type = ParameterType.QUERY;
         } else {
             param_type = ParameterType.BODY;
         }
@@ -772,13 +751,14 @@ impl JacAPIServer.create_walker_callback(
     walker_name: str, has_node_param: bool = False
 ) -> Callable[..., TransportResponse] {
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
     async def callback(
-        nd: (str | None) = None, **kwargs: JsonValue
+        request: Request, nd: (str | None) = None, **kwargs: JsonValue
     ) -> TransportResponse {
         username: (str | None) = None;
         if requires_auth {
-            authorization = kwargs.pop('Authorization', None);
+            authorization = request.headers.get('Authorization');
             token: (str | None) = None;
             if (
                 authorization
@@ -1371,10 +1351,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
     import from fastapi { Request }
     # Dynamic handler that looks up walker at request time
     async def dynamic_walker_handler(
-        request: Request,
-        walker_name: str,
-        nd: str | None = None,
-        Authorization: str | None = None
+        request: Request, walker_name: str, nd: str | None = None
     ) -> TransportResponse {
         # Parse request body or query params to get walker fields
         if request.method == 'GET' {
@@ -1418,7 +1395,7 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
 
         # Handle authentication
         username: str | None = None;
-        authorization = kwargs.pop('Authorization', None);
+        Authorization = request.headers.get('Authorization');
         if self.introspector.is_auth_required_for_walker(walker_name) {
             token: str | None = None;
             if (
@@ -1494,14 +1471,6 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
                     default=None,
                     description='Node ID to spawn walker on',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1532,14 +1501,6 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
                     default=None,
                     description='Node ID to spawn walker on',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1562,14 +1523,6 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
                     default=None,
                     description='Name of the walker to execute',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1592,14 +1545,6 @@ impl JacAPIServer.register_dynamic_walker_endpoint -> None {
                     default=None,
                     description='Name of the walker to execute',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1619,7 +1564,7 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
     import from fastapi { Request }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     async def dynamic_function_handler(
-        request: Request, function_name: str, Authorization: str | None = None
+        request: Request, function_name: str
     ) -> TransportResponse {
         # Parse request body or query params to get function arguments
         if request.method == 'GET' {
@@ -1653,7 +1598,7 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
 
         # Handle authentication
         username: str | None = None;
-        authorization = kwargs.pop('Authorization', None);
+        Authorization = request.headers.get('Authorization');
         if self.introspector.is_auth_required_for_function(function_name) {
             token: str | None = None;
             if (
@@ -1714,14 +1659,6 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
                     default=None,
                     description='Name of the function to call',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1744,14 +1681,6 @@ impl JacAPIServer.register_dynamic_function_endpoint -> None {
                     default=None,
                     description='Name of the function to call',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=False,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1956,12 +1885,29 @@ impl JacAPIServer.revoke_api_key(
 
 """Register API key management endpoints."""
 impl JacAPIServer.register_api_key_endpoints -> None {
+    import from fastapi { Request }
+    async def create_api_key_handler(
+        request: Request, name: str, expiry_days: int | None = None
+    ) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.create_api_key(name, expiry_days, authorization);
+    }
+    async def list_api_keys_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.list_api_keys(authorization);
+    }
+    async def revoke_api_key_handler(
+        request: Request, api_key_id: str
+    ) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        return self.revoke_api_key(api_key_id, authorization);
+    }
     # Create API key
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
             path='/api-key/create',
-            callback=self.create_api_key,
+            callback=create_api_key_handler,
             parameters=[
                 APIParameter(
                     name='name',
@@ -1978,14 +1924,6 @@ impl JacAPIServer.register_api_key_endpoints -> None {
                     default=None,
                     description='Number of days until expiry (default from config)',
                     type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,
@@ -1999,17 +1937,8 @@ impl JacAPIServer.register_api_key_endpoints -> None {
         JEndPoint(
             method=HTTPMethod.GET,
             path='/api-key/list',
-            callback=self.list_api_keys,
-            parameters=[
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
-                )
-            ],
+            callback=list_api_keys_handler,
+            parameters=[],
             response_model=None,
             tags=['API Keys'],
             summary='List all API keys',
@@ -2021,7 +1950,7 @@ impl JacAPIServer.register_api_key_endpoints -> None {
         JEndPoint(
             method=HTTPMethod.DELETE,
             path='/api-key/{api_key_id}',
-            callback=self.revoke_api_key,
+            callback=revoke_api_key_handler,
             parameters=[
                 APIParameter(
                     name='api_key_id',
@@ -2030,14 +1959,6 @@ impl JacAPIServer.register_api_key_endpoints -> None {
                     default=None,
                     description='The ID of the API key to revoke',
                     type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='Authorization',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Bearer token for authentication',
-                    type=ParameterType.HEADER
                 )
             ],
             response_model=None,

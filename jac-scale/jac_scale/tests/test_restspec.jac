@@ -348,3 +348,103 @@ test "openapi specs" {
         teardown_restspec_server(sp);
     }
 }
+
+# ============================================================================
+# Path Parameter Tests (regression for @restspec path param bug)
+# Single server instance for all path-param assertions — no per-case restart.
+# ============================================================================
+test "restspec path parameters" {
+    sp = setup_restspec_server();
+    try {
+        # Obtain an auth token (functions require auth, walkers are public)
+        requests.post(
+            f"{base_url}/user/register", json={"username": "u_pp", "password": "p_pp"}
+        );
+        login = requests.post(
+            f"{base_url}/user/login", json={"username": "u_pp", "password": "p_pp"}
+        );
+        auth = {"Authorization": f"Bearer {_extract_data(login.json())['token']}"};
+
+        # --- OpenAPI schema: routes registered with correct path templates ---
+        spec = requests.get(f"{base_url}/openapi.json", timeout=5).json();
+        paths = spec["paths"];
+        assert "/items/{item_id}" in paths and "get" in paths["/items/{item_id}"];
+        assert "/users/{user_id}/orders" in paths
+        and "get" in paths["/users/{user_id}/orders"];
+        assert "/orgs/{org_id}/repos/{repo_id}" in paths
+        and "get" in paths["/orgs/{org_id}/repos/{repo_id}"];
+        assert "/resources/{resource_id}/update" in paths
+        and "post" in paths["/resources/{resource_id}/update"];
+        assert "/nodes/{node_id}" in paths and "get" in paths["/nodes/{node_id}"];
+        assert "/projects/{project_id}/tasks/{task_id}" in paths
+        and "get" in paths["/projects/{project_id}/tasks/{task_id}"];
+
+        # OpenAPI marks the path param as in=path, required=true
+        item_params = paths["/items/{item_id}"]["get"]["parameters"];
+        pp = next(
+            p
+            for p in item_params
+            if p["name"] == "item_id"
+        );
+        assert pp["in"] == "path" and pp["required"] == True;
+
+        # --- Function: single path param ---
+        r = requests.get(f"{base_url}/items/abc123", headers=auth, timeout=5);
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["result"];
+        assert d["item_id"] == "abc123" and d["message"] == "get_item executed";
+
+        # --- Function: path param + explicit query param ---
+        r = requests.get(
+            f"{base_url}/users/u42/orders",
+            headers=auth,
+            params={"status": "pending"},
+            timeout=5
+        );
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["result"];
+        assert d["user_id"] == "u42" and d["status"] == "pending";
+
+        # --- Function: path param + default query param ---
+        r = requests.get(f"{base_url}/users/u99/orders", headers=auth, timeout=5);
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["result"];
+        assert d["user_id"] == "u99" and d["status"] == "all";
+
+        # --- Function: multiple path params ---
+        r = requests.get(
+            f"{base_url}/orgs/myorg/repos/myrepo", headers=auth, timeout=5
+        );
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["result"];
+        assert d["org_id"] == "myorg" and d["repo_id"] == "myrepo";
+
+        # --- Function: POST with path param + JSON body ---
+        r = requests.post(
+            f"{base_url}/resources/res-001/update",
+            headers=auth,
+            json={"name": "widget", "value": 42},
+            timeout=5
+        );
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["result"];
+        assert d["resource_id"] == "res-001"
+        and d["name"] == "widget"
+        and d["value"] == 42;
+
+        # --- Walker: single path param (walkers are public, no auth needed) ---
+        r = requests.get(f"{base_url}/nodes/node-xyz", timeout=5);
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["reports"][0];
+        assert d["node_id"] == "node-xyz" and d["message"] == "GetNodeWalker executed";
+
+        # --- Walker: multiple path params ---
+        r = requests.get(f"{base_url}/projects/proj-1/tasks/task-2", timeout=5);
+        assert r.status_code == 200;
+        d = _extract_data(r.json())["reports"][0];
+        assert d["project_id"] == "proj-1" and d["task_id"] == "task-2";
+        assert d["message"] == "GetProjectTaskWalker executed";
+    } finally {
+        teardown_restspec_server(sp);
+    }
+}
