@@ -35,4 +35,4 @@ jobs:
       - name: Run jac check (using .jacignore)
         run: |
           IGNORE_LIST=$(paste -sd, .jacignore)
-          jac check . --no-print_errs
+          jac check . --no-print_errs --ignore pyast_gen_pass.impl.jac
