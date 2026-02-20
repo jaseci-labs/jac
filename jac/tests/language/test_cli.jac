@@ -40,7 +40,7 @@ def _assert_error_pretty_found(needle: str, haystack: str) -> None {
     }
 }
 
-def _run_jac_check(test_dir: str, ignore_pattern: str = "") -> int {
+def _run_jac_check(test_dir: str, ignore_pattern: list = []) -> int {
     """Run jac check and return file count."""
     captured_stdout = io.StringIO();
     captured_stderr = io.StringIO();
@@ -1492,9 +1492,16 @@ test "jac grammar lark" {
 test "jac cli check ignore patterns" {
     test_dir = fixture_path("deep");
     result_count = _run_jac_check(
-        test_dir, "deeper,one_lev_dup.jac,one_lev.jac,mycode"
+        test_dir, ["deeper", "one_lev_dup.jac", "one_lev.jac", "mycode"]
     );
     assert result_count == 1;
+}
+
+test "jac cli check ignore with wildcards" {
+    """Test --ignore with multiple wildcard patterns."""
+    test_dir = fixture_path("deep");
+    result_count = _run_jac_check(test_dir, ["one_lev*", "snd_*"]);
+    assert result_count == 3;
 }
 
 test "lexer does not hang on unterminated jsx" {

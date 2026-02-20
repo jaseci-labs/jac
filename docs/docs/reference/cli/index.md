@@ -242,10 +242,10 @@ jac check src/
 jac check main.jac -w
 
 # Check directory excluding specific folders/files
-jac check myproject/ --ignore fixtures,tests
+jac check myproject/ --ignore fixtures tests
 
 # Check excluding multiple patterns
-jac check . --ignore node_modules,dist,__pycache__
+jac check . --ignore node_modules dist __pycache__
 ```
 
 ---

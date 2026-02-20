@@ -138,6 +138,29 @@ walker :pub list_users {
 
 Accessible at `GET /custom/users`.
 
+### Path Parameters
+
+Define path parameters using `{param_name}` syntax:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/items/{item_id}")
+walker :pub get_item {
+    has item_id: str;
+    can fetch with Root entry { report {"item_id": self.item_id}; }
+}
+
+@restspec(method=HTTPMethod.GET, path="/users/{user_id}/orders")
+walker :pub get_user_orders {
+    has user_id: str;          # Path parameter
+    has status: str = "all";   # Query parameter
+    can fetch with Root entry { report {"user_id": self.user_id, "status": self.status}; }
+}
+```
+
+Parameters are classified as: **path** (matches `{name}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods).
+
 ### Functions
 
 `@restspec` also works on standalone functions:

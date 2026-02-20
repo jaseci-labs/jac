@@ -1337,6 +1337,13 @@ impl TypeEvaluator._compute_narrowed_at(
         return None;  # Cycle (back-edge in loop) -- conservative
 
     }
+    # Bail out when the backward walk has grown too deep.  This prevents
+    # combinatorial explosion on very large modules whose CFGs contain
+    # hundreds of basic blocks (e.g. standalone .impl.jac files).
+    # Returning None is conservative (no narrowing) and safe.
+    if len(visited) > 64 {
+        return None;
+    }
     visited.add(stmt_id);
     # Ignore back-edges from loop body to preserve pre-loop narrowing.
     is_loop_header: bool = isinstance(stmt, (uni.InForStmt, uni.IterForStmt));

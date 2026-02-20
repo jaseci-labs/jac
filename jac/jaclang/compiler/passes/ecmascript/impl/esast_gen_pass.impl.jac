@@ -2606,9 +2606,11 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
 
 """Process import statement."""
 impl EsastGenPass.exit_import(nd: uni.Import) -> None {
-    # Only process client-side imports for JavaScript generation
+    # Server-side import (sv keyword) - generate stubs for def:pub functions
     if nd.code_context != CodeContext.CLIENT {
-        # Server-side import (sv keyword or default) - skip JS generation
+        if (nd.from_loc and nd.items) {
+            self._generate_sv_import_stubs(nd);
+        }
         return;
     }
     if (nd.from_loc and nd.items) {
@@ -2708,6 +2710,129 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
+"""Generate JS function stubs for def:pub functions imported via sv import.
+
+When a .cl.jac file has `sv import from .module { func1, func2 }`, and those
+functions are def:pub (public HTTP endpoints), we generate async JS function
+stubs that call __jacCallFunction() to invoke the server over HTTP.
+"""
+impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+    # Resolve the source module to look up function signatures
+    source_mod: uni.Module | None = None;
+    if nd.from_loc {
+        resolved_path = nd.from_loc.resolve_relative_path();
+        source_mod = self.prog.mod.hub.get(resolved_path);
+    }
+    stubs: list[es.Statement] = [];
+    for item in nd.items {
+        if not isinstance(item, uni.ModuleItem) or not isinstance(item.name, uni.Name) {
+            continue;
+        }
+        func_name = item.name.sym_name;
+        local_name = item.alias.sym_name if item.alias else func_name;
+        # Try to resolve the function signature from the source module
+        # to get parameter names for the RPC args object
+        param_names: list[str] = [];
+        if source_mod {
+            sym = source_mod.lookup(func_name);
+            if (sym and sym.defn) {
+                defn_node = sym.defn[0];
+                ability_node: uni.Ability | None = None;
+                if isinstance(defn_node, uni.Ability) {
+                    ability_node = defn_node;
+                } elif (defn_node.parent and isinstance(defn_node.parent, uni.Ability)) {
+                    ability_node = defn_node.parent;
+                }
+                if (
+                    ability_node
+                    and isinstance(ability_node.signature, uni.FuncSignature)
+                    and ability_node.signature.params
+                ) {
+                    param_names = [
+                        p.name.sym_name for p in ability_node.signature.params
+                    ];
+                }
+            }
+        }
+        # Build JS function parameters
+        js_params: list[es.Pattern] = [];
+        for pname in param_names {
+            js_params.append(self.sync_loc(es.Identifier(name=pname), jac_node=nd));
+        }
+        # Build the args object: { param1: param1, param2: param2, ... }
+        props: list[es.Property | es.SpreadElement] = [];
+        for pname in param_names {
+            key = self.sync_loc(es.Literal(value=pname), jac_node=nd);
+            value = self.sync_loc(es.Identifier(name=pname), jac_node=nd);
+            props.append(
+                self.sync_loc(
+                    es.Property(
+                        key=key,
+                        value=value,
+                        kind='init',
+                        method=False,
+                        shorthand=False,
+                        computed=False
+                    ),
+                    jac_node=nd
+                )
+            );
+        }
+        args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
+        # Build: await __jacCallFunction("func_name", { ...args })
+        call_expr = self.sync_loc(
+            es.CallExpression(
+                callee=self.sync_loc(
+                    es.Identifier(name='__jacCallFunction'), jac_node=nd
+                ),
+                arguments=[
+                    self.sync_loc(es.Literal(value=func_name), jac_node=nd),
+                    args_obj
+                ]
+            ),
+            jac_node=nd
+        );
+        await_expr = self.sync_loc(es.AwaitExpression(argument=call_expr), jac_node=nd);
+        return_stmt = self.sync_loc(
+            es.ReturnStatement(argument=await_expr), jac_node=nd
+        );
+        body = self.sync_loc(es.BlockStatement(body=[return_stmt]), jac_node=nd);
+        func_id = self.sync_loc(es.Identifier(name=local_name), jac_node=nd);
+        func_decl = self.sync_loc(
+            es.FunctionDeclaration(
+                id=func_id, params=js_params, body=body, generator=False, async_=True
+            ),
+            jac_node=nd
+        );
+        stubs.append(func_decl);
+    }
+    if stubs {
+        # Auto-inject __jacCallFunction import if not already done
+        if not self.has_injected_jac_call_function {
+            specifier = self.sync_loc(
+                es.ImportSpecifier(
+                    imported=es.Identifier(name='__jacCallFunction'),
+                    local=es.Identifier(name='__jacCallFunction')
+                ),
+                jac_node=nd
+            );
+            source = self.sync_loc(
+                es.Literal(value='@jac/runtime', raw='"@jac/runtime"'), jac_node=nd
+            );
+            import_decl = self.sync_loc(
+                es.ImportDeclaration(specifiers=[specifier], source=source),
+                jac_node=nd
+            );
+            self.imports.append(import_decl);
+            self.has_injected_jac_call_function = True;
+        }
+        # Append stubs to the accumulation list (sv import nodes have SERVER
+        # context and their es_ast is filtered out in exit_module, so we
+        # collect them separately and inject them into the module body).
+        self.sv_import_stubs.extend(stubs);
+    }
+}
+
 """Process SubTag node."""
 impl EsastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     if nd.tag.gen.es_ast {
@@ -2742,6 +2867,8 @@ impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
 impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body: list[(es.Statement | es.ModuleDeclaration)] = [];
     body.extend(self.imports);
+    # Include stubs for def:pub functions imported via sv import
+    body.extend(self.sv_import_stubs);
     for mod in nd.impl_mod {
         if (mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program)) {
             for import_decl in mod.gen.es_ast.body {
@@ -3216,7 +3343,10 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        return;
+        # Allow sv imports to reach exit_import for __jacCallFunction stub generation
+        if not isinstance(nd, (uni.Import, uni.ServerBlock)) {
+            return;
+        }
     }
     super.exit_node(nd);
     if isinstance(nd, uni.UniScopeNode) {
@@ -3237,15 +3367,22 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         and nd.code_context != CodeContext.CLIENT
         and ((nd.parent is None) or isinstance(nd.parent, uni.Module))
     ) {
-        self.prune();
-        return;
+        # Don't prune sv imports or sv blocks - they need to reach
+        # exit_import so we can generate __jacCallFunction stubs
+        is_sv_import = isinstance(nd, (uni.Import, uni.ServerBlock));
+        if not is_sv_import {
+            self.prune();
+            return;
+        }
     }
     if isinstance(nd, uni.UniScopeNode) {
         self._push_scope(nd);
     }
     if nd.gen.es_ast {
-        self.prune();
-        return;
+        if not (isinstance(nd, uni.Import) and nd.code_context != CodeContext.CLIENT) {
+            self.prune();
+            return;
+        }
     }
     super.enter_node(nd);
 }
@@ -3268,6 +3405,8 @@ impl EsastGenPass.before_pass -> None {
     self.has_injected_usestate: bool = False;
     # Track if __jacCallFunction import has been auto-injected to avoid duplicates
     self.has_injected_jac_call_function: bool = False;
+    # Accumulate JS function stubs for def:pub functions imported via sv import
+    self.sv_import_stubs: list[es.Statement] = [];
     # Track if useEffect import has been auto-injected to avoid duplicates
     self.has_injected_useeffect: bool = False;
     # Track whether generated code uses _jac runtime (primitive emitter produced _jac.* calls)
