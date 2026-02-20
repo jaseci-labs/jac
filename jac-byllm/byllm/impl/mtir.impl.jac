@@ -20,6 +20,17 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     args = mtir.args;
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
+    # Warn and remove deprecated 'method' parameter.
+    if "method" in call_params {
+        import warnings;
+        warnings.warn(
+            "'method' parameter is deprecated and has no effect. "
+            "For tool usage, just pass tools=[...] directly to by llm().",
+            DeprecationWarning,
+            stacklevel=2
+        );
+        del call_params["method"];
+    }
     # Check if we have MTIR info (Jac mode) or need runtime introspection (Python lib mode)
     has_mtir = ir_info is not None;
     # Prepare tools with or without MTIR info

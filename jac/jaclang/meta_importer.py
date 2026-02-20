@@ -172,6 +172,20 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         loader=self,
                         submodule_search_locations=[candidate_path],
                     )
+                # No __init__.jac found — treat as Jac namespace package if
+                # the directory contains .jac files but no __init__.py
+                # (which would make it a regular Python package).  Without
+                # this, Python's PathFinder must create the namespace
+                # package, which only works when the parent directory
+                # happens to be on sys.path at that moment.
+                if not os.path.isfile(
+                    os.path.join(candidate_path, "__init__.py")
+                ) and any(f.endswith(".jac") for f in os.listdir(candidate_path)):
+                    spec = importlib.machinery.ModuleSpec(
+                        fullname, loader=None, is_package=True
+                    )
+                    spec.submodule_search_locations = [candidate_path]
+                    return spec
             # Check for .jac file
             jac_file = candidate_path + ".jac"
             if os.path.isfile(jac_file):

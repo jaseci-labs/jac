@@ -460,6 +460,17 @@ class JacCompiler {
                 return cached_code;
             }
         }
+        # Check for precompiled bytecode shipped with the package.
+        # Works for any Jac package (jaclang, jac-scale, jac-client, etc.)
+        import from jaclang.jac0core.precompiled { get_precompiled_bytecode }
+        precompiled_code = get_precompiled_bytecode(full_target);
+        if (precompiled_code is not None) {
+            # Populate disk cache so subsequent runs skip the bundle
+            if isinstance(self._bytecode_cache, DiskBytecodeCache) {
+                self._bytecode_cache.put(cache_key, marshal.dumps(precompiled_code));
+            }
+            return precompiled_code;
+        }
         is_internal = actual_program is self._internal_program;
         if is_internal {
             setup_progress.on_internal_compile(full_target);

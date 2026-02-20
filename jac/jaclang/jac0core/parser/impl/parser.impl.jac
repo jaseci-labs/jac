@@ -206,19 +206,17 @@ impl Parser.expect(kind: TokenKind) -> Token {
     if self.check(kind) {
         return self.advance();
     }
-    # Generate user-friendly error messages for common missing tokens
-    if kind == TokenKind.RPAREN {
-        self.error("Missing RPAREN");
-    } elif kind == TokenKind.RBRACE {
-        self.error("Missing RBRACE");
-    } elif kind == TokenKind.RSQUARE {
-        self.error("Missing RSQUARE");
-    } elif kind == TokenKind.SEMI {
-        self.error("Missing SEMI");
-    } elif kind == TokenKind.COMMA {
-        self.error("Missing COMMA");
+    # Generate user-friendly error messages for missing/unexpected tokens
+    if kind in (
+        TokenKind.RPAREN,
+        TokenKind.RBRACE,
+        TokenKind.RSQUARE,
+        TokenKind.SEMI,
+        TokenKind.COMMA
+    ) {
+        self.error(f"Missing '{kind.value}'");
     } else {
-        self.error(f"Expected {kind}, got {self.current().kind}");
+        self.error(f"Expected '{kind.value}', got '{self.current().kind.value}'");
         # Advance past the unexpected token to guarantee forward progress
         return self.advance();
     }
@@ -398,7 +396,7 @@ impl Parser.expect_name -> Token {
     if self.check_name() {
         return self.advance();
     }
-    self.error(f"Expected identifier, got {self.current().kind}");
+    self.error(f"Expected identifier, got '{self.current().kind.value}'");
     return self.current();
 }
 
@@ -671,7 +669,6 @@ impl Parser.synchronize{
             TokenKind.KW_TEST,
             TokenKind.KW_GLOBAL,
             TokenKind.KW_IMPL,
-            TokenKind.KW_ABSTRACT,
             TokenKind.KW_ASYNC,
             TokenKind.KW_WITH,
             TokenKind.KW_TRY,
@@ -826,10 +823,10 @@ impl Parser.parse_pipe -> Expr {
 }
 
 impl Parser.parse_pipe_back -> Expr {
-    left = self.parse_bitwise_or();
+    left = self.parse_logical_or();
     while self.match_tok(TokenKind.PIPE_BKWD) {
         op = self.make_uni_token(self.previous());
-        right = self.parse_bitwise_or();
+        right = self.parse_logical_or();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
@@ -866,11 +863,11 @@ impl Parser.parse_bitwise_and -> Expr {
 }
 
 impl Parser.parse_shift -> Expr {
-    left = self.parse_logical_or();
+    left = self.parse_arithmetic();
     while self.check_any(TokenKind.LSHIFT, TokenKind.RSHIFT) {
         tok = self.advance();
         op = self.make_uni_token(tok);
-        right = self.parse_logical_or();
+        right = self.parse_arithmetic();
         left = BinaryExpr(left=left, op=op, right=right, kid=[left, op, right]);
     }
     return left;
@@ -932,7 +929,7 @@ impl Parser.parse_logical_not -> Expr {
 }
 
 impl Parser.parse_compare -> Expr {
-    left = self.parse_arithmetic();
+    left = self.parse_bitwise_or();
     if self.check_any(
         TokenKind.EE,
         TokenKind.NE,
@@ -964,7 +961,7 @@ impl Parser.parse_compare -> Expr {
             op = self.make_uni_token(op_tok);
             ops.append(op);
             kid.append(op);
-            right = self.parse_arithmetic();
+            right = self.parse_bitwise_or();
             rights.append(right);
             kid.append(right);
         }
@@ -1577,7 +1574,7 @@ impl Parser.parse_call_args(kid: list) -> list {
         return args;
     }
     # If current token clearly cannot start an argument, return empty
-    # so that the caller's expect(RPAREN) generates "Missing RPAREN"
+    # so that the caller's expect(RPAREN) generates "Missing ')'"
     if self.check(TokenKind.SEMI) or self.check(TokenKind.RBRACE) {
         return args;
     }
@@ -1595,7 +1592,7 @@ impl Parser.parse_call_args(kid: list) -> list {
     }
     # Check for missing comma between arguments
     if not self.check(TokenKind.RPAREN) and not self.at_end() {
-        self.error("Missing COMMA");
+        self.error("Missing ','");
         self.error("Unexpected token");
         # Skip to RPAREN or end to recover
         while not self.check(TokenKind.RPAREN) and not self.at_end() {
@@ -1734,7 +1731,8 @@ impl Parser.parse_assign_compr_inner -> AssignCompr {
     return AssignCompr(assigns=assigns, kid=kid);
 }
 
-impl Parser.parse_atom -> Expr {
+"""Parse atom literal: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS."""
+impl Parser.parse_atom_literal -> Expr {
     if self.check(TokenKind.INT) {
         tok = self.advance();
         return self.make_int(tok);
@@ -1746,56 +1744,6 @@ impl Parser.parse_atom -> Expr {
     if self.check(TokenKind.FLOAT) {
         tok = self.advance();
         return self.make_float(tok);
-    }
-    if self.check(TokenKind.STRING) {
-        # Handle implicit string concatenation - collect consecutive strings
-        strings: list = [];
-        first_tok = self.advance();
-        strings.append(self.make_string(first_tok));
-        # Check for consecutive strings (implicit concatenation)
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        )
-        or (
-            self.check(TokenKind.NAME)
-            and self.current().value in [
-                "r",
-                "b",
-                "rb",
-                "br",
-                "R",
-                "B",
-                "rB",
-                "Rb",
-                "bR",
-                "Br",
-                "BR",
-                "RB"
-            ]
-            and self.check_peek(TokenKind.STRING)
-        ) {
-            if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
-                ptok = self.advance();
-                stok = self.advance();
-                s = self.make_string(stok);
-                s.value = ptok.value + s.value;
-                strings.append(s);
-            } elif self.check(TokenKind.STRING) {
-                tok = self.advance();
-                strings.append(self.make_string(tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        return MultiString(strings=strings, kid=strings);
     }
     if self.check(TokenKind.BOOL) {
         tok = self.advance();
@@ -1809,6 +1757,99 @@ impl Parser.parse_atom -> Expr {
         tok = self.advance();
         return self.make_ellipsis(tok);
     }
+    return None;
+}
+
+"""Parse multistring: STRING or f-string with implicit concatenation."""
+impl Parser.parse_multistring -> Expr {
+    strings: list = [];
+    # Handle string prefix (r, b, rb, br, etc.) before STRING token
+    if self.check(TokenKind.NAME)
+    and self.current().value in [
+        "r",
+        "b",
+        "rb",
+        "br",
+        "R",
+        "B",
+        "rB",
+        "Rb",
+        "bR",
+        "Br",
+        "BR",
+        "RB"
+    ]
+    and self.check_peek(TokenKind.STRING) {
+        prefix_tok = self.advance();
+        str_tok = self.advance();
+        combined = self.make_string(str_tok);
+        combined.value = prefix_tok.value + combined.value;
+        strings.append(combined);
+    } elif self.check(TokenKind.STRING) {
+        first_tok = self.advance();
+        strings.append(self.make_string(first_tok));
+    } elif self.check_any(
+        TokenKind.F_DQ_START,
+        TokenKind.F_SQ_START,
+        TokenKind.F_TDQ_START,
+        TokenKind.F_TSQ_START,
+        TokenKind.RF_DQ_START,
+        TokenKind.RF_SQ_START,
+        TokenKind.RF_TDQ_START,
+        TokenKind.RF_TSQ_START
+    ) {
+        strings.append(self.parse_fstring());
+    } else {
+        return None;
+    }
+    # Collect consecutive strings/fstrings (implicit concatenation)
+    while self.check(TokenKind.STRING)
+    or self.check_any(
+        TokenKind.F_DQ_START,
+        TokenKind.F_SQ_START,
+        TokenKind.F_TDQ_START,
+        TokenKind.F_TSQ_START,
+        TokenKind.RF_DQ_START,
+        TokenKind.RF_SQ_START,
+        TokenKind.RF_TDQ_START,
+        TokenKind.RF_TSQ_START
+    )
+    or (
+        self.check(TokenKind.NAME)
+        and self.current().value in [
+            "r",
+            "b",
+            "rb",
+            "br",
+            "R",
+            "B",
+            "rB",
+            "Rb",
+            "bR",
+            "Br",
+            "BR",
+            "RB"
+        ]
+        and self.check_peek(TokenKind.STRING)
+    ) {
+        if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
+            ptok = self.advance();
+            stok = self.advance();
+            s = self.make_string(stok);
+            s.value = ptok.value + s.value;
+            strings.append(s);
+        } elif self.check(TokenKind.STRING) {
+            tok = self.advance();
+            strings.append(self.make_string(tok));
+        } else {
+            strings.append(self.parse_fstring());
+        }
+    }
+    return MultiString(strings=strings, kid=strings);
+}
+
+"""Parse builtin type: str, int, float, list, tuple, set, dict, bool, bytes, any, type."""
+impl Parser.parse_builtin_type -> Expr {
     if self.check_any(
         TokenKind.TYP_STRING,
         TokenKind.TYP_INT,
@@ -1838,6 +1879,11 @@ impl Parser.parse_atom -> Expr {
             pos_end=tok.loc.pos_end
         );
     }
+    return None;
+}
+
+"""Parse special reference: self, super, here, root, visitor, props, init, postinit."""
+impl Parser.parse_special_ref -> Expr {
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
@@ -1864,71 +1910,90 @@ impl Parser.parse_atom -> Expr {
         tok = self.advance();
         return self.make_special_name(tok);
     }
-    # Handle string prefixes: r'...', b'...', rb'...', br'...', etc.
-    if self.check(TokenKind.NAME)
-    and self.current().value in [
-        "r",
-        "b",
-        "rb",
-        "br",
-        "R",
-        "B",
-        "rB",
-        "Rb",
-        "bR",
-        "Br",
-        "BR",
-        "RB"
-    ]
-    and self.check_peek(TokenKind.STRING) {
-        prefix_tok = self.advance();
-        str_tok = self.advance();
-        combined = self.make_string(str_tok);
-        combined.value = prefix_tok.value + combined.value;
-        strings: list = [combined];
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        )
-        or (
-            self.check(TokenKind.NAME)
-            and self.current().value in [
-                "r",
-                "b",
-                "rb",
-                "br",
-                "R",
-                "B",
-                "rB",
-                "Rb",
-                "bR",
-                "Br",
-                "BR",
-                "RB"
-            ]
-            and self.check_peek(TokenKind.STRING)
-        ) {
-            if self.check(TokenKind.NAME) and self.check_peek(TokenKind.STRING) {
-                ptok = self.advance();
-                stok = self.advance();
-                s = self.make_string(stok);
-                s.value = ptok.value + s.value;
-                strings.append(s);
-            } elif self.check(TokenKind.STRING) {
-                tok = self.advance();
-                strings.append(self.make_string(tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        return MultiString(strings=strings, kid=strings);
+    return None;
+}
+
+impl Parser.parse_atom -> Expr {
+    # Literals: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS
+    if self.check_any(
+        TokenKind.INT,
+        TokenKind.HEX,
+        TokenKind.BIN,
+        TokenKind.OCT,
+        TokenKind.FLOAT,
+        TokenKind.BOOL,
+        TokenKind.NULL,
+        TokenKind.ELLIPSIS
+    ) {
+        return self.parse_atom_literal();
+    }
+    # String and f-string (with implicit concatenation)
+    if self.check(TokenKind.STRING)
+    or self.check_any(
+        TokenKind.F_DQ_START,
+        TokenKind.F_SQ_START,
+        TokenKind.F_TDQ_START,
+        TokenKind.F_TSQ_START,
+        TokenKind.RF_DQ_START,
+        TokenKind.RF_SQ_START,
+        TokenKind.RF_TDQ_START,
+        TokenKind.RF_TSQ_START
+    )
+    or (
+        self.check(TokenKind.NAME)
+        and self.current().value in [
+            "r",
+            "b",
+            "rb",
+            "br",
+            "R",
+            "B",
+            "rB",
+            "Rb",
+            "bR",
+            "Br",
+            "BR",
+            "RB"
+        ]
+        and self.check_peek(TokenKind.STRING)
+    ) {
+        return self.parse_multistring();
+    }
+    # Builtin types: str, int, float, list, tuple, set, dict, bool, bytes, any, type
+    if self.check_any(
+        TokenKind.TYP_STRING,
+        TokenKind.TYP_INT,
+        TokenKind.TYP_FLOAT,
+        TokenKind.TYP_LIST,
+        TokenKind.TYP_TUPLE,
+        TokenKind.TYP_SET,
+        TokenKind.TYP_DICT,
+        TokenKind.TYP_BOOL,
+        TokenKind.TYP_BYTES,
+        TokenKind.TYP_ANY,
+        TokenKind.TYP_TYPE
+    ) {
+        return self.parse_builtin_type();
+    }
+    # Special references: self, super, here, root, visitor, props, init, postinit
+    # Plus archetype keywords as type names: node, edge, walker, object, class, enum
+    if self.check_any(
+        TokenKind.KW_SELF,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_VISITOR,
+        TokenKind.KW_PROPS,
+        TokenKind.KW_INIT,
+        TokenKind.KW_POST_INIT,
+        TokenKind.KW_NODE,
+        TokenKind.KW_EDGE,
+        TokenKind.KW_WALKER,
+        TokenKind.KW_OBJECT,
+        TokenKind.KW_CLASS,
+        TokenKind.KW_ENUM
+    ) {
+        return self.parse_special_ref();
     }
     if self.check(TokenKind.NAME) or self.check(TokenKind.KWESC_NAME) {
         # Reject JS-style 'new' keyword (e.g., new Foo()) — only when followed by a name
@@ -2110,46 +2175,11 @@ impl Parser.parse_atom -> Expr {
     if self.match_tok(TokenKind.LBRACE) {
         return self.parse_dict_or_set();
     }
-    # F-string parsing (including raw f-strings rf"...")
-    if self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        # Handle implicit string concatenation starting with f-string
-        strings: list = [];
-        strings.append(self.parse_fstring());
-        # Check for consecutive strings (implicit concatenation)
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                tok = self.advance();
-                strings.append(self.make_string(tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        return MultiString(strings=strings, kid=strings);
-    }
     # JSX element: <Tag>...</Tag> or <>...</>
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
         return self.parse_jsx_element();
     }
-    self.error(f"Unexpected token in expression: {self.current().kind}");
+    self.error(f"Unexpected token in expression: '{self.current().kind.value}'");
     return self.make_name(self.advance());
 }
 
@@ -2488,6 +2518,8 @@ impl Parser.parse_edge_ref_chain -> Expr {
                 TokenKind.TYP_TYPE
             ) {
                 f_type = self.parse_atom();
+            }
+            if f_type is not None {
                 fcompr_kid.append(f_type);
             }
             # Parse optional filter conditions: :field==val,field2==val2
@@ -3169,8 +3201,10 @@ impl Parser.parse_jsx_child -> Expr {
 }
 
 impl Parser.parse_element_stmt{
-    while self.match_tok(TokenKind.SEMI) {
-        continue;
+    if self.check(TokenKind.SEMI) {
+        self.error("Unexpected semicolon at module level");
+        self.advance();
+        return None;
     }
     if self.at_end() {
         return None;
@@ -3225,6 +3259,23 @@ impl Parser.parse_element_stmt{
             return stmt;
         }
     }
+    # Type alias: type Name = Expr; or type Name[T] = Expr;
+    if self.check(TokenKind.TYP_TYPE) {
+        save = self.pos;
+        self.advance();
+        # Check for optional access tag between type and name
+        if self.check_any(TokenKind.KW_PUB, TokenKind.KW_PRIV, TokenKind.KW_PROT) {
+            self.advance();
+        }
+        if self.check_name() or self.check(TokenKind.KWESC_NAME) {
+            self.advance();
+            if self.check(TokenKind.EQ) or self.check(TokenKind.LSQUARE) {
+                self.pos = save;
+                return self.parse_type_alias();
+            }
+        }
+        self.pos = save;
+    }
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
         return self.parse_import_stmt();
     }
@@ -3234,16 +3285,6 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_CLASS
-    )
-    or (
-        self.check(TokenKind.KW_ABSTRACT)
-        and self.check_peek_any(
-            TokenKind.KW_OBJECT,
-            TokenKind.KW_NODE,
-            TokenKind.KW_EDGE,
-            TokenKind.KW_WALKER,
-            TokenKind.KW_CLASS
-        )
     ) {
         return self.parse_archetype();
     }
@@ -3274,10 +3315,9 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_CLASS,
-        TokenKind.KW_ABSTRACT,
         TokenKind.KW_IMPL
     ) {
-        # Need to look ahead past decorators/async/abs to determine if ability, archetype, enum, or impl
+        # Need to look ahead past decorators/async to determine if ability, archetype, enum, or impl
         save_pos = self.pos;
         self.advance();  # skip STRING
         while self.check(TokenKind.DECOR_OP) {
@@ -3285,9 +3325,6 @@ impl Parser.parse_element_stmt{
             self.parse_atomic_chain();
         }
         while self.check(TokenKind.KW_ASYNC) {
-            self.advance();
-        }
-        if self.check(TokenKind.KW_ABSTRACT) {
             self.advance();
         }
         is_ability = self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN);
@@ -3335,6 +3372,15 @@ impl Parser.parse_element_stmt{
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         return self.parse_ability();
+    }
+    # Handle docstring before type alias: "docstring" type Name = ...;
+    if self.check(TokenKind.STRING) and self.check_peek(TokenKind.TYP_TYPE) {
+        doc_tok = self.advance();
+        elem_doc = self.make_string(doc_tok);
+        ta = self.parse_type_alias();
+        ta.doc = elem_doc;
+        ta.add_kids_left([elem_doc]);
+        return ta;
     }
     # Handle docstring before glob: "docstring" glob ...
     if self.check(TokenKind.STRING) and self.check_peek(TokenKind.KW_GLOBAL) {
@@ -3398,7 +3444,7 @@ impl Parser.parse_element_stmt{
         while self.check(TokenKind.KW_ASYNC) {
             self.advance();
         }
-        # Check for abs prefix - valid before archetypes, NOT before abilities
+        # Check for abs prefix - not valid as a prefix modifier
         has_abs_prefix = self.check(TokenKind.KW_ABSTRACT);
         if has_abs_prefix {
             self.advance();
@@ -3408,12 +3454,10 @@ impl Parser.parse_element_stmt{
         is_enum = self.check(TokenKind.KW_ENUM);
         is_impl = self.check(TokenKind.KW_IMPL);
         self.pos = save_pos;  # Restore position
-        if has_abs_prefix and is_ability {
-            self.error(
-                "'abs' is not a valid prefix for abilities (use 'abs' before archetype keywords only)"
-            );
+        if has_abs_prefix {
+            self.error("'abs' is not a valid prefix modifier");
         }
-        if is_ability and not has_abs_prefix {
+        if is_ability {
             return self.parse_ability();
         } elif is_enum {
             return self.parse_enum();
@@ -3632,6 +3676,27 @@ impl Parser.parse_code_block_stmts -> list {
     return stmts;
 }
 
+"""Parse control statement: break, continue, skip, disengage."""
+impl Parser.parse_ctrl_stmt{
+    if self.check_any(TokenKind.KW_BREAK, TokenKind.KW_CONTINUE, TokenKind.KW_SKIP) {
+        self.advance();
+        ctrl_uni = self.make_uni_token(self.previous());
+        kid: list = [ctrl_uni];
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+        return CtrlStmt(ctrl=ctrl_uni, kid=kid);
+    }
+    if self.check(TokenKind.KW_DISENGAGE) {
+        self.advance();
+        dis_uni = self.make_uni_token(self.previous());
+        kid: list = [dis_uni];
+        self.expect(TokenKind.SEMI);
+        kid.append(self.make_semi());
+        return DisengageStmt(kid=kid);
+    }
+    return None;
+}
+
 impl Parser.parse_statement{
     if self.match_tok(TokenKind.SEMI) {
         return self.make_semi();
@@ -3678,43 +3743,18 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_YIELD) {
         yield_expr = self.parse_yield_stmt();
         es_kid: list = [yield_expr];
-        if self.match_tok(TokenKind.SEMI) {
-            if yield_expr.expr is None {
-                # Bare yield: Semi goes inside YieldExpr
-                yield_expr.add_kids_right([self.make_semi()]);
-            } else {
-                # Yield with expression: Semi goes at ExprStmt level
-                es_kid.append(self.make_semi());
-            }
+        self.expect(TokenKind.SEMI);
+        if yield_expr.expr is None {
+            # Bare yield: Semi goes inside YieldExpr
+            yield_expr.add_kids_right([self.make_semi()]);
+        } else {
+            # Yield with expression: Semi goes at ExprStmt level
+            es_kid.append(self.make_semi());
         }
         return ExprStmt(expr=yield_expr, in_fstring=False, kid=es_kid);
     }
-    if self.check(TokenKind.KW_BREAK) {
-        self.advance();
-        break_uni = self.make_uni_token(self.previous());
-        kid: list = [break_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
-        return CtrlStmt(ctrl=break_uni, kid=kid);
-    }
-    if self.check(TokenKind.KW_CONTINUE) {
-        self.advance();
-        cont_uni = self.make_uni_token(self.previous());
-        kid: list = [cont_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
-        return CtrlStmt(ctrl=cont_uni, kid=kid);
-    }
-    if self.check(TokenKind.KW_SKIP) {
-        self.advance();
-        skip_uni = self.make_uni_token(self.previous());
-        kid: list = [skip_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
-        return CtrlStmt(ctrl=skip_uni, kid=kid);
+    if self.check_any(TokenKind.KW_BREAK, TokenKind.KW_CONTINUE, TokenKind.KW_SKIP) {
+        return self.parse_ctrl_stmt();
     }
     if self.check(TokenKind.KW_RAISE) {
         return self.parse_raise_stmt();
@@ -3739,13 +3779,7 @@ impl Parser.parse_statement{
     }
     # Handle disengage statement
     if self.check(TokenKind.KW_DISENGAGE) {
-        self.advance();
-        dis_uni = self.make_uni_token(self.previous());
-        kid: list = [dis_uni];
-        if self.match_tok(TokenKind.SEMI) {
-            kid.append(self.make_semi());
-        }
-        return DisengageStmt(kid=kid);
+        return self.parse_ctrl_stmt();
     }
     # Handle report statement
     if self.check(TokenKind.KW_REPORT) {
@@ -3786,6 +3820,20 @@ impl Parser.parse_statement{
         py_tok = self.advance();
         py_code = self.make_uni_token(py_tok);
         return PyInlineCode(code=py_code, kid=[py_code]);
+    }
+    # Reject orphaned control-flow clauses
+    if self.check_any(
+        TokenKind.KW_ELIF,
+        TokenKind.KW_ELSE,
+        TokenKind.KW_EXCEPT,
+        TokenKind.KW_FINALLY,
+        TokenKind.KW_CASE
+    ) {
+        self.error(
+            "Unexpected '" + self.current().value + "' — " + "must follow its parent statement (if/try/match/switch)"
+        );
+        self.advance();
+        return None;
     }
     # Handle typed context block: -> Type { ... }
     if self.check(TokenKind.RETURN_HINT) and not self.check_peek(TokenKind.SEMI) {
@@ -4054,6 +4102,9 @@ impl Parser.parse_try_stmt -> TryStmt {
         fin_kid.append(fin_rb);
         finally_body = FinallyStmt(body=finally_stmts, kid=fin_kid);
     }
+    if len(excepts) == 0 and finally_body is None {
+        self.error("try statement requires at least one except or finally block");
+    }
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
     kid.append(rb_uni);
@@ -4163,6 +4214,9 @@ impl Parser.parse_match_stmt -> MatchStmt {
     cases: list = [];
     while self.check(TokenKind.KW_CASE) {
         cases.append(self.parse_match_case());
+    }
+    if len(cases) == 0 {
+        self.error("match statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [match_uni, expr, lb_uni];
@@ -4275,44 +4329,9 @@ impl Parser.parse_single_pattern{
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
-    if self.check(TokenKind.STRING)
-    or self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        strings: list = [];
-        if self.check(TokenKind.STRING) {
-            tok = self.advance();
-            strings.append(self.make_string(tok));
-        } else {
-            strings.append(self.parse_fstring());
-        }
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                next_tok = self.advance();
-                strings.append(self.make_string(next_tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        val = MultiString(strings=strings, kid=strings);
-        return MatchValue(value=val, kid=[val]);
+    ms = self.parse_multistring();
+    if ms is not None {
+        return MatchValue(value=ms, kid=[ms]);
     }
     # Check for unary minus (negative literal)
     if self.check(TokenKind.MINUS) {
@@ -4521,43 +4540,8 @@ impl Parser.parse_literal_for_mapping{
         val = self.make_float(tok);
         return MatchValue(value=val, kid=[val]);
     }
-    if self.check(TokenKind.STRING)
-    or self.check_any(
-        TokenKind.F_DQ_START,
-        TokenKind.F_SQ_START,
-        TokenKind.F_TDQ_START,
-        TokenKind.F_TSQ_START,
-        TokenKind.RF_DQ_START,
-        TokenKind.RF_SQ_START,
-        TokenKind.RF_TDQ_START,
-        TokenKind.RF_TSQ_START
-    ) {
-        strings: list = [];
-        if self.check(TokenKind.STRING) {
-            tok = self.advance();
-            strings.append(self.make_string(tok));
-        } else {
-            strings.append(self.parse_fstring());
-        }
-        while self.check(TokenKind.STRING)
-        or self.check_any(
-            TokenKind.F_DQ_START,
-            TokenKind.F_SQ_START,
-            TokenKind.F_TDQ_START,
-            TokenKind.F_TSQ_START,
-            TokenKind.RF_DQ_START,
-            TokenKind.RF_SQ_START,
-            TokenKind.RF_TDQ_START,
-            TokenKind.RF_TSQ_START
-        ) {
-            if self.check(TokenKind.STRING) {
-                next_tok = self.advance();
-                strings.append(self.make_string(next_tok));
-            } else {
-                strings.append(self.parse_fstring());
-            }
-        }
-        ms = MultiString(strings=strings, kid=strings);
+    ms = self.parse_multistring();
+    if ms is not None {
         return MatchValue(value=ms, kid=[ms]);
     }
     if self.check(TokenKind.MINUS) {
@@ -4654,9 +4638,8 @@ impl Parser.parse_return_stmt -> ReturnStmt {
     if expr {
         kid.append(expr);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return ReturnStmt(expr=expr, kid=kid);
 }
 
@@ -4702,9 +4685,8 @@ impl Parser.parse_raise_stmt -> RaiseStmt {
         kid.append(from_kw_uni);
         kid.append(from_target);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return RaiseStmt(cause=expr, from_target=from_target, kid=kid);
 }
 
@@ -4722,9 +4704,8 @@ impl Parser.parse_assert_stmt -> AssertStmt {
         kid.append(comma_uni);
         kid.append(msg);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return AssertStmt(condition=test, error_msg=msg, kid=kid);
 }
 
@@ -4732,9 +4713,8 @@ impl Parser.parse_delete_stmt -> DeleteStmt {
     del_uni = self.consume_uni(TokenKind.KW_DELETE);
     target = self.parse_expression();
     kid: list = [del_uni, target];
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return DeleteStmt(target=target, kid=kid);
 }
 
@@ -4754,9 +4734,8 @@ impl Parser.parse_global_stmt -> GlobalStmt {
         targets.append(name);
         kid.append(name);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return GlobalStmt(target=targets, kid=kid);
 }
 
@@ -4776,9 +4755,8 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
         targets.append(name);
         kid.append(name);
     }
-    if self.match_tok(TokenKind.SEMI) {
-        kid.append(self.make_semi());
-    }
+    self.expect(TokenKind.SEMI);
+    kid.append(self.make_semi());
     return NonLocalStmt(target=targets, kid=kid);
 }
 
@@ -4878,9 +4856,13 @@ impl Parser.parse_assignment_with_target(target: Expr) -> Assignment {
 }
 
 impl Parser.parse_import_stmt -> Import {
-    is_include = self.check(TokenKind.KW_INCLUDE);
-    hint_tok = self.advance();
-    kid: list = [self.make_uni_token(hint_tok)];
+    is_include = False;
+    if self.match_tok(TokenKind.KW_INCLUDE) {
+        is_include = True;
+    } else {
+        self.expect(TokenKind.KW_IMPORT);
+    }
+    kid: list = [self.make_uni_token(self.previous())];
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     if self.match_tok(TokenKind.KW_FROM) {
@@ -4980,6 +4962,9 @@ impl Parser.parse_import_stmt -> Import {
             }
             kid.append(self.make_uni_token(self.previous()));
         }
+        if len(items) == 0 {
+            self.error("import statement must specify at least one item");
+        }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
         kid.append(rbrace_uni);
     } elif from_loc is None {
@@ -5031,7 +5016,8 @@ impl Parser.parse_import_stmt -> Import {
             kid.append(self.make_uni_token(self.previous()));
         }
     }
-    if from_loc is None and self.match_tok(TokenKind.SEMI) {
+    if from_loc is None {
+        self.expect(TokenKind.SEMI);
         kid.append(self.make_semi());
     }
     return Import(
@@ -5052,10 +5038,6 @@ impl Parser.parse_archetype -> Archetype {
         is_async = True;
         async_uni = self.make_uni_token(self.previous());
     }
-    is_abstract = False;
-    if self.match_tok(TokenKind.KW_ABSTRACT) {
-        is_abstract = True;
-    }
     arch_tok = self.advance();
     arch_type = self.make_uni_token(arch_tok);
     access = self.parse_access_tag();
@@ -5068,6 +5050,15 @@ impl Parser.parse_archetype -> Archetype {
         name_tok = self.expect_name();
     }
     name = self.make_name_or_special(name_tok);
+    # Parse optional type parameters: obj Foo[T, E] { ... }
+    type_params: list[TypeParam] | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        type_params = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
     base_classes: list = [];
     lp_uni = None;
     rp_uni = None;
@@ -5104,7 +5095,7 @@ impl Parser.parse_archetype -> Archetype {
         }
         body_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
-        self.match_tok(TokenKind.SEMI);
+        self.expect(TokenKind.SEMI);
     }
     kid: list = [];
     if is_async {
@@ -5119,6 +5110,16 @@ impl Parser.parse_archetype -> Archetype {
         kid.append(access);
     }
     kid.append(name);
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
     if base_classes {
         kid.append(lp_uni);
         for (i, bc) in enumerate(base_classes) {
@@ -5144,7 +5145,8 @@ impl Parser.parse_archetype -> Archetype {
         body=body,
         kid=kid,
         doc=None,
-        decorators=decorators
+        decorators=decorators,
+        type_params=type_params
     );
     if is_async {
         arch.is_async = True;
@@ -5224,16 +5226,6 @@ impl Parser.parse_archetype_member{
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
         TokenKind.KW_CLASS
-    )
-    or (
-        self.check(TokenKind.KW_ABSTRACT)
-        and self.check_peek_any(
-            TokenKind.KW_OBJECT,
-            TokenKind.KW_NODE,
-            TokenKind.KW_EDGE,
-            TokenKind.KW_WALKER,
-            TokenKind.KW_CLASS
-        )
     ) {
         archetype = self.parse_archetype();
         if doc {
@@ -5860,6 +5852,9 @@ impl Parser.parse_enum -> Enum {
                 break;
             }
         }
+        if len(body) == 0 {
+            self.error("enum body must contain at least one member");
+        }
         enum_rb_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
         self.expect(TokenKind.SEMI);
@@ -5987,6 +5982,9 @@ impl Parser.parse_switch_stmt -> SwitchStmt {
     cases: list = [];
     while self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT) {
         cases.append(self.parse_switch_case());
+    }
+    if len(cases) == 0 {
+        self.error("switch statement requires at least one case");
     }
     rb_uni = self.consume_uni(TokenKind.RBRACE);
     kid: list = [switch_uni, target, lb_uni];
@@ -6493,6 +6491,105 @@ impl Parser.parse_sem_def -> SemDef {
     kid.append(self.make_semi());
     self.match_tok(TokenKind.SEMI);
     return SemDef(target=target_names, value=value, kid=kid);
+}
+
+impl Parser.parse_type_alias -> TypeAlias {
+    type_kw_uni = self.consume_uni(TokenKind.TYP_TYPE);
+    access = self.parse_access_tag();
+    name_tok: Token;
+    if self.check_name() {
+        name_tok = self.advance();
+    } elif self.is_keyword_token() {
+        name_tok = self.advance();
+    } else {
+        name_tok = self.expect_name();
+    }
+    name = self.make_name_or_special(name_tok);
+    type_params: list[TypeParam] | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    tp_comma_unis: list = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        type_params = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
+    eq_uni = self.consume_uni(TokenKind.EQ);
+    value = self.parse_pipe();
+    self.expect(TokenKind.SEMI);
+    kid: list = [type_kw_uni];
+    if access {
+        kid.append(access);
+    }
+    kid.append(name);
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(self.gen_token(Tok.COMMA.value, ","));
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
+    kid.append(eq_uni);
+    kid.append(value);
+    kid.append(self.make_semi());
+    return TypeAlias(
+        name=name,
+        type_params=type_params,
+        value=value,
+        access=access,
+        kid=kid,
+        doc=None
+    );
+}
+
+impl Parser.parse_type_params -> list {
+    params: list = [];
+    # Parse first type param
+    name_tok = self.expect_name();
+    name = self.make_name_or_special(name_tok);
+    bound: Expr | None = None;
+    default_val: Expr | None = None;
+    tp_kid: list = [name];
+    if self.match_tok(TokenKind.COLON) {
+        tp_kid.append(self.make_uni_token(self.previous()));
+        bound = self.parse_pipe();
+        tp_kid.append(bound);
+    }
+    if self.match_tok(TokenKind.EQ) {
+        tp_kid.append(self.make_uni_token(self.previous()));
+        default_val = self.parse_pipe();
+        tp_kid.append(default_val);
+    }
+    params.append(
+        TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
+    );
+    while self.match_tok(TokenKind.COMMA) {
+        if self.check(TokenKind.RSQUARE) {
+            break;
+        }
+        name_tok = self.expect_name();
+        name = self.make_name_or_special(name_tok);
+        bound = None;
+        default_val = None;
+        tp_kid = [name];
+        if self.match_tok(TokenKind.COLON) {
+            tp_kid.append(self.make_uni_token(self.previous()));
+            bound = self.parse_pipe();
+            tp_kid.append(bound);
+        }
+        if self.match_tok(TokenKind.EQ) {
+            tp_kid.append(self.make_uni_token(self.previous()));
+            default_val = self.parse_pipe();
+            tp_kid.append(default_val);
+        }
+        params.append(
+            TypeParam(name=name, bound=bound, default_val=default_val, kid=tp_kid)
+        );
+    }
+    return params;
 }
 
 impl Parser.parse_dotted_name -> Expr {

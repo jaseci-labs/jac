@@ -669,7 +669,7 @@ glob llm = Model(model_name="gpt-4o");
 # Define AI-powered functions with just signatures!
 def translate(text: str, target_language: str) -> str by llm();
 
-def analyze_sentiment(text: str) -> str by llm(method='Reason');
+def analyze_sentiment(text: str) -> str by llm();
 
 with entry {
     customer_feedback = "I'm really disappointed with the product quality.";

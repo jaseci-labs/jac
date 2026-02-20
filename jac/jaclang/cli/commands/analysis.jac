@@ -32,9 +32,9 @@ glob registry = get_registry();
         ),
         Arg.create(
             "ignore",
-            typ=str,
-            default="",
-            help="Comma-separated list of files/folders to ignore"
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Directories or files to ignore (space separated)"
         ),
         Arg.create(
             "parse_only",
@@ -56,7 +56,7 @@ glob registry = get_registry();
         ("jac check file1.jac file2.jac", "Check multiple files"),
         ("jac check myproject/", "Check all files in directory"),
         ("jac check myprogram.jac --warnonly", "Report but don't fail on errors"),
-        ("jac check myproject/ --ignore fixtures", "Check excluding folders,files"),
+        ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
         (
             "jac check myprogram.jac --parse-only",
             "Only check syntax, skip type checking"
@@ -70,7 +70,7 @@ def check(
     paths: list,
     print_errs: bool = True,
     warnonly: bool = False,
-    ignore: str = "",
+    ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int;
@@ -88,9 +88,9 @@ def check(
         ),
         Arg.create(
             "ignore",
-            typ=str,
-            default="",
-            help="Comma-separated list of files/folders to ignore"
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Directories or files to ignore (space separated)"
         ),
 
     ],
@@ -98,12 +98,12 @@ def check(
         ("jac lint myfile.jac", "Lint a single file"),
         ("jac lint myproject/", "Lint all files in directory"),
         ("jac lint myfile.jac --fix", "Auto-fix lint violations"),
-        ("jac lint . --ignore fixtures", "Lint excluding folders"),
+        ("jac lint . --ignore jac jac-scale test", "Lint excluding directories"),
 
     ],
     group="analysis"
 )
-def lint(paths: list, fix: bool = False, ignore: str = "") -> int;
+def lint(paths: list, fix: bool = False, ignore: list = []) -> int;
 
 """Format .jac files with improved code style."""
 @registry.command(

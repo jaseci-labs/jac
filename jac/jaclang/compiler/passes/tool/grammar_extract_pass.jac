@@ -7,6 +7,7 @@ consumption and control-flow patterns, and produces grammar rules.
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.parser.tokens { TokenKind }
 
 # ---------------------------------------------------------------------------
 # Grammar Expression Types

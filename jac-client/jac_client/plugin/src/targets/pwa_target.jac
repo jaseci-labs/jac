@@ -1,17 +1,20 @@
 """PWA (Progressive Web App) target implementation.
 
-This target extends the web target to add PWA capabilities:
+Extends WebTarget to add PWA capabilities:
 - manifest.json generation
 - Service worker for offline support
 - Installability
+
+PWA builds use web bundle as foundation, then add PWA artifacts.
 """
 import from pathlib { Path }
 import from typing { Optional }
-import from jac_client.plugin.src.targets.registry { ClientTarget }
+import from jac_client.plugin.src.targets.web_target { WebTarget }
 
-"""PWA build target."""
-class PWATarget(ClientTarget) {
+"""PWA build target - extends WebTarget with PWA artifacts."""
+class PWATarget(WebTarget) {
     def init(self: PWATarget) {
+        super.init();
         self.name = "pwa";
         self.default = False;
         self.requires_setup = False;
@@ -31,7 +34,9 @@ class PWATarget(ClientTarget) {
     ) -> Path;
 
     """Start PWA dev server."""
-    override def dev(self: PWATarget, entry_file: Path, project_dir: Path) -> None;
+    override def dev(
+        self: PWATarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+    ) -> None;
 
     """Start PWA server - build PWA bundle and serve with HTTP server."""
     override def start(

@@ -267,65 +267,78 @@ cl {
 
 ## Backend Integration
 
-### useWalker Hook
+### Calling Walkers from Client
 
-Fetch data from walkers:
+Use native Jac `spawn` syntax to call walkers from client code. First, import your walkers with `sv import`, then spawn them:
 
 ```jac
-cl {
-    import from jac_client { useWalker }
+# Import walkers from backend
+sv import from ...main { get_tasks, create_task }
 
+cl {
     def:pub TaskList() -> JsxElement {
-        (data, loading, error, refetch) = useWalker("get_tasks");
+        has tasks: list = [];
+        has loading: bool = True;
+
+        # Fetch data on component mount
+        async can with entry {
+            result = root spawn get_tasks();
+            if result.reports and result.reports.length > 0 {
+                tasks = result.reports[0];
+            }
+            loading = False;
+        }
 
         if loading {
             return <p>Loading...</p>;
         }
 
         return <ul>
-            {[<li key={task["id"]}>{task["title"]}</li> for task in data]}
+            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
         </ul>;
     }
 }
 ```
 
-### useWalker Returns
+### Walker Response
 
-| Value | Type | Description |
-|-------|------|-------------|
-| `data` | any | Walker's reported data |
-| `loading` | bool | True while fetching |
-| `error` | str \| None | Error message if failed |
-| `refetch` | function | Re-fetch data |
+The `spawn` call returns a result object:
 
-### With Parameters
+| Property | Type | Description |
+|----------|------|-------------|
+| `result.reports` | list | Data reported by walker via `report` |
+| `result.status` | int | HTTP status code |
 
-```jac
-cl {
-    def:pub SearchTasks() -> JsxElement {
-        has search_term: str = "";
-        (data, loading, error, refetch) = useWalker(
-            "search_tasks",
-            {"query": search_term, "limit": 10}
-        );
-        return <div>Results</div>;
-    }
-}
-```
-
-### callWalker
-
-For mutations (create, update, delete):
+### Mutations (Create, Update, Delete)
 
 ```jac
-cl {
-    import from jac_client { callWalker }
+sv import from ...main { create_task, toggle_task, delete_task }
 
-    async def handle_submit() -> None {
-        result = await callWalker("create_task", {"title": new_title});
-        if result["success"] {
-            refetch();
+cl {
+    def:pub TaskForm() -> JsxElement {
+        has title: str = "";
+        has tasks: list = [];
+
+        async def handleSubmit() -> None {
+            if not title.trim() {
+                return;
+            }
+            result = root spawn create_task(title=title.trim());
+            if result.reports {
+                tasks = tasks.concat([result.reports[0]]);
+            }
+            title = "";
         }
+
+        async def handleToggle(taskId: str) -> None {
+            taskId spawn toggle_task();
+            # Update local state
+        }
+
+        return <form onSubmit={lambda e: any -> None { e.preventDefault(); handleSubmit(); }}>
+            <input value={title} onChange={lambda e: any -> None { title = e.target.value; }} />
+            <button type="submit">Add Task</button>
+        </form>;
     }
 }
 ```
@@ -334,12 +347,48 @@ cl {
 
 ## Routing
 
-### Basic Routes
+### File-Based Routing (Recommended)
+
+jac-client supports file-based routing using a `pages/` directory:
+
+```
+
+myapp/
+├── main.jac
+└── pages/
+    ├── index.jac          # /
+    ├── about.jac          # /about
+    ├── users/
+    │   ├── index.jac      # /users
+    │   └── [id].jac       # /users/:id (dynamic route)
+    └── (auth)/            # Route group (parentheses)
+        ├── layout.jac     # Shared layout for auth routes
+        ├── login.jac      # /login
+        └── signup.jac     # /signup
+
+```
+
+Each page file exports a `page` function:
 
 ```jac
+# pages/about.jac
 cl {
-    import from jac_client { Router, Route, Link }
+    def:pub page() -> any {
+        return <div>
+            <h1>About Us</h1>
+        </div>;
+    }
+}
+```
 
+### Manual Routes
+
+For manual routing, import components from `@jac/runtime`:
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
+
+cl {
     def:pub app() -> JsxElement {
         return <Router>
             <nav>
@@ -347,8 +396,10 @@ cl {
                 <Link to="/about">About</Link>
             </nav>
 
-            <Route path="/" element={<Home />} />
-            <Route path="/about" element={<About />} />
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+            </Routes>
         </Router>;
     }
 }
@@ -357,9 +408,9 @@ cl {
 ### URL Parameters
 
 ```jac
-cl {
-    import from jac_client { useParams }
+cl import from "@jac/runtime" { useParams }
 
+cl {
     def:pub UserProfile() -> JsxElement {
         params = useParams();
         user_id = params["id"];
@@ -374,9 +425,9 @@ cl {
 ### Programmatic Navigation
 
 ```jac
-cl {
-    import from jac_client { useNavigate }
+cl import from "@jac/runtime" { useNavigate }
 
+cl {
     def:pub LoginForm() -> JsxElement {
         navigate = useNavigate();
 
@@ -394,12 +445,12 @@ cl {
 }
 ```
 
-### Nested Routes
+### Nested Routes with Outlet
 
 ```jac
-cl {
-    import from jac_client { Outlet }
+cl import from "@jac/runtime" { Outlet }
 
+cl {
     def:pub DashboardLayout() -> JsxElement {
         # Child routes render where Outlet is placed
         return <div>
@@ -416,24 +467,103 @@ cl {
 
 ## Authentication
 
-### jacLogin / jacSignup
+jac-client provides built-in authentication functions via `@jac/runtime`.
+
+### Available Functions
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `jacLogin(username, password)` | `bool` | Login user, returns True on success |
+| `jacSignup(username, password)` | `dict` | Register user, returns `{success: bool, error?: str}` |
+| `jacLogout()` | `void` | Clear auth token |
+| `jacIsLoggedIn()` | `bool` | Check if user is authenticated |
+
+### jacLogin
 
 ```jac
-cl {
-    import from jac_client { jacLogin, jacSignup }
+cl import from "@jac/runtime" { jacLogin, useNavigate }
 
-    async def handle_login(email: str, password: str) -> None {
-        result = await jacLogin(email, password);
+cl {
+    def:pub LoginForm() -> any {
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
+
+        navigate = useNavigate();
+
+        async def handleLogin(e: any) -> None {
+            e.preventDefault();
+            # jacLogin returns bool (True = success, False = failure)
+            success = await jacLogin(username, password);
+            if success {
+                navigate("/dashboard");
+            } else {
+                error = "Invalid credentials";
+            }
+        }
+
+        return <form onSubmit={handleLogin}>...</form>;
+    }
+}
+```
+
+### jacSignup
+
+```jac
+cl import from "@jac/runtime" { jacSignup }
+
+cl {
+    async def handleSignup() -> None {
+        # jacSignup returns dict with success key
+        result = await jacSignup(username, password);
         if result["success"] {
-            # Store token, redirect
+            # User registered and logged in
+            navigate("/dashboard");
+        } else {
+            error = result["error"] or "Signup failed";
         }
     }
+}
+```
 
-    async def handle_signup(email: str, password: str) -> None {
-        result = await jacSignup(email, password);
-        if result["success"] {
-            # Auto-login or redirect to login
+### jacLogout / jacIsLoggedIn
+
+```jac
+cl import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
+
+cl {
+    def:pub NavBar() -> any {
+        isLoggedIn = jacIsLoggedIn();
+
+        def handleLogout() -> None {
+            jacLogout();
+            # Redirect to login
         }
+
+        return <nav>
+            {isLoggedIn and (
+                <button onClick={lambda -> None { handleLogout(); }}>Logout</button>
+            ) or (
+                <a href="/login">Login</a>
+            )}
+        </nav>;
+    }
+}
+```
+
+### AuthGuard for Protected Routes
+
+Use `AuthGuard` to protect routes in file-based routing:
+
+```jac
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
+# pages/(auth)/layout.jac
+cl {
+    def:pub layout() -> any {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
     }
 }
 ```
@@ -546,9 +676,13 @@ content = ["./src/**/*.{jac,tsx,jsx}"]
 | `jac create myapp --use client` | Create new full-stack project |
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
+| `jac start --client pwa` | Start PWA (builds then serves) |
+| `jac start --client desktop` | Start desktop app in dev mode |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app |
+| `jac build --client pwa` | Build PWA with offline support |
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
+| `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
 | `jac remove --npm <pkg>` | Remove npm package |
 
@@ -563,7 +697,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`) | `web` |
+| `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
 | `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
 
 **Examples:**
@@ -574,6 +708,9 @@ jac build
 
 # Build specific file
 jac build main.jac
+
+# Build PWA with offline support
+jac build --client pwa
 
 # Build desktop app for current platform
 jac build --client desktop
@@ -595,13 +732,16 @@ jac setup <target>
 
 | Option | Description |
 |--------|-------------|
-| `target` | Target to setup (e.g., `desktop`) |
+| `target` | Target to setup (`desktop`, `pwa`) |
 
 **Examples:**
 
 ```bash
-# Setup desktop target (installs Tauri prerequisites)
+# Setup desktop target (creates src-tauri/ directory)
 jac setup desktop
+
+# Setup PWA target (creates pwa_icons/ directory)
+jac setup pwa
 ```
 
 ### Extended Core Commands
@@ -622,6 +762,12 @@ jac-client extends several core commands:
 
 jac-client supports building for multiple deployment targets from a single codebase.
 
+| Target | Command | Output | Setup Required |
+|--------|---------|--------|----------------|
+| **Web** (default) | `jac build` | `.jac/client/dist/` | No |
+| **Desktop** (Tauri) | `jac build --client desktop` | Native installers | Yes |
+| **PWA** | `jac build --client pwa` | Installable web app | No |
+
 ### Web Target (Default)
 
 Standard browser deployment using Vite:
@@ -631,17 +777,87 @@ jac build                    # Build for web
 jac start --dev              # Dev server with HMR
 ```
 
+**Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
+
 ### Desktop Target (Tauri)
 
-Native desktop applications using Tauri:
+Native desktop applications using Tauri. Creates installers for Windows, macOS, and Linux.
+
+**Prerequisites:**
+
+- Rust/Cargo: [rustup.rs](https://rustup.rs)
+- Build tools (platform-specific)
+
+**Setup & Build:**
 
 ```bash
-jac setup desktop            # One-time setup
-jac build --client desktop   # Build desktop app
-jac start --client desktop   # Dev mode for desktop
+# 1. One-time setup (creates src-tauri/ directory)
+jac setup desktop
+
+# 2. Development with hot reload
+jac start main.jac --client desktop --dev
+
+# 3. Build installer for current platform
+jac build --client desktop
+
+# 4. Build for specific platform
+jac build --client desktop --platform windows
+jac build --client desktop --platform macos
+jac build --client desktop --platform linux
 ```
 
-Desktop builds produce native executables for Windows, macOS, and Linux.
+**Output:** Installers in `src-tauri/target/release/bundle/`:
+
+- Windows: `.exe` installer
+- macOS: `.dmg` or `.app` bundle
+- Linux: `.AppImage`, `.deb`, or `.rpm`
+
+**Configuration:** Edit `src-tauri/tauri.conf.json` to customize window size, title, and app metadata.
+
+### PWA Target
+
+Progressive Web App with offline support, installability, and native-like experience.
+
+**Features:**
+
+- Offline support via Service Worker
+- Installable on devices
+- Auto-generated `manifest.json`
+- Automatic icon generation (with Pillow)
+
+**Setup & Build:**
+
+```bash
+# Optional: One-time setup (creates pwa_icons/ directory)
+jac setup pwa
+
+# Build PWA (includes manifest + service worker)
+jac build --client pwa
+
+# Development (service worker disabled for better DX)
+jac start --client pwa --dev
+
+# Production (builds PWA then serves)
+jac start --client pwa
+```
+
+**Output:** Web bundle + `manifest.json` + `sw.js` (service worker)
+
+**Configuration in jac.toml:**
+
+```toml
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+cache_name = "my-app-cache-v1"
+
+[plugins.client.pwa.manifest]
+name = "My App"
+short_name = "App"
+description = "My awesome Jac app"
+```
+
+**Custom Icons:** Add `pwa-192x192.png` and `pwa-512x512.png` to `pwa_icons/` directory.
 
 ---
 
@@ -721,6 +937,84 @@ cl {
     }
 }
 ```
+
+---
+
+## Error Handling
+
+### JacClientErrorBoundary
+
+`JacClientErrorBoundary` is a specialized error boundary component that catches rendering errors in your component tree, logs them, and displays a fallback UI, preventing the entire app from crashing when a descendant component fails.
+
+### Quick Start
+
+Import and wrap `JacClientErrorBoundary` around any subtree where you want to catch render-time errors:
+
+```jac
+cl import from "@jac/runtime" { JacClientErrorBoundary }
+
+cl {
+    def:pub app() -> any {
+        return <JacClientErrorBoundary fallback={<div>Oops! Something went wrong.</div>}>
+            <MainAppComponents />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+### Built-in Wrapping
+
+By default, jac-client internally wraps your entire application with `JacClientErrorBoundary`. This means:
+
+- You don't need to manually wrap your root app component
+- Errors in any component are caught and handled gracefully
+- The app continues to run and displays a fallback UI instead of crashing
+
+### Props
+
+| Prop               | Type              | Description                          |
+|--------------------|-------------------|--------------------------------------|
+| `fallback`         | JsxElement        | Custom fallback UI to show on error  |
+| `FallbackComponent`| Component         | Show default fallback UI with error  |
+| `children`         | JsxElement        | Components to protect                |
+
+### Example with Custom Fallback
+
+```jac
+cl {
+    def:pub App() -> any {
+        return <JacClientErrorBoundary fallback={<div className="error">Component failed to load</div>}>
+            <ExpensiveWidget />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+### Nested Boundaries
+
+You can nest multiple error boundaries for fine-grained error isolation:
+
+```jac
+cl {
+    def:pub App() -> any {
+        return <JacClientErrorBoundary fallback={<div>App error</div>}>
+            <Header />
+            <JacClientErrorBoundary fallback={<div>Content error</div>}>
+                <MainContent />
+            </JacClientErrorBoundary>
+            <Footer />
+        </JacClientErrorBoundary>;
+    }
+}
+```
+
+If `MainContent` throws an error, only that boundary's fallback is shown, while `Header` and `Footer` continue rendering normally.
+
+### Use Cases
+
+1. **Isolate Failure-Prone Widgets**: Protect sections that fetch data, embed third-party code, or are unstable
+2. **Per-Page Protection**: Wrap top-level pages/routes to prevent one error from failing the whole app
+3. **Micro-Frontend Boundaries**: Nest boundaries around embeddables for fault isolation
 
 ---
 
