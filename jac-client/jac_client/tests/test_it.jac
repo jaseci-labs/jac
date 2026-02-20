@@ -133,7 +133,7 @@ test "all in one app endpoints" {
             for entry in os.listdir(all_in_one_path) {
                 src = os.path.join(all_in_one_path, entry);
                 dst = os.path.join(project_path, entry);
-                if entry in {"node_modules","build","dist",".pytest_cache"} {
+                if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
                     continue;
                 }
                 if os.path.isdir(src) {
@@ -873,12 +873,12 @@ test "configurable api base url in bundle" {
             project_path = os.path.join(temp_dir, app_name);
             assert os.path.isdir(project_path);
 
-            # Copy all-in-one contents
+            # Copy all-in-one contents (which uses walkers, auth, etc.)
             print("[DEBUG] Copying @all-in-one contents into created Jac app");
             for entry in os.listdir(all_in_one_path) {
                 src = os.path.join(all_in_one_path, entry);
                 dst = os.path.join(project_path, entry);
-                if entry in {"node_modules","build","dist",".pytest_cache"} {
+                if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
                     continue;
                 }
                 if os.path.isdir(src) {
@@ -1061,7 +1061,7 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
     for entry in os.listdir(all_in_one_path) {
         src = os.path.join(all_in_one_path, entry);
         dst = os.path.join(project_path, entry);
-        if entry in {"node_modules","build","dist",".pytest_cache"} {
+        if entry in {"node_modules","build","dist",".pytest_cache",".jac"} {
             continue;
         }
         if os.path.isdir(src) {
@@ -1665,7 +1665,14 @@ test "pwa build generates manifest and service worker" {
 }
 
 test "diagnostics syntax error in console" {
-    """Test that syntax errors show formatted diagnostics in console."""
+    """Test that syntax errors show formatted diagnostics in console.
+
+    This is a real end-to-end test that:
+    1. Sets up all-in-one project
+    2. Introduces a syntax error in a client .jac file
+    3. Starts the server and captures console output (debug=true by default)
+    4. Verifies diagnostic formatting appears in the output
+    """
     print("[DEBUG] Starting test_diagnostics_syntax_error_in_console");
 
     app_name = "e2e-diagnostics-test";
@@ -1680,29 +1687,9 @@ test "diagnostics syntax error in console" {
             project_path = _setup_all_in_one_project(temp_dir, app_name);
             print(f"[DEBUG] Project set up at {project_path}");
 
-            # 2. Add debug=true to jac.toml
-            jac_toml_path = os.path.join(project_path, "jac.toml");
-            with open(jac_toml_path) as f {
-                toml_content = f.read();
-            }
+            # Note: debug=true is now the default, no need to add it to jac.toml
 
-            if "[plugins.client]" in toml_content {
-                if "debug = true" not in toml_content {
-                    toml_content = toml_content.replace(
-                        "[plugins.client]", "[plugins.client]\ndebug = true",
-                    );
-                }
-            } else {
-                toml_content += "\n[plugins.client]\ndebug = true\n";
-            }
-
-            with open(jac_toml_path, "w") as f {
-                f.write(toml_content);
-            }
-
-            print("[DEBUG] Updated jac.toml with debug=true");
-
-            # 3. Introduce a syntax error in login.jac
+            # 2. Introduce a syntax error in login.jac
             login_jac_path = os.path.join(
                 project_path, "pages", "(public)", "login.jac"
             );
@@ -1869,10 +1856,10 @@ test "diagnostics syntax error in console" {
                     print("[DEBUG] Source snippet present (optional)");
                 }
 
-                # Debug output is optional
-                if has_debug_output {
-                    print("[DEBUG] Debug output present");
-                }
+                # Debug output should be present since debug=true is the default
+                assert has_debug_output , (
+                    f"Expected debug output (debug=true is default), got:\n{captured_output}"
+                );
 
                 print("[DEBUG] All diagnostic formatting assertions passed!");
             } finally {

@@ -10,6 +10,7 @@ venv
 .jac/
 *.jir
 *.jbc
+_precompiled/
 _planning/
 
 # Distribution / packaging

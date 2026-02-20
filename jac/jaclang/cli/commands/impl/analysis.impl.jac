@@ -4,6 +4,7 @@ Direct implementations - no delegation to cli.jac.
 """
 
 import from pathlib { Path }
+import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
 
 """Run type checker for specified .jac files."""
@@ -11,7 +12,7 @@ impl check(
     paths: list,
     print_errs: bool = True,
     warnonly: bool = False,
-    ignore: str = "",
+    ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False
 ) -> int {
@@ -19,22 +20,7 @@ impl check(
     if isinstance(paths, str) {
         paths = [paths];
     }
-    ignore_list = [
-        pattern.strip()
-        for pattern in ignore.split(",")
-        if pattern.strip()
-    ]
-    if ignore
-    else [];
-    def ignore_check(file_path: str, ignore_patterns: list) -> bool {
-        path_parts = Path(file_path).parts;
-        for pattern in ignore_patterns {
-            if str(pattern).strip() in path_parts {
-                return True;
-            }
-        }
-        return False;
-    }
+    ignore_list = _normalize_ignore_patterns(ignore);
     def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
@@ -46,16 +32,18 @@ impl check(
             prog.compile(file_path=file_path, type_check=not parse_only, no_cgen=True);
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
-            # Filter out errors/warnings from ignored files
+            # Filter out errors/warnings from ignored files and non-.jac files
+            # By default, only show errors from .jac files (not from Python stdlib, stubs, etc.)
+            # TODO: This is ad-hoc, need proper error handling across
+            # different file types; will be addressed in future refactor.
             def filter_issues(issues: list) -> list {
                 return [
                     i
                     for i in issues
-                    if not (
-                        i.loc
-                        and i.loc.mod_path
-                        and any(p in i.loc.mod_path for p in ignore_list)
-                    )
+                    if i.loc
+                    and i.loc.mod_path
+                    and i.loc.mod_path.endswith(".jac")
+                    and not any(p in i.loc.mod_path for p in ignore_list)
                 ];
             }
             filtered_errors = filter_issues(new_errors);
@@ -83,17 +71,19 @@ impl check(
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
+    failed_file_list: list[str] = [];
     prog = JacProgram();
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
-            if not ignore_check(path, ignore_list) {
+            if not _should_ignore(path, ignore_list) {
                 total_files += 1;
                 (success, errs, warns) = check_single_file(prog, path);
                 total_errors += errs;
                 total_warnings += warns;
                 if not success {
                     failed_files += 1;
+                    failed_file_list.append(path);
                 }
             }
         } elif path_obj.is_dir() {
@@ -101,13 +91,14 @@ impl check(
                 if not jac_file.is_file() {
                     continue;
                 }
-                if not ignore_check(str(jac_file), ignore_list) {
+                if not _should_ignore(str(jac_file), ignore_list) {
                     total_files += 1;
                     (success, errs, warns) = check_single_file(prog, str(jac_file));
                     total_errors += errs;
                     total_warnings += warns;
                     if not success {
                         failed_files += 1;
+                        failed_file_list.append(str(jac_file));
                     }
                 }
             }
@@ -115,6 +106,14 @@ impl check(
             console.error(f"'{path}' is not a .jac file or directory.");
             failed_files += 1;
             total_errors += 1;
+            failed_file_list.append(path);
+        }
+    }
+    # Print summary of failed files
+    if failed_file_list {
+        console.print("\nFAILED files:");
+        for failed_file in failed_file_list {
+            console.print(f"  {failed_file}");
         }
     }
     check_type = "Parsed" if parse_only else "Checked";
@@ -133,27 +132,12 @@ impl check(
 }
 
 """Lint .jac files and report violations."""
-impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
+impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
         paths = [paths];
     }
-    ignore_list = [
-        pattern.strip()
-        for pattern in ignore.split(",")
-        if pattern.strip()
-    ]
-    if ignore
-    else [];
-    def ignore_check(file_path: str, ignore_patterns: list) -> bool {
-        path_parts = Path(file_path).parts;
-        for pattern in ignore_patterns {
-            if str(pattern).strip() in path_parts {
-                return True;
-            }
-        }
-        return False;
-    }
+    ignore_list = _normalize_ignore_patterns(ignore);
     def lint_report_file(file_path: str) -> tuple[bool, int] {
         # Lint-only: report errors without formatting or writing files
         path_obj = Path(file_path);
@@ -236,7 +220,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
-            if not ignore_check(path, ignore_list) {
+            if not _should_ignore(path, ignore_list) {
                 total_files += 1;
                 if fix {
                     (success, errors, unfixable) = lint_fix_file(path);
@@ -254,7 +238,7 @@ impl lint(paths: list, fix: bool = False, ignore: str = "") -> int {
                 if not jac_file.is_file() {
                     continue;
                 }
-                if not ignore_check(str(jac_file), ignore_list) {
+                if not _should_ignore(str(jac_file), ignore_list) {
                     total_files += 1;
                     if fix {
                         (success, errors, unfixable) = lint_fix_file(str(jac_file));
@@ -531,4 +515,36 @@ impl grammar(lark: bool = False, output: str = "") -> int {
         console.print(text);
     }
     return 0;
+}
+
+"""Normalize ignore patterns by stripping whitespace and trailing slashes."""
+def _normalize_ignore_patterns(ignore: list) -> list {
+    normalized = [];
+    for p in (ignore or []) {
+        stripped = p.strip();
+        if stripped {
+            normalized.append(stripped.rstrip('/'));
+        }
+    }
+    return normalized;
+}
+
+"""Check if a file path should be ignored based on patterns.
+Supports both exact matches and wildcard patterns (e.g., 'jac-*').
+"""
+def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
+    if not ignore_patterns {
+        return False;
+    }
+    path_parts = Path(file_path).parts;
+    # Patterns are already normalized in ignore_list
+    for pattern in ignore_patterns {
+        # fnmatch handles both exact and wildcard matches
+        for part in path_parts {
+            if fnmatch(part, pattern) {
+                return True;
+            }
+        }
+    }
+    return False;
 }

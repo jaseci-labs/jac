@@ -1,7 +1,7 @@
 """
 Implementations for enum type checking utilities.
 """
-import from typing { TYPE_CHECKING, Sequence }
+import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.type_system { types }
 
@@ -28,8 +28,7 @@ impl create_enum_member_info(
     # Valid: RED = 1, BLUE = 2
     # Invalid: __init__ (dunder), name/value (reserved), empty target
     if (
-        not assignment.is_enum_stmt
-        or not assignment.target
+        not assignment.target
         or len(assignment.target) == 0
         or not isinstance(target := assignment.target[0], (uni.NameAtom, uni.Name))
         or is_excluded_enum_member_name(member_name := target.value)
@@ -57,33 +56,43 @@ impl create_enum_member_info(
     );
 }
 
-"""Build enum members map for an enum class."""
+"""Build enum members map for an enum or class-based enum."""
 impl build_enum_members(
-    enum_node: uni.Enum, evaluator: "TypeEvaluator"
+    enum_node: uni.Enum | uni.Archetype,
+    evaluator: "TypeEvaluator",
+    enum_value_type: types.TypeBase | None = None
 ) -> dict[str, types.EnumMemberInfo] {
     members: dict[str, types.EnumMemberInfo] = {};
     if not enum_node.body {
         return members;
     }
-    # Case 1: enum Color { RED=1 }  (body is direct)
-    # Case 2: enum Color; impl Color { RED=1 }  (body wrapped in ImplDef)
-    body = enum_node.body.body
-    if isinstance(enum_node.body, uni.ImplDef)
-    else enum_node.body;
-    if not isinstance(body, Sequence) {
-        return members;
-    }
     # If member has no value, assign next auto-increment number
     int_type = evaluator.prefetch.int_class if evaluator.prefetch else None;
     auto_value = 1;
-    for stmt in body {
+    # Use symbol table to collect member declarations
+    # Handles native enums, impl-based enums (enum Color; impl Color { RED=1 }), and class-based enums (e.g., StrEnum with `with entry {}`)
+    all_stmts: list = [
+        sym.decl.parent if isinstance(sym.decl.parent, uni.Assignment) else sym.decl
+        for (name, sym) in enum_node.names_in_scope.items()
+        if not is_excluded_enum_member_name(name)
+    ];
+    for stmt in all_stmts {
         # Case 1: Assignment with explicit value (RED = 1)
-        if isinstance(stmt, uni.Assignment) and stmt.is_enum_stmt {
+        if isinstance(stmt, uni.Assignment) {
             if member_info := create_enum_member_info(stmt, evaluator) {
                 # No value? Use auto-increment
                 if member_info.value_type is None {
                     member_info.value_type = int_type;
                     member_info.literal_value = auto_value;
+                }
+                # Validate value type matches required type (e.g., IntEnum members must be int)
+                if enum_value_type
+                and isinstance(member_info.value_type, types.ClassType)
+                and member_info.value_type.shared != enum_value_type.shared {
+                    evaluator.add_diagnostic(
+                        stmt,
+                        f"Cannot assign {member_info.value_type} to enum member '{member_info.member_name}' of type {enum_value_type}"
+                    );
                 }
                 members[member_info.member_name] = member_info;
                 # Next member should get current value + 1
@@ -95,7 +104,6 @@ impl build_enum_members(
             # Case 2: Name-only member (RED, GREEN) - gets auto-incremented int value
         } elif (
             isinstance(stmt, uni.NameAtom)
-            and stmt.is_enum_stmt
             and not is_excluded_enum_member_name(member_name := stmt.value)
         ) {
             members[member_name] = types.EnumMemberInfo(
@@ -107,35 +115,43 @@ impl build_enum_members(
     return members;
 }
 
-"""Get value type from base classes (IntEnum→int, StrEnum→str, IntFlag→int).
+"""Get value type from base classes (IntEnum→int, StrEnum→str).
 
-Limitation: Uses name-based detection - may yield false positives for user
-classes with same names (e.g., class IntEnum) or miss aliased imports (e.g., a = StrEnum).
+Uses MRO-based type detection by checking for prefetched base types:
+- StrEnum: MRO contains both `str` and `Enum`
+- IntEnum: MRO contains both `int` and `Enum`
 
-TODO: Check if class comes from Python's enum module instead of just matching names.
+TODO: Handle IntFlag (int + Flag in MRO → int value type). Requires prefetching Flag class.
 """
 impl get_special_enum_value_type_from_bases(
     base_classes: list[types.TypeBase], prefetch: "PrefetchedTypes"
 ) -> (types.TypeBase | None) {
-    if not prefetch {
+    if not prefetch
+    or not prefetch.enum_class
+    or not prefetch.int_class
+    or not prefetch.str_class {
         return None;
     }
-    # Map special enum types to their required value types
-    enum_type_map = {
-        "IntEnum": prefetch.int_class,
-        "IntFlag": prefetch.int_class,
-        "StrEnum": prefetch.str_class
-    };
-    # Walk MRO chain to find if any base is IntEnum, StrEnum, or IntFlag
-    # Example: enum Foo(IntEnum) → finds IntEnum in MRO → returns int type
-    return next(
-        (
-            enum_type_map[mro_cls.shared.class_name]
-            for base in base_classes
-            if isinstance(base, types.ClassType)
-            for mro_cls in base.shared.mro
-            if mro_cls.shared.class_name in enum_type_map
-        ),
-        None
-    );
+    # Collect all unique classes from MRO of all base classes
+    mro_shared_set: set = set();
+    for base in base_classes {
+        if isinstance(base, types.ClassType) {
+            for mro_cls in base.shared.mro {
+                mro_shared_set.add(mro_cls.shared);
+            }
+        }
+    }
+    # Check for special enum patterns using prefetched type identity
+    has_enum = prefetch.enum_class.shared in mro_shared_set;
+    has_int = prefetch.int_class.shared in mro_shared_set;
+    has_str = prefetch.str_class.shared in mro_shared_set;
+    # StrEnum: str + Enum in MRO → str value type
+    if has_enum {
+        if has_str {
+            return prefetch.str_class;
+        } elif has_int {
+            return prefetch.int_class;
+        }
+    }
+    return None;
 }

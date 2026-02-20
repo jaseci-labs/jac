@@ -93,11 +93,14 @@ def _proc_file(filename: str) -> tuple {
 }
 
 """Run the specified .jac file."""
-impl run(filename: str, main: bool = True, cache: bool = True) -> int {
+impl run(filename: str, main: bool = True, cache: bool = True, args: list = []) -> int {
     _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
+    # Set sys.argv so the script can access arguments via sys.argv[1:]
+    original_argv = sys.argv;
+    sys.argv = [filename] + list(args);
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
@@ -138,9 +141,11 @@ impl run(filename: str, main: bool = True, cache: bool = True) -> int {
             import from jaclang.jac0core.helpers { dump_traceback }
             console.error(dump_traceback(e));
         }
+        sys.argv = original_argv;
         mach.close();
         return 1;
     }
+    sys.argv = original_argv;
     mach.close();
     return 0;
 }

@@ -62,7 +62,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'verify_signature': True,
             'api_key_expiry_days': 365
         },
-        'metrics': {
+        'monitoring': {
             'enabled': False,
             'endpoint': '/metrics',
             'namespace': 'jac_scale',
@@ -81,7 +81,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
                 2.5,
                 5.0,
                 10.0
-            ]
+            ],
+            'prometheus_admin_password': 'Adminpassword123',
+            'prometheus_node_port': 30090,
+            'grafana_node_port': 30300
         }
     };
 }
@@ -131,6 +134,12 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
         app_name = k8s_config.get('app_name', 'jaseci');
         k8s_config['docker_image_name'] = f"{app_name}:latest";
     }
+    # Merge monitoring config into kubernetes config
+    monitoring = self.get_monitoring_config();
+    k8s_config['monitoring_enabled'] = monitoring['enabled'];
+    k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
+    k8s_config['prometheus_node_port'] = monitoring['prometheus_node_port'];
+    k8s_config['grafana_node_port'] = monitoring['grafana_node_port'];
     # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
     import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
@@ -189,10 +198,14 @@ impl sanitize_prometheus_namespace(name: str) -> str {
     return sanitized or 'jac_scale';
 }
 
-"""Get metrics configuration from jac.toml."""
-impl JacScaleConfig.get_metrics_config(self: JacScaleConfig) -> dict[str, Any] {
+"""Get monitoring configuration from jac.toml.
+
+Combines HTTP metrics endpoint settings and Kubernetes monitoring stack settings.
+'enabled' controls both the /metrics endpoint and Prometheus + Grafana deployment.
+"""
+impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
-    metrics_config = config.get('metrics', {});
+    monitoring_config = config.get('monitoring', {});
     default_buckets = [
         0.005,
         0.01,
@@ -209,18 +222,27 @@ impl JacScaleConfig.get_metrics_config(self: JacScaleConfig) -> dict[str, Any] {
         10.0
     ];
     # Derive namespace from kubernetes config if not explicitly set
-    namespace = metrics_config.get('namespace');
+    namespace = monitoring_config.get('namespace');
     if not namespace {
-        k8s_config = self.get_kubernetes_config();
+        k8s_config = config.get('kubernetes', {});
         k8s_namespace = k8s_config.get('namespace', 'default');
         namespace = sanitize_prometheus_namespace(k8s_namespace);
     }
     return {
-        'enabled': metrics_config.get('enabled', False),
-        'endpoint': metrics_config.get('endpoint', '/metrics'),
+        'enabled': monitoring_config.get('enabled', False),
+        'endpoint': monitoring_config.get('endpoint', '/metrics'),
         'namespace': namespace,
-        'walker_metrics': metrics_config.get('walker_metrics', False),
-        'histogram_buckets': metrics_config.get('histogram_buckets', default_buckets)
+        'walker_metrics': monitoring_config.get('walker_metrics', False),
+        'histogram_buckets': monitoring_config.get(
+            'histogram_buckets', default_buckets
+        ),
+        'prometheus_admin_password': monitoring_config.get(
+            'prometheus_admin_password', 'Adminpassword123'
+        ),
+        'prometheus_node_port': int(
+            monitoring_config.get('prometheus_node_port', 30090)
+        ),
+        'grafana_node_port': int(monitoring_config.get('grafana_node_port', 30300))
     };
 }
 

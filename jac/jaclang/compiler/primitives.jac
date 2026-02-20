@@ -595,4 +595,7 @@ class BuiltinEmitter(Generic[
     def emit_frozenset(self, ctx: C, args: list[V]) -> (V | None) abs;
     def emit_bytes(self, ctx: C, args: list[V]) -> (V | None) abs;
     def emit_complex(self, ctx: C, args: list[V]) -> (V | None) abs;
+    def emit_range(self, ctx: C, args: list[V]) -> (V | None) abs;
+    def emit_slice(self, ctx: C, args: list[V]) -> (V | None) abs;
+    def emit_bytearray(self, ctx: C, args: list[V]) -> (V | None) abs;
 }

@@ -12,7 +12,7 @@ by_expr ::= pipe ("by" by_expr)?
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
-pipe_back ::= bitwise_or ("<|" bitwise_or)*
+pipe_back ::= logical_or ("<|" logical_or)*
 
 bitwise_or ::= bitwise_xor ("|" bitwise_xor)*
 
@@ -20,7 +20,7 @@ bitwise_xor ::= bitwise_and ("^" bitwise_and)*
 
 bitwise_and ::= shift ("&" shift)*
 
-shift ::= logical_or (("<<" | ">>") logical_or)*
+shift ::= arithmetic (("<<" | ">>") arithmetic)*
 
 logical_or ::= logical_and ("or" logical_and)*
 
@@ -29,10 +29,10 @@ logical_and ::= logical_not ("and" logical_not)*
 logical_not ::= "not" logical_not | compare
 
 compare ::=
-    arithmetic (
+    bitwise_or (
         ("==" | "!=" | "<" | ">" | "<=" | ">=" | "in" | "is" | "not in" | "is not") (
             ("==" | "!=" | "<" | ">" | "<=" | ">=" | "in" | "is" | "not in" | "is not")
-            arithmetic
+            bitwise_or
         )*
     )?
 
@@ -276,7 +276,7 @@ element_stmt ::=
         | enum
         | STRING test
         | test
-        | STRING ("@" atomic_chain)* "async"* "abs"?
+        | STRING ("@" atomic_chain)* "async"*
           (archetype | enum | impl_def | ability)
         | STRING enum
         | ability
@@ -451,7 +451,7 @@ import_stmt ::=
     ) ";"
 
 archetype ::=
-    ("@" atomic_chain)* "async"? "abs"? access_tag NAME ("[" type_params "]")?
+    ("@" atomic_chain)* "async"? access_tag NAME ("[" type_params "]")?
     ("(" (atomic_chain ("," atomic_chain)*)? ")")? ("{" archetype_member* "}" | ";")
 
 archetype_member ::=

@@ -353,6 +353,27 @@ class ESComplexEmitter(ComplexEmitter[(str, ESEmitCtx)]) {
     }
 }
 
+class ESBoolEmitter(ESIntEmitter) {
+    """Bool-specific emitter.
+
+    Inherits all int operations but overrides bitwise operators so that
+    ``True & False`` yields ``false`` (boolean) rather than ``0`` (number)
+    in the JS output, matching Python semantics where bool & bool → bool.
+    """
+    # Override bitwise ops to return boolean
+    def emit_op_and(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "Boolean(" + _binop(target, "&", args[0]) + ")";
+    }
+
+    def emit_op_or(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "Boolean(" + _binop(target, "|", args[0]) + ")";
+    }
+
+    def emit_op_xor(self, ctx: ESEmitCtx, target: str, args: list[str]) -> (str | None) {
+        return "Boolean(" + _binop(target, "^", args[0]) + ")";
+    }
+}
+
 # =============================================================================
 #  String Types
 # =============================================================================
@@ -1695,7 +1716,10 @@ class ESBuiltinEmitter(BuiltinEmitter[
             return "0";
         }
         if len(args) == 1 {
-            return "parseInt(" + args[0] + ")";
+            # Use Math.trunc(Number(x)) instead of parseInt(x) to correctly
+            # handle booleans (parseInt(false) → NaN, Number(false) → 0)
+            # and floats (int(3.14) → 3).
+            return "Math.trunc(Number(" + args[0] + "))";
         }
         return "parseInt(" + args[0] + ", " + args[1] + ")";
     }
@@ -1711,7 +1735,10 @@ class ESBuiltinEmitter(BuiltinEmitter[
         if len(args) == 0 {
             return "false";
         }
-        return "Boolean(" + args[0] + ")";
+        # Use runtime helper for Python truthiness semantics:
+        # Python: bool([]) → False, bool({}) → False, bool(set()) → False
+        # JS:     Boolean([]) → true,  Boolean({}) → true
+        return _rt("builtin", "bool", args);
     }
 
     def emit_list(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
@@ -1758,5 +1785,20 @@ class ESBuiltinEmitter(BuiltinEmitter[
 
     def emit_complex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
         return _rt("builtin", "complex", args);
+    }
+
+    def emit_range(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+        return _rt("builtin", "range", args);
+    }
+
+    def emit_slice(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+        return _rt("builtin", "slice", args);
+    }
+
+    def emit_bytearray(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+        if len(args) == 0 {
+            return "new Uint8Array()";
+        }
+        return "new Uint8Array(" + args[0] + ")";
     }
 }

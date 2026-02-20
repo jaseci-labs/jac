@@ -427,10 +427,37 @@ impl TypeEvaluator._get_special_form_type(
         case "Callable":
             return self.prefetch.callable_class;
 
+        case "Protocol":
+            return self.prefetch.protocol_class;
+
+        case "Final":
+            return self.prefetch.final_class;
+
+        case "LiteralString":
+            return self.prefetch.literal_string_class;
+
         # Future special forms:
         # case "Union": return self.prefetch.union_class;
         # case "Optional": return self.prefetch.optional_class;
 
     }
     return None;
+}
+
+"""Resolve the filesystem path for the from-clause of an import.
+
+Bare-dot imports (from . import x) have no named module component, so
+resolve_relative_path() is unreliable. Walk up from the current file directly.
+"""
+impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
+    if from_mod.level > 0 and not from_mod.path {
+        # Start from the directory containing the current module file.
+        base = Path(from_mod.loc.mod_path).parent;
+        for _ in range(max(from_mod.level - 1, 0)) {
+            base = base.parent;
+        }
+        return base;
+    }
+    # Named import — use the standard resolver (e.g. from .utils import x).
+    return Path(from_mod.resolve_relative_path());
 }
