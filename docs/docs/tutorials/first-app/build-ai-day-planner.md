@@ -55,7 +55,7 @@ with entry {
 Run it:
 
 ```bash
-jac run hello.jac
+jac hello.jac
 ```
 
 In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks run when you execute a `.jac` file as a script and at the point it's imported, similar to top-level code in Python. We require this explicit demarcation because it's important to be deliberate about code that executes once on module load -- a common source of bugs in real programs. Fun fact: Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
@@ -260,7 +260,7 @@ Beyond the more obvious utility of never needing a graph library again, there is
 
 **The Root Node and the Graph**
 
-Every Jac program has a built-in `root` node -- the entry point of the graph. Think of it as the top of a tree:
+Every Jac program has a built-in `root` node -- the entry point of the graph. Just as `self` in an object method is a self-referential pointer to the *current instance*, `root` is a self-referential pointer to the *current runner* of the program -- whether that's you executing a script or an authenticated user making a request. And like `self`, `root` is ambiently available everywhere; you never import or declare it, it's just there in every code block. Think of it as the top of a tree of things that should persist:
 
 ```mermaid
 graph LR
@@ -294,7 +294,7 @@ with entry {
 }
 ```
 
-Run it with `jac run hello.jac`. Your graph now looks like:
+Run it with `jac hello.jac`. Your graph now looks like:
 
 ```mermaid
 graph LR
@@ -312,9 +312,56 @@ task = result[0];  # The new Task node
 print(task.title);  # "Buy groceries"
 ```
 
+**Filter Comprehensions**
+
+Before we query the graph, let's learn a Jac feature that works on *any* collection of objects: **filter comprehensions**. The `(?...)` syntax filters a list by field conditions:
+
+```jac
+obj Employee {
+    has name: str,
+        salary: float,
+        remote: bool = False;
+}
+
+with entry {
+    team = [
+        Employee(name="Alice", salary=95000.0, remote=True),
+        Employee(name="Bob", salary=62000.0),
+        Employee(name="Carol", salary=110000.0, remote=True)
+    ];
+
+    # Filter by field condition
+    well_paid = team(?salary > 80000.0);
+    print(well_paid);  # [Alice, Carol]
+
+    # Multiple conditions (AND logic)
+    remote_and_senior = team(?salary > 80000.0, remote == True);
+    print(remote_and_senior);  # [Alice, Carol]
+}
+```
+
+You can also filter by **type** using `(?:Type)`. This is especially useful when a list contains mixed types:
+
+```jac
+obj Dog { has name: str; }
+obj Cat { has name: str; }
+
+with entry {
+    pets: list = [Dog(name="Rex"), Cat(name="Whiskers"), Dog(name="Buddy")];
+
+    # Type filter -- keep only Dogs
+    dogs = pets(?:Dog);
+    print(dogs);  # [Rex, Buddy]
+
+    # Type + field condition
+    specific = pets(?:Dog, name == "Rex");
+    print(specific);  # [Rex]
+}
+```
+
 **Querying the Graph**
 
-To read nodes from the graph, use the `[-->]` syntax:
+Now here's where it comes together. The `[-->]` syntax gives you a list of connected nodes -- and filter comprehensions work on it just like any other list:
 
 ```jac
 with entry {
@@ -324,16 +371,19 @@ with entry {
     # Get ALL nodes connected from root
     everything = [root-->];
 
-    # Filter by node type with (?:Type)
+    # Filter by node type -- same (?:Type) syntax
     tasks = [root-->](?:Task);
     for task in tasks {
         status = "done" if task.done else "pending";
         print(f"[{status}] {task.title}");
     }
+
+    # Filter by field value
+    grocery_tasks = [root-->](?:Task, title == "Buy groceries");
 }
 ```
 
-`[root-->]` reads as "all nodes connected *from* root." The `(?:Task)` filter keeps only nodes of type `Task`. This is a **graph query** -- Jac's built-in way to traverse data without writing database queries.
+`[root-->]` reads as "all nodes connected *from* root." The `(?:Task)` filter keeps only nodes of type `Task`. There's nothing special about graph queries here -- `[-->]` returns a list, and `(?...)` filters it, the same way it filters any collection.
 
 Other directions work too:
 
@@ -389,10 +439,12 @@ We won't use custom edges in the main app (default edges are sufficient for our 
 
 - **`node`** -- a persistent data type that lives in the graph
 - **`has`** -- declares fields with types and optional defaults
-- **`root`** -- the built-in entry point of the graph
+- **`root`** -- the built-in entry point of the graph, self-referential to the current runner
 - **`++>`** -- create a node and connect it with an edge
-- **`[root-->]`** -- query all connected nodes
-- **`(?:Type)`** -- filter query results by node type
+- **`(?condition)`** -- filter comprehensions on any list of objects
+- **`(?:Type)`** -- typed filter comprehension, works on any collection
+- **`(?:Type, field == val)`** -- combined type and field filtering
+- **`[root-->]`** -- query all connected nodes (returns a list, filterable like any other)
 - **`del`** -- remove a node from the graph
 - **`edge`** -- define a typed edge with its own data
 - **`+>: EdgeType :+>`** -- connect with a typed edge
