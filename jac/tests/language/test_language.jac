@@ -139,11 +139,13 @@ test "deep imports mods" {
             del sys.modules[i];
         }
     }
-    output = run_jac(os.path.join(FIXTURES, "deep_import_mods.jac"));
-    import from builtins { eval as pyeval }
-    result = pyeval(output);
+    run_jac(os.path.join(FIXTURES, "deep_import_mods.jac"));
+    # Check sys.modules directly — the before/after diff inside the
+    # fixture is fragile because the compiler may pre-import modules
+    # during compilation (for type resolution), adding them to
+    # sys.modules before the fixture's snapshot is taken.
     for i in targets {
-        assert i in result;
+        assert i in sys.modules , f"Expected '{i}' in sys.modules after deep import";
     }
 }
 
