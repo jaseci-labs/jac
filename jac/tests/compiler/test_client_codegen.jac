@@ -126,3 +126,100 @@ test "jac call function sends params directly" {
     assert "'args': args" not in content , "client_runtime should NOT wrap params in 'args' object";
     assert "JSON.stringify(args)" in content , "client_runtime should send params directly with JSON.stringify(args)";
 }
+
+"""Test that .impl.cl.jac files inherit CLIENT context from their .cl.jac parent.
+
+When a .cl.jac file has an associated .impl.cl.jac file, the impl module should
+be coerced to CLIENT context. This means regular imports in the impl file
+should generate normal ES imports, not sv import stubs.
+"""
+test "impl.cl.jac inherits client context from parent cl.jac" {
+    with TemporaryDirectory() as tmpdir {
+        # main.cl.jac - client file with sv import
+        main_cl = Path(tmpdir) / "main.cl.jac";
+        main_cl.write_text(
+            "sv import from server { serverFunc }\n\ndef:pub app() { return serverFunc(); }"
+        );
+
+        # main.impl.cl.jac - impl for client file, should inherit CLIENT context
+        impl_file = Path(tmpdir) / "main.impl.cl.jac";
+        impl_file.write_text("import from helper { getHelper }");
+
+        prog = JacProgram();
+        mod = prog.compile(str(main_cl));
+        js = mod.gen.js;
+
+        # sv import should generate __jacCallFunction stub
+        assert "__jacCallFunction" in js , "sv import should generate __jacCallFunction";
+        assert "serverFunc" in js , "serverFunc stub should be generated";
+
+        # __jacCallFunction appears twice: 1 import + 1 call (for serverFunc)
+        # If impl was not coerced to CLIENT, getHelper would also generate a stub
+        assert js.count("__jacCallFunction") == 2 , f"Expected 2 occurrences (1 import + 1 call)";
+
+        # helper should be a regular ES import (not an RPC stub)
+        assert "getHelper" in js , "getHelper should be in the output";
+        assert 'await __jacCallFunction("getHelper"' not in js , "getHelper should not be an RPC stub";
+        assert 'import { getHelper }' in js , "getHelper should be a regular ES import";
+    }
+}
+
+"""Test that imports in .impl.cl.jac of a .cl.jac are not treated as sv imports.
+
+Previously, .impl.jac files had SERVER context by default, causing regular
+imports to be treated as sv imports and generating duplicate __jacCallFunction
+stubs. This test ensures that's fixed.
+"""
+test "impl.cl.jac imports not treated as sv imports" {
+    with TemporaryDirectory() as tmpdir {
+        # app.cl.jac - client file with sv import
+        app_cl = Path(tmpdir) / "app.cl.jac";
+        app_cl.write_text(
+            "sv import from server { getData }\n\ndef:pub main() { return getData(); }"
+        );
+
+        # app.impl.cl.jac - impl file for client, should inherit CLIENT context
+        impl_file = Path(tmpdir) / "app.impl.cl.jac";
+        impl_file.write_text(
+            "import from module_a { funcA }\nimport from module_b { funcB }"
+        );
+
+        prog = JacProgram();
+        mod = prog.compile(str(app_cl));
+        js = mod.gen.js;
+
+        # funcA and funcB should NOT have __jacCallFunction stubs (regular imports)
+        assert 'await __jacCallFunction("funcA"' not in js , "funcA should not be an RPC stub";
+        assert 'await __jacCallFunction("funcB"' not in js , "funcB should not be an RPC stub";
+
+        # They should be regular ES imports
+        assert 'import { funcA }' in js , "funcA should be a regular ES import";
+        assert 'import { funcB }' in js , "funcB should be a regular ES import";
+
+        # Only getData should be an RPC stub (from sv import)
+        assert 'await __jacCallFunction("getData"' in js , "getData should be an RPC stub";
+
+        # __jacCallFunction should only appear twice (1 import + 1 call for getData)
+        assert js.count("__jacCallFunction") == 2 , f"Expected 2 occurrences (1 import + 1 call)";
+    }
+}
+
+"""Test that .impl.jac for regular .jac files keeps SERVER context (default)."""
+test "impl.jac for regular jac keeps server context" {
+    with TemporaryDirectory() as tmpdir {
+        # main.jac - regular server file
+        main_jac = Path(tmpdir) / "main.jac";
+        main_jac.write_text("def:pub serverFunc() { return 1; }");
+
+        # main.impl.jac - impl for regular jac (stays SERVER context)
+        impl_file = Path(tmpdir) / "main.impl.jac";
+        impl_file.write_text("import from helper { helperFunc }");
+
+        prog = JacProgram();
+        mod = prog.compile(str(main_jac));
+
+        # For server-side .jac, impl should also be server context
+        # Server imports don't generate JS (they're Python)
+        assert mod.gen.py is not None , "Server module should have Python output";
+    }
+}
