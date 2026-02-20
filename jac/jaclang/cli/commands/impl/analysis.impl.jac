@@ -71,6 +71,7 @@ impl check(
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
+    failed_file_list: list[str] = [];
     prog = JacProgram();
     for path in paths {
         path_obj = Path(path);
@@ -82,6 +83,7 @@ impl check(
                 total_warnings += warns;
                 if not success {
                     failed_files += 1;
+                    failed_file_list.append(path);
                 }
             }
         } elif path_obj.is_dir() {
@@ -96,6 +98,7 @@ impl check(
                     total_warnings += warns;
                     if not success {
                         failed_files += 1;
+                        failed_file_list.append(str(jac_file));
                     }
                 }
             }
@@ -103,6 +106,14 @@ impl check(
             console.error(f"'{path}' is not a .jac file or directory.");
             failed_files += 1;
             total_errors += 1;
+            failed_file_list.append(path);
+        }
+    }
+    # Print summary of failed files
+    if failed_file_list {
+        console.print("\nFAILED files:");
+        for failed_file in failed_file_list {
+            console.print(f"  {failed_file}");
         }
     }
     check_type = "Parsed" if parse_only else "Checked";
