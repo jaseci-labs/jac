@@ -197,55 +197,6 @@ def _get_app_meta_data -> dict {
     return client_cfg.get("app_meta_data", {});
 }
 
-"""Generate static index.html file for the built bundle."""
-def _generate_index_html(
-    bundle_path: Path,
-    bundler: ViteBundler,
-    loaded_mod: types.ModuleType,
-    project_dir: Path
-) -> None {
-    import html;
-    import json;
-    import from jac_client.plugin.client { HeaderBuilder }
-
-    function_name = _get_client_function_name(loaded_mod);
-    module_name = loaded_mod.__name__;
-    dist_dir = Path(bundler.output_dir);
-    css_link = _build_css_link(bundler);
-    meta_data = _get_app_meta_data();
-    head_builder = HeaderBuilder(meta_data, function_name);
-    head_content = head_builder.build_head();
-    if css_link {
-        head_content += f"\n            {css_link}";
-    }
-    init_payload = {
-        "module": module_name,
-        "function": function_name,
-        "args": {},
-        "argOrder": [],
-        "globals": {}
-    };
-    init_json = json.dumps(init_payload);
-    bundle_filename = bundle_path.name;
-
-    html_content = f'''<!DOCTYPE html>
-<html lang="en">
-  <head>
-{head_content}
-  </head>
-  <body>
-    <div id="root"></div>
-    <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
-    <script src="{bundle_filename}" {"defer"
-    if script_loading == "defer"
-    else 'type="module"'}></script>
-
-  </body>
-</html>''';
-    index_html = dist_dir / 'index.html';
-    index_html.write_text(html_content, encoding='utf-8');
-}
-
 """Generate static index.html file for the built bundle.
 
 Args:
@@ -258,3 +209,48 @@ def _generate_index_html(
     project_dir: Path,
     script_loading: str = "module"
 ) -> None {
+    import html;
+    import json;
+    import from jac_client.plugin.client { HeaderBuilder }
+
+    function_name = _get_client_function_name(loaded_mod);
+    module_name = loaded_mod.__name__;
+    dist_dir = Path(bundler.output_dir);
+
+    css_link = _build_css_link(bundler);
+    meta_data = _get_app_meta_data();
+
+    head_builder = HeaderBuilder(meta_data, function_name);
+    head_content = head_builder.build_head();
+
+    if css_link {
+        head_content += f"\n            {css_link}";
+        init_payload = {
+            "module": module_name,
+            "function": function_name,
+            "args": {},
+            "argOrder": [],
+            "globals": {}
+        };
+        init_json = json.dumps(init_payload);
+        bundle_filename = bundle_path.name;
+        script_tag = (
+            f'<script src="{bundle_filename}" defer></script>'
+            if script_loading == "defer"
+            else f'<script type="module" src="{bundle_filename}"></script>'
+        );
+        html_content = f'''<!DOCTYPE html>
+<html lang="en">
+  <head>
+{head_content}
+  </head>
+  <body>
+    <div id="root"></div>
+    <script id="__jac_init__" type="application/json">{html.escape(init_json)}</script>
+    {script_tag}
+  </body>
+</html>''';
+        index_html = dist_dir / 'index.html';
+        index_html.write_text(html_content, encoding='utf-8');
+    }
+}
