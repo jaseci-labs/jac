@@ -296,6 +296,10 @@ impl NaIRGenPass._emit_dict_helpers(
     b.position_at_end(not_found_g);
     if isinstance(val_type, ir.PointerType) {
         b.ret(ir.Constant(val_type, None));
+    } elif val_type?.elements and val_type.elements {
+        # Struct type (e.g. JacVal): return zeroed struct
+        zero_elems = [ir.Constant(e, 0) for e in val_type.elements];
+        b.ret(ir.Constant(val_type, zero_elems));
     } else {
         b.ret(ir.Constant(val_type, 0));
     }
@@ -406,6 +410,47 @@ impl NaIRGenPass._emit_dict_helpers(
     };
 }
 
+"""Box any value (int, float, str) into a JacVal tagged union {i8 tag, i64 payload}.
+
+Tag 0 = int (i64 stored directly), Tag 1 = float (f64 bitcast to i64),
+Tag 2 = str/ptr (pointer ptrtoint to i64).
+"""
+impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    jv_alloca = self._entry_alloca(self.jacval_type, "jacval");
+    tag_ptr = b.gep(
+        jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="jv.tag.ptr"
+    );
+    payload_ptr = b.gep(
+        jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
+    );
+    if isinstance(value.type, ir.IntType) and value.type.width == 64 {
+        b.store(ir.Constant(i8, 0), tag_ptr);
+        b.store(value, payload_ptr);
+    } elif isinstance(value.type, ir.DoubleType) {
+        b.store(ir.Constant(i8, 1), tag_ptr);
+        payload = b.bitcast(value, i64, name="jv.f2i");
+        b.store(payload, payload_ptr);
+    } elif isinstance(value.type, ir.PointerType) {
+        b.store(ir.Constant(i8, 2), tag_ptr);
+        payload = b.ptrtoint(value, i64, name="jv.p2i");
+        b.store(payload, payload_ptr);
+    } elif isinstance(value.type, ir.IntType) and value.type.width == 1 {
+        # bool → box as int (tag 0)
+        b.store(ir.Constant(i8, 0), tag_ptr);
+        ext = b.zext(value, i64, name="jv.bext");
+        b.store(ext, payload_ptr);
+    } else {
+        # Fallback: try storing as i64
+        b.store(ir.Constant(i8, 0), tag_ptr);
+        b.store(ir.Constant(i64, 0), payload_ptr);
+    }
+    return b.load(jv_alloca, name="jacval");
+}
+
 """Generate code for a dict literal {k1: v1, k2: v2, ...}."""
 impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     if not nd.kv_pairs {
@@ -419,20 +464,27 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     if first_key is None or first_val is None {
         return None;
     }
+    # Check if we should box values into JacVal (dict[str, any])
+    use_jacval = self._dict_val_type_hint == "jacval";
     # Determine type names
     key_type = first_key.type;
-    val_type = first_val.type;
     key_type_name = "i64";
-    val_type_name = "i64";
     if isinstance(key_type, ir.DoubleType) {
         key_type_name = "f64";
     } elif isinstance(key_type, ir.PointerType) {
         key_type_name = "ptr";
     }
-    if isinstance(val_type, ir.DoubleType) {
-        val_type_name = "f64";
-    } elif isinstance(val_type, ir.PointerType) {
-        val_type_name = "ptr";
+    if use_jacval {
+        val_type = self.jacval_type;
+        val_type_name = "jacval";
+    } else {
+        val_type = first_val.type;
+        val_type_name = "i64";
+        if isinstance(val_type, ir.DoubleType) {
+            val_type_name = "f64";
+        } elif isinstance(val_type, ir.PointerType) {
+            val_type_name = "ptr";
+        }
     }
     dict_key = f"{key_type_name}:{val_type_name}";
     # Ensure helpers exist
@@ -440,8 +492,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     helpers = self.dict_helpers[dict_key];
     # Create new dict
     dict_val = self.builder.call(helpers["new"], [], name="dict.new");
-    # Add first pair
-    self.builder.call(helpers["set"], [dict_val, first_key, first_val]);
+    # Add first pair (box if needed)
+    first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
+    self.builder.call(helpers["set"], [dict_val, first_key, first_store_val]);
     # Add remaining pairs
     for i in range(1, len(nd.kv_pairs)) {
         pair = nd.kv_pairs[i];
@@ -449,7 +502,11 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         v = self._codegen_expr(pair.value);
         if k is not None and v is not None {
             k = self._coerce_type(k, key_type);
-            v = self._coerce_type(v, val_type);
+            if use_jacval {
+                v = self._box_to_jacval(v);
+            } else {
+                v = self._coerce_type(v, val_type);
+            }
             self.builder.call(helpers["set"], [dict_val, k, v]);
         }
     }

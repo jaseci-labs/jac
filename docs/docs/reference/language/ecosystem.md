@@ -173,7 +173,7 @@ Jac supports multi-file configuration with profile-based overrides.
 
 ```bash
 # Via --profile flag
-jac run app.jac --profile prod
+jac run --profile prod app.jac
 jac start --profile staging
 
 # Via JAC_PROFILE environment variable

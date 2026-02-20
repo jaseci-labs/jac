@@ -493,7 +493,7 @@ See [Structured Outputs](ai/structured-outputs.md) for more details.
 Run with debug output:
 
 ```bash
-jac run myfile.jac --verbose
+jac run --verbose myfile.jac
 ```
 
 ### Check Syntax

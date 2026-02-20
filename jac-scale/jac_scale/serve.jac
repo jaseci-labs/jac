@@ -24,7 +24,7 @@ import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
 import from enum { StrEnum }
 import from fastapi_sso.sso.google { GoogleSSO }
-import from jac_scale.utils { generate_random_password }
+import from jac_scale.utils { generate_random_password, _extract_path_param_names }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.abstractions.metrics { MetricsCollector }
@@ -135,6 +135,10 @@ obj JacAPIServer(JServer) {
     def create_websocket_handler(walker_name: str) -> Callable;
     def register_websocket_endpoints -> None;
     def register_dynamic_websocket_endpoint -> None;
+    # Graph visualization endpoint
+    def register_graph_endpoint -> None;
+    def serve_graph_page -> HTMLResponse;
+    def graph_data(Authorization: (str | None) = None) -> JSONResponse;
 }
 
 class UpdateUsernameRequest(BaseModel) {

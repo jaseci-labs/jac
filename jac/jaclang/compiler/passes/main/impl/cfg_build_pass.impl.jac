@@ -142,6 +142,11 @@ impl CFGBuildPass.after_pass -> None {
             if isinstance(nd, uni.UniCFGNode) {
                 parent_bb = self.get_parent_bb_stmt(nd);
                 if parent_bb {
+                    # Avoid spurious edges from parent to interior statements.
+                    body_seq = self.get_code_block_sequence(parent_bb);
+                    if body_seq and nd in body_seq {
+                        continue;
+                    }
                     self.link_bbs(parent_bb, nd);
                 }
             }

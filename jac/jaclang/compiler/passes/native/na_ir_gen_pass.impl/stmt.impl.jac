@@ -52,6 +52,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     if nd.expr is not None {
         # Set list type hint from function return type for list comprehensions
         self._list_type_hint = None;
+        self._dict_val_type_hint = None;
         if isinstance(func_ret_type, ir.PointerType) {
             # Check if return type is a list type
             ret_type_name = str(func_ret_type.pointee);
@@ -63,9 +64,14 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
                 else ret_type_name[7:];
                 self._list_type_hint = elem_type;
             }
+            # Check if return type is a dict with JacVal values (dict[str, any])
+            if ret_type_name.startswith("%\"Dict.") and "jacval" in ret_type_name {
+                self._dict_val_type_hint = "jacval";
+            }
         }
         val = self._codegen_expr(nd.expr);
         self._list_type_hint = None;
+        self._dict_val_type_hint = None;
         if val is not None {
             val = self._coerce_type(val, func_ret_type);
             self.builder.ret(val);
@@ -188,8 +194,40 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
         }
     }
+    # Set dict val type hint for dict[str, any] support
+    self._dict_val_type_hint = None;
+    if nd.type_tag and nd.type_tag.tag {
+        tag_node = nd.type_tag.tag;
+        tag_name = self._get_name(tag_node);
+        if tag_name == "dict" and isinstance(tag_node, uni.AtomTrailer) {
+            if tag_node?.right and tag_node.right?.slices {
+                slices = tag_node.right.slices or [];
+                val_node: (object | None) = None;
+                if len(slices) == 1
+                and slices[0]?.start
+                and isinstance(slices[0].start, uni.TupleVal) {
+                    tv = slices[0].start;
+                    if tv.values and len(tv.values) >= 2 {
+                        val_node = tv.values[1];
+                    }
+                } elif len(slices) >= 2 {
+                    val_node = slices[1];
+                    if val_node?.start and val_node.start is not None {
+                        val_node = val_node.start;
+                    }
+                }
+                if val_node is not None {
+                    val_name = self._get_name(val_node);
+                    if val_name == "any" {
+                        self._dict_val_type_hint = "jacval";
+                    }
+                }
+            }
+        }
+    }
     value = self._codegen_expr(nd.value) if nd.value else None;
     self._list_type_hint = None;
+    self._dict_val_type_hint = None;
     # Handle empty dict literal {} with type annotation
     if value is None and isinstance(nd.value, uni.DictVal) {
         if not nd.value.kv_pairs and nd.type_tag and nd.type_tag.tag {

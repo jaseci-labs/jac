@@ -26,10 +26,7 @@ This tutorial walks you through building a complete full-stack application with 
 todo-app/
 ├── main.jac              # Entry point
 ├── endpoints.sv.jac      # Server-side walkers and nodes
-├── frontend.cl.jac       # Client-side UI
-└── components/
-    ├── AuthForm.cl.jac   # Login/signup form
-    └── TodoItem.cl.jac   # Todo item component
+└── frontend.cl.jac       # Client-side UI
 ```
 
 ---
@@ -66,7 +63,7 @@ node Todo {
 Walkers traverse the graph and perform operations. Here's a walker to add new todos:
 
 ```jac
-walker:priv AddTodo {
+walker AddTodo {
     has title: str,
         priority: str = "medium",
         parent_id: str = "";
@@ -92,7 +89,7 @@ walker:priv AddTodo {
 
 **Key concepts:**
 
-- `walker:priv` - Private walker (not exposed as REST API, called from code)
+- `walker` - Public walker callable from client code
 - `has` - Walker parameters passed during instantiation
 - `can create with Root entry` - Ability that runs when walker enters the root node
 - `here ++> Node(...)` - Creates a new node and connects it to the current node (`here`)
@@ -104,7 +101,7 @@ walker:priv AddTodo {
 This walker demonstrates the **accumulator pattern** - collecting data as it traverses the graph:
 
 ```jac
-walker:priv ListTodos {
+walker ListTodos {
     has todos: list = [];
 
     # Entry point: start traversing from root
@@ -143,7 +140,7 @@ walker:priv ListTodos {
 ### 1.4 Toggle and Delete Walkers
 
 ```jac
-walker:priv ToggleTodo {
+walker ToggleTodo {
     has todo_id: str;
 
     can search with Root entry {
@@ -158,7 +155,7 @@ walker:priv ToggleTodo {
     }
 }
 
-walker:priv DeleteTodo {
+walker DeleteTodo {
     has todo_id: str;
 
     can search with Root entry {
@@ -193,7 +190,7 @@ When you spawn a walker, every `report` statement adds to a `.reports` array:
 
 ```jac
 # Walker with multiple reports
-walker:priv MyWalker {
+walker MyWalker {
     can do_stuff with Root entry {
         report "first";   # reports[0]
         report "second";  # reports[1]
@@ -207,7 +204,7 @@ walker:priv MyWalker {
 When a walker visits multiple nodes and reports from each:
 
 ```jac
-walker:priv VisitAll {
+walker VisitAll {
     can start with Root entry {
         visit [-->];
     }
@@ -225,7 +222,7 @@ walker:priv VisitAll {
 The `ListTodos` walker uses the cleanest pattern - accumulate internally, report once:
 
 ```jac
-walker:priv ListTodos {
+walker ListTodos {
     has todos: list = [];
 
     can collect with Root entry { visit [-->]; }
@@ -284,28 +281,18 @@ cl {
 """Todo App - Client-Side UI."""
 
 import from react { useEffect }
-import from "@jac-client/utils" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 # Import server-side walkers for client use
 sv import from endpoints { AddTodo, ListTodos, ToggleTodo, DeleteTodo }
 
 def:pub app -> JsxElement {
     # Component state
-    has isLoggedIn: bool = False,
-        todos: list = [],
+    has todos: list = [],
         newTodoText: str = "",
         todosLoading: bool = True;
 
-    # Check auth on mount
-    useEffect(lambda -> None {
-        isLoggedIn = jacIsLoggedIn();
-    }, []);
-
-    # Fetch todos when logged in
-    useEffect(
-        lambda -> None { if isLoggedIn { fetchTodos(); }},
-        [isLoggedIn]
-    );
+    # Fetch todos on mount
+    useEffect(lambda -> None { fetchTodos(); }, []);
 
     # Fetch all todos from server
     async def fetchTodos -> None {
@@ -457,7 +444,7 @@ def generate_ingredients(meal_description: str) -> list[Ingredient] by llm();
 ### 4.2 Walker That Uses AI
 
 ```jac
-walker:priv MealToIngredients {
+walker MealToIngredients {
     has meal_description: str;
 
     can process with Root entry {
@@ -465,6 +452,7 @@ walker:priv MealToIngredients {
         ingredients = generate_ingredients(self.meal_description);
 
         total_cost: float = 0.0;
+        added_todos: list = [];
 
         # Create a todo for each ingredient
         for ingredient in ingredients {
@@ -479,17 +467,21 @@ walker:priv MealToIngredients {
                 parent_id=""
             );
 
+            # Track created todos directly (avoid nested spawn)
+            added_todos.append({
+                "id": new_id,
+                "title": title,
+                "completed": False,
+                "priority": "medium",
+                "parent_id": ""
+            });
+
             total_cost += ingredient.cost;
         }
 
-        # Get the updated todo list
-        todos_result = root spawn ListTodos();
-        todos_list = todos_result.reports[0] if todos_result.reports else [];
-
-        # Report summary (this becomes reports[1] since ListTodos added reports[0])
         report {
             "meal": self.meal_description,
-            "ingredients_added": todos_list,
+            "ingredients_added": added_todos,
             "total_cost": total_cost
         };
     }
@@ -501,8 +493,8 @@ walker:priv MealToIngredients {
 - Call LLM function: `ingredients = generate_ingredients(self.meal_description)`
 - LLM returns structured `list[Ingredient]` automatically parsed
 - F-strings: `f"{ingredient.quantity} {ingredient.unit.name}"`
-- Nested walker spawn: `root spawn ListTodos()` within another walker
-- Multiple reports: `ListTodos` reports first, then this walker reports second
+- **Important:** Avoid nested `root spawn` calls inside walkers - they return Queue objects, not subscriptable results
+- Track created data directly in a list instead of spawning another walker
 
 ### 4.3 Client-Side AI Integration
 
@@ -523,14 +515,12 @@ def:pub app -> JsxElement {
         try {
             response = root spawn MealToIngredients(meal_description=mealDescription);
 
-            # MealToIngredients has multiple reports:
-            # reports[0] = ListTodos output (from nested spawn)
-            # reports[1] = Summary object with ingredients_added
-            if response.reports and len(response.reports) > 1 {
-                result = response.reports[1];
+            # MealToIngredients reports a single object with ingredients_added
+            if response.reports and response.reports.length > 0 {
+                result = response.reports[0];
                 added = result["ingredients_added"];
 
-                if added and len(added) > 0 {
+                if added and added.length > 0 {
                     todos = todos.concat(added);
                 }
             }
@@ -585,11 +575,10 @@ Open http://localhost:8000 in your browser.
 
 ### 5.3 Test the Features
 
-1. **Register/Login** - Create an account
-2. **Add Todos** - Type and click Add
-3. **Toggle Complete** - Click the checkbox
-4. **Delete** - Click Delete button
-5. **AI Generate** - Type "tacos" and click Generate Shopping List
+1. **Add Todos** - Type and click Add
+2. **Toggle Complete** - Click the checkbox
+3. **Delete** - Click Delete button
+4. **AI Generate** - Type "tacos" and click Generate Shopping List
 
 ---
 

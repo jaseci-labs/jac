@@ -6,16 +6,22 @@ In-depth tutorials organized by topic. Each tutorial takes 30-60 minutes to comp
 
 ## Start Here
 
-New to Jac? Begin with the **Build Your First App** tutorial -- a 3-part guide that takes you from zero to a multi-user AI-powered app:
+New to Jac? Begin with **[Build an AI Day Planner](first-app/build-ai-day-planner.md)** -- a 7-part guide that takes you from zero to a full-stack AI-powered app, teaching the full language along the way:
 
 | Part | What You'll Build | Concepts |
 |------|-------------------|----------|
-| [Part 1: Todo App](first-app/part1-todo-app.md) | Working todo app with graph persistence | Nodes, `def:pub`, reactive frontend |
-| [Part 2: Add AI](first-app/part2-ai-features.md) | AI categorization + meal planner | `by llm()`, `enum`, `obj`, `sem` |
-| [Part 3: Walkers, Auth & Structure](first-app/part3-multi-user.md) | Auth, walkers, multi-file structure | `walker:priv`, authentication, components |
+| 1: First Lines of Jac | Hello World | Syntax basics, types, functions, control flow |
+| 2: Modeling Data | Task data model | Nodes, graphs, root, edges |
+| 3: Backend API | HTTP endpoints | `def:pub`, imports, enums, collections |
+| 4: Reactive Frontend | Working UI | Client-side code, JSX, reactive state |
+| 5: AI Features | Smart categorization + shopping list | `by llm()`, `obj`, `sem`, structured output |
+| 6: Authentication | Login, signup, multi-file | Auth, `impl`, declaration/implementation split |
+| 7: Walkers & OSP | Reimplementation using OSP | Walkers, abilities, graph traversal |
+
+[Start the tutorial →](first-app/build-ai-day-planner.md){ .md-button .md-button--primary }
 
 !!! note "First App vs Full-Stack Tutorials"
-    **Build Your First App** is a quick end-to-end journey -- build one app across three parts, learning concepts as you go. **Full-Stack Apps** (below) is a deep-dive into each concept individually. New to Jac? Start with Build Your First App. Want to understand a specific topic (routing, state, auth)? Use the Full-Stack tutorials as targeted reference.
+    **Build an AI Day Planner** is a self-contained introduction to the full Jac language -- build one app across seven parts, learning every major concept as you go. **Full-Stack Apps** (below) is a deep-dive into each concept individually. New to Jac? Start with the Day Planner. Want to understand a specific topic (routing, state, auth)? Use the Full-Stack tutorials as targeted reference.
 
 ---
 

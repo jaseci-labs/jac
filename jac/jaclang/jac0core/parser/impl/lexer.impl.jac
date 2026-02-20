@@ -38,6 +38,38 @@ impl Lexer.in_jsx -> bool {
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
 }
 
+impl Lexer.prev_is_value -> bool {
+    # Returns True when the previous token ends a value-producing expression.
+    # Used to disambiguate `<` as comparison (after values) vs JSX tag opener.
+    return self.prev_token_kind in [
+        TokenKind.NAME,
+        TokenKind.KWESC_NAME,
+        TokenKind.INT,
+        TokenKind.FLOAT,
+        TokenKind.HEX,
+        TokenKind.BIN,
+        TokenKind.OCT,
+        TokenKind.STRING,
+        TokenKind.BOOL,
+        TokenKind.NULL,
+        TokenKind.ELLIPSIS,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.RBRACE,
+        TokenKind.KW_SELF,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
+        TokenKind.F_DQ_END,
+        TokenKind.F_SQ_END,
+        TokenKind.F_TDQ_END,
+        TokenKind.F_TSQ_END,
+        TokenKind.JSX_SELF_CLOSE,
+        TokenKind.JSX_TAG_END,
+        TokenKind.JSX_FRAG_CLOSE
+    ];
+}
+
 impl Lexer.current -> str {
     if self.pos >= self._source_len {
         return "";
@@ -826,9 +858,7 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();
         self.advance();
         self.jsx_depth -= 1;
-        if self.jsx_depth == 0 {
-            self.pop_mode();
-        }
+        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
@@ -859,6 +889,7 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();
         self.advance();
         self.jsx_depth += 1;
+        self.push_mode(LexerMode.JSX_CONTENT);  # Fragment content mode (popped by </>)
         return self.make_token(
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
@@ -871,16 +902,30 @@ impl Lexer.scan_jsx_content -> Token {
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
-    # Text content - collect until we hit <, {, or end
+    # Text content - collect until we hit a meaningful JSX delimiter or end.
+    # Only break on `<` when it starts a valid JSX construct (tag, closing
+    # tag, or fragment).  A bare `<` (e.g. `<--`) is consumed as text,
+    # matching TSX behaviour where bare `<` in content is invalid and must
+    # be written as `{"<"}`.
     value = "";
     while not self.at_end() {
         ch = self.current();
-        if ch == "<" or ch == "{" {
+        if ch == "{" {
             break;
+        }
+        if ch == "<" {
+            nxt = self.peek();
+            # Only break when `<` begins a real JSX token:
+            #   </  (closing tag / fragment close)
+            #   <>  (fragment open)
+            #   <A  (nested element — alpha means tag name)
+            if nxt == "/" or nxt == ">" or self.is_alpha(nxt) {
+                break;
+            }
         }
         # Note: # is NOT treated as a comment inside JSX children.
         # JSX text content is like HTML — # is a regular text character.
-        # Use {/* ... */} style in JSX expressions for comments if needed.
+        # Use {#* ... *#} style in JSX expressions for comments if needed.
         value += self.advance();
     }
     if len(value) > 0 {
@@ -1117,6 +1162,8 @@ impl Lexer.scan_operator -> Token {
         );
     }
     if self.match_string("</>") {
+        self.jsx_depth -= 1;
+        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
@@ -1283,6 +1330,8 @@ impl Lexer.scan_operator -> Token {
         );
     }
     if self.match_string("<>") {
+        self.jsx_depth += 1;
+        self.push_mode(LexerMode.JSX_CONTENT);
         return self.make_token(
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
@@ -1478,7 +1527,8 @@ impl Lexer.next_token -> Token {
         return self.scan_kwesc_name();
     }
     # Check for JSX opening tag: <identifier
-    if ch == "<" and self.is_alpha(self.peek()) {
+    # Only if the previous token is NOT a value (otherwise < is a comparison operator).
+    if ch == "<" and self.is_alpha(self.peek()) and not self.prev_is_value() {
         return self.scan_jsx_open_start();
     }
     # Identifier or keyword
@@ -1525,12 +1575,43 @@ impl Lexer.next_token -> Token {
 impl Lexer.tokenize -> list[Token] {
     self._source_len = len(self.source);
     tokens: list[Token] = [];
+    last_pos = -1;
     while True {
         token = self.next_token();
         tokens.append(token);
+        self.prev_token_kind = token.kind;
         if token.kind == TokenKind.EOF {
             break;
         }
+        # Stuck detector: catch infinite loops when EOF is hit inside
+        # non-NORMAL modes (JSX_CONTENT, JSX_TAG, f-string) that return
+        # ERROR tokens without producing EOF or advancing the position.
+        if self.pos == last_pos or self.pos > self._source_len {
+            mode = self.current_mode();
+            self.error(
+                f"Lexer stuck at EOF in mode {mode} (pos={self.pos})",
+                self.line,
+                self.col,
+                self.pos
+            );
+            tokens.append(
+                Token(
+                    kind=TokenKind.EOF,
+                    value="",
+                    loc=SourceLoc(
+                        file_path=self.file_path,
+                        line=self.line,
+                        end_line=self.line,
+                        col_start=self.col,
+                        col_end=self.col,
+                        pos_start=self.pos,
+                        pos_end=self.pos
+                    )
+                )
+            );
+            break;
+        }
+        last_pos = self.pos;
     }
     return tokens;
 }

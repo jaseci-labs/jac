@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'docs/**/*.md'
-      - 'docs/scripts/validate_docs_code.py'
+      - 'docs/scripts/validate_docs_code.jac'
       - '.github/workflows/docs-validation.yml'
       - 'jac/jaclang/**'
       - 'jac-scale/jac_scale/**'
@@ -14,12 +14,13 @@ on:
       - 'jac-byllm/byllm/**'
       - 'jac-super/jac_super/**'
       - 'docs/docs/community/release_notes/**'
+      - '!**/tests/**'
   push:
     branches:
       - main
     paths:
       - 'docs/**/*.md'
-      - 'docs/scripts/validate_docs_code.py'
+      - 'docs/scripts/validate_docs_code.jac'
       - '.github/workflows/docs-validation.yml'
   workflow_dispatch:
 
@@ -54,7 +55,7 @@ jobs:
           pip install -e docs
 
       - name: Validate Jac code block syntax
-        run: python docs/scripts/validate_docs_code.py --docs-dir docs/docs
+        run: jac run docs/scripts/validate_docs_code.jac
 
       - name: Build documentation and check links
         working-directory: docs

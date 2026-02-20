@@ -46,8 +46,7 @@ import from byllm.lib { Model }
 # Configure the LLM
 glob llm = Model(model_name="gpt-4o-mini");
 
-"""Translate the given text to French."""
-def translate(text: str) -> str by llm();
+def translate2french(text: str) -> str by llm();
 
 with entry {
     result = translate("Hello, how are you?");
@@ -74,7 +73,7 @@ Bonjour, comment allez-vous ?
 The key is the `by llm()` syntax:
 
 ```jac
-def translate_to_french(text: str) -> str by llm();
+def translate2french(text: str) -> str by llm();
 ```
 
 | Part | Purpose |
@@ -84,39 +83,79 @@ def translate_to_french(text: str) -> str by llm();
 | `-> str` | Expected return type |
 | `by llm()` | Delegates implementation to the LLM |
 
-The compiler extracts semantics from the code -- function name, parameter names, types, and return type -- and uses them to construct the LLM prompt. For additional context beyond what names and types convey, use `sem`:
+The compiler extracts semantics from the code -- function name, parameter names, types, and return type -- and uses them to construct the LLM prompt.
+
+### sem keyword
+
+Use the `sem` keyword to attach semantic descriptions to types, fields, functions, and parameters. These semantic strings are included in the compiler-generated prompt so the LLM sees them at runtime. Prefer `sem` for machine-readable guidance rather than embedding instructions in docstrings.
+
+Examples:
 
 ```jac
+# Attach semantics to a function
 sem translate = "Translate the given text to French. Preserve formatting and tone.";
 def translate(text: str) -> str by llm();
+
+# Attach semantics to a function parameter
+sem translate.text = "Short, plain-language input text to translate.";
+
+# Attach semantics to a type field
+obj Product { has price: float; }
+sem Product.price = "Price in USD, numeric value";
+
+# Attach semantics to an enum value
+enum Priority { LOW, MEDIUM, HIGH }
+sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
+
+!!! warning "Note"
+    Docstrings should not be used to pass context to LLMs. Docstrings are intended for human documentation and are not included in the compiler-generated prompts; use `sem` when you need the compiler to pass extra context to the LLM.
 
 ---
 
 ## Different Providers
 
-### OpenAI
+byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giving you access to 100+ model providers.
 
-```jac
-glob llm = Model(model_name="gpt-4o-mini");
-glob llm = Model(model_name="gpt-4o");
-glob llm = Model(model_name="gpt-4");
-```
+=== "OpenAI"
+    ```jac
+    glob llm = Model(model_name="gpt-4o-mini");
+    ```
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    ```
 
-### Anthropic
+=== "Anthropic"
+    ```jac
+    glob llm = Model(model_name="claude-3-5-sonnet-20241022");
+    ```
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    ```
 
-```jac
-glob llm = Model(model_name="claude-3-5-sonnet-20241022");
-glob llm = Model(model_name="claude-3-opus-20240229");
-glob llm = Model(model_name="claude-3-haiku-20240307");
-```
+=== "Google"
+    ```jac
+    glob llm = Model(model_name="gemini/gemini-2.0-flash");
+    ```
+    ```bash
+    export GOOGLE_API_KEY="..."
+    ```
 
-### Google
+=== "Ollama (Local)"
+    ```jac
+    glob llm = Model(model_name="ollama/llama3:70b");
+    ```
+    No API key needed - runs locally. See [Ollama](https://ollama.ai/) for setup.
 
-```jac
-glob llm = Model(model_name="gemini/gemini-2.0-flash");
-glob llm = Model(model_name="gemini/gemini-pro");
-```
+=== "HuggingFace"
+    ```jac
+    glob llm = Model(model_name="huggingface/meta-llama/Llama-3.3-70B-Instruct");
+    ```
+    ```bash
+    export HUGGINGFACE_API_KEY="hf_..."
+    ```
+
+For model name formats, configuration options, and 100+ additional providers (Azure, AWS Bedrock, Vertex AI, Groq, etc.), see the [byLLM Reference](../../reference/plugins/byllm.md#supported-providers) and [LiteLLM documentation](https://docs.litellm.ai/docs/providers).
 
 ---
 
@@ -127,20 +166,9 @@ glob llm = Model(model_name="gemini/gemini-pro");
 Control creativity (0.0 = deterministic, 2.0 = very creative):
 
 ```jac
-"""Write a creative story about a robot."""
 def write_story(topic: str) -> str by llm(temperature=1.5);
 
-"""Extract the main facts from this text."""
 def extract_facts(text: str) -> str by llm(temperature=0.0);
-```
-
-### Max Tokens
-
-Limit response length:
-
-```jac
-"""Summarize in one sentence."""
-def summarize(text: str) -> str by llm(max_tokens=100);
 ```
 
 ---
@@ -160,7 +188,6 @@ enum Sentiment {
     NEUTRAL
 }
 
-"""Analyze the sentiment of this text."""
 def analyze_sentiment(text: str) -> Sentiment by llm();
 
 with entry {
@@ -184,8 +211,9 @@ import from byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
-"""Summarize this article in 2-3 bullet points."""
 def summarize(article: str) -> str by llm();
+
+sem summarize = "Summarize this article in 2-3 bullet points.";
 
 with entry {
     article = """
@@ -207,8 +235,9 @@ import from byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
-"""Generate a Python function based on the description."""
 def generate_code(description: str) -> str by llm();
+
+sem generate_code = "Generate a Python function based on the description.";
 
 with entry {
     desc = "A function that checks if a string is a palindrome";
@@ -241,12 +270,11 @@ import from byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
-"""Translate text to Spanish."""
-def translate(text: str) -> str by llm();
+def translate2spanish(text: str) -> str by llm();
 
 with entry {
     try {
-        result = translate("Hello");
+        result = translate2spanish("Hello");
         print(result);
     } except Exception as e {
         print(f"AI call failed: {e}");
@@ -270,7 +298,6 @@ glob llm = MockLLM(
     }
 );
 
-"""Translate text."""
 def translate(text: str) -> str by llm();
 
 test "translate" {

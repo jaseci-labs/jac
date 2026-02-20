@@ -1517,14 +1517,16 @@ def _check_and_install_tauri_cli -> None {
     }
 }
 
-"""Build desktop app - build web bundle first, then wrap with Tauri."""
+"""Build desktop app - build web bundle first, then wrap with Tauri.
+
+Uses super().build() to get the web bundle, then adds sidecar and Tauri wrapping.
+"""
 impl DesktopTarget.build(
     self: DesktopTarget,
     entry_file: Path,
     project_dir: Path,
     platform: Optional[str] = None
 ) -> Path {
-    import from jac_client.plugin.src.targets.web_target { WebTarget }
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     console.print("\n🖥️  Building desktop app (Tauri)", style="bold");
     # Check if setup has been run
@@ -1537,9 +1539,8 @@ impl DesktopTarget.build(
     if toml_base_url {
         os.environ[API_BASE_URL_ENV_VAR] = toml_base_url;
     }
-    # Step 1: Build web bundle first (reuse existing pipeline)
+    # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
-    web_target = WebTarget();
     try {
         # Use 'defer' for desktop/Tauri (file:// protocol blocks ES modules)
         web_bundle_path = web_target.build(

@@ -16,6 +16,8 @@ obj NormalizePass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def enter_sub_tag(nd: uni.SubTag) -> None;
     def enter_module(nd: uni.Module) -> None;
+    def enter_type_param(nd: uni.TypeParam) -> None;
+    def enter_type_alias(nd: uni.TypeAlias) -> None;
     def enter_global_vars(nd: uni.GlobalVars) -> None;
     def enter_test(nd: uni.Test) -> None;
     def enter_module_code(nd: uni.ModuleCode) -> None;

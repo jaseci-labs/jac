@@ -32,7 +32,6 @@ def calculate(expression: str) -> str {
 
 """Answer the question using available tools. Be detailed in your response."""
 def answer_question(question: str) -> str by llm(
-    method="ReAct",
     tools=[get_current_datetime, calculate],
     stream=True,
     temperature=0.7

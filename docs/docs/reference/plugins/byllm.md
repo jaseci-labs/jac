@@ -27,18 +27,86 @@ glob llm = Model(model_name="gpt-4o");
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `model_name` | str | Yes | Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet-20240620") |
-| `api_key` | str | No | API key for the model provider |
-| `base_url` | str | No | Custom API endpoint URL |
-| `proxy_url` | str | No | Proxy URL (auto-sets base_url) |
-| `verbose` | bool | No | Enable debug logging |
-| `method` | str | No | Default method ("Reason" for step-by-step) |
-| `tools` | list | No | Default tool functions |
-| `hyperparams` | dict | No | Model-specific parameters (temperature, max_tokens, etc.) |
-| `config` | dict | No | Advanced configuration (http_client, ca_bundle, api_base, etc.) |
+| `api_key` | str | No | API key for the model provider (defaults to environment variable) |
+| `config` | dict | No | Configuration dictionary (see below) |
+
+**Config Dictionary Options:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `base_url` | str | Custom API endpoint URL (aliases: `host`, `api_base`) |
+| `proxy` | bool | Enable proxy mode (uses OpenAI client with base_url) |
+| `http_client` | bool | Enable direct HTTP requests (for custom endpoints) |
+| `ca_bundle` | str/bool | SSL certificate path, `True` for default, `False` to skip verification |
+| `api_key` | str | API key (alternative to constructor parameter) |
+| `verbose` | bool | Enable verbose/debug logging |
+| `outputs` | list | Mock responses for `MockLLM` testing |
+
+**Example with config:**
+
+```jac
+glob llm = Model(
+    model_name="gpt-4o",
+    config={
+        "base_url": "https://your-endpoint.com/v1",
+        "proxy": True
+    }
+);
+```
 
 ### Supported Providers
 
-byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integration.
+byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integration, providing access to 100+ providers.
+
+=== "OpenAI"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="gpt-4o");
+    ```
+    ```bash
+    export OPENAI_API_KEY="sk-..."
+    ```
+
+=== "Anthropic"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="claude-3-5-sonnet-20240620");
+    ```
+    ```bash
+    export ANTHROPIC_API_KEY="sk-ant-..."
+    ```
+
+=== "Google Gemini"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="gemini/gemini-2.0-flash");
+    ```
+    ```bash
+    export GOOGLE_API_KEY="..."
+    ```
+
+=== "Ollama (Local)"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="ollama/llama3:70b");
+    ```
+    No API key needed - runs locally. See [Ollama](https://ollama.ai/).
+
+=== "HuggingFace"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="huggingface/meta-llama/Llama-3.3-70B-Instruct");
+    ```
+    ```bash
+    export HUGGINGFACE_API_KEY="hf_..."
+    ```
+
+**Provider Model Name Formats:**
 
 | Provider | Model Name Format | Example |
 |----------|-------------------|---------|
@@ -47,6 +115,9 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
 | Google | `gemini/*` | `gemini/gemini-2.0-flash` |
 | Ollama | `ollama/*` | `ollama/llama3:70b` |
 | HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
+
+??? tip "Full Provider List"
+    For the complete list of supported providers and model name formats, see the [LiteLLM providers documentation](https://docs.litellm.ai/docs/providers).
 
 ---
 
@@ -121,8 +192,8 @@ glob llm = Model(
 def function_name(param: type) -> return_type by llm();
 
 # With sem for additional context (recommended for ambiguous names)
-sem function_name = "Description of what the function does.";
 def function_name(param: type) -> return_type by llm();
+sem function_name = "Description of what the function does.";
 ```
 
 ### Method Declaration
@@ -190,22 +261,28 @@ def find_date(text: str) -> str | None by llm();
 
 ## Invocation Parameters
 
-Parameters passed to `by llm()`:
+Parameters passed to `by llm()` at call time:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `method` | str | "Reason" for step-by-step reasoning |
-| `tools` | list | Tool functions for agentic behavior |
-| `incl_info` | dict | Additional context key-value pairs |
-| `stream` | bool | Enable streaming output (str only) |
+| `temperature` | float | Controls randomness (0.0 = deterministic, 2.0 = creative). Default: 0.7 |
+| `max_tokens` | int | Maximum tokens in response |
+| `tools` | list | Tool functions for agentic behavior (enables ReAct loop) |
+| `incl_info` | dict | Additional context key-value pairs injected into the prompt |
+| `stream` | bool | Enable streaming output (only supports `str` return type) |
+| `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 
 ### Examples
 
 ```jac
-# With reasoning
-def solve_problem(problem: str) -> str by llm(method="Reason");
+# With temperature control
+def generate_story(prompt: str) -> str by llm(temperature=1.5);
+def extract_facts(text: str) -> str by llm(temperature=0.0);
 
-# With tools
+# With max tokens
+def summarize(text: str) -> str by llm(max_tokens=100);
+
+# With tools (enables ReAct loop)
 def calculate(expression: str) -> float by llm(tools=[add, multiply]);
 
 # With additional context
@@ -214,7 +291,7 @@ def personalized_greeting(name: str) -> str by llm(
 );
 
 # With streaming
-def generate_story(prompt: str) -> str by llm(stream=True);
+def generate_essay(topic: str) -> str by llm(stream=True);
 ```
 
 ---
@@ -237,26 +314,6 @@ sem Customer = "A customer record in the CRM system";
 sem Customer.id = "Unique customer identifier (UUID format)";
 sem Customer.name = "Full legal name of the customer";
 sem Customer.tier = "Service tier: 'basic', 'premium', or 'enterprise'";
-```
-
----
-
-## Semantic Context with `sem`
-
-Use `sem` to provide function-level context beyond what names and types convey:
-
-```jac
-sem translate = """
-Translate the given text to the target language.
-Preserve formatting and technical terms.
-""";
-def translate(text: str, target_language: str) -> str by llm();
-
-sem analyze_feedback = """
-Analyze customer feedback and categorize the main concerns.
-Focus on actionable insights for the product team.
-""";
-def analyze_feedback(feedback: str) -> list[str] by llm();
 ```
 
 ---
@@ -288,7 +345,6 @@ def send_email(to: str, subject: str, body: str) -> bool {
 ### Using Tools
 
 ```jac
-"""Answer questions using available tools."""
 def answer_question(question: str) -> str by llm(
     tools=[get_date, search_db, send_email]
 );
@@ -310,23 +366,10 @@ obj Calculator {
         return self.memory;
     }
 
-    """Perform calculations step by step."""
     def calculate(instructions: str) -> str by llm(
         tools=[self.add, self.clear]
     );
 }
-```
-
-### ReAct Method
-
-For complex multi-step reasoning:
-
-```jac
-"""Research and answer complex questions."""
-def research(question: str) -> str by llm(
-    method="ReAct",
-    tools=[search_web, calculate, get_date]
-);
 ```
 
 ---
@@ -336,7 +379,6 @@ def research(question: str) -> str by llm(
 For real-time token output:
 
 ```jac
-"""Generate a story about the given topic."""
 def generate_story(topic: str) -> str by llm(stream=True);
 
 with entry {
@@ -405,9 +447,7 @@ from enum import Enum
 llm = Model(model_name="gpt-4o")
 
 @by(llm)
-def translate(text: str, language: str) -> str:
-    """Translate text to the target language."""
-    ...
+def translate(text: str, language: str) -> str:  ...
 
 class Sentiment(Enum):
     POSITIVE = "positive"
@@ -415,9 +455,7 @@ class Sentiment(Enum):
     NEUTRAL = "neutral"
 
 @by(llm)
-def analyze(text: str) -> Sentiment:
-    """Analyze the sentiment of the text."""
-    ...
+def analyze(text: str) -> Sentiment: ...
 
 @dataclass
 class Person:
@@ -425,9 +463,7 @@ class Person:
     age: int
 
 @by(llm)
-def extract_person(text: str) -> Person:
-    """Extract person information from text."""
-    ...
+def extract_person(text: str) -> Person: ...
 ```
 
 ---
@@ -441,8 +477,8 @@ def extract_person(text: str) -> Person:
 def extract_emails(text: str) -> list[str] by llm();
 
 # Better - sem adds detail when needed
-sem extract_emails = "Extract all email addresses from the text. Return empty list if none found.";
 def extract_emails(text: str) -> list[str] by llm();
+sem extract_emails = "Extract all email addresses from the text. Return empty list if none found.";
 ```
 
 ### 2. Descriptive Parameters
@@ -503,14 +539,227 @@ with entry {
 
 ---
 
-## Environment Variables
+## LiteLLM Proxy Server
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GOOGLE_API_KEY` | Google AI API key |
-| `HUGGINGFACE_API_KEY` | HuggingFace API key |
+byLLM can connect to a [LiteLLM proxy server](https://docs.litellm.ai/docs/simple_proxy) for enterprise deployments. This allows centralized model management, rate limiting, and cost tracking.
+
+### Setup
+
+1. Deploy LiteLLM proxy following the [official documentation](https://docs.litellm.ai/docs/proxy/deploy)
+
+2. Connect byLLM to the proxy:
+
+```jac
+import from byllm.lib { Model }
+
+glob llm = Model(
+    model_name="gpt-4o",
+    api_key="your_litellm_virtual_key",
+    proxy_url="http://localhost:8000"
+);
+```
+
+```python
+from byllm.lib import Model
+
+llm = Model(
+    model_name="gpt-4o",
+    api_key="your_litellm_virtual_key",
+    proxy_url="http://localhost:8000"
+)
+```
+
+### Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `model_name` | The model to use (must be configured in LiteLLM proxy) |
+| `api_key` | LiteLLM virtual key or master key (not the provider API key) |
+| `proxy_url` | URL of your LiteLLM proxy server |
+
+For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/docs/proxy/virtual_keys).
+
+---
+
+## Creating Custom Model Classes
+
+For self-hosted models or custom APIs not supported by LiteLLM, create a custom model class by inheriting from `BaseLLM`.
+
+### Implementation
+
+=== "Python"
+    ```python
+    from byllm.llm import BaseLLM
+    from openai import OpenAI
+
+    class MyCustomModel(BaseLLM):
+        def __init__(self, model_name: str, **kwargs) -> None:
+            """Initialize the custom model."""
+            super().__init__(model_name, **kwargs)
+
+        def model_call_no_stream(self, params):
+            """Handle non-streaming calls."""
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(**params)
+            return response
+
+        def model_call_with_stream(self, params):
+            """Handle streaming calls."""
+            client = OpenAI(api_key=self.api_key)
+            response = client.chat.completions.create(stream=True, **params)
+            return response
+    ```
+
+=== "Jac"
+    ```jac
+    import from byllm.llm { BaseLLM }
+    import from openai { OpenAI }
+
+    obj MyCustomModel(BaseLLM) {
+        has model_name: str;
+        has config: dict = {};
+
+        def post_init() {
+            super().__init__(model_name=self.model_name, **self.config);
+        }
+
+        def model_call_no_stream(params: dict) {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(**params);
+            return response;
+        }
+
+        def model_call_with_stream(params: dict) {
+            client = OpenAI(api_key=self.api_key);
+            response = client.chat.completions.create(stream=True, **params);
+            return response;
+        }
+    }
+    ```
+
+### Usage
+
+```jac
+glob llm = MyCustomModel(model_name="my-custom-model");
+
+def generate(prompt: str) -> str by llm();
+```
+
+### Required Methods
+
+| Method | Description |
+|--------|-------------|
+| `model_call_no_stream(params)` | Handle standard (non-streaming) LLM calls |
+| `model_call_with_stream(params)` | Handle streaming LLM calls |
+
+The `params` dictionary contains the formatted request including messages, model name, and any additional parameters.
+
+---
+
+## Advanced Python Integration
+
+byLLM provides two modes for Python integration:
+
+### Mode 1: Direct Python Import
+
+Import byLLM directly in Python using the `@by` decorator:
+
+```python
+import jaclang
+from dataclasses import dataclass
+from byllm.lib import Model, Image, by
+
+llm = Model(model_name="gpt-4o")
+
+@dataclass
+class Person:
+    full_name: str
+    description: str
+    year_of_birth: int
+
+@by(llm)
+def get_person_info(img: Image) -> Person: ...
+
+# Usage
+img = Image("photo.jpg")
+person = get_person_info(img)
+print(f"Name: {person.full_name}")
+```
+
+### Mode 2: Implement in Jac, Import to Python (Recommended)
+
+Implement AI features in Jac and import seamlessly into Python:
+
+=== "ai.jac"
+    ```jac
+    import from byllm.lib { Model, Image }
+
+    glob llm = Model(model_name="gpt-4o");
+
+    obj Person {
+        has full_name: str;
+        has description: str;
+        has year_of_birth: int;
+    }
+
+    sem Person.description = "Short biography";
+
+    def get_person_info(img: Image) -> Person by llm();
+    sem get_person_info = "Extract person information from the image.";
+    ```
+
+=== "main.py"
+    ```python
+    import jaclang
+    from ai import Image, Person, get_person_info
+
+    img = Image("photo.jpg")
+    person = get_person_info(img)
+    print(f"Name: {person.full_name}")
+    ```
+
+### Semstrings in Python
+
+Use the `@Jac.sem` decorator for semantic strings in Python:
+
+```python
+from jaclang import JacRuntimeInterface as Jac
+from dataclasses import dataclass
+from byllm.lib import Model, by
+
+llm = Model(model_name="gpt-4o")
+
+@Jac.sem("Represents a personal record", {
+    "name": "Full legal name",
+    "dob": "Date of birth (YYYY-MM-DD)",
+    "ssn": "Last four digits of Social Security Number"
+})
+@dataclass
+class Person:
+    name: str
+    dob: str
+    ssn: str
+
+@by(llm)
+def check_eligibility(person: Person, service: str) -> bool: ...
+```
+
+### Hyperparameters in Python
+
+```python
+@by(llm(temperature=0.3, max_tokens=100))
+def generate_joke() -> str: ...
+```
+
+### Tools in Python
+
+```python
+def get_weather(city: str) -> str:
+    return f"The weather in {city} is sunny."
+
+@by(llm(tools=[get_weather]))
+def answer_question(question: str) -> str: ...
+```
 
 ---
 
@@ -519,5 +768,7 @@ with entry {
 - [byLLM Quickstart Tutorial](../../tutorials/ai/quickstart.md)
 - [Structured Outputs Tutorial](../../tutorials/ai/structured-outputs.md)
 - [Agentic AI Tutorial](../../tutorials/ai/agentic.md)
+- [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md)
+- [Creating byLLM Plugins](creating-plugins.md)
 - [MTP Research Paper](https://arxiv.org/abs/2405.08965)
 - [LiteLLM Documentation](https://docs.litellm.ai/docs)

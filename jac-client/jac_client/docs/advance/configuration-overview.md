@@ -86,6 +86,10 @@ port = 5173
 [plugins.client.vite.resolve]
 # Custom resolve options
 
+# Debug mode (enabled by default)
+[plugins.client]
+debug = true  # Set to false to disable raw error output
+
 # TypeScript configuration (optional)
 [plugins.client.ts.compilerOptions]
 strict = true
@@ -105,6 +109,7 @@ sass = "^1.77.8"
 |---------|---------|--------------|
 | `[project]` | Project metadata | Core Jac config |
 | `[serve]` | Server and routing configuration | See below |
+| `[plugins.client]` | Client plugin settings (debug mode) | See below |
 | `[plugins.client.vite]` | Vite build configuration | [Custom Configuration](./custom-config.md) |
 | `[plugins.client.ts]` | tsconfig.json customization | [Custom Configuration](./custom-config.md) |
 | `[dependencies.npm]` | npm runtime dependencies | [Package Management](./package-management.md) |
@@ -142,6 +147,23 @@ base_route_app = "app"
 ```
 
 With this config, visiting `/` renders the `app` client function directly, making it the default landing page.
+
+### Debug Mode (`[plugins.client]`)
+
+The `[plugins.client]` section configures debug settings for the client plugin:
+
+```toml
+[plugins.client]
+debug = true      # Enable/disable debug mode (default: true)
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `debug` | bool | `true` | When enabled, raw error output is displayed for easier debugging. Set to `false` for cleaner production error messages. |
+
+Debug mode can also be controlled via environment variable:
+
+- `JAC_DEBUG=1` or `JAC_DEBUG=true` enables debug mode regardless of config
 
 ## Configuration Loading
 
