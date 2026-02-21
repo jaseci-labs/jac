@@ -204,6 +204,8 @@ def query_examples(node: Person, alice: Person) {
 
 ## Walkers: Mobile Computation
 
+**Naming:** `Root` (capitalized) is the type of the root node, used in ability declarations like `can X with Root entry`. `root` (lowercase) is the built-in instance, used in expressions like `root ++> node` or `root spawn Walker()`.
+
 Walkers are objects that traverse the graph and execute abilities at each node.
 
 ```jac
@@ -240,6 +242,9 @@ with entry {
 ```
 Hello, Alice!
 ```
+
+!!! warning "Walkers need explicit traversal"
+    A walker spawned at `root` starts there but doesn't automatically visit connected nodes. You must include a `can start with Root entry { visit [-->]; }` ability to begin traversal. Without it, the walker sits at root and its node-specific abilities never fire.
 
 Wait, why only Alice? Because the walker visits root first (via `start`), then visits Alice (via `greet`), but doesn't continue to Bob. The walker needs to be told to continue traversing.
 
@@ -356,10 +361,14 @@ with entry {
 **Output:**
 
 ```
+Person(name='Alice', age=30)
+Person(name='Carol', age=25)
 Found 2 adults
   - Alice
   - Carol
 ```
+
+The `report` keyword does two things: prints the value to the console, and stores it in `result.reports` for programmatic access.
 
 ---
 
@@ -393,8 +402,15 @@ with entry {
     root ++> Person(name="Carol", age=30);
 
     result = root spawn FindFirst();
-    print(f"First adult: {result.reports[0].name}");  # Bob
+    print(f"First adult: {result.reports[0].name}");
 }
+```
+
+**Output:**
+
+```
+Person(name='Bob', age=25)
+First adult: Bob
 ```
 
 Without `disengage`, the walker would continue visiting Carol. With it, the walker stops as soon as it finds Bob. This is especially useful in search walkers where you need to find and modify a specific node (like toggling or deleting a task by ID).
@@ -496,6 +512,19 @@ with entry {
         print(f"  - {user.username}");
     }
 }
+```
+
+**Output:**
+
+```
+User(username='bob')
+User(username='carol')
+Alice's followers:
+  - bob
+  - carol
+User(username='bob')
+Alice's mutual follows:
+  - bob
 ```
 
 ---

@@ -10,6 +10,7 @@ import from collections { OrderedDict }
 import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextlib { contextmanager, suppress }
+import dataclasses;
 import from dataclasses { dataclass, field }
 import from functools { wraps }
 import from http.server { HTTPServer }
@@ -559,48 +560,65 @@ class JacWalker {
     static def spawn_call(
         `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype {
+        import from jaclang.runtimelib.context { CallState }
         warch = `walker.archetype;
         `walker.path = [];
         current_loc = nd.archetype;
         ctx = JacRuntimeInterface.get_context();
         call_state = ctx.call_state.get(None);
-        for i in warch._jac_entry_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                `walker.ignores = [];
-                if call_state {
-                    warch.reports = call_state.reports;
+        owns_call_state = False;
+        if not call_state {
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            owns_call_state = True;
+        }
+        try {
+            for i in warch._jac_entry_funcs_ {
+                if not i.trigger {
+                    i.func(warch, current_loc);
                 }
-                return warch;
+                if `walker.disengaged {
+                    `walker.ignores = [];
+                    return warch;
+                }
+            }
+            while `walker.next {
+                next_anchor = `walker.next.pop(0);
+                if (
+                    (next_anchor not in `walker.ignores)
+                    and not JacWalker._visit_node_recursive(
+                        warch, `walker, next_anchor
+                    )
+                ) {
+                    break;
+                }
+            }
+            if `walker.path {
+                current_loc = `walker.path[-1].archetype;
+            }
+            for i in warch._jac_exit_funcs_ {
+                if not i.trigger {
+                    i.func(warch, current_loc);
+                }
+                if `walker.disengaged {
+                    break;
+                }
+            }
+            `walker.ignores = [];
+            return warch;
+        } finally {
+            if owns_call_state {
+                reports = [];
+                while not call_state.reports.empty() {
+                    item = call_state.reports.get_nowait();
+                    if item is not call_state._sentinel {
+                        reports.append(item);
+                    }
+                }
+                warch.reports = reports;
+                ctx.call_state.reset(call_token);
             }
         }
-        while `walker.next {
-            next_anchor = `walker.next.pop(0);
-            if (
-                (next_anchor not in `walker.ignores)
-                and not JacWalker._visit_node_recursive(warch, `walker, next_anchor)
-            ) {
-                break;
-            }
-        }
-        if `walker.path {
-            current_loc = `walker.path[-1].archetype;
-        }
-        for i in warch._jac_exit_funcs_ {
-            if not i.trigger {
-                i.func(warch, current_loc);
-            }
-            if `walker.disengaged {
-                break;
-            }
-        }
-        `walker.ignores = [];
-        if call_state {
-            warch.reports = call_state.reports;
-        }
-        return warch;
     }
 
     """Async version: Execute all entry abilities for current location.
@@ -760,56 +778,71 @@ class JacWalker {
     static async def async_spawn_call(
         `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
     ) -> WalkerArchetype {
+        import from jaclang.runtimelib.context { CallState }
         warch = `walker.archetype;
         `walker.path = [];
         current_loc = nd.archetype;
         ctx = JacRuntimeInterface.get_context();
         call_state = ctx.call_state.get(None);
-        for i in warch._jac_entry_funcs_ {
-            if not i.trigger {
-                result = i.func(warch, current_loc);
-                if isinstance(result, Coroutine) {
-                    await result;
+        owns_call_state = False;
+        if not call_state {
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            owns_call_state = True;
+        }
+        try {
+            for i in warch._jac_entry_funcs_ {
+                if not i.trigger {
+                    result = i.func(warch, current_loc);
+                    if isinstance(result, Coroutine) {
+                        await result;
+                    }
+                }
+                if `walker.disengaged {
+                    `walker.ignores = [];
+                    return warch;
                 }
             }
-            if `walker.disengaged {
-                `walker.ignores = [];
-                if call_state {
-                    warch.reports = call_state.reports;
-                }
-                return warch;
-            }
-        }
-        while `walker.next {
-            next_anchor = `walker.next.pop(0);
-            if (
-                (next_anchor not in `walker.ignores)
-                and not await JacWalker._async_visit_node_recursive(
-                    warch, `walker, next_anchor
-                )
-            ) {
-                break;
-            }
-        }
-        if `walker.path {
-            current_loc = `walker.path[-1].archetype;
-        }
-        for i in warch._jac_exit_funcs_ {
-            if not i.trigger {
-                result = i.func(warch, current_loc);
-                if isinstance(result, Coroutine) {
-                    await result;
+            while `walker.next {
+                next_anchor = `walker.next.pop(0);
+                if (
+                    (next_anchor not in `walker.ignores)
+                    and not await JacWalker._async_visit_node_recursive(
+                        warch, `walker, next_anchor
+                    )
+                ) {
+                    break;
                 }
             }
-            if `walker.disengaged {
-                break;
+            if `walker.path {
+                current_loc = `walker.path[-1].archetype;
+            }
+            for i in warch._jac_exit_funcs_ {
+                if not i.trigger {
+                    result = i.func(warch, current_loc);
+                    if isinstance(result, Coroutine) {
+                        await result;
+                    }
+                }
+                if `walker.disengaged {
+                    break;
+                }
+            }
+            `walker.ignores = [];
+            return warch;
+        } finally {
+            if owns_call_state {
+                reports = [];
+                while not call_state.reports.empty() {
+                    item = call_state.reports.get_nowait();
+                    if item is not call_state._sentinel {
+                        reports.append(item);
+                    }
+                }
+                warch.reports = reports;
+                ctx.call_state.reset(call_token);
             }
         }
-        `walker.ignores = [];
-        if call_state {
-            warch.reports = call_state.reports;
-        }
-        return warch;
     }
 
     """Jac's spawn operator feature."""
@@ -1097,6 +1130,16 @@ class JacBasics {
         }
         cls._jac_entry_funcs_ = [*entries.values()];
         cls._jac_exit_funcs_ = [*exits.values()];
+        if issubclass(cls, WalkerArchetype)
+        and 'reports' not in cls.__dict__.get('__annotations__', {}) {
+            if not hasattr(cls, '__annotations__') {
+                cls.__annotations__ = {};
+            }
+            cls.__annotations__['reports'] = list;
+            cls.reports = dataclasses.field(
+                default_factory=`list, init=False, repr=False, compare=False
+            );
+        }
         dataclass(eq=False)(cls);
         return cls;
     }

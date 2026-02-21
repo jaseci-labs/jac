@@ -50,7 +50,7 @@ def translate2french(text: str) -> str by llm();
 sem translate2french = "Translate the given text to French";
 
 with entry {
-    result = translate("Hello, how are you?");
+    result = translate2french("Hello, how are you?");
     print(result);
 }
 ```
@@ -79,7 +79,7 @@ def translate2french(text: str) -> str by llm();
 
 | Part | Purpose |
 |------|---------|
-| `translate_to_french` | Function name conveys the intent |
+| `translate2french` | Function name conveys the intent |
 | `(text: str)` | Input parameter with descriptive name and type |
 | `-> str` | Expected return type |
 | `by llm()` | Delegates implementation to the LLM |
@@ -128,7 +128,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Anthropic"
     ```jac
-    glob llm = Model(model_name="claude-3-5-sonnet-20241022");
+    glob llm = Model(model_name="claude-sonnet-4-6");
     ```
     ```bash
     export ANTHROPIC_API_KEY="sk-ant-..."
@@ -157,6 +157,9 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
     ```
 
 For model name formats, configuration options, and 100+ additional providers (Azure, AWS Bedrock, Vertex AI, Groq, etc.), see the [byLLM Reference](../../reference/plugins/byllm.md#supported-providers) and [LiteLLM documentation](https://docs.litellm.ai/docs/providers).
+
+!!! tip "Model names change"
+    AI model names are updated regularly by providers. If an example's model name returns a "not found" error, check the provider's documentation for current model names. The `by llm()` syntax works with any model supported by [LiteLLM](https://docs.litellm.ai/docs/providers).
 
 ---
 

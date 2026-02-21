@@ -161,7 +161,7 @@ def summarize(text: str) -> str by llm(
 );
 
 def creative_story(prompt: str) -> str by llm(
-    model_name="claude-3-opus-20240229",
+    model_name="claude-sonnet-4-6",
     temperature=1.0
 );
 ```

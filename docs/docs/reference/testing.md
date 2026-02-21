@@ -167,6 +167,9 @@ jac test -d tests/ -m 3
 jac test main.jac -t calculator_add -v
 ```
 
+!!! tip "File naming"
+    Avoid naming `.jac` files with a `test_` prefix (e.g., `test_utils.jac`), as this can conflict with Python's module import system. Use descriptive names like `utils_tests.jac` or `my_app.jac` instead.
+
 ---
 
 ## Test Output

@@ -303,6 +303,27 @@ def:priv _private_func -> None { }
 def:protect _protected_func -> None { }
 ```
 
+??? example "Try it: Functions complete example"
+    ```jac
+    def greet(name: str) -> str {
+        return f"Hello, {name}!";
+    }
+
+    can add(a: int, b: int) -> int {
+        return a + b;
+    }
+
+    def apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+        return func(x, y);
+    }
+
+    with entry {
+        print(greet("World"));
+        print(add(3, 4));
+        print(apply(lambda x, y: int -> x * y, 5, 6));
+    }
+    ```
+
 ---
 
 ## Object-Oriented Programming
@@ -430,6 +451,38 @@ obj Account {
     }
 }
 ```
+
+??? example "Try it: Objects and Enums complete example"
+    ```jac
+    enum Color {
+        RED = "red",
+        GREEN = "green",
+        BLUE = "blue"
+    }
+
+    obj Animal {
+        has name: str,
+            sound: str;
+
+        can speak -> str {
+            return f"{self.name} says {self.sound}!";
+        }
+    }
+
+    obj Dog(Animal) {
+        has breed: str;
+
+        can speak -> str {
+            return f"{self.name} the {self.breed} says {self.sound}!";
+        }
+    }
+
+    with entry {
+        dog = Dog(name="Rex", sound="woof", breed="Labrador");
+        print(dog.speak());
+        print(f"Favorite color: {Color.BLUE.value}");
+    }
+    ```
 
 ---
 

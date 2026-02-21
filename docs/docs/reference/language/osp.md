@@ -829,7 +829,9 @@ walker Querier {
 
 ### 1 What are Typed Context Blocks?
 
-Handle different types with specialized code paths. The syntax uses `->Type{code}` with no space between the arrow and type name:
+Typed context blocks let you conditionally execute code based on the runtime type of the current node. Instead of writing separate abilities for each node type, you can handle multiple types within a single ability using `->Type{code}` blocks. This is especially useful when a walker visits a heterogeneous graph with different node types.
+
+The syntax uses `->Type{code}` with no space between the arrow and type name:
 
 ```jac
 walker AnimalVisitor {

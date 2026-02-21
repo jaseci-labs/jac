@@ -9,6 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Bare Impl Files Not Matched to Variant Modules**: Fixed `discover_annex_files` rejecting bare annex files (e.g., `foo.impl.jac`) when the source is a variant (e.g., `foo.cl.jac`) with no plain `foo.jac` head. Bare annex files now match any variant source unless a bare `.jac` head exists that would claim them.
 - **Fix: Bare-Dot Relative Import (`from . import x`) Not Resolved**: Fixed `import from . { x }` silently resolving to `UnknownType`. The import path is now computed directly from the current file's directory, ensuring sibling modules are correctly found and type-checked.
 - **Fix:**: update the jac-check command to print the file names of the files that failed to have clean error message.
+- **Fix: Walker `result.reports` in CLI Mode**: Fixed `report` keyword not populating `result.reports` when running walkers via `jac run` or `jac test`.
 
 ## jaclang 0.10.5 (Latest Release)
 

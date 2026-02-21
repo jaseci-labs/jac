@@ -196,6 +196,47 @@ walker load_feed {
 }
 ```
 
+??? example "Try it: Standalone graph demo (no server needed)"
+    ```jac
+    import from datetime { datetime }
+
+    node Profile {
+        has username: str;
+    }
+
+    node Tweet {
+        has content: str,
+            created_at: str = "";
+    }
+
+    edge Post {}
+    edge Follow {}
+
+    with entry {
+        # Create profiles
+        alice = Profile(username="alice");
+        bob = Profile(username="bob");
+        root ++> alice;
+        root ++> bob;
+
+        # Alice follows Bob
+        alice +>: Follow() :+> bob;
+
+        # Both post tweets
+        t1 = Tweet(content="Hello from Alice!", created_at=datetime.now().isoformat());
+        alice +>: Post() :+> t1;
+
+        t2 = Tweet(content="Bob here!", created_at=datetime.now().isoformat());
+        bob +>: Post() :+> t2;
+
+        # Query Alice's feed (own + followed)
+        feed = [alice ->:Post:->] + [p ->:Post:-> for p in [alice ->:Follow:->]];
+        for tweet in feed {
+            print(f"  {tweet.content}");
+        }
+    }
+    ```
+
 ---
 
 ## Running the App

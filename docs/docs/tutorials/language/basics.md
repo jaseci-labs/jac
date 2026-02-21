@@ -189,6 +189,9 @@ with entry {
 
 ### Match (Pattern Matching)
 
+!!! warning "Match/case uses Python-style indentation"
+    Match case bodies use `case X:` with indentation, not braces. This is the one exception to Jac's brace-based block syntax.
+
 Match case bodies use Python-style indentation, not braces:
 
 ```jac

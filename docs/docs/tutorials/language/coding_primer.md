@@ -1792,7 +1792,7 @@ node Person {
 }
 
 walker Greeter {
-    can start with `root entry {
+    can start with Root entry {
         print("Walker starting journey!");
         visit [-->];  # Visit all connected nodes
     }
@@ -1838,7 +1838,7 @@ with entry {
 ```jac
 walker MyWalker {
     # Runs when walker spawns at root
-    can start with `root entry {
+    can start with Root entry {
         # ...
     }
 
@@ -2010,7 +2010,7 @@ walker FindPerson {
     has target: str;
     has found: bool = False;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2063,7 +2063,7 @@ edge Friendship {
 walker FriendRecommender {
     has recommendations: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2091,7 +2091,7 @@ walker InterestMatcher {
     has target_interest: str;
     has matches: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2208,7 +2208,7 @@ edge Friend {
 }
 
 walker FindFriends {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2283,7 +2283,7 @@ walker FindAncestors {
     has generations: int = 0;
     has max_generations: int = 3;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2344,7 +2344,7 @@ walker CanTake {
     has completed: list;
     has can_take: bool = True;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2366,7 +2366,7 @@ walker FindPath {
     has path: list = [];
     has visited: set = set();
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2439,7 +2439,7 @@ walker RecommendProducts {
     has min_rating: int = 4;
     has recommendations: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2515,7 +2515,7 @@ edge DependsOn {
 walker CheckReady {
     has ready_tasks: list = [];
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2544,7 +2544,7 @@ walker CheckReady {
 walker MarkComplete {
     has task_title: str;
 
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 
@@ -2943,7 +2943,7 @@ edge Friend {
 
 # Walker
 walker Greeter {
-    can start with `root entry {
+    can start with Root entry {
         visit [-->];
     }
 

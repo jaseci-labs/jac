@@ -226,6 +226,26 @@ This clears the global bytecode cache. Works even when the cache is corrupted.
 
 ## Runtime Errors
 
+### NodeAnchor errors between runs
+
+**Error:** `NodeAnchor [...] is not a valid reference!`
+
+**Cause:** Jac persists graph state in `.jac/data/anchor_store.db`. When you run different `.jac` files with different node types in the same directory, stale references can cause errors.
+
+**Fix:**
+
+```bash
+# Clear graph state
+rm -rf .jac
+
+# Or use jac clean
+jac clean --all
+```
+
+**Tip:** When working through tutorials, either use a fresh directory for each example or clear state between runs.
+
+---
+
 ### Walker reports are empty
 
 **Cause:** Walker didn't visit any nodes or didn't call `report`.
@@ -516,7 +536,8 @@ jac check myfile.jac
 
 | Error | Quick Fix |
 |-------|-----------|
-| Cache/setup errors (`jaclang.pycore`, `NodeAnchor`, stalling) | Run `jac purge` |
+| Cache/setup errors (`jaclang.pycore`, stalling) | Run `jac purge` |
+| `NodeAnchor is not a valid reference` | Run `rm -rf .jac` or `jac clean --all` |
 | Walker doesn't run | Add `can start with Root entry { visit [-->]; }` |
 | Missing glob keyword | Use `glob var = value;` in `cl {}` blocks |
 | Enumerate unpacking | Use `for (i, x) in enumerate(...)` |

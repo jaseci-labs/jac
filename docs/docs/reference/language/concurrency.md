@@ -11,6 +11,9 @@ Jac supports Python-style `async/await` for concurrent I/O operations, plus a un
 
 ## Async/Await
 
+!!! note
+    Async functions must be `await`ed in an async context. In `with entry` blocks, use `await` directly or wrap calls in an async ability.
+
 The `async/await` syntax works like Python's -- `async` marks a function as a coroutine, and `await` suspends execution until the awaited operation completes. Walkers can also be async, enabling non-blocking graph traversal with I/O at each node.
 
 ### 1 Async Functions

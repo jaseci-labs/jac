@@ -188,7 +188,11 @@ def example() {
 }
 ```
 
-### 2 Filter Comprehension Syntax
+### 2 Filter and Assign Comprehensions
+
+Jac extends standard comprehension syntax with **filter** (`?`) and **assign** (`=`) operators that work on collections of nodes or objects. These provide concise ways to query and modify groups of items.
+
+**Filter syntax** uses `?` to select matching elements, and **assign syntax** uses `=` to bulk-update matching elements.
 
 Filter collections with `?condition`:
 

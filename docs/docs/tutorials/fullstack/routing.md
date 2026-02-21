@@ -14,6 +14,9 @@ Build multi-page applications with client-side routing.
 !!! info "Single-page vs multi-page"
     If your app is a single-page application (like the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md)), you don't need routing -- a single `def:pub app -> JsxElement` entry point is sufficient. Add routing when your app needs multiple distinct pages (e.g., dashboard, settings, profile).
 
+!!! tip "Browser APIs in client code"
+    Inside `cl { }` blocks, standard JavaScript browser APIs like `URLSearchParams`, `parseInt`, `setInterval`, `clearInterval`, `localStorage`, and `JSON` are available since client code compiles to JavaScript.
+
 Jac-client supports two routing approaches:
 
 1. **File-Based Routing** (Recommended) - Convention over configuration

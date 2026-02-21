@@ -160,7 +160,7 @@ cl {
 
 ### Effect Dependencies
 
-Use list `[dep]` or tuple `(dep1, dep2)` syntax to specify dependencies:
+Use list syntax `[dep1, dep2]` to specify dependencies (similar to React's dependency arrays):
 
 ```jac
 cl {
@@ -381,7 +381,7 @@ cl {
         has submitting: bool = False;
 
         def update_field(field: str, value: str) -> None {
-            form_data[field] = value;
+            form_data = {**form_data, field: value};
         }
 
         def validate() -> bool {

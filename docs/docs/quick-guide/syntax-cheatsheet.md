@@ -2,6 +2,8 @@
 
 This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
 
+**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
+
 ```jac
 # ============================================================
 # Learn Jac in Y Minutes

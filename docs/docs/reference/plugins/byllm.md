@@ -78,7 +78,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
     ```jac
     import from byllm.lib { Model }
 
-    glob llm = Model(model_name="claude-3-5-sonnet-20240620");
+    glob llm = Model(model_name="claude-sonnet-4-6");
     ```
     ```bash
     export ANTHROPIC_API_KEY="sk-ant-..."

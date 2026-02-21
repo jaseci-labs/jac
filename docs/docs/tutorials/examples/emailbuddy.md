@@ -270,6 +270,30 @@ def summarize(
 
 This prevents the context window from overflowing as the walker explores more nodes.
 
+??? example "Try it: AI classification standalone"
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="gpt-4o-mini");
+
+    enum EmailCategory {
+        WORK = "work",
+        PERSONAL = "personal",
+        SPAM = "spam"
+    }
+
+    def classify_email(subject: str, body: str) -> EmailCategory by llm();
+    sem classify_email = "Classify the email based on its subject and body content";
+
+    with entry {
+        result = classify_email(
+            subject="Q3 Budget Review Meeting",
+            body="Please review the attached budget spreadsheet before Friday's meeting."
+        );
+        print(f"Category: {result}");
+    }
+    ```
+
 ---
 
 ## Running EmailBuddy

@@ -513,6 +513,18 @@ def example() {
 }
 ```
 
+??? example "Try it: Literals and collections"
+    ```jac
+    with entry {
+        name = "Jac";
+        nums = [1, 2, 3, 4, 5];
+        info = {"language": name, "version": "0.10"};
+        evens = [x for x in nums if x % 2 == 0];
+        print(f"{name} evens: {evens}");
+        print(f"Info: {info}");
+    }
+    ```
+
 ---
 
 ## Variables and Scope
@@ -1301,6 +1313,19 @@ def example() {
 }
 ```
 
+??? example "Try it: Operators"
+    ```jac
+    with entry {
+        x = 10;
+        y = 3;
+        print(f"{x} + {y} = {x + y}");
+        print(f"{x} ** {y} = {x ** y}");
+        print(f"{x} > {y} = {x > y}");
+        print(f"not False = {not False}");
+        print(f"{x} in [1,5,10] = {x in [1, 5, 10]}");
+    }
+    ```
+
 ---
 
 ## Control Flow
@@ -1720,6 +1745,29 @@ def example() {
     squares_list = [x ** 2 for x in range(100)];
 }
 ```
+
+??? example "Try it: Control flow and generators"
+    ```jac
+    def fizzbuzz(n: int) -> str {
+        if n % 15 == 0 { return "FizzBuzz"; }
+        elif n % 3 == 0 { return "Fizz"; }
+        elif n % 5 == 0 { return "Buzz"; }
+        return str(n);
+    }
+
+    can countdown(n: int) -> Generator[int] {
+        while n > 0 {
+            yield n;
+            n -= 1;
+        }
+    }
+
+    with entry {
+        results = [fizzbuzz(i) for i in range(1, 16)];
+        print(results);
+        print([x for x in countdown(5)]);
+    }
+    ```
 
 ---
 
