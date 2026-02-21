@@ -9,6 +9,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.1.6 (Latest Release)
 
 ## jac-scale 0.1.9 (Latest Release)
+
 - **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
   - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
   - `serve.endpoints.impl.jac`: Walker, function, webhook, WebSocket endpoint registration
