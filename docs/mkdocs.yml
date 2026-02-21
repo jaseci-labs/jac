@@ -10,7 +10,7 @@ nav:
 
   - Get Started:
       - Welcome: "quick-guide/index.md"
-      - Installation: "quick-guide/install.md"
+      - Installation and First Run: "quick-guide/install.md"
       - Core Concepts: "quick-guide/what-makes-jac-different.md"
       - Build an AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
