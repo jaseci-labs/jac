@@ -4,7 +4,7 @@ Create a Jac project with frontend and backend in one codebase.
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
 > - Install: `pip install jaseci`
 > - Time: ~15 minutes

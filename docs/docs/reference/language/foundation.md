@@ -1712,7 +1712,7 @@ def example() {
 **Tutorials:**
 
 - [Jac Basics](../../tutorials/language/basics.md) - Step-by-step introduction to Jac syntax
-- [Hello World](../../quick-guide/hello-world.md) - Your first Jac program
+- [Installation](../../quick-guide/install.md) - Setup and your first Jac program
 
 **Related Reference:**
 

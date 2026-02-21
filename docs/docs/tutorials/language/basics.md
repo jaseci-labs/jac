@@ -4,7 +4,7 @@ Learn Jac syntax and fundamentals, especially if you're coming from Python.
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: Python basics
 > - Time: ~30 minutes
 

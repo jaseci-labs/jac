@@ -70,7 +70,7 @@ Common questions and answers. If you don't see your question below and couldn't 
         2. **Graph thinking** -- Model data as nodes and edges
         3. **Walker pattern** -- Computation that moves through data
 
-        Start here: [Hello World](https://docs.jaseci.org/quick-guide/hello-world/) → [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
+        Start here: [Installation](https://docs.jaseci.org/quick-guide/install/) → [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
 
     ??? question "Can ____ be done in Jac? Is ____ compatible with Jac?"
         **Yes**, if the answer to any of these questions is yes:

@@ -1,4 +1,4 @@
-# Installation
+# Installation and First Run
 
 Get Jac installed and ready to use in under 2 minutes.
 
@@ -140,23 +140,79 @@ Expected output:
 🐛 Issues:        https://github.com/Jaseci-Labs/jaseci/issues
 ```
 
+Run your first program to confirm everything works. Create `hello.jac`:
+
+```jac
+with entry {
+    print("Hello from Jac!");
+}
+```
+
+```bash
+jac hello.jac
+```
+
+You should see `Hello from Jac!` printed to the console.
+
+---
+
+## Scaffold a Full-Stack App
+
+With the `jac-client` plugin installed, scaffold a complete full-stack project in one command:
+
+```bash
+jac create example --use fullstack
+cd example
+jac add
+jac start main.jac
+```
+
+This creates a project with a Jac backend and a React frontend, ready to go at `http://localhost:8000`.
+
+---
+
+## Community Jacpacks
+
+[Jacpacks](https://github.com/jaseci-labs/jacpacks) are ready-made Jac project templates you can spin up instantly. Since `--use` accepts a URL, you can run any jacpack directly from GitHub:
+
+```bash
+jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
+cd my-todo
+jac add
+jac start main.jac
+```
+
+Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI integration features to generate smart shopping lists with costs and nutritional info. It works out of the box with an Anthropic API key:
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
+cd meals-app
+jac add
+jac start main.jac
+```
+
+To use any of the other jacpacks, just swap the URL:
+
+```bash
+jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/<jacpack-name>/<jacpack-name>.jacpack
+```
+
 ---
 
 ## Upgrading Jac
 
-When upgrading to a new version of Jaseci packages, clear the bytecode cache to avoid compatibility issues:
-
 ```bash
-# Upgrade packages
+# Upgrade everything at once
 pip install --upgrade jaseci
 
-# Clear the global bytecode cache
-jac purge
+# Or upgrade individual packages
+pip install --upgrade jaclang
+pip install --upgrade byllm
+pip install --upgrade jac-client
+pip install --upgrade jac-scale
+pip install --upgrade jac-super
 ```
-
-> **⚠️ Important:** After upgrading, always run `jac purge` to clear stale bytecode. Skipping this step can cause errors like "No module named 'jaclang.pycore'", "NodeAnchor is not a valid reference", or the setup hanging during compilation.
-
-If you encounter issues during first-time setup or after upgrading, `jac purge` is your first troubleshooting step.
 
 ---
 
@@ -168,5 +224,5 @@ See the [Contributing Guide](../community/contributing.md) for development setup
 
 ## Next Steps
 
-- [Hello World](hello-world.md) - Write your first program
+- [Core Concepts](what-makes-jac-different.md) - Codespaces, OSP, and compiler-integrated AI
 - [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) - Build a complete full-stack application

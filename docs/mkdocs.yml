@@ -11,7 +11,6 @@ nav:
   - Get Started:
       - Welcome: "quick-guide/index.md"
       - Installation: "quick-guide/install.md"
-      - Hello World: "quick-guide/hello-world.md"
       - Core Concepts: "quick-guide/what-makes-jac-different.md"
       - Build an AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
       - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
@@ -207,6 +206,7 @@ plugins:
 
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
+        quick-guide/hello-world.md: quick-guide/install.md
         quick-guide/first-graph.md: quick-guide/what-makes-jac-different.md
         quick-guide/thinking-in-graphs.md: quick-guide/what-makes-jac-different.md
         quick-guide/first-app.md: tutorials/first-app/build-ai-day-planner.md

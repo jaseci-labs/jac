@@ -205,7 +205,7 @@ Note: `jac` is shorthand for `jac run` -- both work identically.
 
     ---
 
-    Follow the [Hello World](hello-world.md) guide to write your first program in 2 minutes.
+    Follow the [Installation](install.md) guide to get set up and run your first program in 2 minutes.
 
 - :material-web:{ .lg .middle } **Building a web app?**
 
@@ -250,8 +250,7 @@ Jac is designed for developers who want to build AI-powered applications without
 
 | Resource | Description |
 |----------|-------------|
-| [Installation](install.md) | Detailed setup with IDE configuration |
-| [Hello World](hello-world.md) | Your first Jac program (2 min) |
+| [Installation](install.md) | Setup, first program, scaffolding, and Jacpacks |
 | [What Makes Jac Different](what-makes-jac-different.md) | The three core concepts: codespaces, OSP, and AI integration |
 | [Syntax Cheatsheet](syntax-cheatsheet.md) | Comprehensive syntax reference |
 | [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) | Complete 7-part tutorial covering all Jac features |

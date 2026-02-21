@@ -4,7 +4,7 @@ Build your first AI-integrated function in Jac.
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Jac installed with `pip install jaseci`
 > - An API key from OpenAI, Anthropic, or Google
 > - Time: ~20 minutes
