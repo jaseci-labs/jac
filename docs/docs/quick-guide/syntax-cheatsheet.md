@@ -20,13 +20,12 @@
     comment
 *#
 
-"""Module-level docstring.""";
-
+# Docstrings go BEFORE the declaration in Jac
+"""Object-level docstring."""
 obj Documented {
-    """Object-level docstring.""";
 
+    """Method docstring."""
     def method() {
-        """Method docstring.""";
     }
 }
 
