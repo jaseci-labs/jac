@@ -47,6 +47,7 @@ import from byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o-mini");
 
 def translate2french(text: str) -> str by llm();
+sem translate2french = "Translate the given text to French";
 
 with entry {
     result = translate("Hello, how are you?");
@@ -108,8 +109,8 @@ enum Priority { LOW, MEDIUM, HIGH }
 sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
 
-!!! warning "Note"
-    Docstrings should not be used to pass context to LLMs. Docstrings are intended for human documentation and are not included in the compiler-generated prompts; use `sem` when you need the compiler to pass extra context to the LLM.
+!!! tip "Best practice"
+    Always use `sem` to provide context for `by llm()` functions. Docstrings are intended for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
 
 ---
 

@@ -394,6 +394,90 @@ with entry {
 
 ---
 
+## Abilities with `can`
+
+Inside archetypes like `node`, `obj`, and `walker`, you can define **abilities** using the `can` keyword. Abilities are methods that respond to events -- they fire when a walker enters or exits a node:
+
+```jac
+node Greeter {
+    has name: str;
+
+    can greet with entry {
+        print(f"Hello from {self.name}!");
+    }
+}
+```
+
+For regular methods that don't need event triggers, use `def` inside objects (as shown above). The distinction:
+
+| Keyword | Use For | Example |
+|---------|---------|---------|
+| `def` | Regular methods on objects | `def calculate() -> int { ... }` |
+| `can` | Event-triggered abilities on nodes/walkers | `can greet with entry { ... }` |
+
+You'll learn more about `can` in the [OSP tutorial](osp.md).
+
+---
+
+## Access Modifiers
+
+Jac supports access modifiers on functions:
+
+```jac
+# Public endpoint -- auto-generates an HTTP API
+def:pub add_task(title: str) -> dict { ... }
+
+# Private -- requires authentication, per-user data isolation
+def:priv get_tasks -> list { ... }
+
+# Protected -- accessible within the module
+def:protect helper -> None { ... }
+```
+
+| Modifier | Visibility | Use Case |
+|----------|-----------|----------|
+| `def:pub` | Public HTTP endpoint | APIs anyone can call |
+| `def:priv` | Authenticated endpoint | Per-user data isolation |
+| `def:protect` | Module-internal | Helper functions |
+| `def` | Default (module-level) | Regular functions |
+
+These modifiers also apply to walkers (`walker:pub`, `walker:priv`).
+
+---
+
+## Preview: Nodes and Graphs
+
+Jac extends objects with **graph-aware types**. A quick preview before the [OSP tutorial](osp.md):
+
+```jac
+# A node is like an object that can live in a graph
+node Task {
+    has title: str;
+    has done: bool = False;
+}
+
+with entry {
+    # Connect nodes to the built-in root node
+    root ++> Task(title="Buy groceries");
+    root ++> Task(title="Write code");
+
+    # Query connected nodes
+    tasks = [root-->](?:Task);
+    for t in tasks {
+        print(t.title);
+    }
+}
+```
+
+Key differences from `obj`:
+
+- **`node`** instances can be connected in a graph with `++>`
+- **`root`** is a built-in starting node -- nodes connected to it persist across restarts
+- **`[root-->]`** queries all outgoing connections from root
+- **`(?:Task)`** filters by type
+
+---
+
 ## Key Takeaways
 
 | Concept | Python | Jac |
@@ -402,9 +486,12 @@ with entry {
 | Statements | No semicolons | `;` required |
 | Classes | `class` | `obj` |
 | Methods | `def` inside class | `def` inside obj |
+| Abilities | N/A | `can` with event triggers |
 | Attributes | In `__init__` | `has` declarations |
 | Entry point | `if __name__ == "__main__"` | `with entry { }` |
 | Module variables | Global vars | `glob` keyword |
+| Graph data types | N/A | `node`, `edge` |
+| Public APIs | Flask routes | `def:pub` |
 
 ---
 

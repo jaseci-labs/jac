@@ -1,5 +1,7 @@
 # Syntax Quick Reference
 
+This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
+
 ```jac
 # ============================================================
 # Learn Jac in Y Minutes

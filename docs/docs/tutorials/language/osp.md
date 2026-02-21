@@ -363,6 +363,44 @@ Found 2 adults
 
 ---
 
+## Stopping Early with `disengage`
+
+Use `disengage` to immediately stop a walker's traversal -- useful when you've found what you're looking for:
+
+```jac
+node Person {
+    has name: str;
+    has age: int;
+}
+
+walker FindFirst {
+    can start with Root entry {
+        visit [-->];
+    }
+
+    can check with Person entry {
+        if here.age >= 18 {
+            report here;
+            disengage;  # Stop immediately -- don't visit more nodes
+        }
+        visit [-->];
+    }
+}
+
+with entry {
+    root ++> Person(name="Alice", age=15);
+    root ++> Person(name="Bob", age=25);
+    root ++> Person(name="Carol", age=30);
+
+    result = root spawn FindFirst();
+    print(f"First adult: {result.reports[0].name}");  # Bob
+}
+```
+
+Without `disengage`, the walker would continue visiting Carol. With it, the walker stops as soon as it finds Bob. This is especially useful in search walkers where you need to find and modify a specific node (like toggling or deleting a task by ID).
+
+---
+
 ## Entry Points
 
 Walkers can have different entry points:
@@ -532,6 +570,7 @@ The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pu
 | `[-->]` | Query connections |
 | `visit` | Continue walker traversal |
 | `report` | Collect results from walker |
+| `disengage` | Stop walker traversal immediately |
 | `here` | Current node in walker |
 | `spawn` | Start walker at a node |
 

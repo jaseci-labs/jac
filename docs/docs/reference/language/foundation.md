@@ -1184,17 +1184,33 @@ When the `byllm` plugin is installed, `by` enables LLM delegation:
 
 ```jac
 # Function implementation delegated to LLM
-"""Summarize the given text."""
 def summarize(text: str) -> str by llm();
+sem summarize = "Summarize the given text in 2-3 sentences";
 
-"""Translate text to French."""
 def translate(text: str) -> str by llm(model_name="gpt-4");
+sem translate = "Translate the given text to French";
 
 with entry {
-    # Expression processed by LLM
     result = summarize("Hello world");
 }
 ```
+
+Use the **`sem` keyword** to attach semantic descriptions to functions, parameters, and fields. These descriptions are included in the compiler-generated prompt, giving the LLM additional context beyond what it can infer from names and types:
+
+```jac
+obj Ingredient {
+    has name: str;
+    has cost: float;
+}
+sem Ingredient.cost = "Estimated cost in USD";
+
+def plan_shopping(recipe: str) -> list[Ingredient] by llm();
+sem plan_shopping = "Generate a shopping list for the given recipe";
+sem plan_shopping.recipe = "A description of the meal to prepare";
+```
+
+!!! tip
+    Always use `sem` to provide context for `by llm()` functions. Docstrings are for human documentation and are not included in compiler-generated prompts.
 
 See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
 

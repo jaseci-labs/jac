@@ -14,14 +14,27 @@ Connect your frontend components to Jac walkers for data fetching and mutations.
 
 In Jac full-stack apps:
 
-1. **Backend** = Walkers that process data and return results
+1. **Backend** = Functions or walkers that process data and return results
 2. **Frontend** = Components in `cl { }` blocks
-3. **Connection** = `root spawn walker_name()` calls walkers and returns results
+3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root spawn Walker()`)
 
 ```mermaid
 graph LR
-    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>root spawn" --> Backend["Walker<br/>API"]
+    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root spawn" --> Backend["Functions or<br/>Walker API"]
 ```
+
+### Two Backend Approaches
+
+Jac offers two ways to create backend endpoints:
+
+| Approach | Syntax | Best For |
+|----------|--------|----------|
+| **Functions** | `def:pub get_tasks -> list { ... }` | Simple CRUD, quick prototyping |
+| **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
+
+Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
+
+Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data isolation. See the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md) for both approaches side by side.
 
 ---
 

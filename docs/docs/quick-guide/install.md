@@ -160,6 +160,41 @@ If you encounter issues during first-time setup or after upgrading, `jac purge` 
 
 ---
 
+## Creating a Project
+
+Use `jac create` to scaffold a new project:
+
+```bash
+# Full-stack web app (frontend + backend)
+jac create my-app --use client
+
+# Start the development server
+cd my-app
+jac start main.jac
+```
+
+The `--use client` template sets up a complete project with:
+
+- `main.jac` -- Entry point with server and client code
+- `jac.toml` -- Project configuration
+- `styles.css` -- Default stylesheet
+- Bundled frontend dependencies (via Bun)
+
+Available templates:
+
+| Template | Command | What It Creates |
+|----------|---------|-----------------|
+| Client | `--use client` | Full-stack web app with frontend and backend |
+| Fullstack | `--use fullstack` | Alias for `--use client` |
+
+You can also use community templates (Jacpacks):
+
+```bash
+jac create my-app --use <github-url>
+```
+
+---
+
 ## For Contributors
 
 See the [Contributing Guide](../community/contributing.md) for development setup.

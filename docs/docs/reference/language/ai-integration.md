@@ -85,8 +85,8 @@ enum Priority { LOW, MEDIUM, HIGH }
 sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
 
-!!! warning "Docstrings vs `sem`"
-    Docstrings are for human documentation and are **not** included in compiler-generated prompts. Use `sem` when you need the compiler to pass context to the LLM. Only `sem` declarations affect LLM behavior.
+!!! tip "Best practice"
+    Always use `sem` to provide context for `by llm()` functions and parameters. Docstrings are for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
 
 ### 2 Parameter Semantics
 

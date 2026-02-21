@@ -127,14 +127,14 @@ Common questions and answers. If you don't see your question below and couldn't 
 ??? "Project Structure & Best Practices"
 
     ??? question "Can I build a complete app in one .jac file?"
-        Technically yes, but not recommended. Use modular structure for scalability:
-        - [File System Organization](https://docs.jaseci.org/jac-client/file-system/intro/)
-        - [Frontend/Backend Separation](https://docs.jaseci.org/jac-client/file-system/backend-frontend/)
+        Technically yes, but not recommended for larger apps. Use modular structure for scalability:
+        - [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/) -- Project structure and multi-file organization
+        - [jac-client Reference](https://docs.jaseci.org/reference/plugins/jac-client/) -- Complete client plugin documentation
 
     ??? question "Can I use Jac with React/frontend frameworks?"
         Yes. Jac supports:
         - [React component style](https://docs.jaseci.org/tutorials/fullstack/components/)
-        - [Import npm packages](https://docs.jaseci.org/jac-client/imports/#working-with-third-party-node-modules)
+        - [npm package imports](https://docs.jaseci.org/reference/plugins/jac-client/#importing-npm-packages)
 
     ??? question "How do I structure multi-agent AI systems in Jac?"
         - [Use project template](https://docs.jaseci.org/reference/cli/#jac-create)
@@ -145,7 +145,7 @@ Common questions and answers. If you don't see your question below and couldn't 
           - .impl.jac: Implementation details
 
     ??? question "How do I handle authentication and authorization in Jac walkers?"
-        Use built-in authentication functions: [Authentication Functions](https://docs.jaseci.org/jac-client/imports/#jaclogin-user-login)
+        Use built-in authentication functions: [Authentication Tutorial](https://docs.jaseci.org/tutorials/fullstack/auth/)
 
 ??? "Community & Contributing"
 
