@@ -41,16 +41,8 @@ node MathAgent {
 }
 
 with entry {
-    poem_agents = [root --> (`?PoemAgent)];
-    math_agents = [root --> (`?MathAgent)];
-
-    if not poem_agents {
-        root ++> PoemAgent();
-    }
-
-    if not math_agents {
-        root ++> MathAgent();
-    }
+    root ++> PoemAgent();
+    root ++> MathAgent();
 
     user_input_poem = "Write a 4 lines of short poem about Agentic AI";
     supervisor(user_input=user_input_poem) spawn root;
