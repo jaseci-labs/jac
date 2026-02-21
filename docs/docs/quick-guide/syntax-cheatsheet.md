@@ -20,7 +20,10 @@
     comment
 *#
 
-# Docstrings go BEFORE the declaration in Jac
+# Module-level docstring (no semicolon needed)
+"""This module does something useful."""
+
+# Docstrings go BEFORE the declaration they document
 """Object-level docstring."""
 obj Documented {
 
