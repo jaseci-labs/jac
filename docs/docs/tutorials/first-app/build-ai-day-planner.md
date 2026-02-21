@@ -347,15 +347,15 @@ with entry {
 
     # Filter by type -- keep only Dogs
     dogs = pets(?:Dog);
-    print(dogs);  # [Rex, Buddy]
+    print(dogs);  # [Dog(name='Rex', age=5), Dog(name='Buddy', age=2)]
 
     # Filter by field condition
     young = pets(?age < 4);
-    print(young);  # [Whiskers, Buddy]
+    print(young);  # [Cat(name='Whiskers', age=3), Dog(name='Buddy', age=2)]
 
     # Combined type + field filter
     young_dogs = pets(?:Dog, age < 4);
-    print(young_dogs);  # [Buddy]
+    print(young_dogs);  # [Dog(name='Buddy', age=2)]
 }
 ```
 
@@ -596,6 +596,10 @@ jac start main.jac
 ```
 
 The server starts on port 8000 by default. Use `--port 3000` to pick a different port.
+
+Open [http://localhost:8000/docs](http://localhost:8000/docs) to see Swagger UI with all your endpoints listed. You can test each one interactively -- expand an endpoint, click "Try it out", fill in the parameters, and hit "Execute." This is a great way to verify your backend works before building a frontend.
+
+You can also visit [http://localhost:8000/graph](http://localhost:8000/graph) to see a visual representation of the data graph attached to `root`. Right now it will be empty, but once you add tasks (try it from the Swagger UI!), you'll see them appear as nodes connected to `root`.
 
 !!! info "`jac` vs `jac start`"
     In Parts 1-2 we used `jac <file>` to run scripts. `jac start <file>` launches a web server that serves `def:pub` endpoints and any frontend components. Use `jac` for scripts, `jac start` for web apps.
@@ -991,6 +995,9 @@ Open [http://localhost:8000](http://localhost:8000). You should see a clean day 
 4. Stop the server and restart it -- your tasks are still there
 
 That last point is important. The data persisted because nodes live in the graph database, not in memory.
+
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see your tasks as nodes connected to `root`. This visual view updates live as you add, toggle, and delete tasks.
 
 **What You Learned**
 
@@ -1742,6 +1749,9 @@ Open [http://localhost:8000](http://localhost:8000). The app now has two columns
 5. **Restart the server** -- everything persists (both tasks and shopping list)
 
 The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. The type system constrains the LLM's output automatically.
+
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see both `Task` and `ShoppingItem` nodes connected to `root`. After generating a shopping list, you'll see the graph grow with ingredient nodes alongside your tasks.
 
 **What You Learned**
 
@@ -2497,6 +2507,9 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 4. **Refresh the page** -- your data persists (it's in the graph)
 5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph thanks to `def:priv`.
 6. **Restart the server** -- all data persists for both users
+
+!!! tip "Visualize per-user graphs"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see the graph for the currently logged-in user. Log in as different users and compare -- each has their own isolated graph with their own `root`, tasks, and shopping items.
 
 Your day planner is now a **complete, fully functional application** -- authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. All built with `def:priv` endpoints, nodes, and edges.
 
@@ -3532,6 +3545,9 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 4. **Refresh the page** -- your data persists (it's in the graph)
 5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph.
 6. **Restart the server** -- all data persists for both users
+
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see how walkers operate on the same graph structure as the function-based version. The nodes and edges are identical -- only the code that traverses them changed.
 
 **What You Learned**
 
