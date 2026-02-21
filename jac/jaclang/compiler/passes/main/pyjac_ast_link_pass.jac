@@ -23,6 +23,7 @@ obj PyJacAstLinkPass(UniPass) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def link_jac_py_nodes(jac_node: uni.UniNode, py_nodes: list[ast3.AST]) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
+    def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def exit_ability(nd: uni.Ability) -> None;

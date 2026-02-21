@@ -4,7 +4,7 @@ Run your Jac walkers as a production-ready HTTP API server.
 
 > **Prerequisites**
 >
-> - Completed: [Your First App](../first-app/part1-todo-app.md)
+> - Completed: [Build an AI Day Planner](../first-app/build-ai-day-planner.md)
 > - Time: ~15 minutes
 
 ---

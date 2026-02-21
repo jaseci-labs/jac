@@ -209,6 +209,7 @@ obj NaIRGenPass(Transform) {
         key_type_name: str, val_type_name: str, key_type: ir.Type, val_type: ir.Type
     ) -> None;
 
+    def _box_to_jacval(value: ir.Value) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
         target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
@@ -253,4 +254,15 @@ obj NaIRGenPass(Transform) {
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
+    # Primitive emitter dispatch
+    def _ensure_emitters -> None;
+    def _dispatch_primitive_method(
+        type_name: str,
+        method_name: str,
+        target: ir.Value,
+        args: list[ir.Value],
+        type_key: str
+    ) -> (ir.Value | None);
+
+    def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
 }

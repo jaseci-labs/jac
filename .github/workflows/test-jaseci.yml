@@ -102,7 +102,7 @@ jobs:
       run: pytest -x jac-byllm
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_validate_md_files.py
+      run: pytest -q -x docs/tests/test_validate_md_files.jac
 
   test-scale:
     runs-on: ubuntu-latest
@@ -135,23 +135,23 @@ jobs:
 
     - name: Run Backend tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.py
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
 
     - name: Run Webhook tests (without and with MongoDB)
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.py
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
 
     - name: Run Memory Hierarchy tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.py
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
 
     - name: Run jac-client examples
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.py
+        pytest -x jac-scale/jac_scale/tests/test_examples.jac
 
     - name: Run SSO tests
       run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.py
+        pytest -x jac-scale/jac_scale/tests/test_sso.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
@@ -196,8 +196,8 @@ jobs:
 
       - name: Run K8 tests
         run: |
-          pytest  -s -x -n auto jac-scale/jac_scale/tests/test_k8s_utils.py
-          pytest  -s -x -n auto jac-scale/jac_scale/tests/test_deploy_k8s.py
+          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
 
   test-pypi-build:
     runs-on: ubuntu-latest
@@ -217,6 +217,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install build
 
+    - name: Install jaclang for precompilation
+      run: pip install -e jac
+
+    - name: Precompile all packages
+      run: |
+        jac run jac/scripts/precompile_bytecode.jac ./jac
+        jac run jac/scripts/precompile_bytecode.jac ./jac-client
+        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
+        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+
+    - name: Uninstall editable jaclang
+      run: pip uninstall -y jaclang
+
     - name: Build and install packages
       run: |
         python -m build jac --wheel
@@ -230,11 +243,16 @@ jobs:
         pip install pytest
         pip install pytest-asyncio
 
+    - name: Verify cold start with precompiled bytecode
+      run: |
+        jac purge
+        timeout 5 jac --version
+
     - name: Run integration tests
-      run: python scripts/integration_tests.py
+      run: jac run scripts/integration_tests.jac
 
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker_type_ref.jac
-        pytest jac-client/jac_client/tests/test_cli.py::test_create_jac_app
-        pytest jac-byllm/tests/test_byllm.py
+        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
+        pytest jac-byllm/tests/test_byllm.jac

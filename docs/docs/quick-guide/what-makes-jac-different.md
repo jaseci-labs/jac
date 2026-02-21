@@ -1,6 +1,6 @@
 # Core Concepts
 
-Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [tutorials](../tutorials/index.md) and [language reference](../reference/language/index.md).
+Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [language reference](../reference/language/foundation.md).
 
 This page focuses on the three concepts that Jac adds beyond traditional programming languages. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
 
@@ -204,6 +204,6 @@ In practice, these compose: walkers traverse a graph on the server, delegate dec
 ## Next Steps
 
 - [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- Side-by-side comparison with a traditional stack
-- [Build Your First App](../tutorials/first-app/part1-todo-app.md) -- Apply these concepts in a working app
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) -- Apply these concepts in a working app
 - [Object-Spatial Programming](../tutorials/language/osp.md) -- Full tutorial on nodes, edges, and walkers
 - [byLLM Quickstart](../tutorials/ai/quickstart.md) -- Build an AI-integrated function

@@ -29,6 +29,8 @@ obj UnparsePass(UniPass) {
     # Module level
     def exit_module(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag) -> None;
+    def exit_type_alias(nd: uni.TypeAlias) -> None;
+    def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_test(nd: uni.Test) -> None;
     # Blocks

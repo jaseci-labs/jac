@@ -16,7 +16,7 @@ code organization.
 """
 import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { discover_annex_files }
+import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
 import from jaclang.jac0core.passes.transform { Transform }
 
 with entry {

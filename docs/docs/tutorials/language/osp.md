@@ -517,7 +517,7 @@ Jac gives you two ways to expose server logic: `def:pub` functions and `walker` 
 !!! tip "Rule of thumb"
     Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
 
-The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 1, then refactors to walkers in [Part 3](../first-app/part3-multi-user.md) -- showing exactly when and why to make the switch.
+The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-multi-user-support) -- showing exactly when and why to make the switch.
 
 ---
 
@@ -541,9 +541,9 @@ The [First App Tutorial](../first-app/part1-todo-app.md) uses `def:pub` in Part 
 
 **Continue Learning:**
 
-- [Testing](testing.md) - Test your nodes and walkers
+- [Testing](../../reference/testing.md) - Test your nodes and walkers
 - [AI Integration](../ai/quickstart.md) - Add LLM capabilities
-- [First App Tutorial](../first-app/part1-todo-app.md) - Review the todo app example
+- [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) - Build a complete app with OSP concepts
 
 **Reference:**
 

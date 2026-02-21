@@ -7,6 +7,7 @@
 - [Project Configuration](#project-configuration) - jac.toml settings
 - [Python Interoperability](#python-interoperability) - Using Python from Jac
 - [JavaScript/npm Interoperability](#javascriptnpm-interoperability) - Using JS from Jac
+- [IDE & AI Tool Integration](#ide--ai-tool-integration) - Context files for AI coding tools
 
 ---
 
@@ -173,7 +174,7 @@ Jac supports multi-file configuration with profile-based overrides.
 
 ```bash
 # Via --profile flag
-jac run app.jac --profile prod
+jac run --profile prod app.jac
 jac start --profile staging
 
 # Via JAC_PROFILE environment variable
@@ -370,5 +371,50 @@ cl {
     }
 }
 ```
+
+---
+
+## IDE & AI Tool Integration
+
+Jac is a new language, so AI coding assistants may hallucinate syntax from outdated or nonexistent versions. The Jaseci team maintains an official condensed language reference designed for LLM context windows: [jaseci-llmdocs](https://github.com/jaseci-labs/jaseci-llmdocs).
+
+### Setup
+
+Grab the latest `candidate.txt` and add it to your AI tool's persistent context:
+
+```bash
+curl -LO https://github.com/jaseci-labs/jaseci-llmdocs/releases/latest/download/candidate.txt
+```
+
+### Context File Locations
+
+| Tool | Context File |
+|------|-------------|
+| Claude Code | `CLAUDE.md` in project root (or `~/.claude/CLAUDE.md` for global) |
+| Gemini CLI | `GEMINI.md` in project root (or `~/.gemini/GEMINI.md` for global) |
+| Cursor | `.cursor/rules/jac-reference.mdc` (or Settings > Rules) |
+| Antigravity | `GEMINI.md` in project root (or `.antigravity/rules.md`) |
+| OpenAI Codex | `AGENTS.md` in project root (or `~/.codex/AGENTS.md` for global) |
+
+### Quick Setup Commands
+
+```bash
+# Claude Code
+cat candidate.txt >> CLAUDE.md
+
+# Gemini CLI
+cat candidate.txt >> GEMINI.md
+
+# Cursor
+mkdir -p .cursor/rules && cp candidate.txt .cursor/rules/jac-reference.mdc
+
+# Antigravity
+cat candidate.txt >> GEMINI.md
+
+# OpenAI Codex
+cat candidate.txt >> AGENTS.md
+```
+
+When you update Jac, pull a fresh copy from the releases page to stay current.
 
 ---

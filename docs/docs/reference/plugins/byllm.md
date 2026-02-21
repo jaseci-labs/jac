@@ -10,6 +10,12 @@ Complete reference for byLLM, the AI integration framework implementing Meaning-
 pip install byllm
 ```
 
+For video support, install with the `video` extra:
+
+```bash
+pip install byllm[video]
+```
+
 ---
 
 ## Model Configuration
@@ -396,6 +402,197 @@ with entry {
 
 ---
 
+## Multimodal Inputs
+
+byLLM supports image and video inputs through the `Image` and `Video` types. These can be used as parameters in any `by llm()` function or method.
+
+### Image Type
+
+Import and use the `Image` type for image inputs:
+
+```jac
+import from byllm.lib { Model, Image }
+
+glob llm = Model(model_name="gpt-4o");
+
+"""Describe what you see in this image."""
+def describe_image(img: Image) -> str by llm();
+
+with entry {
+    image = Image("photo.jpg");
+    description = describe_image(image);
+    print(description);
+}
+```
+
+#### Supported Input Formats
+
+The `Image` constructor accepts multiple formats:
+
+| Format | Example |
+|--------|---------|
+| File path | `Image("photo.jpg")` |
+| URL (http/https) | `Image("https://example.com/image.png")` |
+| Google Cloud Storage | `Image("gs://bucket/path/image.png")` |
+| Data URL | `Image("data:image/png;base64,...")` |
+| PIL Image | `Image(pil_image)` |
+| Bytes | `Image(raw_bytes)` |
+| BytesIO | `Image(bytes_io_buffer)` |
+| pathlib.Path | `Image(Path("photo.jpg"))` |
+
+#### In-Memory Usage
+
+```jac
+import from byllm.lib { Image }
+import io;
+import from PIL { Image as PILImage }
+
+with entry {
+    pil_img = PILImage.open("photo.jpg");
+
+    # From BytesIO buffer
+    buf = io.BytesIO();
+    pil_img.save(buf, format="PNG");
+    img_from_buffer = Image(buf);
+
+    # From raw bytes
+    img_from_bytes = Image(buf.getvalue());
+
+    # From PIL image directly
+    img_from_pil = Image(pil_img);
+}
+```
+
+### Structured Output from Images
+
+Image inputs combine with all return types -- primitives, enums, objects, and lists:
+
+```jac
+import from byllm.lib { Model, Image }
+
+glob llm = Model(model_name="gpt-4o");
+
+obj LineItem {
+    has description: str;
+    has quantity: int;
+    has price: float;
+}
+
+obj Receipt {
+    has store_name: str;
+    has date: str;
+    has items: list[LineItem];
+    has total: float;
+}
+
+"""Extract all information from this receipt image."""
+def parse_receipt(img: Image) -> Receipt by llm();
+
+with entry {
+    receipt = parse_receipt(Image("receipt.jpg"));
+    print(f"Store: {receipt.store_name}");
+    for item in receipt.items {
+        print(f"  - {item.description}: ${item.price}");
+    }
+    print(f"Total: ${receipt.total}");
+}
+```
+
+### Video Type
+
+The `Video` type processes videos by extracting frames at a configurable rate:
+
+```jac
+import from byllm.lib { Model, Video }
+
+glob llm = Model(model_name="gpt-4o");
+
+"""Describe what happens in this video."""
+def explain_video(video: Video) -> str by llm();
+
+with entry {
+    video = Video(path="sample_video.mp4", fps=1);
+    explanation = explain_video(video);
+    print(explanation);
+}
+```
+
+!!! note "Video requires extra dependency"
+    Video support requires `pip install byllm[video]`.
+
+#### Video Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | str | required | Path to the video file |
+| `fps` | int | 1 | Frames per second to extract |
+
+Lower `fps` values extract fewer frames, reducing token usage. Higher values provide more temporal detail.
+
+#### Structured Output from Videos
+
+```jac
+import from byllm.lib { Model, Video }
+
+glob llm = Model(model_name="gpt-4o");
+
+obj VideoAnalysis {
+    has summary: str;
+    has key_events: list[str];
+    has duration_estimate: str;
+    has content_type: str;
+}
+
+"""Analyze this video and extract key information."""
+def analyze_video(video: Video) -> VideoAnalysis by llm();
+```
+
+### Multimodal with Tools
+
+Image and video inputs work with tool calling:
+
+```jac
+import from byllm.lib { Model, Image }
+
+glob llm = Model(model_name="gpt-4o");
+
+"""Search for products matching the description."""
+def search_products(query: str) -> list[str] {
+    return [f"Product matching '{query}' - $29.99"];
+}
+
+"""Look at the image and find similar products."""
+def find_similar_products(img: Image) -> str by llm(
+    tools=[search_products]
+);
+
+with entry {
+    results = find_similar_products(Image("shoe.jpg"));
+    print(results);
+}
+```
+
+### Python Multimodal Integration
+
+Multimodal works in both Python integration modes:
+
+```python
+import jaclang
+from byllm.lib import Model, Image, by
+
+llm = Model(model_name="gpt-4o")
+
+@by(llm)
+def describe(img: Image) -> str: ...
+
+img = Image("photo.jpg")
+print(describe(img))
+```
+
+For a step-by-step walkthrough, see the [Multimodal AI Tutorial](../../tutorials/ai/multimodal.md).
+
+---
+
 ## Context Methods
 
 ### incl_info
@@ -536,6 +733,105 @@ with entry {
     }
 }
 ```
+
+---
+
+## Testing with MockLLM
+
+Use `MockLLM` for deterministic testing without API calls. Mock responses are returned sequentially from the `outputs` list:
+
+```jac
+import from byllm.lib { MockLLM }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    config={
+        "outputs": ["Mocked response 1", "Mocked response 2"]
+    }
+);
+
+def translate(text: str) -> str by llm();
+def summarize(text: str) -> str by llm();
+
+test "translate returns first mock" {
+    result = translate("Hello");
+    assert result == "Mocked response 1";
+}
+
+test "summarize returns second mock" {
+    result = summarize("Long text...");
+    assert result == "Mocked response 2";
+}
+```
+
+`MockLLM` is useful for:
+
+- Unit testing LLM-powered functions without API costs
+- Deterministic assertions on function behavior
+- CI/CD pipelines where API keys aren't available
+
+---
+
+## Complex Structured Output Example
+
+byLLM validates that responses match the declared return type, coercing when possible (e.g., `"5"` → `5`) and raising errors when coercion fails. This enables deeply nested structured outputs:
+
+??? example "Resume Parser"
+
+    ```jac
+    import from byllm.lib { Model }
+    import from typing { Optional }
+
+    glob llm = Model(model_name="gpt-4o-mini");
+
+    obj Education {
+        has degree: str;
+        has institution: str;
+        has year: int;
+    }
+
+    obj Experience {
+        has title: str;
+        has company: str;
+        has years: int;
+        has description: str;
+    }
+
+    obj Resume {
+        has name: str;
+        has email: str;
+        has phone: Optional[str];
+        has skills: list[str];
+        has education: list[Education];
+        has experience: list[Experience];
+    }
+
+    def parse_resume(text: str) -> Resume by llm();
+
+    with entry {
+        resume_text = """
+        John Smith
+        john.smith@email.com | (555) 123-4567
+
+        SKILLS: Python, JavaScript, Machine Learning, AWS
+
+        EDUCATION
+        BS Computer Science, MIT, 2018
+        MS Data Science, Stanford, 2020
+
+        EXPERIENCE
+        Senior Engineer at Google (3 years) - Led recommendation systems team
+        Software Developer at Startup Inc (2 years) - Full-stack web development
+        """;
+
+        resume = parse_resume(resume_text);
+        print(f"Name: {resume.name}");
+        print(f"Skills: {', '.join(resume.skills)}");
+        for edu in resume.education {
+            print(f"  - {edu.degree} from {edu.institution} ({edu.year})");
+        }
+    }
+    ```
 
 ---
 

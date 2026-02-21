@@ -128,8 +128,8 @@ test "core fixture emits expected constructs" {
         assert pattern in js_code;
     }
 
-    # Support strings within jsx
-    assert "\"Authentication\" App" in js_code;
+    # Support strings within jsx (quotes in JSX text must be escaped)
+    assert "\\\"Authentication\\\" App" in js_code;
 
     assert_balanced_syntax(js_code, core_fixture);
     assert_no_jac_keywords(js_code, core_fixture);
@@ -642,6 +642,131 @@ test "separated files" {
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code;
     assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.strip()});" in js_code;
+}
+
+test "separated defpub generates rpc stubs" {
+    # Compile the client module directly. It uses `sv import` to reference
+    # def:pub functions defined in separated_defpub.jac (the main module).
+    fixture = "separated_defpub_client.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The sv-imported def:pub functions must produce __jacCallFunction stubs
+    assert "__jacCallFunction" in js_code , (
+        "sv import of def:pub functions must generate __jacCallFunction RPC stubs"
+    );
+
+    # Each def:pub function should have a stub with the correct name
+    for func_name in ["add_task", "get_tasks", "toggle_task"] {
+        expected = '__jacCallFunction("' + func_name + '"';
+        assert expected in js_code , (
+            "Missing RPC stub for def:pub function '" + func_name + "'"
+        );
+    }
+
+    # The __jacCallFunction import should be present
+    assert 'import { __jacCallFunction } from "@jac/runtime";' in js_code , (
+        "__jacCallFunction import from @jac/runtime is required"
+    );
+
+    # Stubs should be async functions
+    for func_name in ["add_task", "get_tasks", "toggle_task"] {
+        assert ("async function " + func_name + "(") in js_code , (
+            "RPC stub for '" + func_name + "' should be an async function"
+        );
+    }
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
+    # When a .cl.jac file has a separate .impl.jac file, both the main pass
+    # and the child pass for the impl module may independently inject
+    # __jacCallFunction from @jac/runtime. The import must appear only once.
+    fixture = "defpub_impl_dedup.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The import must be present
+    import_line = 'import { __jacCallFunction } from "@jac/runtime";';
+    assert import_line in js_code , (
+        "__jacCallFunction import from @jac/runtime is required"
+    );
+
+    # It must appear exactly once (no duplicates)
+    import_count = js_code.count(import_line);
+    assert import_count == 1 , (
+        f"Expected exactly 1 __jacCallFunction import, found {import_count}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "lexer does not treat comparison lt as jsx tag" {
+    # BUG: `i<points` in a for-loop causes the lexer to enter JSX_TAG
+    # mode because `<` followed by an alpha char is always treated as a
+    # JSX opening tag.  This corrupts the mode state machine, causing
+    # the compiler to hang in an infinite loop.
+    fixture = "jsx_lt_comparison_bug.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The for-loop comparison must compile to JS `<` operator, NOT a JSX tag.
+    assert "for " in js_code , "for-loop should be present in output";
+    assert "i < points.length" in js_code or "(i < points.length)" in js_code , (
+        "Comparison `i<points.length` must emit as `<` operator, not JSX"
+    );
+    assert "filter_points" in js_code;
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "jsx text with quotes does not produce double-double quotes" {
+    # BUG: JSX text content containing quote characters (e.g. "text")
+    # is wrapped in an extra pair of quotes by gen_literal, producing
+    # ""text"" which is invalid JavaScript.
+    fixture = "jsx_text_quotes_bug.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The generated JS must NOT contain unescaped double-double quotes.
+    # Valid:   "\"Try: show all to reset\""  (escaped inner quotes)
+    # Invalid: ""Try: show all to reset""    (raw double-double quotes)
+    import re;
+    unescaped_double_quotes = re.findall(r'(?<!\\)""', js_code);
+    assert len(unescaped_double_quotes) == 0 , (
+        f"Unescaped double-double quotes found in generated JS — "
+        f"quote characters in JSX text are being double-wrapped:\n{js_code}"
+    );
+
+    # The text content should appear in the output with escaped quotes.
+    assert "Try: show all to reset" in js_code , (
+        "JSX text content with quotes should appear in output"
+    );
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "jac runtime is defined when referenced in generated js" {
+    # When the compiler emits _jac.* calls (e.g. _jac.list.sort,
+    # _jac.str.capitalize), the generated JS must define _jac.
+    # Previously _jac was referenced but never provided, causing
+    # "ReferenceError: _jac is not defined" at runtime.
+    fixture = "prim_jac_runtime.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The compiled JS should contain _jac.* calls for these operations
+    assert "_jac." in js_code , (
+        "Expected _jac.* runtime calls in generated JS for primitives "
+        "that have no direct JS equivalent"
+    );
+
+    # The _jac namespace must be defined (inlined as const _jac = {...})
+    assert "const _jac" in js_code , (
+        "Generated JS references _jac but never defines it. "
+        "This causes 'ReferenceError: _jac is not defined' at runtime."
+    );
+
+    # Verify the runtime object contains the expected namespaces
+    for ns in ["str:", "list:", "dict:", "builtin:"] {
+        assert ns in js_code , (f"_jac runtime missing namespace '{ns.rstrip(':')}'");
+    }
+
+    assert_balanced_syntax(js_code, fixture);
 }
 
 test "convert to js import path preserves js format" {

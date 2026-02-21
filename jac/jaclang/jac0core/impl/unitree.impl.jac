@@ -384,7 +384,10 @@ impl UniScopeNode.lookup(
     if (name in self.names_in_scope) {
         return self.names_in_scope[name];
     }
-    if ((deep and self.parent_scope) and (sym := self.parent_scope.lookup(name, deep))) {
+    if (
+        (deep and self.parent_scope)
+        and (sym := self.parent_scope.lookup(name, deep, incl_inner_scope))
+    ) {
         return sym;
     }
     if incl_inner_scope {
@@ -890,6 +893,7 @@ impl Module.init(
     self.stub_only = stub_only;
     self.impl_mod: list[Module] = [];
     self.test_mod: list[Module] = [];
+    self.variant_mod: list[Module] = [];
     self.src_terminals: list[Token] = terminals;
     self.is_raised_from_py: bool = False;
     self.has_syntax_errors: bool = False;
@@ -941,6 +945,44 @@ impl ProgramModule.init(self: ProgramModule, main_mod: (Module | None) = None) -
     self.main = main_mod or Module.make_stub();
     UniNode.init(self, kid=[self.main]);
     self.hub: dict[(str, Module)] = {self.loc.mod_path: main_mod} if main_mod else {};
+}
+
+impl TypeParam.init(
+    self: TypeParam,
+    name: Name,
+    bound: (Expr | None),
+    default_val: (Expr | None),
+    kid: Sequence[UniNode]
+) -> None {
+    self.name = name;
+    self.bound = bound;
+    self.default_val = default_val;
+    UniNode.init(self, kid=kid);
+    AstSymbolNode.init(
+        self, sym_name=name.value, name_spec=name, sym_category=SymbolType.TYPE
+    );
+}
+
+impl TypeAlias.init(
+    self: TypeAlias,
+    name: Name,
+    type_params: (Sequence[TypeParam] | None),
+    value: Expr,
+    access: (SubTag[Token] | None),
+    kid: Sequence[UniNode],
+    doc: (String | None) = None
+) -> None {
+    self.name = name;
+    self.type_params: list[TypeParam] = `list(type_params) if type_params else [];
+    self.value = value;
+    UniNode.init(self, kid=kid);
+    AstSymbolNode.init(
+        self, sym_name=name.value, name_spec=name, sym_category=SymbolType.TYPE
+    );
+    AstAccessNode.init(self, access=access);
+    AstDocNode.init(self, doc=doc);
+    UniScopeNode.init(self, name=self.sym_name);
+    ContextAwareNode.init(self);
 }
 
 impl GlobalVars.init(
@@ -1257,11 +1299,13 @@ impl Archetype.init(
     body: Sequence[ArchBlockStmt] | ImplDef | None,
     kid: Sequence[UniNode],
     doc: (String | None) = None,
-    decorators: (Sequence[Expr] | None) = None
+    decorators: (Sequence[Expr] | None) = None,
+    type_params: (Sequence[TypeParam] | None) = None
 ) -> None {
     self.name = name;
     self.arch_type = arch_type;
     self.base_classes: list[Expr] = `list(base_classes) if base_classes else [];
+    self.type_params: list[TypeParam] = `list(type_params) if type_params else [];
     UniNode.init(self, kid=kid);
     AstSymbolNode.init(
         self,

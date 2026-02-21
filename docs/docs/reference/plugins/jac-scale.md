@@ -27,7 +27,10 @@ jac start app.jac
 | `--port` | Server port | 8000 |
 | `--host` | Bind address | 0.0.0.0 |
 | `--workers` | Number of workers | 1 |
+| `--dev` | Hot Module Replacement (with jac-client) | false |
 | `--reload` | Hot reload on changes | false |
+| `--no-client` | Skip client bundling (API only) | false |
+| `--faux` | Print generated API docs only (no server) | false |
 | `--scale` | Deploy to Kubernetes | false |
 | `--build` `-b` | Build and push Docker image (with --scale) | false |
 | `--experimental` `-e` | Install from repo instead of PyPI (with --scale) | false |
@@ -43,12 +46,22 @@ jac start app.jac --port 3000
 # Multiple workers
 jac start app.jac --workers 4
 
-# Development with hot reload
-jac start app.jac --reload
+# Development with HMR (requires jac-client)
+jac start app.jac --dev
+
+# API only -- skip client bundling
+jac start app.jac --dev --no-client
+
+# Preview generated API endpoints without starting
+jac start app.jac --faux
 
 # Production
 jac start app.jac --host 0.0.0.0 --port 8000 --workers 4
 ```
+
+### Default Persistence
+
+When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
 
 ---
 
@@ -88,6 +101,47 @@ curl -X POST http://localhost:8000/walker/search \
 ### Response Format
 
 Walker `report` values become the response.
+
+---
+
+## Middleware Walkers
+
+Walkers prefixed with `_` act as middleware hooks that run before or around normal request processing.
+
+### Request Logging
+
+```jac
+walker _before_request {
+    has request: dict;
+
+    can log with Root entry {
+        print(f"Request: {self.request['method']} {self.request['path']}");
+    }
+}
+```
+
+### Authentication Middleware
+
+```jac
+walker _authenticate {
+    has headers: dict;
+
+    can check with Root entry {
+        token = self.headers.get("Authorization", "");
+
+        if not token.startswith("Bearer ") {
+            report {"error": "Unauthorized", "status": 401};
+            return;
+        }
+
+        # Validate token...
+        report {"authenticated": True};
+    }
+}
+```
+
+!!! tip "Middleware vs Built-in Auth"
+    The `_authenticate` middleware pattern gives you custom authentication logic. For standard JWT authentication, use jac-scale's built-in auth endpoints (`/user/register`, `/user/login`) instead -- see [Authentication](#authentication) below.
 
 ---
 
@@ -137,6 +191,29 @@ walker :pub list_users {
 ```
 
 Accessible at `GET /custom/users`.
+
+### Path Parameters
+
+Define path parameters using `{param_name}` syntax:
+
+```jac
+import from http { HTTPMethod }
+
+@restspec(method=HTTPMethod.GET, path="/items/{item_id}")
+walker :pub get_item {
+    has item_id: str;
+    can fetch with Root entry { report {"item_id": self.item_id}; }
+}
+
+@restspec(method=HTTPMethod.GET, path="/users/{user_id}/orders")
+walker :pub get_user_orders {
+    has user_id: str;          # Path parameter
+    has status: str = "all";   # Query parameter
+    can fetch with Root entry { report {"user_id": self.user_id, "status": self.status}; }
+}
+```
+
+Parameters are classified as: **path** (matches `{name}` in path) → **file** (`UploadFile` type) → **query** (GET) → **body** (other methods).
 
 ### Functions
 
@@ -865,21 +942,45 @@ jac-scale uses a tiered memory system:
 
 ## Kubernetes Deployment
 
-### Deploy
+### Deployment Modes
 
-```bash
-# Deploy to Kubernetes
-jac start app.jac --scale
+| Mode | Command | Use Case |
+|------|---------|----------|
+| **Development** | `jac start app.jac --scale` | Fast iteration -- deploys without building a Docker image |
+| **Production** | `jac start app.jac --scale --build` | Builds and pushes Docker image to registry before deploying |
 
-# Build Docker image and deploy
-jac start app.jac --scale --build
+**Production mode** requires Docker credentials:
+
+```env
+# .env
+DOCKER_USERNAME=your-dockerhub-username
+DOCKER_PASSWORD=your-dockerhub-password-or-token
 ```
+
+### Auto-Provisioning
+
+On first deployment, `jac start --scale` automatically provisions:
+
+- **Redis** -- StatefulSet with persistent storage (caching layer)
+- **MongoDB** -- StatefulSet with persistent storage (graph persistence)
+- **Application Deployment** -- Your Jac application pod(s)
+- **Services** -- NodePort service for external access
+- **ConfigMaps** -- Application configuration
+
+Subsequent deployments only update the application -- databases persist across deployments.
 
 ### Remove Deployment
 
 ```bash
 jac destroy app.jac
 ```
+
+This removes all Kubernetes resources created by jac-scale:
+
+- Application deployments and pods
+- Redis and MongoDB StatefulSets
+- Services and persistent volumes
+- ConfigMaps and secrets
 
 ### Environment Variables
 
@@ -1093,6 +1194,89 @@ jac start app.jac --scale --build
 ```
 
 This eliminates the need for manual `kubectl create secret` commands after deployment.
+
+---
+
+## Setting Up Kubernetes
+
+### Docker Desktop (Easiest)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Open Settings > Kubernetes
+3. Check "Enable Kubernetes"
+4. Click "Apply & Restart"
+
+### Minikube
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
+### MicroK8s (Linux)
+
+```bash
+sudo snap install microk8s --classic
+microk8s enable dns storage
+alias kubectl='microk8s kubectl'
+```
+
+---
+
+## Troubleshooting
+
+### Application Not Accessible
+
+```bash
+# Check pod status
+kubectl get pods
+
+# Check service
+kubectl get svc
+
+# For minikube, use tunnel
+minikube service jaseci
+```
+
+### Database Connection Issues
+
+```bash
+# Check StatefulSets
+kubectl get statefulsets
+
+# Check persistent volumes
+kubectl get pvc
+
+# View database logs
+kubectl logs -l app=mongodb
+kubectl logs -l app=redis
+```
+
+### Build Failures (--build mode)
+
+- Ensure Docker daemon is running
+- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+- Check disk space for image building
+
+### General Debugging
+
+```bash
+# Describe a pod for events
+kubectl describe pod <pod-name>
+
+# Get all resources
+kubectl get all
+
+# Check events
+kubectl get events --sort-by='.lastTimestamp'
+```
 
 ---
 

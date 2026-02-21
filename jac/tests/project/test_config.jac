@@ -574,6 +574,63 @@ test "get config force discover" {
     }
 }
 
+"""Test that get_config with start_path discovers config from target directory instead of cwd."""
+test "get config with start path" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        # Create two separate projects
+        project1 = Path(tmpdir) / "project1";
+        project1.mkdir();
+        (project1 / "jac.toml").write_text(
+            "[project]\nname = \"project-one\"\nversion = \"1.0.0\"\n"
+        );
+        nested_dir = project1 / "src" / "lib";
+        nested_dir.mkdir(parents=True);
+        project2 = Path(tmpdir) / "project2";
+        project2.mkdir();
+        (project2 / "jac.toml").write_text(
+            "[project]\nname = \"project-two\"\nversion = \"2.0.0\"\n"
+        );
+        empty_dir = Path(tmpdir) / "empty";
+        empty_dir.mkdir();
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(tmpdir);
+
+            # 1. start_path discovers from specified directory
+            cfg = get_config(start_path=project1, force_discover=True);
+            assert cfg is not None , "Should discover config from project1";
+            assert cfg.project.name == "project-one";
+            assert cfg.project_root.resolve() == project1.resolve();
+
+            # 2. start_path finds jac.toml in parent directories
+            cfg = get_config(start_path=nested_dir, force_discover=True);
+            assert cfg is not None , "Should find config in parent dir";
+            assert cfg.project.name == "project-one";
+
+            # 3. force_discover=True re-discovers from new location
+            cfg = get_config(start_path=project2, force_discover=True);
+            assert cfg is not None;
+            assert cfg.project.name == "project-two";
+
+            # 4. Without force_discover, returns cached config
+            cfg_cached = get_config(start_path=project1);
+            assert cfg_cached.project.name == "project-two" , "Should return cached config";
+
+            # 5. Returns None when no jac.toml exists
+            cfg = get_config(start_path=empty_dir, force_discover=True);
+            assert cfg is None , "Should return None for empty dir";
+
+            # 6. start_path overrides cwd
+            os.chdir(project1);
+            cfg = get_config(start_path=project2, force_discover=True);
+            assert cfg.project.name == "project-two" , "start_path should override cwd";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
 # ===========================================================================
 # TestConfigFilesTracking
 # ===========================================================================

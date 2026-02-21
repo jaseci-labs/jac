@@ -37,9 +37,20 @@ jac plugins enable scale
 # Development
 jac start main.jac --port 8000
 
+# Development with HMR (requires jac-client)
+jac start main.jac --dev
+
+# API only -- skip client bundling
+jac start main.jac --dev --no-client
+
+# Preview generated API docs without starting server
+jac start main.jac --faux
+
 # Production with scaling
 jac start --scale
 ```
+
+By default, local development uses **SQLite** for graph persistence -- no external database setup required.
 
 ### 4 Environment Configuration
 
@@ -111,7 +122,36 @@ graph TD
     L2 --- L3["L3: MongoDB (persistent)"]
 ```
 
-### 2 FastAPI Integration
+### 2 Middleware Walkers
+
+Walkers prefixed with `_` act as middleware hooks:
+
+```jac
+# Request logging
+walker _before_request {
+    has request: dict;
+    can log with Root entry {
+        print(f"Request: {self.request['method']} {self.request['path']}");
+    }
+}
+
+# Custom authentication
+walker _authenticate {
+    has headers: dict;
+    can check with Root entry {
+        token = self.headers.get("Authorization", "");
+        if not token.startswith("Bearer ") {
+            report {"error": "Unauthorized", "status": 401};
+            return;
+        }
+        report {"authenticated": True};
+    }
+}
+```
+
+> See [jac-scale Reference](../plugins/jac-scale.md#middleware-walkers) for details.
+
+### 3 FastAPI Integration
 
 Public walkers become OpenAPI endpoints:
 

@@ -14,6 +14,62 @@
 
 Jac enables true full-stack development: backend APIs, frontend UI, and AI logic in a single language. The `jac-client` plugin compiles Jac to JavaScript/React for the browser, while `jac-scale` handles server deployment. This part covers modules, server/client separation, and the JSX-like syntax for building UIs.
 
+## Project Setup
+
+Create a full-stack project with the `jac create` command:
+
+```bash
+jac create --use client myapp
+cd myapp
+```
+
+This scaffolds the project structure:
+
+```
+myapp/
+├── jac.toml              # Configuration
+├── main.jac              # Entry point (frontend + backend)
+├── components/           # Reusable UI components
+│   └── Button.cl.jac     # Example button component
+├── assets/               # Static assets (images, fonts)
+└── .jac/                 # Build artifacts (gitignored)
+```
+
+Run in development mode (starts Vite dev server + API server + file watcher):
+
+```bash
+jac start --dev
+```
+
+### `.cl.jac` File Convention
+
+Files named with the `.cl.jac` extension are automatically treated as client-side code. No `cl { }` wrapper is needed:
+
+```jac
+# components/Header.cl.jac -- automatically client-side
+def:pub Header() -> JsxElement {
+    return <header><h1>My App</h1></header>;
+}
+```
+
+### Managing npm Packages
+
+```bash
+jac add --npm lodash          # Add a package
+jac add --npm --dev @types/react  # Add dev dependency
+jac add --npm                 # Install all dependencies
+```
+
+Or declare in `jac.toml`:
+
+```toml
+[dependencies.npm]
+lodash = "^4.17.21"
+axios = "^1.6.0"
+```
+
+---
+
 ## Module System
 
 Jac's module system bridges Python and JavaScript ecosystems. You can import from PyPI packages on the server and npm packages on the client using familiar syntax. The `include` statement (like C's `#include`) merges code directly, which is useful for splitting large files.
@@ -164,29 +220,43 @@ cl glob THEME: str = "dark";
 
 ### 2 State Management with `has`
 
-In client components, `has` creates reactive state:
+In client components, `has` creates reactive state. The compiler transforms `has` declarations into React `useState` hooks:
+
+| Jac Syntax | Compiled React Equivalent |
+|------------|--------------------------|
+| `has count: int = 0` | `const [count, setCount] = useState(0)` |
+| `count = count + 1` | `setCount(count + 1)` |
+| `has name: str = ""` | `const [name, setName] = useState("")` |
+| `name = e.target.value` | `setName(e.target.value)` |
+
+The component re-renders automatically when any `has` variable is assigned a new value.
 
 ```jac
 cl {
-    def:pub TodoApp() -> JsxElement {
-        has todos: list = [];
-        has input_text: str = "";
-
-        def add_todo() -> None {
-            if input_text {
-                todos = todos + [{"text": input_text, "done": False}];
-                input_text = "";
-            }
-        }
+    def:pub Counter() -> JsxElement {
+        has count: int = 0;
 
         return <div>
-            <input value={input_text} />
-            <button>Add</button>
-            <ul>{todos}</ul>
+            <p>Count: {count}</p>
+            <button onClick={lambda -> None { count = count + 1; }}>
+                Increment
+            </button>
         </div>;
     }
 }
 ```
+
+!!! warning "Immutable Updates for Lists and Objects"
+    State updates must produce new references to trigger re-renders. Mutating in place will not work.
+
+    ```jac
+    # Correct - creates new list
+    todos = todos + [new_item];
+    todos = [t for t in todos if t["id"] != target_id];
+
+    # Wrong - mutates in place (no re-render)
+    todos.append(new_item);
+    ```
 
 ### 3 Effects and Lifecycle
 
@@ -238,6 +308,77 @@ cl {
 }
 ```
 
+### Global State with useContext
+
+For state shared across components, use React's `createContext` and `useContext`:
+
+```jac
+cl {
+    import from react { createContext, useContext }
+
+    glob AppContext = createContext(None);
+
+    def:pub AppProvider(props: dict) -> JsxElement {
+        has user: any = None;
+        has theme: str = "light";
+
+        value = {
+            "user": user,
+            "theme": theme,
+            "setUser": lambda u: any -> None { user = u; },
+            "setTheme": lambda t: str -> None { theme = t; }
+        };
+
+        return <AppContext.Provider value={value}>
+            {props.children}
+        </AppContext.Provider>;
+    }
+
+    def:pub UserDisplay() -> JsxElement {
+        ctx = useContext(AppContext);
+        if ctx.user {
+            return <p>Welcome, {ctx.user.name}!</p>;
+        }
+        return <p>Not logged in</p>;
+    }
+}
+```
+
+### Custom Hooks
+
+Create reusable state logic by defining functions that use `has`:
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def use_local_storage(key: str, initial_value: any) -> tuple {
+        has value: any = initial_value;
+
+        useEffect(lambda -> None {
+            stored = localStorage.getItem(key);
+            if stored {
+                value = JSON.parse(stored);
+            }
+        }, []);
+
+        useEffect(lambda -> None {
+            localStorage.setItem(key, JSON.stringify(value));
+        }, [value]);
+
+        return (value, lambda v: any -> None { value = v; });
+    }
+
+    def:pub Settings() -> JsxElement {
+        (theme, set_theme) = use_local_storage("theme", "light");
+        return <div>
+            <p>Current: {theme}</p>
+            <button onClick={lambda -> None { set_theme("dark"); }}>Dark</button>
+        </div>;
+    }
+}
+```
+
 ### 4 JSX Syntax
 
 ```jac
@@ -266,7 +407,10 @@ cl {
 
 ```jac
 cl {
-    import from "@jac-client/utils" { cn }
+    # cn() utility from local lib/utils.ts (shadcn/ui pattern)
+    # Uses clsx + tailwind-merge for conditional class names
+    import from "../lib/utils" { cn }   # Relative import
+    # Or with path alias: import from "@/lib/utils" { cn }
 
     def:pub StylingExamples() -> JsxElement {
         has condition: bool = True;
@@ -289,28 +433,115 @@ cl {
 }
 ```
 
+> **Note:** The `cn()` utility is a local file you create in your project (shadcn/ui pattern):
+>
+> ```typescript
+> // lib/utils.ts
+> import { type ClassValue, clsx } from "clsx"
+> import { twMerge } from "tailwind-merge"
+> export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)) }
+> ```
+>
+> To use `@/` path alias, configure it in your `tsconfig.json` or Vite config.
+
 ### 6 Routing
 
-```jac
-cl {
-    import from "react-router-dom" { BrowserRouter, Routes, Route, Link }
+Jac supports two routing approaches: **file-based** (recommended) and **manual** (React Router-style).
 
-    def:pub App() -> JsxElement {
-        return (
-            <BrowserRouter>
-                <nav>
-                    <Link to="/">Home</Link>
-                    <Link to="/about">About</Link>
-                </nav>
-                <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/about" element={<About />} />
-                </Routes>
-            </BrowserRouter>
-        );
+#### File-Based Routing (Recommended)
+
+Create a `pages/` directory with `.jac` files. The file structure maps directly to URL routes:
+
+| File | Route | Description |
+|------|-------|-------------|
+| `pages/index.jac` | `/` | Home page |
+| `pages/about.jac` | `/about` | Static page |
+| `pages/users/index.jac` | `/users` | Users list |
+| `pages/users/[id].jac` | `/users/:id` | Dynamic parameter |
+| `pages/posts/[slug].jac` | `/posts/:slug` | Named parameter |
+| `pages/[...notFound].jac` | `*` | Catch-all (404) |
+| `pages/(auth)/dashboard.jac` | `/dashboard` | Route group (no URL segment) |
+| `pages/layout.jac` | -- | Wraps child routes with `<Outlet />` |
+
+Each page file exports a `page` function:
+
+```jac
+# pages/users/[id].jac
+cl import from "@jac/runtime" { useParams, Link }
+
+cl {
+    def:pub page() -> JsxElement {
+        params = useParams();
+        return <div>
+            <Link to="/users">← Back</Link>
+            <h1>User {params.id}</h1>
+        </div>;
     }
 }
 ```
+
+**Route groups** organize pages without affecting the URL. The `(auth)` group can automatically wrap pages with authentication via a layout file:
+
+```jac
+# pages/(auth)/layout.jac -- protects all pages in this group
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
+    }
+}
+```
+
+**Layout files** use `<Outlet />` to render child routes:
+
+```jac
+# pages/layout.jac -- root layout wrapping all pages
+cl import from "@jac/runtime" { Outlet }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <>
+            <nav>...</nav>
+            <main><Outlet /></main>
+            <footer>...</footer>
+        </>;
+    }
+}
+```
+
+#### Manual Routing
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Link }
+
+cl {
+    def:pub App() -> JsxElement {
+        return <Router>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/about" element={<About />} />
+                <Route path="*" element={<NotFound />} />
+            </Routes>
+        </Router>;
+    }
+}
+```
+
+#### Routing Hooks
+
+Import from `@jac/runtime`:
+
+| Hook | Returns | Usage |
+|------|---------|-------|
+| `useParams()` | dict | Access URL parameters: `params.id` |
+| `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
+| `useLocation()` | object | Current location: `location.pathname`, `location.search` |
+| `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
+| `Outlet` | component | Render child routes in layouts |
+| `AuthGuard` | component | Protect routes: `<AuthGuard redirect="/login">` |
 
 ### 7 Client Bundle System
 
@@ -329,34 +560,164 @@ typescript = false
 
 ### 1 Calling Server Walkers
 
-From client code, call server walkers:
+From client code, use `sv import` to import walkers and `spawn` syntax to call them:
 
 ```jac
+# Import walkers from server
+sv import from ...main { AddTodo, GetTodos }
+
 cl {
-    async def add_todo(text: str) -> None {
-        result = root spawn AddTodo(title=text);
-        new_todo = result.reports[0];
-        self.todos.append(new_todo);
+    def:pub TodoApp() -> any {
+        has todos: list = [];
+
+        # Fetch data on mount
+        async can with entry {
+            result = root spawn GetTodos();
+            if result.reports {
+                todos = result.reports[0];
+            }
+        }
+
+        # Create new todo
+        async def addTodo(text: str) -> None {
+            result = root spawn AddTodo(title=text);
+            if result.reports {
+                todos = todos.concat([result.reports[0]]);
+            }
+        }
+
+        return <div>...</div>;
     }
 }
 ```
 
-### 2 jacSpawn() Function
+### 2 Spawn Syntax
 
-Client-side walker invocation:
+| Syntax | Description |
+|--------|-------------|
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
+| `node_id spawn WalkerName()` | Spawn from specific node |
+
+The spawn call returns a result object with:
+
+- `result.reports` - Data reported by the walker
+- `result.status` - HTTP status code
+
+### 3 CRUD Mutation Patterns
+
+For create/update/delete operations, spawn walkers and update local state with the result:
 
 ```jac
-cl {
-    import from "@jac-client/utils" { jacSpawn }
+sv import from ...main { add_task, toggle_task, delete_task }
 
-    async def fetch_users -> None {
-        result = await jacSpawn("GetUsers", {});
-        self.users = result.reports;
+cl {
+    def:pub TaskManager() -> JsxElement {
+        has tasks: list = [];
+
+        # Create
+        async def handle_add(title: str) -> None {
+            result = root spawn add_task(title=title);
+            if result.reports and result.reports.length > 0 {
+                tasks = tasks.concat([result.reports[0]]);
+            }
+        }
+
+        # Update
+        async def handle_toggle(task_id: str) -> None {
+            result = root spawn toggle_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = tasks.map(lambda t: any -> any {
+                    if t["id"] == task_id {
+                        return {**t, "completed": not t["completed"]};
+                    }
+                    return t;
+                });
+            }
+        }
+
+        # Delete
+        async def handle_delete(task_id: str) -> None {
+            result = root spawn delete_task(task_id=task_id);
+            if result.reports and result.reports[0]["success"] {
+                tasks = tasks.filter(lambda t: any -> bool {
+                    return t["id"] != task_id;
+                });
+            }
+        }
+
+        return <div>...</div>;
     }
 }
 ```
 
-### 3 Starting Full-Stack Server
+### 4 Error Handling Pattern
+
+Wrap spawn calls in try/catch and track loading/error state:
+
+```jac
+cl {
+    def:pub SafeDataView() -> JsxElement {
+        has data: any = None;
+        has loading: bool = True;
+        has error: str = "";
+
+        async can with entry {
+            loading = True;
+            try {
+                result = root spawn get_data();
+                if result.reports and result.reports.length > 0 {
+                    data = result.reports[0];
+                }
+            } except e {
+                error = f"Failed to load: {e}";
+            }
+            loading = False;
+        }
+
+        if loading { return <p>Loading...</p>; }
+        if error {
+            return <div>
+                <p>{error}</p>
+                <button onClick={lambda -> None { location.reload(); }}>Retry</button>
+            </div>;
+        }
+        return <div>{JSON.stringify(data)}</div>;
+    }
+}
+```
+
+### 5 Polling for Real-Time Updates
+
+Use `setInterval` with effect cleanup for periodic data refresh:
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def:pub LiveData() -> JsxElement {
+        has data: any = None;
+
+        async def fetch_data() -> None {
+            result = root spawn get_live_data();
+            if result.reports and result.reports.length > 0 {
+                data = result.reports[0];
+            }
+        }
+
+        async can with entry { await fetch_data(); }
+
+        useEffect(lambda -> None {
+            interval = setInterval(lambda -> None { fetch_data(); }, 5000);
+            return lambda -> None { clearInterval(interval); };
+        }, []);
+
+        return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
+    }
+}
+```
+
+### 6 Starting Full-Stack Server
 
 ```bash
 # Development with hot reload
@@ -373,7 +734,7 @@ jac start main.jac --port 8000
 ### 1 Built-in Auth Functions
 
 ```jac
-import from "@jac-client/utils" {
+cl import from "@jac/runtime" {
     jacLogin,
     jacSignup,
     jacLogout,
@@ -381,23 +742,33 @@ import from "@jac-client/utils" {
 }
 
 cl {
-    async def handle_login -> None {
-        success = await jacLogin(self.email, self.password);
-        if success {
-            self.logged_in = True;
-        }
-    }
+    def:pub AuthExample() -> any {
+        has isLoggedIn: bool = False;
+        has email: str = "";
+        has password: str = "";
 
-    async def handle_signup -> None {
-        success = await jacSignup(self.email, self.password);
-        if success {
-            await self.handle_login();
+        async def handleLogin() -> None {
+            # jacLogin returns bool (True = success, False = failure)
+            success = await jacLogin(email, password);
+            if success {
+                isLoggedIn = True;
+            }
         }
-    }
 
-    def handle_logout -> None {
-        jacLogout();
-        self.logged_in = False;
+        async def handleSignup() -> None {
+            # jacSignup returns dict with success key
+            result = await jacSignup(email, password);
+            if result["success"] {
+                await handleLogin();
+            }
+        }
+
+        def handleLogout() -> None {
+            jacLogout();
+            isLoggedIn = False;
+        }
+
+        return <div>...</div>;
     }
 }
 ```
@@ -444,6 +815,36 @@ client_secret = "your-google-client-secret"
 | `/sso/{platform}/login` | Initiate SSO login |
 | `/sso/{platform}/register` | Initiate SSO registration |
 | `/sso/{platform}/login/callback` | OAuth callback |
+
+### 5 AuthGuard Component
+
+For file-based routing, protect route groups with the built-in `AuthGuard` component:
+
+```jac
+# pages/(auth)/layout.jac
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
+cl {
+    def:pub layout() -> any {
+        return <AuthGuard redirect="/login">
+            <Outlet />
+        </AuthGuard>;
+    }
+}
+```
+
+`AuthGuard` checks `jacIsLoggedIn()` and either renders child routes or redirects to the specified path. All pages in the `(auth)` route group are automatically protected.
+
+### 6 Auth Function Reference
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `jacLogin(user, pass)` | `bool` | Authenticate user, stores JWT. `True` on success |
+| `jacSignup(user, pass)` | `dict` | Register user. Returns `{"success": bool, ...}` |
+| `jacLogout()` | `void` | Clear stored auth token |
+| `jacIsLoggedIn()` | `bool` | Check current auth status |
+
+All functions are imported from `@jac/runtime`. JWT token management is handled automatically by the runtime.
 
 ---
 
@@ -527,7 +928,7 @@ Provides:
 - [Full-Stack Project Setup](../../tutorials/fullstack/setup.md) - Create your first full-stack project
 - [React-Style Components](../../tutorials/fullstack/components.md) - Build UI components
 - [Backend Integration](../../tutorials/fullstack/backend.md) - Connect frontend to walkers
-- [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Complete example
+- [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Complete example
 
 **Related Reference:**
 

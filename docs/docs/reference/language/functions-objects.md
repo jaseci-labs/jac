@@ -157,7 +157,41 @@ with entry {
 }
 ```
 
-### 4 Methods
+### 4 `can` vs `def`
+
+Jac has two keywords for defining callable behavior: `def` for standard functions/methods and `can` for event-driven abilities on archetypes. Use `def` when you want explicit calling; use `can` when behavior should trigger automatically based on walker/node context.
+
+| Feature | `def` | `can` |
+|---------|-------|-------|
+| **Call style** | Called explicitly: `obj.method()` | Triggered automatically on walker entry/exit |
+| **Used in** | Any archetype, standalone functions | Walkers, nodes, edges |
+| **Syntax** | `def name(args) -> Type { }` | `can name with NodeType entry { }` |
+| **Best for** | Regular methods, utility functions, API endpoints | Graph traversal logic, event handlers |
+
+```jac
+walker ListItems {
+    has items: list = [];
+
+    # 'can' ability -- fires automatically when walker enters a Root node
+    can collect with Root entry {
+        visit [-->];
+    }
+
+    # 'can' ability -- fires on each Item node visited
+    can gather with Item entry {
+        self.items.append(here.value);
+    }
+
+    # 'can' ability -- fires when walker exits Root
+    can report_all with Root exit {
+        report self.items;
+    }
+}
+```
+
+> See [Part III: OSP](osp.md) for complete walker and ability documentation.
+
+### 5 Methods
 
 The `def` keyword declares methods on archetypes:
 
@@ -176,7 +210,7 @@ obj Calculator {
 }
 ```
 
-### 5 Static Methods
+### 6 Static Methods
 
 ```jac
 obj Counter {
@@ -194,7 +228,7 @@ obj Counter {
 }
 ```
 
-### 6 Lambda Expressions
+### 7 Lambda Expressions
 
 ```jac
 # Simple lambda (note spacing around type annotations)
@@ -226,7 +260,7 @@ glob make_adder = lambda x: int : (lambda y: int : x + y);
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
-### 7 Immediately Invoked Function Expressions (IIFE)
+### 8 Immediately Invoked Function Expressions (IIFE)
 
 ```jac
 with entry {
@@ -234,7 +268,7 @@ with entry {
 }
 ```
 
-### 8 Decorators
+### 9 Decorators
 
 ```jac
 def decorator(func: any) -> any {
@@ -256,7 +290,7 @@ def another_function -> None {
 }
 ```
 
-### 9 Access Modifiers
+### 10 Access Modifiers
 
 ```jac
 # Public (default, accessible everywhere)
@@ -477,12 +511,84 @@ impl Calculator.multiply {
 }
 ```
 
-### 4 When to Use Implementations
+### 4 Variant Modules
+
+A single logical module can be split across *variant files* that target different execution contexts. Variant suffixes are `.sv.jac` (server), `.cl.jac` (client), and `.na.jac` (native). All files sharing the same base name are automatically discovered and compiled together.
+
+**Head module precedence:** `.jac` > `.sv.jac` > `.cl.jac` > `.na.jac`. The highest-precedence file that exists on disk becomes the *head module*; all lower-precedence variants are attached as variant annexes. If no plain `.jac` file exists, the next available variant acts as head.
+
+```
+mymod/
+├── mymod.jac            # Head module (declarations + entry)
+├── mymod.sv.jac         # Server variant (extra server-only declarations)
+├── mymod.cl.jac         # Client variant (extra client-only declarations)
+├── mymod.impl.jac       # Head implementations (can also impl variant decls)
+├── impl/
+│   └── mymod.sv.impl.jac   # Server variant impl (from shared folder)
+└── mymod.test.jac       # Tests
+```
+
+Each variant gets its own symbol table during parsing. The compiler then connects declarations and implementations across all variants:
+
+- Impl files match their variant automatically (e.g., `mymod.sv.impl.jac` provides bodies for declarations in `mymod.sv.jac`).
+- A head impl file (`mymod.impl.jac`) can provide implementations for declarations in *any* variant (cross-variant matching).
+- Impl files can live in the same directory or in an `impl/` subdirectory.
+
+**mymod.jac:**
+
+```jac
+obj Circle {
+    has radius: float;
+    def area -> float;
+}
+```
+
+**mymod.sv.jac:**
+
+```jac
+obj CircleService {
+    has name: str;
+    def describe -> str;
+}
+```
+
+**mymod.cl.jac:**
+
+```jac
+obj Display {
+    has label: str;
+    def render -> str;
+}
+```
+
+**mymod.impl.jac** (cross-variant -- provides impls for both head and client variant):
+
+```jac
+impl Circle.area -> float {
+    return 3.14159 * self.radius * self.radius;
+}
+
+impl Display.render -> str {
+    return "Displaying: " + self.label;
+}
+```
+
+**impl/mymod.sv.impl.jac** (server variant impl from shared folder):
+
+```jac
+impl CircleService.describe -> str {
+    return "Service: " + self.name;
+}
+```
+
+### 5 When to Use Implementations
 
 - **Circular dependencies**: Forward declare to break cycles
 - **Code organization**: Keep interfaces clean
+- **UI components**: Separate render tree from method logic (`.cl.jac` + `.impl.jac`)
 - **Plugin architectures**: Define interfaces that plugins implement
 - **Large codebases**: Separate concerns across files
+- **Variant modules**: Split server, client, and native code into separate files while keeping them as one logical module
 
 ---
 
@@ -491,7 +597,7 @@ impl Calculator.multiply {
 **Tutorials:**
 
 - [Jac Basics](../../tutorials/language/basics.md) - Objects, functions, and syntax
-- [Testing](../../tutorials/language/testing.md) - Write tests for your code
+- [Testing](../testing.md) - Write tests for your code
 
 **Related Reference:**
 

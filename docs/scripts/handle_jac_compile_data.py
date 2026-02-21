@@ -114,7 +114,7 @@ def get_top_contributors() -> str:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Go to the root directory (two levels up from docs/scripts)
     root_dir = os.path.dirname(os.path.dirname(current_dir))
-    cmd = ["python3", "scripts/top_contributors.py"]
+    cmd = ["jac", "run", "scripts/top_contributors.jac"]
     try:
         return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
     except subprocess.CalledProcessError as e:
@@ -131,7 +131,7 @@ def get_top_voices() -> str:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     # Go to the root directory (two levels up from docs/scripts)
     root_dir = os.path.dirname(os.path.dirname(current_dir))
-    cmd = ["python3", "scripts/top_voices.py"]
+    cmd = ["jac", "run", "scripts/top_voices.jac"]
     try:
         return subprocess.check_output(
             cmd, cwd=root_dir, stderr=subprocess.DEVNULL

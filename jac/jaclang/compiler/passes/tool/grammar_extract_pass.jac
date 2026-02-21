@@ -7,6 +7,7 @@ consumption and control-flow patterns, and produces grammar rules.
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.parser.tokens { TokenKind }
 
 # ---------------------------------------------------------------------------
 # Grammar Expression Types
@@ -43,6 +44,14 @@ obj GOpt(GExpr) {
 
 """Zero-or-more: (A)*."""
 obj GStar(GExpr) {
+    has inner: GExpr;
+
+    def __eq__(other: object) -> bool;
+    def __repr__ -> str;
+}
+
+"""One-or-more: (A)+."""
+obj GPlus(GExpr) {
     has inner: GExpr;
 
     def __eq__(other: object) -> bool;
@@ -112,6 +121,10 @@ obj GrammarExtractPass(UniPass) {
     def has_early_return(stmts: list) -> bool;
     def is_negated_check_condition(cond: uni.Expr) -> bool;
     def expr_contains_tok(expr: GExpr, tok_name: str) -> bool;
+    # Post-processing helpers
+    def _dedup_parent_child_tokens(expr: GExpr, rule_map: dict) -> GExpr;
+    def _rule_starts_with_tok(body: GExpr, tok_name: str) -> bool;
+    def _rule_always_starts_with_one_of(body: GExpr, tok_set: set) -> bool;
     # AST helpers
     def extract_token_kind(expr: uni.Expr) -> str | None;
     def get_self_method(nd: uni.Expr) -> str | None;

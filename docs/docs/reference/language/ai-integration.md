@@ -65,15 +65,28 @@ When function names alone don't provide enough context, use `sem` (semantic) dec
 
 ### 1 The `sem` Keyword
 
+The `sem` keyword attaches semantic descriptions to functions, parameters, type fields, and enum values. These strings are included in the compiler-generated prompt so the LLM sees them at runtime.
+
 ```jac
+# Function-level semantic
 sem classify_sentiment = """
 Analyze the emotional tone of the text.
 Return 'positive', 'negative', or 'neutral'.
 Consider nuance, sarcasm, and context.
 """;
-
 def classify_sentiment(text: str) -> str by llm;
+
+# Field-level semantic
+obj Product { has price: float; }
+sem Product.price = "Price in USD, numeric value";
+
+# Enum value semantic
+enum Priority { LOW, MEDIUM, HIGH }
+sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
+
+!!! warning "Docstrings vs `sem`"
+    Docstrings are for human documentation and are **not** included in compiler-generated prompts. Use `sem` when you need the compiler to pass context to the LLM. Only `sem` declarations affect LLM behavior.
 
 ### 2 Parameter Semantics
 
@@ -163,6 +176,15 @@ def creative_story(prompt: str) -> str by llm(
 | `stream` | bool | Enable streaming output |
 | `tools` | list | Functions for tool calling (enables ReAct loop) |
 | `context` | list[str] | Additional system instructions |
+
+### Type Validation
+
+byLLM validates that LLM responses match the declared return type. If the LLM returns an invalid type, byLLM will:
+
+1. **Attempt coercion** -- e.g., string `"5"` becomes integer `5`
+2. **Raise an error** if coercion fails
+
+This means your Jac type system functions as the LLM's output schema. Declaring `-> int` guarantees you receive an integer, and declaring `-> MyObj` guarantees you receive a properly structured object.
 
 ### 4 Tool Calling (ReAct)
 
@@ -290,35 +312,102 @@ walker AIAgent {
 
 ### 2 Tool-Using Agents
 
+Agents combine LLM reasoning with tool functions. The LLM decides which tools to call and in what order (ReAct loop):
+
 ```jac
-walker ResearchAgent {
+import from byllm.lib { Model }
+
+glob llm = Model(model_name="gpt-4o");
+
+glob kb: dict = {
+    "products": ["Widget A", "Widget B", "Service X"],
+    "prices": {"Widget A": 99, "Widget B": 149, "Service X": 29},
+    "inventory": {"Widget A": 50, "Widget B": 0, "Service X": 999}
+};
+
+"""List all available products."""
+def list_products() -> list[str] {
+    return kb["products"];
+}
+
+"""Get the price of a product."""
+def get_price(product: str) -> str {
+    if product in kb["prices"] {
+        return f"${kb['prices'][product]}";
+    }
+    return "Product not found";
+}
+
+"""Check if a product is in stock."""
+def check_inventory(product: str) -> str {
+    qty = kb["inventory"].get(product, 0);
+    return f"In stock ({qty} available)" if qty > 0 else "Out of stock";
+}
+
+def sales_agent(request: str) -> str by llm(
+    tools=[list_products, get_price, check_inventory]
+);
+sem sales_agent = "Help customers browse products, check prices and availability.";
+```
+
+### 3 Context Injection with `incl_info`
+
+Pass additional runtime context to the LLM without modifying function signatures:
+
+```jac
+glob company_info = """
+Company: TechCorp
+Products: CloudDB, SecureAuth, DataViz
+Support Hours: 9 AM - 5 PM EST
+""";
+
+def support_agent(question: str) -> str by llm(
+    incl_info={"company_context": company_info}
+);
+sem support_agent = "Answer customer questions about our products and services.";
+```
+
+The `incl_info` dict keys and values are injected into the prompt as additional context. This is useful for dynamic information that changes between calls.
+
+### 4 Agentic Walkers
+
+Combine tools with graph traversal for AI agents that navigate data structures:
+
+```jac
+node Document {
+    has title: str;
+    has content: str;
+    has summary: str = "";
+}
+
+def summarize(content: str) -> str by llm();
+sem summarize = "Summarize this document in 2-3 sentences.";
+
+walker DocumentAgent {
     has query: str;
 
-    def search(query: str) -> list[str] {
-        return web_search(query);
-    }
+    can process with Root entry {
+        all_docs = [-->](?:Document);
 
-    def read_page(url: str) -> str {
-        return fetch_content(url);
+        for doc in all_docs {
+            if self.query.lower() in doc.content.lower() {
+                doc.summary = summarize(doc.content);
+                report {"title": doc.title, "summary": doc.summary};
+            }
+        }
     }
-
-    can research with Root entry by llm(
-        tools=[self.search, self.read_page]
-    );
 }
 ```
 
-### 3 Multi-Agent Systems
+### 5 Multi-Agent Systems
 
 ```jac
 walker Coordinator {
     can coordinate with Root entry {
-        # Spawn specialized agents
         research = root spawn Researcher(topic="AI");
         writer = root spawn Writer(style="technical");
         reviewer = root spawn Reviewer();
 
-        # Combine results
         report {
             "research": research.reports,
             "draft": writer.reports,

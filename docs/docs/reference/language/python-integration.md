@@ -2,7 +2,7 @@
 
 > **Part of:** [Part VIII: Ecosystem](ecosystem.md)
 >
-> **Related:** [Library Mode](library-mode.md) | [Build a Todo App](../../tutorials/fullstack/todo-app.md)
+> **Related:** [Library Mode](library-mode.md) | [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md)
 
 ---
 

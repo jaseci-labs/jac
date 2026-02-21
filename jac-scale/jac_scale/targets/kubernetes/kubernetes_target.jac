@@ -28,6 +28,8 @@ import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvi
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
+import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
+import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 import time;
 import from kubernetes { client, config as k8s_config }
 import from kubernetes.client.exceptions { ApiException }
@@ -159,7 +161,6 @@ class KubernetesTarget(DeploymentTarget) {
         if is_aws {
             service_metadata['annotations'] = {
                 'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
-                'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing',
                 'service.beta.kubernetes.io/aws-load-balancer-healthcheck-path': health_check_path
             };
         }
@@ -301,13 +302,14 @@ class KubernetesTarget(DeploymentTarget) {
         return container_config;
     }
 
-    """Build volumes and build container configuration for code sync."""
+    """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
         self: KubernetesTarget,
         app_name: str,
         app_config: AppConfig,
         namespace: str,
-        core_v1: Any
+        core_v1: Any,
+        apps_v1: Any
     ) -> dict[str, Any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
@@ -321,26 +323,135 @@ class KubernetesTarget(DeploymentTarget) {
             core_v1, namespace, pvc_name, app_config.code_folder, app_name, sync_image
         );
 
+        # Deploy code-server to serve code from PVC over HTTP
+        self._deploy_code_server(app_name, namespace, apps_v1, core_v1);
+
+        # Init container fetches code from code-server via wget (no PVC mount needed)
+        code_server_url = f"http://{app_name}-code-server:8080/code.tar.gz";
         build_container = {
             'name': 'build-app',
-            'image': self.k8s_config.python_image,
+            'image': self.k8s_config.busybox_image,
             'command': [
                 'sh',
                 '-c',
-                f"apt-get update && apt-get install -y rsync &&  mkdir -p {self.k8s_config.app_mount_path} && rm -rf {self.k8s_config.app_mount_path}/* && rsync -av --exclude='.jac' {self.k8s_config.workspace_path}/ {self.k8s_config.app_mount_path}/"
+                f"until wget -q -O {self.k8s_config.app_mount_path}/code.tar.gz {code_server_url}; do sleep 2; done && tar xzf {self.k8s_config.app_mount_path}/code.tar.gz -C {self.k8s_config.app_mount_path}/ && rm {self.k8s_config.app_mount_path}/code.tar.gz"
             ],
             'volumeMounts': [
-                {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path},
-                {'name': 'code-source', 'mountPath': self.k8s_config.code_mount_path}
+                {'name': 'app-code', 'mountPath': self.k8s_config.app_mount_path}
             ]
         };
 
-        volumes = [
-            {'name': 'app-code', 'emptyDir': {}},
-            {'name': 'code-source', 'persistentVolumeClaim': {'claimName': pvc_name}}
-        ];
+        # Only emptyDir - no PVC mount on app pods, so they can schedule on any node
+        volumes = [{'name': 'app-code', 'emptyDir': {}}];
 
         return {'volumes': volumes, 'build_container': build_container};
+    }
+
+    """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
+    def _deploy_code_server(
+        self: KubernetesTarget,
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any
+    ) -> None {
+        code_server_name = f"{app_name}-code-server";
+        code_server_labels = {'app': code_server_name};
+        pvc_name = f"{app_name}-code-pvc";
+
+        # Code-server Deployment spec
+        deployment_body = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': code_server_name,
+                'namespace': namespace,
+                'labels': code_server_labels
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': code_server_labels},
+                'template': {
+                    'metadata': {'labels': code_server_labels},
+                    'spec': {
+                        'containers': [
+                            {
+                                'name': 'code-server',
+                                'image': self.k8s_config.busybox_image,
+                                'command': [
+                                    'sh',
+                                    '-c',
+                                    f"tar czf /tmp/code.tar.gz -C {self.k8s_config.workspace_path} --exclude='.jac' . && httpd -f -p 8080 -h /tmp"
+                                ],
+                                'ports': [{'containerPort': 8080}],
+                                'volumeMounts': [
+                                    {
+                                        'name': 'code-source',
+                                        'mountPath': self.k8s_config.code_mount_path,
+                                        'readOnly': True
+                                    }
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'code-source',
+                                'persistentVolumeClaim': {'claimName': pvc_name}
+                            }
+                        ]
+                    }
+                }
+            }
+        };
+
+        # Code-server Service spec
+        service_body = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': code_server_name,
+                'namespace': namespace,
+                'labels': code_server_labels
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'ports': [{'port': 8080, 'targetPort': 8080}],
+                'selector': code_server_labels
+            }
+        };
+
+        # Delete existing code-server deployment to force re-tar of fresh code
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment,
+            code_server_name,
+            namespace,
+            'Deployment'
+        );
+        time.sleep(self.k8s_config.resource_deletion_wait);
+
+        # Create code-server deployment
+        apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment_body);
+        if self.logger {
+            self.logger.info(f"Deployed code-server '{code_server_name}'");
+        }
+
+        # Create code-server service (if not exists)
+        try {
+            core_v1.read_namespaced_service(name=code_server_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=service_body
+                );
+                if self.logger {
+                    self.logger.info(
+                        f"Created code-server service '{code_server_name}'"
+                    );
+                }
+            } else {
+                raise ;
+            }
+        }
     }
 
     """Deploy all enabled databases."""
@@ -596,7 +707,7 @@ class KubernetesTarget(DeploymentTarget) {
             # 10. Handle volumes and build container if not building image
             if not app_config.build {
                 volumes_config = self._build_volumes_config(
-                    app_name, app_config, namespace, core_v1
+                    app_name, app_config, namespace, core_v1, apps_v1
                 );
                 details["sync_code_to_pvc"] = "Successful";
                 volumes = volumes_config['volumes'];
@@ -677,8 +788,21 @@ class KubernetesTarget(DeploymentTarget) {
                 }
             }
             details["create_jaseci_application_service"] = "Successful";
+            # 16. Enable horizontal pod autoscaling
+            create_hpa(
+                namespace=namespace,
+                deployment_name=app_name,
+                min_replicas=self.k8s_config.min_replicas,
+                max_replicas=self.k8s_config.max_replicas,
+                cpu_target=self.k8s_config.cpu_utilization_target
+            );
+            details["create_horizontal_auto_scaler"] = "Successful";
+            # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
+            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+            monitoring.deploy(app_name, namespace, apps_v1, core_v1, is_aws);
+            details["deploy_monitoring"] = "Successful";
 
-            # 15. Wait for deployment and get service URL
+            # 16. Wait for deployment and get service URL
             deployment_details = self._wait_for_deployment(
                 app_name, namespace, health_check_path, is_aws
             );
@@ -740,6 +864,31 @@ class KubernetesTarget(DeploymentTarget) {
                 }
             }
 
+            # Check code-server deployment
+            code_server_name = f"{app_name}-code-server";
+            try {
+                apps_v1.read_namespaced_deployment(
+                    name=code_server_name, namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
+            # Check code-server service
+            try {
+                core_v1.read_namespaced_service(
+                    name=code_server_name, namespace=namespace
+                );
+                resources_exist = True;
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise ;
+                }
+            }
+
             # Check MongoDB resources if enabled
             if self.k8s_config.mongodb_enabled {
                 mongodb_name = f"{app_name}-mongodb";
@@ -781,6 +930,52 @@ class KubernetesTarget(DeploymentTarget) {
                 try {
                     core_v1.read_namespaced_service(
                         name=f"{redis_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+            }
+
+            # Check monitoring resources (Prometheus / Grafana) if enabled
+            if self.k8s_config.monitoring_enabled {
+                prometheus_name = f"{app_name}-prometheus";
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=prometheus_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{prometheus_name}-service", namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                grafana_name = f"{app_name}-grafana";
+                try {
+                    apps_v1.read_namespaced_deployment(
+                        name=grafana_name, namespace=namespace
+                    );
+                    resources_exist = True;
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise ;
+                    }
+                }
+                try {
+                    core_v1.read_namespaced_service(
+                        name=f"{grafana_name}-service", namespace=namespace
                     );
                     resources_exist = True;
                 } except ApiException as e {
@@ -883,7 +1078,16 @@ class KubernetesTarget(DeploymentTarget) {
             k8s_config.load_kube_config();
             apps_v1 = client.AppsV1Api();
             core_v1 = client.CoreV1Api();
+            autoscaling_v2 = client.AutoscalingV2Api();
             namespace = self.k8s_config.namespace;
+
+            # Delete HPA
+            delete_if_exists(
+                autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
+                f"{app_name}-hpa",
+                namespace,
+                'HorizontalPodAutoscaler'
+            );
 
             # Delete main deployment and service
             delete_if_exists(
@@ -898,6 +1102,25 @@ class KubernetesTarget(DeploymentTarget) {
 
             # Delete K8s Secret if it exists
             delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+
+            # Delete code-server deployment and service (before PVC deletion)
+            code_server_name = f"{app_name}-code-server";
+            delete_if_exists(
+                apps_v1.delete_namespaced_deployment,
+                code_server_name,
+                namespace,
+                'Deployment'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service,
+                code_server_name,
+                namespace,
+                'Service'
+            );
+
+            # Delete monitoring stack (Prometheus / Grafana)
+            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
+            monitoring.destroy(app_name, namespace, apps_v1, core_v1);
 
             # Delete databases
             self._destroy_databases(app_name, namespace, apps_v1, core_v1);

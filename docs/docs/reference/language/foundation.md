@@ -136,10 +136,14 @@ my_project/
 
 | Extension | Purpose |
 |-----------|---------|
-| `.jac` | Universal Jac code |
-| `.sv.jac` | Server-side only |
-| `.cl.jac` | Client-side only |
-| `.impl.jac` | Implementation file |
+| `.jac` | Universal Jac code (head module) |
+| `.sv.jac` | Server-variant code |
+| `.cl.jac` | Client-variant code |
+| `.na.jac` | Native-variant code |
+| `.impl.jac` | Implementation file (annex) |
+| `.test.jac` | Test file (annex) |
+
+Files sharing the same base name form a single logical module. For example, `mymod.jac`, `mymod.sv.jac`, `mymod.cl.jac`, `mymod.impl.jac`, and `mymod.test.jac` are all part of the `mymod` module. Variant files (`.sv.jac`, `.cl.jac`, `.na.jac`) are automatically discovered and merged during compilation -- see [Variant Modules](functions-objects.md#variant-modules) for details.
 
 ### 4 Editor Setup
 
@@ -168,6 +172,9 @@ Jac source files are UTF-8 encoded. Unicode is fully supported in strings and co
 
 """Docstring for modules, classes, and functions"""
 ```
+
+!!! tip "Coming from Python"
+    The biggest syntactic differences: Jac uses **braces** `{ }` instead of indentation for blocks, and **semicolons** `;` to terminate statements. Everything else -- variables, control flow, imports -- is very similar to Python.
 
 ### 3 Statements and Expressions
 
@@ -229,6 +236,9 @@ obj Example {
 ### 7 Entry Point Variants
 
 Entry points define where code execution begins. Unlike Python's `if __name__ == "__main__"` pattern, Jac provides explicit entry block syntax. Use `entry` for code that always runs, `entry:__main__` for main-module-only code (like tests or CLI scripts), and named entries for exposing multiple entry points from a single file.
+
+!!! tip "Coming from Python"
+    Python's `if __name__ == "__main__":` becomes `with entry:__main__ { }`. Plain `with entry { }` runs every time the module loads (like top-level Python code).
 
 ```jac
 # Default entry - always runs when this module loads
@@ -527,6 +537,9 @@ def example() {
 
 The `has` keyword declares instance variables in a clean, declarative style. Unlike Python's `self.x = value` pattern scattered throughout `__init__`, `has` statements appear at the top of your class definition, making the data model immediately visible. This design improves readability for both humans and AI code generators.
 
+!!! tip "Coming from Python"
+    In Python you write `self.x = value` inside `__init__`. In Jac, `has x: Type = value;` at the top of an `obj` replaces both the `__init__` parameter and the assignment -- no `self` needed for declarations.
+
 ```jac
 obj Person {
     has name: str;                    # Required
@@ -552,6 +565,11 @@ obj Rectangle {
 ```
 
 ### 3 Global Variables (glob)
+
+The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments.
+
+!!! tip "Coming from Python"
+    Python uses plain global assignment (`DEBUG = True`) and the `global` keyword inside functions. Jac uses `glob` for declarations (`glob DEBUG: bool = True;`) and still uses `global` inside functions to modify them.
 
 ```jac
 glob PI: float = 3.14159;
@@ -1351,6 +1369,9 @@ def example() {
 ### 4 Pattern Matching
 
 Pattern matching lets you destructure and test complex data in a single construct. Unlike a chain of `if/elif` statements, `match` can extract values from lists, dicts, and objects while testing their structure. Use it when handling multiple data shapes or implementing state machines.
+
+!!! warning "Common Gotcha"
+    Match case bodies use **Python-style indentation**, not braces. The `case` keyword is followed by a colon, and the body is indented -- this is the one place in Jac where indentation matters.
 
 **Basic Patterns:**
 

@@ -76,19 +76,19 @@ Note: `jac` is shorthand for `jac run` - both work identically.
 
     ---
 
-    Jump to [Build Your First App](../tutorials/first-app/part1-todo-app.md) - build a complete app with a 3-part tutorial.
+    Jump to [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) - build a complete app with a 7-part tutorial.
 
 - :material-robot:{ .lg .middle } **Working with AI/LLMs?**
 
     ---
 
-    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics, or try [Part 2: Add AI](../tutorials/first-app/part2-ai-features.md) in the first app tutorial.
+    See the [AI Integration reference](../reference/language/ai-integration.md) for byLLM basics, or try [Part 5: Making It Smart with AI](../tutorials/first-app/build-ai-day-planner.md#part-5-making-it-smart-with-ai) in the day planner tutorial.
 
 - :material-book-open-variant:{ .lg .middle } **Want the full picture?**
 
     ---
 
-    Read [Next Steps](next-steps.md) for learning paths by experience level.
+    Read the [FAQ](faq.md) for learning paths by experience level.
 
 </div>
 
@@ -154,9 +154,8 @@ Jac is designed for developers who want to build AI-powered applications without
 |----------|-------------|
 | [Installation](install.md) | Detailed setup with IDE configuration |
 | [Hello World](hello-world.md) | Your first Jac program (2 min) |
-| [Build Your First App](../tutorials/first-app/part1-todo-app.md) | Complete 3-part tutorial: todo app, AI, walkers |
-| [Tutorials](../tutorials/index.md) | In-depth learning paths |
-| [Language Reference](../reference/language/index.md) | Complete language documentation |
+| [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) | Complete 7-part tutorial covering all Jac features |
+| [Language Reference](../reference/language/foundation.md) | Complete language documentation |
 | [CLI Reference](../reference/cli/index.md) | All `jac` commands |
 
 ---

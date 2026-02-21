@@ -311,4 +311,4 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Build a Todo App](todo-app.md) - Complete full-stack example with AI
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

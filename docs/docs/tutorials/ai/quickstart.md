@@ -325,5 +325,5 @@ test "translate" {
 
 - [Structured Outputs](structured-outputs.md) - Return enums, objects, and lists
 - [Agentic AI](agentic.md) - Tool calling and ReAct patterns
-- [Part 2: Add AI](../first-app/part2-ai-features.md) - See AI integration in a complete full-stack app
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md#part-5-making-it-smart-with-ai) - See AI integration in a complete full-stack app
 - [byLLM Reference](../../reference/plugins/byllm.md) - Complete documentation

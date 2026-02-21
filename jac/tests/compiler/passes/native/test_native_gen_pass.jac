@@ -14,8 +14,8 @@ glob FIXTURES = str(
          Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
      );
 
+"""Compile a .na.jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple {
-    """Compile a .na.jac fixture and return the JIT engine."""
     prog = JacProgram();
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
@@ -25,8 +25,8 @@ def compile_native(fixture: str) -> tuple {
     return (eng, ir);
 }
 
+"""Get a ctypes-callable function from the JIT engine."""
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
-    """Get a ctypes-callable function from the JIT engine."""
     addr = eng.get_function_address(name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     functype = ctypes.CFUNCTYPE(restype, *argtypes);

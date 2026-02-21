@@ -20,6 +20,9 @@ class KubernetesConfig(BaseConfig) {
         liveness_initial_delay: int = 10,
         liveness_period: int = 20,
         liveness_failure_threshold: int = 80,
+        min_replicas: int = 1,
+        max_replicas: int = 3,
+        cpu_utilization_target: int = 50,
         health_check_path: str = '/docs',
         # Runtime configuration
         python_image: str = 'python:3.12-slim',
@@ -39,7 +42,11 @@ class KubernetesConfig(BaseConfig) {
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
         additional_packages: list[str] = [],
-        plugin_versions: dict[str, str] = {};
+        plugin_versions: dict[str, str] = {},
+        monitoring_enabled: bool = False,
+        prometheus_admin_password: str = 'Adminpassword123',
+        prometheus_node_port: int = 30090,
+        grafana_node_port: int = 30300;
 
     def init(
         self: KubernetesConfig,
@@ -61,6 +68,9 @@ class KubernetesConfig(BaseConfig) {
         liveness_initial_delay: int = 10,
         liveness_period: int = 20,
         liveness_failure_threshold: int = 80,
+        min_replicas: int = 1,
+        max_replicas: int = 3,
+        cpu_utilization_target: int = 50,
         health_check_path: str = '/docs',
         python_image: str = 'python:3.12-slim',
         busybox_image: str = 'busybox:1.36',
@@ -76,7 +86,11 @@ class KubernetesConfig(BaseConfig) {
         jaseci_commit: (str | None) = None,
         install_jaseci: bool = True,
         additional_packages: list[str] = [],
-        plugin_versions: dict[str, str] = {}
+        plugin_versions: dict[str, str] = {},
+        monitoring_enabled: bool = False,
+        prometheus_admin_password: str = 'Adminpassword123',
+        prometheus_node_port: int = 30090,
+        grafana_node_port: int = 30300
     ) -> None {
         self.app_name = app_name;
         self.namespace = namespace;
@@ -97,6 +111,9 @@ class KubernetesConfig(BaseConfig) {
         self.liveness_initial_delay = liveness_initial_delay;
         self.liveness_period = liveness_period;
         self.liveness_failure_threshold = liveness_failure_threshold;
+        self.min_replicas = min_replicas;
+        self.max_replicas = max_replicas;
+        self.cpu_utilization_target = cpu_utilization_target;
         self.health_check_path = health_check_path;
         # Runtime configuration
         self.python_image = python_image;
@@ -118,6 +135,11 @@ class KubernetesConfig(BaseConfig) {
         self.install_jaseci = install_jaseci;
         self.additional_packages = additional_packages;
         self.plugin_versions = plugin_versions;
+        # Monitoring configuration
+        self.monitoring_enabled = monitoring_enabled;
+        self.prometheus_admin_password = prometheus_admin_password;
+        self.prometheus_node_port = prometheus_node_port;
+        self.grafana_node_port = grafana_node_port;
     }
 
     override def to_dict(self: KubernetesConfig) -> dict[str, Any] {
@@ -140,6 +162,9 @@ class KubernetesConfig(BaseConfig) {
                 'liveness_initial_delay': self.liveness_initial_delay,
                 'liveness_period': self.liveness_period,
                 'liveness_failure_threshold': self.liveness_failure_threshold,
+                'min_replicas': self.min_replicas,
+                'max_replicas': self.max_replicas,
+                'cpu_utilization_target': self.cpu_utilization_target,
                 'health_check_path': self.health_check_path,
                 # Runtime configuration
                 'python_image': self.python_image,
@@ -160,7 +185,12 @@ class KubernetesConfig(BaseConfig) {
                 'jaseci_commit': self.jaseci_commit,
                 'install_jaseci': self.install_jaseci,
                 'additional_packages': self.additional_packages,
-                'plugin_versions': self.plugin_versions
+                'plugin_versions': self.plugin_versions,
+                # Monitoring configuration
+                'monitoring_enabled': self.monitoring_enabled,
+                'prometheus_admin_password': self.prometheus_admin_password,
+                'prometheus_node_port': self.prometheus_node_port,
+                'grafana_node_port': self.grafana_node_port
             }
         );
         return base;
@@ -186,6 +216,9 @@ class KubernetesConfig(BaseConfig) {
             liveness_initial_delay=config.get('liveness_initial_delay', 10),
             liveness_period=config.get('liveness_period', 20),
             liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
+            min_replicas=config.get('min_replicas', 1),
+            max_replicas=config.get('max_replicas', 3),
+            cpu_utilization_target=config.get('cpu_utilization_target', 50),
             health_check_path=config.get('health_check_path', '/docs'),
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
@@ -203,7 +236,13 @@ class KubernetesConfig(BaseConfig) {
             jaseci_commit=config.get('jaseci_commit'),
             install_jaseci=config.get('install_jaseci', True),
             additional_packages=config.get('additional_packages', []),
-            plugin_versions=config.get('plugin_versions', {})
+            plugin_versions=config.get('plugin_versions', {}),
+            monitoring_enabled=config.get('monitoring_enabled', False),
+            prometheus_admin_password=config.get(
+                'prometheus_admin_password', 'Adminpassword123'
+            ),
+            prometheus_node_port=config.get('prometheus_node_port', 30090),
+            grafana_node_port=config.get('grafana_node_port', 30300)
         );
     }
 }

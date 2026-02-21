@@ -32,15 +32,15 @@ EmailBuddy demonstrates three key Jac principles:
 
 ## Prerequisites & Key Concepts
 
-- Completed [Part 2: Add AI](../first-app/part2-ai-features.md) (AI integration basics)
+- Completed [Build an AI Day Planner](../first-app/build-ai-day-planner.md) (AI integration basics)
 - Familiar with [OSP Tutorial](../language/osp.md) (nodes, edges, walkers)
 
 | Concept | Where to Learn |
 |---------|----------------|
-| `by llm()` functions | [byLLM Quickstart](../ai/quickstart.md), [Part 2](../first-app/part2-ai-features.md) |
+| `by llm()` functions | [byLLM Quickstart](../ai/quickstart.md), [Day Planner](../first-app/build-ai-day-planner.md#part-5-making-it-smart-with-ai) |
 | Agentic patterns | [Agentic AI Tutorial](../ai/agentic.md) |
 | Nodes & graph modeling | [OSP Tutorial](../language/osp.md) |
-| Walker APIs | [Part 3](../first-app/part3-multi-user.md) |
+| Walker APIs | [Day Planner](../first-app/build-ai-day-planner.md#part-6-multi-user-support) |
 
 ---
 

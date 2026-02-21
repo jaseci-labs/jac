@@ -117,6 +117,10 @@ impl PyJacAstLinkPass.exit_enum(nd: uni.Enum) -> None {
     }
 }
 
+impl PyJacAstLinkPass.exit_type_alias(nd: uni.TypeAlias) -> None {
+    self.link_jac_py_nodes(jac_node=nd.name, py_nodes=nd.gen.py_ast);
+}
+
 impl PyJacAstLinkPass.exit_archetype(nd: uni.Archetype) -> None {
     self.link_jac_py_nodes(jac_node=nd.name, py_nodes=nd.gen.py_ast);
     if isinstance(nd.body, uni.ImplDef) {

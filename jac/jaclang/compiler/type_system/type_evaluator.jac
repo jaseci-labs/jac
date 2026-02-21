@@ -118,6 +118,7 @@ obj TypeEvaluator {
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
+    def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
@@ -209,9 +210,11 @@ obj TypeEvaluator {
         arg_nodes: list[uni.Expr | uni.KWPair],
         node_for_error: uni.Expr | None,
         func_type: types.FunctionType,
-        checking_overload: bool = False
+        checking_overload: bool = False,
+        is_unbound_call: bool = False
     ) -> MatchArgsToParamsResult;
 
+    def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
     def validate_arg_types(
         args: MatchArgsToParamsResult, checking_overload: bool = False
@@ -242,6 +245,11 @@ obj TypeEvaluator {
         symbol: uni.Symbol
     ) -> TypeBase | None;
 
+    def _filter_union_for_isinstance(
+        base_type: TypeBase, target_type: TypeBase
+    ) -> TypeBase | None;
+
+    def _type_matches_isinstance(t: TypeBase, target_type: TypeBase) -> bool;
     def _union_narrowed_types(types_list: list) -> TypeBase;
     def exclude_type_from_union(original: TypeBase, to_exclude: TypeBase) -> TypeBase;
 }

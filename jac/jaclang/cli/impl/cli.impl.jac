@@ -31,6 +31,10 @@ impl start_cli -> None {
     ) {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
     }
+    # Extract script arguments before argparse parsing (Python-like behavior).
+    # For commands with REMAINDER args, everything after the filename goes
+    # to the script — no '--' separator needed.
+    script_args = _extract_script_args(registry);
     # Parse arguments
     args = parser.parse_args();
     # Handle --version flag
@@ -60,6 +64,10 @@ impl start_cli -> None {
     args_dict = vars(args);
     args_dict.pop('command');
     args_dict.pop('version', None);
+    # Override REMAINDER args with the pre-extracted script arguments
+    if script_args {
+        args_dict['args'] = script_args;
+    }
     _apply_profile(args_dict);
     # Execute using the new executor with hook support
     executor = get_executor();
@@ -71,6 +79,101 @@ impl start_cli -> None {
     if result.return_code != 0 {
         sys.exit(result.return_code);
     }
+}
+
+"""Extract script arguments before argparse parsing.
+
+For commands with REMAINDER args (like 'run' and 'enter'), this mimics
+Python's behavior: jac flags must come before the script filename, and
+everything after the filename is passed to the script.
+
+    jac run file.jac arg1 arg2        -> args = [arg1, arg2]
+    jac run --no-cache file.jac arg1  -> args = [arg1]
+    jac run file.jac -- --flag        -> args = [--flag]
+
+Modifies sys.argv in-place so argparse only sees jac's own flags.
+"""
+def _extract_script_args(registry: object) -> list {
+    import from jaclang.cli.command { ArgKind }
+
+    raw = sys.argv[1:];
+    if len(raw) < 2 {
+        return [];
+    }
+
+    cmd_name = raw[0];
+    spec = registry.get(cmd_name);
+    if spec is None {
+        return [];
+    }
+
+    # Only apply to commands with REMAINDER args
+    all_args = spec.get_all_args();
+    has_remainder = any(a.kind == ArgKind.REMAINDER for a in all_args);
+    if not has_remainder {
+        return [];
+    }
+
+    # Count expected positional args (excluding REMAINDER)
+    n_positionals = sum(
+        1
+        for a in all_args
+        if a.kind == ArgKind.POSITIONAL
+    );
+
+    # Build set of flags that consume a value argument
+    value_flags: set = set();
+    for arg in all_args {
+        if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
+            continue;
+        }
+        if arg.kind == ArgKind.FLAG or arg.typ == bool {
+            continue;
+        }
+        value_flags.add(f"--{arg.name}");
+        if arg.short {
+            value_flags.add(f"-{arg.short}");
+        }
+    }
+
+    # Scan argv after command name
+    i = 1;
+    positionals_seen = 0;
+
+    while i < len(raw) {
+        token = raw[i];
+
+        if token == '--' {
+            # Explicit separator: everything after goes to script
+            script_args = raw[i + 1:];
+            sys.argv = [sys.argv[0]] + raw[:i];
+            return script_args;
+        }
+
+        if token.startswith('-') {
+            if token in value_flags {
+                i += 2;
+            } else {
+                i += 1;
+            }
+        } else {
+            positionals_seen += 1;
+            if positionals_seen >= n_positionals {
+                # Found the last expected positional (filename)
+                # Everything after is for the script
+                script_args = raw[i + 1:];
+                # Strip leading '--' for backward compat with old separator syntax
+                if script_args and script_args[0] == '--' {
+                    script_args = script_args[1:];
+                }
+                sys.argv = [sys.argv[0]] + raw[:i + 1];
+                return script_args;
+            }
+            i += 1;
+        }
+    }
+
+    return [];
 }
 
 """Load project configuration from jac.toml if present."""

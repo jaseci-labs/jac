@@ -6,7 +6,7 @@ This reference explains how walker responses work and the common patterns for ha
 >
 > - [Graph Operations](graph-operations.md) - Node creation, traversal, and deletion
 > - [Part III: OSP](osp.md) - Walker and node fundamentals
-> - [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full tutorial using these patterns
+> - [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full tutorial using these patterns
 
 ---
 
@@ -64,6 +64,19 @@ with entry {
 ```
 
 **When to use:** Most read operations, listing data, aggregations.
+
+This is the **accumulator pattern** -- the standard approach for collecting data from a graph traversal. The walker flows through three stages:
+
+1. **Enter root** → initiate traversal with `visit [-->]`
+2. **Visit each node** → gather data into walker state (`self.items`)
+3. **Exit root** → report the accumulated result
+
+The `with Root exit` ability fires after the walker has finished visiting all queued nodes and returns to root, making it the ideal place for a single consolidated report.
+
+!!! tip "Accumulator in Frontend"
+    When calling this pattern from client code, access the result with `result.reports[0]` -- there is always exactly one report containing the full collection.
+
+For a complete walkthrough of this pattern in a full-stack app, see [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md).
 
 ### Pattern 2: Report Per Node
 

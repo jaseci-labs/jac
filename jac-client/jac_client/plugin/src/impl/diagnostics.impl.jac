@@ -11,7 +11,7 @@ glob SNIPPET_ARROW_PREFIX = " -> ",
      HINT_IMPORT_PATH = "Check the import path for:\n  - Correct spelling and case\n  - File extension (.jac not needed)",
      HINT_CHECK_IMPORTS = "Check import statements for missing packages.",
      HINT_ADD_PACKAGE = "Add this package to your project.",
-     HINT_DEBUG_MODE = "Run with debug=true in jac.toml for details.",
+     HINT_DEBUG_MODE = "Debug mode is enabled by default. Set debug=false in jac.toml to disable.",
      HINT_CHECK_ERROR_OUTPUT = "Check the error output for details.",
      MSG_GENERIC_BUILD_ERROR = "An error occurred during build.",
      MSG_BUILD_FAILED = "Client bundle build failed.",
@@ -505,17 +505,27 @@ impl get_default_detectors -> list[
 }
 
 impl is_debug_mode(config: object = None) -> bool {
+    # Check environment variable first (can override config)
+    env_debug = os.environ.get("JAC_DEBUG", "").lower();
+    if env_debug in ("1", "true", "yes") {
+        return True;
+    }
+    if env_debug in ("0", "false", "no") {
+        return False;
+    }
+    # Check config - default is True if not specified
     if config {
         try {
             client_cfg = config.get_plugin_config("client");
-            if client_cfg and client_cfg.get("debug", False) {
-                return True;
+            if client_cfg {
+                return client_cfg.get("debug", True);
             }
         } except Exception {
             ;
         }
     }
-    return os.environ.get("JAC_DEBUG", "").lower() in ("1", "true", "yes");
+    # Default to True (debug enabled by default)
+    return True;
 }
 
 """Collect all .jac files in project, excluding build directories."""

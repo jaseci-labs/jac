@@ -50,7 +50,6 @@ def _get_http_status(transport_response: TransportResponse) -> int {
 def _transport_response_to_json_response(
     transport_response: TransportResponse
 ) -> JSONResponse {
-    import from fastapi.responses { JSONResponse }
     return JSONResponse(
         status_code=_get_http_status(transport_response),
         content=_transport_response_to_dict(transport_response)

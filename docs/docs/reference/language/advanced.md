@@ -353,7 +353,7 @@ with entry {
 
 **Tutorials:**
 
-- [Testing](../../tutorials/language/testing.md) - Write and run tests
+- [Testing](../testing.md) - Write and run tests
 
 **Related Reference:**
 

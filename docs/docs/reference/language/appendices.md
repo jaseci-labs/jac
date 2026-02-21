@@ -295,6 +295,26 @@ def increment -> None {
 
 ## Appendix E: Migration from Python
 
+### Quick Reference Table
+
+| Concept | Python | Jac |
+|---------|--------|-----|
+| Code blocks | Indentation | `{ }` braces |
+| Statements | No semicolons | `;` required |
+| Classes | `class Foo:` | `obj Foo { }` |
+| Attributes | `self.x = val` in `__init__` | `has x: type = val;` |
+| Methods | `def method(self):` | `def method() { }` (self is implicit) |
+| Entry point | `if __name__ == "__main__":` | `with entry { }` |
+| Module variables | Global assignment | `glob` keyword |
+| Enums | `class Color(Enum):` | `enum Color { RED, GREEN, BLUE }` |
+| Error handling | `try: ... except:` | `try { } except Type as e { }` |
+| Imports | `from x import y` | `import from x { y }` |
+| Pattern matching | `match x: case 1:` | `match x { case 1:` (Python-style indentation inside braces) |
+| Inheritance | `class Dog(Animal):` | `obj Dog(Animal) { }` |
+
+!!! warning "Match Case Syntax"
+    Match case bodies use Python-style indentation (not braces), even though they appear inside a braces-delimited block. This is unique in Jac.
+
 ### Class to Object
 
 **Python:**
@@ -370,6 +390,102 @@ with entry {
     }
 }
 ```
+
+### Imports
+
+**Python:**
+
+```python
+import math
+from collections import Counter, defaultdict
+```
+
+**Jac:**
+
+```jac
+import math;
+import from collections { Counter, defaultdict }
+```
+
+### Enums
+
+**Python:**
+
+```python
+from enum import Enum
+
+class Status(Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+```
+
+**Jac:**
+
+```jac
+enum Status {
+    PENDING = "pending",
+    ACTIVE = "active"
+}
+```
+
+### Entry Point
+
+**Python:**
+
+```python
+if __name__ == "__main__":
+    main()
+```
+
+**Jac:**
+
+```jac
+with entry {
+    main();
+}
+```
+
+### Module-Level Variables
+
+**Python:**
+
+```python
+config = {"debug": True, "version": "1.0.0"}
+```
+
+**Jac:**
+
+```jac
+glob config: dict = {"debug": True, "version": "1.0.0"};
+```
+
+### Error Handling
+
+**Python:**
+
+```python
+try:
+    result = divide(10, 0)
+except ValueError as e:
+    print(f"Error: {e}")
+finally:
+    print("Done")
+```
+
+**Jac:**
+
+<!-- jac-skip -->
+```jac
+try {
+    result = divide(10, 0);
+} except ValueError as e {
+    print(f"Error: {e}");
+} finally {
+    print("Done");
+}
+```
+
+For a step-by-step transition guide, see [Jac Basics Tutorial](../../tutorials/language/basics.md).
 
 ---
 

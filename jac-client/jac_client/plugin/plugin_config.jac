@@ -9,6 +9,7 @@ configuration system, registering:
 """
 
 import os;
+import shutil;
 import subprocess;
 import json;
 import from pathlib { Path }
@@ -326,7 +327,6 @@ def _npm_remove_handler(
 def _regenerate_and_install(project_dir: Path) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils { ensure_bun_available }
-    import shutil;
 
     # Ensure Bun is installed before proceeding (prompt to install if not)
     if not ensure_bun_available() {

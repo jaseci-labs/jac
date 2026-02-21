@@ -288,6 +288,9 @@ with entry {
 
 The `visit` statement tells the walker where to go next. It doesn't immediately move -- it queues nodes for the next step of traversal. This queue-based approach lets you control breadth-first vs depth-first traversal and handle cases where there's nowhere to go (using the `else` clause).
 
+!!! warning "Traversal Must Be Explicit"
+    Without a `visit` statement in an ability, the walker stops at the current node. If a walker visits root and then reaches a `Person` node but the `Person` ability has no `visit [-->]`, the walker will not continue to the next person. Traversal must be explicitly requested at each step.
+
 **Basic Syntax:**
 
 ```jac
@@ -436,6 +439,61 @@ with entry {
     print(result.reports);  # All reported values
 }
 ```
+
+### When to Use Walkers vs Functions
+
+Jac provides two ways to expose server logic: `def:pub` functions and `walker` types. Choose based on your needs:
+
+| | `def:pub` Functions | Walkers |
+|---|---|---|
+| **Best for** | Simple stateless CRUD, quick prototyping | Graph traversal, per-user data, production apps |
+| **Auth** | Shared data (no user isolation) | Per-user root node (`walker:priv` enforces auth) |
+| **Data access** | Direct: `[root -->]` | Traversal: `visit [-->]`, `here` |
+| **API style** | Function call → HTTP endpoint | Spawn walker at node |
+| **State** | Stateless | Carries state across nodes via `has` properties |
+
+!!! tip "Rule of Thumb"
+    Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal. The `walker:priv` visibility modifier automatically enforces that the walker runs on the authenticated user's private root node.
+
+### Walkers as REST APIs
+
+Public walkers automatically become HTTP endpoints when you run `jac start`:
+
+```jac
+node Todo {
+    has title: str;
+    has done: bool = False;
+}
+
+walker add_todo {
+    has title: str;
+
+    can create with Root entry {
+        new_todo = here ++> Todo(title=self.title);
+        report new_todo;
+    }
+}
+
+walker list_todos {
+    can list with Root entry {
+        for todo in [-->](?:Todo) {
+            report todo;
+        }
+    }
+}
+```
+
+```bash
+# Run as API server
+jac start app.jac
+
+# Call via HTTP
+curl -X POST http://localhost:8000/walker/add_todo \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Learn OSP"}'
+```
+
+Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](full-stack.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -850,6 +908,6 @@ walker ShoppingCart {
 
 - [Walker Responses](walker-responses.md) - Patterns for handling `.reports` array
 - [Graph Operations](graph-operations.md) - Quick reference for `++>`, `-->`, `del here`
-- [Build a Todo App](../../tutorials/fullstack/todo-app.md) - Full-stack tutorial using OSP concepts
+- [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md) - Full-stack tutorial using OSP concepts
 - [OSP Tutorial](../../tutorials/language/osp.md) - Hands-on tutorial with exercises
 - [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) - Gentle introduction to Jac's core concepts

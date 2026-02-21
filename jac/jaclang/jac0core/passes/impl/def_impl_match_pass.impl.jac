@@ -9,6 +9,18 @@ impl DeclImplMatchPass.transform(
     for impl_module in ir_in.impl_mod {
         self.connect_impls(impl_module.sym_tab, ir_in.sym_tab);
     }
+    for variant_module in ir_in.variant_mod {
+        self.connect_impls(variant_module.sym_tab, variant_module.sym_tab);
+        for impl_module in variant_module.impl_mod {
+            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
+        }
+    }
+    # Cross-variant: head impl files may provide impls for variant decls.
+    for impl_module in ir_in.impl_mod {
+        for variant_module in ir_in.variant_mod {
+            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
+        }
+    }
     return ir_in;
 }
 

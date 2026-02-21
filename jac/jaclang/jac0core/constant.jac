@@ -158,7 +158,7 @@ enum SymbolAccess {
 }
 
 """Token constants for the lexer."""
-class Tokens(str, Enum) {
+class Tokens(StrEnum) {
     with entry {
         FLOAT = 'FLOAT';
         STRING = 'STRING';
@@ -361,10 +361,6 @@ class Tokens(str, Enum) {
         D_RBRACE = 'D_RBRACE';
         CONV = 'CONV';
         F_FORMAT_TEXT = 'F_FORMAT_TEXT';
-    }
-
-    def __str__(self: Tokens) -> str {
-        return self.value;
     }
 }
 
