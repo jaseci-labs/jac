@@ -1,7 +1,5 @@
 # Python Integration
 
-> **Part of:** [Part VIII: Ecosystem](ecosystem.md)
->
 > **Related:** [Library Mode](library-mode.md) | [Build an AI Day Planner](../../tutorials/first-app/build-ai-day-planner.md)
 
 ---
@@ -543,3 +541,17 @@ Jac's design as a Python superset enables complementary use of both languages ra
 | Pattern 5: Pure Python + Library | Low | Very Low | Core runtime only | Very Low |
 
 Jac accommodates both new application development and enhancement of existing Python codebases, providing structured approaches to graph-based and object-spatial programming while maintaining full Python ecosystem compatibility.
+
+## Type Compatibility
+
+| Jac Type | Python Type |
+|----------|-------------|
+| `int` | `int` |
+| `float` | `float` |
+| `str` | `str` |
+| `bool` | `bool` |
+| `list` | `list` |
+| `dict` | `dict` |
+| `tuple` | `tuple` |
+| `set` | `set` |
+| `None` | `None` |

@@ -182,7 +182,7 @@ def generate_html_table(contributors: list[dict[str, Any]], days: int) -> str {
 }
 
 """Return CSS for the tab and table design."""
-def get_tabs_css -> str {
+def get_tabs_css() -> str {
     return tabel_css;
 }
 
@@ -211,22 +211,21 @@ with entry {
             periods.append(p);
         }
     }
-    if not periods {
-        return;
-    }
 }
 
-glob max_days = max(periods),
-     all_commits = get_commits_from_git(max_days),
-     html: list[str] = [];
+glob html: list[str] = [];
 
 with entry {
-    html.append(get_tabs_css());
-    html.append('<div class="tabcontent">');
-    for days in periods {
-        contributors = process_contributors(all_commits, days);
-        html.append(generate_html_table(contributors, days));
+    if periods {
+        max_days = max(periods);
+        all_commits = get_commits_from_git(max_days);
+        html.append(get_tabs_css());
+        html.append('<div class="tabcontent">');
+        for days in periods {
+            contributors = process_contributors(all_commits, days);
+            html.append(generate_html_table(contributors, days));
+        }
+        html.append("</div>");
+        print("\n".join(html));
     }
-    html.append("</div>");
-    print("\n".join(html));
 }

@@ -335,6 +335,20 @@ Parameters passed to `by llm()` at call time:
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 
+### Chained Transformations
+
+Compose multiple LLM calls using the pipe operator:
+
+```jac
+with entry {
+    text = "Some input text";
+    result = text
+        |> (lambda t: str -> str: t by llm("Correct grammar"))
+        |> (lambda t: str -> str: t by llm("Simplify language"))
+        |> (lambda t: str -> str: t by llm("Translate to Spanish"));
+}
+```
+
 ### Examples
 
 ```jac
@@ -361,7 +375,10 @@ def generate_essay(topic: str) -> str by llm(stream=True);
 
 ## Semantic Strings (semstrings)
 
-Enrich type semantics for better LLM understanding:
+Enrich type semantics for better LLM understanding.
+
+!!! tip "Best practice"
+    Always use `sem` to provide context for `by llm()` functions and parameters. Docstrings are for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
 
 ```jac
 obj Customer {
@@ -1097,6 +1114,78 @@ def get_weather(city: str) -> str:
 
 @by(llm(tools=[get_weather]))
 def answer_question(question: str) -> str: ...
+```
+
+---
+
+## Agentic AI Patterns
+
+### AI Agents as Walkers
+
+Combine graph traversal with LLM reasoning by using walkers as AI agents:
+
+```jac
+walker AIAgent {
+    has goal: str;
+    has memory: list = [];
+
+    can decide with Node entry {
+        context = f"Goal: {self.goal}\nCurrent: {here}\nMemory: {self.memory}";
+        decision = context by llm("Decide next action");
+        self.memory.append({"location": here, "decision": decision});
+        visit [-->];
+    }
+}
+```
+
+### Agentic Walkers
+
+Walkers that traverse document graphs and use LLM for analysis:
+
+```jac
+node Document {
+    has title: str;
+    has content: str;
+    has summary: str = "";
+}
+
+def summarize(content: str) -> str by llm();
+sem summarize = "Summarize this document in 2-3 sentences.";
+
+walker DocumentAgent {
+    has query: str;
+
+    can process with Root entry {
+        all_docs = [-->](?:Document);
+
+        for doc in all_docs {
+            if self.query.lower() in doc.content.lower() {
+                doc.summary = summarize(doc.content);
+                report {"title": doc.title, "summary": doc.summary};
+            }
+        }
+    }
+}
+```
+
+### Multi-Agent Systems
+
+Orchestrate multiple specialized walkers:
+
+```jac
+walker Coordinator {
+    can coordinate with Root entry {
+        research = root spawn Researcher(topic="AI");
+        writer = root spawn Writer(style="technical");
+        reviewer = root spawn Reviewer();
+
+        report {
+            "research": research.reports,
+            "draft": writer.reports,
+            "review": reviewer.reports
+        };
+    }
+}
 ```
 
 ---

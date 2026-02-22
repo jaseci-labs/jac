@@ -111,6 +111,15 @@ test "none checking" {
 }
 ```
 
+### Float Comparison
+
+```jac
+test "float comparison" {
+    result = 0.1 + 0.2;
+    assert almostEqual(result, 0.3, places=10);
+}
+```
+
 ### With Messages
 
 ```jac

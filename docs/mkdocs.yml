@@ -24,48 +24,43 @@ nav:
           - Functions & Objects: "reference/language/functions-objects.md"
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
-          - Advanced Features: "reference/language/advanced.md"
-      - AI Integration: "reference/language/ai-integration.md"
-      - Full-Stack: "reference/language/full-stack.md"
-      - Deployment & Scaling: "reference/language/deployment.md"
-      - Quick Lookup:
-          - Graph Operations: "reference/language/graph-operations.md"
-          - Walker Responses: "reference/language/walker-responses.md"
-          - Appendices: "reference/language/appendices.md"
-      - Plugins:
-          - byLLM: "reference/plugins/byllm.md"
-          - jac-client: "reference/plugins/jac-client.md"
-          - jac-scale: "reference/plugins/jac-scale.md"
-      - Tools:
-          - CLI Commands: "reference/cli/index.md"
-          - Configuration: "reference/config/index.md"
-          - Testing: "reference/testing.md"
-      - Ecosystem:
-          - Overview: "reference/language/ecosystem.md"
-          - Python Integration: "reference/language/python-integration.md"
-          - Library Mode: "reference/language/library-mode.md"
-      - Tutorials:
-          - Learning Path: "tutorials/index.md"
-          - Learning the Language:
-              - Programming Primer: "tutorials/language/coding_primer.md"
-              - Jac Basics: "tutorials/language/basics.md"
-              - Object-Spatial Programming: "tutorials/language/osp.md"
-              - Debugging: "tutorials/language/debugging.md"
-          - AI Programming:
-              - Getting Started with AI: "tutorials/ai/quickstart.md"
+          - Comprehensions & Filters: "reference/language/advanced.md"
+          - Learn by Doing:
+              - New to Programming?: "tutorials/language/coding_primer.md"
+              - Jac Fundamentals: "tutorials/language/basics.md"
+              - Graphs & Walkers: "tutorials/language/osp.md"
+      - AI Integration:
+          - byLLM Reference: "reference/plugins/byllm.md"
+          - Learn by Doing:
+              - Your First AI Function: "tutorials/ai/quickstart.md"
               - Structured Outputs: "tutorials/ai/structured-outputs.md"
               - Agentic AI: "tutorials/ai/agentic.md"
-              - Multimodal AI: "tutorials/ai/multimodal.md"
-          - Full-Stack Development:
+              - Multimodal: "tutorials/ai/multimodal.md"
+      - Full-Stack Development:
+          - jac-client Reference: "reference/plugins/jac-client.md"
+          - Learn by Doing:
               - Project Setup: "tutorials/fullstack/setup.md"
               - Components: "tutorials/fullstack/components.md"
               - State Management: "tutorials/fullstack/state.md"
               - Backend Integration: "tutorials/fullstack/backend.md"
               - Authentication: "tutorials/fullstack/auth.md"
               - Routing: "tutorials/fullstack/routing.md"
-          - Going to Production:
+      - Deployment & Scaling:
+          - jac-scale Reference: "reference/plugins/jac-scale.md"
+          - Learn by Doing:
               - Local API Server: "tutorials/production/local.md"
-              - Kubernetes Deployment: "tutorials/production/kubernetes.md"
+              - Kubernetes: "tutorials/production/kubernetes.md"
+      - Tools & Config:
+          - CLI Commands: "reference/cli/index.md"
+          - Configuration: "reference/config/index.md"
+          - Testing: "reference/testing.md"
+          - Debugging: "tutorials/language/debugging.md"
+      - Python Integration:
+          - Interoperability: "reference/language/python-integration.md"
+          - Library Mode: "reference/language/library-mode.md"
+      - Quick Reference:
+          - Walker Patterns: "reference/language/walker-responses.md"
+          - Appendices: "reference/language/appendices.md"
 
   - Community:
       - Contributing: "community/contributing.md"
@@ -187,9 +182,7 @@ extra_javascript:
 
 plugins:
   - search
-  - open-in-new-tab:
-      excluded_selectors:
-        - .md-logo
+  - open-in-new-tab
   - mkdocs-video:
       is_video: True
       video_autoplay: True
@@ -226,12 +219,12 @@ plugins:
         learn/jac-ref/foundation.md: reference/language/foundation.md
         learn/jac-ref/functions-objects.md: reference/language/functions-objects.md
         learn/jac-ref/osp.md: reference/language/osp.md
-        learn/jac-ref/full-stack.md: reference/language/full-stack.md
-        learn/jac-ref/ai-integration.md: reference/language/ai-integration.md
+        learn/jac-ref/full-stack.md: reference/plugins/jac-client.md
+        learn/jac-ref/ai-integration.md: reference/plugins/byllm.md
         learn/jac-ref/concurrency.md: reference/language/concurrency.md
         learn/jac-ref/advanced.md: reference/language/advanced.md
-        learn/jac-ref/ecosystem.md: reference/language/ecosystem.md
-        learn/jac-ref/deployment.md: reference/language/deployment.md
+        learn/jac-ref/ecosystem.md: reference/index.md
+        learn/jac-ref/deployment.md: reference/plugins/jac-scale.md
         learn/jac-ref/appendices.md: reference/language/appendices.md
 
         # Contributor Hub redirects
@@ -253,7 +246,7 @@ plugins:
         tutorials/language/mixing-jac-python.md: reference/language/python-integration.md
         tutorials/language/library-mode.md: reference/language/library-mode.md
         tutorials/language/testing.md: reference/testing.md
-        tutorials/ai/ai-tools.md: reference/language/ecosystem.md
+        tutorials/ai/ai-tools.md: reference/index.md
 
         # Removed redundant tutorials → Day Planner redirects
         tutorials/first-app/part1-todo-app.md: tutorials/first-app/build-ai-day-planner.md
@@ -264,12 +257,20 @@ plugins:
         # Removed orphaned pages → nearest equivalent
         quick-guide/next-steps.md: quick-guide/faq.md
         reference/language/index.md: reference/language/foundation.md
-        reference/plugins/index.md: reference/language/ecosystem.md
         tutorials/roadmap.md: quick-guide/index.md
         community/top_contributors.md: community/contributors.md
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md
+
+        # Nav reorganization - merged pages redirects
+        reference/language/ai-integration.md: reference/plugins/byllm.md
+        reference/language/full-stack.md: reference/plugins/jac-client.md
+        reference/language/deployment.md: reference/plugins/jac-scale.md
+        reference/language/graph-operations.md: reference/language/osp.md
+        reference/language/ecosystem.md: reference/index.md
+        reference/plugins/index.md: reference/index.md
+        tutorials/index.md: reference/index.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

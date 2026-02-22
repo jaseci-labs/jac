@@ -8,6 +8,7 @@ Complete reference for jac-scale, the cloud-native deployment and scaling plugin
 
 ```bash
 pip install jac-scale
+jac plugins enable scale
 ```
 
 ---
@@ -62,6 +63,15 @@ jac start app.jac --host 0.0.0.0 --port 8000 --workers 4
 ### Default Persistence
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
+
+### CORS Configuration
+
+```toml
+[plugins.scale.cors]
+allow_origins = ["https://example.com"]
+allow_methods = ["GET", "POST", "PUT", "DELETE"]
+allow_headers = ["*"]
+```
 
 ---
 
@@ -938,6 +948,13 @@ jac-scale uses a tiered memory system:
 | L2 | Redis | Cache layer |
 | L3 | MongoDB | Persistent storage |
 
+```mermaid
+graph TD
+    App["Application"] --- L1["L1: Volatile (in-memory)"]
+    L1 --- L2["L2: Redis (cache)"]
+    L2 --- L3["L3: MongoDB (persistent)"]
+```
+
 ---
 
 ## Kubernetes Deployment
@@ -997,6 +1014,7 @@ This removes all Kubernetes resources created by jac-scale:
 | `K8s_READINESS_PERIOD` | Readiness probe period (seconds) | `20` |
 | `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe initial delay (seconds) | `10` |
 | `K8s_LIVENESS_PERIOD` | Liveness probe period (seconds) | `20` |
+| `K8s_REPLICAS` | Number of replicas | `1` |
 | `K8s_LIVENESS_FAILURE_THRESHOLD` | Failure threshold before restart | `80` |
 | `DOCKER_USERNAME` | DockerHub username | None |
 | `DOCKER_PASSWORD` | DockerHub password/token | None |
@@ -1023,6 +1041,13 @@ jac_byllm = "none"     # Skip installation
 ---
 
 ## Health Checks
+
+Built-in endpoints are available for Kubernetes probes:
+
+- `/health` -- Liveness probe
+- `/ready` -- Readiness probe
+
+You can also create custom health walkers:
 
 ### Health Endpoint
 
