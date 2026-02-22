@@ -185,7 +185,7 @@ Response:
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
-- **Graph Visualizer:** `http://localhost:8000/graph` — interactive visualization of your application's graph
+- **Graph Visualizer:** `http://localhost:8000/graph` - interactive visualization of your application's graph
 
 ---
 

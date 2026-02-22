@@ -1108,8 +1108,8 @@ When server is running:
 
 Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
 
-- **Without authentication** — displays the public graph (super root), useful for applications with public endpoints
-- **With authentication** — click the **Login** button in the header to sign in and view your user-specific graph
+- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
 
 The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
 
