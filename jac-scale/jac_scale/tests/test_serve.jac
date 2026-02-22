@@ -2218,6 +2218,53 @@ test "walker stream response" {
     }
 }
 
+test "graph endpoint returns html page" {
+    sp = setup_serve_server();
+    try {
+        response = requests.get(f"{sv_base_url}/graph", timeout=5);
+        assert response.status_code == 200;
+        assert "text/html" in response.headers["content-type"];
+    } finally {
+        teardown_serve_server(sp);
+    }
+}
+
+test "graph data returns nodes and edges" {
+    sp = setup_serve_server();
+    try {
+        # Public (no auth) should return __guest__ root
+        response = requests.get(f"{sv_base_url}/graph/data", timeout=5);
+        assert response.status_code == 200;
+        data = response.json();
+        assert "nodes" in data and "edges" in data;
+
+        # Authenticated user: create a node, verify it appears
+        reg = _request(
+            sv_base_url,
+            "POST",
+            "/user/register",
+            {"username": "guser", "password": "gpass"}
+        );
+        _request(
+            sv_base_url,
+            "POST",
+            "/walker/CreateTask",
+            {"title": "T1", "priority": 1},
+            token=reg["token"]
+        );
+        auth_resp = requests.get(
+            f"{sv_base_url}/graph/data",
+            headers={"Authorization": f"Bearer {reg['token']}"},
+            timeout=5
+        );
+        auth_data = auth_resp.json();
+        assert len(auth_data["nodes"]) == 2;
+        assert len(auth_data["edges"]) == 1;
+    } finally {
+        teardown_serve_server(sp);
+    }
+}
+
 test "function stream response" {
     sp = setup_dev_mode_server();
     try {
