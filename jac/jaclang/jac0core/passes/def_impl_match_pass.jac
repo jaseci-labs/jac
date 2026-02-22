@@ -22,7 +22,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 """Decls and Def matching pass."""
-class DeclImplMatchPass(Transform[(uni.Module, uni.Module)]) {
+class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
     """Connect Decls and Defs."""
     def transform(self: DeclImplMatchPass, ir_in: uni.Module) -> uni.Module;
 

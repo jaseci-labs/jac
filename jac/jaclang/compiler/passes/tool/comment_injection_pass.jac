@@ -62,7 +62,7 @@ Injects comments using token sequence analysis for perfect precision.
     injects them using source_token annotations with automatic duplicate
     line collapsing.
 """
-obj CommentInjectionPass(Transform[(uni.Module, uni.Module)]) {
+obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None);
     def transform(ir_in: uni.Module) -> uni.Module;
     def _process(ctx: uni.UniNode, nd: doc.DocType) -> doc.DocType;

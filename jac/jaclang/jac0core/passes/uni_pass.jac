@@ -12,7 +12,7 @@ with entry {
 
 glob T = TypeVar('T', bound=uni.UniNode);
 """Abstract class for IR passes."""
-class UniPass(Transform[(uni.Module, uni.Module)]) {
+class UniPass(Transform[uni.Module, uni.Module]) {
     """Initialize parser."""
     def init(
         self: UniPass,

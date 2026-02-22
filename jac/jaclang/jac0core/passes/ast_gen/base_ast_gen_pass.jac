@@ -1,13 +1,12 @@
 """Shared helpers for AST generation passes."""
 import from collections.abc { Sequence }
-import from typing { Any, Generic, TypeVar }
+import from typing { Any, TypeVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.uni_pass { UniPass }
-glob T = TypeVar('T'),
-     ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
+glob ChildPassT = TypeVar('ChildPassT', bound='BaseAstGenPass[Any]');
 
 """Common functionality shared across AST generation passes."""
-class BaseAstGenPass(UniPass, Generic[T]) {
+class BaseAstGenPass[T](UniPass) {
     """Return the list of body statements regardless of ImplDef wrapping."""
     def _get_body_inner(
         self: BaseAstGenPass, nd: uni.Archetype | uni.Enum | uni.Ability

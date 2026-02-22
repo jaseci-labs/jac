@@ -73,7 +73,7 @@ class JacProgram {
     def run_schedule(
         self: JacProgram,
         mod: uni.Module,
-        passes: list[type[Transform[(uni.Module, uni.Module)]]],
+        passes: list[type[Transform[uni.Module, uni.Module]]],
         cancel_token: (Event | None) = None
     ) -> None;
 

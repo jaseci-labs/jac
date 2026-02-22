@@ -16,6 +16,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - 4 Minor refactors/chages
 - **Native Codegen: Expanded Primitive Coverage**: Added 17 new LLVM IR emitter implementations across 6 emitters: IntEmitter (`conjugate`, `bit_length`, `bit_count`), FloatEmitter (`conjugate`, `is_integer`, `op_floordiv`), StrEmitter (`title`, `rfind`, `ljust`, `rjust`, `zfill`), SetEmitter (`clear`, `discard`, `copy`), ListEmitter (`extend`, `insert`), and BuiltinEmitter (`bool`). Fixed string comparison operators (`<`, `>`, `<=`, `>=`) via `strcmp` and added float floor division (`fdiv` + `floor`). Fixed `rfind` infinite loop on empty substring. 108/299 implemented (36%), 105/299 tested (35%).
 - **Fix: Walker `result.reports` in CLI Mode**: Fixed `report` keyword not populating `result.reports` when running walkers via `jac run` or `jac test`.
+- **`jac format` Support for Generic Syntax**: `jac format` now correctly handles native generic type parameters (`class Foo[V, C]`) and type aliases (`type Result[T, E] = T | E;`). Previously, formatting would lose type parameter names and produce broken output.
+- **Bootstrap Compiler (jac0) Native Generic Support**: Extended the jac0 bootstrap transpiler to parse and emit PEP 695 generic class syntax (`class Foo[T, V](Base)`) and type alias statements (`type Alias[T] = Expr`), enabling jac0core infrastructure files to use native Jac generics instead of Python-style `Generic[T]`/`TypeVar` patterns.
+- **Migrate jac0core and Compiler Passes to Native Generics**: Replaced `Generic[(T, V)]` inheritance and `TypeVar` declarations with native `[T, V]` syntax across `transform.jac`, `unitree.jac`, `base_ast_gen_pass.jac`, and all `Transform[(X, Y)]` subscription sites in the compiler pipeline.
 
 ## jaclang 0.10.5 (Latest Release)
 

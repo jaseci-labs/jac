@@ -110,7 +110,7 @@ impl JacProgram.build(
 impl JacProgram.run_schedule(
     self: JacProgram,
     mod: uni.Module,
-    passes: list[type[Transform[(uni.Module, uni.Module)]]],
+    passes: list[type[Transform[uni.Module, uni.Module]]],
     cancel_token: (Event | None) = None
 ) -> None {
     self._get_compiler().run_schedule(mod, self, passes, cancel_token);

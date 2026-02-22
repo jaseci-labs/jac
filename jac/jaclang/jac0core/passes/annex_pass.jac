@@ -26,7 +26,7 @@ with entry {
 }
 
 """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
-class JacAnnexPass(Transform[(uni.Module, uni.Module)]) {
+class JacAnnexPass(Transform[uni.Module, uni.Module]) {
     """Load and attach annex modules to the given module."""
     def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module;
 
