@@ -5,7 +5,7 @@ edit_uri: edit/main/docs/docs
 use_directory_urls: true
 nav:
   # ============================================
-  # TWO-SECTION DOCUMENTATION STRUCTURE
+  # FOUR-TAB DOCUMENTATION STRUCTURE
   # ============================================
 
   - Get Started:
@@ -17,51 +17,55 @@ nav:
       - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
       - FAQ: "quick-guide/faq.md"
 
-  - Full Documentation:
-      - Overview: "full-docs-guide.md"
-      - Core Language:
-          - Jac Basics: "tutorials/language/basics.md"
-          - Foundation Reference: "reference/language/foundation.md"
+  - Full Reference:
+      - Overview: "reference/index.md"
+      - Language Specification:
+          - Foundation: "reference/language/foundation.md"
           - Functions & Objects: "reference/language/functions-objects.md"
-          - OSP Guide: "tutorials/language/osp.md"
-          - OSP Reference: "reference/language/osp.md"
+          - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
           - Advanced Features: "reference/language/advanced.md"
-          - Programming Primer: "tutorials/language/coding_primer.md"
-      - AI Programming:
-          - Getting Started with AI: "tutorials/ai/quickstart.md"
-          - Structured Outputs: "tutorials/ai/structured-outputs.md"
-          - Agentic AI: "tutorials/ai/agentic.md"
-          - Multimodal AI: "tutorials/ai/multimodal.md"
-          - AI Integration Reference: "reference/language/ai-integration.md"
-          - byLLM Plugin: "reference/plugins/byllm.md"
-      - Full-Stack Development:
-          - Project Setup: "tutorials/fullstack/setup.md"
-          - Components: "tutorials/fullstack/components.md"
-          - State Management: "tutorials/fullstack/state.md"
-          - Backend Integration: "tutorials/fullstack/backend.md"
-          - Authentication: "tutorials/fullstack/auth.md"
-          - Routing: "tutorials/fullstack/routing.md"
-          - Full-Stack Reference: "reference/language/full-stack.md"
-          - jac-client Plugin: "reference/plugins/jac-client.md"
-      - Deployment:
-          - Local API Server: "tutorials/production/local.md"
-          - Kubernetes: "tutorials/production/kubernetes.md"
-          - Deployment Reference: "reference/language/deployment.md"
-          - jac-scale Plugin: "reference/plugins/jac-scale.md"
-      - Tools & Config:
-          - CLI Reference: "reference/cli/index.md"
+      - AI Integration: "reference/language/ai-integration.md"
+      - Full-Stack: "reference/language/full-stack.md"
+      - Deployment & Scaling: "reference/language/deployment.md"
+      - Quick Lookup:
+          - Graph Operations: "reference/language/graph-operations.md"
+          - Walker Responses: "reference/language/walker-responses.md"
+          - Appendices: "reference/language/appendices.md"
+      - Plugins:
+          - byLLM: "reference/plugins/byllm.md"
+          - jac-client: "reference/plugins/jac-client.md"
+          - jac-scale: "reference/plugins/jac-scale.md"
+      - Tools:
+          - CLI Commands: "reference/cli/index.md"
           - Configuration: "reference/config/index.md"
           - Testing: "reference/testing.md"
-          - Debugging: "tutorials/language/debugging.md"
       - Ecosystem:
           - Overview: "reference/language/ecosystem.md"
           - Python Integration: "reference/language/python-integration.md"
           - Library Mode: "reference/language/library-mode.md"
-      - Quick Reference:
-          - Appendices: "reference/language/appendices.md"
-          - Walker Responses: "reference/language/walker-responses.md"
-          - Graph Operations: "reference/language/graph-operations.md"
+      - Tutorials:
+          - Learning Path: "tutorials/index.md"
+          - Learning the Language:
+              - Programming Primer: "tutorials/language/coding_primer.md"
+              - Jac Basics: "tutorials/language/basics.md"
+              - Object-Spatial Programming: "tutorials/language/osp.md"
+              - Debugging: "tutorials/language/debugging.md"
+          - AI Programming:
+              - Getting Started with AI: "tutorials/ai/quickstart.md"
+              - Structured Outputs: "tutorials/ai/structured-outputs.md"
+              - Agentic AI: "tutorials/ai/agentic.md"
+              - Multimodal AI: "tutorials/ai/multimodal.md"
+          - Full-Stack Development:
+              - Project Setup: "tutorials/fullstack/setup.md"
+              - Components: "tutorials/fullstack/components.md"
+              - State Management: "tutorials/fullstack/state.md"
+              - Backend Integration: "tutorials/fullstack/backend.md"
+              - Authentication: "tutorials/fullstack/auth.md"
+              - Routing: "tutorials/fullstack/routing.md"
+          - Going to Production:
+              - Local API Server: "tutorials/production/local.md"
+              - Kubernetes Deployment: "tutorials/production/kubernetes.md"
 
   - Community:
       - Contributing: "community/contributing.md"
@@ -261,9 +265,11 @@ plugins:
         quick-guide/next-steps.md: quick-guide/faq.md
         reference/language/index.md: reference/language/foundation.md
         reference/plugins/index.md: reference/language/ecosystem.md
-        tutorials/index.md: quick-guide/index.md
         tutorials/roadmap.md: quick-guide/index.md
         community/top_contributors.md: community/contributors.md
+
+        # Documentation restructure redirects
+        full-docs-guide.md: reference/index.md
 
 hooks:
   - scripts/handle_jac_compile_data.py
