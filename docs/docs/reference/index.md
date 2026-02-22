@@ -44,6 +44,251 @@ The language spec covers all core Jac constructs:
 
 ---
 
+## Quick Start
+
+```bash
+# 1. Install
+pip install jaseci
+
+# 2. Scaffold a new project
+jac create myapp --use client
+
+# 3. Run
+jac start main.jac
+```
+
+---
+
+## CLI Quick Reference
+
+The `jac` command is your primary interface to the Jac toolchain. For the full reference, see [CLI Commands](cli/index.md).
+
+### Execution Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac run <file>` | Execute Jac program |
+| `jac enter <file> <entry>` | Run named entry point |
+| `jac start [file]` | Start web server |
+| `jac debug <file>` | Run in debug mode |
+
+### Analysis Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac check` | Type check code |
+| `jac format` | Format source files |
+| `jac test` | Run test suite |
+
+### Transform Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac py2jac <file>` | Convert Python to Jac |
+| `jac jac2py <file>` | Convert Jac to Python |
+| `jac js <file>` | Compile to JavaScript |
+
+### Project Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac create` | Create new project |
+| `jac install` | Install all dependencies (pip, git, plugins) |
+| `jac add <pkg>` | Add dependency |
+| `jac remove <pkg>` | Remove dependency |
+| `jac update [pkg]` | Update dependencies to latest compatible versions |
+| `jac clean` | Clean build artifacts |
+| `jac purge` | Purge global bytecode cache |
+| `jac script <name>` | Run project script |
+
+### Tool Commands
+
+| Command | Description |
+|---------|-------------|
+| `jac dot <file>` | Generate graph visualization |
+| `jac lsp` | Start language server |
+| `jac config` | Manage configuration |
+| `jac plugins` | Manage plugins |
+
+---
+
+## Plugin System
+
+### Available Plugins
+
+| Plugin | Package | Description |
+|--------|---------|-------------|
+| byllm | `pip install byllm` | LLM integration |
+| jac-client | `pip install jac-client` | Full-stack web development |
+| jac-scale | `pip install jac-scale` | Production deployment |
+| jac-super | `pip install jac-super` | Enhanced console output |
+
+### Managing Plugins
+
+```bash
+# List plugins
+jac plugins list
+
+# Enable plugin
+jac plugins enable byllm
+
+# Disable plugin
+jac plugins disable byllm
+
+# Plugin info
+jac plugins info byllm
+```
+
+### Plugin Configuration
+
+In `jac.toml`:
+
+```toml
+[plugins.byllm]
+enabled = true
+default_model = "gpt-4"
+
+[plugins.client]
+port = 5173
+typescript = false
+
+[plugins.scale]
+replicas = 3
+```
+
+---
+
+## Project Configuration
+
+For the full reference, see [Configuration](config/index.md).
+
+### jac.toml Structure
+
+```toml
+[project]
+name = "my-app"
+version = "1.0.0"
+description = "My Jac application"
+entry = "main.jac"
+
+[dependencies]
+numpy = "^1.24.0"
+pandas = "^2.0.0"
+
+[dependencies.dev]
+pytest = "^7.0.0"
+
+[dependencies.npm]
+react = "^18.0.0"
+"@mui/material" = "^5.0.0"
+
+[plugins.byllm]
+default_model = "gpt-4"
+
+[plugins.client]
+port = 5173
+
+[scripts]
+dev = "jac start main.jac --dev"
+test = "jac test"
+build = "jac build"
+
+[environments.production]
+OPENAI_API_KEY = "${OPENAI_API_KEY}"
+```
+
+### Running Scripts
+
+```bash
+jac script dev
+jac script test
+jac script build
+```
+
+### Configuration Profiles
+
+Jac supports multi-file configuration with profile-based overrides.
+
+**File loading order** (lowest to highest priority):
+
+| File | When loaded | Git tracked? |
+|------|-------------|--------------|
+| `jac.toml` | Always | Yes |
+| `jac.<profile>.toml` | When `--profile` or `JAC_PROFILE` is set | Yes |
+| `[environments.<profile>]` in `jac.toml` | When profile is set | Yes |
+| `jac.local.toml` | Always if present | No (gitignored) |
+
+**Using profiles:**
+
+```bash
+# Via --profile flag
+jac run --profile prod app.jac
+jac start --profile staging
+
+# Via JAC_PROFILE environment variable
+JAC_PROFILE=ci jac test
+
+# Via jac.toml default
+# [environment]
+# default_profile = "dev"
+```
+
+**Example profile files:**
+
+=== "jac.prod.toml"
+    ```toml
+    [serve]
+    port = 80
+
+    [plugins.byllm]
+    default_model = "gpt-4"
+    ```
+
+=== "jac.local.toml (gitignored, developer-specific)"
+    ```toml
+    [serve]
+    port = 9000
+
+    [run]
+    cache = false
+    ```
+
+> **Note:** `JAC_ENV` is deprecated. Use `JAC_PROFILE` instead.
+
+### Environment Variables
+
+**Server-side:**
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `REDIS_URL` | Redis connection URL |
+| `MONGODB_URI` | MongoDB connection URI |
+| `JWT_SECRET` | JWT signing secret |
+
+**Client-side (Vite):**
+
+Variables prefixed with `VITE_` are exposed to client. Define them in a `.env` file:
+
+```toml
+# .env
+VITE_API_URL=https://api.example.com
+```
+
+Then access in client code:
+
+```jac
+cl {
+    def:pub app() -> JsxElement {
+        api_url = import.meta.env.VITE_API_URL;
+        return <div>{api_url}</div>;
+    }
+}
+```
+
+---
+
 ## JavaScript/npm Interoperability
 
 ### npm Packages

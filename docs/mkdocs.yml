@@ -72,9 +72,11 @@ nav:
           - jac-client: "community/release_notes/jac-client.md"
           - jac-scale: "community/release_notes/jac-scale.md"
           - "(Deprecated) jac-cloud": "community/release_notes/jac-cloud.md"
+          - jac-super: "community/release_notes/jac-super.md"
       - Internals:
           - Import Patterns: "community/internals/jac_import_patterns.md"
           - UniIR Nodes: "community/internals/uniir_node.md"
+          - JSX Client Architecture: "community/internals/jsx_client_serv_design.md"
 
   - Showcase: "community/showcase.md"
 

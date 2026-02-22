@@ -1224,7 +1224,7 @@ sem plan_shopping.recipe = "A description of the meal to prepare";
 !!! tip
     Always use `sem` to provide context for `by llm()` functions. Docstrings are for human documentation and are not included in compiler-generated prompts.
 
-See [Part V: AI Integration](ai-integration.md) for detailed LLM usage.
+See [Part V: AI Integration](../plugins/byllm.md) for detailed LLM usage.
 
 ### 10 Operator Precedence
 

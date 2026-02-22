@@ -41,7 +41,7 @@ graph TD
 > | `visit` | Move walker to nodes | `visit [-->]` |
 > | `report` | Return data from walker | `report here` |
 >
-> See [Graph Operations](../../reference/language/graph-operations.md) for complete reference.
+> See [Graph Operations](../../reference/language/osp.md) for complete reference.
 
 ---
 
@@ -615,6 +615,6 @@ The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pu
 
 **Reference:**
 
-- [Graph Operations](../../reference/language/graph-operations.md) - Complete edge/node operator reference
+- [Graph Operations](../../reference/language/osp.md) - Complete edge/node operator reference
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
 - [Part III: OSP](../../reference/language/osp.md) - Full language reference

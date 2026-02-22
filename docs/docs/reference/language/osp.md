@@ -493,7 +493,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](full-stack.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -524,7 +524,7 @@ These keywords have special meaning in specific contexts:
 | `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#2-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](full-stack.md#client-side-development-jsx) |
+| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-blocks) |
 
 **Usage examples:**
 
@@ -590,6 +590,15 @@ with entry {
     root ++> Person(name="Charlie", age=35);
 }
 ```
+
+!!! note "The `++>` operator returns a list"
+    The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
+
+    ```jac
+    new_node = here ++> Todo(id="123", title="Buy groceries");
+    created_todo = new_node[0];  # Access the actual node
+    report created_todo;
+    ```
 
 ### 2 Creating Edges
 
@@ -660,6 +669,27 @@ walker Cleanup {
             node_id = here.id;
             del here;
             report {"deleted": node_id};
+        }
+    }
+}
+```
+
+#### Cascade Deletion Pattern
+
+Delete a node and all its related nodes:
+
+```jac
+walker:priv DeleteWithChildren {
+    has parent_id: str;
+
+    can search with Root entry {
+        visit [-->];
+    }
+
+    can delete with Todo entry {
+        # Delete if this is the target or a child of the target
+        if here.id == self.parent_id or here.parent_id == self.parent_id {
+            del here;
         }
     }
 }

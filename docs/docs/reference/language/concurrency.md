@@ -139,4 +139,4 @@ with entry {
 **Related Reference:**
 
 - [Part I: Foundation](foundation.md) - Control flow basics
-- [Part V: AI Integration](ai-integration.md) - Async LLM calls
+- [Part V: AI Integration](../plugins/byllm.md) - Async LLM calls

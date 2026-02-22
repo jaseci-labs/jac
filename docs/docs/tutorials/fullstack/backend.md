@@ -562,5 +562,5 @@ cl {
 **Reference:**
 
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
-- [Graph Operations](../../reference/language/graph-operations.md) - Node creation, traversal, deletion
+- [Graph Operations](../../reference/language/osp.md) - Node creation, traversal, deletion
 - [Part III: OSP Reference](../../reference/language/osp.md) - Complete walker and node language reference

@@ -974,6 +974,29 @@ DOCKER_USERNAME=your-dockerhub-username
 DOCKER_PASSWORD=your-dockerhub-password-or-token
 ```
 
+### Generated Resources
+
+```yaml
+# Example generated deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jac-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jac-app
+```
+
+### Service Discovery
+
+Kubernetes service mesh integration for:
+
+- Automatic load balancing
+- Service-to-service communication
+- Health monitoring
+
 ### Auto-Provisioning
 
 On first deployment, `jac start --scale` automatically provisions:
@@ -1317,6 +1340,38 @@ kubectl get all
 
 # Check events
 kubectl get events --sort-by='.lastTimestamp'
+```
+
+---
+
+## Library Mode
+
+For teams preferring pure Python syntax or integrating Jac into existing Python codebases, Library Mode provides an alternative deployment approach. Instead of `.jac` files, you use Python files with Jac's runtime as a library.
+
+> **Complete Guide:** See [Library Mode](../language/library-mode.md) for the full API reference, code examples, and migration guide.
+
+**Key Features:**
+
+- All Jac features accessible through `jaclang.lib` imports
+- Pure Python syntax with decorators (`@on_entry`, `@on_exit`)
+- Full IDE/tooling support (autocomplete, type checking, debugging)
+- Zero migration friction for existing Python projects
+
+**Quick Example:**
+
+```python
+from jaclang.lib import Node, Walker, spawn, root, on_entry
+
+class Task(Node):
+    title: str
+    done: bool = False
+
+class TaskFinder(Walker):
+    @on_entry
+    def find(self, here: Task) -> None:
+        print(f"Found: {here.title}")
+
+spawn(TaskFinder(), root())
 ```
 
 ---

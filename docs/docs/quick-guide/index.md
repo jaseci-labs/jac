@@ -53,7 +53,7 @@ This philosophy rests on three pillars.
 
     Write frontend, backend, and native code in a single language. Jac's **codespace** system lets you target the server (`sv`), browser (`cl`), or native binary (`na`) from the same file. The compiler handles interop -- HTTP calls, serialization, type sharing -- so you never write glue code.
 
-    [:octicons-arrow-right-24: How Codespaces Work](what-makes-jac-different.md#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time) · [:octicons-arrow-right-24: Full-Stack Reference](../reference/language/full-stack.md) · [:octicons-arrow-right-24: See Jac vs a Traditional Stack](jac-vs-traditional-stack.md)
+    [:octicons-arrow-right-24: How Codespaces Work](what-makes-jac-different.md#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time) · [:octicons-arrow-right-24: Full-Stack Reference](../reference/plugins/jac-client.md) · [:octicons-arrow-right-24: See Jac vs a Traditional Stack](jac-vs-traditional-stack.md)
 
 - :material-robot:{ .lg .middle } **AI Native**
 
@@ -61,7 +61,7 @@ This philosophy rests on three pillars.
 
     Integrate LLMs at the language level with `by llm()` -- the compiler extracts semantics from your function names, types, and `sem` annotations to construct prompts automatically. First-class graphs and walkers give you an expressive agentic programming model where AI agents traverse structured state spaces with tool-calling built in.
 
-    [:octicons-arrow-right-24: How by/sem Work](what-makes-jac-different.md#3-how-does-jac-abstract-away-the-laborious-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem) · [:octicons-arrow-right-24: AI Integration Reference](../reference/language/ai-integration.md) · [:octicons-arrow-right-24: Agentic Patterns](../reference/language/ai-integration.md#agentic-ai-patterns)
+    [:octicons-arrow-right-24: How by/sem Work](what-makes-jac-different.md#3-how-does-jac-abstract-away-the-laborious-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem) · [:octicons-arrow-right-24: AI Integration Reference](../reference/plugins/byllm.md) · [:octicons-arrow-right-24: Agentic Patterns](../reference/plugins/byllm.md#agentic-ai-patterns)
 
 - :material-cloud-outline:{ .lg .middle } **Scale Native**
 
@@ -69,7 +69,7 @@ This philosophy rests on three pillars.
 
     Your code doesn't change when you move from laptop to cloud. Declare `node` types and connect them to `root` -- the runtime handles persistence automatically. Run `jac start --scale` and your app deploys to Kubernetes with Redis, MongoDB, load balancing, and health checks provisioned for you. Zero DevOps.
 
-    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/language/deployment.md) · [:octicons-arrow-right-24: jac-scale Plugin](../reference/plugins/jac-scale.md)
+    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: jac-scale Plugin](../reference/plugins/jac-scale.md)
 
 </div>
 

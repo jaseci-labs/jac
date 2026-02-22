@@ -1,6 +1,6 @@
 # Jac Library Mode
 
-> **Part of:** [Part IX: Deployment](deployment.md)
+> **Part of:** [Part IX: Deployment](../plugins/jac-scale.md)
 >
 > **Related:** [Python Integration](python-integration.md) | [Part III: OSP](osp.md)
 
