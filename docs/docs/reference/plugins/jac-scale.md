@@ -1104,6 +1104,22 @@ When server is running:
 
 ---
 
+## Graph Visualization
+
+Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+
+- **Without authentication** — displays the public graph (super root), useful for applications with public endpoints
+- **With authentication** — click the **Login** button in the header to sign in and view your user-specific graph
+
+The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+
+| Endpoint | Description |
+|---|---|
+| `GET /graph` | Serves the graph visualization UI |
+| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+
+---
+
 ## Prometheus Metrics
 
 jac-scale provides built-in Prometheus metrics collection for monitoring HTTP requests and walker execution. When enabled, a `/metrics` endpoint is automatically registered for Prometheus to scrape.
