@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.20 (Unreleased)
+## jac-client 0.3.1 (Unreleased)
+
+## jac-client 0.3.0 (Latest Release)
 
 - **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).
 - **Automatic Endpoint Caching**: The client runtime now automatically caches responses from reader endpoints (walkers and server functions) and invalidates caches when writer endpoints are called, using compiler-provided `endpoint_effects` metadata. Includes an LRU cache (500 entries, 60s TTL), request deduplication for concurrent identical calls, and automatic cache clearing on auth state changes. No manual `jacInvalidate()` or cache annotations needed.
@@ -10,7 +12,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 - 3 minor refactor/change.
 
-## jac-client 0.2.19 (Latest Release)
+## jac-client 0.2.19
 
 - **Debug Mode Enabled by Default**: Debug mode is now `true` by default for a better development experience. Raw error output is displayed automatically without needing to configure `debug = true` in `jac.toml`. To disable, set `debug = false` in the `[plugins.client]` section. A warning is shown when running `jac start` in production mode (without `--dev`) with debug enabled, recommending to disable it for production deployments.
 

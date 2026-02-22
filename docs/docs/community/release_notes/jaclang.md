@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.10.6 (Unreleased)
+## jaclang 0.11.1 (Unreleased)
+
+## jaclang 0.11.0 (Latest Release)
 
 - **Automatic Endpoint Caching**: The compiler now statically analyzes walker and server function bodies to classify endpoints as readers or writers, and propagates this metadata (`endpoint_effects`) through the `ClientManifest` to the client runtime. Reader endpoints are automatically cached on the client side, and writer endpoints auto-invalidate overlapping reader caches based on shared node types -- zero developer configuration required.
 - **HMR Server-Side Reloading Refactor**: Improved HMR functionality with better handling of `.impl.jac` files and optimized caching to avoid unnecessary recompilations during development
@@ -24,7 +26,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Bootstrap Compiler (jac0) Native Generic Support**: Extended the jac0 bootstrap transpiler to parse and emit PEP 695 generic class syntax (`class Foo[T, V](Base)`) and type alias statements (`type Alias[T] = Expr`), enabling jac0core infrastructure files to use native Jac generics instead of Python-style `Generic[T]`/`TypeVar` patterns.
 - **Migrate jac0core and Compiler Passes to Native Generics**: Replaced `Generic[(T, V)]` inheritance and `TypeVar` declarations with native `[T, V]` syntax across `transform.jac`, `unitree.jac`, `base_ast_gen_pass.jac`, and all `Transform[(X, Y)]` subscription sites in the compiler pipeline.
 
-## jaclang 0.10.5 (Latest Release)
+## jaclang 0.10.5
 
 - **Fix: `sv import` of `def:pub` Functions Generates RPC Stubs**: Fixed `sv import from module { func }` in `.cl.jac` files not generating for `def:pub` server functions.
 - **Fix: Type Narrowing Infinite Loop on Large Files**: Fixed `jac check` hanging indefinitely on large `.jac` files (e.g. standalone `.impl.jac` modules). The backward CFG walk in `_compute_narrowed_at` had no depth bound, causing combinatorial explosion when the module-level CFG contained hundreds of basic blocks. Added a depth limit to the walk; narrowing beyond the limit conservatively returns the declared type.
