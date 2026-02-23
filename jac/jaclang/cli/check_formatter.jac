@@ -1,19 +1,6 @@
-"""Formatting utilities for jac check output (pytest-style).
+"""Formatting utilities for jac check output (pytest-style)."""
 
-This module provides reusable formatting functions for displaying
-check results in a clean, pytest-inspired format.
-"""
-
-"""Create a separator line with centered text.
-
-Args:
-    text: Text to center in the separator
-    char: Character to use for the separator line (default: '=')
-    total_width: Total width of the separator line (default: 80)
-
-Returns:
-    Formatted separator string
-"""
+"""Returns a separator line with centered text."""
 def separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
     remaining = total_width - len(text_part);
@@ -21,14 +8,7 @@ def separator(text: str, char: str = '=', total_width: int = 80) -> str {
     return char * left_padding + text_part + char * (remaining - left_padding);
 }
 
-"""Print file check progress line (pytest-style).
-
-Args:
-    file_path: Path to the file being checked
-    success: Whether the check passed
-    idx: Current file index (1-based)
-    total: Total number of files to check
-"""
+"""Prints a pytest-style progress line for a file check."""
 def print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
     import from jaclang.cli.console { console }
     percentage = int((idx / total) * 100);
@@ -36,12 +16,7 @@ def print_file_progress(file_path: str, success: bool, idx: int, total: int) -> 
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 
-"""Print detailed failures section.
-
-Args:
-    failed_results: List of failed file results
-    nowarn: Whether to suppress warnings
-"""
+"""Prints the FAILURES section with errors and warnings for each failed file."""
 def print_failures(failed_results: list, nowarn: bool = False) -> None {
     import from jaclang.cli.console { console }
     console.print("");
@@ -60,11 +35,7 @@ def print_failures(failed_results: list, nowarn: bool = False) -> None {
     }
 }
 
-"""Print failed files summary.
-
-Args:
-    failed_results: List of failed file results
-"""
+"""Prints a summary of failed files with their error and warning counts."""
 def print_failed_summary(failed_results: list) -> None {
     import from jaclang.cli.console { console }
     console.print(separator("failed files"));
@@ -77,13 +48,7 @@ def print_failed_summary(failed_results: list) -> None {
     }
 }
 
-"""Print final summary line with timing.
-
-Args:
-    passed_count: Number of files that passed
-    failed_count: Number of files that failed
-    elapsed: Elapsed time in seconds
-"""
+"""Prints the final passed/failed counts with elapsed time."""
 def print_final_summary(passed_count: int, failed_count: int, elapsed: float) -> None {
     import from jaclang.cli.console { console }
     parts = [f"{passed_count} passed"] if passed_count > 0 else [];
