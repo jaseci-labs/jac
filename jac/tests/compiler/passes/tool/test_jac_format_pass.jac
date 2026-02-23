@@ -221,6 +221,27 @@ test "jsx hash text preserved" {
     assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
 }
 
+test "unicode encoding write roundtrip" {
+    """Test that Unicode characters survive jac format --lintfix on Windows."""
+    import subprocess;
+
+    path = os.path.join(FIXTURES, "unicode_encoding.jac");
+
+    result = subprocess.run(
+        ["jac", "format", path, "--lintfix"],
+        capture_output=True,
+        text=True
+    );
+    assert result.returncode == 0 , f"jac format failed: {result.stderr}";
+
+    with open(path, 'r', encoding='utf-8') as f {
+        content = f.read();
+    }
+    for char in ['●', '✅', '🚀', 'සාර්ථකයි', 'வெற்றி'] {
+        assert char in content , f"Unicode char '{char}' lost after jac format";
+    }
+}
+
 def format_test(rel_path: str) -> None {
     filename = os.path.normpath(os.path.join(JAC_ROOT, rel_path));
     if not os.path.exists(filename) {
