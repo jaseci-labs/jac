@@ -228,9 +228,7 @@ test "unicode encoding write roundtrip" {
     path = os.path.join(FIXTURES, "unicode_encoding.jac");
 
     result = subprocess.run(
-        ["jac", "format", path, "--lintfix"],
-        capture_output=True,
-        text=True
+        ["jac", "format", path, "--lintfix"], capture_output=True, text=True
     );
     assert result.returncode == 0 , f"jac format failed: {result.stderr}";
 
