@@ -31,7 +31,7 @@ jobs:
         pip install watchdog
 
     - name: Run Jac core tests
-      run: pytest -x jac -n auto --dist worksteal
+      run: pytest -x jac -n auto
 
   test-client:
     runs-on: ubuntu-latest
