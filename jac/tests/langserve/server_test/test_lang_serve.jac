@@ -4,7 +4,7 @@ import asyncio;
 import os;
 import tempfile;
 
-import from lsprotocol.types {
+import from jaclang.vendor.lsprotocol.types {
     DidChangeTextDocumentParams,
     DidOpenTextDocumentParams,
     DidSaveTextDocumentParams,

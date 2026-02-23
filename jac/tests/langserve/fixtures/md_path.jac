@@ -23,7 +23,7 @@ import from circle { RAD }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
 
-import lsprotocol.types as lspt;
+import jaclang.vendor.lsprotocol.types as lspt;
 import nonexistent_module;
 
 include jaclang.jac0core.log;

@@ -5,7 +5,7 @@ import os;
 import sys;
 import from pathlib { Path }
 
-import lsprotocol.types as lspt;
+import jaclang.vendor.lsprotocol.types as lspt;
 
 import jaclang;
 import from jaclang.langserve.engine { JacLangServer }

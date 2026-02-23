@@ -27,7 +27,7 @@ import from .sem_manager { SemTokManager }
 import from jaclang.vendor.pygls { uris }
 import from jaclang.vendor.pygls.server { LanguageServer }
 
-import lsprotocol.types as lspt;
+import jaclang.vendor.lsprotocol.types as lspt;
 import from . { utils }
 import from .module_manager { ModuleManager }
 
