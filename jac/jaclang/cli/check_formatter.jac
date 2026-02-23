@@ -71,7 +71,9 @@ def print_failed_summary(failed_results: list) -> None {
     for r in failed_results {
         err_s = '' if r['error_count'] == 1 else 's';
         warn_s = '' if r['warning_count'] == 1 else 's';
-        console.print(f"{r['path']} - {r['error_count']} error{err_s}, {r['warning_count']} warning{warn_s}");
+        console.print(
+            f"{r['path']} - {r['error_count']} error{err_s}, {r['warning_count']} warning{warn_s}"
+        );
     }
 }
 

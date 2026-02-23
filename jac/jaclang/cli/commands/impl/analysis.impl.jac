@@ -29,12 +29,13 @@ impl check(
     }
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
-
     # Helper to process and store single file result
     def process_file_result(file_path: str, idx: int, total: int) -> None {
-        nonlocal total_files, total_errors, total_warnings, failed_files;
+        nonlocal total_files , total_errors , total_warnings , failed_files ;
         total_files += 1;
-        (success, errs, warns, errors_list, warnings_list) = check_single_file(prog, file_path);
+        (success, errs, warns, errors_list, warnings_list) = check_single_file(
+            prog, file_path
+        );
         total_errors += errs;
         total_warnings += warns;
 
@@ -42,24 +43,26 @@ impl check(
         print_file_progress(file_path, success, idx, total);
 
         # Store result
-        file_results.append({
-            'path': file_path,
-            'success': success,
-            'errors': errors_list,
-            'warnings': warnings_list,
-            'error_count': errs,
-            'warning_count': warns
-        });
+        file_results.append(
+            {
+                'path': file_path,
+                'success': success,
+                'errors': errors_list,
+                'warnings': warnings_list,
+                'error_count': errs,
+                'warning_count': warns
+            }
+        );
 
         if not success {
             failed_files += 1;
         }
     }
-
     # Store file results for later detailed output
     file_results: list[dict] = [];
-
-    def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int, list, list] {
+    def check_single_file(
+        prog: JacProgram, file_path: str
+    ) -> tuple[bool, int, int, list, list] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -111,7 +114,8 @@ impl check(
             all_files = [
                 str(jac_file)
                 for jac_file in path_obj.glob('**/*.jac')
-                if jac_file.is_file() and not _should_ignore(str(jac_file), ignore_list)
+                if jac_file.is_file()
+                and not _should_ignore(str(jac_file), ignore_list)
             ];
             total_to_check = len(all_files);
             for (idx, jac_file_path) in enumerate(all_files, 1) {
@@ -123,19 +127,20 @@ impl check(
             total_errors += 1;
         }
     }
-
     # Print FAILURES section and summary
     if failed_files > 0 {
-        failed_results = [r for r in file_results if not r['success']];
+        failed_results = [
+            r
+            for r in file_results
+            if not r['success']
+        ];
         if print_errs {
             print_failures(failed_results, nowarn);
         }
         print_failed_summary(failed_results);
     }
-
     # Print final summary line
     print_final_summary(total_files - failed_files, failed_files, time() - start_time);
-
     if (total_errors > 0 and not warnonly) {
         return 1;
     }
