@@ -6,7 +6,7 @@ Direct implementations - no delegation to cli.jac.
 import from pathlib { Path }
 import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
-import from jaclang.cli.jacout {
+import from jaclang.cli.check_report {
     print_file_progress,
     print_failures,
     print_failed_summary,
