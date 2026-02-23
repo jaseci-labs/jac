@@ -45,11 +45,7 @@ impl check(
         if not success {
             failed_files += 1;
             failed_results.append(
-                {
-                    'path': file_path,
-                    'errors': errors_list,
-                    'warnings': warnings_list
-                }
+                {'path': file_path, 'errors': errors_list, 'warnings': warnings_list}
             );
         }
     }
@@ -87,7 +83,13 @@ impl check(
             err_count = len(filtered_errors);
             warn_count = len(filtered_warnings);
 
-            return (err_count == 0, err_count, warn_count, filtered_errors, filtered_warnings);
+            return (
+                err_count == 0,
+                err_count,
+                warn_count,
+                filtered_errors,
+                filtered_warnings
+            );
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
