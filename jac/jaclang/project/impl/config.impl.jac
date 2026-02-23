@@ -840,9 +840,7 @@ impl _parse_toml_data(
             );
         }
         config.check = CheckConfig(
-            print_errs=check_data.get("print_errs", True),
-            warnonly=check_data.get("warnonly", False),
-            lint=lint_config
+            print_errs=check_data.get("print_errs", True), lint=lint_config
         );
     }
     if "dot" in data {

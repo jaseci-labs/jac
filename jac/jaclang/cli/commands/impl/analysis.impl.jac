@@ -17,7 +17,6 @@ import from jaclang.cli.jaccheckstyles {
 impl check(
     paths: list,
     print_errs: bool = True,
-    warnonly: bool = False,
     ignore: list = [],
     parse_only: bool = False,
     nowarn: bool = False
@@ -141,7 +140,7 @@ impl check(
     }
     # Print final summary line
     print_final_summary(total_files - failed_files, failed_files, time() - start_time);
-    if (total_errors > 0 and not warnonly) {
+    if total_errors > 0 {
         return 1;
     }
     return 0;
