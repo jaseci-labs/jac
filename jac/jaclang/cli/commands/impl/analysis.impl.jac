@@ -23,6 +23,7 @@ impl check(
     ignore_list = _normalize_ignore_patterns(ignore);
     def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int] {
         path_obj = Path(file_path);
+        print(f"Checking {file_path}...");
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 0);
