@@ -40,10 +40,12 @@ def print_failed_summary(failed_results: list) -> None {
     import from jaclang.cli.console { console }
     console.print(separator("failed files"));
     for r in failed_results {
-        err_s = '' if r['error_count'] == 1 else 's';
-        warn_s = '' if r['warning_count'] == 1 else 's';
+        err_count = len(r['errors']);
+        warn_count = len(r['warnings']);
+        err_s = '' if err_count == 1 else 's';
+        warn_s = '' if warn_count == 1 else 's';
         console.print(
-            f"{r['path']} - {r['error_count']} error{err_s}, {r['warning_count']} warning{warn_s}"
+            f"{r['path']} - {err_count} error{err_s}, {warn_count} warning{warn_s}"
         );
     }
 }

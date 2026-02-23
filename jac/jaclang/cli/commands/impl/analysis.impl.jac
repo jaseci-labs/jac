@@ -41,24 +41,20 @@ impl check(
         # Print progress line
         print_file_progress(file_path, success, idx, total);
 
-        # Store result
-        file_results.append(
-            {
-                'path': file_path,
-                'success': success,
-                'errors': errors_list,
-                'warnings': warnings_list,
-                'error_count': errs,
-                'warning_count': warns
-            }
-        );
-
+        # Store only failed results
         if not success {
             failed_files += 1;
+            failed_results.append(
+                {
+                    'path': file_path,
+                    'errors': errors_list,
+                    'warnings': warnings_list
+                }
+            );
         }
     }
-    # Store file results for later detailed output
-    file_results: list[dict] = [];
+    # Store failed file results for later detailed output
+    failed_results: list[dict] = [];
     def check_single_file(
         prog: JacProgram, file_path: str
     ) -> tuple[bool, int, int, list, list] {
@@ -88,14 +84,10 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
+            err_count = len(filtered_errors);
+            warn_count = len(filtered_warnings);
 
-            return (
-                (len(filtered_errors) == 0),
-                len(filtered_errors),
-                len(filtered_warnings),
-                filtered_errors,
-                filtered_warnings
-            );
+            return (err_count == 0, err_count, warn_count, filtered_errors, filtered_warnings);
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
@@ -128,22 +120,15 @@ impl check(
     }
     # Print FAILURES section and summary
     if failed_files > 0 {
-        failed_results = [
-            r
-            for r in file_results
-            if not r['success']
-        ];
         if print_errs {
             print_failures(failed_results, nowarn);
         }
         print_failed_summary(failed_results);
     }
     # Print final summary line
-    print_final_summary(total_files - failed_files, failed_files, time() - start_time);
-    if total_errors > 0 {
-        return 1;
-    }
-    return 0;
+    elapsed = time() - start_time;
+    print_final_summary(total_files - failed_files, failed_files, elapsed);
+    return 1 if total_errors > 0 else 0;
 }
 
 """Lint .jac files and report violations."""
