@@ -94,7 +94,7 @@ cl def:pub app() -> JsxElement {
 }
 ```
 
-This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend. No database setup. No prompt engineering. No separate frontend project. Just Jac.
+This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend -- without any database configuration, prompt engineering, or separate frontend project.
 
 <details>
 <summary><strong>Run this example</strong></summary>
@@ -136,6 +136,12 @@ Open [http://localhost:8000](http://localhost:8000) to see it running. Jac suppo
 
 ---
 
+## Become a Jac Programmer
+
+The best way to learn Jac is by building something real. The [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) tutorial walks you through every core concept -- variables, functions, graphs, walkers, AI integration, authentication, and full-stack deployment -- in a single guided project.
+
+---
+
 ## Installation & Setup
 
 <details>
@@ -150,22 +156,6 @@ pip install jaseci
 ```
 
 The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, and `jac-super` together for convenience. This is the fastest way to get started with building applications.
-
-</details>
-
-<details>
-<summary><strong>Install from Source (For Contributors)</strong></summary>
-
-<br>
-
-If you plan to contribute to Jaseci, install it in editable mode from a cloned repository:
-
-```bash
-git clone --recurse --depth 1 --single-branch https://github.com/jaseci-labs/jaseci
-cd jaseci
-```
-
-This will install all development dependencies, including testing and linting tools.
 
 </details>
 
