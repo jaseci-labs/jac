@@ -19,10 +19,10 @@ pip show jac-client jac-scale byllm
 
 | Package | Minimum Version |
 |---------|----------------|
-| jaclang | 0.10.5 |
-| jac-client | 0.2.19 |
-| jac-scale | 0.1.11 |
-| byllm | 0.4.21 |
+| jaclang | 0.11.0 |
+| jac-client | 0.3.0 |
+| jac-scale | 0.2.0 |
+| byllm | 0.5.0 |
 
 **API Key:** Parts 5+ use AI features powered by Anthropic's Claude. Set your API key as an environment variable before running those sections:
 
