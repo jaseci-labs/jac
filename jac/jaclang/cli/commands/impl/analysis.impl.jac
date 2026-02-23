@@ -17,15 +17,57 @@ impl check(
     nowarn: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
+    import from time { time }
     if isinstance(paths, str) {
         paths = [paths];
     }
+    start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
-    def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int] {
+
+    # Helper to create separator lines with centered text
+    def separator(text: str, char: str = '=', total_width: int = 80) -> str {
+        text_part = f" {text} ";
+        remaining = total_width - len(text_part);
+        left_padding = remaining // 2;
+        return char * left_padding + text_part + char * (remaining - left_padding);
+    }
+
+    # Helper to process and store single file result
+    def process_file_result(file_path: str, idx: int, total: int) -> None {
+        nonlocal total_files, total_errors, total_warnings, failed_files;
+        total_files += 1;
+        (success, errs, warns, errors_list, warnings_list) = check_single_file(prog, file_path);
+        total_errors += errs;
+        total_warnings += warns;
+
+        # Print progress line
+        percentage = int((idx / total) * 100);
+        status = "PASSED" if success else "FAILED";
+        console.print(f"{file_path} {status} [{percentage}%]");
+
+        # Store result
+        file_results.append({
+            'path': file_path,
+            'success': success,
+            'errors': errors_list,
+            'warnings': warnings_list,
+            'error_count': errs,
+            'warning_count': warns
+        });
+
+        if not success {
+            failed_files += 1;
+        }
+    }
+
+    # Store file results for later detailed output
+    file_results: list[dict] = [];
+
+    def check_single_file(prog: JacProgram, file_path: str) -> tuple[bool, int, int, list, list] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
-            return (False, 1, 0);
+            return (False, 1, 0, [], []);
         }
         try {
             (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
@@ -49,82 +91,80 @@ impl check(
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
 
-            if print_errs {
-                for e in filtered_errors {
-                    console.error(f"{e}");
-                }
-                if not nowarn {
-                    for w in filtered_warnings {
-                        console.warning(f"{w}");
-                    }
-                }
-            }
-
             return (
                 (len(filtered_errors) == 0),
                 len(filtered_errors),
-                len(filtered_warnings)
+                len(filtered_warnings),
+                filtered_errors,
+                filtered_warnings
             );
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
-            return (False, 1, 0);
+            return (False, 1, 0, [], []);
         }
     }
     total_files = failed_files=total_errors=total_warnings=0;
-    failed_file_list: list[str] = [];
     prog = JacProgram();
     for path in paths {
         path_obj = Path(path);
         if path.endswith('.jac') {
             if not _should_ignore(path, ignore_list) {
-                total_files += 1;
-                (success, errs, warns) = check_single_file(prog, path);
-                total_errors += errs;
-                total_warnings += warns;
-                if not success {
-                    failed_files += 1;
-                    failed_file_list.append(path);
-                }
+                process_file_result(path, 1, 1);
             }
         } elif path_obj.is_dir() {
-            for jac_file in path_obj.glob('**/*.jac') {
-                if not jac_file.is_file() {
-                    continue;
-                }
-                if not _should_ignore(str(jac_file), ignore_list) {
-                    total_files += 1;
-                    (success, errs, warns) = check_single_file(prog, str(jac_file));
-                    total_errors += errs;
-                    total_warnings += warns;
-                    if not success {
-                        failed_files += 1;
-                        failed_file_list.append(str(jac_file));
-                    }
-                }
+            all_files = [
+                str(jac_file)
+                for jac_file in path_obj.glob('**/*.jac')
+                if jac_file.is_file() and not _should_ignore(str(jac_file), ignore_list)
+            ];
+            total_to_check = len(all_files);
+            for (idx, jac_file_path) in enumerate(all_files, 1) {
+                process_file_result(jac_file_path, idx, total_to_check);
             }
         } else {
             console.error(f"'{path}' is not a .jac file or directory.");
             failed_files += 1;
             total_errors += 1;
-            failed_file_list.append(path);
         }
     }
-    # Print summary of failed files
-    if failed_file_list {
-        console.print("\nFAILED files:");
-        for failed_file in failed_file_list {
-            console.print(f"  {failed_file}");
+
+    # Print FAILURES section and summary
+    if failed_files > 0 {
+        failed_results = [r for r in file_results if not r['success']];
+
+        if print_errs {
+            console.print("");
+            console.print(separator("FAILURES"));
+            for r in failed_results {
+                console.print(separator(r['path'], char='_'));
+                for e in r['errors'] {
+                    console.error(f"{e}");
+                }
+                if not nowarn and r['warnings'] {
+                    for w in r['warnings'] {
+                        console.warning(f"{w}");
+                    }
+                }
+                console.print("");
+            }
+        }
+
+        console.print(separator("failed files"));
+        for r in failed_results {
+            err_s = '' if r['error_count'] == 1 else 's';
+            warn_s = '' if r['warning_count'] == 1 else 's';
+            console.print(f"{r['path']} - {r['error_count']} error{err_s}, {r['warning_count']} warning{warn_s}");
         }
     }
-    check_type = "Parsed" if parse_only else "Checked";
-    summary_msg = f"{check_type} {total_files} '.jac' files: {(
-        total_files - failed_files
-    )} passed, {failed_files} with errors ({total_errors} errors, {total_warnings} warnings).";
-    if total_errors {
-        console.error(summary_msg);
-    } else {
-        console.success(summary_msg);
+
+    # Print final summary line
+    passed_count = total_files - failed_files;
+    parts = [f"{passed_count} passed"] if passed_count > 0 else [];
+    if failed_files > 0 {
+        parts.append(f"{failed_files} failed");
     }
+    console.print(separator(", ".join(parts) + f" in {time() - start_time:.2f}s"));
+
     if (total_errors > 0 and not warnonly) {
         return 1;
     }
