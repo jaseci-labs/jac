@@ -1,6 +1,6 @@
 # Core Concepts
 
-Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [tutorials](../tutorials/index.md) and [language reference](../reference/language/index.md).
+Most of Jac will be recognizable if you are familiar with another programming language like Python -- Jac supersets Python, so familiar constructs like functions, classes, imports, list comprehensions, and control flow all work as expected. You can explore those in depth in the [language reference](../reference/language/foundation.md).
 
 This page focuses on the three concepts that Jac adds beyond traditional programming languages. These are the ideas the rest of the documentation builds on, introduced briefly so you have the vocabulary for the tutorials that follow. Through these concepts three important questions can be answered:
 
@@ -60,7 +60,7 @@ cl {
 
         async def add -> None {
             todo = await add_todo("New");
-            items = items.concat([todo]);
+            items = items + [todo];
         }
 
         return <div>
@@ -80,54 +80,73 @@ Codespaces are similar to namespaces, but instead of organizing names, they orga
 
 ## 2. How does Jac fully abstract away database organization and interactions and the complexity of multiuser persistent data?
 
-Jac introduces graph-based Object Spatial Programming (OSP) constructs. OSP gives us two key capabilities. It provides us with a natural way to articulate solutions to problems with graph-like and hierarchical properties, and importantly, a way to organize a programs interaction with data that allows us to hide the complexity of database organization and management.
+Most languages store data in variables, objects, or database rows -- and you're responsible for the ORM, the schema, and the queries. Jac adds another option: **nodes** that live in a **graph**. You declare your data, connect it, and the runtime handles persistence automatically.
 
-Standard object-oriented programming models data as isolated objects -- you call methods to bring data to computation. OSP adds a layer on top: objects exist in a **graph** with explicit relationships. Additionally, the `walker` construct is also introduced allowing computation to **move to the data** by traversing that graph.
-
-OSP introduces three constructs alongside standard objects:
+A `node` is declared like an `obj/class`, but with a superpower -- nodes can be connected to other nodes with **edges**, forming a graph:
 
 ```jac
-# Nodes: objects that live in a graph
-node Document { has content: str; }
-node Summary  { has text: str; }
+node Task {
+    has title: str;
+    has done: bool = False;
+}
 
-# Edges: typed relationships between nodes
-edge Summarizes {}
-
-# Walkers: computation that traverses the graph
-walker Analyzer {
-    has results: list = [];
-
-    can process with Document entry {
-        self.results.append(here.content);
-        visit [-->];
-    }
+with entry {
+    # Create tasks and connect them to root
+    root ++> Task(title="Buy groceries");
+    root ++> Task(title="Team standup at 10am");
+    root ++> Task(title="Go for a run");
 }
 ```
 
-When you spawn an `Analyzer`, it visits each connected `Document` node and runs `process` at each one:
+The `++>` operator creates a node and connects it to an existing node with an edge. Your graph now looks like:
 
 ```mermaid
 graph LR
-    W["Analyzer"] -.->|visits| D1["Document A"]
-    D1 --> D2["Document B"]
-    D2 --> D3["Document C"]
+    root((root)) --> T1["Task(#quot;Buy groceries#quot;)"]
+    root --> T2["Task(#quot;Team standup at 10am#quot;)"]
+    root --> T3["Task(#quot;Go for a run#quot;)"]
 ```
-
-This model maps naturally to **agentic AI workflows**: the walker is the agent, the graph is the state space, and traversal is reasoning. States, transitions, tool calls, and memory are all nodes and edges.
 
 ### Persistence through `root`
 
-Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates the storage schema from your node declarations automatically. This allows Jac to abstract away database organization moving that to the responsibility of the runtime.
+Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates the storage schema from your node declarations automatically. No database setup, no ORM, no SQL.
 
-```mermaid
-graph LR
-    root((root)) --> A["Todo: Buy milk ✓ persisted"]
-    root --> B["Todo: Write tests ✓ persisted"]
-    C["Temp node ✗ transient"]
+When your app serves multiple users, each user gets their **own isolated `root`**. User A's tasks and User B's tasks live in completely separate graphs -- same code, isolated data, enforced by the runtime.
+
+### Querying the graph
+
+The `[-->]` syntax gives you a list of connected nodes, and Jac's filter comprehensions `(?...)` let you narrow the results:
+
+```jac
+with entry {
+    # Get all nodes connected from root as a list
+    everything = [root-->];
+
+    # Filter by node type
+    tasks = [root-->](?:Task);
+
+    # Filter by field value
+    pending = [root-->](?:Task, done == False);
+}
 ```
 
-You declare `node Todo { has title: str; }`, connect instances to `root`, and the runtime handles storage. Nodes not reachable from `root` are transient and will be garbage collected.
+Edges can also be **typed** with their own data, modeling relationships like schedules, dependencies, or social connections:
+
+```jac
+edge Scheduled {
+    has time: str;
+    has priority: int = 1;
+}
+
+with entry {
+    root +>: Scheduled(time="9:00am", priority=3) :+> Task(title="Morning run");
+
+    # Query through typed edges
+    urgent = [root->:Scheduled:priority>=3:->](?:Task);
+}
+```
+
+The key insight: instead of designing database tables and writing queries, you declare nodes and connect them. The graph **is** your data model, and `root` is the entry point. The runtime takes care of the rest.
 
 ---
 
@@ -204,6 +223,6 @@ In practice, these compose: walkers traverse a graph on the server, delegate dec
 ## Next Steps
 
 - [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- Side-by-side comparison with a traditional stack
-- [Build Your First App](../tutorials/first-app/part1-todo-app.md) -- Apply these concepts in a working app
+- [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) -- Apply these concepts in a working app
 - [Object-Spatial Programming](../tutorials/language/osp.md) -- Full tutorial on nodes, edges, and walkers
 - [byLLM Quickstart](../tutorials/ai/quickstart.md) -- Build an AI-integrated function

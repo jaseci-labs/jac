@@ -14,14 +14,27 @@ Connect your frontend components to Jac walkers for data fetching and mutations.
 
 In Jac full-stack apps:
 
-1. **Backend** = Walkers that process data and return results
+1. **Backend** = Functions or walkers that process data and return results
 2. **Frontend** = Components in `cl { }` blocks
-3. **Connection** = `root spawn walker_name()` calls walkers and returns results
+3. **Connection** = Direct function calls (`await func()`) or walker spawning (`root spawn Walker()`)
 
 ```mermaid
 graph LR
-    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>root spawn" --> Backend["Walker<br/>API"]
+    Frontend["Frontend<br/>Component"] <-- "HTTP<br/>function call / root spawn" --> Backend["Functions or<br/>Walker API"]
 ```
+
+### Two Backend Approaches
+
+Jac offers two ways to create backend endpoints:
+
+| Approach | Syntax | Best For |
+|----------|--------|----------|
+| **Functions** | `def:pub get_tasks -> list { ... }` | Simple CRUD, quick prototyping |
+| **Walkers** | `walker:pub get_tasks { can fetch with Root entry { ... } }` | Graph traversal, multi-step operations |
+
+Both become HTTP endpoints automatically. Functions are simpler -- the frontend calls them directly with `await func()`. Walkers are more powerful -- they traverse the graph and report results, called with `root spawn Walker()`.
+
+Use `def:priv` / `walker:priv` for authenticated endpoints with per-user data isolation. See the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md) for both approaches side by side.
 
 ---
 
@@ -155,9 +168,7 @@ cl {
         }
 
         return <ul>
-            {tasks.map(lambda task: any -> any {
-                return <li key={task["id"]}>{task["title"]}</li>;
-            })}
+            {[<li key={task["id"]}>{task["title"]}</li> for task in tasks]}
         </ul>;
     }
 }
@@ -202,7 +213,7 @@ cl {
             if new_title.trim() {
                 result = root spawn add_task(title=new_title.trim());
                 if result.reports and result.reports.length > 0 {
-                    tasks = tasks.concat([result.reports[0]]);
+                    tasks = tasks + [result.reports[0]];
                 }
                 new_title = "";
             }
@@ -212,12 +223,11 @@ cl {
         async def handle_toggle(task_id: str) -> None {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.map(lambda t: any -> any {
-                    if t["id"] == task_id {
-                        return {**t, "completed": not t["completed"]};
-                    }
-                    return t;
-                });
+                tasks = [
+                    {**t, "completed": not t["completed"]}
+                    if t["id"] == task_id else t
+                    for t in tasks
+                ];
             }
         }
 
@@ -225,9 +235,7 @@ cl {
         async def handle_delete(task_id: str) -> None {
             result = root spawn delete_task(task_id=task_id);
             if result.reports and result.reports[0]["success"] {
-                tasks = tasks.filter(lambda t: any -> bool {
-                    return t["id"] != task_id;
-                });
+                tasks = [t for t in tasks if t["id"] != task_id];
             }
         }
 
@@ -249,8 +257,8 @@ cl {
             {loading and <p>Loading...</p>}
 
             <ul className="task-list">
-                {tasks.map(lambda task: any -> any {
-                    return <li key={task["id"]}>
+                {[
+                    <li key={task["id"]}>
                         <input
                             type="checkbox"
                             checked={task["completed"]}
@@ -262,8 +270,9 @@ cl {
                         <button onClick={lambda -> None { handle_delete(task["id"]); }}>
                             Delete
                         </button>
-                    </li>;
-                })}
+                    </li>
+                    for task in tasks
+                ]}
             </ul>
         </div>;
     }
@@ -472,7 +481,7 @@ cl {
             if input_text.trim() {
                 result = root spawn add_task(title=input_text.trim());
                 if result.reports and result.reports.length > 0 {
-                    tasks = tasks.concat([result.reports[0]]);
+                    tasks = tasks + [result.reports[0]];
                 }
                 input_text = "";
             }
@@ -482,12 +491,7 @@ cl {
             result = root spawn toggle_task(task_id=task_id);
             if result.reports and result.reports.length > 0 {
                 updated = result.reports[0];
-                tasks = tasks.map(lambda t: any -> any {
-                    if t.id == task_id {
-                        return updated;
-                    }
-                    return t;
-                });
+                tasks = [updated if t.id == task_id else t for t in tasks];
             }
         }
 
@@ -510,15 +514,16 @@ cl {
 
             {not loading and (
                 <ul>
-                    {tasks.map(lambda t: any -> any {
-                        return <li
+                    {[
+                        <li
                             key={t.id}
                             style={{"textDecoration": t.completed and "line-through"}}
                             onClick={lambda -> None { toggle(t.id); }}
                         >
                             {t.title}
-                        </li>;
-                    })}
+                        </li>
+                        for t in tasks
+                    ]}
                 </ul>
             )}
         </div>;
@@ -544,10 +549,10 @@ cl {
 
 - [Authentication](auth.md) - Add user login
 - [Routing](routing.md) - Multi-page applications
-- [Build a Todo App](todo-app.md) - Complete full-stack example with AI integration
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI integration
 
 **Reference:**
 
 - [Walker Responses](../../reference/language/walker-responses.md) - Understanding `.reports` patterns
-- [Graph Operations](../../reference/language/graph-operations.md) - Node creation, traversal, deletion
+- [Graph Operations](../../reference/language/osp.md) - Node creation, traversal, deletion
 - [Part III: OSP Reference](../../reference/language/osp.md) - Complete walker and node language reference

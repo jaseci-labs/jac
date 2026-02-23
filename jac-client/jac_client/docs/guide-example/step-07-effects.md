@@ -49,7 +49,7 @@ cl {
 
         # Run once when component mounts
         useEffect(lambda -> None {
-            console.log("App loaded!");
+            print("App loaded!");
         }, []);
 
         # ... rest of your code
@@ -115,7 +115,7 @@ cl {
 
         # Load todos
         useEffect(lambda -> None {
-            console.log("Loading todos...");
+            print("Loading todos...");
 
             # Simulate loading delay
             setTimeout(lambda -> None {
@@ -211,7 +211,7 @@ useEffect(lambda -> None {
 
 ```jac
 useEffect(lambda -> None {
-    console.log("Component mounted!");
+    print("Component mounted!");
 }, []);  # Empty array = run once
 ```
 
@@ -219,7 +219,7 @@ useEffect(lambda -> None {
 
 ```jac
 useEffect(lambda -> None {
-    console.log("Todos changed!");
+    print("Todos changed!");
 }, [todos]);  # Run whenever todos changes
 ```
 
@@ -227,7 +227,7 @@ useEffect(lambda -> None {
 
 ```jac
 useEffect(lambda -> None {
-    console.log("Component rendered!");
+    print("Component rendered!");
 });  # No array = run always (be careful!)
 ```
 
@@ -254,7 +254,7 @@ def:pub app() -> JsxElement {
 
     # Effect 3: Log count changes
     useEffect(lambda -> None {
-        console.log("Todo count:", todos.length);
+        print("Todo count:", todos.length);
     }, [todos.length]);
 }
 ```
@@ -353,7 +353,7 @@ useEffect(lambda -> None {
 ```jac
 useEffect(lambda -> None {
     timerId = setInterval(lambda -> None {
-        console.log("Tick");
+        print("Tick");
     }, 1000);
 
     # Return cleanup function
@@ -396,12 +396,12 @@ useEffect(lambda -> None {
 ```jac
 #  Wrong - runs on every render
 useEffect(lambda -> None {
-    console.log(todos);
+    print(todos);
 });
 
 #  Correct - runs only when todos change
 useEffect(lambda -> None {
-    console.log(todos);
+    print(todos);
 }, [todos]);
 ```
 
@@ -412,12 +412,12 @@ useEffect(lambda -> None {
 ```jac
 #  Wrong - missing todos dependency
 useEffect(lambda -> None {
-    console.log(todos.length);
+    print(todos.length);
 }, []);
 
 #  Correct - includes todos
 useEffect(lambda -> None {
-    console.log(todos.length);
+    print(todos.length);
 }, [todos]);
 ```
 

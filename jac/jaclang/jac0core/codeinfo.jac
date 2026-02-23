@@ -20,7 +20,8 @@ obj ClientManifest {
         params: dict[(str, list)] = field(default_factory=`dict),
         globals_values: dict[(str, Any)] = field(default_factory=`dict),
         has_client: bool = False,
-        imports: dict[(str, str)] = field(default_factory=`dict);
+        imports: dict[(str, str)] = field(default_factory=`dict),
+        endpoint_effects: dict[(str, dict)] = field(default_factory=`dict);
 }
 
 """Codespace context for interop bindings."""

@@ -893,6 +893,7 @@ impl Module.init(
     self.stub_only = stub_only;
     self.impl_mod: list[Module] = [];
     self.test_mod: list[Module] = [];
+    self.variant_mod: list[Module] = [];
     self.src_terminals: list[Token] = terminals;
     self.is_raised_from_py: bool = False;
     self.has_syntax_errors: bool = False;
@@ -2838,6 +2839,26 @@ impl String.lit_value(self: String) -> str {
         try {
             return ast3.literal_eval(self.value);
         } except (ValueError, SyntaxError) {
+            fstring_parent2: FString = self.parent;
+            is_raw2 = False;
+            if (
+                fstring_parent2
+                and fstring_parent2.start
+                and fstring_parent2.start.value
+            ) {
+                prefix2 = fstring_parent2.start.value.lower();
+                is_raw2 = 'r' in prefix2;
+            }
+            if not is_raw2 {
+                result = self.value;
+                placeholder = '\x00';
+                result = result.replace('\\\\', placeholder);
+                result = result.replace('\\n', '\n');
+                result = result.replace('\\t', '\t');
+                result = result.replace('\\r', '\r');
+                result = result.replace(placeholder, '\\');
+                return result;
+            }
             return self.value;
         }
     } else {

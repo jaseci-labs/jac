@@ -51,6 +51,7 @@ obj NaIRGenPass(Transform) {
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
+    def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);

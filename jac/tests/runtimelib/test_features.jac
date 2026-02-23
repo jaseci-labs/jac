@@ -1,7 +1,7 @@
 """Feature function sync tests -- migrated from test_features.py."""
 
 import inspect;
-import pluggy;
+import jaclang.plugin as pluggy;
 import from jaclang.jac0core.runtime {
     JacRuntimeImpl,
     JacRuntimeInterface,

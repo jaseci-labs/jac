@@ -229,7 +229,6 @@ test "mtruntime without mtir info" {
 
 test "python lib mode fixture" {
     import from fixtures { python_lib_mode }
-
     assert hasattr(python_lib_mode, "Person");
     assert hasattr(python_lib_mode, "get_person_info");
     assert hasattr(python_lib_mode, "llm");

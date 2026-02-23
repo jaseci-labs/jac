@@ -81,6 +81,7 @@ obj JacAPIServerCore {
     def register_update_username_endpoint -> None;
     def register_update_password_endpoint -> None;
     def register_sso_endpoints -> None;
+    def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
     # HMR support
     def enable_hmr(hot_reloader: Any) -> None;
     # API key management

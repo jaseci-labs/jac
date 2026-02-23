@@ -54,25 +54,33 @@ def assert_balanced_syntax(js_code: str, fixture_name: str) -> None {
 }
 
 def assert_no_jac_keywords(js_code: str, fixture_name: str) -> None {
-    """Verify Jac-specific keywords are absent from generated JavaScript."""
+    """Verify Jac-specific keywords are absent from generated JavaScript.
+
+    Uses regex word-boundary matching so that Jac keywords appearing as
+    JS variable names (e.g. ``let has = false;`` inside the _jac runtime)
+    do not trigger false positives.
+    """
+    import re;
+
+    # Each entry: (keyword, pattern that matches Jac *statement* usage)
+    # e.g. ``has varname`` at the start of a statement, not ``let has = ...``
     jac_keywords = [
-        "can ",
-        "has ",
-        "obj ",
-        "walker ",
-        "node ",
-        "edge ",
-        "visit ",
-        "spawn ",
-        "disengage ",
-        "here ",
-        "root ",
+        ("can", r"(?<![.\w])can\s+\w+\s*[\({]"),
+        ("has", r"(?<![.\w])has\s+\w+\s*[:=;]"),
+        ("obj", r"(?<![.\w])obj\s+\w+"),
+        ("walker", r"(?<![.\w])walker\s+\w+"),
+        ("node", r"(?<![.\w])node\s+\w+"),
+        ("edge", r"(?<![.\w])edge\s+\w+"),
+        ("visit", r"(?<![.\w])visit\s"),
+        ("spawn", r"(?<![.\w])spawn\s"),
+        ("disengage", r"(?<![.\w])disengage\b"),
+        ("here", r"(?<![.\w])here\b"),
 
     ];
 
-    for kw in jac_keywords {
-        assert kw not in js_code , (
-            f"Jac keyword '{kw.strip()}' leaked into JavaScript for {fixture_name}"
+    for (kw_name, pattern) in jac_keywords {
+        assert not re.search(pattern, js_code) , (
+            f"Jac keyword '{kw_name}' leaked into JavaScript for {fixture_name}"
         );
     }
 }
@@ -678,6 +686,28 @@ test "separated defpub generates rpc stubs" {
     assert_balanced_syntax(js_code, fixture);
 }
 
+test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
+    # When a .cl.jac file has a separate .impl.jac file, both the main pass
+    # and the child pass for the impl module may independently inject
+    # __jacCallFunction from @jac/runtime. The import must appear only once.
+    fixture = "defpub_impl_dedup.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # The import must be present
+    import_line = 'import { __jacCallFunction } from "@jac/runtime";';
+    assert import_line in js_code , (
+        "__jacCallFunction import from @jac/runtime is required"
+    );
+
+    # It must appear exactly once (no duplicates)
+    import_count = js_code.count(import_line);
+    assert import_count == 1 , (
+        f"Expected exactly 1 __jacCallFunction import, found {import_count}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "lexer does not treat comparison lt as jsx tag" {
     # BUG: `i<points` in a for-loop causes the lexer to enter JSX_TAG
     # mode because `<` followed by an alpha char is always treated as a
@@ -764,4 +794,168 @@ test "convert to js import path preserves js format" {
     # NPM packages should pass through unchanged
     assert convert_to_js_import_path("react") == "react";
     assert convert_to_js_import_path("lodash") == "lodash";
+}
+
+# ============================================================================
+# Comprehension → JavaScript Tests
+# ============================================================================
+test "compr list basic map" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_map: [x * 2 for x in items] → items.map(x => (x * 2))
+    assert ".map(" in js_code , "List comprehension should generate .map() call";
+    assert "x =>" in js_code , "Arrow function should use comprehension variable";
+}
+
+test "compr list filter only" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_filter: [x for x in items if x > 0] → items.filter(x => (x > 0))
+    assert ".filter(" in js_code , "Filtered comprehension should generate .filter() call";
+    assert "(x > 0)" in js_code , "Filter condition should be preserved";
+}
+
+test "compr list map and filter" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_map_filter: [x * 2 for x in items if x > 0]
+    #   → items.filter(x => (x > 0)).map(x => (x * 2))
+    assert ".filter(" in js_code and ".map(" in js_code , (
+        "Map+filter comprehension should chain .filter().map()"
+    );
+}
+
+test "compr list multiple filters" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_multi_filter: [x for x in items if x > 0 if x < 100]
+    #   → items.filter(x => (x > 0)).filter(x => (x < 100))
+    assert "(x < 100)" in js_code , ("Second filter condition should appear in output");
+}
+
+test "compr list method call" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_method: [x.strip() for x in items] → items.map(x => x.strip())
+    assert ".strip()" in js_code , (
+        "Method call in comprehension output should be preserved"
+    );
+}
+
+test "compr list ternary output" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # list_compr_ternary: [x if x > 0 else 0 for x in items]
+    #   → items.map(x => (x > 0) ? x : 0)
+    assert "?" in js_code and ":" in js_code , (
+        "Ternary in comprehension output should generate JS conditional"
+    );
+}
+
+test "compr set basic" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
+    assert "new Set(" in js_code , (
+        "Set comprehension should wrap result in new Set()"
+    );
+    assert "new Set(items.map(" in js_code , (
+        "Set comprehension should be new Set(items.map(...))"
+    );
+}
+
+test "compr set with filter" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # set_compr_filter: {x for x in items if x > 0}
+    #   → new Set(items.filter(x => (x > 0)).map(x => x))
+    #   or → new Set(items.filter(x => (x > 0)))
+    assert "new Set(" in js_code , (
+        "Filtered set comprehension should wrap in new Set()"
+    );
+}
+
+test "compr dict basic" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # dict_compr_basic: {k: v for (k, v) in pairs}
+    #   → Object.fromEntries(pairs.map(([k, v]) => [k, v]))
+    assert "Object.fromEntries(" in js_code , (
+        "Dict comprehension should use Object.fromEntries()"
+    );
+}
+
+test "compr dict with filter" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # dict_compr_filter: {k: v for (k, v) in pairs if v > 0}
+    #   → Object.fromEntries(pairs.filter(([k, v]) => (v > 0)).map(([k, v]) => [k, v]))
+    assert "Object.fromEntries(" in js_code , (
+        "Filtered dict comprehension should use Object.fromEntries()"
+    );
+    assert ".filter(" in js_code , (
+        "Filtered dict comprehension should chain .filter()"
+    );
+}
+
+test "compr dict transform" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # dict_compr_transform: {k: v * 2 for (k, v) in pairs}
+    #   → Object.fromEntries(pairs.map(([k, v]) => [k, (v * 2)]))
+    assert "Object.fromEntries(" in js_code , (
+        "Dict comprehension with transform should use Object.fromEntries()"
+    );
+    assert "(v * 2)" in js_code , (
+        "Dict comprehension should include value transform expression"
+    );
+}
+
+test "compr generator basic" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # gen_compr_basic: list((x * 2 for x in items)) → items.map(x => (x * 2))
+    # Generator expressions produce eager arrays in JS
+    assert ".map(" in js_code , ("Generator expression should generate .map() call");
+}
+
+test "compr generator filter" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # gen_compr_filter: list((x for x in items if x > 0))
+    #   → items.filter(x => (x > 0))
+    assert ".filter(" in js_code , (
+        "Filtered generator expression should generate .filter() call"
+    );
+}
+
+test "compr nested basic" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # nested_compr_basic: [x + y for x in a for y in b]
+    #   → a.flatMap(x => b.map(y => (x + y)))
+    assert ".flatMap(" in js_code , (
+        "Nested comprehension should generate .flatMap() for outer loop"
+    );
+}
+
+test "compr nested with filter" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+
+    # nested_compr_filter: [x + y for x in a for y in b if x != y]
+    #   → a.flatMap(x => b.filter(y => (x !== y)).map(y => (x + y)))
+    assert ".flatMap(" in js_code , (
+        "Filtered nested comprehension should use .flatMap()"
+    );
+    assert "!==" in js_code , ("!= comparison should become !== in JavaScript");
+}
+
+test "compr balanced syntax" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+    assert_balanced_syntax(js_code, "comprehensions.cl.jac");
+}
+
+test "compr no jac keywords" {
+    js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
+    assert_no_jac_keywords(js_code, "comprehensions.cl.jac");
 }

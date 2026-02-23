@@ -14,7 +14,7 @@ impl BaseAstGenPass._get_body_inner(
     return None;
 }
 
-"""Concatenate impl/test bodies with the main module body."""
+"""Concatenate impl/test/variant bodies with the main module body."""
 impl BaseAstGenPass._merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -> list {
     clean_body = [
         item
@@ -26,20 +26,37 @@ impl BaseAstGenPass._merge_module_bodies(self: BaseAstGenPass, nd: uni.Module) -
         merged.extend(mod.body);
     }
     merged.extend(clean_body);
+    for variant in nd.variant_mod {
+        for vimpl in variant.impl_mod {
+            merged.extend(vimpl.body);
+        }
+        merged.extend(
+            [
+                item
+                for item in variant.body
+                if not isinstance(item, uni.ImplDef)
+            ]
+        );
+    }
     for mod in nd.test_mod {
         merged.extend(mod.body);
     }
     return merged;
 }
 
-"""Instantiate child passes for impl and test modules."""
+"""Instantiate child passes for impl, test, and variant modules."""
 impl BaseAstGenPass._init_child_passes(
     self: BaseAstGenPass, pass_class: type[ChildPassT]
 ) -> list[ChildPassT] {
-    return [
-        pass_class(ir_in=sub_module, prog=self.prog)
-        for sub_module in (self.ir_in.impl_mod + self.ir_in.test_mod)
-    ];
+    sub_modules: list[uni.Module] = [];
+    sub_modules.extend(self.ir_in.impl_mod);
+    sub_modules.extend(self.ir_in.test_mod);
+    for variant in self.ir_in.variant_mod {
+        sub_modules.append(variant);
+        sub_modules.extend(variant.impl_mod);
+        sub_modules.extend(variant.test_mod);
+    }
+    return [pass_class(ir_in=sub_module, prog=self.prog) for sub_module in sub_modules];
 }
 
 """Flatten nested AST lists while skipping ``None`` entries."""

@@ -8,6 +8,7 @@ Complete reference for jac-scale, the cloud-native deployment and scaling plugin
 
 ```bash
 pip install jac-scale
+jac plugins enable scale
 ```
 
 ---
@@ -27,7 +28,10 @@ jac start app.jac
 | `--port` | Server port | 8000 |
 | `--host` | Bind address | 0.0.0.0 |
 | `--workers` | Number of workers | 1 |
+| `--dev` | Hot Module Replacement (with jac-client) | false |
 | `--reload` | Hot reload on changes | false |
+| `--no-client` | Skip client bundling (API only) | false |
+| `--faux` | Print generated API docs only (no server) | false |
 | `--scale` | Deploy to Kubernetes | false |
 | `--build` `-b` | Build and push Docker image (with --scale) | false |
 | `--experimental` `-e` | Install from repo instead of PyPI (with --scale) | false |
@@ -43,11 +47,30 @@ jac start app.jac --port 3000
 # Multiple workers
 jac start app.jac --workers 4
 
-# Development with hot reload
-jac start app.jac --reload
+# Development with HMR (requires jac-client)
+jac start app.jac --dev
+
+# API only -- skip client bundling
+jac start app.jac --dev --no-client
+
+# Preview generated API endpoints without starting
+jac start app.jac --faux
 
 # Production
 jac start app.jac --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Default Persistence
+
+When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
+
+### CORS Configuration
+
+```toml
+[plugins.scale.cors]
+allow_origins = ["https://example.com"]
+allow_methods = ["GET", "POST", "PUT", "DELETE"]
+allow_headers = ["*"]
 ```
 
 ---
@@ -88,6 +111,47 @@ curl -X POST http://localhost:8000/walker/search \
 ### Response Format
 
 Walker `report` values become the response.
+
+---
+
+## Middleware Walkers
+
+Walkers prefixed with `_` act as middleware hooks that run before or around normal request processing.
+
+### Request Logging
+
+```jac
+walker _before_request {
+    has request: dict;
+
+    can log with Root entry {
+        print(f"Request: {self.request['method']} {self.request['path']}");
+    }
+}
+```
+
+### Authentication Middleware
+
+```jac
+walker _authenticate {
+    has headers: dict;
+
+    can check with Root entry {
+        token = self.headers.get("Authorization", "");
+
+        if not token.startswith("Bearer ") {
+            report {"error": "Unauthorized", "status": 401};
+            return;
+        }
+
+        # Validate token...
+        report {"authenticated": True};
+    }
+}
+```
+
+!!! tip "Middleware vs Built-in Auth"
+    The `_authenticate` middleware pattern gives you custom authentication logic. For standard JWT authentication, use jac-scale's built-in auth endpoints (`/user/register`, `/user/login`) instead -- see [Authentication](#authentication) below.
 
 ---
 
@@ -884,25 +948,79 @@ jac-scale uses a tiered memory system:
 | L2 | Redis | Cache layer |
 | L3 | MongoDB | Persistent storage |
 
+```mermaid
+graph TD
+    App["Application"] --- L1["L1: Volatile (in-memory)"]
+    L1 --- L2["L2: Redis (cache)"]
+    L2 --- L3["L3: MongoDB (persistent)"]
+```
+
 ---
 
 ## Kubernetes Deployment
 
-### Deploy
+### Deployment Modes
 
-```bash
-# Deploy to Kubernetes
-jac start app.jac --scale
+| Mode | Command | Use Case |
+|------|---------|----------|
+| **Development** | `jac start app.jac --scale` | Fast iteration -- deploys without building a Docker image |
+| **Production** | `jac start app.jac --scale --build` | Builds and pushes Docker image to registry before deploying |
 
-# Build Docker image and deploy
-jac start app.jac --scale --build
+**Production mode** requires Docker credentials:
+
+```env
+# .env
+DOCKER_USERNAME=your-dockerhub-username
+DOCKER_PASSWORD=your-dockerhub-password-or-token
 ```
+
+### Generated Resources
+
+```yaml
+# Example generated deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jac-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jac-app
+```
+
+### Service Discovery
+
+Kubernetes service mesh integration for:
+
+- Automatic load balancing
+- Service-to-service communication
+- Health monitoring
+
+### Auto-Provisioning
+
+On first deployment, `jac start --scale` automatically provisions:
+
+- **Redis** -- StatefulSet with persistent storage (caching layer)
+- **MongoDB** -- StatefulSet with persistent storage (graph persistence)
+- **Application Deployment** -- Your Jac application pod(s)
+- **Services** -- NodePort service for external access
+- **ConfigMaps** -- Application configuration
+
+Subsequent deployments only update the application -- databases persist across deployments.
 
 ### Remove Deployment
 
 ```bash
 jac destroy app.jac
 ```
+
+This removes all Kubernetes resources created by jac-scale:
+
+- Application deployments and pods
+- Redis and MongoDB StatefulSets
+- Services and persistent volumes
+- ConfigMaps and secrets
 
 ### Environment Variables
 
@@ -919,6 +1037,7 @@ jac destroy app.jac
 | `K8s_READINESS_PERIOD` | Readiness probe period (seconds) | `20` |
 | `K8s_LIVENESS_INITIAL_DELAY` | Liveness probe initial delay (seconds) | `10` |
 | `K8s_LIVENESS_PERIOD` | Liveness probe period (seconds) | `20` |
+| `K8s_REPLICAS` | Number of replicas | `1` |
 | `K8s_LIVENESS_FAILURE_THRESHOLD` | Failure threshold before restart | `80` |
 | `DOCKER_USERNAME` | DockerHub username | None |
 | `DOCKER_PASSWORD` | DockerHub password/token | None |
@@ -945,6 +1064,13 @@ jac_byllm = "none"     # Skip installation
 ---
 
 ## Health Checks
+
+Built-in endpoints are available for Kubernetes probes:
+
+- `/health` -- Liveness probe
+- `/ready` -- Readiness probe
+
+You can also create custom health walkers:
 
 ### Health Endpoint
 
@@ -1023,6 +1149,22 @@ When server is running:
 - **Swagger UI:** `http://localhost:8000/docs`
 - **ReDoc:** `http://localhost:8000/redoc`
 - **OpenAPI JSON:** `http://localhost:8000/openapi.json`
+
+---
+
+## Graph Visualization
+
+Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+
+- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+
+The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+
+| Endpoint | Description |
+|---|---|
+| `GET /graph` | Serves the graph visualization UI |
+| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
 
 ---
 
@@ -1116,6 +1258,121 @@ jac start app.jac --scale --build
 ```
 
 This eliminates the need for manual `kubectl create secret` commands after deployment.
+
+---
+
+## Setting Up Kubernetes
+
+### Docker Desktop (Easiest)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+2. Open Settings > Kubernetes
+3. Check "Enable Kubernetes"
+4. Click "Apply & Restart"
+
+### Minikube
+
+```bash
+# Install
+brew install minikube  # macOS
+# or see https://minikube.sigs.k8s.io/docs/start/
+
+# Start cluster
+minikube start
+
+# Access your app via minikube service
+minikube service jaseci -n default
+```
+
+### MicroK8s (Linux)
+
+```bash
+sudo snap install microk8s --classic
+microk8s enable dns storage
+alias kubectl='microk8s kubectl'
+```
+
+---
+
+## Troubleshooting
+
+### Application Not Accessible
+
+```bash
+# Check pod status
+kubectl get pods
+
+# Check service
+kubectl get svc
+
+# For minikube, use tunnel
+minikube service jaseci
+```
+
+### Database Connection Issues
+
+```bash
+# Check StatefulSets
+kubectl get statefulsets
+
+# Check persistent volumes
+kubectl get pvc
+
+# View database logs
+kubectl logs -l app=mongodb
+kubectl logs -l app=redis
+```
+
+### Build Failures (--build mode)
+
+- Ensure Docker daemon is running
+- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
+- Check disk space for image building
+
+### General Debugging
+
+```bash
+# Describe a pod for events
+kubectl describe pod <pod-name>
+
+# Get all resources
+kubectl get all
+
+# Check events
+kubectl get events --sort-by='.lastTimestamp'
+```
+
+---
+
+## Library Mode
+
+For teams preferring pure Python syntax or integrating Jac into existing Python codebases, Library Mode provides an alternative deployment approach. Instead of `.jac` files, you use Python files with Jac's runtime as a library.
+
+> **Complete Guide:** See [Library Mode](../language/library-mode.md) for the full API reference, code examples, and migration guide.
+
+**Key Features:**
+
+- All Jac features accessible through `jaclang.lib` imports
+- Pure Python syntax with decorators (`@on_entry`, `@on_exit`)
+- Full IDE/tooling support (autocomplete, type checking, debugging)
+- Zero migration friction for existing Python projects
+
+**Quick Example:**
+
+```python
+from jaclang.lib import Node, Walker, spawn, root, on_entry
+
+class Task(Node):
+    title: str
+    done: bool = False
+
+class TaskFinder(Walker):
+    @on_entry
+    def find(self, here: Task) -> None:
+        print(f"Found: {here.title}")
+
+spawn(TaskFinder(), root())
+```
 
 ---
 

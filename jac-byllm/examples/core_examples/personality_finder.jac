@@ -1,7 +1,3 @@
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="gpt-4o-mini", config={"verbose": True});
-
 enum Personality { INTROVERT, EXTROVERT, AMBIVERT }
 
 obj Person {

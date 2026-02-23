@@ -184,12 +184,12 @@ def:pub FeaturesTest -> JsxElement {
         try {
             response = root spawn create_test_data(message=testMessage.strip());
             new_item = response.reports[0][0];
-            testData = testData.concat([new_item]);
+            testData = testData + [new_item];
             testMessage = "";
             alert("Data created successfully!");
         } except Exception as e {
-            console.error("Error creating data:", e);
-            alert("Error creating data: " + e.toString());
+            print("Error creating data:", e);
+            alert("Error creating data: " + str(e));
         }
         loading = false;
     }
@@ -209,8 +209,8 @@ def:pub FeaturesTest -> JsxElement {
             testData = result.reports if result.reports[0] else [];
             alert("Data updated successfully!");
         } except Exception as e {
-            console.error("Error updating data:", e);
-            alert("Error updating data: " + e.toString());
+            print("Error updating data:", e);
+            alert("Error updating data: " + str(e));
         }
         loading = false;
     }
@@ -225,13 +225,15 @@ def:pub FeaturesTest -> JsxElement {
         try {
             item_id spawn delete_test_data();
             # Remove from local state
-            testData = testData.filter(
-                lambda item: any  -> bool { return item._jac_id != item_id; }
-            );
+            testData = [
+                item
+                for item in testData
+                if item._jac_id != item_id
+            ];
             alert("Data deleted successfully!");
         } except Exception as e {
-            console.error("Error deleting data:", e);
-            alert("Error deleting data: " + e.toString());
+            print("Error deleting data:", e);
+            alert("Error deleting data: " + str(e));
         }
         loading = false;
     }
@@ -244,8 +246,8 @@ def:pub FeaturesTest -> JsxElement {
             result = response.reports[0];
             stringResult = result;
         } except Exception as e {
-            console.error("Error testing strings:", e);
-            alert("Error testing strings: " + e.toString());
+            print("Error testing strings:", e);
+            alert("Error testing strings: " + str(e));
         }
         loading = false;
     }
@@ -255,18 +257,18 @@ def:pub FeaturesTest -> JsxElement {
         loading = true;
         try {
             # Parse number list
-            numbers = numberList.split(",").map(
-                lambda x: str  -> int { return parseInt(x.strip()); }
-            ).filter(
-                lambda x: any  -> bool { return not isNaN(x); }
-            );
+            numbers = [
+                int(x.strip())
+                for x in numberList.split(",")
+                if x.strip().isdigit()
+            ];
 
             response = root spawn test_list_operations(numbers=numbers);
             result = response.reports[0];
             listResult = result;
         } except Exception as e {
-            console.error("Error testing lists:", e);
-            alert("Error testing lists: " + e.toString());
+            print("Error testing lists:", e);
+            alert("Error testing lists: " + str(e));
         }
         loading = false;
     }
@@ -286,8 +288,8 @@ def:pub FeaturesTest -> JsxElement {
             result = response.reports[0];
             complexResult = result;
         } except Exception as e {
-            console.error("Error processing complex data:", e);
-            alert("Error processing complex data: " + e.toString());
+            print("Error processing complex data:", e);
+            alert("Error processing complex data: " + str(e));
         }
         loading = false;
     }
@@ -301,7 +303,7 @@ def:pub FeaturesTest -> JsxElement {
         "Uppercase": demo_text.upper(),
         "Lowercase": demo_text.lower(),
         "Length": str(len(demo_text)),
-        "Split by space": demo_text.split(" ").join(", ")
+        "Split by space": ", ".join(demo_text.split(" "))
     };
 
     # Demo chart data for TypeScript component
@@ -407,56 +409,52 @@ def:pub FeaturesTest -> JsxElement {
                         and <p style={{"color": "#9ca3af", "fontStyle": "italic"}}>
                             No data yet. Create some!
                         </p>}
-                        {testData.map(
-                            lambda item: any  -> JsxElement { return
-                                <div
-                                    key={item._jac_id}
-                                    style={{
-                                        "backgroundColor": "#f9fafb",
-                                        "padding": "12px",
-                                        "borderRadius": "6px",
-                                        "marginTop": "8px",
-                                        "display": "flex",
-                                        "justifyContent": "space-between",
-                                        "alignItems": "center"
-                                    }}
-                                >
-                                    <div>
-                                        <div
-                                            style={{
-                                                "fontWeight": "600",
-                                                "color": "#1f2937"
-                                            }}
-                                        >
-                                            {item.message}
-                                        </div>
-                                        <div
-                                            style={{
-                                                "fontSize": "12px",
-                                                "color": "#6b7280"
-                                            }}
-                                        >
-                                            Count:{item.count}| Created:{item.created_at}
-                                        </div>
+                        {[
+                            <div
+                                key={item._jac_id}
+                                style={{
+                                    "backgroundColor": "#f9fafb",
+                                    "padding": "12px",
+                                    "borderRadius": "6px",
+                                    "marginTop": "8px",
+                                    "display": "flex",
+                                    "justifyContent": "space-between",
+                                    "alignItems": "center"
+                                }}
+                            >
+                                <div>
+                                    <div
+                                        style={{
+                                            "fontWeight": "600",
+                                            "color": "#1f2937"
+                                        }}
+                                    >
+                                        {item.message}
                                     </div>
-                                    <div style={{"display": "flex", "gap": "8px"}}>
-                                        <TestButton
-                                            text="Edit"
-                                            onClick={lambda -> None { handleUpdate(
-                                                item._jac_id
-                                            );}}
-                                            variant="secondary"
-                                        />
-                                        <TestButton
-                                            text="Delete"
-                                            onClick={lambda -> None { handleDelete(
-                                                item._jac_id
-                                            );}}
-                                            variant="secondary"
-                                        />
+                                    <div
+                                        style={{"fontSize": "12px", "color": "#6b7280"}}
+                                    >
+                                        Count:{item.count}| Created:{item.created_at}
                                     </div>
-                                </div>; }
-                        )}
+                                </div>
+                                <div style={{"display": "flex", "gap": "8px"}}>
+                                    <TestButton
+                                        text="Edit"
+                                        onClick={lambda -> None { handleUpdate(
+                                            item._jac_id
+                                        );}}
+                                        variant="secondary"
+                                    />
+                                    <TestButton
+                                        text="Delete"
+                                        onClick={lambda -> None { handleDelete(
+                                            item._jac_id
+                                        );}}
+                                        variant="secondary"
+                                    />
+                                </div>
+                            </div> for item in testData
+                        ]}
                     </div>
                 </div>
             </TestCard>
@@ -479,15 +477,14 @@ def:pub FeaturesTest -> JsxElement {
                                 "marginTop": "8px"
                             }}
                         >
-                            {Object.keys(string_demos).map(
-                                lambda key: str  -> JsxElement { return
-                                    <div key={key} style={{"marginBottom": "5px"}}>
-                                        <span style={{"fontWeight": "600"}}>
-                                            {key}:
-                                        </span>
-                                        {string_demos[key]}
-                                    </div>; }
-                            )}
+                            {[
+                                <div key={key} style={{"marginBottom": "5px"}}>
+                                    <span style={{"fontWeight": "600"}}>
+                                        {key}:
+                                    </span>
+                                    {string_demos[key]}
+                                </div> for key in list(string_demos.keys())
+                            ]}
                         </div>
                     </div>
                     # Walker-based test

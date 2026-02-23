@@ -559,6 +559,133 @@ test "all in one app endpoints" {
                     pytest.fail("Unexpected error testing invalid login");
                 }
 
+                # ================================================================
+                # AUTO-CACHE PIPELINE VALIDATION
+                # Verifies: compiler analysis → metadata propagation → HTML
+                # injection, reader determinism (cache-safe), and writer
+                # classification. Actual cache hit/miss prevention runs in
+                # client-side JS and would need browser-level testing
+                # (Playwright) for direct verification.
+                # ================================================================
+                try {
+                    print("[DEBUG] Verifying endpointEffects in served page HTML");
+                    init_match = re.search(
+                        r'<script\s+id="__jac_init__"\s+type="application/json">\s*(.*?)\s*</script>',
+                        page_body,
+                        re.DOTALL,
+                    );
+                    assert init_match , (
+                        "__jac_init__ script tag should be present in served HTML"
+                    );
+                    init_data = json.loads(init_match.group(1));
+                    print(
+                        f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}"
+                    );
+
+                    # 1. Verify endpointEffects is present
+                    assert "endpointEffects" in init_data , (
+                        "endpointEffects should be in __jac_init__"
+                    );
+                    effects = init_data["endpointEffects"];
+                    effect_keys = list(effects.keys());
+                    print(f"[DEBUG] endpointEffects entries: {effect_keys}");
+
+                    # 2. Verify reader walkers classified as non-writers
+                    for reader_name in [
+                        "walker:get_server_message",
+                        "walker:ping_server"
+                    ] {
+                        assert reader_name in effects , (
+                            f"{reader_name} should be in endpointEffects, "
+                            f"got: {effect_keys}"
+                        );
+                        assert not effects[reader_name]["is_writer"] , (
+                            f"{reader_name} should be classified as reader (is_writer=false)"
+                        );
+                        assert "touches" in effects[reader_name];
+                        print(
+                            f"[DEBUG] {reader_name}: reader, "
+                            f"touches={effects[reader_name]['touches']}"
+                        );
+                    }
+
+                    # 3. Verify writer walker classified as writer
+                    assert "walker:create_todo" in effects , (
+                        f"walker:create_todo should be in endpointEffects, "
+                        f"got: {effect_keys}"
+                    );
+                    assert effects["walker:create_todo"]["is_writer"] , (
+                        "create_todo should be classified as writer (is_writer=true)"
+                    );
+                    print(
+                        f"[DEBUG] walker:create_todo: writer, "
+                        f"touches={effects['walker:create_todo']['touches']}"
+                    );
+
+                    # 4. Verify reader returns deterministic responses
+                    #    (proves the cache can safely serve repeated reads)
+                    print("[DEBUG] Testing reader determinism (3 identical calls)");
+                    reader_reports: list = [];
+                    for _i in range(3) {
+                        req_r = Request(
+                            f"http://127.0.0.1:{server_port}/walker/get_server_message",
+                            data=json.dumps({}).encode("utf-8"),
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        );
+                        with urlopen(req_r, timeout=20) as resp_r {
+                            body = json.loads(
+                                resp_r.read().decode("utf-8", errors="ignore")
+                            );
+                            # Compare only reports (deterministic data);
+                            # result contains per-invocation walker ids.
+                            reader_reports.append(body.get("reports"));
+                        }
+                    }
+                    assert (
+                        reader_reports[0] == reader_reports[1] == reader_reports[2]
+                    ) , (
+                        "Reader endpoint must return identical reports "
+                        "(proves client cache can safely serve repeated reads)"
+                    );
+                    print(
+                        "[DEBUG] Confirmed: 3 identical reader responses (cache-safe)"
+                    );
+
+                    # 5. Verify writer creates distinct data each call
+                    #    (proves the cache MUST invalidate after writes)
+                    print("[DEBUG] Testing writer creates new state each call");
+                    writer_responses: list[str] = [];
+                    for idx in range(2) {
+                        req_w = Request(
+                            f"http://127.0.0.1:{server_port}/walker/create_todo",
+                            data=json.dumps({"text": f"cache_test_{idx}"}).encode(
+                                "utf-8"
+                            ),
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        );
+                        with urlopen(req_w, timeout=20) as resp_w {
+                            writer_responses.append(
+                                resp_w.read().decode("utf-8", errors="ignore")
+                            );
+                            assert resp_w.status == 200;
+                        }
+                    }
+                    assert writer_responses[0] != writer_responses[1] , (
+                        "Writer endpoint must return different data each call "
+                        "(proves stale cache must be invalidated after writes)"
+                    );
+                    print(
+                        "[DEBUG] Confirmed: writer produces distinct results "
+                        "(cache invalidation is required)"
+                    );
+                    print("[DEBUG] Auto-cache pipeline validation PASSED");
+                } except (URLError, HTTPError, RemoteDisconnected) as exc {
+                    print(f"[DEBUG] Error during auto-cache validation: {exc}");
+                    pytest.fail(f"Auto-cache pipeline validation failed: {exc}");
+                }
+
                 # Verify TypeScript component
                 try {
                     print("[DEBUG] Verifying TypeScript component integration");

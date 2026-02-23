@@ -13,7 +13,7 @@ import from typing { TYPE_CHECKING, get_args, get_origin }
 
 with entry {
     if TYPE_CHECKING {
-        import pluggy;
+        import from jaclang { plugin as pluggy }
     }
 }
 
@@ -83,7 +83,7 @@ def dump_traceback(e: Exception) -> str {
             ('/jaclang/runtimelib/' in normalized)
             or ('/jaclang/jac0core/' in normalized)
             or ('/jaclang/vendor/' in normalized)
-            or ('/site-packages/pluggy/' in normalized)
+            or ('/jaclang/plugin.py' in normalized)
             or normalized.endswith('/jaclang/meta_importer.py')
         );
     }

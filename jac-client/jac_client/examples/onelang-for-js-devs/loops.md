@@ -39,7 +39,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     ```jac
     # Count from 0 to 4
     for i=0 to i<5 by i+=1 {
-        console.log(i);
+        print(i);
     }
     ```
 
@@ -67,7 +67,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     ```jac
     # Even numbers (step by 2)
     for i=0 to i<=10 by i+=2 {
-        console.log(i);  # 0, 2, 4, 6, 8, 10
+        print(i);  # 0, 2, 4, 6, 8, 10
     }
     ```
 
@@ -89,7 +89,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     ```jac
     # Countdown from 5 to 0
     for i=5 to i>=0 by i-=1 {
-        console.log(i);  # 5, 4, 3, 2, 1, 0
+        print(i);  # 5, 4, 3, 2, 1, 0
     }
     ```
 
@@ -115,7 +115,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     fruits = ["Apple", "Banana", "Cherry"];
 
     for fruit in fruits {
-        console.log(fruit);
+        print(fruit);
     }
     ```
 
@@ -138,7 +138,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     ```jac
     count = 0;
     while count < 5 {
-        console.log("Count:", count);
+        print("Count:", count);
         count = count + 1;
     }
     ```
@@ -165,7 +165,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     for i=1 to i<=3 by i+=1 {
         for j=1 to j<=3 by j+=1 {
             product = i * j;
-            console.log(i.toString() + " x " + j.toString() + " = " + product.toString());
+            print(str(i) + " x " + str(j) + " = " + str(product));
         }
     }
     ```
@@ -190,7 +190,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     colors = ["Red", "Green", "Blue"];
 
     for i=0 to i<colors.length by i+=1 {
-        console.log("Index " + i.toString() + ": " + colors[i]);
+        print("Index " + str(i) + ": " + colors[i]);
     }
     ```
 
@@ -216,7 +216,7 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
     squares = [];
     for i=1 to i<=5 by i+=1 {
         square = i * i;
-        squares = squares.concat([square]);
+        squares = squares + [square];
     }
     # Result: [1, 4, 9, 16, 25]
     ```
@@ -241,22 +241,22 @@ This guide covers loop syntax in JAC-Client for developers familiar with JavaScr
 ```jac
 #  WRONG - range() does not work
 for i in range(5) {
-    console.log(i);
+    print(i);
 }
 
 #  CORRECT - Use counter-based loop
 for i=0 to i<5 by i+=1 {
-    console.log(i);
+    print(i);
 }
 
 #  WRONG - i++ does not work
 for i=0 to i<5 by i++ {
-    console.log(i);
+    print(i);
 }
 
 #  CORRECT - Use i+=1
 for i=0 to i<5 by i+=1 {
-    console.log(i);
+    print(i);
 }
 ```
 

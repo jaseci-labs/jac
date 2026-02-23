@@ -281,3 +281,10 @@ precompiled.jac
 random_check.jac
 test_pyast_build_pass.jac
 checker_bare_dot_import.jac
+prim_str_extra.jac
+prim_dict_methods.jac
+banners.jac
+prim_float_cmp.jac
+prim_builtins_extra.jac
+features_test_ui.cl.jac
+prim_dict_extra.jac

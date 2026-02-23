@@ -120,4 +120,25 @@ class JacRuntime {
             "The 'by' operator requires visitable nodes on the left and an LLM model on the right."
         ) ;
     }
+
+    """Return a configured Model from jac.toml for the builtin llm."""
+    @hookimpl
+    static def default_llm -> object {
+        _cache = getattr(JacRuntime, '_cached_default_llm', None);
+        if (_cache is not None) {
+            return _cache;
+        }
+        import from byllm.llm { Model }
+        import from byllm.config_loader { get_byllm_config }
+        config = get_byllm_config();
+        model_config = config.get_model_config();
+        call_params_config = config.get_call_params_config();
+        instance = Model(
+            model_name=model_config.get('default_model', 'openai/gpt-4o-mini'),
+            config=model_config,
+            call_params=call_params_config
+        );
+        JacRuntime._cached_default_llm = instance;
+        return instance;
+    }
 }

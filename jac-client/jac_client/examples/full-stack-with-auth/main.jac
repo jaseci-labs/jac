@@ -539,15 +539,14 @@ cl {
 
         return
             <div>
-                {filteredTodos.map(
-                    lambda todo: any  -> any { return
-                        <TodoItem
-                            key={todo._jac_id}
-                            todo={todo}
-                            toggleTodo={toggleTodo}
-                            deleteTodo={deleteTodo}
-                        />; }
-                )}
+                {[
+                    <TodoItem
+                        key={todo._jac_id}
+                        todo={todo}
+                        toggleTodo={toggleTodo}
+                        deleteTodo={deleteTodo}
+                    /> for todo in filteredTodos
+                ]}
             </div>;
     }
 
@@ -586,15 +585,11 @@ cl {
         async def toggleTodo(id: any) -> None {
             id spawn toggle_todo();
             setTodos(
-                todos.map(
-                    lambda todo: any  -> any { if todo._jac_id == id {
-                        return {
-                            "_jac_id": todo._jac_id,
-                            "text": todo.text,
-                            "done": not todo.done
-                        };
-                    }return todo; }
-                )
+                [
+                    {"_jac_id": todo._jac_id, "text": todo.text, "done": not todo.done}
+                    if todo._jac_id == id
+                    else todo for todo in todos
+                ]
             );
         }
 
@@ -602,25 +597,39 @@ cl {
         async def deleteTodo(id: any) -> None {
             #id spawn delete_todo();
             setTodos(
-                todos.filter(lambda todo: any  -> bool { return todo._jac_id != id; })
+                [
+                    todo
+                    for todo in todos
+                    if todo._jac_id != id
+                ]
             );
         }
 
         # Filter todos
         def getFilteredTodos -> list {
             if filter == "active" {
-                return todos.filter(
-                    lambda todo: any  -> bool { return not todo.done; }
-                );
+                return [
+                    todo
+                    for todo in todos
+                    if not todo.done
+                ];
             } elif filter == "completed" {
-                return todos.filter(lambda todo: any  -> bool { return todo.done; });
+                return [
+                    todo
+                    for todo in todos
+                    if todo.done
+                ];
             }
             return todos;
         }
 
         filteredTodos = getFilteredTodos();
         activeCount = len(
-            todos.filter(lambda todo: any  -> bool { return not todo.done; })
+            [
+                todo
+                for todo in todos
+                if not todo.done
+            ]
         );
 
         return

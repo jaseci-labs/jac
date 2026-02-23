@@ -4,7 +4,7 @@ Create a Jac project with frontend and backend in one codebase.
 
 > **Prerequisites**
 >
-> - Completed: [Hello World](../../quick-guide/hello-world.md)
+> - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
 > - Install: `pip install jaseci`
 > - Time: ~15 minutes
@@ -245,7 +245,7 @@ cl {
 
     def:pub app() -> JsxElement {
         items = lodash.sortBy(["c", "a", "b"]);
-        return <ul>{items.map(lambda i: any -> any { return <li>{i}</li>; })}</ul>;
+        return <ul>{[<li>{i}</li> for i in items]}</ul>;
     }
 }
 ```
@@ -311,4 +311,4 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Build a Todo App](todo-app.md) - Complete full-stack example with AI
+- [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

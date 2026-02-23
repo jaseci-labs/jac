@@ -447,6 +447,44 @@ jac debug [-h] [-m] [-c] filename
 jac debug main.jac
 ```
 
+#### VS Code Debugger Setup
+
+To use the VS Code debugger with Jac:
+
+1. Install the **Jac** extension from the VS Code Extensions marketplace
+2. Enable **Debug: Allow Breakpoints Everywhere** in VS Code Settings (search "breakpoints")
+3. Create a `launch.json` via Run and Debug panel (Ctrl+Shift+D) → "Create a launch.json file" → select "Jac Debug"
+
+The generated `.vscode/launch.json`:
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "jac",
+            "request": "launch",
+            "name": "Jac Debug",
+            "program": "${file}"
+        }
+    ]
+}
+```
+
+Debugger controls: F5 (continue), F10 (step over), F11 (step into), Shift+F11 (step out).
+
+#### Graph Visualization (`jacvis`)
+
+The Jac extension includes live graph visualization:
+
+1. Open VS Code Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+2. Type `jacvis` and select **jacvis: Visualize Jaclang Graph**
+3. A side panel opens showing your graph structure
+
+Set breakpoints and step through code -- nodes and edges appear in real time as your program builds the graph. Open `jacvis` **before** starting the debugger for best results.
+
+For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutorials/language/debugging.md).
+
 ---
 
 ## Plugin Management

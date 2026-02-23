@@ -24,31 +24,28 @@ cl {
                         "gap": "0.75rem"
                     }}
                 >
-                    {users.map(
-                        lambda user: any  -> any { return
-                            <Link
-                                key={user["id"]}
-                                to={"/users/" + user["id"]}
-                                style={{
-                                    "display": "block",
-                                    "padding": "1rem",
-                                    "background": "#f9fafb",
-                                    "borderRadius": "8px",
-                                    "textDecoration": "none",
-                                    "color": "#111827",
-                                    "border": "1px solid #e5e7eb"
-                                }}
-                            >
-                                <strong>
-                                    {user["name"]}
-                                </strong>
-                                <span
-                                    style={{"color": "#6b7280", "marginLeft": "0.5rem"}}
-                                >
-                                    —{user["role"]}
-                                </span>
-                            </Link>; }
-                    )}
+                    {[
+                        <Link
+                            key={user["id"]}
+                            to={"/users/" + user["id"]}
+                            style={{
+                                "display": "block",
+                                "padding": "1rem",
+                                "background": "#f9fafb",
+                                "borderRadius": "8px",
+                                "textDecoration": "none",
+                                "color": "#111827",
+                                "border": "1px solid #e5e7eb"
+                            }}
+                        >
+                            <strong>
+                                {user["name"]}
+                            </strong>
+                            <span style={{"color": "#6b7280", "marginLeft": "0.5rem"}}>
+                                —{user["role"]}
+                            </span>
+                        </Link> for user in users
+                    ]}
                 </div>
             </div>;
     }

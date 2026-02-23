@@ -54,14 +54,11 @@ cl {
                     Add Todo
                 </button>
                 <div>
-                    {todos.map(
-                        lambda todo: any  -> any { return
-                            <div key={todo._jac_id}>
+                    {[<div key={todo._jac_id}>
                                 <span>
                                     {todo.text}
                                 </span>
-                            </div>; }
-                    )}
+                            </div> for todo in todos]}
                 </div>
             </div>;
     }

@@ -2,7 +2,7 @@
 
 By the end of this tutorial, you'll have built a full-stack AI day planner -- a single application that lets you manage daily tasks (auto-categorized by AI) and generate meal shopping lists from natural language descriptions. Along the way, you'll learn every major feature of the Jac programming language.
 
-**Prerequisites:** [Installation](../../quick-guide/install.md) complete, [Hello World](../../quick-guide/hello-world.md) done.
+**Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
 **Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. Install everything at once with:
 
@@ -13,7 +13,7 @@ pip install jaseci
 Verify your versions meet the minimum requirements:
 
 ```bash
-jac version
+jac --version
 pip show jac-client jac-scale byllm
 ```
 
@@ -24,16 +24,22 @@ pip show jac-client jac-scale byllm
 | jac-scale | 0.1.11 |
 | byllm | 0.4.21 |
 
+**API Key:** Parts 5+ use AI features powered by Anthropic's Claude. Set your API key as an environment variable before running those sections:
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"
+```
+
 The tutorial is split into seven parts. Each builds on the last:
 
 | Part | What You'll Build | Key Concepts |
 |------|-------------------|--------------|
 | [1](#part-1-your-first-lines-of-jac) | [Hello World](#part-1-your-first-lines-of-jac) | Syntax basics, types, functions |
 | [2](#part-2-modeling-data-with-nodes) | [Task data model](#part-2-modeling-data-with-nodes) | Nodes, graphs, root, edges |
-| [3](#part-3-building-the-backend-api) | [Backend API](#part-3-building-the-backend-api) | `def:pub`, imports, enums, collections |
-| [4](#part-4-a-reactive-frontend) | [Working frontend](#part-4-a-reactive-frontend) | Client-side code, JSX, reactive state |
+| [3](#part-3-building-the-backend-api) | [Backend API](#part-3-building-the-backend-api) | `def:pub`, imports, collections, list comprehensions |
+| [4](#part-4-a-reactive-frontend) | [Working frontend](#part-4-a-reactive-frontend) | Client-side code, lambdas, JSX, reactive state |
 | [5](#part-5-making-it-smart-with-ai) | [AI features](#part-5-making-it-smart-with-ai) | `by llm()`, `obj`, `sem`, structured output |
-| [6](#part-6-authentication-and-multi-file-organization) | [Authentication](#part-6-authentication-and-multi-file-organization) | Login, signup, per-user data, multi-file |
+| [6](#part-6-authentication-and-multi-file-organization) | [Authentication](#part-6-authentication-and-multi-file-organization) | Login, signup, `def:priv`, per-user data, multi-file |
 | [7](#part-7-object-spatial-programming-with-walkers) | [Walkers & OSP](#part-7-object-spatial-programming-with-walkers) | Walkers, abilities, graph traversal |
 
 ---
@@ -58,7 +64,10 @@ Run it:
 jac hello.jac
 ```
 
-In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks run when you execute a `.jac` file as a script and at the point it's imported, similar to top-level code in Python. We require this explicit demarcation because it's important to be deliberate about code that executes once on module load -- a common source of bugs in real programs. Fun fact: Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
+In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks run when you execute a `.jac` file as a script and at the point it's imported, similar to top-level code in Python. We require this explicit demarcation because it's important to be deliberate about code that executes once on module load -- a common source of bugs in real programs.
+
+!!! info "Why `with entry`?"
+    Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
 
 **Variables and Types**
 
@@ -88,7 +97,7 @@ Jac supports **f-strings** for string interpolation (just like Python), **commen
 
 **Functions**
 
-Functions use the familar `def` keyword. Both parameters and return values need type annotations:
+Functions use the familiar `def` keyword. Both parameters and return values need type annotations:
 
 ```jac
 def greet(name: str) -> str {
@@ -202,7 +211,10 @@ with entry {
 }
 ```
 
-This works, but notice all the `self` boilerplate. Jac introduces **`obj`** as an improved alternative -- fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicit in methods. For a deeper dive into why this design choice was made, see [Dataclasses: Python's Admission That Classes Are Broken (And How Jac Fixes It Properly)](https://www.mars.ninja/blog/2025/10/25/dataclasses-and-jac-objects/).
+This works, but notice all the `self` boilerplate. Jac introduces **`obj`** as an improved alternative -- fields declared with `has` are automatically initialized (like a dataclass), and `self` is implicit in methods.
+
+!!! note "Why `obj`?"
+    Python's `dataclass` decorator was an admission that traditional classes have too much boilerplate for simple data types. Jac's `obj` builds this idea into the language itself. For a deeper dive, see [Dataclasses: Python's Admission That Classes Are Broken](https://www.mars.ninja/blog/2025/10/25/dataclasses-and-jac-objects/).
 
 ```jac
 obj Animal {
@@ -236,11 +248,14 @@ With `obj`, you don't write `self` in method signatures -- it's always available
 
 For a quick reference of all Jac syntax, see the [Syntax Cheatsheet](../../quick-guide/syntax-cheatsheet.md).
 
+!!! example "Try It Yourself"
+    Write a `plan_day` function that takes a list of task names and an `hour: int`, and returns a formatted string like `"Good morning! Today's tasks: Buy groceries, Go running"`. Use `check_time` for the greeting and a `for` loop to build the task list.
+
 ---
 
 ## Part 2: Modeling Data with Nodes
 
-Most languages store data in variables, objects, or database rows. Jac adds a powerful alternative: **nodes** that live in a **graph**. Nodes persist automatically -- no database setup, no ORM, no SQL. **The Goal** of this section is to introduce you to the concept of graphs as a first class citizen of the language and how databases can disappear.
+Most languages store data in variables, objects, or database rows. Jac adds another option: **nodes** that live in a **graph**. Nodes persist automatically -- no database setup, no ORM, no SQL. **The Goal** of this section is to introduce you to the concept of graphs as a first-class citizen of the language and how databases can disappear.
 
 **What is a Node?**
 
@@ -254,9 +269,9 @@ node Task {
 }
 ```
 
-This looks similar to a class, but nodes have a superpower: they can be connected to other nodes with **edges** (also `obj` style classes), forming a graph. Instead of class instance objects floating in space, these objects can have relationships that form first class graphs in the language.
+This looks similar to a class, but nodes have a superpower: they can be connected to other nodes with **edges** (also `obj` style classes), forming a graph. Instead of class instance objects floating in space, these objects can have relationships that form first-class graphs in the language.
 
-Beyond the more obvious utility of never needing a graph library again, there is a powerful capability that emerges when we couple this with one more abstraction the self referentail `root`.
+Beyond never needing a graph library again, a key capability emerges when we couple this with one more abstraction: the self-referential `root`.
 
 **The Root Node and the Graph**
 
@@ -294,7 +309,10 @@ with entry {
 }
 ```
 
-Run it with `jac hello.jac`. Your graph now looks like:
+Run it with `jac <your-filename>.jac`. Your graph now looks like:
+
+!!! tip "Running examples multiple times"
+    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, run `jac clean --all` to clear the graph database.
 
 ```mermaid
 graph LR
@@ -314,50 +332,34 @@ print(task.title);  # "Buy groceries"
 
 **Filter Comprehensions**
 
-Before we query the graph, let's learn a Jac feature that works on *any* collection of objects: **filter comprehensions**. The `(?...)` syntax filters a list by field conditions:
+Before we query the graph, let's learn a Jac feature that works on *any* collection of objects: **filter comprehensions**. The `(?...)` syntax filters a list by field conditions, and `(?:Type)` filters by type:
 
 ```jac
-obj Employee {
-    has name: str,
-        salary: float,
-        remote: bool = False;
-}
+obj Dog { has name: str, age: int; }
+obj Cat { has name: str, age: int; }
 
 with entry {
-    team = [
-        Employee(name="Alice", salary=95000.0, remote=True),
-        Employee(name="Bob", salary=62000.0),
-        Employee(name="Carol", salary=110000.0, remote=True)
+    pets: list = [
+        Dog(name="Rex", age=5),
+        Cat(name="Whiskers", age=3),
+        Dog(name="Buddy", age=2)
     ];
 
-    # Filter by field condition
-    well_paid = team(?salary > 80000.0);
-    print(well_paid);  # [Alice, Carol]
-
-    # Multiple conditions (AND logic)
-    remote_and_senior = team(?salary > 80000.0, remote == True);
-    print(remote_and_senior);  # [Alice, Carol]
-}
-```
-
-You can also filter by **type** using `(?:Type)`. This is especially useful when a list contains mixed types:
-
-```jac
-obj Dog { has name: str; }
-obj Cat { has name: str; }
-
-with entry {
-    pets: list = [Dog(name="Rex"), Cat(name="Whiskers"), Dog(name="Buddy")];
-
-    # Type filter -- keep only Dogs
+    # Filter by type -- keep only Dogs
     dogs = pets(?:Dog);
-    print(dogs);  # [Rex, Buddy]
+    print(dogs);  # [Dog(name='Rex', age=5), Dog(name='Buddy', age=2)]
 
-    # Type + field condition
-    specific = pets(?:Dog, name == "Rex");
-    print(specific);  # [Rex]
+    # Filter by field condition
+    young = pets(?age < 4);
+    print(young);  # [Cat(name='Whiskers', age=3), Dog(name='Buddy', age=2)]
+
+    # Combined type + field filter
+    young_dogs = pets(?:Dog, age < 4);
+    print(young_dogs);  # [Dog(name='Buddy', age=2)]
 }
 ```
+
+This works on any list of objects -- not just graph queries. That's important for what comes next.
 
 **Querying the Graph**
 
@@ -404,36 +406,42 @@ for task in [root-->](?:Task) {
 }
 ```
 
-**Custom Edges**
+**Debugging Tip**
 
-So far, the edges between nodes are generic -- they just mean "connected." Jac lets you create **typed edges** with their own data:
-
-```jac
-edge Scheduled {
-    has time: str,
-        priority: int = 1;
-}
-```
-
-Connect nodes with a typed edge using `+>: EdgeType :+>`:
+You can inspect the graph at any time by printing connected nodes:
 
 <!-- jac-skip -->
 ```jac
-root +>: Scheduled(time="9:00am", priority=3) :+> Task(id="1", title="Morning run");
+print([root-->]);           # All nodes connected to root
+print([root-->](?:Task));   # Just Task nodes
 ```
 
-You can then filter queries by edge type:
+This is useful when data isn't appearing as expected.
 
-<!-- jac-skip -->
-```jac
-# Get only nodes connected via Scheduled edges
-scheduled_tasks = [root->:Scheduled:->](?:Task);
+??? info "Advanced: Custom Edges"
+    So far, the edges between nodes are generic -- they just mean "connected." Jac also supports **typed edges** with their own data:
 
-# Filter edges by attribute value
-urgent = [root->:Scheduled:priority>=3:->](?:Task);
-```
+    ```jac
+    edge Scheduled {
+        has time: str,
+            priority: int = 1;
+    }
+    ```
 
-We won't use custom edges in the main app (default edges are sufficient for our use case), but they're powerful for modeling complex relationships -- social networks, org charts, dependency graphs, and more.
+    Connect with a typed edge using `+>: EdgeType :+>`:
+
+    ```jac
+    root +>: Scheduled(time="9:00am", priority=3) :+> Task(id="1", title="Morning run");
+    ```
+
+    And filter queries by edge type:
+
+    ```jac
+    scheduled_tasks = [root->:Scheduled:->](?:Task);
+    urgent = [root->:Scheduled:priority>=3:->](?:Task);
+    ```
+
+    We won't use custom edges in this tutorial (default edges are sufficient), but they're useful for modeling relationships like social networks, org charts, and dependency graphs.
 
 **What You Learned**
 
@@ -446,9 +454,9 @@ We won't use custom edges in the main app (default edges are sufficient for our 
 - **`(?:Type, field == val)`** -- combined type and field filtering
 - **`[root-->]`** -- query all connected nodes (returns a list, filterable like any other)
 - **`del`** -- remove a node from the graph
-- **`edge`** -- define a typed edge with its own data
-- **`+>: EdgeType :+>`** -- connect with a typed edge
-- **`[root->:EdgeType:->]`** -- filter by edge type
+
+!!! example "Try It Yourself"
+    After creating three tasks, mark one as done (`task.done = True`), then use `[root-->](?:Task, done == False)` to list only pending tasks. Verify that the completed task doesn't appear.
 
 ---
 
@@ -459,11 +467,9 @@ Time to build a real backend. You'll create HTTP endpoints that manage tasks -- 
 **Create the Project**
 
 ```bash
-jac create day-planner --use client --skip
+jac create day-planner --use client
 cd day-planner
 ```
-
-`--skip` skips interactive prompts. You don't need to run `jac install` separately -- `jac start` handles dependency installation automatically.
 
 You can delete the scaffolded `main.jac` -- you'll replace it with the code below. Also create a `styles.css` file in the project root (we'll fill it in Part 4).
 
@@ -493,11 +499,8 @@ That single function is now:
 
 - A server-side function you can call from Jac code
 - An HTTP endpoint that clients can call over the network
-- Auto-documented with the docstring
 
 No route configuration, no controllers, no request parsing. The function **is** the API.
-
-**Docstrings** in Jac come *before* the declaration (unlike Python where they go inside the function body). They're enclosed in triple quotes `"""..."""`.
 
 **Building the CRUD Endpoints**
 
@@ -581,46 +584,6 @@ task_data["done"] = True;   # Update a value
 [t.title for t in [root-->](?:Task) if not t.done]
 ```
 
-**Lambdas**
-
-Lambdas are anonymous functions. They're essential for the frontend (Part 4), so let's introduce them now:
-
-<!-- jac-skip -->
-```jac
-# Lambda with typed parameters
-double = lambda x: int -> int { return x * 2; };
-
-# Lambda used inline with list operations
-numbers = [1, 2, 3, 4, 5];
-evens = list(filter(lambda x: int -> bool { return x % 2 == 0; }, numbers));
-
-# Lambda with no parameters
-say_hi = lambda -> str { return "hi"; };
-```
-
-The syntax is `lambda params -> return_type { body }`. You'll see these heavily in event handlers.
-
-**Enums**
-
-An **enum** constrains a value to a fixed set of options:
-
-```jac
-enum Priority { LOW, MEDIUM, HIGH, URGENT }
-```
-
-Access values with `Priority.HIGH` and convert to string with `str(Priority.HIGH)`. We'll use enums extensively in Part 5 for constraining AI output.
-
-**Global Variables**
-
-The `glob` keyword declares a module-level variable:
-
-```jac
-glob app_name = "Day Planner";
-glob max_tasks = 100;
-```
-
-We'll use `glob` in Part 5 to initialize the AI model.
-
 **Run It**
 
 You can start the server now -- the `def:pub` functions are live HTTP endpoints even without a frontend:
@@ -631,6 +594,13 @@ jac start main.jac
 
 The server starts on port 8000 by default. Use `--port 3000` to pick a different port.
 
+Open [http://localhost:8000/docs](http://localhost:8000/docs) to see Swagger UI with all your endpoints listed. You can test each one interactively -- expand an endpoint, click "Try it out", fill in the parameters, and hit "Execute." This is a great way to verify your backend works before building a frontend.
+
+You can also visit [http://localhost:8000/graph](http://localhost:8000/graph) to see a visual representation of the data graph attached to `root`. Right now it will be empty, but once you add tasks (try it from the Swagger UI!), you'll see them appear as nodes connected to `root`.
+
+!!! info "`jac` vs `jac start`"
+    In Parts 1-2 we used `jac <file>` to run scripts. `jac start <file>` launches a web server that serves `def:pub` endpoints and any frontend components. Use `jac` for scripts, `jac start` for web apps.
+
 !!! warning "Common issue"
     If you see "Address already in use", another process is on that port. Use `--port` to pick a different one, or see [Troubleshooting](../troubleshooting.md#server-wont-start-address-already-in-use).
 
@@ -638,13 +608,12 @@ The server starts on port 8000 by default. Use `--port 3000` to pick a different
 
 - **`def:pub`** -- functions that auto-become HTTP endpoints
 - **`import from module { name }`** -- import Python (or any) packages
-- **`"""..."""`** -- docstrings (placed before the declaration)
 - **List comprehensions** -- `[expr for x in list]` and `[expr for x in list if cond]`
 - **Dictionaries** -- `{"key": value}` for structured data
-- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
-- **`enum`** -- fixed set of named values
-- **`glob`** -- global/module-level variables
 - **`jac start`** -- run the web server
+
+!!! example "Try It Yourself"
+    Add a `get_pending_tasks` endpoint that returns only tasks where `done` is `False`. Hint: add an `if not t.done` condition to the list comprehension from `get_tasks`.
 
 ---
 
@@ -677,6 +646,22 @@ cl def:pub app -> JsxElement {
 
 **`has`** inside a component declares **reactive state**. When `tasks` or `task_text` changes, the UI automatically re-renders -- same idea as React's `useState`, but declared as simple properties.
 
+??? info "You can also use React's `useState` directly"
+    Since Jac's client-side code compiles to JavaScript that runs in a React context, you can import and use `useState` from React directly if you prefer:
+
+    ```jac
+    cl import from react { useState }
+
+    cl def:pub app -> JsxElement {
+        (tasks, set_tasks) = useState([]);
+        (task_text, set_task_text) = useState("");
+
+        # Use set_tasks([...]) and set_task_text("...") to update state
+    }
+    ```
+
+    The `has` syntax is Jac's idiomatic approach -- it's more concise and handles the getter/setter pattern for you behind the scenes. But if you're coming from React and prefer the explicit `useState` hook, it works just the same.
+
 **Lifecycle Hooks**
 
 **`can with entry`** runs when the component first mounts (like React's `useEffect` on mount):
@@ -689,32 +674,55 @@ cl def:pub app -> JsxElement {
 
 This fetches all tasks from the server when the page loads.
 
-**Event Handlers**
+??? info "You can also use React's `useEffect` directly"
+    If you prefer React's hooks, you can import and use `useEffect` directly:
 
-Lambdas handle user events inline:
+    ```jac
+    cl import from react { useEffect }
+
+    cl def:pub app -> JsxElement {
+        # ...
+
+        useEffect(lambda -> None {
+            async def load -> None {
+                tasks = await get_tasks();
+            }
+            load();
+        }, []);
+    }
+    ```
+
+    The `can with entry` syntax is Jac's shorthand for a `useEffect` with an empty dependency array (run once on mount). For more advanced cases like watching specific dependencies, you can use `useEffect` directly with the appropriate dependency list.
+
+**Lambdas**
+
+Before we build the UI, we need **lambdas** -- Jac's anonymous functions. They're essential for event handlers:
 
 <!-- jac-skip -->
 ```jac
-<input
-    value={task_text}
-    onChange={lambda e: any -> None { task_text = e.target.value; }}
-    onKeyPress={lambda e: any -> None {
-        if e.key == "Enter" { add_new_task(); }
-    }}
-/>
+# Lambda with typed parameters
+double = lambda x: int -> int { return x * 2; };
+
+# Lambda with no parameters
+say_hi = lambda -> str { return "hi"; };
 ```
 
-Updating `task_text` triggers a re-render because it's reactive state (declared with `has`).
+The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them inline to handle user events:
+
+<!-- jac-skip -->
+```jac
+onChange={lambda e: any -> None { task_text = e.target.value; }}
+```
 
 **Transparent Server Calls**
 
-Here's the key insight: **`await add_task(text)`** calls the server function as if it were local. Because `add_task` is `def:pub`, Jac generated an HTTP endpoint on the server and a matching client stub automatically. You never write fetch calls, parse JSON, or handle HTTP status codes.
+Here's a key insight: **`await add_task(text)`** calls the server function as if it were local. Because `add_task` is `def:pub`, Jac generated an HTTP endpoint on the server and a matching client stub automatically. You never write fetch calls, parse JSON, or handle HTTP status codes.
 
 ```jac
     async def add_new_task -> None {
         if task_text.strip() {
             task = await add_task(task_text.strip());
-            tasks = tasks.concat([task]);
+            tasks = tasks + [task];
             task_text = "";
         }
     }
@@ -742,9 +750,9 @@ Here's the key insight: **`await add_task(text)`** calls the server function as 
 </span>
 ```
 
-**The Complete Frontend**
+**Building the Frontend Step by Step**
 
-Add `cl import "./styles.css";` after your existing import, then add this component at the bottom of `main.jac`:
+Add `cl import "./styles.css";` after your existing import. Now let's build the component incrementally. Start with the input, add button, and a basic task list:
 
 ```jac
 cl def:pub app -> JsxElement {
@@ -758,27 +766,73 @@ cl def:pub app -> JsxElement {
     async def add_new_task -> None {
         if task_text.strip() {
             task = await add_task(task_text.strip());
-            tasks = tasks.concat([task]);
+            tasks = tasks + [task];
+            task_text = "";
+        }
+    }
+
+    return
+        <div class="container">
+            <h1>Day Planner</h1>
+            <div class="input-row">
+                <input
+                    class="input"
+                    value={task_text}
+                    onChange={lambda e: any -> None { task_text = e.target.value; }}
+                    onKeyPress={lambda e: any -> None {
+                        if e.key == "Enter" { add_new_task(); }
+                    }}
+                    placeholder="What needs to be done today?"
+                />
+                <button class="btn-add" onClick={add_new_task}>Add</button>
+            </div>
+            {[
+                <div key={t.id} class="task-item">
+                    <span class="task-title">{t.title}</span>
+                </div> for t in tasks
+            ]}
+        </div>;
+}
+```
+
+This is already functional -- you can type a task, press Enter, and see it appear. Reactive `has` state re-renders the UI automatically, the lifecycle hook loads existing data, and `await add_task()` transparently calls the server.
+
+**Adding Toggle and Delete**
+
+Now add checkboxes, delete buttons, and a task counter. Insert these methods after `add_new_task`, and update the task list rendering:
+
+```jac
+cl def:pub app -> JsxElement {
+    has tasks: list = [],
+        task_text: str = "";
+
+    async can with entry {
+        tasks = await get_tasks();
+    }
+
+    async def add_new_task -> None {
+        if task_text.strip() {
+            task = await add_task(task_text.strip());
+            tasks = tasks + [task];
             task_text = "";
         }
     }
 
     async def toggle(id: str) -> None {
         await toggle_task(id);
-        tasks = tasks.map(
-            lambda t: any -> any {
-                return {"id": t.id, "title": t.title, "done": not t.done}
-                if t.id == id else t;
-            }
-        );
+        tasks = [
+            {"id": t.id, "title": t.title, "done": not t.done}
+            if t.id == id else t
+            for t in tasks
+        ];
     }
 
     async def remove(id: str) -> None {
         await delete_task(id);
-        tasks = tasks.filter(lambda t: any -> bool { return t.id != id; });
+        tasks = [t for t in tasks if t.id != id];
     }
 
-    remaining = len(tasks.filter(lambda t: any -> bool { return not t.done; }));
+    remaining = len([t for t in tasks if not t.done]);
 
     return
         <div class="container">
@@ -820,9 +874,9 @@ cl def:pub app -> JsxElement {
 
 A few things to notice:
 
-- **`tasks.map(lambda ...)`** transforms each item in the list (like JavaScript's `.map()`)
-- **`tasks.filter(lambda ...)`** keeps only matching items
-- **`tasks.concat([task])`** creates a new list with the item appended
+- **List comprehensions** transform and filter lists inline (e.g., `[expr for t in tasks]`, `[t for t in tasks if cond]`)
+- **Conditional comprehensions** update matching items (e.g., `[updated if t.id == id else t for t in tasks]`)
+- **`tasks + [task]`** creates a new list with the item appended
 - **`async`** marks methods that call the server (since network calls are asynchronous)
 
 **Add Styles**
@@ -900,27 +954,26 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
         async def add_new_task -> None {
             if task_text.strip() {
                 task = await add_task(task_text.strip());
-                tasks = tasks.concat([task]);
+                tasks = tasks + [task];
                 task_text = "";
             }
         }
 
         async def toggle(id: str) -> None {
             await toggle_task(id);
-            tasks = tasks.map(
-                lambda t: any -> any {
-                    return {"id": t.id, "title": t.title, "done": not t.done}
-                    if t.id == id else t;
-                }
-            );
+            tasks = [
+                {"id": t.id, "title": t.title, "done": not t.done}
+                if t.id == id else t
+                for t in tasks
+            ];
         }
 
         async def remove(id: str) -> None {
             await delete_task(id);
-            tasks = tasks.filter(lambda t: any -> bool { return t.id != id; });
+            tasks = [t for t in tasks if t.id != id];
         }
 
-        remaining = len(tasks.filter(lambda t: any -> bool { return not t.done; }));
+        remaining = len([t for t in tasks if not t.done]);
 
         return
             <div class="container">
@@ -973,17 +1026,24 @@ Open [http://localhost:8000](http://localhost:8000). You should see a clean day 
 
 That last point is important. The data persisted because nodes live in the graph database, not in memory.
 
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see your tasks as nodes connected to `root`. This visual view updates live as you add, toggle, and delete tasks.
+
 **What You Learned**
 
 - **`cl`** -- prefix for client-side (browser) code
 - **`cl import`** -- load CSS (or npm packages) in the browser
 - **`cl def:pub app -> JsxElement`** -- the main UI component
 - **`has`** (in components) -- reactive state that triggers re-renders on change
+- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
 - **`can with entry`** -- lifecycle hook that runs on component mount
 - **`await func()`** -- transparent server calls from the client (no HTTP code)
 - **`async`** -- marks functions that perform asynchronous operations
 - **JSX syntax** -- `{expression}`, `{[... for x in list]}`, event handlers with lambdas
-- **`.map()`, `.filter()`, `.concat()`** -- list operations for immutable state updates
+- **List comprehensions and `+` operator** -- `[expr for x in list]`, `[x for x in list if cond]`, and `list + [item]` for immutable state updates
+
+!!! example "Try It Yourself"
+    Add a "Clear All" button below the task count that deletes every task. You'll need a new `def:pub clear_all_tasks` endpoint on the server and an `async` method in the component that calls it and resets the `tasks` list.
 
 ---
 
@@ -1029,9 +1089,11 @@ cl import "./styles.css";
 glob llm = Model(model_name="claude-sonnet-4-20250514");
 ```
 
-`import from byllm.lib { Model }` loads Jac's AI plugin. `glob llm = Model(...)` initializes the model at module level -- `glob` declares a global variable, as we learned in Part 3.
+`import from byllm.lib { Model }` loads Jac's AI plugin. `glob llm = Model(...)` initializes the model at module level -- the **`glob`** keyword declares a module-level variable, accessible everywhere in the file.
 
 **Enums as Output Constraints**
+
+An **enum** defines a fixed set of named values. Access them with `Category.WORK` and convert to string with `str(Category.WORK)`:
 
 ```jac
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
@@ -1044,8 +1106,8 @@ This enum constrains the AI to return *exactly one* of these values. Without it,
 Here's the key feature:
 
 ```jac
-"""Categorize a task based on its title."""
 def categorize(title: str) -> Category by llm();
+sem categorize = "Categorize a task based on its title";
 ```
 
 That's the **entire function**. There's no body -- `by llm()` tells Jac to have the LLM generate the return value. The compiler extracts meaning from:
@@ -1053,9 +1115,12 @@ That's the **entire function**. There's no body -- `by llm()` tells Jac to have 
 - The **function name** -- `categorize` tells the LLM what to do
 - The **parameter names and types** -- `title: str` is what the LLM receives
 - The **return type** -- `Category` constrains output to one of the enum values
-- The **docstring** -- additional context for the LLM
+- The **`sem` hint** -- additional context for the LLM
 
-The function name, parameter names, types, and docstring **are the specification**. The LLM fulfills it.
+The function name, parameter names, types, and `sem` hint **are the specification**. The LLM fulfills it.
+
+!!! info "`sem` vs docstrings"
+    Use **`sem`** to provide semantic context for any declaration that the LLM needs to understand. While docstrings describe code for humans (and auto-generate API docs), `sem` is specifically designed to guide the LLM compiler. Always prefer `sem` for `by llm()` functions and their parameters.
 
 **Wire It Into the Task Flow**
 
@@ -1144,8 +1209,8 @@ Without `sem`, `cost: float` is ambiguous (cost in what currency? per unit or to
 Now the AI function:
 
 ```jac
-"""Generate a shopping list of ingredients needed for a described meal."""
 def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 ```
 
 The LLM returns a `list[Ingredient]` -- a list of typed objects, each with name, quantity, unit, cost, and carb flag. Jac validates the structure automatically.
@@ -1242,27 +1307,26 @@ cl def:pub app -> JsxElement {
     async def add_new_task -> None {
         if task_text.strip() {
             task = await add_task(task_text.strip());
-            tasks = tasks.concat([task]);
+            tasks = tasks + [task];
             task_text = "";
         }
     }
 
     async def toggle(id: str) -> None {
         await toggle_task(id);
-        tasks = tasks.map(
-            lambda t: any -> any {
-                return {
-                    "id": t.id, "title": t.title,
-                    "done": not t.done, "category": t.category
-                }
-                if t.id == id else t;
+        tasks = [
+            {
+                "id": t.id, "title": t.title,
+                "done": not t.done, "category": t.category
             }
-        );
+            if t.id == id else t
+            for t in tasks
+        ];
     }
 
     async def remove(id: str) -> None {
         await delete_task(id);
-        tasks = tasks.filter(lambda t: any -> bool { return t.id != id; });
+        tasks = [t for t in tasks if t.id != id];
     }
 
     async def generate_meal_list -> None {
@@ -1279,7 +1343,7 @@ cl def:pub app -> JsxElement {
         meal_text = "";
     }
 
-    remaining = len(tasks.filter(lambda t: any -> bool { return not t.done; }));
+    remaining = len([t for t in tasks if not t.done]);
     total_cost = 0.0;
     for ing in ingredients { total_cost = total_cost + ing.cost; }
 
@@ -1439,11 +1503,11 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     sem Ingredient.cost = "Estimated cost in USD";
     sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-    """Categorize a task based on its title."""
     def categorize(title: str) -> Category by llm();
+    sem categorize = "Categorize a task based on its title";
 
-    """Generate a shopping list of ingredients needed for a described meal."""
     def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
     # --- Data Nodes ---
 
@@ -1567,27 +1631,26 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
         async def add_new_task -> None {
             if task_text.strip() {
                 task = await add_task(task_text.strip());
-                tasks = tasks.concat([task]);
+                tasks = tasks + [task];
                 task_text = "";
             }
         }
 
         async def toggle(id: str) -> None {
             await toggle_task(id);
-            tasks = tasks.map(
-                lambda t: any -> any {
-                    return {
-                        "id": t.id, "title": t.title,
-                        "done": not t.done, "category": t.category
-                    }
-                    if t.id == id else t;
+            tasks = [
+                {
+                    "id": t.id, "title": t.title,
+                    "done": not t.done, "category": t.category
                 }
-            );
+                if t.id == id else t
+                for t in tasks
+            ];
         }
 
         async def remove(id: str) -> None {
             await delete_task(id);
-            tasks = tasks.filter(lambda t: any -> bool { return t.id != id; });
+            tasks = [t for t in tasks if t.id != id];
         }
 
         async def generate_meal_list -> None {
@@ -1604,7 +1667,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
             meal_text = "";
         }
 
-        remaining = len(tasks.filter(lambda t: any -> bool { return not t.done; }));
+        remaining = len([t for t in tasks if not t.done]);
         total_cost = 0.0;
         for ing in ingredients { total_cost = total_cost + ing.cost; }
 
@@ -1718,16 +1781,23 @@ Open [http://localhost:8000](http://localhost:8000). The app now has two columns
 
 The AI can only pick from the enum values you defined -- `Category` for tasks, `Unit` for ingredients. The type system constrains the LLM's output automatically.
 
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see both `Task` and `ShoppingItem` nodes connected to `root`. After generating a shopping list, you'll see the graph grow with ingredient nodes alongside your tasks.
+
 **What You Learned**
 
 - **`import from byllm.lib { Model }`** -- load the AI plugin
+- **`glob`** -- module-level variables, accessible throughout the file
 - **`glob llm = Model(...)`** -- initialize an LLM at module level
-- **`enum`** -- constrain AI output to specific values
+- **`enum`** -- fixed set of named values, used here to constrain AI output
 - **`def func(...) -> Type by llm()`** -- let the LLM implement a function from its signature
 - **`obj`** -- structured data types (not stored in graph, used as data containers)
 - **`sem Type.field = "..."`** -- semantic hints that guide LLM field interpretation
 - **`-> list[Type] by llm()`** -- get validated structured output from the LLM
 - **Jac's type system is the LLM's output schema** -- name things clearly and `by llm()` handles the rest
+
+!!! example "Try It Yourself"
+    Add `SOCIAL` and `FINANCE` to the `Category` enum. Then test how the AI categorizes tasks like "Call mom", "Pay rent", and "Gym at 6pm".
 
 ---
 
@@ -1749,6 +1819,15 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 - **`jacIsLoggedIn()`** -- check login status
 
 No JWT handling, no session management, no token storage -- it's all built in.
+
+**`def:priv` -- Per-User Endpoints**
+
+In Parts 3-5, we used `def:pub` to create public endpoints where all users share the same `root`. Now that we have authentication, we want each user's data to be private. Change `def:pub` to `def:priv`:
+
+- **`def:pub`** -- public endpoint, shared data (no authentication required)
+- **`def:priv`** -- private endpoint, requires authentication, operates on the user's **own `root`**
+
+With `def:priv`, each authenticated user gets their own isolated graph. User A's tasks are completely invisible to User B -- same code, isolated data, enforced by the runtime.
 
 **Multi-File Organization**
 
@@ -1779,7 +1858,7 @@ impl app.fetchTasks -> None {
 
 The `.cl.jac` file focuses on what the component *looks like* and what state it has. The `.impl.jac` file focuses on what the methods *do*. It's optional -- you could keep everything in one file -- but it keeps things readable as the app grows.
 
-**`sv import`** brings server functions into client code. When a `.cl.jac` file calls `def:pub` functions defined in a server module, it needs `sv import` so the compiler generates HTTP stubs instead of raw function calls:
+**`sv import`** brings server functions into client code. When a `.cl.jac` file calls `def:priv` (or `def:pub`) functions defined in a server module, it needs `sv import` so the compiler generates HTTP stubs instead of raw function calls:
 
 ```jac
 sv import from main {
@@ -1823,7 +1902,7 @@ When `isLoggedIn` changes from `False` to `True` (user logs in), this ability fi
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use client --skip
+jac create day-planner-auth --use client
 cd day-planner-auth
 ```
 
@@ -1879,11 +1958,11 @@ All the complete files are in the collapsible sections below. Create each file, 
     sem Ingredient.cost = "Estimated cost in USD";
     sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-    """Categorize a task based on its title."""
     def categorize(title: str) -> Category by llm();
+    sem categorize = "Categorize a task based on its title";
 
-    """Generate a shopping list of ingredients needed for a described meal."""
     def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
     # --- Data Nodes ---
 
@@ -1905,7 +1984,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Task Endpoints ---
 
     """Add a task with AI categorization."""
-    def:pub add_task(title: str) -> dict {
+    def:priv add_task(title: str) -> dict {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(id=str(uuid4()), title=title, category=category);
         return {
@@ -1915,7 +1994,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Get all tasks."""
-    def:pub get_tasks -> list {
+    def:priv get_tasks -> list {
         return [
             {"id": t.id, "title": t.title, "done": t.done, "category": t.category}
             for t in [root-->](?:Task)
@@ -1923,7 +2002,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Toggle a task's done status."""
-    def:pub toggle_task(id: str) -> dict {
+    def:priv toggle_task(id: str) -> dict {
         for task in [root-->](?:Task) {
             if task.id == id {
                 task.done = not task.done;
@@ -1937,7 +2016,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Delete a task."""
-    def:pub delete_task(id: str) -> dict {
+    def:priv delete_task(id: str) -> dict {
         for task in [root-->](?:Task) {
             if task.id == id {
                 del task;
@@ -1950,7 +2029,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Shopping List Endpoints ---
 
     """Generate a shopping list from a meal description."""
-    def:pub generate_list(meal: str) -> list {
+    def:priv generate_list(meal: str) -> list {
         for item in [root-->](?:ShoppingItem) {
             del item;
         }
@@ -1974,7 +2053,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Get the current shopping list."""
-    def:pub get_shopping_list -> list {
+    def:priv get_shopping_list -> list {
         return [
             {"name": s.name, "quantity": s.quantity, "unit": s.unit,
              "cost": s.cost, "carby": s.carby}
@@ -1983,7 +2062,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Clear the shopping list."""
-    def:pub clear_shopping_list -> dict {
+    def:priv clear_shopping_list -> dict {
         for item in [root-->](?:ShoppingItem) {
             del item;
         }
@@ -2055,9 +2134,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
         if isLoggedIn {
             totalCost = getTotal();
-            remaining = len(tasks.filter(
-                lambda t: any -> bool { return not t.done; }
-            ));
+            remaining = len([t for t in tasks if not t.done]);
             return
                 <div class="container">
                     <div class="header">
@@ -2266,30 +2343,25 @@ All the complete files are in the collapsible sections below. Create each file, 
     impl app.addTask -> None {
         if not taskText.strip() { return; }
         task = await add_task(taskText.strip());
-        tasks = tasks.concat([task]);
+        tasks = tasks + [task];
         taskText = "";
     }
 
     impl app.toggleTask(id: str) -> None {
         await toggle_task(id);
-        tasks = tasks.map(
-            lambda t: any -> any {
-                if t.id == id {
-                    return {
-                        "id": t.id, "title": t.title,
-                        "done": not t.done, "category": t.category
-                    };
-                }
-                return t;
+        tasks = [
+            {
+                "id": t.id, "title": t.title,
+                "done": not t.done, "category": t.category
             }
-        );
+            if t.id == id else t
+            for t in tasks
+        ];
     }
 
     impl app.deleteTask(id: str) -> None {
         await delete_task(id);
-        tasks = tasks.filter(
-            lambda t: any -> bool { return t.id != id; }
-        );
+        tasks = [t for t in tasks if t.id != id];
     }
 
     impl app.handleLogin -> None {
@@ -2335,6 +2407,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     impl app.handleLogout -> None {
         jacLogout();
         isLoggedIn = False;
+        isSignup = False;
         tasks = [];
         ingredients = [];
     }
@@ -2456,12 +2529,17 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 2. **Add tasks** -- they auto-categorize just like Part 5
 3. **Try the meal planner** -- type "spaghetti bolognese for 4" and click Generate
 4. **Refresh the page** -- your data persists (it's in the graph)
-5. **Restart the server** -- all data is still there
+5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph thanks to `def:priv`.
+6. **Restart the server** -- all data persists for both users
 
-Your day planner is now a **complete, fully functional application** -- authentication, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. All built with `def:pub` endpoints, nodes, and edges.
+!!! tip "Visualize per-user graphs"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see the graph for the currently logged-in user. Log in as different users and compare -- each has their own isolated graph with their own `root`, tasks, and shopping items.
+
+Your day planner is now a **complete, fully functional application** -- authentication, per-user data isolation, AI-powered categorization, meal planning, graph persistence, and a clean multi-file architecture. All built with `def:priv` endpoints, nodes, and edges.
 
 **What You Learned**
 
+- **`def:priv`** -- private endpoints with per-user data isolation (each user gets their own `root`)
 - **`jacSignup`**, **`jacLogin`**, **`jacLogout`**, **`jacIsLoggedIn`** -- built-in auth functions
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
 - **`can with [deps] entry`** -- dependency-triggered abilities (re-runs when state changes)
@@ -2469,15 +2547,18 @@ Your day planner is now a **complete, fully functional application** -- authenti
 - **Declaration/implementation split** -- `.cl.jac` for UI, `.impl.jac` for logic
 - **`impl app.method { ... }`** -- implement declared methods in a separate file
 
+!!! example "Try It Yourself"
+    Display the logged-in username in the header next to the Sign Out button. Hint: add a `currentUser: str` state variable and set it from `username` after a successful login.
+
 ---
 
 ## Part 7: Object-Spatial Programming with Walkers
 
-Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists. Everything works using `def:pub` functions that directly manipulate graph nodes.
+Your day planner is complete -- tasks persist in the graph, AI categorizes them, and you can generate shopping lists. Everything works using `def:priv` functions that directly manipulate graph nodes.
 
 Now let's learn Jac's most distinctive feature: **Object-Spatial Programming (OSP)**. OSP introduces **walkers** -- mobile units of computation that *travel through* the graph -- and **abilities** -- logic that triggers automatically when a walker arrives at a node. It's a different way of thinking about code: instead of functions that reach into data, you have agents that move to data.
 
-This section reimplements the day planner's backend using walkers to show how OSP works. The app behavior stays the same -- this is about learning an alternative (and powerful) programming paradigm.
+This section reimplements the day planner's backend using walkers to show how OSP works. The app behavior stays the same -- this is about learning an alternative programming paradigm.
 
 **What is a Walker?**
 
@@ -2508,10 +2589,10 @@ The core keywords:
 
 **Functions vs Walkers: Side by Side**
 
-Here's `add_task` as a `def:pub` function (what you already have):
+Here's `add_task` as a `def:priv` function (what you already have):
 
 ```jac
-def:pub add_task(title: str) -> dict {
+def:priv add_task(title: str) -> dict {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(id=str(uuid4()), title=title, category=category);
     return {"id": task[0].id, "title": task[0].title, "done": task[0].done, "category": task[0].category};
@@ -2598,7 +2679,7 @@ The walker's `has results: list = []` state **persists across the entire travers
 Compare this to the function version:
 
 ```jac
-def:pub get_tasks -> list {
+def:priv get_tasks -> list {
     return [{"id": t.id, "title": t.title, "done": t.done, "category": t.category}
             for t in [root-->](?:Task)];
 }
@@ -2756,7 +2837,7 @@ walker ClearShoppingList {
 
 **Spawning Walkers from the Frontend**
 
-In the `def:pub` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead.
+In the `def:priv` version, the frontend called server functions directly with `await add_task(title)`. With walkers, the frontend **spawns** them instead.
 
 **`sv import`** brings server walkers into client code:
 
@@ -2773,7 +2854,7 @@ Then in the frontend methods:
 
 <!-- jac-skip -->
 ```jac
-# Function style (Parts 3-6):
+# Function style (Part 6):
 task = await add_task(task_text.strip());
 
 # Walker style (Part 7):
@@ -2794,10 +2875,13 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 
 **The Complete Walker Version**
 
+!!! info "Same UI, different backend"
+    The `frontend.cl.jac` and `styles.css` files are identical to Part 6 -- only `main.jac` (walkers instead of `def:priv` functions) and `frontend.impl.jac` (spawning walkers instead of calling functions) change. When reading the code below, focus on those two files.
+
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use client --skip
+jac create day-planner-v2 --use client
 cd day-planner-v2
 ```
 
@@ -2853,11 +2937,11 @@ All the complete files are in the collapsible sections below. Create each file, 
     sem Ingredient.cost = "Estimated cost in USD";
     sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
 
-    """Categorize a task based on its title."""
     def categorize(title: str) -> Category by llm();
+    sem categorize = "Categorize a task based on its title";
 
-    """Generate a shopping list of ingredients needed for a described meal."""
     def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
     # --- Data Nodes ---
 
@@ -3072,9 +3156,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
         if isLoggedIn {
             totalCost = getTotal();
-            remaining = len(tasks.filter(
-                lambda t: any -> bool { return not t.done; }
-            ));
+            remaining = len([t for t in tasks if not t.done]);
             return
                 <div class="container">
                     <div class="header">
@@ -3285,35 +3367,30 @@ All the complete files are in the collapsible sections below. Create each file, 
         if not taskText.strip() { return; }
         response = root spawn AddTask(title=taskText);
         newTask = response.reports[0];
-        tasks = tasks.concat([{
+        tasks = tasks + [{
             "id": newTask.id,
             "title": newTask.title,
             "done": newTask.done,
             "category": newTask.category
-        }]);
+        }];
         taskText = "";
     }
 
     impl app.toggleTask(id: str) -> None {
         root spawn ToggleTask(task_id=id);
-        tasks = tasks.map(
-            lambda t: any -> any {
-                if t.id == id {
-                    return {
-                        "id": t.id, "title": t.title,
-                        "done": not t.done, "category": t.category
-                    };
-                }
-                return t;
+        tasks = [
+            {
+                "id": t.id, "title": t.title,
+                "done": not t.done, "category": t.category
             }
-        );
+            if t.id == id else t
+            for t in tasks
+        ];
     }
 
     impl app.deleteTask(id: str) -> None {
         root spawn DeleteTask(task_id=id);
-        tasks = tasks.filter(
-            lambda t: any -> bool { return t.id != id; }
-        );
+        tasks = [t for t in tasks if t.id != id];
     }
 
     impl app.handleLogin -> None {
@@ -3359,6 +3436,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     impl app.handleLogout -> None {
         jacLogout();
         isLoggedIn = False;
+        isSignup = False;
         tasks = [];
         ingredients = [];
     }
@@ -3485,6 +3563,9 @@ Open [http://localhost:8000](http://localhost:8000). You should see a login scre
 5. **Log out and sign up as a different user** -- you'll see a completely empty app. Each user gets their own graph.
 6. **Restart the server** -- all data persists for both users
 
+!!! tip "Visualize the graph"
+    Visit [http://localhost:8000/graph](http://localhost:8000/graph) to see how walkers operate on the same graph structure as the function-based version. The nodes and edges are identical -- only the code that traverses them changed.
+
 **What You Learned**
 
 This part introduced Jac's Object-Spatial Programming paradigm:
@@ -3507,11 +3588,15 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 
 | Approach | Best For |
 |----------|----------|
-| `def:pub` functions | Direct data operations, simple CRUD, quick prototyping |
+| `def:pub` functions | Public endpoints, simple CRUD, quick prototyping |
+| `def:priv` functions | Per-user data isolation with private root nodes |
 | Walkers | Graph traversal, multi-step operations, deep/recursive graphs |
-| `walker:priv` | Per-user data isolation via private root nodes |
+| `walker:priv` | Per-user walker with data isolation via private root nodes |
 | Node abilities | When the logic naturally belongs to the data type |
 | Walker abilities | When the logic naturally belongs to the traversal |
+
+!!! example "Try It Yourself"
+    Write a `CountTasks` walker that reports the total number of tasks and how many are done, without collecting the full task list. Use `self.total: int` and `self.completed: int` counters that increment as the walker visits each `Task` node.
 
 ---
 
@@ -3523,7 +3608,7 @@ Over seven parts, you built a complete app and then reimplemented it using OSP:
 |-------|----------------|-----------------|
 | 1–4 | Working day planner | Core syntax, graph data, reactive frontend |
 | 5 | + AI features | AI delegation, structured output, semantic types |
-| 6 | + Auth & multi-file | Authentication, declaration/implementation split |
+| 6 | + Auth & multi-file | Authentication, `def:priv`, per-user isolation, declaration/implementation split |
 | 7 | OSP reimplementation | Walkers, abilities, graph traversal |
 
 Here's a quick reference of every Jac concept covered in this tutorial:
@@ -3532,7 +3617,7 @@ Here's a quick reference of every Jac concept covered in this tutorial:
 
 **Graph:** `root`, `++>` (create + connect), `+>: Edge :+>` (typed edge), `[root-->]` (query), `(?:Type)` (filter), `del` (delete)
 
-**Functions:** `def`, `def:pub`, `by llm()`, `lambda`, `async`/`await`, docstrings
+**Functions:** `def`, `def:pub`, `def:priv`, `by llm()`, `lambda`, `async`/`await`
 
 **Walkers:** `walker`, `walker:priv`, `can with Type entry/exit`, `visit`, `here`, `self`, `visitor`, `report`, `disengage`, `spawn`
 
@@ -3550,4 +3635,4 @@ Here's a quick reference of every Jac concept covered in this tutorial:
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for tool-using agents
 - **Examples** -- [LittleX (Twitter Clone)](../examples/littlex.md), [RAG Chatbot](../examples/rag-chatbot.md)
-- **Language Reference** -- [Full Language Reference](../../reference/language/index.md) for complete syntax documentation
+- **Language Reference** -- [Full Language Reference](../../reference/language/foundation.md) for complete syntax documentation

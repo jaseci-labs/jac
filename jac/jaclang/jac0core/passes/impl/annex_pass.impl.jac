@@ -24,4 +24,9 @@ impl JacAnnexPass._load_annexes(
             nd.test_mod.append(mod);
         }
     }
+    for path in discover_variant_files(mod_path) {
+        if (mod := jac_program.compile(file_path=path, no_cgen=True)) {
+            nd.variant_mod.append(mod);
+        }
+    }
 }

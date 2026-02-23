@@ -7,7 +7,7 @@ import jaclang.compiler.passes.tool.doc_ir as doc;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { Transform }
 """JacFormat Pass format Jac code."""
-obj JacFormatPass(Transform[(uni.Module, uni.Module)]) {
+obj JacFormatPass(Transform[uni.Module, uni.Module]) {
     def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def pre_transform -> None;
     def _probe_fits(

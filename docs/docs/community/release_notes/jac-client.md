@@ -2,9 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.2.20 (Unreleased)
+## jac-client 0.3.1 (Unreleased)
 
-## jac-client 0.2.19 (Latest Release)
+## jac-client 0.3.0 (Latest Release)
+
+- **Idiomatic Comprehensions in Examples**: Replaced all `.map(lambda ...)` / `.filter(lambda ...)` calls with list comprehensions across all example apps (basic-full-stack, full-stack-with-auth, all-in-one, early-exit).
+- **Automatic Endpoint Caching**: The client runtime now automatically caches responses from reader endpoints (walkers and server functions) and invalidates caches when writer endpoints are called, using compiler-provided `endpoint_effects` metadata. Includes an LRU cache (500 entries, 60s TTL), request deduplication for concurrent identical calls, and automatic cache clearing on auth state changes. No manual `jacInvalidate()` or cache annotations needed.
+- **HMR Server-Side Reloading Refactor**: Improved HMR functionality with better handling of `.impl.jac` files and optimized caching to avoid unnecessary recompilations during development
+
+- 3 minor refactor/change.
+
+## jac-client 0.2.19
 
 - **Debug Mode Enabled by Default**: Debug mode is now `true` by default for a better development experience. Raw error output is displayed automatically without needing to configure `debug = true` in `jac.toml`. To disable, set `debug = false` in the `[plugins.client]` section. A warning is shown when running `jac start` in production mode (without `--dev`) with debug enabled, recommending to disable it for production deployments.
 
@@ -22,6 +30,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Structured Build Error Diagnostics**: Build errors now display formatted diagnostic output with error codes (JAC_CLIENT_XXX), source code snippets pointing to the error location, actionable hints, and quick fix commands. The diagnostic engine maps Vite/npm errors back to original `.jac` files, hiding internal JavaScript paths from developers. Detectors identify common issues: missing npm dependencies (JAC_CLIENT_001), syntax errors (JAC_CLIENT_003), and unresolved imports (JAC_CLIENT_004). Enable `debug = true` under `[plugins.client]` in `jac.toml` or set `JAC_DEBUG=1` to see raw error output alongside formatted diagnostics.
 
 - **Fix: Desktop Asset Loading** : Fixed an issue where images, fonts, and other static files weren't loading in desktop applications. Static assets now work correctly in both development and production modes.
+- **Google OAuth Example**: Added a complete `google-auth` example demonstrating Google OAuth authentication with jac-scale's SSO support. Includes authentication provider, protected routes, login/callback pages, and comprehensive README with setup instructions for Google Cloud Console, environment variables, and frontend implementation patterns.
 - Various refactors
 - **Improved `jac start` Output Ordering**: Fixed misleading output timing where "Server ready" and localhost URLs appeared before compilation completed. The Vite dev server now captures its initial output and waits for the ready signal before displaying status messages, ensuring users see compilation progress first and server URLs only when the server is actually ready to accept connections.
 - **PWA Target Support**: Added a new `pwa` target for creating Progressive Web Apps. Run `jac setup pwa` to configure your project with PWA support-this copies default icons to `pwa_icons/` and adds the `[plugins.client.pwa]` config section to `jac.toml`. Then use `jac build --client pwa` to build or `jac start --client pwa` to build and serve. The build generates a web bundle with `manifest.json`, a service worker (`sw.js`) for offline caching, and automatic HTML injection. The service worker implements cache-first for static assets and network-first for API calls (`/api/*`). Configure `theme_color`, `background_color`, `cache_name`, and custom `manifest` overrides in `[plugins.client.pwa]`.

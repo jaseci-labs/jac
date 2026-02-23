@@ -23,7 +23,7 @@ Common questions and answers. If you don't see your question below and couldn't 
         See the [Installation Guide](https://docs.jaseci.org/quick-guide/install/)
 
     ??? question "What are good first projects to build with Jac?"
-        Check out the [To-Do App Tutorial](https://docs.jaseci.org/tutorials/first-app/part1-todo-app/)
+        Check out the [AI Day Planner Tutorial](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
 
 ??? "Language & Concepts"
 
@@ -39,7 +39,38 @@ Common questions and answers. If you don't see your question below and couldn't 
         Yes. Jac integrates seamlessly with Python libraries.
 
     ??? question "What's the learning curve coming from Python? How is Jac different from just using Python?"
-        Jac supersets Python. It adds graph-based architecture and AI-native features.[Learn Jac Basics - from Python](https://docs.jaseci.org/tutorials/language/basics/)
+        Jac supersets Python -- you'll feel at home. Key differences:
+
+        - Braces `{ }` instead of indentation
+        - Semicolons `;` required
+        - Type annotations encouraged
+        - New keywords: `node`, `edge`, `walker`, `has`, `can`
+
+        Start here: [Jac Basics](https://docs.jaseci.org/tutorials/language/basics/)
+
+    ??? question "I'm coming from JavaScript/TypeScript -- what should I know?"
+        Jac's frontend syntax will look familiar (JSX-style):
+
+        - Braces and semicolons (same as JS)
+        - JSX for components
+        - React-like patterns (`useState`, `useEffect`)
+
+        What's different:
+
+        - Python-based syntax for logic
+        - No `const`/`let` -- just variable assignment
+        - Type annotations use `:` not TypeScript syntax
+
+        Start here: [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/)
+
+    ??? question "I'm new to programming / coming from another language -- where do I start?"
+        Key concepts to learn:
+
+        1. **Python ecosystem** -- Jac uses Python libraries
+        2. **Graph thinking** -- Model data as nodes and edges
+        3. **Walker pattern** -- Computation that moves through data
+
+        Start here: [Installation](https://docs.jaseci.org/quick-guide/install/) → [Build an AI Day Planner](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/)
 
     ??? question "Can ____ be done in Jac? Is ____ compatible with Jac?"
         **Yes**, if the answer to any of these questions is yes:
@@ -58,7 +89,7 @@ Common questions and answers. If you don't see your question below and couldn't 
         - Standardized interface across AI providers
         - Integrated model management in Jac
         - Simplified prompt engineering
-        See [API key setup](https://docs.jaseci.org/tutorials/first-app/part2-ai-features/#set-up-your-api-key)
+        See [API key setup](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/#part-5-making-it-smart-with-ai)
 
     ??? question "How do I structure by llm() functions so that the output is deterministic and parseable?"
         Use structured prompts and response templates.[AI Integration Reference](https://docs.jaseci.org/reference/language/ai-integration/)
@@ -91,19 +122,19 @@ Common questions and answers. If you don't see your question below and couldn't 
         Use the graph visualization tool in the debugger: [Graph Visualization](https://docs.jaseci.org/tutorials/language/debugging/#graph-visualization)
 
     ??? question "How do I test Jac walkers and nodes?"
-        [Testing Guide for Nodes and Walkers](https://docs.jaseci.org/tutorials/language/testing/#testing-nodes-and-walkers)
+        [Testing Guide for Nodes and Walkers](https://docs.jaseci.org/reference/testing/#testing-nodes-and-walkers)
 
 ??? "Project Structure & Best Practices"
 
     ??? question "Can I build a complete app in one .jac file?"
-        Technically yes, but not recommended. Use modular structure for scalability:
-        - [File System Organization](https://docs.jaseci.org/jac-client/file-system/intro/)
-        - [Frontend/Backend Separation](https://docs.jaseci.org/jac-client/file-system/backend-frontend/)
+        Technically yes, but not recommended for larger apps. Use modular structure for scalability:
+        - [Full-Stack Setup](https://docs.jaseci.org/tutorials/fullstack/setup/) -- Project structure and multi-file organization
+        - [jac-client Reference](https://docs.jaseci.org/reference/plugins/jac-client/) -- Complete client plugin documentation
 
     ??? question "Can I use Jac with React/frontend frameworks?"
         Yes. Jac supports:
         - [React component style](https://docs.jaseci.org/tutorials/fullstack/components/)
-        - [Import npm packages](https://docs.jaseci.org/jac-client/imports/#working-with-third-party-node-modules)
+        - [npm package imports](https://docs.jaseci.org/reference/plugins/jac-client/#importing-npm-packages)
 
     ??? question "How do I structure multi-agent AI systems in Jac?"
         - [Use project template](https://docs.jaseci.org/reference/cli/#jac-create)
@@ -114,7 +145,7 @@ Common questions and answers. If you don't see your question below and couldn't 
           - .impl.jac: Implementation details
 
     ??? question "How do I handle authentication and authorization in Jac walkers?"
-        Use built-in authentication functions: [Authentication Functions](https://docs.jaseci.org/jac-client/imports/#jaclogin-user-login)
+        Use built-in authentication functions: [Authentication Tutorial](https://docs.jaseci.org/tutorials/fullstack/auth/)
 
 ??? "Community & Contributing"
 

@@ -120,6 +120,7 @@ obj ModuleIntrospector {
     def load(force_reload: bool = False) -> None;
     def _load_manifest -> None;
     def _extract_access_levels -> None;
+    def _analyze_endpoint_effects -> None;
     def _collect_functions -> dict[str, Callable[(..., Any)]];
     def _collect_walkers -> dict[str, type[WalkerArchetype]];
     def _check_module_freshness -> None;

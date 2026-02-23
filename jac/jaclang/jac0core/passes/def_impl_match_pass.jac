@@ -22,7 +22,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 """Decls and Def matching pass."""
-class DeclImplMatchPass(Transform[(uni.Module, uni.Module)]) {
+class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
     """Connect Decls and Defs."""
     def transform(self: DeclImplMatchPass, ir_in: uni.Module) -> uni.Module;
 
@@ -59,5 +59,17 @@ links
         """
     def _resolve_impl_body_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef
+    ) -> None;
+
+    """Fix local vars in impl that shadow typed variables from the declaration's
+    parent scope. During SymTabBuildPass, impl bodies create local var symbols for
+    assignments like `tasks = tasks + [task]` because the impl scope chain doesn't
+    yet reach the declaration's parent scope (where `has tasks: list` lives). After
+    symbol table synchronization, this method replaces those untyped local vars with
+    the properly-typed symbols from the parent scope chain."""
+    def _fix_shadowed_parent_symbols(
+        self: DeclImplMatchPass,
+        impl_def: uni.ImplDef,
+        valid_decl: uni.AstImplNeedingNode
     ) -> None;
 }

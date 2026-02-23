@@ -128,7 +128,7 @@ cl {
                 "done": false
             };
 
-            setTodos(todos.concat([newTodo]));
+            setTodos(todos + [newTodo]);
             setInput("");  # Clear input
         }
 
@@ -284,7 +284,7 @@ cl {
                 "done": false
             };
 
-            setTodos(todos.concat([newTodo]));
+            setTodos(todos + [newTodo]);
             setInput("");
         }
 
@@ -483,7 +483,7 @@ Event handlers are functions that run when something happens (user clicks, types
 ```jac
 <button onClick={lambda e: any -> None {
     # Code runs when button is clicked
-    console.log("Clicked!");
+    print("Clicked!");
 }}>
     Click me
 </button>
@@ -499,9 +499,9 @@ Event handlers are functions that run when something happens (user clicks, types
 
 ```jac
 onChange={lambda e: any -> None {
-    console.log(e.target);        # The element that triggered the event
-    console.log(e.target.value);  # For inputs: the current value
-    console.log(e.key);           # For key events: which key was pressed
+    print(e.target);        # The element that triggered the event
+    print(e.target.value);  # For inputs: the current value
+    print(e.key);           # For key events: which key was pressed
 }}
 ```
 
@@ -519,7 +519,7 @@ You can pass functions down to child components:
 ```jac
 def Parent() -> JsxElement {
     def handleClick() -> None {
-        console.log("Clicked!");
+        print("Clicked!");
     }
 
     # Pass function to child
@@ -556,11 +556,11 @@ When state updates, React re-renders the component with the new value!
 
 ### Array Methods for State Updates
 
-**`.concat()` - Add items**
+**`+` operator - Add items**
 
 ```jac
 #  Correct way to add
-setTodos(todos.concat([newTodo]));
+setTodos(todos + [newTodo]);
 
 #  Wrong (modifies original)
 todos.push(newTodo);
@@ -647,7 +647,7 @@ def toggle() -> None {
 [items, setItems] = useState([]);
 
 def addItem(newItem: any) -> None {
-    setItems(items.concat([newItem]));
+    setItems(items + [newItem]);
 }
 ```
 
@@ -671,7 +671,7 @@ def removeItem(id: any) -> None {
 - The event object (`e`)
 - Passing functions as props
 - Updating state in event handlers
-- Array methods (concat, map, filter)
+- List operations (`+` operator, map, filter)
 - Inline vs named functions
 
 ---
@@ -715,7 +715,7 @@ todos.push(newTodo);
 setTodos(todos);
 
 #  Correct (creating new array)
-setTodos(todos.concat([newTodo]));
+setTodos(todos + [newTodo]);
 ```
 
 ---

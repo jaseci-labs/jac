@@ -11,6 +11,7 @@ import shutil;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.jac0core.constant { CodeContext }
+import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
@@ -60,15 +61,23 @@ impl HotReloader._process_change(file_path: str) -> None {
         self._copy_frontend_files(file_path);
         return;
     }
+    # Resolve annex files (.impl.jac) to their base file
+    target_path = file_path;
+    if file_path.endswith('.impl.jac') {
+        base = discover_base_file(file_path);
+        if base {
+            target_path = base;
+        }
+    }
     # Check if file has client and/or server declarations
-    (has_client, has_server) = self._classify_declarations(file_path);
+    (has_client, has_server) = self._classify_declarations(target_path);
     # Handle server declarations - reload in sys.modules
     if has_server {
-        self._reload_server_module(file_path);
+        self._reload_server_module(target_path);
     }
     # Handle client declarations - recompile to JS (Phase 2)
     if has_client {
-        self._recompile_client_code(file_path);
+        self._recompile_client_code(target_path);
     }
 }
 
@@ -184,12 +193,6 @@ impl HotReloader._recompile_client_code(file_path: str) -> None {
         # Generate output filename (foo.jac -> foo.js, foo.cl.jac -> foo.js)
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
-
-        # Handle exports: extract from manifest and add comprehensive export statement
-        client_manifest = mod.gen.client_manifest if mod else None;
-        if client_manifest {
-            js_code = self._create_export_statement(js_code, client_manifest);
-        }
 
         # Write the JS code
         output_path.write_text(js_code, encoding='utf-8');
@@ -341,11 +344,6 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
     } except Exception as e {
         console.print(f"[HMR] Error copying frontend file {file_path}: {e}");
     }
-}
-
-"""Create export statement for recompiled JS code."""
-impl HotReloader._create_export_statement(js_code: str, client_manifest: Any) -> str {
-    return js_code;
 }
 
 """Update the entry point to reflect changes in modules."""

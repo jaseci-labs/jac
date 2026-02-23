@@ -11,7 +11,7 @@ def app()  -> JsxElement {
         }
         response = root spawn create_todo(text=input.strip());
         new_todo = response.reports[0][0];
-        setTodos(todos.concat([new_todo]));
+        setTodos(todos + [new_todo]);
         setInput("");
 
         def foo { }

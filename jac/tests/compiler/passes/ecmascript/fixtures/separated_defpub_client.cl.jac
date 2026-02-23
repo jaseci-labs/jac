@@ -24,7 +24,7 @@ def:pub app -> JsxElement {
     async def addTask -> None {
         if taskText.strip() {
             task = await add_task(taskText.strip());
-            tasks = tasks.concat([task]);
+            tasks = tasks + [task];
             taskText = "";
         }
     }

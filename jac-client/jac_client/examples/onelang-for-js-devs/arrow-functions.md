@@ -43,11 +43,11 @@ If you are coming from a React/JavaScript background, this guide will help you u
     ```jac
     # Full syntax with body
     sayHello = lambda -> None {
-        console.log("Hello!");
+        print("Hello!");
     };
 
     # Short form (expression)
-    lambda: console.log("Hello!")
+    lambda: print("Hello!")
     ```
 
 ---
@@ -201,7 +201,7 @@ When you need to do multiple things or have logic inside an onClick handler:
     <button onClick={lambda -> None {
         setLoading(True);
         fetchData();
-        console.log("Clicked!");
+        print("Clicked!");
     }}>
         Submit
     </button>
@@ -250,7 +250,7 @@ When you need to do multiple things or have logic inside an onClick handler:
 
     ```jac
     useEffect(lambda -> None {
-        console.log("Effect ran!");
+        print("Effect ran!");
         # cleanup return is handled differently
     }, [deps]);
     ```

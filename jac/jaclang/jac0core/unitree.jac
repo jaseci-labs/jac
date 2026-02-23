@@ -8,7 +8,7 @@ import from dataclasses { dataclass, field }
 import from enum { IntEnum }
 import from hashlib { md5 }
 import from types { EllipsisType }
-import from typing { TYPE_CHECKING, Any, Generic, TypeVar, cast }
+import from typing { TYPE_CHECKING, Any, cast }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
 import from jaclang.jac0core.constant {
@@ -321,7 +321,6 @@ class AstAccessNode(UniNode) {
     def public_access(self: AstAccessNode) -> bool;
 }
 
-glob T = TypeVar('T', bound=UniNode);
 """Base class for nodes that can be marked with execution context
 (client/server)."""
 class ContextAwareNode(UniNode) {
@@ -451,7 +450,7 @@ class CodeBlockStmt(UniCFGNode) {
 }
 
 """AstImplNeedingNode node type for Jac Ast."""
-class AstImplNeedingNode(AstSymbolNode, Generic[T]) {
+class AstImplNeedingNode[T](AstSymbolNode) {
     def init(self: AstImplNeedingNode, body: (T | None)) -> None;
     @property
     def needs_impl(self: AstImplNeedingNode) -> bool;
@@ -515,7 +514,7 @@ class ArchSpec(ElementStmt, CodeBlockStmt, AstSymbolNode, AstAsyncNode, AstDocNo
 class MatchPattern(UniNode) {}
 
 """SubTag node type for Jac Ast."""
-class SubTag(UniNode, Generic[T]) {
+class SubTag[T](UniNode) {
     def init(self: SubTag, tag: T, kid: Sequence[UniNode]) -> None;
 }
 

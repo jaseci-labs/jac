@@ -2,7 +2,16 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.1.12 (Unreleased)
+## jac-scale 0.2.1 (Unreleased)
+
+## jac-scale 0.2.0 (Latest Release)
+
+- **SSO Frontend Callback Redirect**: SSO callback endpoints now support automatic redirection to frontend applications. Configure `client_auth_callback_url` in `jac.toml` to redirect with token/error parameters instead of returning JSON, enabling seamless browser-based OAuth flows.
+- **Graph Visualization Tests**: Added tests for `/graph` and `/graph/data` endpoints.
+
+## jac-scale 0.1.6
+
+## jac-scale 0.1.9
 
 - **Refactor: Modular JacAPIServer Architecture**: Split the monolithic `serve.impl.jac` into three focused impl files using mixin composition:
   - `serve.core.impl.jac`: Auth, user management, JWT, API keys, server start/postinit
@@ -10,7 +19,7 @@ This document provides a summary of new features, improvements, and bug fixes in
   - `serve.static.impl.jac`: Static files, pages, client JS, graph visualization
 - **Fix: `@restspec` Path Parameters**: Resolved a critical bug where using `@restspec` with URL path parameters (e.g. `path="/items/{item_id}"`) caused the server to crash on startup with `Cannot use 'Query' for path param 'id'`. Both functions and walkers with `@restspec` path templates now correctly annotate matching parameters as `Path()` instead of `Query()`. Mixed usage (path params alongside query params or body params) works correctly across GET and POST methods. Starlette converter syntax (e.g. `{file_path:path}`) is also handled.
 
-## jac-scale 0.1.11 (Latest Release)
+## jac-scale 0.1.11
 
 - **Graph Visualization Endpoint (`/graph`)**: Added a built-in `/graph` endpoint that serves an interactive graph visualization UI in the browser.
 
@@ -48,7 +57,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.1.7
 
 - **KWESC_NAME syntax changed from `<>` to backtick**: Updated keyword-escaped names from `<>` prefix to backtick prefix to match the jaclang grammar change.
-- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (`` (`?Type) ``) with `(?:Type)` across all docs, tests, examples, and README.
+- **Update syntax for TYPE_OP removal**: Replaced backtick type operator syntax (`` `root ``) with `Root` and filter syntax (``(`?Type)``) with `(?:Type)` across all docs, tests, examples, and README.
 
 ## jac-scale 0.1.6
 

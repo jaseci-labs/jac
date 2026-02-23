@@ -101,8 +101,19 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    # Handle ord, int, chr, str builtins via emitter dispatch
-    if func_name in ("ord", "int", "chr", "str") {
+    # Handle ord, int, chr, str, hex, oct, bin, round, float builtins via emitter dispatch
+    if func_name in (
+        "ord",
+        "int",
+        "chr",
+        "str",
+        "hex",
+        "oct",
+        "bin",
+        "round",
+        "float",
+        "bool"
+    ) {
         params_l = nd.params or [];
         if params_l {
             arg_val = self._codegen_expr(params_l[0]);

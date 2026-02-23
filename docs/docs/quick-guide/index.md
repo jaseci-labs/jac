@@ -1,24 +1,159 @@
 # Welcome to Jac
 
-**One Language for AI-Native Full-Stack Development**
+**The Only Language You Need to Build Anything**
 
-Jac is a programming language that supersets Python and JavaScript with native compilation support, adding novel constructs for AI-integrated programming. Access the entire PyPI and npm ecosystems while using features like `by llm()` to seamlessly weave AI into your code. Write backend logic, frontend interfaces, and AI integrations in a single unified language.
+Jac is a programming language designed for humans and AI to build together. It supersets Python and JavaScript with native compilation support, adding constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure. Jac imagines what should be abstracted away from the developer and automates it through the compiler and runtime.
+
+```jac
+# A complete full-stack AI app in one file
+
+node Todo {
+    has title: str, done: bool = False;
+}
+
+enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
+
+def categorize(title: str) -> Category
+    by llm();
+
+def:pub get_todos -> list {
+    return [{"title": t.title, "category": categorize(t.title)}
+            for t in [root-->](?:Todo)];
+}
+
+cl def:pub app() -> JsxElement {
+    has items: list = [];
+    async can with entry { items = await get_todos(); }
+    return <div>{[<p key={i.title}>{i.title} ({i.category})</p>
+                  for i in items]}</div>;
+}
+```
+
+This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend. No database setup. No prompt engineering. No separate frontend project. Just Jac.
 
 ---
 
-## Why Jac?
+## The Vision
 
-| What You Want | How Jac Helps |
-|---------------|---------------|
-| **Build AI apps easily** | Native LLM integration with `by llm()` - no prompt engineering |
-| **Full-stack in one language** | React-style frontend + Python backend, seamlessly connected |
-| **Use existing libraries** | Full access to PyPI and npm ecosystems |
-| **Deploy without DevOps** | `jac start --scale` deploys to Kubernetes automatically |
-| **Model complex domains** | Graph-based Object-Spatial Programming for connected data |
-| **Code with AI assistance** | Clean syntax designed for both humans and AI models to read and write |
+Programming today demands too much from developers that isn't their problem to solve. You want to build a product, but first you have to pick a backend language, a frontend framework, a database, an ORM, a deployment target, and then glue them all together. If you want AI, add prompt engineering to the list. If you want scale, add DevOps.
+
+Jac takes a different approach: **move complexity out of the developer's code and into the language runtime**. The things that can be automated -- database schemas, API serialization, client-server communication, prompt construction, deployment orchestration -- should be automated. The developer should focus on *what* the application does, not *how* the plumbing works.
+
+This philosophy rests on three pillars.
+
+---
+
+## Three Pillars
+
+<div class="grid cards" markdown>
+
+- :material-language-python:{ .lg .middle } **One Language**
+
+    ---
+
+    Write frontend, backend, and native code in a single language. Jac's **codespace** system lets you target the server (`sv`), browser (`cl`), or native binary (`na`) from the same file. The compiler handles interop -- HTTP calls, serialization, type sharing -- so you never write glue code.
+
+    [:octicons-arrow-right-24: How Codespaces Work](what-makes-jac-different.md#1-how-can-one-language-target-frontends-backends-and-native-binaries-at-the-same-time) · [:octicons-arrow-right-24: Full-Stack Reference](../reference/plugins/jac-client.md) · [:octicons-arrow-right-24: See Jac vs a Traditional Stack](jac-vs-traditional-stack.md)
+
+- :material-robot:{ .lg .middle } **AI Native**
+
+    ---
+
+    Integrate LLMs at the language level with `by llm()` -- the compiler extracts semantics from your function names, types, and `sem` annotations to construct prompts automatically. First-class graphs and walkers give you an expressive agentic programming model where AI agents traverse structured state spaces with tool-calling built in.
+
+    [:octicons-arrow-right-24: How by/sem Work](what-makes-jac-different.md#3-how-does-jac-abstract-away-the-laborious-task-of-promptcontext-engineering-for-ai-and-turn-it-into-a-compilerruntime-problem) · [:octicons-arrow-right-24: AI Integration Reference](../reference/plugins/byllm.md) · [:octicons-arrow-right-24: Agentic Patterns](../reference/plugins/byllm.md#agentic-ai-patterns)
+
+- :material-cloud-outline:{ .lg .middle } **Scale Native**
+
+    ---
+
+    Your code doesn't change when you move from laptop to cloud. Declare `node` types and connect them to `root` -- the runtime handles persistence automatically. Run `jac start --scale` and your app deploys to Kubernetes with Redis, MongoDB, load balancing, and health checks provisioned for you. Zero DevOps.
+
+    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: jac-scale Plugin](../reference/plugins/jac-scale.md)
+
+</div>
+
+---
+
+## One Language: Frontend, Backend, Native
+
+Jac introduces **codespaces** -- regions of code that target different execution environments. Instead of maintaining separate projects in separate languages, you write everything in Jac and the compiler produces the right output for each target:
+
+| Codespace | Target | Ecosystem | Syntax |
+|-----------|--------|-----------|--------|
+| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `sv { }` or `.sv.jac` |
+| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `cl { }` or `.cl.jac` |
+| **Native** | Compiled binary | C ABI | `na { }` or `.na.jac` |
+
+Server definitions are visible to client blocks. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
 
 !!! example "See it in action"
-    Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) - a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
+    Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
+
+---
+
+## AI Native: LLMs as Code Constructs
+
+Jac's approach to AI is called [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965). Instead of writing prompts in strings and parsing responses manually, you declare **what** you want through function signatures and let the compiler handle the **how**:
+
+```jac
+# The function name, types, and return type ARE the specification
+def classify_sentiment(text: str) -> str by llm;
+
+# Enums constrain the LLM to valid outputs
+enum Priority { LOW, MEDIUM, HIGH, CRITICAL }
+def triage_ticket(description: str) -> Priority by llm();
+
+# sem provides additional semantic context where names aren't enough
+obj Ingredient {
+    has name: str, cost: float, carby: bool;
+}
+sem Ingredient.cost = "Estimated cost in USD";
+sem Ingredient.carby = "True if high in carbohydrates";
+
+def plan_shopping(recipe: str) -> list[Ingredient] by llm();
+```
+
+The return type serves as the output contract -- `enum` means the LLM can only produce one of its values, `obj` means every field must be filled. No parsing code. No validation code. The type system enforces correctness.
+
+For **agentic workflows**, Jac's graph constructs (nodes, edges, walkers) naturally model AI agents that traverse structured state spaces, make decisions with `by llm()`, and call tools:
+
+```jac
+def get_weather(city: str) -> str { return fetch_weather_api(city); }
+def search_web(query: str) -> list[str] { return web_search_api(query); }
+
+# The LLM decides which tools to call and in what order
+def answer_question(question: str) -> str
+    by llm(tools=[get_weather, search_web]);
+```
+
+[:octicons-arrow-right-24: byLLM Quickstart Tutorial](../tutorials/ai/quickstart.md) · [:octicons-arrow-right-24: Agentic AI Tutorial](../tutorials/ai/agentic.md)
+
+---
+
+## Scale Native: No Code Changes from Laptop to Cloud
+
+Every Jac program has a built-in `root` node. Nodes reachable from `root` are **persistent** -- they survive process restarts. The runtime generates storage schemas from your node declarations. You never write database code:
+
+```jac
+node Todo { has title: str, done: bool = False; }
+
+with entry {
+    root ++> Todo(title="Learn Jac");  # Automatically persisted
+}
+```
+
+This same program runs three ways with no code changes:
+
+| Command | What Happens |
+|---------|-------------|
+| `jac app.jac` | Runs locally, SQLite persistence |
+| `jac start app.jac` | HTTP API server, walkers become REST endpoints |
+| `jac start --scale` | Kubernetes deployment with Redis, MongoDB, load balancing |
+
+The runtime handles database schemas, user authentication (per-user graph isolation), API generation (Swagger docs at `/docs`), caching tiers, and Kubernetes orchestration. You write application logic; the runtime handles infrastructure.
+
+[:octicons-arrow-right-24: Production Deployment Tutorial](../tutorials/production/local.md) · [:octicons-arrow-right-24: Kubernetes Tutorial](../tutorials/production/kubernetes.md)
 
 ---
 
@@ -56,7 +191,7 @@ with entry {
 jac hello.jac
 ```
 
-Note: `jac` is shorthand for `jac run` - both work identically.
+Note: `jac` is shorthand for `jac run` -- both work identically.
 
 **That's it!** You just ran your first Jac program.
 
@@ -70,81 +205,44 @@ Note: `jac` is shorthand for `jac run` - both work identically.
 
     ---
 
-    Follow the [Hello World](hello-world.md) guide to write your first program in 2 minutes.
+    Follow the [Installation](install.md) guide to get set up and run your first program in 2 minutes.
 
 - :material-web:{ .lg .middle } **Building a web app?**
 
     ---
 
-    Jump to [Build Your First App](../tutorials/first-app/part1-todo-app.md) - build a complete app with a 3-part tutorial.
+    Jump to [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) -- a complete 7-part tutorial covering backend, frontend, persistence, auth, and AI.
 
 - :material-robot:{ .lg .middle } **Working with AI/LLMs?**
 
     ---
 
-    See the [AI Integration tutorial](../tutorials/ai/quickstart.md) for byLLM basics, or try [Part 2: Add AI](../tutorials/first-app/part2-ai-features.md) in the first app tutorial.
+    Start with the [byLLM Quickstart](../tutorials/ai/quickstart.md), then explore [Agentic AI](../tutorials/ai/agentic.md) for tool-calling agents and multi-agent systems.
 
-- :material-book-open-variant:{ .lg .middle } **Want the full picture?**
+- :material-graph:{ .lg .middle } **Interested in graphs and OSP?**
 
     ---
 
-    Read [Next Steps](next-steps.md) for learning paths by experience level.
+    Read [What Makes Jac Different](what-makes-jac-different.md) for the concepts, then the [OSP Tutorial](../tutorials/language/osp.md) for hands-on practice with nodes, edges, and walkers.
 
 </div>
 
 ---
 
-## Core Principles
-
-Jac is built on six key principles:
-
-1. **AI-Native** - LLMs as first-class types via [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965). Call AI like a function.
-
-2. **Full-Stack in One Language** - Write React components alongside server code. No context switching.
-
-3. **Supersets Python & JavaScript** - Use `numpy`, `pandas`, `react`, `tailwind` directly. Your existing knowledge applies.
-
-4. **Object-Spatial Programming** - Model domains as graphs. Deploy walkers to traverse and transform data.
-
-5. **Cloud-Native** - One command to production: `jac start --scale` handles Kubernetes, Redis, MongoDB.
-
-6. **Human + AI Readable** - Clean syntax that both developers and AI models can read and write effectively.
-
----
-
 ## Who is Jac For?
 
-Jac is designed for developers who want to build AI-powered applications without the complexity of managing multiple languages and tools.
+Jac is designed for developers who want to build AI-powered applications without the complexity of managing multiple languages and tools. If you've ever wished you could write your frontend, backend, AI logic, and deployment config in one place -- Jac is for you.
 
 | You Are | Jac Gives You |
 |---------|---------------|
-| **Startup Founder** | Build and ship complete products faster with one language |
+| **Startup Founder** | Ship complete products faster -- one language, one deploy command |
 | **AI/ML Engineer** | Native LLM integration without prompt engineering overhead |
 | **Full-Stack Developer** | React frontend + Python backend, no context switching |
-| **Python Developer** | Familiar syntax with powerful new capabilities |
-| **Frontend Engineer** | Write UI components with full access to npm ecosystem |
-| **Student/Learner** | Modern language designed for clarity and simplicity |
+| **Python Developer** | Familiar syntax with powerful new capabilities (Jac supersets Python) |
+| **Student/Learner** | Modern language designed for clarity, with clean syntax AI models can read and write |
 
 !!! note "What You Should Know"
     Jac supersets Python, so **Python familiarity is assumed** throughout these docs. If you plan to use the full-stack features, basic **React/JSX** knowledge helps. No graph database experience is needed -- Jac teaches you that.
-
----
-
-## When to Use Jac
-
-**Jac excels at:**
-
-- AI-powered applications with LLM integration
-- Full-stack web applications (frontend + backend)
-- Applications with complex relational data (graphs, networks)
-- Rapid prototyping with production scalability
-- Projects requiring both Python and JavaScript ecosystems
-
-**Consider alternatives for:**
-
-- Performance-critical systems programming (use Rust, C++)
-- Mobile native apps (use Swift, Kotlin)
-- Simple scripts where Python suffices
 
 ---
 
@@ -152,12 +250,13 @@ Jac is designed for developers who want to build AI-powered applications without
 
 | Resource | Description |
 |----------|-------------|
-| [Installation](install.md) | Detailed setup with IDE configuration |
-| [Hello World](hello-world.md) | Your first Jac program (2 min) |
-| [Build Your First App](../tutorials/first-app/part1-todo-app.md) | Complete 3-part tutorial: todo app, AI, walkers |
-| [Tutorials](../tutorials/index.md) | In-depth learning paths |
-| [Language Reference](../reference/language/index.md) | Complete language documentation |
+| [Installation](install.md) | Setup, first program, scaffolding, and Jacpacks |
+| [What Makes Jac Different](what-makes-jac-different.md) | The three core concepts: codespaces, OSP, and AI integration |
+| [Syntax Cheatsheet](syntax-cheatsheet.md) | Comprehensive syntax reference |
+| [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) | Complete 7-part tutorial covering all Jac features |
+| [Language Reference](../reference/language/foundation.md) | Complete language documentation |
 | [CLI Reference](../reference/cli/index.md) | All `jac` commands |
+| [FAQ](faq.md) | Learning paths by experience level |
 
 ---
 

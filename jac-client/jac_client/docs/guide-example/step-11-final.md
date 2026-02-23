@@ -429,7 +429,7 @@ cl {
                 return;
             }
             result = root spawn create_todo(text=input.trim());
-            setTodos(todos.concat([result.reports[0][0]]));
+            setTodos(todos + [result.reports[0][0]]);
             setInput("");
         }
 

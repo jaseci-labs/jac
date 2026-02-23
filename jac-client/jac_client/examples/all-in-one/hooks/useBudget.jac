@@ -35,9 +35,11 @@ cl {
 
         # Delete a transaction by ID
         def deleteTransaction(id: str) -> None {
-            filtered = transactions.filter(
-                lambda tx: dict  -> bool { return tx["id"] != id; }
-            );
+            filtered = [
+                tx
+                for tx in transactions
+                if tx["id"] != id
+            ];
             setTransactions(filtered);
         }
 

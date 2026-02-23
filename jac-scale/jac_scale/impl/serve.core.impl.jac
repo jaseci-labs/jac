@@ -617,6 +617,49 @@ impl JacAPIServerCore.register_update_password_endpoint -> None {
     );
 }
 
+"""Create a wrapper around sso_callback that optionally redirects to frontend.
+
+If client_auth_callback_url is configured in jac.toml [plugins.scale.sso],
+the wrapper redirects to that URL with token (success) or error params (failure).
+If not configured, returns JSON response (backwards compatible).
+"""
+impl JacAPIServerCore._create_sso_callback_wrapper -> Callable[
+    ...,
+    (Response | TransportResponse)
+] {
+    import from urllib.parse { quote }
+    async def sso_callback_wrapper(
+        request: Request, platform: str, operation: str
+    ) -> (Response | TransportResponse) {
+        # Call original sso_callback which returns TransportResponse
+        result = await self.user_manager.sso_callback(request, platform, operation);
+
+        # Check if frontend redirect URL is configured
+        sso_config = get_scale_config().get_sso_config();
+        frontend_url = sso_config.get('client_auth_callback_url', '');
+
+        if not frontend_url {
+            # No redirect configured, return TransportResponse as JSON (current behavior)
+            return result;
+        }
+
+        # Redirect to frontend with token or error
+        if result.ok {
+            # Success - redirect with token
+            token = result.data.get('token', '') if result.data else '';
+            return RedirectResponse(url=f"{frontend_url}?token={token}");
+        } else {
+            # Error - redirect with error details
+            error_code = result.error.code if result.error else 'UNKNOWN_ERROR';
+            message = result.error.message if result.error else 'Unknown error';
+            return RedirectResponse(
+                url=f"{frontend_url}?error={quote(error_code)}&message={quote(message)}"
+            );
+        }
+    }
+    return sso_callback_wrapper;
+}
+
 impl JacAPIServerCore.register_sso_endpoints -> None {
     self.server.add_endpoint(
         JEndPoint(
@@ -651,7 +694,7 @@ impl JacAPIServerCore.register_sso_endpoints -> None {
         JEndPoint(
             method=HTTPMethod.GET,
             path='/sso/{platform}/{operation}/callback',
-            callback=self.user_manager.sso_callback,
+            callback=self._create_sso_callback_wrapper(),
             parameters=[
                 APIParameter(
                     name='platform',
@@ -673,7 +716,7 @@ impl JacAPIServerCore.register_sso_endpoints -> None {
             response_model=None,
             tags=['SSO APIs'],
             summary='SSO callback endpoint',
-            description='Handles the callback from SSO provider after authentication'
+            description='Handles the callback from SSO provider after authentication. If client_auth_callback_url is configured, redirects with token/error params.'
         )
     );
 }

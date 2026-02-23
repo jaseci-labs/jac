@@ -29,7 +29,15 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
             paths.append(user_dir);
         }
     }
-    return `list(`dict.fromkeys(filter(None, paths)));
+    return `list(
+        `dict.fromkeys(
+            [
+                p
+                for p in paths
+                if p
+            ]
+        )
+    );
 }
 
 """Construct a list of paths to search for Python modules."""
@@ -39,7 +47,15 @@ def get_py_search_paths(base_path: (str | None) = None) -> list[str] {
         paths.append(base_path);
     }
     paths.append(os.getcwd());
-    return `list(`dict.fromkeys(filter(None, paths)));
+    return `list(
+        `dict.fromkeys(
+            [
+                p
+                for p in paths
+                if p
+            ]
+        )
+    );
 }
 
 def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
