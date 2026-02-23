@@ -221,8 +221,8 @@ test "jsx hash text preserved" {
     assert formatted == prog2.mod.main.gen.jac , "Formatting is not idempotent";
 }
 
+"""Test that Unicode characters survive jac format --lintfix on Windows."""
 test "unicode encoding write roundtrip" {
-    """Test that Unicode characters survive jac format --lintfix on Windows."""
     import subprocess;
 
     path = os.path.join(FIXTURES, "unicode_encoding.jac");
