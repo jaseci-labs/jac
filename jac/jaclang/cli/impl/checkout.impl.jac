@@ -1,23 +1,20 @@
-"""Formatting utilities for jac check output (pytest-style)."""
+"""Impl of Formatting utilities for jac check output"""
 
-"""Returns a separator line with centered text."""
-def separator(text: str, char: str = '=', total_width: int = 80) -> str {
+impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
     remaining = total_width - len(text_part);
     left_padding = remaining // 2;
     return char * left_padding + text_part + char * (remaining - left_padding);
 }
 
-"""Prints a pytest-style progress line for a file check."""
-def print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
+impl print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
     import from jaclang.cli.console { console }
     percentage = int((idx / total) * 100);
     status = "PASSED" if success else "FAILED";
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 
-"""Prints the FAILURES section with errors and warnings for each failed file."""
-def print_failures(failed_results: list, nowarn: bool = False) -> None {
+impl print_failures(failed_results: list, nowarn: bool = False) -> None {
     import from jaclang.cli.console { console }
     console.print("");
     console.print(separator("FAILURES"));
@@ -35,8 +32,7 @@ def print_failures(failed_results: list, nowarn: bool = False) -> None {
     }
 }
 
-"""Prints a summary of failed files with their error and warning counts."""
-def print_failed_summary(failed_results: list) -> None {
+impl print_failed_summary(failed_results: list) -> None {
     import from jaclang.cli.console { console }
     console.print(separator("failed files"));
     for r in failed_results {
@@ -50,8 +46,7 @@ def print_failed_summary(failed_results: list) -> None {
     }
 }
 
-"""Prints the final passed/failed counts with elapsed time."""
-def print_final_summary(passed_count: int, failed_count: int, elapsed: float) -> None {
+impl print_final_summary(passed_count: int, failed_count: int, elapsed: float) -> None {
     import from jaclang.cli.console { console }
     parts = [f"{passed_count} passed"] if passed_count > 0 else [];
     if failed_count > 0 {
