@@ -3,6 +3,7 @@
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
 ## jac-client 0.3.1 (Unreleased)
+
 - **Refactor**: Change python builtin `any` to `Any`.
 
 ## jac-client 0.3.0 (Latest Release)
